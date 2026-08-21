@@ -1,0 +1,6 @@
+{
+  "hook": "experimental.session.compacting",
+  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "input": { "sessionID": "ses_8f2a1c" },
+  "output": { "context": [] }
+}

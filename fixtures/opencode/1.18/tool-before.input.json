@@ -1,0 +1,12 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "input": {
+    "tool": "bash",
+    "sessionID": "ses_8f2a1c",
+    "callID": "call_01hn"
+  },
+  "output": {
+    "args": { "command": "echo hooknostic-fixture", "description": "Echo fixture" }
+  }
+}

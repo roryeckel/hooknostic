@@ -1,0 +1,16 @@
+{
+  "hook": "permission.ask",
+  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "input": {
+    "id": "per_2ka9",
+    "type": "bash",
+    "pattern": "mkdir *",
+    "sessionID": "ses_8f2a1c",
+    "messageID": "msg_9d1",
+    "callID": "call_02hn",
+    "title": "mkdir hooknostic-perm-probe",
+    "metadata": { "command": "mkdir hooknostic-perm-probe" },
+    "time": { "created": 1755600000000 }
+  },
+  "output": { "status": "ask" }
+}
