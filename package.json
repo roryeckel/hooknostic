@@ -9,8 +9,9 @@
   },
   "packageManager": "pnpm@11.22.0",
   "scripts": {
-    "build": "tsc --noEmit && pnpm -r --if-present run bundle",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm --filter @hooknostic/sdk run bundle && tsc --noEmit && pnpm -r --if-present run bundle",
+    "typecheck": "pnpm --filter @hooknostic/sdk run bundle && tsc --noEmit",
+    "pretest": "pnpm --filter @hooknostic/sdk run bundle && pnpm --filter hooknostic run bundle",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint ."

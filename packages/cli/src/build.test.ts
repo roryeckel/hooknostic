@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -229,6 +229,45 @@ describe("hooknostic build end-to-end", () => {
     ]);
     expect(await readFile(configPath, "utf8")).toContain('output: "."');
     expect(await readFile(entryPath, "utf8")).toContain("definePlugin");
+  });
+
+  it("rejects an invalid report destination before replacing existing artifacts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-report-output-"));
+    cleanupDirs.push(dir);
+    const configPath = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        entry: "./hooks.ts",
+        targets: { claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" } },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "safe", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const existingOutput = join(dir, "dist/claude");
+    await mkdir(existingOutput, { recursive: true });
+    await writeFile(join(existingOutput, "old-marker"), "old", "utf8");
+    await mkdir(join(dir, "hooknostic-build.json"));
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: configPath,
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(1);
+    expect(JSON.parse(capture.out()).diagnostics).toEqual([
+      expect.objectContaining({ code: "HN302" }),
+    ]);
+    expect(await readFile(join(existingOutput, "old-marker"), "utf8")).toBe("old");
   });
 });
 

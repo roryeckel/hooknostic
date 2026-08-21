@@ -175,7 +175,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const runtimePolicy = effectiveRuntime(config);
   const stagingRoot = await mkdtemp(join(configDir, ".hooknostic-staging-"));
   const outputByKey = new Map(layout.outputs.map((entry) => [entry.key, entry]));
-  const staged: { key: string; target: string; stagingDir: string; outputDir: string }[] = [];
+  const staged: {
+    key: string;
+    target?: string;
+    kind?: "directory" | "file";
+    stagingDir: string;
+    outputDir: string;
+  }[] = [];
   try {
     for (const id of Object.keys(analysis.targets)) {
       const adapter = options.registry[id]!;
@@ -267,6 +273,18 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       return { ok: false, report, analysis };
     }
 
+    // The build report is a mandatory managed output. Install it last so a
+    // report failure rolls every previously installed target back.
+    const reportPath = join(configDir, "hooknostic-build.json");
+    const stagedReportPath = join(stagingRoot, "hooknostic-build.json");
+    await writeFile(stagedReportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+    staged.push({
+      key: "build-report",
+      kind: "file",
+      stagingDir: stagedReportPath,
+      outputDir: reportPath,
+    });
+
     // 5. Transactional commit: prepare same-filesystem replacements first,
     // then retain backups until every selected output has been installed.
     const commit = await commitStagedOutputs(staged);
@@ -275,7 +293,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       diagnostics.push({
         code: "HN302",
         severity: "error",
-        ...(failure.failedTarget !== "unknown" ? { target: failure.failedTarget } : {}),
+        ...(failure.failedTarget !== undefined ? { target: failure.failedTarget } : {}),
         message: failure.message,
         ...(failure.recoveryPaths.length > 0
           ? {
@@ -292,8 +310,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     await rm(stagingRoot, { recursive: true, force: true });
   }
 
-  // 6. Build report.
+  // 6. Every managed output, including the report, is now installed.
   const reportPath = join(configDir, "hooknostic-build.json");
-  await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
   return { ok: true, report, analysis, reportPath };
 }
