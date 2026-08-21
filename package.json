@@ -1,0 +1,26 @@
+{
+  "name": "hooknostic-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hooknostic — portable lifecycle hooks for coding-agent harnesses",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "build": "tsc --noEmit && pnpm -r --if-present run bundle",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0",
+    "vitest": "^2.1.8"
+  }
+}

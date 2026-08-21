@@ -1,0 +1,1 @@
+export const ADAPTER_OPENCODE_VERSION = "0.1.0";

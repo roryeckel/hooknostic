@@ -1,0 +1,15 @@
+{
+  "name": "@hooknostic/sdk",
+  "version": "0.1.0",
+  "description": "Hooknostic authoring API and canonical hook types",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}

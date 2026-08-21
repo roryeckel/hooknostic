@@ -1,0 +1,22 @@
+{
+  "name": "hooknostic",
+  "version": "0.1.0",
+  "description": "Hooknostic CLI: check, build, doctor, inspect",
+  "type": "module",
+  "bin": {
+    "hooknostic": "./bin/hooknostic.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@hooknostic/adapter-claude": "workspace:*",
+    "@hooknostic/adapter-codex": "workspace:*",
+    "@hooknostic/adapter-opencode": "workspace:*",
+    "@hooknostic/core": "workspace:*",
+    "@hooknostic/sdk": "workspace:*"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@hooknostic/adapter-codex",
+  "version": "0.1.0",
+  "description": "Hooknostic adapter for OpenAI Codex CLI",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@hooknostic/core": "workspace:*",
+    "@hooknostic/runtime": "workspace:*",
+    "@hooknostic/sdk": "workspace:*"
+  }
+}
