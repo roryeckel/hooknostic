@@ -70,6 +70,10 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+    devDependencies:
+      '@hooknostic/testkit':
+        specifier: workspace:*
+        version: link:../testkit
 
   packages/cli:
     dependencies:

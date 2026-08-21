@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "event": "turn.stop",
+  "harness": { "id": "opencode", "nativeEvent": "event" },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
+  },
+  "correlation": {}
+}

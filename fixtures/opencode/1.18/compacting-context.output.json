@@ -1,0 +1,5 @@
+{
+  "mutations": {
+    "context": ["Working directory layout: see AGENTS.md", "Prefer pnpm over npm"]
+  }
+}

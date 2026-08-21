@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "event": "context.compact.before",
+  "harness": { "id": "opencode", "nativeEvent": "experimental.session.compacting" },
+  "session": {
+    "id": "ses_8f2a1c",
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
+  },
+  "correlation": {}
+}
