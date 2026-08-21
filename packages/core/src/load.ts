@@ -1,0 +1,141 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
+import type { HooknosticConfig, PluginSpec } from "@hooknostic/sdk";
+import { hooknosticConfigSchema } from "@hooknostic/sdk";
+import type { Diagnostic } from "./diagnostics.js";
+
+export interface EvaluateOptions {
+  /**
+   * Module specifier overrides for bundling (e.g. mapping "@hooknostic/sdk"
+   * to a workspace path when evaluating fixtures outside an installed
+   * project).
+   */
+  alias?: Record<string, string>;
+}
+
+/**
+ * Bundle-safe evaluation of user TypeScript modules (config and hook entry).
+ * The module is bundled self-contained with esbuild, written to a temp file,
+ * and imported; nothing from the user's module graph escapes evaluation.
+ */
+async function evaluateModule(file: string, options?: EvaluateOptions): Promise<unknown> {
+  const absolute = resolve(file);
+  const bundled = await build({
+    entryPoints: [absolute],
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    target: "node20",
+    write: false,
+    sourcemap: "inline",
+    logLevel: "silent",
+    ...(options?.alias ? { alias: options.alias } : {}),
+  });
+  const code = bundled.outputFiles[0]?.text;
+  if (code === undefined) {
+    throw new Error(`esbuild produced no output for ${file}`);
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), "hooknostic-eval-"));
+  const out = join(dir, "module.mjs");
+  try {
+    await writeFile(out, code, "utf8");
+    const mod = (await import(pathToFileURL(out).href)) as { default?: unknown };
+    return mod.default;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+export interface LoadConfigResult {
+  config?: HooknosticConfig;
+  diagnostics: Diagnostic[];
+}
+
+export async function loadConfig(
+  configPath: string,
+  options?: EvaluateOptions,
+): Promise<LoadConfigResult> {
+  const diagnostics: Diagnostic[] = [];
+  let evaluated: unknown;
+  try {
+    evaluated = await evaluateModule(configPath, options);
+  } catch (error) {
+    diagnostics.push({
+      code: "HN501",
+      severity: "error",
+      message: `failed to load config ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+      location: { file: configPath },
+      remediation: "the config must be a TypeScript module whose default export is defineConfig({...}).",
+    });
+    return { diagnostics };
+  }
+
+  const parsed = hooknosticConfigSchema.safeParse(evaluated);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        message: `invalid configuration: ${issue.path.join(".") || "<root>"}: ${issue.message}`,
+        location: { file: configPath },
+        remediation: "see docs/design.md §8.1 for the configuration shape.",
+      });
+    }
+    return { diagnostics };
+  }
+
+  if (Object.keys(parsed.data.targets).length === 0) {
+    diagnostics.push({
+      code: "HN501",
+      severity: "error",
+      message: "configuration declares no targets.",
+      location: { file: configPath },
+      remediation: "add at least one entry under targets: { ... }.",
+    });
+    return { diagnostics };
+  }
+
+  return { config: parsed.data as HooknosticConfig, diagnostics };
+}
+
+export interface LoadPluginResult {
+  plugin?: PluginSpec;
+  diagnostics: Diagnostic[];
+}
+
+/**
+ * Evaluate the plugin entry module. Structural validation (and IR
+ * construction) happens in buildPluginIR; this only gets the module loaded.
+ */
+export async function loadPluginSource(
+  entryPath: string,
+  options?: EvaluateOptions,
+): Promise<LoadPluginResult> {
+  const diagnostics: Diagnostic[] = [];
+  try {
+    const evaluated = await evaluateModule(entryPath, options);
+    if (evaluated === undefined || evaluated === null) {
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        message: `entry module ${entryPath} has no default export.`,
+        location: { file: entryPath },
+        remediation: "export default definePlugin({...}) from the entry module.",
+      });
+      return { diagnostics };
+    }
+    return { plugin: evaluated as PluginSpec, diagnostics };
+  } catch (error) {
+    diagnostics.push({
+      code: "HN501",
+      severity: "error",
+      message: `failed to load entry ${entryPath}: ${error instanceof Error ? error.message : String(error)}`,
+      location: { file: entryPath },
+    });
+    return { diagnostics };
+  }
+}
