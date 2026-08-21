@@ -12,11 +12,18 @@
       "default": "./src/index.ts"
     }
   },
+  "scripts": {
+    "bundle": "esbuild src/bin.ts --bundle --format=esm --platform=node --target=node20 --external:esbuild --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/hooknostic.mjs --log-level=warning"
+  },
   "dependencies": {
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@hooknostic/testkit": "workspace:*",
+    "esbuild": "^0.24.2"
   }
 }

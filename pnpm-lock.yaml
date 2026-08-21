@@ -80,6 +80,13 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+    devDependencies:
+      '@hooknostic/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+      esbuild:
+        specifier: ^0.24.2
+        version: 0.24.2
 
   packages/core:
     dependencies:
