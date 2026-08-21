@@ -1,0 +1,10 @@
+{
+  "exitCode": 0,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "allow",
+      "updatedInput": { "command": "pnpm install" }
+    }
+  }
+}

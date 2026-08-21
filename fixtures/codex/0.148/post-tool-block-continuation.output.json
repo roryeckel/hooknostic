@@ -1,0 +1,7 @@
+{
+  "exitCode": 0,
+  "body": {
+    "decision": "block",
+    "reason": "Output contained credentials; do not proceed."
+  }
+}

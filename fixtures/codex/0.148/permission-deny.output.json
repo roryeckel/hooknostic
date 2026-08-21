@@ -1,0 +1,9 @@
+{
+  "exitCode": 0,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": { "behavior": "deny", "message": "Blocked by policy hook" }
+    }
+  }
+}

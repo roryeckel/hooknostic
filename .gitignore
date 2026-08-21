@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .capture/*/captured/
+# nested git repos used for codex/opencode capture + smoke (documented in fixtures READMEs)
+.capture/codex/
+.capture/codex-smoke/
+.capture/opencode/
+.capture/opencode-smoke/
 *.tsbuildinfo
 .eslintcache
 coverage/

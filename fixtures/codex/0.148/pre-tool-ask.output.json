@@ -1,0 +1,10 @@
+{
+  "exitCode": 0,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "ask",
+      "permissionDecisionReason": "Database mutation requires explicit approval"
+    }
+  }
+}
