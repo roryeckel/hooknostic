@@ -128,7 +128,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
       );
       const artifacts = generateOpenCodeArtifacts(
         ir!,
-        { id: "opencode", version: ">=1.18", mode: "local", output: SMOKE_DIR },
+        { id: "opencode", version: ">=1.18 <2", mode: "local", output: SMOKE_DIR },
         bundle,
       );
       for (const artifact of artifacts) {

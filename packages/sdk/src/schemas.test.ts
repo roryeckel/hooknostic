@@ -138,7 +138,7 @@ describe("canonical schemas", () => {
       entry: "./src/hooks.ts",
       compatibility: { minimum: "emulated", onBelowMinimum: "error" },
       targets: {
-        claude: { version: ">=2.1", mode: "plugin", output: "./dist/claude" },
+        claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
       },
     };
     expect(hooknosticConfigSchema.parse(config).entry).toBe("./src/hooks.ts");
@@ -148,7 +148,7 @@ describe("canonical schemas", () => {
     expect(() =>
       hooknosticConfigSchema.parse({
         ...config,
-        targets: { claude: { version: ">=2.1", mode: "service", output: "./x" } },
+        targets: { claude: { version: ">=2.1 <3", mode: "service", output: "./x" } },
       }),
     ).toThrow();
   });

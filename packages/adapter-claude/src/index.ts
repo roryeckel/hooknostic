@@ -14,7 +14,7 @@ import type {
 } from "@hooknostic/core";
 import { resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import type { RuntimePolicy } from "@hooknostic/sdk";
+import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
 import { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
@@ -48,7 +48,7 @@ export function claudeShimEntrySource(options: {
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
-  minimumCapabilityLevel?: import("@hooknostic/sdk").SupportLevel;
+  minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
 }): string {
   return [

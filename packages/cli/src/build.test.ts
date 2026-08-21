@@ -146,8 +146,8 @@ describe("hooknostic build end-to-end", () => {
         `export default {
           entry: "./hooks.ts",
           targets: {
-            claude: { version: ">=2.1", mode: "plugin", output: "./dist/claude" },
-            opencode: { version: ">=1.18", mode: "local", output: "./dist/opencode" },
+            claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
+            opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },
           },
         };`,
         "utf8",
@@ -204,7 +204,7 @@ describe("hooknostic build end-to-end", () => {
       configPath,
       `export default {
         entry: "./hooks.ts",
-        targets: { claude: { version: ">=2.1", mode: "plugin", output: "." } },
+        targets: { claude: { version: ">=2.1 <3", mode: "plugin", output: "." } },
       };`,
       "utf8",
     );
@@ -302,5 +302,18 @@ describe("hooknostic inspect", () => {
       }),
     ).toBe(2);
     expect(unknown.err()).toContain("unknown target");
+
+    const invalidCapability = captureIO();
+    expect(
+      await runInspect({
+        target: "claude",
+        capability: "tool.before.typo",
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: invalidCapability.io,
+      }),
+    ).toBe(2);
+    expect(invalidCapability.err()).toContain("unknown capability");
+    expect(invalidCapability.err()).toContain("without --capability");
   });
 });

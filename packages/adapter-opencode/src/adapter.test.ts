@@ -3,7 +3,7 @@ import { definePlugin, hook } from "@hooknostic/sdk";
 import type { HookResult } from "@hooknostic/sdk";
 import { buildPluginIR } from "@hooknostic/core";
 import { loadFixture } from "@hooknostic/testkit";
-import { planOpenCodeApplication } from "./apply.js";
+import { planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeAdapter } from "./index.js";
@@ -17,7 +17,10 @@ describe("decodeOpenCode fixtures", () => {
     "tool-after",
     "permission-ask",
     "compacting",
+    "session-created",
+    "session-deleted",
     "session-idle",
+    "session-compacted",
   ] as const;
 
   for (const name of CASES) {
@@ -129,6 +132,24 @@ describe("planOpenCodeApplication", () => {
     ).toEqual({ mutations: { output: '{"a":1}' } });
   });
 
+  it("totally converts unusual output replacement values", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic["self"] = cyclic;
+    const hostile = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("no property access");
+        },
+      },
+    );
+
+    expect(serializeOpenCodeOutput(undefined)).toBe("undefined");
+    expect(serializeOpenCodeOutput(42n)).toBe("42");
+    expect(serializeOpenCodeOutput(cyclic)).toBe("[object Object]");
+    expect(serializeOpenCodeOutput(hostile)).toBe("[hooknostic: unrepresentable output]");
+  });
+
   it("denies permission requests via status mutation, not a throw", () => {
     expect(
       planOpenCodeApplication(
@@ -162,7 +183,7 @@ describe("planOpenCodeApplication", () => {
 describe("generateOpenCodeArtifacts", () => {
   const TARGET = {
     id: "opencode",
-    version: ">=1.18",
+    version: ">=1.18 <2",
     mode: "local" as const,
     output: "./dist/opencode",
   };
@@ -195,7 +216,7 @@ describe("opencodeAdapter capability data", () => {
   it("resolves the 1.1x profile with rationale on every non-exact cell", () => {
     const resolved = opencodeAdapter().capabilities({
       id: "opencode",
-      version: ">=1.18",
+      version: ">=1.18 <2",
       mode: "local",
       output: "./d",
     });

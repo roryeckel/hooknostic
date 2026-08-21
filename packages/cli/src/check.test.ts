@@ -176,7 +176,7 @@ describe("hooknostic check", () => {
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        targets: { codex: { version: ">=0.148", mode: "plugin", output: "./dist" } },
+        targets: { codex: { version: ">=0.148 <1", mode: "plugin", output: "./dist" } },
       };`,
       "utf8",
     );

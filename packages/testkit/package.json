@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Hooknostic fixture loaders, fake adapters, and adapter contract-test helpers",
   "type": "module",
+  "engines": { "node": ">=22.13.0" },
   "exports": {
     ".": {
       "types": "./src/index.ts",

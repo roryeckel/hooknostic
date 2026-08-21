@@ -3,6 +3,7 @@
   "event": "session.start",
   "harness": { "id": "opencode", "nativeEvent": "event" },
   "session": {
+    "id": "ses_8f2a1c",
     "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
   },
   "correlation": {}

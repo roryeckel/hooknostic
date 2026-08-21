@@ -11,7 +11,7 @@
 | | |
 | --- | --- |
 | Baseline date | August 20, 2026 |
-| Primary implementation | Node.js 20+ / TypeScript / ESM |
+| Primary implementation | Node.js 22.13+ / TypeScript / ESM |
 | Initial harness targets | Claude Code, OpenAI Codex, OpenCode |
 | Companion standard | Agent Plugins 1.0 (optional integration) |
 
@@ -375,9 +375,9 @@ export default defineConfig({
   },
 
   targets: {
-    claude:   { version: ">=2.1",  mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148", mode: "plugin", output: "./dist/codex" },
-    opencode: { version: ">=1.18", mode: "local",  output: "./dist/opencode" },
+    claude:   { version: ">=2.1 <3",  mode: "plugin", output: "./dist/claude" },
+    codex:    { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+    opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
   },
 
   agentPlugin: { root: "." },
@@ -460,7 +460,7 @@ OpenCode ships local-file mode first; npm-package mode can follow.
     "claude": {
       "status": "success",
       "adapter": "@hooknostic/adapter-claude@0.1.0",
-      "requestedVersion": ">=2.1",
+      "requestedVersion": ">=2.1 <3",
       "capabilities": { "exact": 11, "emulated": 1, "approximate": 0, "unsupported": 0 }
     }
   },
@@ -703,7 +703,7 @@ hooknostic/
 | `@hooknostic/adapter-*` | Not initially | Harness adapters. |
 | `@hooknostic/testkit` | Maybe later | For external adapter authors post-stabilization. |
 
-**Build technology:** Node 20+, TypeScript, ESM; pnpm workspaces; esbuild for the
+**Build technology:** Node 22.13+, TypeScript, ESM; pnpm workspaces; esbuild for the
 dependency-free per-target runtime `.mjs`; Zod internally (measure size/cold-start before
 shipping it inside hook bundles); no daemon; explicit Windows path/executable support.
 
@@ -879,10 +879,10 @@ export default defineConfig({
   compatibility: { minimum: "emulated", onBelowMinimum: "error", optionalUnavailable: "info" },
   runtime: { onHookError: "continue", timeoutMs: 5_000 },
   targets: {
-    claude:   { version: ">=2.1",   mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148", mode: "plugin", output: "./dist/codex" },
+    claude:   { version: ">=2.1 <3",   mode: "plugin", output: "./dist/claude" },
+    codex:    { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
     opencode: {
-      version: ">=1.18", mode: "local", output: "./dist/opencode",
+      version: ">=1.18 <2", mode: "local", output: "./dist/opencode",
       compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
     },
   },
