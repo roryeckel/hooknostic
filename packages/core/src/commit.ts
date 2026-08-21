@@ -3,7 +3,9 @@ import { basename, dirname, join } from "node:path";
 
 export interface StagedOutput {
   key: string;
-  target: string;
+  target?: string;
+  /** Files and directories share the same backup/install transaction. */
+  kind?: "directory" | "file";
   stagingDir: string;
   outputDir: string;
 }
@@ -11,7 +13,7 @@ export interface StagedOutput {
 export interface CommitFailure {
   message: string;
   failedKey: string;
-  failedTarget: string;
+  failedTarget?: string;
   recoveryPaths: string[];
 }
 
@@ -41,6 +43,26 @@ async function exists(path: string, files: FileOperations): Promise<boolean> {
   }
 }
 
+async function validateExistingKind(
+  entry: StagedOutput,
+  files: FileOperations,
+): Promise<void> {
+  let stats;
+  try {
+    stats = await files.lstat(entry.outputDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  const kind = entry.kind ?? "directory";
+  const matches = kind === "file" ? stats.isFile() : stats.isDirectory();
+  if (!matches) {
+    throw new Error(
+      `existing output ${entry.outputDir} is not a regular ${kind}`,
+    );
+  }
+}
+
 interface PreparedOutput extends StagedOutput {
   transactionDir: string;
   payloadDir: string;
@@ -59,6 +81,7 @@ export async function commitStagedOutputs(
   try {
     for (const entry of entries) {
       preparing = entry;
+      await validateExistingKind(entry, files);
       const parent = dirname(entry.outputDir);
       await files.mkdir(parent, { recursive: true });
       const transactionDir = await files.mkdtemp(
@@ -73,7 +96,9 @@ export async function commitStagedOutputs(
         installed: false,
         backedUp: false,
       });
-      await files.cp(entry.stagingDir, payloadDir, { recursive: true });
+      await files.cp(entry.stagingDir, payloadDir, {
+        recursive: (entry.kind ?? "directory") === "directory",
+      });
       preparing = undefined;
     }
   } catch (error) {
@@ -86,7 +111,7 @@ export async function commitStagedOutputs(
       failure: {
         message: `could not prepare output transaction: ${error instanceof Error ? error.message : String(error)}`,
         failedKey: entry?.key ?? "unknown",
-        failedTarget: entry?.target ?? "unknown",
+        ...(entry?.target !== undefined ? { failedTarget: entry.target } : {}),
         recoveryPaths: [],
       },
     };
@@ -145,7 +170,7 @@ export async function commitStagedOutputs(
             : ["previous outputs were restored"]),
         ].join("; "),
         failedKey: failed?.key ?? "unknown",
-        failedTarget: failed?.target ?? "unknown",
+        ...(failed?.target !== undefined ? { failedTarget: failed.target } : {}),
         recoveryPaths,
       },
     };

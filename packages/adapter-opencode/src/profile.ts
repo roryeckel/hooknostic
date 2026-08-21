@@ -55,9 +55,9 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
 
       "tool.after.observe": { level: "exact" },
       "tool.after.output.replace": {
-        level: "exact",
+        level: "approximate",
         rationale:
-          "mutating output.output in tool.execute.after replaces the tool result; non-string replacements are JSON-serialized.",
+          "mutating output.output replaces string results exactly, but non-string replacements are JSON-serialized and therefore change type and semantics.",
       },
       // No block-continuation channel → unsupported.
 

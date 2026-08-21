@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { definePlugin, hook } from "@hooknostic/sdk";
+import { definePlugin, hook, replaceOutput } from "@hooknostic/sdk";
 import type { HookResult } from "@hooknostic/sdk";
-import { buildPluginIR } from "@hooknostic/core";
+import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
 import { loadFixture } from "@hooknostic/testkit";
 import { planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
@@ -223,6 +223,7 @@ describe("opencodeAdapter capability data", () => {
     expect(resolved.diagnostics).toEqual([]);
     expect(resolved.matrix?.["tool.before.block"]?.level).toBe("exact");
     expect(resolved.matrix?.["permission.request.block"]?.level).toBe("exact");
+    expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("approximate");
     expect(resolved.matrix?.["tool.before.context.add"]).toBeUndefined();
     expect(resolved.matrix?.["turn.stop.prevent"]).toBeUndefined();
     expect(resolved.matrix?.["agent.start.observe"]).toBeUndefined();
@@ -231,5 +232,59 @@ describe("opencodeAdapter capability data", () => {
         expect(entry.rationale, `capability ${id} needs a rationale`).toBeTruthy();
       }
     }
+  });
+
+  it("requires an explicit approximate policy for output replacement", () => {
+    const built = buildPluginIR(
+      definePlugin({
+        name: "redactor",
+        hooks: [
+          hook("tool.after", {
+            id: "redact",
+            capabilities: { "tool.after.output.replace": "required" },
+            async run() {
+              return replaceOutput({ redacted: true });
+            },
+          }),
+        ],
+      }),
+    );
+    const adapter = opencodeAdapter();
+    const target = {
+      version: ">=1.18 <2",
+      mode: "local" as const,
+      output: "./dist/opencode",
+    };
+    const strict = analyzeCapabilities(
+      built.ir!,
+      { entry: "./hooks.ts", targets: { opencode: target } },
+      { opencode: adapter },
+    );
+    expect(strict.ok).toBe(false);
+    expect(strict.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN201",
+        capability: "tool.after.output.replace",
+        support: "approximate",
+      }),
+    );
+
+    const relaxed = analyzeCapabilities(
+      built.ir!,
+      {
+        entry: "./hooks.ts",
+        targets: {
+          opencode: {
+            ...target,
+            compatibility: { minimum: "approximate" },
+          },
+        },
+      },
+      { opencode: adapter },
+    );
+    expect(relaxed.ok).toBe(true);
+    expect(relaxed.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN101", support: "approximate" }),
+    );
   });
 });

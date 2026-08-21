@@ -116,6 +116,9 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+      esbuild:
+        specifier: ^0.24.2
+        version: 0.24.2
       semver:
         specifier: ^7.6.3
         version: 7.8.5
@@ -126,9 +129,6 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.8.0
-      esbuild:
-        specifier: ^0.24.2
-        version: 0.24.2
 
   packages/core:
     dependencies:

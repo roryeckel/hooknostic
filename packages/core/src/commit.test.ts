@@ -37,7 +37,81 @@ async function fixture(existingFirst = true) {
   };
 }
 
+async function fixtureWithReport(existingReport = true) {
+  const base = await fixture();
+  const reportStage = join(base.root, "stage-report.json");
+  const reportOutput = join(base.root, "hooknostic-build.json");
+  await fs.writeFile(reportStage, "new-report", "utf8");
+  if (existingReport) await fs.writeFile(reportOutput, "old-report", "utf8");
+  return {
+    ...base,
+    reportOutput,
+    entries: [
+      ...base.entries,
+      {
+        key: "build-report",
+        kind: "file" as const,
+        stagingDir: reportStage,
+        outputDir: reportOutput,
+      },
+    ],
+  };
+}
+
 describe("commitStagedOutputs", () => {
+  it("installs directory outputs and the build report together", async () => {
+    const f = await fixtureWithReport();
+    const result = await commitStagedOutputs(f.entries);
+    expect(result).toEqual({ ok: true });
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("new-first");
+    expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("new-second");
+    expect(await fs.readFile(f.reportOutput, "utf8")).toBe("new-report");
+  });
+
+  it("restores directories and the previous report when report installation fails", async () => {
+    const f = await fixtureWithReport();
+    let renameCount = 0;
+    const result = await commitStagedOutputs(f.entries, {
+      ...fs,
+      async rename(from, to) {
+        renameCount += 1;
+        if (renameCount === 6) throw new Error("simulated report install failure");
+        await fs.rename(from, to);
+      },
+    });
+    expect(result).toMatchObject({ ok: false, failure: { failedKey: "build-report" } });
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("old-first");
+    expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("old-second");
+    expect(await fs.readFile(f.reportOutput, "utf8")).toBe("old-report");
+  });
+
+  it("removes a newly-created report when rollback follows a later failure", async () => {
+    const f = await fixtureWithReport(false);
+    const trailingStage = join(f.root, "stage-trailing");
+    const trailingOutput = join(f.root, "out/trailing");
+    await fs.mkdir(trailingStage, { recursive: true });
+    await fs.writeFile(join(trailingStage, "value"), "new-trailing", "utf8");
+    f.entries.push({
+      key: "trailing",
+      target: "trailing",
+      stagingDir: trailingStage,
+      outputDir: trailingOutput,
+    });
+    let renameCount = 0;
+    const result = await commitStagedOutputs(f.entries, {
+      ...fs,
+      async rename(from, to) {
+        renameCount += 1;
+        if (renameCount === 6) throw new Error("simulated trailing install failure");
+        await fs.rename(from, to);
+      },
+    });
+    expect(result.ok).toBe(false);
+    await expect(fs.lstat(f.reportOutput)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("old-first");
+    expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("old-second");
+  });
+
   it("restores every previous output when a later install rename fails", async () => {
     const f = await fixture();
     let renameCount = 0;
@@ -107,5 +181,18 @@ describe("commitStagedOutputs", () => {
     expect(siblings.filter((name) => name.startsWith(".hooknostic-"))).toEqual([]);
     expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("old-first");
     expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("old-second");
+  });
+
+  it("rejects a non-file report destination before replacing any output", async () => {
+    const f = await fixtureWithReport(false);
+    await fs.mkdir(f.reportOutput);
+    const result = await commitStagedOutputs(f.entries);
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { failedKey: "build-report", recoveryPaths: [] },
+    });
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("old-first");
+    expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("old-second");
+    expect((await fs.lstat(f.reportOutput)).isDirectory()).toBe(true);
   });
 });

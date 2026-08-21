@@ -376,7 +376,7 @@ export default defineConfig({
 
   targets: {
     claude:   { version: ">=2.1 <3",  mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+    codex:    { version: ">=0.148 <1", mode: "local",  output: "./dist/codex" },
     opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
   },
 
@@ -640,10 +640,11 @@ deny where Claude does not honor it.
 
 ### 12.2 Codex
 
-Plugin mode: `hooks/hooks.json` + `.codex-plugin/plugin.json`. Use Codex-native env vars
-(`PLUGIN_ROOT`/`PLUGIN_DATA`) in generated output while accepting Claude-compat aliases
-in fixtures. Some tool paths bypass hooks: `tool.before.observe` is documented as
-tool-path coverage, not a security boundary.
+Local mode: repo-level `.codex/hooks.json` invoking the bundled runtime under
+`.codex/hooknostic/`. Codex loads these hooks only for trusted projects and requires
+per-hook trust (or an explicit trust bypass); generation never modifies trust state.
+Some tool paths bypass hooks, so `tool.before.observe` is documented as tool-path
+coverage, not a security boundary.
 
 ### 12.3 OpenCode
 
@@ -880,7 +881,7 @@ export default defineConfig({
   runtime: { onHookError: "continue", timeoutMs: 5_000 },
   targets: {
     claude:   { version: ">=2.1 <3",   mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+    codex:    { version: ">=0.148 <1", mode: "local",  output: "./dist/codex" },
     opencode: {
       version: ">=1.18 <2", mode: "local", output: "./dist/opencode",
       compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
