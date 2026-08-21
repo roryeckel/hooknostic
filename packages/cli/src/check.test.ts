@@ -7,6 +7,7 @@ import type { CapabilityProfile } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
+import { defaultAdapterRegistry } from "./registry.js";
 
 const SDK_PATH = resolve(
   fileURLToPath(new URL(".", import.meta.url)),
@@ -167,6 +168,38 @@ describe("hooknostic check", () => {
     expect(report.ok).toBe(false);
     expect(report.diagnostics[0].code).toBe("HN501");
   });
+
+  it("reports unsupported artifact modes before generation", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-mode-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        targets: { codex: { version: ">=0.148", mode: "plugin", output: "./dist" } },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "mode", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const capture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(1);
+    expect(JSON.parse(capture.out()).diagnostics).toEqual([
+      expect.objectContaining({ code: "HN204", target: "codex" }),
+    ]);
+  });
 });
 
 describe("runCli", () => {
@@ -187,5 +220,13 @@ describe("runCli", () => {
     const { io, err } = captureIO();
     expect(await runCli(["inspect"], { io })).toBe(2);
     expect(err()).toContain("requires a target");
+  });
+
+  it.each(["check", "build"])("rejects an empty --target for %s", async (command) => {
+    for (const value of ["", ", ,"]) {
+      const { io, err } = captureIO();
+      expect(await runCli([command, "--target", value], { io })).toBe(2);
+      expect(err()).toContain("at least one non-empty target");
+    }
   });
 });

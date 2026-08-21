@@ -265,4 +265,40 @@ describe("analyzeCapabilities", () => {
     expect(analysis.ok).toBe(false);
     expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: "mystery" });
   });
+
+  it("rejects unsupported artifact modes during analysis", () => {
+    const adapters = {
+      localOnly: makeFakeAdapter({
+        id: "localOnly",
+        profiles: [richProfile],
+        supportedModes: ["local"],
+      }),
+    };
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "s", async run() {} })]),
+      config({
+        targets: {
+          localOnly: { version: ">=1.0 <2", mode: "plugin", output: "./dist" },
+        },
+      }),
+      adapters,
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.targets.localOnly?.diagnostics[0]).toMatchObject({
+      code: "HN204",
+      severity: "error",
+      target: "localOnly",
+    });
+  });
+
+  it("rejects a directly supplied empty target selection", () => {
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "s", async run() {} })]),
+      config(),
+      registry(),
+      [],
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", severity: "error" });
+  });
 });

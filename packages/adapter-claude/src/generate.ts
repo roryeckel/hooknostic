@@ -1,4 +1,4 @@
-import type { GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
+import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
 import { hookAppliesToTarget } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
@@ -29,7 +29,9 @@ export function generateClaudeArtifacts(
   plugin: PluginIR,
   target: TargetSpec,
   bundle: RuntimeBundle,
+  options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
+  const nativeTimeoutSeconds = Math.ceil(options.runtime.timeoutMs / 1000) + 1;
   const nativeEvents = [
     ...new Set(
       plugin.hooks
@@ -50,7 +52,7 @@ export function generateClaudeArtifacts(
                 type: "command",
                 command: "node",
                 args: [`\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`],
-                timeout: 60,
+                timeout: nativeTimeoutSeconds,
               },
             ],
           },

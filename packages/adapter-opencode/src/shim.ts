@@ -1,4 +1,4 @@
-import type { HookEventName, PluginSpec, RuntimePolicy } from "@hooknostic/sdk";
+import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch } from "@hooknostic/runtime";
 import { planOpenCodeApplication } from "./apply.js";
@@ -7,6 +7,7 @@ import { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 
 export interface OpenCodeShimOptions {
   capabilities: CapabilityLevels;
+  minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
   harnessVersion?: string;
 }
@@ -50,6 +51,9 @@ export function createHooknosticHooks(
       targetId: "opencode",
       harness: event.harness,
       capabilities: options.capabilities,
+      ...(options.minimumCapabilityLevel !== undefined
+        ? { minimumCapabilityLevel: options.minimumCapabilityLevel }
+        : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
     });
     const application = planOpenCodeApplication(result);
@@ -68,10 +72,14 @@ export function createHooknosticHooks(
         typeof replacement === "object" &&
         !Array.isArray(existing)
       ) {
+        // A handler may mutate event.tool.input and return that exact object.
+        // Snapshot before clearing the live OpenCode args object so aliases do
+        // not erase their own replacement.
+        const replacementSnapshot = { ...(replacement as Record<string, unknown>) };
         for (const key of Object.keys(existing as Record<string, unknown>)) {
           delete (existing as Record<string, unknown>)[key];
         }
-        Object.assign(existing as Record<string, unknown>, replacement);
+        Object.assign(existing as Record<string, unknown>, replacementSnapshot);
       } else {
         output["args"] = replacement;
       }

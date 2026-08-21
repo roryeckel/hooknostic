@@ -89,6 +89,27 @@ describe("createHooknosticHooks", () => {
     expect(output.args).toEqual({ command: "pnpm install" });
   });
 
+  it("preserves a replacement that aliases the live arguments object", async () => {
+    const plugin = definePlugin({
+      name: "aliased-replacement",
+      hooks: [
+        hook("tool.before", {
+          id: "alias",
+          capabilities: { "tool.before.input.replace": "required" },
+          async run(event) {
+            const input = event.tool.input as { command: string };
+            input.command = "pnpm install";
+            return replaceInput(input);
+          },
+        }),
+      ],
+    });
+    const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
+    const output = { args: { command: "npm install" } };
+    await h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, output);
+    expect(output.args).toEqual({ command: "pnpm install" });
+  });
+
   it("replaces tool output by mutating output.output", async () => {
     const h = hooks();
     const output = { title: "t", output: "token SECRET here", metadata: {} };

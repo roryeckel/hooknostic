@@ -194,6 +194,42 @@ describe("hooknostic build end-to-end", () => {
       expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
     },
   );
+
+  it("rejects project-root output without deleting the config or hook source", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-unsafe-output-"));
+    cleanupDirs.push(dir);
+    const configPath = join(dir, "hooknostic.config.ts");
+    const entryPath = join(dir, "hooks.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        entry: "./hooks.ts",
+        targets: { claude: { version: ">=2.1", mode: "plugin", output: "." } },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      entryPath,
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "safe", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: configPath,
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(1);
+    expect(JSON.parse(capture.out()).diagnostics).toEqual([
+      expect.objectContaining({ code: "HN501", target: "claude" }),
+    ]);
+    expect(await readFile(configPath, "utf8")).toContain('output: "."');
+    expect(await readFile(entryPath, "utf8")).toContain("definePlugin");
+  });
 });
 
 describe("hooknostic doctor", () => {

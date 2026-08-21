@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { SupportLevel } from "@hooknostic/sdk";
 import type {
@@ -18,6 +18,9 @@ import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
 import { buildPluginIR } from "./ir.js";
 import { effectiveRuntime } from "./policy.js";
+import { effectiveCompatibility } from "./policy.js";
+import { validateOutputLayout } from "./output-layout.js";
+import { commitStagedOutputs } from "./commit.js";
 
 export const HOOKNOSTIC_VERSION = "0.1.0";
 
@@ -148,7 +151,19 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       capabilities: target.counts,
     };
   }
-  if (!analysis.ok) {
+  const layout = await validateOutputLayout({
+    configPath,
+    entryPath,
+    config,
+    selectedTargets: Object.keys(analysis.targets),
+  });
+  diagnostics.push(...layout.diagnostics);
+  for (const diagnostic of layout.diagnostics) {
+    if (diagnostic.target && report.targets[diagnostic.target]) {
+      report.targets[diagnostic.target]!.status = "failed";
+    }
+  }
+  if (!analysis.ok || hasFatal(layout.diagnostics)) {
     return { ok: false, report, analysis };
   }
 
@@ -159,7 +174,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   // 4. Bundle + compile per target into a staging directory.
   const runtimePolicy = effectiveRuntime(config);
   const stagingRoot = await mkdtemp(join(configDir, ".hooknostic-staging-"));
-  const staged: { key: string; stagingDir: string; outputDir: string }[] = [];
+  const outputByKey = new Map(layout.outputs.map((entry) => [entry.key, entry]));
+  const staged: { key: string; target: string; stagingDir: string; outputDir: string }[] = [];
   try {
     for (const id of Object.keys(analysis.targets)) {
       const adapter = options.registry[id]!;
@@ -167,6 +183,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       const spec: TargetSpec = targetSpecFromConfig(id, targetConfig);
       const resolved = adapter.capabilities(spec);
       const matrix = resolved.matrix ?? {};
+      const compatibility = effectiveCompatibility(config, id);
 
       if (!adapter.shimEntry) {
         diagnostics.push({
@@ -189,12 +206,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           source: adapter.shimEntry({
             entryImportPath: entryPath.replaceAll("\\", "/"),
             capabilities: levelsFromMatrix(matrix),
+            minimumCapabilityLevel: compatibility.minimum,
             policy: runtimePolicy,
           }),
           resolveDir: configDir,
           ...(Object.keys(alias).length > 0 ? { alias } : {}),
         });
-        artifacts = await adapter.compile(ir, spec, bundle);
+        artifacts = await adapter.compile(ir, spec, bundle, { runtime: runtimePolicy });
       } catch (error) {
         diagnostics.push({
           code: "HN301",
@@ -216,8 +234,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       const stagingDir = await writeArtifacts(stagingRoot, id, artifacts);
       staged.push({
         key: id,
+        target: id,
         stagingDir,
-        outputDir: resolve(configDir, targetConfig.output),
+        outputDir: outputByKey.get(id)!.outputDir,
       });
       report.targets[id]!.artifacts = artifacts.map((a) => a.path);
 
@@ -236,8 +255,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         );
         staged.push({
           key: extensionKey,
+          target: id,
           stagingDir: extensionStaging,
-          outputDir: join(agentPluginRoot, namespace),
+          outputDir: outputByKey.get(extensionKey)!.outputDir,
         });
         report.agentPlugin!.extensions.push(namespace);
       }
@@ -247,12 +267,26 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       return { ok: false, report, analysis };
     }
 
-    // 5. Atomic commit: nothing was written to final outputs until every
-    // selected target compiled and validated.
-    for (const entry of staged) {
-      await rm(entry.outputDir, { recursive: true, force: true });
-      await mkdir(dirname(entry.outputDir), { recursive: true });
-      await rename(entry.stagingDir, entry.outputDir);
+    // 5. Transactional commit: prepare same-filesystem replacements first,
+    // then retain backups until every selected output has been installed.
+    const commit = await commitStagedOutputs(staged);
+    if (!commit.ok) {
+      const failure = commit.failure!;
+      diagnostics.push({
+        code: "HN302",
+        severity: "error",
+        ...(failure.failedTarget !== "unknown" ? { target: failure.failedTarget } : {}),
+        message: failure.message,
+        ...(failure.recoveryPaths.length > 0
+          ? {
+              remediation: `recover prior outputs from: ${failure.recoveryPaths.join(", ")}.`,
+            }
+          : {}),
+      });
+      for (const [id, target] of Object.entries(report.targets)) {
+        target.status = id === failure.failedTarget ? "failed" : "skipped";
+      }
+      return { ok: false, report, analysis };
     }
   } finally {
     await rm(stagingRoot, { recursive: true, force: true });

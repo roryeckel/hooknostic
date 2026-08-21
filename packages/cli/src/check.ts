@@ -7,6 +7,7 @@ import {
   hasFatal,
   loadConfig,
   loadPluginSource,
+  validateOutputLayout,
 } from "@hooknostic/core";
 
 export interface CommandIO {
@@ -77,6 +78,21 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     options.registry,
     options.targets,
   );
+  const layout = await validateOutputLayout({
+    configPath,
+    entryPath,
+    config,
+    selectedTargets: Object.keys(analysis.targets),
+  });
+  analysis.diagnostics.push(...layout.diagnostics);
+  for (const diagnostic of layout.diagnostics) {
+    if (diagnostic.target && analysis.targets[diagnostic.target]) {
+      const target = analysis.targets[diagnostic.target]!;
+      target.diagnostics.push(diagnostic);
+      target.ok = false;
+    }
+  }
+  analysis.ok = !hasFatal(analysis.diagnostics);
 
   if (options.json) {
     const report: CheckReport = {

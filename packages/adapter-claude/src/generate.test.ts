@@ -6,6 +6,9 @@ import { generateClaudeArtifacts } from "./generate.js";
 
 const TARGET = { id: "claude", version: ">=2.1", mode: "plugin" as const, output: "./dist/claude" };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
+const OPTIONS = {
+  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000 },
+};
 
 function exampleIR() {
   const { ir, diagnostics } = buildPluginIR(
@@ -45,7 +48,7 @@ function exampleIR() {
 
 describe("generateClaudeArtifacts", () => {
   it("emits a self-contained plugin artifact with one dispatcher per used native event", () => {
-    const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE);
+    const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
     expect(artifacts.map((a) => a.path)).toEqual([
       ".claude-plugin/plugin.json",
       "hooks/hooks.json",
@@ -70,7 +73,7 @@ describe("generateClaudeArtifacts", () => {
       type: "command",
       command: "node",
       args: ["${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"],
-      timeout: 60,
+      timeout: 6,
     });
 
     expect(artifacts[2]!.contents).toBe(BUNDLE.code);
@@ -78,15 +81,27 @@ describe("generateClaudeArtifacts", () => {
 
   it("passes its own artifact validation", async () => {
     const adapter = claudeAdapter();
-    const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE);
+    const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
     const diagnostics = await adapter.validateArtifacts!(artifacts, TARGET);
     expect(diagnostics).toEqual([]);
   });
 
   it("is deterministic", () => {
-    const a = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE);
-    const b = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE);
+    const a = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
+    const b = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
     expect(a).toEqual(b);
+  });
+
+  it.each([
+    [1, 2],
+    [1_000, 2],
+    [61_000, 62],
+  ])("maps runtime timeout %ims to native timeout %is", (timeoutMs, expected) => {
+    const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, {
+      runtime: { ...OPTIONS.runtime, timeoutMs },
+    });
+    const hooksJson = JSON.parse(artifacts[1]!.contents);
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(expected);
   });
 });
 

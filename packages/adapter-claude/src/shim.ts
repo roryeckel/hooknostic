@@ -1,4 +1,4 @@
-import type { PluginSpec, RuntimePolicy } from "@hooknostic/sdk";
+import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch } from "@hooknostic/runtime";
 import { applyClaude } from "./apply.js";
@@ -7,6 +7,7 @@ import { ClaudeDecodeError, decodeClaude } from "./decode.js";
 export interface ClaudeShimOptions {
   /** Build-time-resolved capability levels for the executing target range. */
   capabilities: CapabilityLevels;
+  minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
   harnessVersion?: string;
 }
@@ -18,6 +19,15 @@ async function readStdin(): Promise<string> {
   return data;
 }
 
+async function writeStream(stream: NodeJS.WriteStream, contents: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    stream.write(contents, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 /**
  * Command-hook entry point executed by Claude Code: JSON event on stdin →
  * decode → portable dispatch → encode structured JSON stdout / exit code.
@@ -27,7 +37,7 @@ async function readStdin(): Promise<string> {
 export async function runClaudeCommandShim(
   plugin: PluginSpec,
   options: ClaudeShimOptions,
-): Promise<never> {
+): Promise<void> {
   let exitCode = 0;
   try {
     const nativeEvent: unknown = JSON.parse(await readStdin());
@@ -42,15 +52,19 @@ export async function runClaudeCommandShim(
       targetId: "claude",
       harness: event.harness,
       capabilities: options.capabilities,
+      ...(options.minimumCapabilityLevel !== undefined
+        ? { minimumCapabilityLevel: options.minimumCapabilityLevel }
+        : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
     });
     const native = await applyClaude(result, nativeEvent, invocation);
-    if (native.body !== undefined) process.stdout.write(JSON.stringify(native.body));
-    if (native.stderr !== undefined) process.stderr.write(native.stderr);
+    if (native.body !== undefined) await writeStream(process.stdout, JSON.stringify(native.body));
+    if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof ClaudeDecodeError)) {
-      process.stderr.write(
+      await writeStream(
+        process.stderr,
         `hooknostic: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
