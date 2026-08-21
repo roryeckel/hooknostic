@@ -14,13 +14,17 @@ import type {
 } from "@hooknostic/core";
 import { resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import type { RuntimePolicy } from "@hooknostic/sdk";
+import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyOpenCode } from "./apply.js";
 import { decodeOpenCode } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 
-export { applyOpenCode, planOpenCodeApplication } from "./apply.js";
+export {
+  applyOpenCode,
+  planOpenCodeApplication,
+  serializeOpenCodeOutput,
+} from "./apply.js";
 export type { OpenCodeApplication } from "./apply.js";
 export { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 export type { OpenCodeNativeEvent } from "./decode.js";
@@ -48,7 +52,7 @@ export function opencodeShimEntrySource(options: {
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
-  minimumCapabilityLevel?: import("@hooknostic/sdk").SupportLevel;
+  minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
 }): string {
   return [

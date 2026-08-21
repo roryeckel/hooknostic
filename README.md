@@ -56,7 +56,7 @@ of hiding them behind optimistic adapters.
 
 ## Repository
 
-pnpm + TypeScript monorepo:
+Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
 
 | Package | Purpose |
 | --- | --- |

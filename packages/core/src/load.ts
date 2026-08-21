@@ -28,7 +28,7 @@ async function evaluateModule(file: string, options?: EvaluateOptions): Promise<
     bundle: true,
     format: "esm",
     platform: "node",
-    target: "node20",
+    target: "node22",
     write: false,
     sourcemap: "inline",
     logLevel: "silent",

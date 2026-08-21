@@ -113,16 +113,32 @@ export function decodeOpenCode(
     case "experimental.session.compacting":
       return { ...base, event: "context.compact.before" };
     case "event": {
-      const busEvent = (input as { event?: { type?: string } }).event;
+      const busEvent = (
+        input as {
+          event?: {
+            type?: string;
+            properties?: { info?: { id?: string }; sessionID?: string };
+          };
+        }
+      ).event;
+      const infoSessionId = busEvent?.properties?.info?.id;
+      const propertySessionId = busEvent?.properties?.sessionID;
+      const withSession = (id: unknown) => ({
+        ...base,
+        session: {
+          ...(typeof id === "string" ? { id } : {}),
+          cwd: native.directory,
+        },
+      });
       switch (busEvent?.type) {
         case "session.created":
-          return { ...base, event: "session.start" };
+          return { ...withSession(infoSessionId), event: "session.start" };
         case "session.deleted":
-          return { ...base, event: "session.end" };
+          return { ...withSession(infoSessionId), event: "session.end" };
         case "session.idle":
-          return { ...base, event: "turn.stop" };
+          return { ...withSession(propertySessionId), event: "turn.stop" };
         case "session.compacted":
-          return { ...base, event: "context.compact.after" };
+          return { ...withSession(propertySessionId), event: "context.compact.after" };
         default:
           throw new OpenCodeDecodeError(`unmapped bus event "${busEvent?.type}"`);
       }

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Hooknostic CLI: check, build, doctor, inspect",
   "type": "module",
+  "engines": { "node": ">=22.13.0" },
   "bin": {
     "hooknostic": "./bin/hooknostic.mjs"
   },
@@ -13,7 +14,7 @@
     }
   },
   "scripts": {
-    "bundle": "esbuild src/bin.ts --bundle --format=esm --platform=node --target=node20 --external:esbuild --outfile=dist/hooknostic.mjs --log-level=warning"
+    "bundle": "esbuild src/bin.ts --bundle --format=esm --platform=node --target=node22 --external:esbuild --outfile=dist/hooknostic.mjs --log-level=warning"
   },
   "dependencies": {
     "@hooknostic/adapter-claude": "workspace:*",

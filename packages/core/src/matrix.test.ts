@@ -28,14 +28,48 @@ describe("resolveCapabilityMatrix", () => {
     expect(result.matrix?.["tool.before.block"]?.level).toBe("exact");
   });
 
-  it("resolves overlapping ranges to the least-capable guaranteed intersection", () => {
-    const result = resolveCapabilityMatrix("fake", [older, newer], ">=1.0");
+  it("resolves adjacent fully covered ranges to the least-capable guarantee", () => {
+    const result = resolveCapabilityMatrix("fake", [older, newer], ">=1.0 <2");
     expect(result.diagnostics).toEqual([]);
     expect(result.profilesUsed).toHaveLength(2);
     // block: emulated in older, exact in newer → emulated is the guarantee
     expect(result.matrix?.["tool.before.block"]?.level).toBe("emulated");
     // input.replace: missing (unsupported) in older → not guaranteed at all
     expect(result.matrix?.["tool.before.input.replace"]).toBeUndefined();
+    expect(result.matrix?.["tool.before.observe"]?.level).toBe("exact");
+  });
+
+  it.each([
+    [">=0.9 <1.2", "leading partial overlap"],
+    [">=1.8 <2.1", "trailing partial overlap"],
+    [">=1.0", "unbounded future tail"],
+  ])("rejects %s as a %s", (range) => {
+    const result = resolveCapabilityMatrix("fake", [older, newer], range);
+    expect(result.matrix).toBeUndefined();
+    expect(result.diagnostics[0]).toMatchObject({ code: "HN203", severity: "error" });
+    expect(result.diagnostics[0]?.message).toContain("not fully covered");
+  });
+
+  it("rejects an internal gap between validated profiles", () => {
+    const separated = [{ ...newer, range: ">=1.6 <2" }];
+    const result = resolveCapabilityMatrix("fake", [older, ...separated], ">=1 <2");
+    expect(result.matrix).toBeUndefined();
+    expect(result.diagnostics[0]).toMatchObject({ code: "HN203", severity: "error" });
+  });
+
+  it("accepts a bounded range wholly contained in one profile", () => {
+    const result = resolveCapabilityMatrix("fake", [older, newer], ">=1.1 <=1.4.9");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.profilesUsed).toEqual([older]);
+  });
+
+  it("accepts an explicit prerelease only when its profile explicitly covers it", () => {
+    const prerelease: CapabilityProfile = {
+      range: ">=2.0.0-beta.1 <2.0.0",
+      matrix: { "tool.before.observe": { level: "exact" } },
+    };
+    const result = resolveCapabilityMatrix("fake", [prerelease], "2.0.0-beta.2");
+    expect(result.diagnostics).toEqual([]);
     expect(result.matrix?.["tool.before.observe"]?.level).toBe("exact");
   });
 

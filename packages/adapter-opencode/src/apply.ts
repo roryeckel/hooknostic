@@ -23,6 +23,24 @@ export interface OpenCodeApplication {
   };
 }
 
+const UNREPRESENTABLE_OUTPUT = "[hooknostic: unrepresentable output]";
+
+/** OpenCode requires tool output replacements to be strings. */
+export function serializeOpenCodeOutput(output: unknown): string {
+  if (typeof output === "string") return output;
+  try {
+    const json = JSON.stringify(output);
+    if (json !== undefined) return json;
+  } catch {
+    // Fall through to the total string conversion below.
+  }
+  try {
+    return String(output);
+  } catch {
+    return UNREPRESENTABLE_OUTPUT;
+  }
+}
+
 export function planOpenCodeApplication(result: HookResult): OpenCodeApplication {
   const application: OpenCodeApplication = {};
   const mutations: NonNullable<OpenCodeApplication["mutations"]> = {};
@@ -55,10 +73,7 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
     | { output: unknown }
     | undefined;
   if (replacedOutput !== undefined) {
-    mutations.output =
-      typeof replacedOutput.output === "string"
-        ? replacedOutput.output
-        : JSON.stringify(replacedOutput.output);
+    mutations.output = serializeOpenCodeOutput(replacedOutput.output);
   }
 
   const context = result.effects

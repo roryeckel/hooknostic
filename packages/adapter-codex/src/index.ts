@@ -14,7 +14,7 @@ import type {
 } from "@hooknostic/core";
 import { resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import type { RuntimePolicy } from "@hooknostic/sdk";
+import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
@@ -43,7 +43,7 @@ export function codexShimEntrySource(options: {
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
-  minimumCapabilityLevel?: import("@hooknostic/sdk").SupportLevel;
+  minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
 }): string {
   return [

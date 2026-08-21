@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Hooknostic adapter for Claude Code",
   "type": "module",
+  "engines": { "node": ">=22.13.0" },
   "exports": {
     ".": {
       "types": "./src/index.ts",

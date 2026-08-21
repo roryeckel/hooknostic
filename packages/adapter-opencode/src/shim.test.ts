@@ -120,6 +120,32 @@ describe("createHooknosticHooks", () => {
     expect(output.output).toBe("token [redacted] here");
   });
 
+  it("applies cyclic output replacements without throwing", async () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic["self"] = cyclic;
+    const plugin = definePlugin({
+      name: "cyclic-output",
+      hooks: [
+        hook("tool.after", {
+          id: "replace-cycle",
+          capabilities: { "tool.after.output.replace": "required" },
+          async run() {
+            return replaceOutput(cyclic);
+          },
+        }),
+      ],
+    });
+    const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
+    const output = { output: "before" };
+    await expect(
+      h["tool.execute.after"]!(
+        { tool: "bash", sessionID: "s", callID: "c", args: {} },
+        output,
+      ),
+    ).resolves.toBeUndefined();
+    expect(output.output).toBe("[object Object]");
+  });
+
   it("denies permissions by mutating output.status", async () => {
     const h = hooks();
     const output = { status: "ask" };

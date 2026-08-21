@@ -36,9 +36,9 @@ describe("loadConfig", () => {
         entry: "./src/hooks.ts",
         compatibility: { minimum: "emulated", onBelowMinimum: "error" },
         targets: {
-          claude: { version: ">=2.1", mode: "plugin", output: "./dist/claude" },
+          claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
           opencode: {
-            version: ">=1.18",
+            version: ">=1.18 <2",
             mode: "local",
             output: "./dist/opencode",
             compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
@@ -77,7 +77,7 @@ describe("loadConfig", () => {
     const file = join(dir, "hooknostic.config.ts");
     await writeFile(
       file,
-      `export default { entry: "./src/hooks.ts", targets: { claude: { version: ">=2.1", mode: "daemon", output: "./x" } } };`,
+      `export default { entry: "./src/hooks.ts", targets: { claude: { version: ">=2.1 <3", mode: "daemon", output: "./x" } } };`,
       "utf8",
     );
     const result = await loadConfig(file, OPTIONS);

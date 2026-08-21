@@ -1,6 +1,6 @@
 import type { AdapterRegistry } from "@hooknostic/core";
 import type { CapabilityId } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS } from "@hooknostic/sdk";
+import { ALL_CAPABILITY_IDS, isCapabilityId } from "@hooknostic/sdk";
 import type { CommandIO } from "./check.js";
 
 export interface InspectCommandOptions {
@@ -26,6 +26,12 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     );
     return 2;
   }
+  if (options.capability !== undefined && !isCapabilityId(options.capability)) {
+    options.io.stderr(
+      `unknown capability "${options.capability}"; run \`hooknostic inspect ${options.target}\` without --capability to list valid capability IDs.`,
+    );
+    return 2;
+  }
 
   const version = options.version ?? adapter.supportedHarnessVersions()[0] ?? "*";
   const resolved = adapter.capabilities({
@@ -41,9 +47,8 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     return 1;
   }
 
-  const ids = (
-    options.capability !== undefined ? [options.capability] : [...ALL_CAPABILITY_IDS]
-  ) as CapabilityId[];
+  const ids: CapabilityId[] =
+    options.capability !== undefined ? [options.capability] : [...ALL_CAPABILITY_IDS];
 
   const rows = ids.map((id) => {
     const entry = resolved.matrix![id];

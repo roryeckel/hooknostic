@@ -5,7 +5,7 @@
   "description": "Hooknostic — portable lifecycle hooks for coding-agent harnesses",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "packageManager": "pnpm@11.22.0",
   "scripts": {

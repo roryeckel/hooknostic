@@ -26,7 +26,7 @@ export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBund
     bundle: true,
     format: "esm",
     platform: "node",
-    target: "node20",
+    target: "node22",
     write: false,
     minify: false,
     legalComments: "none",

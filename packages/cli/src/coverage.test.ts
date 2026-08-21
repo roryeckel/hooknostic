@@ -15,9 +15,9 @@ import { opencodeAdapter } from "@hooknostic/adapter-opencode";
 import { fixturePath, loadFixture } from "@hooknostic/testkit";
 
 const SUBJECTS: { adapter: HarnessAdapter; fixtureDir: [string, string]; version: string }[] = [
-  { adapter: claudeAdapter(), fixtureDir: ["claude", "2.1"], version: ">=2.1" },
-  { adapter: codexAdapter(), fixtureDir: ["codex", "0.148"], version: ">=0.148" },
-  { adapter: opencodeAdapter(), fixtureDir: ["opencode", "1.18"], version: ">=1.18" },
+  { adapter: claudeAdapter(), fixtureDir: ["claude", "2.1"], version: ">=2.1 <3" },
+  { adapter: codexAdapter(), fixtureDir: ["codex", "0.148"], version: ">=0.148 <1" },
+  { adapter: opencodeAdapter(), fixtureDir: ["opencode", "1.18"], version: ">=1.18 <2" },
 ];
 
 describe.each(SUBJECTS)("fixture coverage: $adapter.id", ({ adapter, fixtureDir, version }) => {
