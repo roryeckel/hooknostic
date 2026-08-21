@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "event": "tool.before",
+  "harness": { "id": "codex", "nativeEvent": "PreToolUse" },
+  "session": {
+    "id": "01a021d8-1568-7ac0-9db2-a7013528de23",
+    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex"
+  },
+  "correlation": {
+    "turnId": "01a021d8-1602-7032-b00f-d5198424613b",
+    "toolCallId": "call_Wjhr7Wj4xokTqvqtaQZb4zwE"
+  },
+  "tool": {
+    "kind": "shell",
+    "nativeName": "Bash",
+    "input": { "command": "echo hooknostic-fixture" }
+  }
+}

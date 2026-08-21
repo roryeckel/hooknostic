@@ -1,0 +1,11 @@
+{
+  "session_id": "01a021d8-1568-7ac0-9db2-a7013528de23",
+  "turn_id": "01a021d8-1602-7032-b00f-d5198424613b",
+  "transcript_path": "C:\\Users\\ex0du\\.codex\\sessions\\2026\\08\\20\\rollout-2026-08-20T20-03-24-01a021d8-1568-7ac0-9db2-a7013528de23.jsonl",
+  "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex",
+  "hook_event_name": "Stop",
+  "model": "gpt-5.3-codex-spark",
+  "permission_mode": "bypassPermissions",
+  "stop_hook_active": false,
+  "last_assistant_message": "`hooknostic-fixture`"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "event": "session.start",
+  "harness": { "id": "codex", "nativeEvent": "SessionStart" },
+  "session": {
+    "id": "01a021d8-1568-7ac0-9db2-a7013528de23",
+    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex"
+  },
+  "correlation": {},
+  "how": "startup"
+}

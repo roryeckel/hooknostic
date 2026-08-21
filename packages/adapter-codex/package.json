@@ -7,11 +7,18 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./shim": {
+      "types": "./src/shim.ts",
+      "default": "./src/shim.ts"
     }
   },
   "dependencies": {
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@hooknostic/testkit": "workspace:*"
   }
 }
