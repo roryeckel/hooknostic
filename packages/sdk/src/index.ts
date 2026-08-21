@@ -9,6 +9,7 @@ export * from "./effects.js";
 export * from "./events.js";
 export * from "./hook.js";
 export * from "./plugin.js";
+export * from "./result.js";
 export * from "./schemas.js";
 export * from "./support.js";
 export * from "./tools.js";

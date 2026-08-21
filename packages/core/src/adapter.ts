@@ -1,0 +1,131 @@
+import type {
+  CapabilityId,
+  HookEvent,
+  HookResult,
+  SupportLevel,
+  TargetConfig,
+} from "@hooknostic/sdk";
+import type { Diagnostic } from "./diagnostics.js";
+import type { PluginIR } from "./ir.js";
+
+/** A configured build target: config entry keyed by adapter/target id. */
+export interface TargetSpec {
+  id: string;
+  /** Requested harness version range (never the locally installed version). */
+  version: string;
+  mode: "plugin" | "local";
+  output: string;
+}
+
+export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSpec {
+  return { id, version: target.version, mode: target.mode, output: target.output };
+}
+
+/**
+ * One capability's support on a target range. Non-exact levels must carry a
+ * rationale (enforced by testkit contract assertions).
+ */
+export interface CapabilityEntry {
+  level: SupportLevel;
+  rationale?: string;
+}
+
+/** Capabilities absent from the matrix are `unsupported`. */
+export type CapabilityMatrix = Partial<Record<CapabilityId, CapabilityEntry>>;
+
+/**
+ * Capability support is a function of harness *and version*. Adapters encode
+ * it as data — versioned profiles — rather than scattering version checks.
+ */
+export interface CapabilityProfile {
+  /** Semver range of native harness versions this matrix was validated for. */
+  range: string;
+  matrix: CapabilityMatrix;
+  /** Provenance: when and from what sources the profile was derived. */
+  source?: {
+    date: string;
+    references?: string[];
+  };
+}
+
+export interface CapabilityResolutionResult {
+  matrix?: CapabilityMatrix;
+  /** Profiles that intersected the requested range, in declaration order. */
+  profilesUsed: CapabilityProfile[];
+  diagnostics: Diagnostic[];
+}
+
+export interface DetectionResult {
+  installed: boolean;
+  version?: string;
+  detail?: string;
+}
+
+/** A generated file, path relative to the target's output directory. */
+export interface GeneratedArtifact {
+  path: string;
+  contents: string;
+  executable?: boolean;
+}
+
+/** The bundled portable runtime + user handlers, duplicated per target. */
+export interface RuntimeBundle {
+  /** Self-contained ESM source of the dispatch bundle. */
+  code: string;
+}
+
+/** Per-invocation context handed to runtime decode/apply. */
+export interface InvocationContext {
+  targetId: string;
+  harnessVersion?: string;
+}
+
+export interface NativeHookResult {
+  /** JSON-serializable native response body, when the protocol uses one. */
+  body?: unknown;
+  /** Process exit code for command-hook protocols. */
+  exitCode?: number;
+  /** Text for stderr, e.g. native blocking-reason channels. */
+  stderr?: string;
+}
+
+export interface RuntimeAdapter {
+  decode(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
+  apply(
+    result: HookResult,
+    nativeEvent: unknown,
+    invocation: InvocationContext,
+  ): Promise<NativeHookResult>;
+}
+
+export interface HarnessAdapter {
+  readonly id: string;
+  readonly adapterVersion: string;
+
+  /** Ranges with validated capability data, in profile declaration order. */
+  supportedHarnessVersions(): string[];
+
+  /**
+   * Resolve the capability matrix for a target's requested version range.
+   * Implementations should delegate to {@link resolveCapabilityMatrix}.
+   */
+  capabilities(target: TargetSpec): CapabilityResolutionResult;
+
+  /** Detect the locally installed harness for `doctor`, where feasible. */
+  detect?(): Promise<DetectionResult>;
+
+  compile(
+    plugin: PluginIR,
+    target: TargetSpec,
+    bundle: RuntimeBundle,
+  ): Promise<GeneratedArtifact[]>;
+
+  validateArtifacts?(
+    artifacts: GeneratedArtifact[],
+    target: TargetSpec,
+  ): Promise<Diagnostic[]>;
+
+  runtime: RuntimeAdapter;
+}
+
+export type AdapterRegistry = Record<string, HarnessAdapter>;
