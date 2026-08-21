@@ -20,7 +20,9 @@ export const DIAGNOSTIC_CODES = {
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",
+  HN204: "artifact mode unsupported",
   HN301: "adapter generation failure",
+  HN302: "output commit failure",
   HN401: "unsupported effect returned at runtime",
   HN501: "invalid configuration",
 } as const;

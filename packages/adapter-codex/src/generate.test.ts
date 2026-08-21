@@ -6,6 +6,9 @@ import { generateCodexArtifacts } from "./generate.js";
 
 const TARGET = { id: "codex", version: ">=0.148", mode: "local" as const, output: "./dist/codex" };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
+const OPTIONS = {
+  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000 },
+};
 
 function exampleIR() {
   const { ir, diagnostics } = buildPluginIR(
@@ -29,7 +32,7 @@ function exampleIR() {
 
 describe("generateCodexArtifacts", () => {
   it("emits a self-contained repo-level .codex directory", () => {
-    const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE);
+    const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
     expect(artifacts.map((a) => a.path)).toEqual([
       ".codex/hooks.json",
       ".codex/hooknostic/hooknostic.mjs",
@@ -39,20 +42,28 @@ describe("generateCodexArtifacts", () => {
     expect(hooksJson.hooks.PreToolUse[0].hooks[0]).toEqual({
       type: "command",
       command: "node .codex/hooknostic/hooknostic.mjs",
-      timeout: 60,
+      timeout: 6,
     });
   });
 
   it("refuses plugin mode for the validated range (plugin_hooks removed)", () => {
     expect(() =>
-      generateCodexArtifacts(exampleIR(), { ...TARGET, mode: "plugin" }, BUNDLE),
+      generateCodexArtifacts(exampleIR(), { ...TARGET, mode: "plugin" }, BUNDLE, OPTIONS),
     ).toThrow(/plugin_hooks/);
   });
 
   it("passes its own artifact validation", async () => {
     const adapter = codexAdapter();
-    const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE);
+    const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
     expect(await adapter.validateArtifacts!(artifacts, TARGET)).toEqual([]);
+  });
+
+  it("does not preempt runtime timeouts longer than 60 seconds", () => {
+    const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, {
+      runtime: { ...OPTIONS.runtime, timeoutMs: 61_000 },
+    });
+    const hooksJson = JSON.parse(artifacts[0]!.contents);
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(62);
   });
 });
 

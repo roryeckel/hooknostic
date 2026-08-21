@@ -59,6 +59,15 @@ export function analyzeCapabilities(
   const configuredTargets = Object.keys(config.targets);
   const selection = selectedTargets ?? configuredTargets;
 
+  if (selectedTargets !== undefined && selectedTargets.length === 0) {
+    diagnostics.push({
+      code: "HN501",
+      severity: "error",
+      message: "the selected target set is empty.",
+      remediation: "pass at least one configured target, or omit --target to check all targets.",
+    });
+  }
+
   // CLI narrowing may never introduce a target absent from config.
   for (const id of selection) {
     if (!configuredTargets.includes(id)) {
@@ -99,6 +108,15 @@ export function analyzeCapabilities(
 
     const policy = effectiveCompatibility(config, targetId);
     const spec = targetSpecFromConfig(targetId, targetConfig);
+    if (!adapter.supportedModes().includes(spec.mode)) {
+      targetDiagnostics.push({
+        code: "HN204",
+        severity: "error",
+        target: targetId,
+        message: `target "${targetId}" mode "${spec.mode}" is unsupported by adapter "${adapter.id}".`,
+        remediation: `use one of the supported modes: ${adapter.supportedModes().join(", ")}.`,
+      });
+    }
     const resolved = adapter.capabilities(spec);
     targetDiagnostics.push(...resolved.diagnostics);
 

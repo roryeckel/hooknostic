@@ -48,6 +48,7 @@ export function opencodeShimEntrySource(options: {
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
+  minimumCapabilityLevel?: import("@hooknostic/sdk").SupportLevel;
   harnessVersion?: string;
 }): string {
   return [
@@ -56,6 +57,9 @@ export function opencodeShimEntrySource(options: {
     `export const HooknosticPlugin = async (input) =>`,
     `  createHooknosticHooks(plugin, {`,
     `    capabilities: ${JSON.stringify(options.capabilities)},`,
+    ...(options.minimumCapabilityLevel !== undefined
+      ? [`    minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
+      : []),
     `    policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined
       ? [`    harnessVersion: ${JSON.stringify(options.harnessVersion)},`]
@@ -73,6 +77,10 @@ export function opencodeAdapter(): HarnessAdapter {
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);
+    },
+
+    supportedModes() {
+      return ["local"] as const;
     },
 
     shimEntry(options) {

@@ -73,6 +73,16 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
       ? parsed.values["target"].split(",").map((t) => t.trim()).filter(Boolean)
       : undefined;
 
+  if (
+    (command === "check" || command === "build") &&
+    typeof parsed.values["target"] === "string" &&
+    targets?.length === 0
+  ) {
+    io.stderr("--target requires at least one non-empty target.");
+    io.stderr(CLI_USAGE);
+    return 2;
+  }
+
   switch (command) {
     case "check":
       return runCheck({

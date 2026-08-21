@@ -155,6 +155,9 @@ describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
         ir!,
         { id: "codex", version: ">=0.148", mode: "local", output: SMOKE_DIR },
         bundle,
+        {
+          runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000 },
+        },
       );
       for (const artifact of artifacts) {
         const target = join(SMOKE_DIR, artifact.path);

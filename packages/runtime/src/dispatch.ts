@@ -17,6 +17,7 @@ import {
   effectSchema,
   isTerminalEffect,
   matchesTool,
+  meetsMinimum,
 } from "@hooknostic/sdk";
 
 /** Support levels for the executing target, as data (capability → level). */
@@ -39,6 +40,8 @@ export interface DispatchOptions {
   targetId: string;
   harness: { id: string; version?: string };
   capabilities: CapabilityLevels;
+  /** Compatibility floor applied to optional capabilities for this target. */
+  minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
 }
 
@@ -65,7 +68,7 @@ export async function dispatch(
   options: DispatchOptions,
 ): Promise<HookResult> {
   const policy = { ...DEFAULT_RUNTIME, ...options.policy };
-  const capabilities = createCapabilitySet(options.capabilities);
+  const targetCapabilities = createCapabilitySet(options.capabilities);
 
   const result: HookResult = {
     schemaVersion: 1,
@@ -84,7 +87,11 @@ export async function dispatch(
     return true;
   });
 
-  const failDispatch = (hookId: string, error: HandlerError): boolean => {
+  const failDispatch = (
+    hookId: string,
+    error: HandlerError,
+    capabilities: CapabilitySet,
+  ): boolean => {
     result.errors.push(error);
     if (policy.onHookError === "block") {
       const blockCapability = capabilityForEffect(event.event, "block");
@@ -101,6 +108,23 @@ export async function dispatch(
   };
 
   for (const hook of matching) {
+    const capabilities: CapabilitySet = {
+      has(id) {
+        return this.level(id) !== "unsupported";
+      },
+      level(id) {
+        const level = targetCapabilities.level(id);
+        const minimum = options.minimumCapabilityLevel;
+        if (
+          minimum !== undefined &&
+          hook.capabilities[id] !== "required" &&
+          !meetsMinimum(level, minimum)
+        ) {
+          return "unsupported";
+        }
+        return level;
+      },
+    };
     const controller = new AbortController();
     const ctx: HookContext = {
       capabilities,
@@ -127,7 +151,7 @@ export async function dispatch(
         hookId: hook.id,
         kind: timedOut ? "timeout" : "error",
         message: error instanceof Error ? error.message : String(error),
-      });
+      }, capabilities);
       if (terminal) break;
       continue;
     } finally {
@@ -145,7 +169,7 @@ export async function dispatch(
         hookId: hook.id,
         kind: "unsupported-effect",
         message: `HN401: hook "${hook.id}" returned a value that is not a valid effect.`,
-      });
+      }, capabilities);
       if (terminal) break;
       continue;
     }
@@ -157,7 +181,7 @@ export async function dispatch(
         hookId: hook.id,
         kind: "unsupported-effect",
         message: `HN401: effect "${effect.kind}" is not defined for event "${event.event}".`,
-      });
+      }, capabilities);
       if (terminal) break;
       continue;
     }
@@ -166,7 +190,7 @@ export async function dispatch(
         hookId: hook.id,
         kind: "unsupported-effect",
         message: `HN401: hook "${hook.id}" returned "${effect.kind}" without declaring capability "${capability}".`,
-      });
+      }, capabilities);
       if (terminal) break;
       continue;
     }
@@ -175,7 +199,7 @@ export async function dispatch(
         hookId: hook.id,
         kind: "unsupported-effect",
         message: `HN401: capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`,
-      });
+      }, capabilities);
       if (terminal) break;
       continue;
     }

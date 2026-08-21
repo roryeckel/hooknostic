@@ -463,3 +463,67 @@ describe("createCapabilitySet", () => {
     expect(set.level("tool.before.context.add")).toBe("unsupported");
   });
 });
+
+describe("policy-aware hook capability detection", () => {
+  it("hides a below-minimum optional capability from detection and effect application", async () => {
+    const observed: Array<[boolean, string]> = [];
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "optional-rewrite",
+          capabilities: { "tool.before.input.replace": "optional" },
+          async run(_event, ctx) {
+            observed.push([
+              ctx.capabilities.has("tool.before.input.replace"),
+              ctx.capabilities.level("tool.before.input.replace"),
+            ]);
+            return replaceInput({ command: "should-not-apply" });
+          },
+        }),
+      ],
+      toolBefore({ command: "original" }),
+      {
+        ...OPTIONS,
+        capabilities: {
+          "tool.before.observe": "exact",
+          "tool.before.input.replace": "approximate",
+        },
+        minimumCapabilityLevel: "emulated",
+      },
+    );
+    expect(observed).toEqual([[false, "unsupported"]]);
+    expect(result.errors[0]?.message).toContain("HN401");
+    expect(replacedInput(result)).toBeUndefined();
+  });
+
+  it("keeps a below-minimum required capability usable after a warning-only build", async () => {
+    const observed: Array<[boolean, string]> = [];
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "required-rewrite",
+          capabilities: { "tool.before.input.replace": "required" },
+          async run(_event, ctx) {
+            observed.push([
+              ctx.capabilities.has("tool.before.input.replace"),
+              ctx.capabilities.level("tool.before.input.replace"),
+            ]);
+            return replaceInput({ command: "applied" });
+          },
+        }),
+      ],
+      toolBefore({ command: "original" }),
+      {
+        ...OPTIONS,
+        capabilities: {
+          "tool.before.observe": "exact",
+          "tool.before.input.replace": "approximate",
+        },
+        minimumCapabilityLevel: "emulated",
+      },
+    );
+    expect(observed).toEqual([[true, "approximate"]]);
+    expect(result.errors).toEqual([]);
+    expect(replacedInput(result)).toEqual({ value: { command: "applied" } });
+  });
+});

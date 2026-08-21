@@ -48,6 +48,7 @@ export function claudeShimEntrySource(options: {
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
+  minimumCapabilityLevel?: import("@hooknostic/sdk").SupportLevel;
   harnessVersion?: string;
 }): string {
   return [
@@ -57,6 +58,9 @@ export function claudeShimEntrySource(options: {
     `import { runClaudeCommandShim } from "@hooknostic/adapter-claude/shim";`,
     `await runClaudeCommandShim(plugin, {`,
     `  capabilities: ${JSON.stringify(options.capabilities)},`,
+    ...(options.minimumCapabilityLevel !== undefined
+      ? [`  minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
+      : []),
     `  policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined
       ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`]
@@ -73,6 +77,10 @@ export function claudeAdapter(): HarnessAdapter {
 
     supportedHarnessVersions() {
       return claudeCapabilityProfiles.map((p) => p.range);
+    },
+
+    supportedModes() {
+      return ["plugin"] as const;
     },
 
     shimEntry(options) {
@@ -107,8 +115,9 @@ export function claudeAdapter(): HarnessAdapter {
       plugin: PluginIR,
       target: TargetSpec,
       bundle: RuntimeBundle,
+      options,
     ): Promise<GeneratedArtifact[]> {
-      return generateClaudeArtifacts(plugin, target, bundle);
+      return generateClaudeArtifacts(plugin, target, bundle, options);
     },
 
     async validateArtifacts(artifacts, _target) {

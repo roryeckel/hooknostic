@@ -1,4 +1,4 @@
-import type { GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
+import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
 import { hookAppliesToTarget } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
@@ -32,6 +32,7 @@ export function generateCodexArtifacts(
   plugin: PluginIR,
   target: TargetSpec,
   bundle: RuntimeBundle,
+  options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
   if (target.mode === "plugin") {
     throw new Error(
@@ -39,6 +40,8 @@ export function generateCodexArtifacts(
         `the plugin_hooks feature is removed in codex-cli 0.148; use mode: "local" (repo .codex directory).`,
     );
   }
+
+  const nativeTimeoutSeconds = Math.ceil(options.runtime.timeoutMs / 1000) + 1;
 
   const nativeEvents = [
     ...new Set(
@@ -62,7 +65,7 @@ export function generateCodexArtifacts(
                 // Relative to the session cwd (the trusted project root the
                 // .codex directory is copied into).
                 command: `node ${RUNTIME_PATH}`,
-                timeout: 60,
+                timeout: nativeTimeoutSeconds,
               },
             ],
           },

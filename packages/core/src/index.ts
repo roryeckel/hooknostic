@@ -10,3 +10,4 @@ export * from "./matrix.js";
 export * from "./ir.js";
 export * from "./load.js";
 export * from "./policy.js";
+export * from "./output-layout.js";

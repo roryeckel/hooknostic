@@ -4,6 +4,7 @@ import type {
   HookResult,
   SupportLevel,
   TargetConfig,
+  RuntimePolicy,
 } from "@hooknostic/sdk";
 import type { Diagnostic } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
@@ -74,6 +75,11 @@ export interface RuntimeBundle {
   code: string;
 }
 
+/** Effective build-wide inputs adapters may translate into native manifests. */
+export interface AdapterCompileOptions {
+  runtime: Required<RuntimePolicy>;
+}
+
 /** Per-invocation context handed to runtime decode/apply. */
 export interface InvocationContext {
   targetId: string;
@@ -104,6 +110,8 @@ export interface ShimEntryOptions {
   entryImportPath: string;
   /** Resolved capability levels for the target range. */
   capabilities: Partial<Record<CapabilityId, SupportLevel>>;
+  /** Target compatibility floor used for policy-aware runtime detection. */
+  minimumCapabilityLevel: SupportLevel;
   /** Effective runtime policy. */
   policy: {
     onHookError: "continue" | "block";
@@ -119,6 +127,9 @@ export interface HarnessAdapter {
 
   /** Ranges with validated capability data, in profile declaration order. */
   supportedHarnessVersions(): string[];
+
+  /** Artifact modes this adapter can emit for its validated implementation. */
+  supportedModes(): readonly TargetSpec["mode"][];
 
   /**
    * Source of the per-target shim entry module that the build pipeline
@@ -147,6 +158,7 @@ export interface HarnessAdapter {
     plugin: PluginIR,
     target: TargetSpec,
     bundle: RuntimeBundle,
+    options: AdapterCompileOptions,
   ): Promise<GeneratedArtifact[]>;
 
   validateArtifacts?(

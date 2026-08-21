@@ -43,6 +43,7 @@ export function codexShimEntrySource(options: {
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
+  minimumCapabilityLevel?: import("@hooknostic/sdk").SupportLevel;
   harnessVersion?: string;
 }): string {
   return [
@@ -50,6 +51,9 @@ export function codexShimEntrySource(options: {
     `import { runCodexCommandShim } from "@hooknostic/adapter-codex/shim";`,
     `await runCodexCommandShim(plugin, {`,
     `  capabilities: ${JSON.stringify(options.capabilities)},`,
+    ...(options.minimumCapabilityLevel !== undefined
+      ? [`  minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
+      : []),
     `  policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined
       ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`]
@@ -66,6 +70,10 @@ export function codexAdapter(): HarnessAdapter {
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);
+    },
+
+    supportedModes() {
+      return ["local"] as const;
     },
 
     shimEntry(options) {
@@ -101,8 +109,9 @@ export function codexAdapter(): HarnessAdapter {
       plugin: PluginIR,
       target: TargetSpec,
       bundle: RuntimeBundle,
+      options,
     ): Promise<GeneratedArtifact[]> {
-      return generateCodexArtifacts(plugin, target, bundle);
+      return generateCodexArtifacts(plugin, target, bundle, options);
     },
 
     async validateArtifacts(artifacts, _target) {
