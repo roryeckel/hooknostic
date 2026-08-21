@@ -13,17 +13,19 @@
     }
   },
   "scripts": {
-    "bundle": "esbuild src/bin.ts --bundle --format=esm --platform=node --target=node20 --external:esbuild --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/hooknostic.mjs --log-level=warning"
+    "bundle": "esbuild src/bin.ts --bundle --format=esm --platform=node --target=node20 --external:esbuild --outfile=dist/hooknostic.mjs --log-level=warning"
   },
   "dependencies": {
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",
     "@hooknostic/core": "workspace:*",
-    "@hooknostic/sdk": "workspace:*"
+    "@hooknostic/sdk": "workspace:*",
+    "semver": "^7.6.3"
   },
   "devDependencies": {
     "@hooknostic/testkit": "workspace:*",
+    "@types/semver": "^7.5.8",
     "esbuild": "^0.24.2"
   }
 }

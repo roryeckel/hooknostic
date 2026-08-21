@@ -1,10 +1,16 @@
 import type { AdapterRegistry } from "@hooknostic/core";
+import { claudeAdapter } from "@hooknostic/adapter-claude";
+import { codexAdapter } from "@hooknostic/adapter-codex";
+import { opencodeAdapter } from "@hooknostic/adapter-opencode";
 
 /**
- * The adapters bundled with the CLI. Populated as native adapters land
- * (claude, codex, opencode); target ids in hooknostic.config.ts key into
- * this registry.
+ * The adapters bundled with the CLI; target ids in hooknostic.config.ts key
+ * into this registry.
  */
 export function defaultAdapterRegistry(): AdapterRegistry {
-  return {};
+  return {
+    claude: claudeAdapter(),
+    codex: codexAdapter(),
+    opencode: opencodeAdapter(),
+  };
 }

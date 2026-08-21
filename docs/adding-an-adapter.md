@@ -1,0 +1,84 @@
+# Adding a harness adapter
+
+Adapters are internal workspace packages in v0.1 (`packages/adapter-<id>/`).
+The contract is `HarnessAdapter` in `@hooknostic/core` — decode, apply,
+capability data, artifact generation, detection — plus a shim that runs the
+portable dispatcher inside the harness's native process model.
+
+The definition of done is design.md Appendix C. In practice, follow the order
+that built the first three adapters:
+
+## 1. Capture reality before writing code
+
+Do not implement from vendor docs alone. All three existing adapters found
+doc drift only fixture capture (or binary/type inspection) revealed:
+
+- Claude Code docs said `user_prompt`; the wire field is `prompt`.
+- Codex docs describe plugin-bundled hooks; the installed CLI has
+  `plugin_hooks` **removed**, and the working repo-level config differs from
+  the documented one (PascalCase events, project trust, per-hook trust hashes).
+- OpenCode loads only `*.ts`/`*.js` plugins (a `.mjs` module is silently
+  ignored) and honors **in-place** args mutation, not reassignment.
+
+Capture techniques that worked: stdin-teeing command hooks
+(`.capture/claude`, `.capture/codex`), embedded JSON Schemas extracted from
+vendor binaries, and published plugin type definitions (`@opencode-ai/plugin`).
+
+## 2. Curate fixtures with provenance
+
+`fixtures/<harness>/<version>/`:
+
+- `<case>.input.json` — native payload/invocation, verbatim.
+- `<case>.canonical.json` — expected decode result **minus `raw`**.
+- `<case>.output.json` — expected apply/native-application result.
+- `README.md` — provenance table: captured vs doc-derived vs schema-derived.
+
+The coverage audit (`packages/cli/src/coverage.test.ts`) fails if any
+advertised observable event lacks a fixture, if fixtures exist for
+unadvertised events, if a non-exact cell lacks a rationale, or if a profile
+lacks source/date metadata.
+
+## 3. Capability profile
+
+Versioned data, not code (`profile.ts`): `{ range, matrix, source }`. Absent
+capability = unsupported. Be honest — an `unsupported` cell with a rationale
+is worth more than an optimistic `emulated`. The compiler resolves overlapping
+ranges to the least-capable guaranteed intersection; never assume the newest
+profile for a broad range.
+
+## 4. Decoder / encoder
+
+- **Tolerant reader**: validate only what the canonical event needs; keep the
+  whole native payload in `raw`; never invent correlation IDs.
+- **Strict writer**: emit only documented native fields; preserve
+  event-specific blocking distinctions (e.g. never exit-2 where the harness
+  doesn't honor it).
+- Throw the adapter's `DecodeError` for unmapped vendor events; shims treat it
+  as fail-open.
+
+## 5. Shim + generation
+
+- `shim.ts` runs `dispatch()` against the native process model (subprocess
+  stdin/stdout for command-hook harnesses; in-process callbacks otherwise) and
+  applies effects natively. Export it from a `./shim` package subpath so
+  generated bundles never pull in compile-time machinery (core/esbuild).
+- `shimEntry()` returns the per-target entry-module source; `shimAliases()`
+  maps the shim specifier to a concrete path (`createRequire` resolution so it
+  survives CLI bundling).
+- `compile()` emits a self-contained artifact directory; use exec/argument
+  forms, never interpolate payload data into shell strings.
+- Persistent process models must not expose module memory as portable state
+  (ADR-0002) — add an invocation-statelessness test.
+
+## 6. Tests
+
+Decode fixtures, apply fixtures, generation determinism + self-validation,
+golden round-trip (native → decode → real handlers → apply → expected native),
+and an opt-in real-harness smoke test gated on `HOOKNOSTIC_SMOKE=<id>` that
+verifies at least one blocking effect and one mutating effect end-to-end.
+
+## 7. Register
+
+Add the adapter to `defaultAdapterRegistry()` in `packages/cli/src/registry.ts`
+and to the coverage-audit subjects. Update `docs/baseline-<date>.md` with the
+verified native facts and their sources.

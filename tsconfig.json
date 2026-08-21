@@ -19,6 +19,8 @@
   "include": [
     "packages/*/src/**/*.ts",
     "packages/*/test/**/*.ts",
+    "examples/*/src/**/*.ts",
+    "examples/*/hooknostic.config.ts",
     "vitest.config.ts",
     "eslint.config.mjs"
   ],

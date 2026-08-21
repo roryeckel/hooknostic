@@ -27,6 +27,30 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(supports-color@7.2.0)
 
+  examples/agent-plugin:
+    dependencies:
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+
+  examples/basic:
+    dependencies:
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+
+  examples/context-injection:
+    dependencies:
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+
+  examples/rewrite-shell:
+    dependencies:
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+
   packages/adapter-claude:
     dependencies:
       '@hooknostic/core':
@@ -92,10 +116,16 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+      semver:
+        specifier: ^7.6.3
+        version: 7.8.5
     devDependencies:
       '@hooknostic/testkit':
         specifier: workspace:*
         version: link:../testkit
+      '@types/semver':
+        specifier: ^7.5.8
+        version: 7.8.0
       esbuild:
         specifier: ^0.24.2
         version: 0.24.2

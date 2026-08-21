@@ -98,12 +98,41 @@ export interface RuntimeAdapter {
   ): Promise<NativeHookResult>;
 }
 
+/** Build-time inputs for generating a target's shim entry module source. */
+export interface ShimEntryOptions {
+  /** Import path of the user's plugin entry module (POSIX separators). */
+  entryImportPath: string;
+  /** Resolved capability levels for the target range. */
+  capabilities: Partial<Record<CapabilityId, SupportLevel>>;
+  /** Effective runtime policy. */
+  policy: {
+    onHookError: "continue" | "block";
+    timeoutMs: number;
+    contextCharLimit: number;
+  };
+  harnessVersion?: string;
+}
+
 export interface HarnessAdapter {
   readonly id: string;
   readonly adapterVersion: string;
 
   /** Ranges with validated capability data, in profile declaration order. */
   supportedHarnessVersions(): string[];
+
+  /**
+   * Source of the per-target shim entry module that the build pipeline
+   * bundles (user entry + portable runtime + adapter runtime) into the
+   * self-contained artifact.
+   */
+  shimEntry?(options: ShimEntryOptions): string;
+
+  /**
+   * Module-specifier aliases needed to bundle the shim entry. User projects
+   * depend only on the SDK, so each adapter maps its own shim specifier to a
+   * concrete file path resolved from the adapter package itself.
+   */
+  shimAliases?(): Record<string, string>;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

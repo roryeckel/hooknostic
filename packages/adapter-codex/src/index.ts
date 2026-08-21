@@ -1,6 +1,8 @@
 export const ADAPTER_CODEX_VERSION = "0.1.0";
 
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type {
   DetectionResult,
@@ -27,6 +29,14 @@ export type { CodexShimOptions } from "./shim.js";
 export { classifyCodexTool } from "./toolmap.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveShimPath(): string {
+  try {
+    return createRequire(import.meta.url).resolve("@hooknostic/adapter-codex/shim");
+  } catch {
+    return fileURLToPath(new URL("./shim.ts", import.meta.url));
+  }
+}
 
 /** Shim entry source for the generated per-target runtime bundle. */
 export function codexShimEntrySource(options: {
@@ -56,6 +66,14 @@ export function codexAdapter(): HarnessAdapter {
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);
+    },
+
+    shimEntry(options) {
+      return codexShimEntrySource(options);
+    },
+
+    shimAliases() {
+      return { "@hooknostic/adapter-codex/shim": resolveShimPath() };
     },
 
     capabilities(target: TargetSpec) {

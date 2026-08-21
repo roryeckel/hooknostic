@@ -50,6 +50,7 @@ of hiding them behind optimistic adapters.
 - [Design document](docs/design.md) — full architecture, contracts, and milestones
 - [Native surface baseline](docs/baseline-2026-08-20.md) — primary-source snapshot the
   adapters are built against
+- [Adding an adapter](docs/adding-an-adapter.md) — the fixture-first adapter workflow
 - [ADRs](docs/adr/) — semantic capability model, invocation-stateless contract,
   one-dispatcher composition, Agent Plugins relationship
 
@@ -75,6 +76,14 @@ pnpm lint
 
 ## Status
 
-Pre-release (v0.1 in progress). "Hooknostic" hook execution is **not a sandbox or
-security boundary**; generated integrations preserve each harness's own trust and review
-mechanisms.
+v0.1: all three adapters are implemented against fixtures captured from real
+installed harnesses (Claude Code 2.1.238, Codex CLI 0.148.0, OpenCode 1.18.18) and
+verified by live smoke tests (`HOOKNOSTIC_SMOKE=1 pnpm test`): tool blocking, input
+rewriting, and context injection observed working end-to-end in real sessions of all
+three. `check`, `build`, `doctor`, and `inspect` are functional; builds are atomic
+(nothing is committed until every selected target passes) and reproducible from
+configured version ranges, never the locally installed harness.
+
+Hooknostic hook execution is **not a sandbox or security boundary**; generated
+integrations preserve each harness's own trust and review mechanisms (Codex in
+particular requires project trust + per-hook trust for repo-level hooks).
