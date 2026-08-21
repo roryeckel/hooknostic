@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "event": "tool.error",
+  "harness": { "id": "claude", "nativeEvent": "PostToolUseFailure" },
+  "session": {
+    "id": "8fa8714d-5cf3-4d21-8341-57830d9c08ac",
+    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\claude"
+  },
+  "correlation": {
+    "turnId": "69f1ebf2-c78e-4851-b771-d310c0f7f5a3",
+    "toolCallId": "toolu_01AsaSw9BwgGHYVSmz5EkwCm"
+  },
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "Read",
+    "input": { "file_path": "C:\\definitely-nonexistent-hooknostic-file.txt" }
+  },
+  "error": {
+    "message": "File does not exist. Note: your current working directory is C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\claude."
+  }
+}
