@@ -1,0 +1,9 @@
+{
+  "session_id": "9c558014-e40f-47b2-a8ce-85948bfa3af8",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\9c558014-e40f-47b2-a8ce-85948bfa3af8.jsonl",
+  "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude",
+  "prompt_id": "a17c3e6c-295a-4735-a7ed-f67648871f97",
+  "agent_id": "aa333e83125928997",
+  "agent_type": "Explore",
+  "hook_event_name": "SubagentStart"
+}

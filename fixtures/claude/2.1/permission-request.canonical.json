@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "event": "permission.request",
+  "harness": { "id": "claude", "nativeEvent": "PermissionRequest" },
+  "session": {
+    "id": "1d998646-7c2a-4a64-befa-c1b0e23e53cf",
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude"
+  },
+  "correlation": {
+    "turnId": "9a47dbaa-3d67-45b9-9d8e-946a1d8fcc82",
+    "toolCallId": "toolu_01PermFixture0000000000"
+  },
+  "tool": {
+    "kind": "shell",
+    "nativeName": "Bash",
+    "input": { "command": "mkdir hooknostic-permission-test" }
+  }
+}

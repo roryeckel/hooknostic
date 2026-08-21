@@ -1,0 +1,20 @@
+{
+  "session_id": "1d998646-7c2a-4a64-befa-c1b0e23e53cf",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\1d998646-7c2a-4a64-befa-c1b0e23e53cf.jsonl",
+  "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude",
+  "prompt_id": "9a47dbaa-3d67-45b9-9d8e-946a1d8fcc82",
+  "permission_mode": "default",
+  "effort": { "level": "xhigh" },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": { "command": "echo hooknostic-fixture", "description": "Echo fixture string" },
+  "tool_response": {
+    "stdout": "hooknostic-fixture",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "tool_use_id": "toolu_0151it73t7gtgxu121A1oTdT",
+  "duration_ms": 634
+}

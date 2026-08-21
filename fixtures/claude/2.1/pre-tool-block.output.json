@@ -1,0 +1,10 @@
+{
+  "exitCode": 0,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "Refusing destructive root deletion"
+    }
+  }
+}

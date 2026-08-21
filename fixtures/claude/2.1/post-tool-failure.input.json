@@ -1,0 +1,15 @@
+{
+  "session_id": "8fa8714d-5cf3-4d21-8341-57830d9c08ac",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\8fa8714d-5cf3-4d21-8341-57830d9c08ac.jsonl",
+  "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude",
+  "prompt_id": "69f1ebf2-c78e-4851-b771-d310c0f7f5a3",
+  "permission_mode": "default",
+  "effort": { "level": "xhigh" },
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Read",
+  "tool_input": { "file_path": "C:\\definitely-nonexistent-hooknostic-file.txt" },
+  "tool_use_id": "toolu_01AsaSw9BwgGHYVSmz5EkwCm",
+  "error": "File does not exist. Note: your current working directory is C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude.",
+  "is_interrupt": false,
+  "duration_ms": 3
+}

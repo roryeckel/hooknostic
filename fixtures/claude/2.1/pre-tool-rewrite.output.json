@@ -1,0 +1,9 @@
+{
+  "exitCode": 0,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "updatedInput": { "command": "pnpm install", "description": "Echo fixture string" }
+    }
+  }
+}
