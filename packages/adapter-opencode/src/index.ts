@@ -1,6 +1,8 @@
 export const ADAPTER_OPENCODE_VERSION = "0.1.0";
 
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type {
   DetectionResult,
@@ -29,6 +31,14 @@ export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
 export { classifyOpenCodeTool } from "./toolmap.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveShimPath(): string {
+  try {
+    return createRequire(import.meta.url).resolve("@hooknostic/adapter-opencode/shim");
+  } catch {
+    return fileURLToPath(new URL("./shim.ts", import.meta.url));
+  }
+}
 
 /**
  * Shim entry source for the generated `.opencode/plugins/hooknostic.js`.
@@ -63,6 +73,14 @@ export function opencodeAdapter(): HarnessAdapter {
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);
+    },
+
+    shimEntry(options) {
+      return opencodeShimEntrySource(options);
+    },
+
+    shimAliases() {
+      return { "@hooknostic/adapter-opencode/shim": resolveShimPath() };
     },
 
     capabilities(target: TargetSpec) {

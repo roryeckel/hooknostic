@@ -183,11 +183,9 @@ describe("runCli", () => {
     expect(await runCli([], { io: none.io })).toBe(2);
   });
 
-  it("rejects unimplemented commands with exit 2", async () => {
-    for (const command of ["build", "doctor", "inspect"]) {
-      const { io, err } = captureIO();
-      expect(await runCli([command], { io })).toBe(2);
-      expect(err()).toContain("not implemented");
-    }
+  it("requires a target for inspect", async () => {
+    const { io, err } = captureIO();
+    expect(await runCli(["inspect"], { io })).toBe(2);
+    expect(err()).toContain("requires a target");
   });
 });

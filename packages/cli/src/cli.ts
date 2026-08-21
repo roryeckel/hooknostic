@@ -1,7 +1,10 @@
 import { parseArgs } from "node:util";
 import type { AdapterRegistry } from "@hooknostic/core";
+import { runBuild } from "./build.js";
 import type { CommandIO } from "./check.js";
 import { runCheck } from "./check.js";
+import { runDoctor } from "./doctor.js";
+import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 export const CLI_USAGE = `hooknostic — portable lifecycle hooks for coding-agent harnesses
@@ -10,11 +13,13 @@ Usage:
   hooknostic check   [--config <path>] [--target <a,b>] [--json]
   hooknostic build   [--config <path>] [--target <a,b>] [--json]
   hooknostic doctor  [--json]
-  hooknostic inspect <target> [--capability <id>] [--json]
+  hooknostic inspect <target> [--capability <id>] [--version <range>] [--json]
 
 Options:
   --config <path>     Path to hooknostic.config.ts (default ./hooknostic.config.ts)
   --target <a,b>      Narrow the configured target set (never adds targets)
+  --capability <id>   Inspect a single capability
+  --version <range>   Harness version range for inspect
   --json              Machine-readable output
   -h, --help          Show this help
 `;
@@ -47,6 +52,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         config: { type: "string" },
         target: { type: "string" },
         capability: { type: "string" },
+        version: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },
@@ -79,10 +85,40 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         io,
       });
     case "build":
+      return runBuild({
+        ...(typeof parsed.values["config"] === "string"
+          ? { config: parsed.values["config"] }
+          : {}),
+        ...(targets ? { targets } : {}),
+        ...(parsed.values["json"] ? { json: true } : {}),
+        registry,
+        io,
+      });
     case "doctor":
-    case "inspect":
-      io.stderr(`"${command}" is not implemented yet.`);
-      return 2;
+      return runDoctor({
+        ...(parsed.values["json"] ? { json: true } : {}),
+        registry,
+        io,
+      });
+    case "inspect": {
+      const target = parsed.positionals[0];
+      if (target === undefined) {
+        io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
+        return 2;
+      }
+      return runInspect({
+        target,
+        ...(typeof parsed.values["capability"] === "string"
+          ? { capability: parsed.values["capability"] }
+          : {}),
+        ...(typeof parsed.values["version"] === "string"
+          ? { version: parsed.values["version"] }
+          : {}),
+        ...(parsed.values["json"] ? { json: true } : {}),
+        registry,
+        io,
+      });
+    }
     default:
       io.stderr(`unknown command "${command}"`);
       io.stderr(CLI_USAGE);

@@ -1,6 +1,8 @@
 export const ADAPTER_CLAUDE_VERSION = "0.1.0";
 
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type {
   DetectionResult,
@@ -27,6 +29,15 @@ export type { ClaudeShimOptions } from "./shim.js";
 export { classifyClaudeTool } from "./toolmap.js";
 
 const execFileAsync = promisify(execFile);
+
+function resolveShimPath(): string {
+  try {
+    return createRequire(import.meta.url).resolve("@hooknostic/adapter-claude/shim");
+  } catch {
+    // Unbundled fallback: the shim lives next to this module.
+    return fileURLToPath(new URL("./shim.ts", import.meta.url));
+  }
+}
 
 /**
  * Source for the generated per-target shim entry module. The build pipeline
@@ -62,6 +73,16 @@ export function claudeAdapter(): HarnessAdapter {
 
     supportedHarnessVersions() {
       return claudeCapabilityProfiles.map((p) => p.range);
+    },
+
+    shimEntry(options) {
+      return claudeShimEntrySource(options);
+    },
+
+    shimAliases() {
+      // User projects depend only on the SDK; resolve our shim through the
+      // package graph so the path survives CLI bundling.
+      return { "@hooknostic/adapter-claude/shim": resolveShimPath() };
     },
 
     capabilities(target: TargetSpec) {

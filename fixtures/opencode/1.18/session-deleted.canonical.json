@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "event": "session.end",
+  "harness": { "id": "opencode", "nativeEvent": "event" },
+  "session": {
+    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
+  },
+  "correlation": {}
+}

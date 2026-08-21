@@ -1,0 +1,15 @@
+{
+  "hook": "chat.message",
+  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "input": {
+    "sessionID": "ses_8f2a1c",
+    "agent": "build",
+    "messageID": "msg_44a"
+  },
+  "output": {
+    "message": { "id": "msg_44a", "role": "user" },
+    "parts": [
+      { "id": "prt_1", "type": "text", "text": "Run the tests and summarize failures." }
+    ]
+  }
+}

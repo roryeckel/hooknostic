@@ -1,5 +1,8 @@
 node_modules/
 dist/
+hooknostic-build.json
+.hooknostic-staging-*/
+examples/*/com.anthropic.claude-code/
 .capture/*/captured/
 # nested git repos used for codex/opencode capture + smoke (documented in fixtures READMEs)
 .capture/codex/
