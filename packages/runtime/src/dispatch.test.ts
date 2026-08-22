@@ -527,3 +527,91 @@ describe("policy-aware hook capability detection", () => {
     expect(replacedInput(result)).toEqual({ value: { command: "applied" } });
   });
 });
+
+describe("effect payload JSON rule at dispatch", () => {
+  it("rejects a non-JSON replacement as HN401 and keeps a later terminal block", async () => {
+    const cyclic: Record<string, unknown> = { command: "rm -rf /" };
+    cyclic["self"] = cyclic;
+    const event = toolBefore({ command: "ls" });
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "cyclic-rewrite",
+          capabilities: { "tool.before.input.replace": "required" },
+          async run() {
+            return replaceInput(cyclic);
+          },
+        }),
+        hook("tool.before", {
+          id: "deny",
+          capabilities: { "tool.before.block": "required" },
+          async run() {
+            return block("denied");
+          },
+        }),
+      ],
+      event,
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([
+      expect.objectContaining({ hookId: "cyclic-rewrite", kind: "unsupported-effect" }),
+    ]);
+    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.message).toContain("not a JSON value");
+    // The rejected payload never reached the event or the result…
+    expect(event.tool.input).toEqual({ command: "ls" });
+    expect(replacedInput(result)).toBeUndefined();
+    // …so the terminal denial survives serialization to the native protocol.
+    expect(terminalEffect(result)).toEqual({ kind: "block", reason: "denied" });
+    expect(JSON.stringify(result)).toContain("denied");
+  });
+
+  it("rejects undefined and bigint replacement payloads", async () => {
+    for (const payload of [undefined, 10n]) {
+      const result = await dispatch(
+        [
+          hook("tool.after", {
+            id: "bad-output",
+            capabilities: { "tool.after.output.replace": "required" },
+            async run() {
+              return replaceOutput(payload);
+            },
+          }),
+        ],
+        toolAfter("original"),
+        OPTIONS,
+      );
+      expect(result.errors.map((e) => e.kind)).toEqual(["unsupported-effect"]);
+      expect(replacedOutput(result)).toBeUndefined();
+    }
+  });
+
+  it("turns an uninspectable replacement into HN401 instead of throwing", async () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("not inspectable");
+        },
+      },
+    );
+    const result = await dispatch(
+      [
+        hook("tool.after", {
+          id: "hostile-output",
+          capabilities: { "tool.after.output.replace": "required" },
+          async run() {
+            return replaceOutput(hostile);
+          },
+        }),
+      ],
+      toolAfter("original"),
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([
+      expect.objectContaining({ hookId: "hostile-output", kind: "unsupported-effect" }),
+    ]);
+    expect(result.errors[0]?.message).toContain("HN401");
+    expect(replacedOutput(result)).toBeUndefined();
+  });
+});

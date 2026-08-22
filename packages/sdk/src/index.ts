@@ -8,6 +8,7 @@ export * from "./config.js";
 export * from "./effects.js";
 export * from "./events.js";
 export * from "./hook.js";
+export * from "./json.js";
 export * from "./plugin.js";
 export * from "./result.js";
 export * from "./schemas.js";

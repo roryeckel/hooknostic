@@ -165,10 +165,11 @@ export async function dispatch(
     // are enforced here regardless of the compile-time story.
     const parsedEffect = effectSchema.safeParse(outcome);
     if (!parsedEffect.success) {
+      const detail = parsedEffect.error.issues[0]?.message;
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook.id}" returned a value that is not a valid effect.`,
+        message: `HN401: hook "${hook.id}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
       }, capabilities);
       if (terminal) break;
       continue;

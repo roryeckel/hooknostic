@@ -81,6 +81,44 @@ export function analyzeCapabilities(
     }
   }
 
+  // Hook target scopes must name configured targets: a typo would otherwise
+  // silently disable the hook (include) or run it where it must not (exclude).
+  const configuredList = configuredTargets.join(", ") || "none";
+  for (const hook of ir.hooks) {
+    const scope = hook.targets;
+    if (scope === undefined) continue;
+    if (scope.include !== undefined && scope.include.length === 0) {
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        hookId: hook.id,
+        event: hook.event,
+        message: `hook "${hook.id}" has an empty targets.include list and can never apply to any target.`,
+        remediation: `remove targets.include or list at least one configured target (${configuredList}).`,
+      });
+    }
+    for (const [field, names] of [
+      ["include", scope.include],
+      ["exclude", scope.exclude],
+    ] as const) {
+      for (const name of new Set(names ?? [])) {
+        if (configuredTargets.includes(name)) continue;
+        diagnostics.push({
+          code: "HN501",
+          severity: "error",
+          hookId: hook.id,
+          event: hook.event,
+          target: name,
+          message:
+            field === "include"
+              ? `hook "${hook.id}" includes unknown target "${name}", so it would silently never run there.`
+              : `hook "${hook.id}" excludes unknown target "${name}", so the exclusion has no effect.`,
+          remediation: `use configured target ids only (${configuredList}); fix the typo or declare the target in hooknostic.config.ts.`,
+        });
+      }
+    }
+  }
+
   for (const targetId of selection) {
     const targetConfig = config.targets[targetId];
     if (!targetConfig) continue;

@@ -1,8 +1,13 @@
 import type {
+  AdapterCompileOptions,
   CapabilityProfile,
+  Diagnostic,
   GeneratedArtifact,
   HarnessAdapter,
   InvocationContext,
+  PluginIR,
+  RuntimeBundle,
+  ShimEntryOptions,
   TargetSpec,
 } from "@hooknostic/core";
 import { resolveCapabilityMatrix } from "@hooknostic/core";
@@ -15,6 +20,24 @@ export interface FakeAdapterOptions {
   supportedModes?: readonly TargetSpec["mode"][];
   /** Override native decode for runtime tests; defaults to identity-ish. */
   decode?(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
+  /**
+   * Shim entry source (or generator) so the build pipeline can bundle and
+   * emit for this fake. `"export {};"` is enough to exercise staging and
+   * commit; omit it for analysis-only fakes (the pipeline then stops at HN301).
+   */
+  shimEntry?: string | ((options: ShimEntryOptions) => string);
+  /** Override the emitted artifacts (default: one fake-plugin.json). */
+  compile?(
+    plugin: PluginIR,
+    target: TargetSpec,
+    bundle: RuntimeBundle,
+    options: AdapterCompileOptions,
+  ): GeneratedArtifact[] | Promise<GeneratedArtifact[]>;
+  /** Optional artifact validator, forwarded verbatim (may throw, for pipeline tests). */
+  validateArtifacts?(
+    artifacts: GeneratedArtifact[],
+    target: TargetSpec,
+  ): Diagnostic[] | Promise<Diagnostic[]>;
 }
 
 /**
@@ -23,7 +46,7 @@ export interface FakeAdapterOptions {
  */
 export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
   const adapterVersion = options.adapterVersion ?? "0.0.0-fake";
-  return {
+  const adapter: HarnessAdapter = {
     id: options.id,
     adapterVersion,
 
@@ -39,7 +62,8 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
       return resolveCapabilityMatrix(options.id, options.profiles, target.version);
     },
 
-    async compile(plugin, target): Promise<GeneratedArtifact[]> {
+    async compile(plugin, target, bundle, compileOptions): Promise<GeneratedArtifact[]> {
+      if (options.compile) return options.compile(plugin, target, bundle, compileOptions);
       return [
         {
           path: "fake-plugin.json",
@@ -61,4 +85,15 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
       },
     },
   };
+
+  const shimEntry = options.shimEntry;
+  if (shimEntry !== undefined) {
+    adapter.shimEntry = (shimOptions) =>
+      typeof shimEntry === "string" ? shimEntry : shimEntry(shimOptions);
+  }
+  const validateArtifacts = options.validateArtifacts;
+  if (validateArtifacts !== undefined) {
+    adapter.validateArtifacts = async (artifacts, target) => validateArtifacts(artifacts, target);
+  }
+  return adapter;
 }

@@ -83,55 +83,64 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
     return 2;
   }
 
-  switch (command) {
-    case "check":
-      return runCheck({
-        ...(typeof parsed.values["config"] === "string"
-          ? { config: parsed.values["config"] }
-          : {}),
-        ...(targets ? { targets } : {}),
-        ...(parsed.values["json"] ? { json: true } : {}),
-        registry,
-        io,
-      });
-    case "build":
-      return runBuild({
-        ...(typeof parsed.values["config"] === "string"
-          ? { config: parsed.values["config"] }
-          : {}),
-        ...(targets ? { targets } : {}),
-        ...(parsed.values["json"] ? { json: true } : {}),
-        registry,
-        io,
-      });
-    case "doctor":
-      return runDoctor({
-        ...(parsed.values["json"] ? { json: true } : {}),
-        registry,
-        io,
-      });
-    case "inspect": {
-      const target = parsed.positionals[0];
-      if (target === undefined) {
-        io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
-        return 2;
+  try {
+    switch (command) {
+      case "check":
+        return await runCheck({
+          ...(typeof parsed.values["config"] === "string"
+            ? { config: parsed.values["config"] }
+            : {}),
+          ...(targets ? { targets } : {}),
+          ...(parsed.values["json"] ? { json: true } : {}),
+          registry,
+          io,
+        });
+      case "build":
+        return await runBuild({
+          ...(typeof parsed.values["config"] === "string"
+            ? { config: parsed.values["config"] }
+            : {}),
+          ...(targets ? { targets } : {}),
+          ...(parsed.values["json"] ? { json: true } : {}),
+          registry,
+          io,
+        });
+      case "doctor":
+        return await runDoctor({
+          ...(parsed.values["json"] ? { json: true } : {}),
+          registry,
+          io,
+        });
+      case "inspect": {
+        const target = parsed.positionals[0];
+        if (target === undefined) {
+          io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
+          return 2;
+        }
+        return await runInspect({
+          target,
+          ...(typeof parsed.values["capability"] === "string"
+            ? { capability: parsed.values["capability"] }
+            : {}),
+          ...(typeof parsed.values["version"] === "string"
+            ? { version: parsed.values["version"] }
+            : {}),
+          ...(parsed.values["json"] ? { json: true } : {}),
+          registry,
+          io,
+        });
       }
-      return runInspect({
-        target,
-        ...(typeof parsed.values["capability"] === "string"
-          ? { capability: parsed.values["capability"] }
-          : {}),
-        ...(typeof parsed.values["version"] === "string"
-          ? { version: parsed.values["version"] }
-          : {}),
-        ...(parsed.values["json"] ? { json: true } : {}),
-        registry,
-        io,
-      });
+      default:
+        io.stderr(`unknown command "${command}"`);
+        io.stderr(CLI_USAGE);
+        return 2;
     }
-    default:
-      io.stderr(`unknown command "${command}"`);
-      io.stderr(CLI_USAGE);
-      return 2;
+  } catch (error) {
+    // Commands report expected failures as diagnostics; anything else must
+    // still yield an exit code and a message rather than an uncaught exception.
+    io.stderr(
+      `hooknostic: unexpected error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    );
+    return 1;
   }
 }

@@ -4,6 +4,7 @@
   "description": "Hooknostic CLI: check, build, doctor, inspect",
   "type": "module",
   "engines": { "node": ">=22.13.0" },
+  "publishConfig": { "access": "public" },
   "files": ["bin", "dist"],
   "bin": {
     "hooknostic": "./bin/hooknostic.mjs"
@@ -15,19 +16,20 @@
     }
   },
   "scripts": {
-    "bundle": "node --input-type=commonjs -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=node --target=node22 --external:esbuild --outfile=dist/index.js --log-level=warning && esbuild src/bin.ts --bundle --format=esm --platform=node --target=node22 --external:esbuild --outfile=dist/hooknostic.mjs --log-level=warning"
+    "bundle": "node scripts/bundle.mjs"
   },
   "dependencies": {
+    "@hooknostic/sdk": "workspace:*",
+    "esbuild": "^0.24.2"
+  },
+  "devDependencies": {
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",
     "@hooknostic/core": "workspace:*",
-    "@hooknostic/sdk": "workspace:*",
-    "esbuild": "^0.24.2",
-    "semver": "^7.6.3"
-  },
-  "devDependencies": {
+    "@hooknostic/runtime": "workspace:*",
     "@hooknostic/testkit": "workspace:*",
-    "@types/semver": "^7.5.8"
+    "@types/semver": "^7.5.8",
+    "semver": "^7.6.3"
   }
 }

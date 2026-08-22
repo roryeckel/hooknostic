@@ -62,7 +62,13 @@ export interface DetectionResult {
   detail?: string;
 }
 
-/** A generated file, path relative to the target's output directory. */
+/**
+ * A generated file. `path` is a POSIX-style relative path inside the target's
+ * output directory: no absolute paths, no backslashes, no `.`/`..`/empty
+ * segments, unique within the artifact set (enforced by the build pipeline as
+ * HN301 before anything is staged). `executable` requests mode 0o755 on POSIX
+ * filesystems.
+ */
 export interface GeneratedArtifact {
   path: string;
   contents: string;

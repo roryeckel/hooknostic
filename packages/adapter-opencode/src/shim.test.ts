@@ -120,7 +120,7 @@ describe("createHooknosticHooks", () => {
     expect(output.output).toBe("token [redacted] here");
   });
 
-  it("applies cyclic output replacements without throwing", async () => {
+  it("rejects cyclic output replacements at dispatch (HN401) and leaves output untouched", async () => {
     const cyclic: Record<string, unknown> = {};
     cyclic["self"] = cyclic;
     const plugin = definePlugin({
@@ -143,7 +143,8 @@ describe("createHooknosticHooks", () => {
         output,
       ),
     ).resolves.toBeUndefined();
-    expect(output.output).toBe("[object Object]");
+    // Non-JSON payloads never reach the native side; fail-open keeps the original.
+    expect(output.output).toBe("before");
   });
 
   it("denies permissions by mutating output.status", async () => {

@@ -685,7 +685,14 @@ declared stable.
 ## 14. Repository and package structure
 
 pnpm TypeScript monorepo; adapters are internal workspace packages; only the SDK and CLI
-are published until the adapter API stabilizes.
+are published until the adapter API stabilizes. The published CLI is therefore
+self-contained (`packages/cli/scripts/bundle.mjs`): core and the adapters are inlined into
+`dist/index.js`; each adapter's runtime shim is prebundled into `dist/shims/<id>.mjs`
+(runtime inlined, SDK external — the build aliases `@hooknostic/sdk` to the user project's
+copy so an artifact carries exactly one SDK/zod copy); and the emitted declarations import
+nothing but `@hooknostic/sdk`. `packages/cli/src/package.test.ts` proves the
+registry-install story offline. Publishing `@hooknostic/core` and `@hooknostic/testkit` for
+third-party adapters is a post-stabilization step that reuses the SDK's dist pattern.
 
 ```
 hooknostic/
@@ -908,3 +915,8 @@ export default defineConfig({
 - Windows path/command behavior tested if the harness supports Windows.
 - Adapter-specific behavior does not leak new concepts into the canonical core without an
   established cross-harness case.
+- Generated artifact paths are unique POSIX-style relative paths (no absolute paths, no
+  `.`/`..`/empty segments, no backslashes); `executable` is honored on POSIX; `compile()`
+  and `validateArtifacts()` failures surface as HN301, never as crashes.
+- The adapter's shim is prebundled into the CLI (`packages/cli/scripts/bundle.mjs`) and
+  routed by `defaultAdapterRegistry()`; the simulated registry-install test passes.

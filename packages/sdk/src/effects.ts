@@ -70,10 +70,17 @@ export function requestApproval(reason?: string): RequestApprovalEffect {
     : { kind: "requestApproval", reason };
 }
 
+/**
+ * Replace the tool input. `input` must be a canonical JSON value (see
+ * `JsonValue` / `isJsonValue`); anything else is rejected at dispatch as
+ * HN401 because the native wire formats are JSON. The parameter stays
+ * `unknown` so interface-typed inputs remain assignable.
+ */
 export function replaceInput(input: unknown): ReplaceInputEffect {
   return { kind: "replaceInput", input };
 }
 
+/** Replace the tool output. Same JSON-value rule as {@link replaceInput}. */
 export function replaceOutput(output: unknown): ReplaceOutputEffect {
   return { kind: "replaceOutput", output };
 }

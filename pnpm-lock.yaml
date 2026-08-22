@@ -101,6 +101,13 @@ importers:
 
   packages/cli:
     dependencies:
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      esbuild:
+        specifier: ^0.24.2
+        version: 0.24.2
+    devDependencies:
       '@hooknostic/adapter-claude':
         specifier: workspace:*
         version: link:../adapter-claude
@@ -113,22 +120,18 @@ importers:
       '@hooknostic/core':
         specifier: workspace:*
         version: link:../core
-      '@hooknostic/sdk':
+      '@hooknostic/runtime':
         specifier: workspace:*
-        version: link:../sdk
-      esbuild:
-        specifier: ^0.24.2
-        version: 0.24.2
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.5
-    devDependencies:
+        version: link:../runtime
       '@hooknostic/testkit':
         specifier: workspace:*
         version: link:../testkit
       '@types/semver':
         specifier: ^7.5.8
         version: 7.8.0
+      semver:
+        specifier: ^7.6.3
+        version: 7.8.5
 
   packages/core:
     dependencies:

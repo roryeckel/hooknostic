@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "../..",
+    "outDir": "dist/types"
+  },
+  "include": [
+    "src/**/*.ts",
+    "../core/src/**/*.ts",
+    "../runtime/src/**/*.ts",
+    "../adapter-claude/src/**/*.ts",
+    "../adapter-codex/src/**/*.ts",
+    "../adapter-opencode/src/**/*.ts"
+  ],
+  "exclude": ["**/*.test.ts", "../**/*.test.ts"]
+}

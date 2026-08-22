@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import type { SupportLevel } from "@hooknostic/sdk";
 import type {
@@ -11,6 +12,7 @@ import { targetSpecFromConfig } from "./adapter.js";
 import { AGENT_PLUGIN_NAMESPACES, readAgentPluginMetadata } from "./agent-plugin.js";
 import type { AnalysisResult } from "./analysis.js";
 import { analyzeCapabilities } from "./analysis.js";
+import { validateGeneratedArtifacts } from "./artifacts.js";
 import type { EvaluateOptions } from "./load.js";
 import { loadConfig, loadPluginSource } from "./load.js";
 import { bundleRuntime } from "./bundle.js";
@@ -19,7 +21,7 @@ import { hasFatal } from "./diagnostics.js";
 import { buildPluginIR } from "./ir.js";
 import { effectiveRuntime } from "./policy.js";
 import { effectiveCompatibility } from "./policy.js";
-import { validateOutputLayout } from "./output-layout.js";
+import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { commitStagedOutputs } from "./commit.js";
 
 export const HOOKNOSTIC_VERSION = "0.1.0";
@@ -69,6 +71,25 @@ function levelsFromMatrix(
   );
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The project's own `@hooknostic/sdk` entry. Aliasing every SDK import to it
+ * keeps a built artifact at exactly one SDK (and zod) copy even when the
+ * adapter shim ships inside the CLI rather than in the project's dependency
+ * tree. Projects without the SDK installed get no alias (their entry cannot
+ * load anyway, which is reported as a diagnostic).
+ */
+function resolveProjectSdk(configDir: string): string | undefined {
+  try {
+    return createRequire(join(configDir, "package.json")).resolve("@hooknostic/sdk");
+  } catch {
+    return undefined;
+  }
+}
+
 async function writeArtifacts(
   stagingRoot: string,
   key: string,
@@ -77,8 +98,18 @@ async function writeArtifacts(
   const dir = join(stagingRoot, key);
   for (const artifact of artifacts) {
     const file = join(dir, artifact.path);
+    // Paths were validated structurally before staging; this guard makes
+    // escaping impossible regardless of what an adapter returned.
+    if (!isStrictDescendant(dir, file)) {
+      throw new Error(
+        `artifact path ${JSON.stringify(artifact.path)} resolves outside its output directory`,
+      );
+    }
     await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, artifact.contents, "utf8");
+    await writeFile(file, artifact.contents, {
+      encoding: "utf8",
+      mode: artifact.executable ? 0o755 : 0o644,
+    });
   }
   return dir;
 }
@@ -89,7 +120,9 @@ async function writeArtifacts(
  * → atomically commit outputs → write hooknostic-build.json.
  *
  * The capability pass strictly precedes emission; nothing is committed to a
- * final output directory until every selected target passes.
+ * final output directory until every selected target passes. Every failure
+ * after analysis is reported as an HN301/HN302 diagnostic in the build report
+ * — `buildProject` never rejects for adapter, staging, or commit problems.
  */
 export async function buildProject(options: BuildOptions): Promise<BuildResult> {
   const configPath = resolve(options.configPath);
@@ -173,7 +206,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
 
   // 4. Bundle + compile per target into a staging directory.
   const runtimePolicy = effectiveRuntime(config);
-  const stagingRoot = await mkdtemp(join(configDir, ".hooknostic-staging-"));
+  const projectSdk = resolveProjectSdk(configDir);
   const outputByKey = new Map(layout.outputs.map((entry) => [entry.key, entry]));
   const staged: {
     key: string;
@@ -182,6 +215,28 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     stagingDir: string;
     outputDir: string;
   }[] = [];
+  /** Nothing was committed: targets that built are "skipped", never "success". */
+  const failUncommitted = (): BuildResult => {
+    for (const target of Object.values(report.targets)) {
+      if (target.status === "success") target.status = "skipped";
+    }
+    return { ok: false, report, analysis };
+  };
+
+  let stagingRoot: string;
+  try {
+    stagingRoot = await mkdtemp(join(configDir, ".hooknostic-staging-"));
+  } catch (error) {
+    diagnostics.push({
+      code: "HN301",
+      severity: "error",
+      message: `could not create the staging directory: ${errorMessage(error)}`,
+      remediation:
+        "check permissions and free space in the directory containing hooknostic.config.ts.",
+    });
+    return failUncommitted();
+  }
+
   try {
     for (const id of Object.keys(analysis.targets)) {
       const adapter = options.registry[id]!;
@@ -190,6 +245,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       const resolved = adapter.capabilities(spec);
       const matrix = resolved.matrix ?? {};
       const compatibility = effectiveCompatibility(config, id);
+      const target = report.targets[id]!;
 
       if (!adapter.shimEntry) {
         diagnostics.push({
@@ -198,14 +254,18 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           target: id,
           message: `adapter "${adapter.id}" does not provide a shim entry; cannot emit artifacts.`,
         });
-        report.targets[id]!.status = "failed";
+        target.status = "failed";
         continue;
       }
 
-      let artifacts: GeneratedArtifact[];
+      // Bundling, generation, validation and staging are adapter-driven; any
+      // failure is this target's HN301 — never a crash — and nothing reaches
+      // the final output directories.
+      let phase = "bundling";
       try {
         const alias = {
           ...adapter.shimAliases?.(),
+          ...(projectSdk !== undefined ? { "@hooknostic/sdk": projectSdk } : {}),
           ...options.evaluate?.alias,
         };
         const bundle = await bundleRuntime({
@@ -218,66 +278,88 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           resolveDir: configDir,
           ...(Object.keys(alias).length > 0 ? { alias } : {}),
         });
-        artifacts = await adapter.compile(ir, spec, bundle, { runtime: runtimePolicy });
+
+        phase = "generation";
+        const artifacts = await adapter.compile(ir, spec, bundle, { runtime: runtimePolicy });
+
+        phase = "validation";
+        const structural = validateGeneratedArtifacts(artifacts, {
+          adapterId: adapter.id,
+          target: id,
+        });
+        diagnostics.push(...structural);
+        if (hasFatal(structural)) {
+          target.status = "failed";
+          continue;
+        }
+        const validation = (await adapter.validateArtifacts?.(artifacts, spec)) ?? [];
+        diagnostics.push(...validation);
+        if (hasFatal(validation)) {
+          target.status = "failed";
+          continue;
+        }
+
+        phase = "staging";
+        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts);
+        staged.push({
+          key: id,
+          target: id,
+          stagingDir,
+          outputDir: outputByKey.get(id)!.outputDir,
+        });
+        target.artifacts = artifacts.map((a) => a.path);
+
+        // Agent Plugins client-extension emission (Claude only in v0.1: Codex
+        // 0.148 loads no plugin hooks; OpenCode has no namespace convention).
+        const namespace = (AGENT_PLUGIN_NAMESPACES as Record<string, string>)[id];
+        if (agentPluginRoot !== undefined && namespace !== undefined) {
+          const extensionArtifacts = artifacts.filter(
+            (a) => !a.path.startsWith(".claude-plugin/"),
+          );
+          const extensionKey = `agent-plugin/${namespace}`;
+          const extensionStaging = await writeArtifacts(
+            stagingRoot,
+            extensionKey,
+            extensionArtifacts,
+          );
+          staged.push({
+            key: extensionKey,
+            target: id,
+            stagingDir: extensionStaging,
+            outputDir: outputByKey.get(extensionKey)!.outputDir,
+          });
+          report.agentPlugin!.extensions.push(namespace);
+        }
       } catch (error) {
         diagnostics.push({
           code: "HN301",
           severity: "error",
           target: id,
-          message: `artifact generation failed: ${error instanceof Error ? error.message : String(error)}`,
+          message: `artifact ${phase} failed: ${errorMessage(error)}`,
         });
-        report.targets[id]!.status = "failed";
+        target.status = "failed";
         continue;
-      }
-
-      const validation = (await adapter.validateArtifacts?.(artifacts, spec)) ?? [];
-      diagnostics.push(...validation);
-      if (hasFatal(validation)) {
-        report.targets[id]!.status = "failed";
-        continue;
-      }
-
-      const stagingDir = await writeArtifacts(stagingRoot, id, artifacts);
-      staged.push({
-        key: id,
-        target: id,
-        stagingDir,
-        outputDir: outputByKey.get(id)!.outputDir,
-      });
-      report.targets[id]!.artifacts = artifacts.map((a) => a.path);
-
-      // Agent Plugins client-extension emission (Claude only in v0.1: Codex
-      // 0.148 loads no plugin hooks; OpenCode has no namespace convention).
-      const namespace = (AGENT_PLUGIN_NAMESPACES as Record<string, string>)[id];
-      if (agentPluginRoot !== undefined && namespace !== undefined) {
-        const extensionArtifacts = artifacts.filter(
-          (a) => !a.path.startsWith(".claude-plugin/"),
-        );
-        const extensionKey = `agent-plugin/${namespace}`;
-        const extensionStaging = await writeArtifacts(
-          stagingRoot,
-          extensionKey,
-          extensionArtifacts,
-        );
-        staged.push({
-          key: extensionKey,
-          target: id,
-          stagingDir: extensionStaging,
-          outputDir: outputByKey.get(extensionKey)!.outputDir,
-        });
-        report.agentPlugin!.extensions.push(namespace);
       }
     }
 
     if (hasFatal(diagnostics)) {
-      return { ok: false, report, analysis };
+      return failUncommitted();
     }
 
     // The build report is a mandatory managed output. Install it last so a
     // report failure rolls every previously installed target back.
     const reportPath = join(configDir, "hooknostic-build.json");
     const stagedReportPath = join(stagingRoot, "hooknostic-build.json");
-    await writeFile(stagedReportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+    try {
+      await writeFile(stagedReportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+    } catch (error) {
+      diagnostics.push({
+        code: "HN301",
+        severity: "error",
+        message: `could not stage the build report: ${errorMessage(error)}`,
+      });
+      return failUncommitted();
+    }
     staged.push({
       key: "build-report",
       kind: "file",
@@ -306,8 +388,17 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       }
       return { ok: false, report, analysis };
     }
+  } catch (error) {
+    // Anything not already converted above is still a reported build failure,
+    // never an uncaught exception.
+    diagnostics.push({
+      code: "HN301",
+      severity: "error",
+      message: `build failed unexpectedly: ${errorMessage(error)}`,
+    });
+    return failUncommitted();
   } finally {
-    await rm(stagingRoot, { recursive: true, force: true });
+    await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
   }
 
   // 6. Every managed output, including the report, is now installed.

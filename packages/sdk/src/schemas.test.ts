@@ -20,6 +20,8 @@ import {
   HOOK_EVENT_NAMES,
   ALL_CAPABILITY_IDS,
   hook,
+  isJsonValue,
+  findNonJsonPath,
 } from "./index.js";
 
 describe("support levels", () => {
@@ -184,5 +186,65 @@ describe("canonical schemas", () => {
         ],
       }),
     ).toThrow();
+  });
+});
+
+describe("effect payload JSON rule", () => {
+  const cyclic: Record<string, unknown> = { command: "ls" };
+  cyclic["self"] = cyclic;
+
+  it("accepts canonical JSON payloads", () => {
+    const input = { command: "ls", args: [1, "a", null, true, { nested: [] }] };
+    expect(effectSchema.parse(replaceInput(input))).toEqual({ kind: "replaceInput", input });
+    expect(effectSchema.safeParse(replaceOutput("plain text")).success).toBe(true);
+    expect(effectSchema.safeParse(replaceOutput(null)).success).toBe(true);
+    expect(effectSchema.safeParse(replaceOutput([])).success).toBe(true);
+  });
+
+  it("rejects payloads that JSON serialization would drop, throw on, or transform", () => {
+    const cases: [string, unknown][] = [
+      ["undefined", undefined],
+      ["function", () => 1],
+      ["symbol", Symbol("s")],
+      ["bigint", 10n],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+      ["Date", new Date(0)],
+      ["Map", new Map()],
+      ["cycle", cyclic],
+      ["nested undefined", { nested: { deep: [undefined] } }],
+      ["class instance", new (class Thing {})()],
+      ["accessor", { get changesAfterValidation() { return 1; } }],
+      ["toJSON", Object.defineProperty({}, "toJSON", { value: () => ({ ok: true }) })],
+    ];
+    for (const [label, payload] of cases) {
+      expect(effectSchema.safeParse(replaceInput(payload)).success, label).toBe(false);
+      expect(effectSchema.safeParse(replaceOutput(payload)).success, label).toBe(false);
+    }
+    const nested = effectSchema.safeParse(replaceOutput({ a: { b: [1, { c: 1n }] } }));
+    expect(nested.success).toBe(false);
+    if (!nested.success) expect(nested.error.issues[0]?.message).toContain("$.a.b[1].c");
+  });
+
+  it("exposes the JSON predicate and the offending path", () => {
+    expect(isJsonValue({ ok: [1, "two", null, { deep: true }] })).toBe(true);
+    expect(isJsonValue(undefined)).toBe(false);
+    expect(findNonJsonPath({ when: new Date(0) })).toBe("$.when");
+    expect(findNonJsonPath(cyclic)).toBe("$.self");
+    expect(findNonJsonPath([1, [2, [Number.NaN]]])).toBe("$[1][1][0]");
+  });
+
+  it("rejects values that throw while being inspected", () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("not inspectable");
+        },
+      },
+    );
+    expect(findNonJsonPath(hostile)).toBe("$");
+    expect(isJsonValue(hostile)).toBe(false);
+    expect(effectSchema.safeParse(replaceInput(hostile)).success).toBe(false);
   });
 });

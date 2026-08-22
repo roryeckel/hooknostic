@@ -63,10 +63,17 @@ profile for a broad range.
   applies effects natively. Export it from a `./shim` package subpath so
   generated bundles never pull in compile-time machinery (core/esbuild).
 - `shimEntry()` returns the per-target entry-module source; `shimAliases()`
-  maps the shim specifier to a concrete path (`createRequire` resolution so it
-  survives CLI bundling).
-- `compile()` emits a self-contained artifact directory; use exec/argument
-  forms, never interpolate payload data into shell strings.
+  maps the shim specifier (`@hooknostic/adapter-<id>/shim`) to a concrete path
+  (`createRequire` resolution for the monorepo).
+- The published CLI cannot resolve workspace packages, so add the adapter's
+  `src/shim.ts` to `SHIMS` in `packages/cli/scripts/bundle.mjs`. It ships as
+  `dist/shims/<id>.mjs` (runtime inlined, SDK external) and
+  `defaultAdapterRegistry()` routes the shim specifier there automatically.
+- `compile()` emits a self-contained artifact directory. Artifact paths are
+  unique POSIX-style relative paths (validated before staging as HN301) and
+  `executable: true` yields mode 0o755; use exec/argument forms, never
+  interpolate payload data into shell strings. Throwing from `compile()` or
+  `validateArtifacts()` fails the target with HN301 — it never crashes the build.
 - Persistent process models must not expose module memory as portable state
   (ADR-0002) — add an invocation-statelessness test.
 
@@ -79,6 +86,8 @@ verifies at least one blocking effect and one mutating effect end-to-end.
 
 ## 7. Register
 
-Add the adapter to `defaultAdapterRegistry()` in `packages/cli/src/registry.ts`
-and to the coverage-audit subjects. Update `docs/baseline-<date>.md` with the
-verified native facts and their sources.
+Add the adapter to `defaultAdapterRegistry()` in `packages/cli/src/registry.ts`,
+its shim to `SHIMS` in `packages/cli/scripts/bundle.mjs`, and the adapter to
+the coverage-audit subjects; the simulated registry install in
+`packages/cli/src/package.test.ts` must still pass. Update
+`docs/baseline-<date>.md` with the verified native facts and their sources.
