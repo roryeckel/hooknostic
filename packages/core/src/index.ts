@@ -1,6 +1,7 @@
 export const CORE_VERSION = "0.1.0";
 
 export * from "./adapter.js";
+export * from "./artifacts.js";
 export * from "./agent-plugin.js";
 export * from "./analysis.js";
 export * from "./build.js";

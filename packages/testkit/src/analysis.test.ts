@@ -302,3 +302,46 @@ describe("analyzeCapabilities", () => {
     expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", severity: "error" });
   });
 });
+
+describe("hook target scopes", () => {
+  it("accepts scopes that name configured targets", () => {
+    const analysis = analyzeCapabilities(
+      ir([
+        hook("session.start", { id: "a", targets: { include: ["rich"] }, async run() {} }),
+        hook("session.start", { id: "b", targets: { exclude: ["poor"] }, async run() {} }),
+      ]),
+      config(),
+      registry(),
+    );
+    expect(analysis.ok).toBe(true);
+    expect(analysis.diagnostics).toEqual([]);
+  });
+
+  it("rejects include/exclude names that are not configured targets, even under --target narrowing", () => {
+    const analysis = analyzeCapabilities(
+      ir([
+        hook("session.start", { id: "typo-include", targets: { include: ["rcih"] }, async run() {} }),
+        hook("session.start", { id: "typo-exclude", targets: { exclude: ["por"] }, async run() {} }),
+      ]),
+      config(),
+      registry(),
+      ["rich"],
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.diagnostics.filter((d) => d.code === "HN501")).toEqual([
+      expect.objectContaining({ hookId: "typo-include", target: "rcih", severity: "error" }),
+      expect.objectContaining({ hookId: "typo-exclude", target: "por", severity: "error" }),
+    ]);
+    expect(analysis.diagnostics[0]?.remediation).toContain("rich, poor");
+  });
+
+  it("rejects an empty include list because the hook could never apply", () => {
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "dead", targets: { include: [] }, async run() {} })]),
+      config(),
+      registry(),
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", hookId: "dead", severity: "error" });
+  });
+});

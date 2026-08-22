@@ -50,7 +50,8 @@ async function pathIdentities(path: string): Promise<string[]> {
   return [...new Set(identities)];
 }
 
-function isStrictDescendant(root: string, candidate: string): boolean {
+/** True when `candidate` is strictly below `root` (both absolute and normalized). */
+export function isStrictDescendant(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel.length > 0 && !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
 }

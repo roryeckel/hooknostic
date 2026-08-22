@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
+import { findNonJsonPath } from "./json.js";
 import { HOOK_EVENT_NAMES } from "./events.js";
 import { SUPPORT_LEVELS } from "./support.js";
 import { TOOL_KINDS } from "./tools.js";
@@ -60,11 +61,27 @@ export const baseHookEventSchema = z
   // envelope; the envelope schema validates only what it owns.
   .passthrough();
 
+/**
+ * Replacement payloads cross the native wire boundary as JSON, so they must be
+ * canonical JSON values: `undefined`, functions, `bigint`, non-finite numbers,
+ * cycles and non-plain objects (Date, Map, class instances) are rejected here
+ * rather than being dropped, thrown on, or transformed during serialization.
+ */
+export const jsonValueSchema = z.unknown().superRefine((value, ctx) => {
+  const path = findNonJsonPath(value);
+  if (path !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `payload is not a JSON value (at ${path}): only null, booleans, finite numbers, strings, arrays and plain objects are allowed.`,
+    });
+  }
+});
+
 export const effectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("block"), reason: z.string() }).strict(),
   z.object({ kind: z.literal("requestApproval"), reason: z.string().optional() }).strict(),
-  z.object({ kind: z.literal("replaceInput"), input: z.unknown() }).strict(),
-  z.object({ kind: z.literal("replaceOutput"), output: z.unknown() }).strict(),
+  z.object({ kind: z.literal("replaceInput"), input: jsonValueSchema }).strict(),
+  z.object({ kind: z.literal("replaceOutput"), output: jsonValueSchema }).strict(),
   z.object({ kind: z.literal("addContext"), context: z.string() }).strict(),
   z.object({ kind: z.literal("preventStop"), reason: z.string().optional() }).strict(),
   z.object({ kind: z.literal("blockContinuation"), reason: z.string() }).strict(),
