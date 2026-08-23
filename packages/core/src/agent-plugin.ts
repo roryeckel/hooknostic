@@ -23,9 +23,19 @@ export async function readAgentPluginMetadata(
   let text: string;
   try {
     text = await readFile(manifestPath, "utf8");
-  } catch {
-    // Standalone mode is first-class: no plugin.json is not an error.
-    return { present: false, diagnostics };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      // Standalone mode is first-class: no plugin.json is not an error.
+      return { present: false, diagnostics };
+    }
+    diagnostics.push({
+      code: "HN501",
+      severity: "error",
+      message: `could not read Agent Plugin manifest: ${error instanceof Error ? error.message : String(error)}`,
+      location: { file: manifestPath },
+      remediation: "ensure plugin.json is a readable regular file, or remove agentPlugin from the configuration.",
+    });
+    return { present: true, diagnostics };
   }
 
   let parsed: unknown;
