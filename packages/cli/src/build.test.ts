@@ -342,6 +342,16 @@ describe("hooknostic inspect", () => {
     ).toBe(2);
     expect(unknown.err()).toContain("unknown target");
 
+    const inherited = captureIO();
+    expect(
+      await runInspect({
+        target: "toString",
+        registry: defaultAdapterRegistry(),
+        io: inherited.io,
+      }),
+    ).toBe(2);
+    expect(inherited.err()).toContain('unknown target "toString"');
+
     const invalidCapability = captureIO();
     expect(
       await runInspect({

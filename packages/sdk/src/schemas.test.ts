@@ -202,6 +202,14 @@ describe("effect payload JSON rule", () => {
   });
 
   it("rejects payloads that JSON serialization would drop, throw on, or transform", () => {
+    const symbolKey = Symbol("hidden");
+    const symbolProperty = { command: "ls", [symbolKey]: "dropped" };
+    const nonEnumerableProperty = Object.defineProperty(
+      { command: "ls" },
+      "hidden",
+      { value: "dropped" },
+    );
+    const arrayProperty = Object.assign(["ls"], { hidden: "dropped" });
     const cases: [string, unknown][] = [
       ["undefined", undefined],
       ["function", () => 1],
@@ -216,6 +224,9 @@ describe("effect payload JSON rule", () => {
       ["class instance", new (class Thing {})()],
       ["accessor", { get changesAfterValidation() { return 1; } }],
       ["toJSON", Object.defineProperty({}, "toJSON", { value: () => ({ ok: true }) })],
+      ["symbol-keyed property", symbolProperty],
+      ["non-enumerable property", nonEnumerableProperty],
+      ["non-index array property", arrayProperty],
     ];
     for (const [label, payload] of cases) {
       expect(effectSchema.safeParse(replaceInput(payload)).success, label).toBe(false);

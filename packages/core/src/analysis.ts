@@ -120,10 +120,12 @@ export function analyzeCapabilities(
   }
 
   for (const targetId of selection) {
-    const targetConfig = config.targets[targetId];
+    const targetConfig = Object.hasOwn(config.targets, targetId)
+      ? config.targets[targetId]
+      : undefined;
     if (!targetConfig) continue;
 
-    const adapter = adapters[targetId];
+    const adapter = Object.hasOwn(adapters, targetId) ? adapters[targetId] : undefined;
     if (!adapter) {
       diagnostics.push({
         code: "HN501",

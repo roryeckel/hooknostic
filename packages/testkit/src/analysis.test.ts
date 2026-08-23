@@ -266,6 +266,19 @@ describe("analyzeCapabilities", () => {
     expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: "mystery" });
   });
 
+  it("does not treat inherited registry properties as adapters", () => {
+    const targets = Object.fromEntries([
+      ["toString", { version: "1", mode: "plugin", output: "./d" }],
+    ]) as HooknosticConfig["targets"];
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "s", async run() {} })]),
+      config({ targets }),
+      registry(),
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: "toString" });
+  });
+
   it("rejects unsupported artifact modes during analysis", () => {
     const adapters = {
       localOnly: makeFakeAdapter({

@@ -27,10 +27,28 @@ function hasToJson(value: object): boolean {
 
 function dataProperty(
   value: object,
-  key: string,
+  key: PropertyKey,
 ): { value: unknown } | undefined {
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   return descriptor !== undefined && "value" in descriptor ? { value: descriptor.value } : undefined;
+}
+
+/** JSON ignores symbols, non-enumerable object fields, and non-index array fields. */
+function hasIgnoredOwnProperties(value: object): boolean {
+  if (Array.isArray(value)) {
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== value.length + 1) return true; // sparse or extra fields
+    return keys.some((key) => {
+      if (key === "length") return false;
+      if (typeof key !== "string") return true;
+      const index = Number(key);
+      return !Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key;
+    });
+  }
+  return Reflect.ownKeys(value).some((key) => {
+    if (typeof key !== "string") return true;
+    return Object.getOwnPropertyDescriptor(value, key)?.enumerable !== true;
+  });
 }
 
 /**
@@ -56,6 +74,7 @@ export function findNonJsonPath(value: unknown): string | undefined {
       if (current === null) return undefined;
       if (ancestors.has(current)) return path; // cycle
       if (hasToJson(current)) return path;
+      if (hasIgnoredOwnProperties(current)) return path;
       if (Array.isArray(current)) {
         ancestors.add(current);
         for (let index = 0; index < current.length; index += 1) {

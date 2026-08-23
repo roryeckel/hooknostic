@@ -19,7 +19,9 @@ export interface InspectCommandOptions {
  * rationale and provenance-bearing version ranges.
  */
 export async function runInspect(options: InspectCommandOptions): Promise<number> {
-  const adapter = options.registry[options.target];
+  const adapter = Object.hasOwn(options.registry, options.target)
+    ? options.registry[options.target]
+    : undefined;
   if (!adapter) {
     options.io.stderr(
       `unknown target "${options.target}"; available: ${Object.keys(options.registry).join(", ")}`,
