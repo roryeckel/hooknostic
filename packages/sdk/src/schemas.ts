@@ -18,6 +18,9 @@ export const supportLevelSchema = z.enum(SUPPORT_LEVELS);
 export const requirementLevelSchema = z.enum(["required", "optional"]);
 export const toolKindSchema = z.enum(TOOL_KINDS);
 
+// Node clamps longer delays to 1 ms, causing hooks to time out immediately.
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 export const toolInvocationSchema = z
   .object({
     kind: toolKindSchema,
@@ -98,7 +101,7 @@ export const compatibilityPolicySchema = z
 export const runtimePolicySchema = z
   .object({
     onHookError: z.enum(["continue", "block"]).optional(),
-    timeoutMs: z.number().int().positive().optional(),
+    timeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
     contextCharLimit: z.number().int().positive().optional(),
   })
   .strict();

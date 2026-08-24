@@ -1,3 +1,4 @@
+import { hookAppliesToTarget } from "@hooknostic/core";
 import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch } from "@hooknostic/runtime";
@@ -37,7 +38,11 @@ export function createHooknosticHooks(
       : {}),
   };
 
-  const events = new Set<HookEventName>(plugin.hooks.map((h) => h.event));
+  const events = new Set<HookEventName>(
+    plugin.hooks
+      .filter((hook) => hookAppliesToTarget(hook, invocation.targetId))
+      .map((hook) => hook.event),
+  );
 
   const run = async (native: OpenCodeNativeEvent): Promise<void> => {
     let event;
@@ -72,9 +77,8 @@ export function createHooknosticHooks(
         typeof replacement === "object" &&
         !Array.isArray(existing)
       ) {
-        // A handler may mutate event.tool.input and return that exact object.
-        // Snapshot before clearing the live OpenCode args object so aliases do
-        // not erase their own replacement.
+        // Snapshot before clearing the live OpenCode args object so a
+        // replacement cannot be erased while the original is updated in place.
         const replacementSnapshot = { ...(replacement as Record<string, unknown>) };
         for (const key of Object.keys(existing as Record<string, unknown>)) {
           delete (existing as Record<string, unknown>)[key];

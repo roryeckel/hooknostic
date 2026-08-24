@@ -614,4 +614,54 @@ describe("effect payload JSON rule at dispatch", () => {
     expect(result.errors[0]?.message).toContain("HN401");
     expect(replacedOutput(result)).toBeUndefined();
   });
+
+  it("contains effect-schema exceptions as HN401 and continues dispatch", async () => {
+    const uninspectableError = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("error cannot be inspected");
+        },
+        get() {
+          throw new Error("error cannot be stringified");
+        },
+      },
+    );
+    const hostile = new Proxy(
+      {},
+      {
+        get(_target, key) {
+          // Promise resolution reads `then` before effect validation does.
+          if (key === "then") return undefined;
+          throw uninspectableError;
+        },
+      },
+    );
+    const ran: string[] = [];
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "hostile-effect",
+          async run() {
+            return hostile as never;
+          },
+        }),
+        hook("tool.before", {
+          id: "after-hostile-effect",
+          async run() {
+            ran.push("after");
+          },
+        }),
+      ],
+      toolBefore({ command: "ls" }),
+      OPTIONS,
+    );
+
+    expect(result.errors).toEqual([
+      expect.objectContaining({ hookId: "hostile-effect", kind: "unsupported-effect" }),
+    ]);
+    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.message).toContain("uninspectable thrown value");
+    expect(ran).toEqual(["after"]);
+  });
 });

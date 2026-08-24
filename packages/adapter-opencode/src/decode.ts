@@ -28,6 +28,19 @@ interface ToolCallbackInput {
   [key: string]: unknown;
 }
 
+/**
+ * OpenCode consumes the live `output.args` object after this callback returns.
+ * Handlers must receive an isolated snapshot so direct mutations cannot bypass
+ * the dispatcher’s validated `replaceInput` effects.
+ */
+function snapshotOpenCodeArgs(args: unknown): unknown {
+  try {
+    return structuredClone(args);
+  } catch {
+    throw new OpenCodeDecodeError("tool.execute.before arguments cannot be cloned");
+  }
+}
+
 export function decodeOpenCode(
   nativeEvent: unknown,
   invocation: InvocationContext,
@@ -70,7 +83,7 @@ export function decodeOpenCode(
       return {
         ...base,
         event: "tool.before",
-        tool: classifyOpenCodeTool(input.tool, output["args"]),
+        tool: classifyOpenCodeTool(input.tool, snapshotOpenCodeArgs(output["args"])),
       };
     }
     case "tool.execute.after": {
