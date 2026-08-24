@@ -55,6 +55,23 @@ function toolOf(event: HookEvent): ToolInvocation | undefined {
   return "tool" in event ? event.tool : undefined;
 }
 
+/** Convert an arbitrary thrown value without letting hostile proxies escape dispatch. */
+function errorMessage(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      return typeof error.message === "string" ? error.message : "Error";
+    }
+  } catch {
+    // `instanceof` and property reads can both invoke hostile proxy traps.
+  }
+
+  try {
+    return String(error);
+  } catch {
+    return "uninspectable thrown value";
+  }
+}
+
 /**
  * Dispatch one decoded native event through all matching portable handlers
  * (ADR-0003): sequential declaration order, immediate mutation visibility,
@@ -150,7 +167,7 @@ export async function dispatch(
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: timedOut ? "timeout" : "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       }, capabilities);
       if (terminal) break;
       continue;
@@ -163,7 +180,21 @@ export async function dispatch(
     // Runtime contract validation: shape, event compatibility, declaration,
     // and target availability. Type information can be bypassed, so all four
     // are enforced here regardless of the compile-time story.
-    const parsedEffect = effectSchema.safeParse(outcome);
+    let parsedEffect: ReturnType<typeof effectSchema.safeParse>;
+    try {
+      // Zod may inspect a hostile proxy before jsonValueSchema can reject it.
+      // Validation itself is part of the handler boundary, so it must not
+      // violate the fail-open contract.
+      parsedEffect = effectSchema.safeParse(outcome);
+    } catch (error) {
+      const terminal = failDispatch(hook.id, {
+        hookId: hook.id,
+        kind: "unsupported-effect",
+        message: `HN401: hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
+      }, capabilities);
+      if (terminal) break;
+      continue;
+    }
     if (!parsedEffect.success) {
       const detail = parsedEffect.error.issues[0]?.message;
       const terminal = failDispatch(hook.id, {

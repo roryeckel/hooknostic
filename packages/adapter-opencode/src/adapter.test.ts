@@ -52,6 +52,28 @@ describe("decodeOpenCode fixtures", () => {
     expect(decoded.event).toBe("tool.before");
   });
 
+  it("snapshots mutable tool arguments before canonical dispatch", () => {
+    const args = { command: "npm install", nested: { keep: true } };
+    const decoded = decodeOpenCode(
+      {
+        hook: "tool.execute.before",
+        directory: "C:/project",
+        input: { tool: "bash" },
+        output: { args },
+      },
+      INVOCATION,
+    );
+
+    if (!("tool" in decoded)) throw new Error("expected tool.before event");
+    const input = decoded.tool.input as { command: string; nested: { keep: boolean } };
+    expect(input).toEqual(args);
+    expect(input).not.toBe(args);
+    expect(input.nested).not.toBe(args.nested);
+
+    input.nested.keep = false;
+    expect(args.nested.keep).toBe(true);
+  });
+
   it("rejects unmapped callbacks and bus events", () => {
     expect(() =>
       decodeOpenCode({ hook: "lsp.updated", directory: "C:/x", input: {} }, INVOCATION),

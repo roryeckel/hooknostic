@@ -110,6 +110,31 @@ describe("createHooknosticHooks", () => {
     expect(output.args).toEqual({ command: "pnpm install" });
   });
 
+  it("keeps live arguments unchanged when a handler directly mutates its snapshot", async () => {
+    const plugin = definePlugin({
+      name: "invalid-replacement",
+      hooks: [
+        hook("tool.before", {
+          id: "mutate-then-return-invalid",
+          capabilities: { "tool.before.input.replace": "required" },
+          async run(event) {
+            (event.tool.input as { command: string }).command = "mutated directly";
+            return replaceInput({ command: undefined });
+          },
+        }),
+      ],
+    });
+    const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
+    const output = { args: { command: "npm install" } };
+
+    await h["tool.execute.before"]!(
+      { tool: "bash", sessionID: "s", callID: "c" },
+      output,
+    );
+
+    expect(output.args).toEqual({ command: "npm install" });
+  });
+
   it("replaces tool output by mutating output.output", async () => {
     const h = hooks();
     const output = { title: "t", output: "token SECRET here", metadata: {} };
@@ -169,6 +194,28 @@ describe("createHooknosticHooks", () => {
     await expect(
       h["event"]!({ event: { type: "message.part.updated" } }, undefined),
     ).resolves.toBeUndefined();
+  });
+
+  it("does not register callbacks used only by hooks scoped away from OpenCode", () => {
+    const plugin = definePlugin({
+      name: "other-target",
+      hooks: [
+        hook("tool.before", {
+          id: "claude-only",
+          targets: { include: ["claude"] },
+          async run() {},
+        }),
+        hook("session.start", {
+          id: "not-opencode",
+          targets: { exclude: ["opencode"] },
+          async run() {},
+        }),
+      ],
+    });
+
+    expect(Object.keys(createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT))).toEqual(
+      [],
+    );
   });
 
   it("is invocation-stateless across repeated dispatches in one module lifetime", async () => {

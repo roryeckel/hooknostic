@@ -155,6 +155,24 @@ describe("canonical schemas", () => {
     ).toThrow();
   });
 
+  it("rejects timeouts above Node's maximum timer delay", () => {
+    const config = {
+      entry: "./src/hooks.ts",
+      runtime: { timeoutMs: 2_147_483_648 },
+      targets: {
+        opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },
+      },
+    };
+
+    expect(hooknosticConfigSchema.safeParse(config).success).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...config,
+        runtime: { timeoutMs: 2_147_483_647 },
+      }).success,
+    ).toBe(true);
+  });
+
   it("validates authored plugin structure", () => {
     const plugin = {
       name: "p",
@@ -245,7 +263,7 @@ describe("effect payload JSON rule", () => {
     expect(findNonJsonPath([1, [2, [Number.NaN]]])).toBe("$[1][1][0]");
   });
 
-  it("rejects values that throw while being inspected", () => {
+  it("identifies values that throw while being inspected", () => {
     const hostile = new Proxy(
       {},
       {
@@ -256,6 +274,6 @@ describe("effect payload JSON rule", () => {
     );
     expect(findNonJsonPath(hostile)).toBe("$");
     expect(isJsonValue(hostile)).toBe(false);
-    expect(effectSchema.safeParse(replaceInput(hostile)).success).toBe(false);
+    expect(() => effectSchema.safeParse(replaceInput(hostile))).toThrow("not inspectable");
   });
 });
