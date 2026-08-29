@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,24 @@ describe("loadConfig", () => {
     const result = await loadConfig(file, OPTIONS);
     expect(result.config).toBeUndefined();
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501", severity: "error" });
+  });
+
+  it("loads configs under a tilde directory (8.3 short-name regression, vitest#7084)", async () => {
+    // GitHub's Windows runners expose TEMP as C:\Users\RUNNER~1\...; the "~"
+    // percent-encodes to %7E and the vitest runner could not import() that
+    // URL. evaluateModule must resolve the long path before importing.
+    const tilded = join(await realpath(tmpdir()), "hooknostic-tilde~probe");
+    await mkdir(tilded, { recursive: true });
+    tempDirs.push(tilded);
+    const file = join(tilded, "hooknostic.config.ts");
+    await writeFile(
+      file,
+      `export default { entry: "./src/hooks.ts", targets: { claude: { version: ">=2.1 <3", mode: "plugin", output: "./x" } } };`,
+      "utf8",
+    );
+    const result = await loadConfig(file, OPTIONS);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.config?.entry).toBe("./src/hooks.ts");
   });
 });
 
