@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm trusted publishing (OIDC)
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      # npm >= 11.5.1 is required for trusted publishing; Node 24 provides it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      # SDK first: the CLI's install story depends on the published SDK.
+      # pnpm publish (not npm publish): rewrites workspace:* specifiers to real
+      # versions in the shipped manifest, and its OIDC flow honors npm trusted
+      # publishing (id-token: write above) with no NPM_TOKEN secret involved.
+      - name: Publish @hooknostic/sdk
+        working-directory: packages/sdk
+        run: pnpm publish --no-git-checks --access public
+
+      - name: Publish hooknostic (CLI)
+        working-directory: packages/cli
+        run: pnpm publish --no-git-checks --access public
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" --verify-tag --generate-notes
