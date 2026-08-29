@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,7 +39,10 @@ async function evaluateModule(file: string, options?: EvaluateOptions): Promise<
     throw new Error(`esbuild produced no output for ${file}`);
   }
 
-  const dir = await mkdtemp(join(tmpdir(), "hooknostic-eval-"));
+  // Resolve the long path so 8.3 short names (RUNNER~1) never reach
+  // import(): pathToFileURL percent-encodes "~" as %7E and vite-node then
+  // fails to load the URL (node fine, vitest runner not — vitest#7084).
+  const dir = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-eval-"));
   const out = join(dir, "module.mjs");
   try {
     await writeFile(out, code, "utf8");
