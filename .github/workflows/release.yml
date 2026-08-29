@@ -1,9 +1,13 @@
 name: Release
 
+# NOTE: disabled from tag-push on purpose — npm publication is intentionally
+# deferred (see docs/publishing.md). When ready to go live with npm:
+#   1. restore the tag trigger below (and remove workflow_dispatch if wanted)
+#   2. configure Trusted Publisher on npmjs.com for both packages
+#   3. create the `npm` environment in the GitHub repo
+#   4. push a v* tag
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write # create the GitHub Release
