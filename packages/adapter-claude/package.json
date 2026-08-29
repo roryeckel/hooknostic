@@ -1,6 +1,7 @@
 {
   "name": "@hooknostic/adapter-claude",
   "version": "0.1.0",
+  "private": true,
   "description": "Hooknostic adapter for Claude Code",
   "type": "module",
   "engines": { "node": ">=22.13.0" },

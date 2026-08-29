@@ -2,10 +2,29 @@
   "name": "@hooknostic/sdk",
   "version": "0.1.0",
   "description": "Hooknostic authoring API and canonical hook types",
+  "license": "Apache-2.0",
+  "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
+  "homepage": "https://github.com/roryeckel/hooknostic#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/roryeckel/hooknostic.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": "https://github.com/roryeckel/hooknostic/issues",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "opencode",
+    "hooks",
+    "lifecycle",
+    "coding-agent",
+    "agent-hooks",
+    "portability"
+  ],
   "type": "module",
   "engines": { "node": ">=22.13.0" },
   "publishConfig": { "access": "public" },
-  "files": ["dist"],
+  "files": ["dist", "LICENSE"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

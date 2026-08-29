@@ -1,6 +1,7 @@
 {
   "name": "@hooknostic/adapter-opencode",
   "version": "0.1.0",
+  "private": true,
   "description": "Hooknostic adapter for OpenCode",
   "type": "module",
   "engines": { "node": ">=22.13.0" },

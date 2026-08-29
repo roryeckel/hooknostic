@@ -68,7 +68,7 @@ describe("public package outputs", () => {
   it("ships the SDK as runnable ESM with declarations", async () => {
     const packageRoot = resolve(REPO, "packages/sdk");
     const manifest = await manifestOf(packageRoot);
-    expect(manifest.files).toEqual(["dist"]);
+    expect(manifest.files).toEqual(["dist", "LICENSE"]);
     expect(manifest.exports["."]).toEqual({
       types: "./dist/index.d.ts",
       default: "./dist/index.js",
@@ -83,7 +83,7 @@ describe("public package outputs", () => {
   it("ships a runnable programmatic CLI entry alongside the binary", async () => {
     const packageRoot = resolve(REPO, "packages/cli");
     const manifest = await manifestOf(packageRoot);
-    expect(manifest.files).toEqual(["bin", "dist"]);
+    expect(manifest.files).toEqual(["bin", "dist", "LICENSE"]);
     expect(manifest.exports["."]).toEqual({
       types: "./dist/index.d.ts",
       default: "./dist/index.js",
