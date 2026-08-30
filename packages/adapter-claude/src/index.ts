@@ -19,7 +19,7 @@ import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
 import { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
 import { claudeCapabilityProfiles } from "./profile.js";
-import { claudeShellCodec } from "./toolmap.js";
+import { claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
 
 export { applyClaude } from "./apply.js";
 export { ClaudeDecodeError, decodeClaude } from "./decode.js";
@@ -78,6 +78,7 @@ export function claudeAdapter(): HarnessAdapter {
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",
     shellCodec: claudeShellCodec,
+    shellShapes: CLAUDE_SHELL_SHAPES,
 
     supportedHarnessVersions() {
       return claudeCapabilityProfiles.map((p) => p.range);

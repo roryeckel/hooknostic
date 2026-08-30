@@ -916,8 +916,10 @@ export default definePlugin({
         "tool.before.input.replace": "optional",
       },
       async run(event, ctx) {
-        const command = event.tool.shell?.command ?? "";
-
+        // Normalized read with a raw fallback: where the shape is uncaptured
+        // (`shell` undefined), a guard must not fail open on an empty string.
+        const raw = (event.tool.input as { command?: unknown }).command;
+        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }

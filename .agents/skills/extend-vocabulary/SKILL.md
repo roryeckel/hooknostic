@@ -33,9 +33,11 @@ decision does not.
 - `packages/runtime/src/dispatch.ts`: an apply case in the effect switch. If
   the effect is portable-but-lowered (like `updateShell`), lower it in
   dispatch to an existing kind and mark the synthesized entry with
-  `loweredFrom`, so the three adapter `apply.ts` reducers stay untouched —
-  they each independently resolve `kind === "replaceInput"` and a new kind
-  slipping past them diverges per adapter.
+  `loweredFrom`, so the three adapter `apply.ts` reducers stay untouched.
+  They each independently resolve `kind === "replaceInput"` **and each
+  suppresses a recorded rewrite on a terminal deny** (denial precedence) —
+  a new effect kind slipping past those reducers, or a reducer missing the
+  precedence rule, diverges per adapter; both have happened.
 - Docs: effect list in `docs/design.md` §7, table in `docs/concepts.md`,
   composition rule 4 if terminality changed.
 

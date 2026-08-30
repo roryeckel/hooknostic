@@ -28,6 +28,31 @@ describe("applyClaude", () => {
     expect(native).toEqual(loadFixture("claude", "2.1", "pre-tool-block.output.json"));
   });
 
+  it("block wins over an earlier rewrite in the same dispatch", async () => {
+    // Cross-adapter agreement: Codex and OpenCode both suppress a recorded
+    // rewrite on a terminal deny. The prior test that appeared to cover this
+    // (serialization.test.ts) used a cyclic rewrite that dispatch rejected
+    // before it was ever recorded -- vacuous against any mutant here.
+    const native = await applyClaude(
+      result({
+        event: "tool.before",
+        effects: [
+          { hookId: "rewrite", effect: { kind: "replaceInput", input: { command: "x" } } },
+          { hookId: "guard", effect: { kind: "block", reason: "no" } },
+        ],
+        terminatedBy: "guard",
+      }),
+      {},
+      INVOCATION,
+    );
+    const hookSpecific = (native.body as Record<string, unknown>)["hookSpecificOutput"] as Record<
+      string,
+      unknown
+    >;
+    expect(hookSpecific["permissionDecision"]).toBe("deny");
+    expect(hookSpecific["updatedInput"]).toBeUndefined();
+  });
+
   it("encodes input replacement as updatedInput", async () => {
     const native = await applyClaude(
       result({

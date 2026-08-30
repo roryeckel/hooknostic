@@ -28,7 +28,10 @@ export default definePlugin({
       capabilities: { "tool.before.context.add": "optional" },
       async run(event, ctx) {
         if (!ctx.capabilities.has("tool.before.context.add")) return;
-        const command = event.tool.shell?.command ?? "";
+        // Normalized read with a raw fallback: where the shape is uncaptured
+        // (`shell` undefined), a guard must not fail open on an empty string.
+        const raw = (event.tool.input as { command?: unknown }).command;
+        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
         if (command.startsWith("cd ")) {
           return addContext("Reminder: prefer absolute paths over cd for tooling commands.");
         }

@@ -37,7 +37,9 @@ export const opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
 
 export function classifyOpenCodeTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
-  const known = EXACT[nativeName.toLowerCase()];
+  const lowered = nativeName.toLowerCase();
+  // Own-property guard: a tool named "constructor" must not resolve a prototype member.
+  const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : undefined;
   if (known !== undefined) {
     const shell = opencodeShellCodec.classify(nativeName, input);
     return { kind: known, nativeName, input, ...(shell !== undefined ? { shell } : {}) };

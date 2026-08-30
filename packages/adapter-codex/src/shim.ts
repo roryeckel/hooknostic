@@ -64,7 +64,14 @@ export async function runCodexCommandShim(
     // it, and it must not go in the JSON body: Codex's wire schemas are
     // additionalProperties:false, so an unknown field is a hard vendor error.
     const diagnostics = formatHandlerErrors(result);
-    if (diagnostics !== undefined) await writeStream(process.stderr, `${diagnostics}\n`);
+    if (diagnostics !== undefined) {
+      // Separator guard: a native stderr payload (e.g. a block reason) need
+      // not end in a newline, and concatenating onto it would corrupt the
+      // machine-greppable "hooknostic HNxxx" prefix.
+      const separator =
+        native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
+      await writeStream(process.stderr, `${separator}${diagnostics}\n`);
+    }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CodexDecodeError)) {

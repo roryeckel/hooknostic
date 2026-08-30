@@ -51,7 +51,7 @@ export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvo
   }
   const shell = claudeShellCodec.classify(nativeName, input);
   return {
-    kind: EXACT[nativeName] ?? "other",
+    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : undefined) ?? "other",
     nativeName,
     input,
     ...(shell !== undefined ? { shell } : {}),

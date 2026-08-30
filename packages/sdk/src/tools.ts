@@ -92,7 +92,18 @@ export interface ShellCodec {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  // Prototype check, not just non-array: OpenCode is in-process and hands the
+  // codec live objects, so a Date/Map/class instance can reach here. Spreading
+  // one silently strips its prototype and non-enumerable state -- decline it,
+  // as the codec contract promises for anything it does not understand.
+  if (typeof value !== "object" || value === null) return false;
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** Own-property table lookup: a tool named "constructor" must not resolve Object.prototype. */
+function shapeOf(shapes: ShellShapes, key: string): ShellShape | undefined {
+  return Object.hasOwn(shapes, key) ? shapes[key] : undefined;
 }
 
 /**
@@ -108,7 +119,7 @@ export function shellCodec(
   const normalize = options?.normalizeName ?? ((name: string) => name);
   return {
     classify(nativeName, input) {
-      const shape = shapes[normalize(nativeName)];
+      const shape = shapeOf(shapes, normalize(nativeName));
       if (shape === undefined || !isPlainObject(input)) return undefined;
       const command = input[shape.commandKey];
       if (typeof command !== "string") return undefined;
@@ -121,7 +132,7 @@ export function shellCodec(
       };
     },
     encode(nativeName, input, patch) {
-      const shape = shapes[normalize(nativeName)];
+      const shape = shapeOf(shapes, normalize(nativeName));
       // A non-plain-object input is declined: `{...["a"]}` would silently
       // produce `{"0":"a"}` -- a garbage native input, not an honest refusal.
       if (shape === undefined || !isPlainObject(input)) return undefined;

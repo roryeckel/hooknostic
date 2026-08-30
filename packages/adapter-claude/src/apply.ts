@@ -71,6 +71,11 @@ export function applyClaude(
       if (result.event === "tool.before" || result.event === "permission.request") {
         hookSpecificOutput["permissionDecision"] = "deny";
         hookSpecificOutput["permissionDecisionReason"] = terminal.reason;
+        // Denial precedence, matching the other adapters: a rewrite recorded
+        // earlier in the same dispatch must not ride along on a deny. Without
+        // this, one portable plugin denied-and-discarded on two harnesses and
+        // denied-carrying-a-rewrite here.
+        delete hookSpecificOutput["updatedInput"];
         hasJsonOutput = true;
         break;
       }
