@@ -4450,7 +4450,7 @@ var hooks_default = definePlugin({
   ]
 });
 
-// ../../packages/runtime/src/dispatch.ts
+// ../../packages/cli/dist/shims/claude.mjs
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4668,8 +4668,6 @@ async function dispatch(hooks, event, options) {
   }
   return result;
 }
-
-// ../../packages/adapter-claude/src/apply.ts
 var NATIVE_EVENT = {
   "session.start": "SessionStart",
   "session.end": "SessionEnd",
@@ -4738,8 +4736,6 @@ function applyClaude(result, _nativeEvent, _invocation) {
   }
   return Promise.resolve({ exitCode: 0, body });
 }
-
-// ../../packages/adapter-claude/src/toolmap.ts
 var EXACT = {
   Bash: "shell",
   PowerShell: "shell",
@@ -4768,8 +4764,6 @@ function classifyClaudeTool(nativeName, input) {
   }
   return { kind: EXACT[nativeName] ?? "other", nativeName, input };
 }
-
-// ../../packages/adapter-claude/src/decode.ts
 var ClaudeDecodeError = class extends Error {
 };
 function decodeClaude(nativeEvent, invocation) {
@@ -4875,8 +4869,6 @@ function decodeClaude(nativeEvent, invocation) {
       throw new ClaudeDecodeError(`unmapped native event "${nativeName}"`);
   }
 }
-
-// ../../packages/adapter-claude/src/shim.ts
 async function readStdin() {
   let data = "";
   process.stdin.setEncoding("utf8");

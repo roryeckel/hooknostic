@@ -4450,7 +4450,7 @@ var hooks_default = definePlugin({
   ]
 });
 
-// ../../packages/runtime/src/dispatch.ts
+// ../../packages/cli/dist/shims/opencode.mjs
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4668,8 +4668,6 @@ async function dispatch(hooks, event, options) {
   }
   return result;
 }
-
-// ../../packages/adapter-opencode/src/apply.ts
 var UNREPRESENTABLE_OUTPUT = "[hooknostic: unrepresentable output]";
 function serializeOpenCodeOutput(output) {
   if (typeof output === "string") return output;
@@ -4720,8 +4718,6 @@ function planOpenCodeApplication(result) {
   if (Object.keys(mutations).length > 0) application.mutations = mutations;
   return application;
 }
-
-// ../../packages/adapter-opencode/src/toolmap.ts
 var EXACT = {
   bash: "shell",
   shell: "shell",
@@ -4756,8 +4752,6 @@ function classifyOpenCodeTool(nativeName, input) {
   }
   return { kind: "other", nativeName, input };
 }
-
-// ../../packages/adapter-opencode/src/decode.ts
 var OpenCodeDecodeError = class extends Error {
 };
 function snapshotOpenCodeArgs(args) {
@@ -4865,8 +4859,6 @@ function decodeOpenCode(nativeEvent, invocation) {
       throw new OpenCodeDecodeError(`unmapped native callback "${native.hook}"`);
   }
 }
-
-// ../../packages/adapter-opencode/src/shim.ts
 var POST_TIMEOUT_MS = 1e4;
 function withTimeout(promise) {
   promise.catch(() => void 0);
