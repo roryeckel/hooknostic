@@ -1,4 +1,4 @@
-import { definePlugin, hook, block, replaceInput } from "@hooknostic/sdk";
+import { definePlugin, hook, block, updateShell } from "@hooknostic/sdk";
 
 /**
  * The design document's Appendix A example: block destructive shell commands
@@ -19,16 +19,21 @@ export default definePlugin({
         "tool.before.input.replace": "optional",
       },
       async run(event, ctx) {
-        const input = event.tool.input as Record<string, unknown>;
-        // Portable read. The write-back below still needs the harness's own key.
         const command = event.tool.shell?.command ?? "";
 
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
 
-        if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          return replaceInput({ ...input, ["cmd" in input ? "cmd" : "command"]: command.replace(/^npm /, "pnpm ") });
+        if (
+          ctx.capabilities.has("tool.before.input.replace") &&
+          event.tool.shell !== undefined &&
+          command.startsWith("npm ")
+        ) {
+          // Portable write-back: the rewrite lands under whichever key this
+          // harness uses (`command` on Claude/OpenCode, `cmd` on Codex's
+          // exec_command), with every sibling input field preserved.
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
     }),

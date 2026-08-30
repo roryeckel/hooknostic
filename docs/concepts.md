@@ -59,6 +59,7 @@ do something:
 | `block(reason)` | Stop the pending action (tool call, prompt, compaction…) |
 | `requestApproval(reason)` | Escalate to the user for approval |
 | `replaceInput(input)` | Rewrite the pending tool call's input |
+| `updateShell({ command })` | Rewrite the shell command portably (needs `event.tool.shell`) |
 | `addContext(text)` | Add text the model will see |
 | `replaceOutput(output)` | Replace or redact a tool's output |
 | `preventStop(reason)` | Keep the agent/turn going when it wants to stop |

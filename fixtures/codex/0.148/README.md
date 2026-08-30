@@ -18,6 +18,8 @@ Provenance:
 | session-start, session-end, prompt-submit, pre-tool-bash, post-tool-bash, stop | **captured** 0.148.0 |
 | permission-request, subagent-start, subagent-stop | schema-derived from the binary's embedded wire schemas (events did not fire in headless `codex exec` capture) |
 | pre-compact, post-compact | schema-derived (compaction impractical to trigger headless) |
+| pre-tool-exec-command | **constructed** (2026-08-30): tool args from the 0.151.0 router debug log (`.capture/codex-tools/README.md`), envelope schema-derived. Filed here because the adapter's `>=0.148 <1` profile covers it. **No hook has ever been observed receiving this shape** -- on 0.151.0 the hook boundary translates `exec_command` calls into `Bash`/`command` payloads and drops `workdir`; the fixture pins the defensive `cmd`/`workdir` mapping for a version or surface that passes the router shape through. |
+| pre-tool-exec-command-rewrite.output | derived from the above: the `updateShell` lowering under `cmd`, per the same PreToolUse output wire schema as pre-tool-rewrite.output. |
 
 Version-0.148.0 ground truth worth noting:
 
@@ -33,6 +35,8 @@ Version-0.148.0 ground truth worth noting:
 - PreToolUse output wire: `permissionDecision ∈ allow|deny|ask` (not
   "escalate"), `updatedInput`, `additionalContext`; top-level
   `decision ∈ approve|block`.
+  `updatedInput` verified honoured live on 0.151.0 (rewritten command reached
+  the spawn -- see `.capture/codex-tools/README.md`, write-path verification).
 - PermissionRequest output: `hookSpecificOutput.decision.behavior ∈
   allow|deny` (+ `message`); `updatedInput`/`updatedPermissions`/`interrupt`
   are reserved and currently **fail closed**; no context channel.

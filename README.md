@@ -23,7 +23,7 @@ v0.1 targets **Claude Code**, **OpenAI Codex CLI**, and **OpenCode**.
 
 ```ts
 // src/hooks.ts
-import { definePlugin, hook, block, replaceInput } from "@hooknostic/sdk";
+import { definePlugin, hook, block, updateShell } from "@hooknostic/sdk";
 
 export default definePlugin({
   name: "portable-repo-hooks",
@@ -38,12 +38,14 @@ export default definePlugin({
       async run(event, ctx) {
         const command = event.tool.shell?.command ?? "";
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");
-        if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          // Reading is portable; writing back is not -- keep every other field
-          // and set the key this harness actually used.
-          const input = event.tool.input as Record<string, unknown>;
-          const key = "cmd" in input ? "cmd" : "command";
-          return replaceInput({ ...input, [key]: command.replace(/^npm /, "pnpm ") });
+        if (
+          ctx.capabilities.has("tool.before.input.replace") &&
+          event.tool.shell !== undefined &&
+          command.startsWith("npm ")
+        ) {
+          // Portable write-back: lands under whichever key this harness uses
+          // (`command` on Claude/OpenCode, `cmd` on Codex), siblings preserved.
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
     }),
