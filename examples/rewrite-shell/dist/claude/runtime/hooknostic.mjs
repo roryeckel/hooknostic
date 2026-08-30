@@ -64,6 +64,7 @@ var EFFECT_CAPABILITY_SUFFIX = {
   requestApproval: "requestApproval",
   replaceInput: "input.replace",
   replaceOutput: "output.replace",
+  updateShell: "input.replace",
   addContext: "context.add",
   preventStop: "prevent",
   blockContinuation: "blockContinuation",
@@ -80,9 +81,11 @@ var TERMINAL_EFFECT = {
   blockContinuation: true,
   replaceInput: false,
   replaceOutput: false,
+  updateShell: false,
   addContext: false,
   notify: false
 };
+var EFFECT_KINDS = Object.keys(TERMINAL_EFFECT);
 function isTerminalEffect(effect) {
   return TERMINAL_EFFECT[effect.kind] === true;
 }
@@ -4321,6 +4324,8 @@ function shellCodec(shapes, options) {
       const shape = shapes[normalize(nativeName)];
       if (shape === void 0 || !isPlainObject2(input))
         return void 0;
+      if (typeof input[shape.commandKey] !== "string")
+        return void 0;
       return { ...input, [shape.commandKey]: patch.command };
     }
   };
@@ -4394,6 +4399,9 @@ var effectSchema = external_exports.discriminatedUnion("kind", [
   external_exports.object({ kind: external_exports.literal("requestApproval"), reason: external_exports.string().optional() }).strict(),
   external_exports.object({ kind: external_exports.literal("replaceInput"), input: jsonValueSchema }).strict(),
   external_exports.object({ kind: external_exports.literal("replaceOutput"), output: jsonValueSchema }).strict(),
+  // Plain string payload: no jsonValueSchema needed, and no hostile-proxy
+  // surface -- the lowered native input is built by the codec from wire data.
+  external_exports.object({ kind: external_exports.literal("updateShell"), command: external_exports.string() }).strict(),
   external_exports.object({ kind: external_exports.literal("addContext"), context: external_exports.string() }).strict(),
   external_exports.object({ kind: external_exports.literal("preventStop"), reason: external_exports.string().optional() }).strict(),
   external_exports.object({ kind: external_exports.literal("blockContinuation"), reason: external_exports.string() }).strict(),
@@ -4466,7 +4474,11 @@ var handlerErrorSchema = external_exports.object({
 var hookResultSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
   event: hookEventNameSchema,
-  effects: external_exports.array(external_exports.object({ hookId: external_exports.string(), effect: effectSchema }).strict()),
+  effects: external_exports.array(external_exports.object({
+    hookId: external_exports.string(),
+    effect: effectSchema,
+    loweredFrom: external_exports.enum(EFFECT_KINDS).optional()
+  }).strict()),
   terminatedBy: external_exports.string().optional(),
   errors: external_exports.array(handlerErrorSchema)
 }).strict();
@@ -4674,11 +4686,38 @@ async function dispatch(hooks, event, options) {
       if (terminal) break;
       continue;
     }
+    let loweredShellInput;
+    if (effect.kind === "updateShell") {
+      const tool = toolOf(event);
+      loweredShellInput = tool !== void 0 ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
+      if (loweredShellInput === void 0) {
+        const terminal = failDispatch(hook2.id, {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned "updateShell" for tool "${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has not captured; guard with event.tool.shell !== undefined, and use replaceInput for uncaptured shapes.`
+        }, capabilities);
+        if (terminal) break;
+        continue;
+      }
+    }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
         if (tool) setToolInput(tool, effect.input, options.shellCodec);
         result.effects.push({ hookId: hook2.id, effect });
+        break;
+      }
+      case "updateShell": {
+        const tool = toolOf(event);
+        if (tool === void 0) break;
+        setToolInput(tool, loweredShellInput, options.shellCodec);
+        result.effects.push({ hookId: hook2.id, effect });
+        result.effects.push({
+          hookId: hook2.id,
+          effect: { kind: "replaceInput", input: loweredShellInput },
+          loweredFrom: "updateShell"
+        });
         break;
       }
       case "replaceOutput": {

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";
 import { dispatch } from "@hooknostic/runtime";
 import { loadFixture } from "@hooknostic/testkit";
 import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
+import { claudeShellCodec } from "./toolmap.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 
 const INVOCATION = { targetId: "claude", harnessVersion: "2.1.238" };
@@ -27,11 +28,16 @@ const plugin = definePlugin({
         "tool.before.input.replace": "optional",
       },
       async run(event, ctx) {
-        const input = event.tool.input as { command?: string };
-        const command = input.command ?? "";
+        const command = event.tool.shell?.command ?? "";
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");
-        if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          return replaceInput({ ...input, command: command.replace(/^npm /, "pnpm ") });
+        if (
+          ctx.capabilities.has("tool.before.input.replace") &&
+          event.tool.shell !== undefined &&
+          command.startsWith("npm ")
+        ) {
+          // Sibling keys (description) are preserved by the codec, so the
+          // existing output fixture is unchanged from the replaceInput days.
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
     }),
@@ -44,6 +50,7 @@ async function roundTrip(nativeInput: unknown) {
     targetId: "claude",
     harness: event.harness,
     capabilities: LEVELS,
+    shellCodec: claudeShellCodec,
   });
   return applyClaude(result, nativeInput, INVOCATION);
 }

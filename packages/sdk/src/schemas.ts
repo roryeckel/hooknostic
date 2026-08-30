@@ -94,6 +94,9 @@ export const effectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("requestApproval"), reason: z.string().optional() }).strict(),
   z.object({ kind: z.literal("replaceInput"), input: jsonValueSchema }).strict(),
   z.object({ kind: z.literal("replaceOutput"), output: jsonValueSchema }).strict(),
+  // Plain string payload: no jsonValueSchema needed, and no hostile-proxy
+  // surface -- the lowered native input is built by the codec from wire data.
+  z.object({ kind: z.literal("updateShell"), command: z.string() }).strict(),
   z.object({ kind: z.literal("addContext"), context: z.string() }).strict(),
   z.object({ kind: z.literal("preventStop"), reason: z.string().optional() }).strict(),
   z.object({ kind: z.literal("blockContinuation"), reason: z.string() }).strict(),

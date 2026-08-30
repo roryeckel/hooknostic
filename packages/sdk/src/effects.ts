@@ -32,6 +32,24 @@ export interface ReplaceOutputEffect {
   readonly output: unknown;
 }
 
+/**
+ * Portable shell-command rewrite. Lowered at dispatch to a {@link
+ * ReplaceInputEffect} through the target's shell codec: the command lands
+ * under the native key (`command` for Claude's `Bash`, `cmd` for Codex's
+ * `exec_command`) with every sibling input key preserved.
+ *
+ * Legal only when `event.tool.shell` is defined -- that is the signal that the
+ * tool's argument shape is captured. Returning it for an uncaptured shape is
+ * a runtime contract violation (HN401); use {@link ReplaceInputEffect} there.
+ * Shares `tool.before.input.replace` with `replaceInput`: it is the same wire
+ * channel, and per-tool shape coverage is per-invocation data no build-time
+ * capability matrix can hold.
+ */
+export interface UpdateShellEffect {
+  readonly kind: "updateShell";
+  readonly command: string;
+}
+
 export interface AddContextEffect {
   readonly kind: "addContext";
   readonly context: string;
@@ -67,6 +85,7 @@ export type Effect =
   | RequestApprovalEffect
   | ReplaceInputEffect
   | ReplaceOutputEffect
+  | UpdateShellEffect
   | AddContextEffect
   | PreventStopEffect
   | BlockContinuationEffect
@@ -101,6 +120,17 @@ export function replaceOutput(output: unknown): ReplaceOutputEffect {
   return { kind: "replaceOutput", output };
 }
 
+/**
+ * Rewrite the shell command portably. Guard with
+ * `ctx.capabilities.has("tool.before.input.replace")` and
+ * `event.tool.shell !== undefined` -- see {@link UpdateShellEffect}. Takes a
+ * patch object so a working-directory field can be added later without a
+ * signature break.
+ */
+export function updateShell(patch: { command: string }): UpdateShellEffect {
+  return { kind: "updateShell", command: patch.command };
+}
+
 export function addContext(context: string): AddContextEffect {
   return { kind: "addContext", context };
 }
@@ -128,6 +158,7 @@ const EFFECT_CAPABILITY_SUFFIX: Record<EffectKind, string> = {
   requestApproval: "requestApproval",
   replaceInput: "input.replace",
   replaceOutput: "output.replace",
+  updateShell: "input.replace",
   addContext: "context.add",
   preventStop: "prevent",
   blockContinuation: "blockContinuation",
@@ -154,7 +185,7 @@ export function capabilityForEffect(
  * free; it sits by length to keep the longest-first rule honest.
  */
 export type EffectForCapability<Id extends CapabilityId> = Id extends `${string}.input.replace`
-  ? ReplaceInputEffect
+  ? ReplaceInputEffect | UpdateShellEffect
   : Id extends `${string}.output.replace`
     ? ReplaceOutputEffect
     : Id extends `${string}.context.add`
@@ -185,9 +216,16 @@ const TERMINAL_EFFECT: Record<EffectKind, boolean> = {
   blockContinuation: true,
   replaceInput: false,
   replaceOutput: false,
+  updateShell: false,
   addContext: false,
   notify: false,
 };
+
+/**
+ * Every effect kind, derived from the total record above so it cannot fall
+ * out of date when a kind is added. Tuple-typed for zod's `z.enum`.
+ */
+export const EFFECT_KINDS = Object.keys(TERMINAL_EFFECT) as [EffectKind, ...EffectKind[]];
 
 /** Terminal effects stop remaining handlers for a dispatch (ADR-0005). */
 export function isTerminalEffect(effect: Effect): boolean {

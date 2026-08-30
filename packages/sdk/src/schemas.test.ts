@@ -12,6 +12,7 @@ import {
   observeCapability,
   pluginSpecSchema,
   replaceInput,
+  updateShell,
   addContext,
   requestApproval,
   preventStop,
@@ -77,6 +78,9 @@ describe("effect → capability mapping", () => {
     expect(capabilityForEffect("tool.before", "replaceInput")).toBe(
       "tool.before.input.replace",
     );
+    expect(capabilityForEffect("tool.before", "updateShell")).toBe(
+      "tool.before.input.replace",
+    );
     expect(capabilityForEffect("tool.before", "requestApproval")).toBe(
       "tool.before.requestApproval",
     );
@@ -99,6 +103,7 @@ describe("effect → capability mapping", () => {
     expect(capabilityForEffect("session.end", "block")).toBeUndefined();
     expect(capabilityForEffect("tool.before", "replaceOutput")).toBeUndefined();
     expect(capabilityForEffect("tool.after", "replaceInput")).toBeUndefined();
+    expect(capabilityForEffect("tool.after", "updateShell")).toBeUndefined();
     expect(capabilityForEffect("session.start", "preventStop")).toBeUndefined();
     // notify is scoped to the stop events; nowhere else has a user-visible
     // channel that does not also change control flow.
@@ -108,6 +113,7 @@ describe("effect → capability mapping", () => {
 
   it("classifies terminal effects per ADR-0005", () => {
     expect(isTerminalEffect(block("x"))).toBe(true);
+    expect(isTerminalEffect(updateShell({ command: "x" }))).toBe(false);
     expect(isTerminalEffect(requestApproval())).toBe(true);
     expect(isTerminalEffect(preventStop())).toBe(true);
     expect(isTerminalEffect(blockContinuation("x"))).toBe(true);
@@ -157,6 +163,12 @@ describe("canonical schemas", () => {
     expect(() => effectSchema.parse({ kind: "block" })).toThrow();
     expect(() => effectSchema.parse({ kind: "allow" })).toThrow();
     expect(() => effectSchema.parse({ kind: "block", reason: "x", extra: 1 })).toThrow();
+    expect(effectSchema.parse(updateShell({ command: "pnpm i" }))).toEqual({
+      kind: "updateShell",
+      command: "pnpm i",
+    });
+    expect(() => effectSchema.parse({ kind: "updateShell" })).toThrow();
+    expect(() => effectSchema.parse({ kind: "updateShell", command: "x", cwd: "y" })).toThrow();
     expect(effectSchema.parse(notify("hi"))).toEqual({ kind: "notify", message: "hi" });
     expect(() => effectSchema.parse({ kind: "notify" })).toThrow();
     // An empty user-facing notification is definitionally a bug, so it is

@@ -2,6 +2,7 @@ import type {
   CapabilityId,
   HookEvent,
   HookResult,
+  ShellCodec,
   SupportLevel,
   TargetConfig,
   RuntimePolicy,
@@ -164,6 +165,15 @@ export interface HarnessAdapter {
    * concrete file path resolved from the adapter package itself.
    */
   shimAliases?(): Record<string, string>;
+
+  /**
+   * The two-way shell codec this adapter's shim passes to `dispatch()` --
+   * built with `shellCodec()` from a per-tool shape table. Required in
+   * practice for any adapter whose fixtures carry a `tool.shell` view:
+   * `describeAdapterContract` asserts the codec round-trips every such
+   * fixture, so the normalized read and the `updateShell` write cannot skew.
+   */
+  readonly shellCodec?: ShellCodec;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

@@ -13,6 +13,7 @@ import {
   preventStop,
   replaceInput,
   replaceOutput,
+  updateShell,
 } from "./index.js";
 
 describe("compile-time hook contracts", () => {
@@ -40,6 +41,26 @@ describe("compile-time hook contracts", () => {
       },
     });
 
+    // updateShell rides the same capability as replaceInput: declaring
+    // tool.before.input.replace licenses both, declaring neither licenses none.
+    const portable = hook("tool.before", {
+      id: "portable-rewrite",
+      capabilities: { "tool.before.input.replace": "required" },
+      async run(event) {
+        if (event.tool.shell !== undefined) return updateShell({ command: "pnpm install" });
+        return replaceInput({ command: "pnpm install" });
+      },
+    });
+
+    const undeclaredPortable = hook("tool.before", {
+      id: "undeclared-portable",
+      capabilities: { "tool.before.block": "required" },
+      // @ts-expect-error updateShell requires declaring tool.before.input.replace
+      async run() {
+        return updateShell({ command: "x" });
+      },
+    });
+
     const noCapabilities = hook("session.end", {
       id: "observe-only",
       // @ts-expect-error observe-only hooks may not return effects
@@ -49,6 +70,8 @@ describe("compile-time hook contracts", () => {
     });
 
     expect(ok.id).toBe("declared-effects");
+    expect(portable.id).toBe("portable-rewrite");
+    expect(undeclaredPortable.id).toBe("undeclared-portable");
     expect(undeclared.id).toBe("undeclared-effect");
     expect(noCapabilities.id).toBe("observe-only");
   });
