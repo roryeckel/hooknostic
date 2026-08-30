@@ -62,9 +62,23 @@ profile for a broad range.
   stdin/stdout for command-hook harnesses; in-process callbacks otherwise) and
   applies effects natively. Export it from a `./shim` package subpath so
   generated bundles never pull in compile-time machinery (core/esbuild).
+- The shim's **value** imports must stay on `@hooknostic/sdk` and
+  `@hooknostic/runtime`. `@hooknostic/core` may only be imported with
+  `import type` (erased at bundle time): one value import of it drags esbuild
+  into every generated artifact, which more than tenfolds the bundle and makes
+  it unimportable under plain Node (`Dynamic require of "fs" is not
+  supported`), even where a Bun-hosted harness happens to tolerate it. Shared
+  runtime helpers therefore belong in the SDK — `hookAppliesToTarget` lives
+  there for exactly this reason. `scripts/bundle.mjs` fails the build if a
+  shim bundle carries esbuild's CommonJS interop shim.
 - `shimEntry()` returns the per-target entry-module source; `shimAliases()`
   maps the shim specifier (`@hooknostic/adapter-<id>/shim`) to a concrete path
   (`createRequire` resolution for the monorepo).
+- Declare `shimExecution`: `"command"` if the harness spawns the artifact
+  (`node <artifact>`), `"module"` if it imports it in-process. It is what makes
+  the HN502 main-module-guard warning accurate — the guard can only fire where
+  `process.argv[1]` is the artifact itself. Leaving it undeclared silently
+  disables that diagnostic for the target.
 - The published CLI cannot resolve workspace packages, so add the adapter's
   `src/shim.ts` to `SHIMS` in `packages/cli/scripts/bundle.mjs`. It ships as
   `dist/shims/<id>.mjs` (runtime inlined, SDK external) and

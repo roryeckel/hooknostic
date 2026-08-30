@@ -50,6 +50,8 @@ of hiding them behind optimistic adapters.
 - [Design document](docs/design.md) — full architecture, contracts, and milestones
 - [Native surface baseline](docs/baseline-2026-08-20.md) — primary-source snapshot the
   adapters are built against
+- [Installing built artifacts](docs/installing-artifacts.md) — pointing each harness at
+  `hooknostic build` output, including a repo that consumes its own artifacts
 - [Adding an adapter](docs/adding-an-adapter.md) — the fixture-first adapter workflow
 - [ADRs](docs/adr/) — semantic capability model, invocation-stateless contract,
   one-dispatcher composition, Agent Plugins relationship
