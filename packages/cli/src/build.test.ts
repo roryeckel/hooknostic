@@ -180,7 +180,7 @@ describe("hooknostic build end-to-end", () => {
       expect(code).toBe(1);
 
       const report = JSON.parse(out());
-      // turn.stop.prevent is exact on claude but unsupported on opencode.
+      // turn.stop.prevent is exact on claude; on opencode the implicit turn.stop.observe is approximate, which is below the default floor.
       expect(report.targets.claude.status).toBe("success");
       expect(report.targets.opencode.status).toBe("failed");
       expect(
@@ -307,7 +307,7 @@ describe("hooknostic inspect", () => {
     expect(code).toBe(0);
     const report = JSON.parse(out());
     expect(report.target).toBe("codex");
-    expect(report.profiles[0].source.date).toBe("2026-08-20");
+    expect(report.profiles[0].source.date).toBe("2026-08-29");
     const replace = report.capabilities.find(
       (c: { capability: string }) => c.capability === "tool.after.output.replace",
     );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HookEvent, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
+import type { HookEvent, RuntimePolicy, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
 import {
   addContext,
   block,
@@ -342,6 +342,52 @@ describe("dispatch composition (ADR-0003)", () => {
       ["n2", "budget-exceeded"],
       ["n3", "budget-exceeded"],
     ]);
+  });
+
+  it("keeps the notification cap when a policy key is explicitly undefined", async () => {
+    // Enough total text to exceed the 2000-char default, so a disabled cap is
+    // observable: three 1000-char notices clamp to 2000 when the budget works
+    // and pass through at 3000 when it is NaN.
+    const hooks = Array.from({ length: 3 }, (_unused, index) =>
+      hook("turn.stop", {
+        id: `n${index}`,
+        capabilities: { "turn.stop.notify": "required" },
+        async run() {
+          return notify("x".repeat(1_000));
+        },
+      }),
+    );
+    // Spreading `{...DEFAULT_RUNTIME, ...policy}` lets an explicit undefined
+    // clobber the default; unguarded, the budget goes NaN and the cap is off.
+    // `exactOptionalPropertyTypes` blocks this through the typed API, hence the
+    // cast — but dispatch() is reachable from untyped JS inside a generated
+    // artifact, where nothing stops it.
+    const result = await dispatch(hooks, turnStop(), {
+      ...OPTIONS,
+      policy: { notifyCharLimit: undefined } as unknown as RuntimePolicy,
+    });
+    expect(notifications(result).join("").length).toBe(2_000);
+    expect(result.errors.map((e) => e.kind)).toEqual(["budget-exceeded"]);
+  });
+
+  it("never emits an empty notification from a fractional budget", async () => {
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "n1",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("abc");
+          },
+        }),
+      ],
+      turnStop(),
+      // Config values are guarded by .int().positive(); dispatch() is not, and
+      // slice(0, 0.5) would push an empty message that effectSchema rejects.
+      { ...OPTIONS, policy: { notifyCharLimit: 0.5 } },
+    );
+    expect(notifications(result)).toEqual([]);
+    expect(result.errors.map((e) => e.kind)).toEqual(["budget-exceeded"]);
   });
 
   it("rejects notify where the event has no notification channel", async () => {

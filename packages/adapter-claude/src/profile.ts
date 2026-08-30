@@ -13,7 +13,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
   {
     range: ">=2.0 <3",
     source: {
-      date: "2026-08-20",
+      date: "2026-08-29",
       references: [
         "https://code.claude.com/docs/en/hooks",
         "fixtures/claude/2.1 (captured 2.1.238)",
