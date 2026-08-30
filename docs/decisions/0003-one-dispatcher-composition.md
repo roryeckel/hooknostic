@@ -1,6 +1,7 @@
 # Decision 0003 — One entry point runs all your hooks, in order
 
 **Status:** Accepted — 2026-08-20 · Referenced from code and docs as **ADR-0003**
+**Superseded in part by:** ADR-0005 (composition rules 4–6). Rules 1–3 and 7–8 stand.
 
 **In short:** if every hook you wrote became its own native hook, each agent tool would
 decide the ordering and how results merge — differently. Instead, Hooknostic registers
