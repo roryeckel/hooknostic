@@ -55,8 +55,10 @@ present; it never mutates or forks the Agent Plugins root schema.
 
 ### 2.2 Interoperability baseline
 
-See [baseline-2026-08-20.md](./baseline-2026-08-20.md) for the primary-source snapshot
-(Claude Code 2.1.238, Codex CLI 0.148.0, OpenCode 1.18.18).
+See [harness-support.md](./harness-support.md) for the current validated versions
+(generated from the adapter metadata), and
+[baseline-2026-08-20.md](./baseline-2026-08-20.md) for the dated primary-source
+snapshot.
 
 **Important constraint:** native hook APIs are moving targets. Capability data is
 versioned; decoders are tolerant of additive vendor fields. "Harness X supports Y" is
@@ -682,8 +684,10 @@ reinterpret unsupported control semantics.
 ### 11.4 Versioned capability data
 
 ```ts
+// Illustrative -- a fake harness; real profiles live in
+// packages/adapter-*/src/profile.ts and docs/harness-support.md.
 const capabilityProfiles = [
-  { range: ">=0.140 <0.150", matrix: codex0148Capabilities },
+  { range: ">=1.0 <1.5", matrix: fooV1Capabilities },
 ];
 ```
 

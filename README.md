@@ -121,7 +121,8 @@ pnpm lint
 ## Status
 
 v0.1: all three adapters are implemented against fixtures captured from real installed
-harnesses (Claude Code 2.1.238, Codex CLI 0.148.0, OpenCode 1.18.18) and verified by
+harnesses (the exact builds are listed in [docs/harness-support.md](docs/harness-support.md),
+generated from the adapter metadata) and verified by
 live smoke tests (`HOOKNOSTIC_SMOKE=1 pnpm test`): tool blocking, input rewriting, and
 context injection observed working end-to-end in real sessions of all three. `check`,
 `build`, `doctor`, and `inspect` are functional; builds are atomic (nothing is written
