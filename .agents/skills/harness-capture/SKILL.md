@@ -85,4 +85,12 @@ writes a marker file, or read the spawned command line from the debug log.
 4. A novel *procedure* (not just a payload) gets its own `.capture/<name>/`
    directory with a README recording question, method, observation, and
    consequences.
-5. Never name downstream consumers in capture records (see `AGENTS.md`).
+5. **Append a `ValidationRecord`** to the relevant profile's
+   `source.validatedOn` (`packages/adapter-*/src/profile.ts`): version, date,
+   method (the classes above map one-to-one), evidence path, and one line of
+   what the session established. The contract suite requires the record's
+   version to fall inside a profile range, and `doctor`/`inspect`/the
+   generated `docs/harness-support.md` all read it -- a capture session that
+   skips this step is invisible to every consumer surface. Then rerun
+   `node scripts/generate-harness-support.mjs`.
+6. Never name downstream consumers in capture records (see `AGENTS.md`).
