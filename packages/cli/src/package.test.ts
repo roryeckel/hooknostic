@@ -109,6 +109,9 @@ describe("public package outputs", () => {
         specifiers.filter((s) => !s.startsWith("node:") && s !== "@hooknostic/sdk"),
         id,
       ).toEqual([]);
+      // A shim that reaches into the compiler drags esbuild in with it, and
+      // esbuild's CommonJS interop shim throws on import under plain Node.
+      expect(code, id).not.toContain('Dynamic require of "');
     }
   });
 
@@ -228,7 +231,16 @@ describe("simulated registry install", () => {
         expect(code, artifact).not.toMatch(/(from\s+|import\(|require\()["']@hooknostic\//);
         // …and the shim shared the project's SDK instead of bundling a second zod.
         expect((code.match(/^\/\/ .*\/zod\/v3\/ZodError\.js$/gm) ?? []).length, artifact).toBe(1);
+        // …and nothing dragged a CommonJS build-time dependency in with it.
+        expect(code, artifact).not.toContain('Dynamic require of "');
       }
+
+      // OpenCode loads its plugin as a module, so plain Node must be able to
+      // import the artifact — a bundled CommonJS dependency throws here.
+      const loaded = (await import(
+        pathToFileURL(join(project, "dist/opencode/.opencode/plugins/hooknostic.js")).href
+      )) as { HooknosticPlugin?: unknown };
+      expect(loaded.HooknosticPlugin).toBeTypeOf("function");
     },
   );
 });

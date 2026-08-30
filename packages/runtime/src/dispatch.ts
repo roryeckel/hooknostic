@@ -15,6 +15,7 @@ import {
   DEFAULT_RUNTIME,
   capabilityForEffect,
   effectSchema,
+  hookAppliesToTarget,
   isTerminalEffect,
   matchesTool,
   meetsMinimum,
@@ -43,12 +44,6 @@ export interface DispatchOptions {
   /** Compatibility floor applied to optional capabilities for this target. */
   minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
-}
-
-function appliesToTarget(hook: HookDefinition, targetId: string): boolean {
-  if (hook.targets?.include && !hook.targets.include.includes(targetId)) return false;
-  if (hook.targets?.exclude && hook.targets.exclude.includes(targetId)) return false;
-  return true;
 }
 
 function toolOf(event: HookEvent): ToolInvocation | undefined {
@@ -98,7 +93,7 @@ export async function dispatch(
 
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;
-    if (!appliesToTarget(hook, options.targetId)) return false;
+    if (!hookAppliesToTarget(hook, options.targetId)) return false;
     const tool = toolOf(event);
     if (hook.match && tool && !matchesTool(hook.match, tool)) return false;
     return true;

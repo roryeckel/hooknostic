@@ -1,5 +1,7 @@
-import { hookAppliesToTarget } from "@hooknostic/core";
 import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+// Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
+// the shim bundles esbuild into every generated artifact (see docs/design.md).
+import { hookAppliesToTarget } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch } from "@hooknostic/runtime";
 import { planOpenCodeApplication } from "./apply.js";
