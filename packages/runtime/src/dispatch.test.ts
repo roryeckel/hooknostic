@@ -11,6 +11,7 @@ import {
   replaceOutput,
   requestApproval,
   shellCodec,
+  updateShell,
 } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "./dispatch.js";
 import {
@@ -1004,5 +1005,147 @@ describe("shell view coherence across rewrites", () => {
     const event = shellEvent();
     await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
     expect(event.tool.shell).toBeUndefined();
+  });
+});
+
+describe("updateShell lowering", () => {
+  const codexish = shellCodec({
+    Bash: { commandKey: "command" },
+    exec_command: { commandKey: "cmd", cwdKey: "workdir" },
+  });
+
+  function execCommandEvent(): ToolBeforeEvent {
+    const event = toolBefore({ cmd: "npm install", workdir: "C:/proj", login: false });
+    event.tool.nativeName = "exec_command";
+    const shell = codexish.classify("exec_command", event.tool.input);
+    if (shell !== undefined) event.tool.shell = shell;
+    return event;
+  }
+
+  const rewriter = hook("tool.before", {
+    id: "rewriter",
+    capabilities: { "tool.before.input.replace": "required" },
+    async run() {
+      return updateShell({ command: "pnpm install" });
+    },
+  });
+
+  it("lowers to the native key of whichever tool the event carries", async () => {
+    // One hook body, two shapes: the same updateShell lands under `cmd` for
+    // exec_command and `command` for Bash -- the portability replaceInput
+    // could not offer.
+    const execEvent = execCommandEvent();
+    await dispatch([rewriter], execEvent, { ...OPTIONS, shellCodec: codexish });
+    expect(execEvent.tool.input).toEqual({
+      cmd: "pnpm install",
+      workdir: "C:/proj",
+      login: false,
+    });
+    expect(execEvent.tool.shell?.command).toBe("pnpm install");
+
+    const bashEvent = toolBefore({ command: "npm install" });
+    await dispatch([rewriter], bashEvent, { ...OPTIONS, shellCodec: codexish });
+    expect(bashEvent.tool.input).toEqual({ command: "pnpm install" });
+  });
+
+  it("records the portable effect and its lowering as adjacent entries", async () => {
+    const event = execCommandEvent();
+    const result = await dispatch([rewriter], event, { ...OPTIONS, shellCodec: codexish });
+    expect(result.effects).toEqual([
+      { hookId: "rewriter", effect: { kind: "updateShell", command: "pnpm install" } },
+      {
+        hookId: "rewriter",
+        effect: {
+          kind: "replaceInput",
+          input: { cmd: "pnpm install", workdir: "C:/proj", login: false },
+        },
+        loweredFrom: "updateShell",
+      },
+    ]);
+    // Adapters resolve the last replaceInput; the lowered entry is one.
+    expect(replacedInput(result)).toEqual({
+      value: { cmd: "pnpm install", workdir: "C:/proj", login: false },
+    });
+  });
+
+  it("rejects updateShell for an uncaptured tool shape as HN401", async () => {
+    const event = toolBefore({ someKey: "echo x" });
+    event.tool.nativeName = "shell"; // classified shell-kind, shape never captured
+    const result = await dispatch([rewriter], event, { ...OPTIONS, shellCodec: codexish });
+    expect(result.effects).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ kind: "unsupported-effect", code: "HN401" });
+    expect(result.errors[0]!.message).toContain("event.tool.shell");
+    expect(event.tool.input).toEqual({ someKey: "echo x" }); // untouched
+  });
+
+  it("rejects updateShell when no codec was supplied", async () => {
+    const result = await dispatch([rewriter], toolBefore({ command: "x" }), OPTIONS);
+    expect(result.effects).toEqual([]);
+    expect(result.errors[0]).toMatchObject({ code: "HN401" });
+  });
+
+  it("rejects updateShell without the input.replace declaration", async () => {
+    const undeclared = hook("tool.before", {
+      id: "undeclared",
+      async run() {
+        return updateShell({ command: "y" }) as never;
+      },
+    });
+    const result = await dispatch([undeclared], toolBefore({ command: "x" }), {
+      ...OPTIONS,
+      shellCodec: codexish,
+    });
+    expect(result.errors[0]!.message).toContain("without declaring");
+  });
+
+  it("composes with replaceInput in either order, last write winning", async () => {
+    const rawRewriter = hook("tool.before", {
+      id: "raw",
+      capabilities: { "tool.before.input.replace": "required" },
+      async run() {
+        return replaceInput({ cmd: "yarn install", workdir: "C:/other" });
+      },
+    });
+
+    // updateShell then replaceInput: the later raw replace wins wholesale.
+    let event = execCommandEvent();
+    let result = await dispatch([rewriter, rawRewriter], event, {
+      ...OPTIONS,
+      shellCodec: codexish,
+    });
+    expect(replacedInput(result)).toEqual({
+      value: { cmd: "yarn install", workdir: "C:/other" },
+    });
+
+    // replaceInput then updateShell: the patch merges into the REPLACED input,
+    // because tool.input and tool.shell were re-derived before it ran.
+    event = execCommandEvent();
+    result = await dispatch([rawRewriter, rewriter], event, {
+      ...OPTIONS,
+      shellCodec: codexish,
+    });
+    expect(replacedInput(result)).toEqual({
+      value: { cmd: "pnpm install", workdir: "C:/other" },
+    });
+  });
+
+  it("is HN401 after an earlier replaceInput leaves the input unclassifiable", async () => {
+    const breaker = hook("tool.before", {
+      id: "breaker",
+      capabilities: { "tool.before.input.replace": "required" },
+      async run() {
+        return replaceInput({ notCmd: true });
+      },
+    });
+    const event = execCommandEvent();
+    const result = await dispatch([breaker, rewriter], event, {
+      ...OPTIONS,
+      shellCodec: codexish,
+    });
+    // The later hook could have detected this: event.tool.shell was deleted
+    // when the replacement stopped classifying.
+    expect(result.errors[0]).toMatchObject({ hookId: "rewriter", code: "HN401" });
+    expect(event.tool.input).toEqual({ notCmd: true });
   });
 });

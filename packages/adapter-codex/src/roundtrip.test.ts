@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";
 import { dispatch } from "@hooknostic/runtime";
 import { loadFixture } from "@hooknostic/testkit";
 import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
 import { codexCapabilityProfiles } from "./profile.js";
+import { codexShellCodec } from "./toolmap.js";
 
 const INVOCATION = { targetId: "codex", harnessVersion: "0.148.0" };
 const LEVELS = Object.fromEntries(
@@ -22,11 +23,16 @@ const plugin = definePlugin({
         "tool.before.input.replace": "optional",
       },
       async run(event, ctx) {
-        const input = event.tool.input as { command?: string };
-        const command = input.command ?? "";
+        // One hook body serving both Codex shell tools: the codec lowers the
+        // rewrite to `command` for Bash and `cmd` for exec_command.
+        const command = event.tool.shell?.command ?? "";
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");
-        if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          return replaceInput({ command: command.replace(/^npm /, "pnpm ") });
+        if (
+          ctx.capabilities.has("tool.before.input.replace") &&
+          event.tool.shell !== undefined &&
+          command.startsWith("npm ")
+        ) {
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
     }),
@@ -39,6 +45,7 @@ async function roundTrip(nativeInput: unknown) {
     targetId: "codex",
     harness: event.harness,
     capabilities: LEVELS,
+    shellCodec: codexShellCodec,
   });
   return applyCodex(result, nativeInput, INVOCATION);
 }
@@ -62,6 +69,24 @@ describe("golden round-trip (codex)", () => {
     );
     const native = await roundTrip({ ...input, tool_input: { command: "npm install" } });
     expect(native).toEqual(loadFixture("codex", "0.148", "pre-tool-rewrite.output.json"));
+  });
+
+  it("rewrites an exec_command invocation under its own native key", async () => {
+    // The pairing whose absence hid the key mismatch: the same hook body as
+    // above, landing under `cmd`/`workdir` instead of `command`.
+    const input = loadFixture<Record<string, unknown>>(
+      "codex",
+      "0.148",
+      "pre-tool-exec-command.input.json",
+    );
+    const toolInput = input["tool_input"] as Record<string, unknown>;
+    const native = await roundTrip({
+      ...input,
+      tool_input: { ...toolInput, cmd: "npm install" },
+    });
+    expect(native).toEqual(
+      loadFixture("codex", "0.148", "pre-tool-exec-command-rewrite.output.json"),
+    );
   });
 
   it("continues unchanged for benign commands", async () => {

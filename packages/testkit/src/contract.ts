@@ -96,6 +96,32 @@ export function describeAdapterContract(
       expect(unknown, `unregistered capability ids: ${unknown.join(", ")}`).toEqual([]);
     });
 
+    it("round-trips the shell view of every fixture through its codec", () => {
+      // Two-way consistency as an adapter obligation, not a first-party
+      // habit: wherever a canonical fixture advertises a normalized shell
+      // view, the adapter's codec must (i) exist, (ii) re-derive that view
+      // from the fixture's own input, and (iii) encode a command patch that
+      // classifies back to the patched command under the same native key. A
+      // fourth adapter shipping a one-way toolmap fails here.
+      for (const name of fixtureNames) {
+        const fixture = loadFixtureFrom<{
+          tool?: { nativeName: string; input: unknown; shell?: { command: string } };
+        }>(join(options.fixturesDir, name));
+        const tool = fixture.tool;
+        if (tool?.shell === undefined) continue;
+        expect(adapter.shellCodec, `${name} has tool.shell but adapter has no codec`).toBeDefined();
+        const classified = adapter.shellCodec!.classify(tool.nativeName, tool.input);
+        expect(classified, `${name}: codec does not classify its own fixture`).toEqual(tool.shell);
+        const encoded = adapter.shellCodec!.encode(tool.nativeName, tool.input, {
+          command: "hooknostic-contract-probe",
+        });
+        expect(
+          adapter.shellCodec!.classify(tool.nativeName, encoded)?.command,
+          `${name}: encode does not round-trip through classify`,
+        ).toBe("hooknostic-contract-probe");
+      }
+    });
+
     it("declares how its artifact is executed", () => {
       // shimExecution decides whether a bundled CLI main guard is a hazard
       // (HN502) and whether process.execPath is the host rather than Node.

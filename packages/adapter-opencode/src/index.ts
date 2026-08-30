@@ -19,6 +19,7 @@ import { applyOpenCode } from "./apply.js";
 import { decodeOpenCode } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
+import { opencodeShellCodec } from "./toolmap.js";
 
 export {
   applyOpenCode,
@@ -80,6 +81,7 @@ export function opencodeAdapter(): HarnessAdapter {
     adapterVersion: ADAPTER_OPENCODE_VERSION,
     // OpenCode imports the plugin module in-process.
     shimExecution: "module",
+    shellCodec: opencodeShellCodec,
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);

@@ -19,6 +19,7 @@ import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
 import { codexCapabilityProfiles } from "./profile.js";
+import { codexShellCodec } from "./toolmap.js";
 
 export { applyCodex } from "./apply.js";
 export { CodexDecodeError, decodeCodex } from "./decode.js";
@@ -69,6 +70,7 @@ export function codexAdapter(): HarnessAdapter {
     adapterVersion: ADAPTER_CODEX_VERSION,
     // Codex spawns `node <artifact>` per hook event.
     shimExecution: "command",
+    shellCodec: codexShellCodec,
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);

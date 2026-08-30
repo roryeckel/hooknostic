@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Effect } from "./effects.js";
+import { EFFECT_KINDS } from "./effects.js";
 import { effectSchema } from "./schemas.js";
 import type { HookEventName } from "./events.js";
 import { hookEventNameSchema } from "./schemas.js";
@@ -8,6 +9,14 @@ import { hookEventNameSchema } from "./schemas.js";
 export interface AppliedEffect {
   hookId: string;
   effect: Effect;
+  /**
+   * Set when this entry is the dispatch's lowering of a portable effect
+   * recorded immediately before it (e.g. `updateShell` lowered to a
+   * `replaceInput` carrying the encoded native input). Keeps the synthesized
+   * entry from reading as something the hook itself returned, while letting
+   * adapters consume the lowered form with no knowledge of the portable one.
+   */
+  loweredFrom?: Effect["kind"];
 }
 
 /**
@@ -66,7 +75,13 @@ export const hookResultSchema = z
     schemaVersion: z.literal(1),
     event: hookEventNameSchema,
     effects: z.array(
-      z.object({ hookId: z.string(), effect: effectSchema }).strict(),
+      z
+        .object({
+          hookId: z.string(),
+          effect: effectSchema,
+          loweredFrom: z.enum(EFFECT_KINDS).optional(),
+        })
+        .strict(),
     ),
     terminatedBy: z.string().optional(),
     errors: z.array(handlerErrorSchema),

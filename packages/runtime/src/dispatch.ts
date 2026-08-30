@@ -291,12 +291,56 @@ export async function dispatch(
       continue;
     }
 
+    // Lower a portable shell rewrite before the apply switch, so its failure
+    // path shares the ladder's semantics above (record the error, then move to
+    // the next hook or stop, per the error policy). encode() declines exactly
+    // when classify() does, so this failing implies event.tool.shell was
+    // undefined -- the documented feature-detect signal.
+    let loweredShellInput: unknown;
+    if (effect.kind === "updateShell") {
+      const tool = toolOf(event);
+      loweredShellInput =
+        tool !== undefined
+          ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command })
+          : undefined;
+      if (loweredShellInput === undefined) {
+        const terminal = failDispatch(hook.id, {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message:
+            `hook "${hook.id}" returned "updateShell" for tool ` +
+            `"${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has ` +
+            `not captured; guard with event.tool.shell !== undefined, and use ` +
+            `replaceInput for uncaptured shapes.`,
+        }, capabilities);
+        if (terminal) break;
+        continue;
+      }
+    }
+
     // Apply the effect (mutations become visible to subsequent handlers).
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
         if (tool) setToolInput(tool, effect.input, options.shellCodec);
         result.effects.push({ hookId: hook.id, effect });
+        break;
+      }
+      case "updateShell": {
+        const tool = toolOf(event);
+        if (tool === undefined) break; // unreachable: lowering above required it
+        setToolInput(tool, loweredShellInput, options.shellCodec);
+        // Two entries: the portable effect as the hook returned it, then the
+        // lowering the adapters actually consume. apply() implementations keep
+        // resolving the last replaceInput with no knowledge of updateShell,
+        // and mixed updateShell/replaceInput ordering stays one ordered list.
+        result.effects.push({ hookId: hook.id, effect });
+        result.effects.push({
+          hookId: hook.id,
+          effect: { kind: "replaceInput", input: loweredShellInput },
+          loweredFrom: "updateShell",
+        });
         break;
       }
       case "replaceOutput": {

@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "body": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "allow",
+      "updatedInput": {
+        "cmd": "pnpm install",
+        "workdir": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools"
+      }
+    }
+  }
+}

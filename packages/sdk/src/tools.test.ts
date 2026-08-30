@@ -33,6 +33,14 @@ describe("shellCodec", () => {
     expect(input.cmd).toBe("echo old"); // the original is never mutated
   });
 
+  it("declines encode when the input does not currently classify", () => {
+    // The command key must presently hold a string. classify() and encode()
+    // agree on this, so event.tool.shell being defined is the one signal for
+    // both directions.
+    expect(CODEC.encode("Bash", { notCommand: true }, { command: "y" })).toBeUndefined();
+    expect(CODEC.encode("exec_command", { cmd: 42 }, { command: "y" })).toBeUndefined();
+  });
+
   it("declines both directions for an uncaptured tool name", () => {
     expect(CODEC.classify("shell", { cmd: "echo x" })).toBeUndefined();
     expect(CODEC.encode("shell", { cmd: "echo x" }, { command: "y" })).toBeUndefined();

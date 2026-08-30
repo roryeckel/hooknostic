@@ -125,6 +125,11 @@ export function shellCodec(
       // A non-plain-object input is declined: `{...["a"]}` would silently
       // produce `{"0":"a"}` -- a garbage native input, not an honest refusal.
       if (shape === undefined || !isPlainObject(input)) return undefined;
+      // Decline exactly when classify() would: an input whose command key is
+      // not currently a string does not classify, so "reading works" stays
+      // the one feature-detect signal for "writing works". Writing anyway
+      // would fabricate a command on a payload we no longer understand.
+      if (typeof input[shape.commandKey] !== "string") return undefined;
       return { ...input, [shape.commandKey]: patch.command };
     },
   };

@@ -7,6 +7,7 @@ import {
   notify,
   preventStop,
   replaceInput,
+  updateShell,
   replaceOutput,
 } from "@hooknostic/sdk";
 import { opencodeCapabilityProfiles } from "./profile.js";
@@ -30,10 +31,14 @@ function smokePlugin() {
           "tool.before.input.replace": "optional",
         },
         async run(event, ctx) {
-          const { command = "" } = event.tool.input as { command?: string };
+          const command = event.tool.shell?.command ?? "";
           if (command.includes("rm -rf /")) return block("blocked by guard");
-          if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-            return replaceInput({ command: command.replace(/^npm /, "pnpm ") });
+          if (
+            ctx.capabilities.has("tool.before.input.replace") &&
+            event.tool.shell !== undefined &&
+            command.startsWith("npm ")
+          ) {
+            return updateShell({ command: command.replace(/^npm /, "pnpm ") });
           }
         },
       }),
