@@ -145,7 +145,10 @@ describe("Codex command shim stream draining", () => {
       child.stdin.end(input);
     });
     expect(result.code).toBe(0);
-    expect(result.stderr).toBe("");
+    // The timeout that used to vanish is now named on stderr. Codex's wire
+    // schemas are additionalProperties:false, so this cannot ride in the JSON
+    // body -- stderr is the only channel that does not become a vendor error.
+    expect(result.stderr).toContain("hooknostic timeout [slow]");
     expect(JSON.parse(result.stdout).hookSpecificOutput.updatedInput).toEqual({
       command: "after-timeout",
     });

@@ -118,7 +118,13 @@ describe("Claude command shim stream draining", () => {
       { "prompt.before.observe": "exact", "prompt.before.block": "exact" },
       25,
     );
-    expect(result).toMatchObject({ code: 2, stderr: "blocked after timeout" });
+    expect(result.code).toBe(2);
+    // The block reason still reaches the harness...
+    expect(result.stderr).toContain("blocked after timeout");
+    // ...and the timeout that used to vanish is now named. Before this, a hook
+    // that blew its budget produced no output anywhere and the dispatch looked
+    // like a clean pass.
+    expect(result.stderr).toContain("hooknostic timeout [slow]");
     expect(result.elapsedMs).toBeLessThan(2_000);
   });
 });

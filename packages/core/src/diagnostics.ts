@@ -1,3 +1,4 @@
+import { RUNTIME_DIAGNOSTIC_CODES } from "@hooknostic/sdk";
 import type {
   CapabilityId,
   HookEventName,
@@ -30,6 +31,14 @@ export const DIAGNOSTIC_CODES = {
 } as const;
 
 export type DiagnosticCode = keyof typeof DIAGNOSTIC_CODES;
+
+/**
+ * The runtime declares its own copy of the codes it can raise, because the SDK
+ * cannot depend on this package. This line is what stops the two drifting: a
+ * code the runtime raises that is not registered here is a compile error.
+ */
+const _runtimeCodesAreRegistered: readonly DiagnosticCode[] = RUNTIME_DIAGNOSTIC_CODES;
+void _runtimeCodesAreRegistered;
 
 export type DiagnosticSeverity = "error" | "warn" | "info";
 

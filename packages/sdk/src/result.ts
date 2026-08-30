@@ -10,9 +10,27 @@ export interface AppliedEffect {
   effect: Effect;
 }
 
+/**
+ * The diagnostic codes the runtime can raise.
+ *
+ * A subset of `DIAGNOSTIC_CODES` in `@hooknostic/core`, duplicated here rather
+ * than imported: the SDK cannot depend on core (circular, and core carries
+ * esbuild), and a shim must never value-import core or the bundler ends up in
+ * every artifact. `packages/core/src/diagnostics.ts` asserts the two agree, so
+ * the duplication cannot drift silently.
+ */
+export const RUNTIME_DIAGNOSTIC_CODES = ["HN103", "HN401"] as const;
+export type RuntimeDiagnosticCode = (typeof RUNTIME_DIAGNOSTIC_CODES)[number];
+
 export interface HandlerError {
   hookId: string;
   kind: "error" | "timeout" | "unsupported-effect" | "budget-exceeded";
+  /**
+   * Diagnostic code, where one applies. Present so a consumer can branch on the
+   * failure rather than parse prose -- the code used to be a prefix inside
+   * `message`, which made HN401 and HN103 indistinguishable programmatically.
+   */
+  code?: RuntimeDiagnosticCode;
   message: string;
 }
 
@@ -32,10 +50,13 @@ export interface HookResult {
   errors: HandlerError[];
 }
 
+export const runtimeDiagnosticCodeSchema = z.enum(RUNTIME_DIAGNOSTIC_CODES);
+
 export const handlerErrorSchema = z
   .object({
     hookId: z.string(),
     kind: z.enum(["error", "timeout", "unsupported-effect", "budget-exceeded"]),
+    code: runtimeDiagnosticCodeSchema.optional(),
     message: z.string(),
   })
   .strict();
