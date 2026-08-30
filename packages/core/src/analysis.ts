@@ -40,8 +40,36 @@ export interface AnalysisResult {
   ok: boolean;
 }
 
+/**
+ * Three call sites, three different fixes. They shared one string until a real
+ * consumer hit the observe case and was told to do four things, none of which
+ * work there.
+ */
 const REMEDIATION_UNSUPPORTED =
   "make the capability optional, add a target-specific fallback, exclude the target from this hook, or narrow the build target.";
+
+/**
+ * The implicit `<event>.observe` capability, below the fidelity floor.
+ *
+ * `DeclarableCapability` excludes `.observe` by construction, so the author
+ * never declared it and *cannot* make it optional -- the analyzer synthesized
+ * the requirement. The only fixes are to accept the lower fidelity or to stop
+ * targeting this harness, and the first is the one people want: an OpenCode
+ * `turn.stop` hook trips this under the default floor, which made "give up on
+ * OpenCode" the advice for the most likely second hook anyone writes.
+ */
+const REMEDIATION_OBSERVE_BELOW_MINIMUM =
+  'accept the lower fidelity for this target with `compatibility: { minimum: "<observed level>" }`, ' +
+  "or exclude this target from the hook.";
+
+/**
+ * A declared capability that exists but is below the floor. Making it optional
+ * does not help: an optional capability below the minimum is reported
+ * unavailable too, so `ctx.capabilities.has()` still returns false.
+ */
+const REMEDIATION_BELOW_MINIMUM =
+  'accept the lower fidelity with `compatibility: { minimum: "<observed level>" }` or ' +
+  '`onBelowMinimum: "warn"`, add a target-specific fallback, or exclude the target from this hook.';
 
 /**
  * Capability analysis (design §7.7). Pure semantic analysis — requires no
@@ -215,7 +243,7 @@ export function analyzeCapabilities(
             support: observed.support,
             ...(observed.rationale !== undefined ? { rationale: observed.rationale } : {}),
             message: `observing "${hook.event}" on "${targetId}" is ${observed.support}, below the configured minimum fidelity "${policy.minimum}".`,
-            remediation: REMEDIATION_UNSUPPORTED,
+            remediation: REMEDIATION_OBSERVE_BELOW_MINIMUM,
           });
         } else if (observed.support !== "exact") {
           targetDiagnostics.push({
@@ -268,7 +296,7 @@ export function analyzeCapabilities(
                 support,
                 ...rationaleField,
                 message: `required capability "${capability}" is ${support} on "${targetId}", below the configured minimum fidelity "${policy.minimum}".`,
-                remediation: REMEDIATION_UNSUPPORTED,
+                remediation: REMEDIATION_BELOW_MINIMUM,
               });
             } else if (support !== "exact") {
               targetDiagnostics.push({
