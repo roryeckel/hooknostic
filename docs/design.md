@@ -506,8 +506,40 @@ HN201 capability unsupported
 
 Initial codes: **HN101** degraded capability, **HN102** optional capability unavailable,
 **HN201** required capability unsupported, **HN202** event unavailable, **HN203** target
-version outside adapter data, **HN301** adapter generation failure, **HN401** unsupported
-effect returned at runtime, **HN501** invalid configuration.
+version outside adapter data, **HN204** artifact mode unsupported, **HN301** adapter
+generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
+at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point.
+
+#### HN502 — bundled CLI entry point
+
+A hook source is *bundled*, not executed as a program, so the idiomatic ESM
+main-module guard behaves differently than it does in the source tree:
+
+```ts
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+```
+
+After bundling, both sides of that comparison name the **generated artifact**,
+so a guard that was dormant in the source becomes unconditionally true and its
+command-line body runs on every hook dispatch — typically consuming the
+harness's stdin before the dispatcher can read the event payload, which
+presents as a hook that silently receives nothing.
+
+This only happens where the harness **executes** the artifact. An adapter
+declares which it is via `shimExecution`: `"command"` (Claude, Codex — spawned
+as `node <artifact>`, so `process.argv[1]` *is* the artifact) or `"module"`
+(OpenCode — imported in-process, so `process.argv[1]` stays the harness's own
+entry and the guard remains false). Adapters that declare neither are treated
+as unknown and never reported.
+
+HN502 is therefore raised once per build, naming the command-executed targets it
+affects. Keep the command-line entry point in a module the hook source does not
+import, or gate it on an explicit environment variable.
+
+Detection is a bounded regex over the bundle that requires an actual comparison
+between `import.meta.url` and `process.argv[1]` — reading both values for
+unrelated reasons is not reported. It is a warning, not an error, because no JS
+parser is available to the published CLI to make the check structural.
 
 ### 9.2 Distinct commands
 
