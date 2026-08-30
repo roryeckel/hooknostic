@@ -75,6 +75,27 @@ describe("shellCodec", () => {
     });
   });
 
+  it("declines prototype-member tool names and non-plain instances", () => {
+    // A tool named "constructor" must not resolve Object.prototype members,
+    // and OpenCode's in-process shim can hand the codec live class instances
+    // -- spreading one strips its prototype silently instead of declining.
+    for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(CODEC.classify(name, { command: "x" })).toBeUndefined();
+      expect(CODEC.encode(name, { command: "x" }, { command: "y" })).toBeUndefined();
+    }
+    class Boxed {
+      command = "echo x";
+    }
+    expect(CODEC.classify("Bash", new Boxed())).toBeUndefined();
+    expect(CODEC.encode("Bash", new Boxed(), { command: "y" })).toBeUndefined();
+    expect(CODEC.classify("Bash", new Date())).toBeUndefined();
+    // Null-prototype objects are honest data and stay accepted.
+    const bare = Object.assign(Object.create(null) as Record<string, unknown>, {
+      command: "echo x",
+    });
+    expect(CODEC.classify("Bash", bare)?.command).toBe("echo x");
+  });
+
   it("applies normalizeName to the lookup", () => {
     const lower = shellCodec({ bash: { commandKey: "command" } }, {
       normalizeName: (n) => n.toLowerCase(),

@@ -3,6 +3,7 @@ import type {
   HookEvent,
   HookResult,
   ShellCodec,
+  ShellShapes,
   SupportLevel,
   TargetConfig,
   RuntimePolicy,
@@ -174,6 +175,13 @@ export interface HarnessAdapter {
    * fixture, so the normalized read and the `updateShell` write cannot skew.
    */
   readonly shellCodec?: ShellCodec;
+
+  /**
+   * The shape table the codec was built from. Exposed so the contract suite
+   * can audit COVERAGE from the table side: every entry must be backed by a
+   * shell-bearing fixture, or a new entry ships silently untested.
+   */
+  readonly shellShapes?: ShellShapes;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

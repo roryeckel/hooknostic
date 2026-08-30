@@ -4300,13 +4300,19 @@ var TOOL_KINDS = [
   "other"
 ];
 function isPlainObject2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null)
+    return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+function shapeOf(shapes, key) {
+  return Object.hasOwn(shapes, key) ? shapes[key] : void 0;
 }
 function shellCodec(shapes, options) {
   const normalize = options?.normalizeName ?? ((name) => name);
   return {
     classify(nativeName, input) {
-      const shape = shapes[normalize(nativeName)];
+      const shape = shapeOf(shapes, normalize(nativeName));
       if (shape === void 0 || !isPlainObject2(input))
         return void 0;
       const command = input[shape.commandKey];
@@ -4321,7 +4327,7 @@ function shellCodec(shapes, options) {
       };
     },
     encode(nativeName, input, patch) {
-      const shape = shapes[normalize(nativeName)];
+      const shape = shapeOf(shapes, normalize(nativeName));
       if (shape === void 0 || !isPlainObject2(input))
         return void 0;
       if (typeof input[shape.commandKey] !== "string")
@@ -4497,7 +4503,8 @@ var hooks_default = definePlugin({
         "tool.before.input.replace": "optional"
       },
       async run(event, ctx) {
-        const command = event.tool.shell?.command ?? "";
+        const raw = event.tool.input.command;
+        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
@@ -4899,7 +4906,7 @@ function classifyCodexTool(nativeName, input) {
   }
   const shell = codexShellCodec.classify(nativeName, input);
   return {
-    kind: EXACT[nativeName] ?? "other",
+    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : void 0) ?? "other",
     nativeName,
     input,
     ...shell !== void 0 ? { shell } : {}
@@ -5030,8 +5037,11 @@ async function runCodexCommandShim(plugin, options) {
     if (native.body !== void 0) await writeStream(process.stdout, JSON.stringify(native.body));
     if (native.stderr !== void 0) await writeStream(process.stderr, native.stderr);
     const diagnostics = formatHandlerErrors(result);
-    if (diagnostics !== void 0) await writeStream(process.stderr, `${diagnostics}
+    if (diagnostics !== void 0) {
+      const separator = native.stderr !== void 0 && !native.stderr.endsWith("\n") ? "\n" : "";
+      await writeStream(process.stderr, `${separator}${diagnostics}
 `);
+    }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CodexDecodeError)) {

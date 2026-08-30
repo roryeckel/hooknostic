@@ -1149,3 +1149,89 @@ describe("updateShell lowering", () => {
     expect(event.tool.input).toEqual({ notCmd: true });
   });
 });
+
+describe("updateShell under policy edges", () => {
+  const codec = shellCodec({ Bash: { commandKey: "command" } });
+  const rewriter = hook("tool.before", {
+    id: "rewriter",
+    capabilities: { "tool.before.input.replace": "required" },
+    async run() {
+      return updateShell({ command: "pnpm install" });
+    },
+  });
+
+  it("synthesizes a terminal block when lowering fails under onHookError: block", async () => {
+    const event = toolBefore({ someKey: "x" });
+    event.tool.nativeName = "shell"; // uncaptured shape -> lowering fails
+    const after = hook("tool.before", {
+      id: "after",
+      async run() {
+        throw new Error("must not run past a terminal failure");
+      },
+    });
+    const result = await dispatch([rewriter, after], event, {
+      ...OPTIONS,
+      shellCodec: codec,
+      policy: { onHookError: "block" },
+    });
+    expect(result.terminatedBy).toBe("rewriter");
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ kind: "unsupported-effect", code: "HN401" });
+    // The synthesized terminal is the last effect, preserving the invariant
+    // every apply() relies on.
+    expect(result.effects[result.effects.length - 1]?.effect.kind).toBe("block");
+  });
+
+  it("is clamped by the minimum capability floor before the codec is consulted", async () => {
+    const optionalRewriter = hook("tool.before", {
+      id: "optional-rewriter",
+      capabilities: { "tool.before.input.replace": "optional" },
+      async run(event, ctx) {
+        // Contract-following hook: feature-detect, then rewrite.
+        if (!ctx.capabilities.has("tool.before.input.replace")) return;
+        if (event.tool.shell === undefined) return;
+        return updateShell({ command: "pnpm install" });
+      },
+    });
+    const event = toolBefore({ command: "npm install" });
+    const shell = codec.classify("Bash", event.tool.input);
+    if (shell !== undefined) event.tool.shell = shell;
+    const result = await dispatch([optionalRewriter], event, {
+      ...OPTIONS,
+      shellCodec: codec,
+      capabilities: { ...FULL, "tool.before.input.replace": "approximate" },
+      minimumCapabilityLevel: "exact",
+    });
+    // The floor hides the optional capability, the hook declines, nothing
+    // is rewritten and nothing errors.
+    expect(result.effects).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(event.tool.input).toEqual({ command: "npm install" });
+  });
+
+  it("keeps the terminal effect last when a lowering precedes it", async () => {
+    const guard = hook("tool.before", {
+      id: "guard",
+      capabilities: { "tool.before.block": "required" },
+      async run() {
+        return block("no");
+      },
+    });
+    const event = toolBefore({ command: "npm install" });
+    const shell = codec.classify("Bash", event.tool.input);
+    if (shell !== undefined) event.tool.shell = shell;
+    const result = await dispatch([rewriter, guard], event, {
+      ...OPTIONS,
+      shellCodec: codec,
+    });
+    // updateShell pushes TWO entries; the invariant "effects[last] is the
+    // terminal" is what all three apply() reducers rely on.
+    expect(result.effects.map((e) => e.effect.kind)).toEqual([
+      "updateShell",
+      "replaceInput",
+      "block",
+    ]);
+    expect(result.terminatedBy).toBe("guard");
+    expect(terminalEffect(result)?.kind).toBe("block");
+  });
+});

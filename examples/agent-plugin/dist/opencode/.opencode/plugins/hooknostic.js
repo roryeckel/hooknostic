@@ -4297,13 +4297,19 @@ var TOOL_KINDS = [
   "other"
 ];
 function isPlainObject2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null)
+    return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+function shapeOf(shapes, key) {
+  return Object.hasOwn(shapes, key) ? shapes[key] : void 0;
 }
 function shellCodec(shapes, options) {
   const normalize = options?.normalizeName ?? ((name) => name);
   return {
     classify(nativeName, input) {
-      const shape = shapes[normalize(nativeName)];
+      const shape = shapeOf(shapes, normalize(nativeName));
       if (shape === void 0 || !isPlainObject2(input))
         return void 0;
       const command = input[shape.commandKey];
@@ -4318,7 +4324,7 @@ function shellCodec(shapes, options) {
       };
     },
     encode(nativeName, input, patch) {
-      const shape = shapes[normalize(nativeName)];
+      const shape = shapeOf(shapes, normalize(nativeName));
       if (shape === void 0 || !isPlainObject2(input))
         return void 0;
       if (typeof input[shape.commandKey] !== "string")
@@ -4854,7 +4860,8 @@ var opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
 });
 function classifyOpenCodeTool(nativeName, input) {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
-  const known = EXACT[nativeName.toLowerCase()];
+  const lowered = nativeName.toLowerCase();
+  const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : void 0;
   if (known !== void 0) {
     const shell = opencodeShellCodec.classify(nativeName, input);
     return { kind: known, nativeName, input, ...shell !== void 0 ? { shell } : {} };

@@ -74,8 +74,14 @@ writes a marker file, or read the spawned command line from the debug log.
    contract suite picks up shell-bearing fixtures automatically (codec
    round-trip obligation).
 3. Shape claims go in the adapter's `toolmap.ts` `ShellShapes` table with a
-   comment naming the fixture. **A tool whose shape you did not capture stays
-   absent from the table** — absence is the documented fall-back signal.
+   comment naming the fixture. **A tool whose shape you have no evidence for
+   stays absent from the table** — absence is the documented fall-back
+   signal. One carved exception: router-log provenance (a shape observed one
+   level below the hook boundary, never in a hook payload) is admissible as
+   *defensive* coverage — reading the wrong-but-real keys is harmless, and
+   dropping a security-relevant entry on the strength of not having seen it
+   is the wrong direction — but the entry's comment and its fixture's
+   provenance row must both say so (see Codex `exec_command`, ADR-0007).
 4. A novel *procedure* (not just a payload) gets its own `.capture/<name>/`
    directory with a README recording question, method, observation, and
    consequences.

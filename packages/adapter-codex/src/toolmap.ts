@@ -2,7 +2,8 @@ import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
 import { shellCodec } from "@hooknostic/sdk";
 
 /**
- * Codex tool-name classification (0.148.0): shell paths surface as `Bash` /
+ * Codex tool-name classification (names observed on 0.148.0; the
+ * `exec_command` argument shape below on 0.151.0): shell paths surface as `Bash` /
  * `exec_command`; `apply_patch` is the edit path; local function tools like
  * `update_plan` stay "other"; `spawn_agent` is the subagent tool; MCP tools
  * follow the `mcp__<server>__<tool>` convention.
@@ -53,7 +54,7 @@ export function classifyCodexTool(nativeName: string, input: unknown): ToolInvoc
   }
   const shell = codexShellCodec.classify(nativeName, input);
   return {
-    kind: EXACT[nativeName] ?? "other",
+    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : undefined) ?? "other",
     nativeName,
     input,
     ...(shell !== undefined ? { shell } : {}),

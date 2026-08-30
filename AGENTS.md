@@ -34,15 +34,18 @@ captured harness payloads in `fixtures/`, capture projects in `.capture/`.
 - Verification per commit: `pnpm lint`, `pnpm build`, `pnpm test`, capturing
   each exit code explicitly — never trust a piped or chained exit code.
   `pretest` bundles the SDK and CLI, so running `vitest` directly on a file
-  tests a **stale bundle**; run `pnpm --filter @hooknostic/sdk run bundle`
-  first when targeting single files.
+  tests a **stale bundle**; when targeting single files, first run
+  `pnpm --filter @hooknostic/sdk run bundle` (and the CLI's bundle step, if
+  the change touches `packages/cli`).
 - A new test must be shown to fail against the defect it pins — revert the
   fix or apply a mutant, watch it fail, restore. This repository's history
   includes five tests that passed against the exact bugs they were written
   for.
-- Committed example artifacts (`examples/*/dist`) must be rebuilt **from the
-  repo root** in the same change as any source that affects them; CI
-  byte-compares them (ADR-0006). Never hand-edit generated output.
+- Committed example artifacts (`examples/rewrite-shell/dist` and
+  `examples/agent-plugin/dist` -- the two `.gitignore` re-includes) must be
+  rebuilt **from the repo root** in the same change as any source that
+  affects them; CI byte-compares them (ADR-0006). Never hand-edit generated
+  output.
 - `HOOKNOSTIC_SMOKE=1 pnpm test` spawns real harnesses and has side effects
   (harness trust entries, cloud model calls). Run it only when the owner
   asks.

@@ -43,7 +43,10 @@ export default definePlugin({
         "tool.before.block": "required",              // we rely on being able to block
       },
       async run(event) {
-        const command = event.tool.shell?.command ?? "";
+        // Normalized read with a raw fallback: where the shape is uncaptured
+        // (`shell` undefined), a guard must not fail open on an empty string.
+        const raw = (event.tool.input as { command?: unknown }).command;
+        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
         if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {
           return block("Use --force-with-lease instead of --force.");
         }

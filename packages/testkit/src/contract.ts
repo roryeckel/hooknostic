@@ -130,6 +130,31 @@ export function describeAdapterContract(
       }
     });
 
+    it("backs every shell shape table entry with a fixture", () => {
+      // Coverage from the TABLE side. The round-trip obligation above iterates
+      // fixtures, so a new ShellShapes entry shipped without a shell-bearing
+      // fixture was silently uncovered -- exactly the gap the obligation is
+      // advertised to close. Case-insensitive name match, because adapters may
+      // normalize tool names (OpenCode lowercases) and the testkit does not
+      // see the normalizer.
+      const shapes = adapter.shellShapes ?? {};
+      const shellFixtureNames = new Set(
+        fixtureNames
+          .map(
+            (name) =>
+              loadFixtureFrom<{ tool?: { nativeName?: string; shell?: unknown } }>(
+                join(options.fixturesDir, name),
+              ).tool,
+          )
+          .filter((tool) => tool?.shell !== undefined)
+          .map((tool) => tool!.nativeName!.toLowerCase()),
+      );
+      const uncovered = Object.keys(shapes).filter(
+        (key) => !shellFixtureNames.has(key.toLowerCase()),
+      );
+      expect(uncovered, `shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
+    });
+
     it("declares how its artifact is executed", () => {
       // shimExecution decides whether a bundled CLI main guard is a hazard
       // (HN502) and whether process.execPath is the host rather than Node.
