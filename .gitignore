@@ -1,6 +1,15 @@
 node_modules/
 dist/
 hooknostic-build.json
+
+# ...except the rewrite-shell example, which commits its build output on
+# purpose. It is the subject of the CI reproducibility gate, and it makes this
+# repository practise the model docs/decisions/0006 recommends to consumers --
+# without it, the committed-artifact pattern was documented here and practised
+# nowhere. Re-including a path under an ignored directory needs the directory
+# itself un-ignored first, hence both lines.
+!examples/rewrite-shell/dist/
+!examples/rewrite-shell/hooknostic-build.json
 .hooknostic-staging-*/
 examples/*/com.anthropic.claude-code/
 .capture/*/captured/

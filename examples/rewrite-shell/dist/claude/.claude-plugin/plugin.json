@@ -1,0 +1,5 @@
+{
+  "name": "rewrite-shell",
+  "version": "0.1.0",
+  "description": "Protect and normalize shell commands"
+}
