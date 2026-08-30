@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -93,6 +94,43 @@ describe("hooknostic build end-to-end", () => {
       expect(await readFile(join(dir, "dist/claude/hooks/hooks.json"), "utf8")).toBe(
         firstHooksJson,
       );
+    },
+  );
+
+  it(
+    "emits identical bytes no matter which directory the build was invoked from",
+    { timeout: 240_000 },
+    async () => {
+      // esbuild writes each module's path into a `// <path>` banner relative to
+      // absWorkingDir, which defaults to the working directory. Unanchored, the
+      // same source produced different bytes from the repo root than from the
+      // config's own directory -- so "the committed artifact matches its source"
+      // became a claim about where the developer happened to stand, and a
+      // consumer's drift check reported staleness when nothing was stale. Found
+      // in the wild: a real consumer's three artifacts moved 87 lines.
+      //
+      // This has to spawn the CLI rather than call runBuild and chdir between
+      // calls. esbuild runs as a long-lived service process whose working
+      // directory is fixed when it starts, so an in-process process.chdir() does
+      // not reach it and the test passes with the fix removed -- verified.
+      const dir = await cleanExample("rewrite-shell");
+      const runtime = join(dir, "dist/claude/runtime/hooknostic.mjs");
+      const cli = join(REPO, "packages/cli/bin/hooknostic.mjs");
+
+      const bundleBuiltFrom = async (cwd: string) => {
+        const run = spawnSync(
+          process.execPath,
+          [cli, "build", "--config", join(dir, "hooknostic.config.ts")],
+          { cwd, encoding: "utf8", timeout: 120_000 },
+        );
+        expect(run.status, `${run.stdout}
+${run.stderr}`).toBe(0);
+        return readFile(runtime, "utf8");
+      };
+
+      const fromRepoRoot = await bundleBuiltFrom(REPO);
+      const fromConfigDir = await bundleBuiltFrom(dir);
+      expect(fromConfigDir).toBe(fromRepoRoot);
     },
   );
 

@@ -1,6 +1,6 @@
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import type { HooknosticConfig, PluginSpec } from "@hooknostic/sdk";
@@ -25,6 +25,12 @@ async function evaluateModule(file: string, options?: EvaluateOptions): Promise<
   const absolute = resolve(file);
   const bundled = await build({
     entryPoints: [absolute],
+    // Same reason as bundleRuntime: esbuild anchors its path bookkeeping to
+    // absWorkingDir, which defaults to process.cwd(). This output is evaluated
+    // rather than committed, so the stakes are lower -- but a config that
+    // resolves differently depending on where you invoked the CLI is its own
+    // bug, and the inline sourcemap embeds those paths too.
+    absWorkingDir: dirname(absolute),
     bundle: true,
     format: "esm",
     platform: "node",
