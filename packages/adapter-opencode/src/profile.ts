@@ -33,6 +33,15 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-client",
           what: "plugin-client probe: promptAsync notification channel and session.idle timing",
         },
+        {
+          version: "1.18.25",
+          date: "2026-08-30",
+          method: "live-probe",
+          what:
+            "PWD env precedence: opencode trusts an inherited PWD over the process cwd " +
+            "and runs the session in PWD's project -- where plugins may not exist. " +
+            "Spawners must set PWD to agree with cwd (see the smoke's runCommand).",
+        },
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },

@@ -116,6 +116,12 @@ function runCommand(
       cwd: options.cwd,
       shell: process.platform === "win32",
       stdio: ["ignore", "pipe", "pipe"],
+      // PWD must agree with cwd: opencode 1.18.25 trusts the inherited PWD
+      // env var over the process working directory, and a vitest parented by
+      // a bash-like shell exports PWD = repo root -- opencode then creates a
+      // SECOND instance there and runs the session in it, where no plugins
+      // exist. Hooks silently absent; verified live 2026-08-30.
+      env: { ...process.env, PWD: options.cwd },
     });
     let stdout = "";
     let stderr = "";
