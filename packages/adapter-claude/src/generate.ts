@@ -1,5 +1,5 @@
 import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import { hookAppliesToTarget, nativeTimeoutSeconds } from "@hooknostic/core";
+import { hooksByNativeEvent, nativeTimeoutSeconds } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
 export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string> = {
@@ -31,18 +31,16 @@ export function generateClaudeArtifacts(
   bundle: RuntimeBundle,
   options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
-  const nativeEvents = [
-    ...new Set(
-      plugin.hooks
-        .filter((hook) => hookAppliesToTarget(hook, target.id))
-        .map((hook) => CLAUDE_NATIVE_EVENT[hook.event]),
-    ),
-  ];
+  const byNativeEvent = hooksByNativeEvent(
+    plugin.hooks,
+    target.id,
+    (event) => CLAUDE_NATIVE_EVENT[event],
+  );
 
   const hooksJson = {
     description: plugin.description ?? `Hooknostic-generated hooks for ${plugin.name}`,
     hooks: Object.fromEntries(
-      nativeEvents.map((nativeEvent) => [
+      [...byNativeEvent].map(([nativeEvent, reaching]) => [
         nativeEvent,
         [
           {
@@ -51,13 +49,7 @@ export function generateClaudeArtifacts(
                 type: "command",
                 command: "node",
                 args: [`\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`],
-                timeout: nativeTimeoutSeconds(
-                  plugin.hooks,
-                  target.id,
-                  (event) => CLAUDE_NATIVE_EVENT[event],
-                  nativeEvent,
-                  options.runtime,
-                ),
+                timeout: nativeTimeoutSeconds(reaching, options.runtime),
               },
             ],
           },
