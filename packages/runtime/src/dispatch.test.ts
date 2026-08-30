@@ -657,6 +657,29 @@ describe("error and timeout policy", () => {
     expect(contextAdditions(result)).toEqual(["made it"]);
   });
 
+  it("survives an explicitly-undefined policy timeout", async () => {
+    // The two char budgets already coalesce against exactly this: an explicit
+    // `undefined` survives `{...DEFAULT_RUNTIME, ...options.policy}`. Left
+    // unguarded, setTimeout(cb, undefined) fires in ~1ms and every hook times
+    // out reporting "timed out after undefinedms".
+    const hooks = [
+      hook("tool.before", {
+        id: "ordinary",
+        capabilities: { "tool.before.context.add": "required" },
+        async run() {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return addContext("ran");
+        },
+      }),
+    ];
+    const result = await dispatch(hooks, toolBefore({}), {
+      ...OPTIONS,
+      policy: { timeoutMs: undefined } as never,
+    });
+    expect(result.errors).toEqual([]);
+    expect(contextAdditions(result)).toEqual(["ran"]);
+  });
+
   it("honours a hook's own budget over the policy default, in both directions", async () => {
     // A hook that shells out needs longer than its neighbours; giving the whole
     // plugin that budget instead means a bug in the fast hook hangs the harness

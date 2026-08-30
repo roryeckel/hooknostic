@@ -4550,7 +4550,7 @@ async function dispatch(hooks, event, options) {
     let outcome;
     let timedOut = false;
     let timer;
-    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
     try {
       outcome = await Promise.race([
         Promise.resolve(hook2.run(event, ctx)),
@@ -4888,6 +4888,8 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   const events = new Set(
     plugin.hooks.filter((hook2) => hookAppliesToTarget(hook2, invocation.targetId)).map((hook2) => hook2.event)
   );
+  class HooknosticBlock extends Error {
+  }
   const run = async (native) => {
     let event;
     try {
@@ -4931,7 +4933,14 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     }
     await postPrompts(event, application);
     if (application.throwMessage !== void 0) {
-      throw new Error(application.throwMessage);
+      throw new HooknosticBlock(application.throwMessage);
+    }
+  };
+  const runFailingOpen = async (native) => {
+    try {
+      await run(native);
+    } catch (error) {
+      if (error instanceof HooknosticBlock) throw error;
     }
   };
   const postPrompts = async (event, application) => {
@@ -4960,7 +4969,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   };
   const hooks = {};
   const callback = (hook2) => async (input, output) => {
-    await run({
+    await runFailingOpen({
       hook: hook2,
       directory: pluginInput.directory,
       ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
