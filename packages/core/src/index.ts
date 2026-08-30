@@ -8,6 +8,7 @@ export * from "./build.js";
 export * from "./bundle.js";
 export * from "./diagnostics.js";
 export * from "./matrix.js";
+export * from "./native-timeout.js";
 export * from "./ir.js";
 export * from "./load.js";
 export * from "./policy.js";

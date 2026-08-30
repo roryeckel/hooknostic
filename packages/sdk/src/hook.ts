@@ -63,6 +63,17 @@ export interface HookSpec<
   targets?: TargetScope;
 
   /**
+   * This hook's own dispatch budget, overriding `runtime.timeoutMs`.
+   *
+   * Size it to what this handler actually does. A hook that spawns a linter
+   * needs minutes; a string matcher needs milliseconds, and giving it minutes
+   * means a bug in it hangs the harness for that long. The build derives each
+   * native event's timeout from the budgets of the hooks that can reach it, so
+   * raising one hook no longer inflates the ceiling for its neighbours.
+   */
+  timeoutMs?: number;
+
+  /**
    * Every non-observation capability the hook may rely on. This map is the
    * compiler's static capability manifest and defines which effect helpers
    * the hook is allowed to return.
@@ -85,6 +96,7 @@ export interface HookDefinition {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
+  timeoutMs?: number;
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
   run(
     event: HookEventMap[HookEventName],
@@ -106,5 +118,6 @@ export function hook<E extends HookEventName, C extends DeclarableCapability<E> 
   };
   if (spec.match !== undefined) def.match = spec.match;
   if (spec.targets !== undefined) def.targets = spec.targets;
+  if (spec.timeoutMs !== undefined) def.timeoutMs = spec.timeoutMs;
   return def;
 }

@@ -1,5 +1,5 @@
 import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import { hookAppliesToTarget } from "@hooknostic/core";
+import { hookAppliesToTarget, nativeTimeoutSeconds } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
 export const CODEX_NATIVE_EVENT: Partial<Record<HookEventName, string>> = {
@@ -41,8 +41,6 @@ export function generateCodexArtifacts(
     );
   }
 
-  const nativeTimeoutSeconds = Math.ceil(options.runtime.timeoutMs / 1000) + 1;
-
   const nativeEvents = [
     ...new Set(
       plugin.hooks
@@ -65,7 +63,13 @@ export function generateCodexArtifacts(
                 // Relative to the session cwd (the trusted project root the
                 // .codex directory is copied into).
                 command: `node ${RUNTIME_PATH}`,
-                timeout: nativeTimeoutSeconds,
+                timeout: nativeTimeoutSeconds(
+                  plugin.hooks,
+                  target.id,
+                  (event) => CODEX_NATIVE_EVENT[event],
+                  nativeEvent,
+                  options.runtime,
+                ),
               },
             ],
           },

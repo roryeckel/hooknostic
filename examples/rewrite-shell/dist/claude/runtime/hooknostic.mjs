@@ -122,6 +122,8 @@ function hook(event, spec) {
     def.match = spec.match;
   if (spec.targets !== void 0)
     def.targets = spec.targets;
+  if (spec.timeoutMs !== void 0)
+    def.timeoutMs = spec.timeoutMs;
   return def;
 }
 
@@ -4542,6 +4544,7 @@ async function dispatch(hooks, event, options) {
     let outcome;
     let timedOut = false;
     let timer;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs;
     try {
       outcome = await Promise.race([
         Promise.resolve(hook2.run(event, ctx)),
@@ -4549,8 +4552,8 @@ async function dispatch(hooks, event, options) {
           timer = setTimeout(() => {
             timedOut = true;
             controller.abort();
-            reject(new Error(`timed out after ${policy.timeoutMs}ms`));
-          }, policy.timeoutMs);
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
         })
       ]);
     } catch (error) {
