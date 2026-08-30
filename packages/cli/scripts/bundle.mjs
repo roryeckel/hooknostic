@@ -88,6 +88,16 @@ for (const id of Object.keys(SHIMS)) {
   const code = await readFile(join(dist, "shims", `${id}.mjs`), "utf8");
   const leaked = [...code.matchAll(/\bfrom\s+"(@hooknostic\/(?!sdk")[^"]*)"/g)].map((m) => m[1]);
   if (leaked.length > 0) fail(`dist/shims/${id}.mjs still imports ${leaked.join(", ")}`);
+  // esbuild emits this shim when a CommonJS dependency is inlined into ESM
+  // output. Such a bundle throws `Dynamic require of "fs" is not supported`
+  // the moment Node imports it, so a shim that needs it has pulled in a
+  // build-time dependency (typically esbuild, via @hooknostic/core) that a
+  // dependency-free runtime artifact must not carry.
+  if (code.includes('Dynamic require of "')) {
+    fail(
+      `dist/shims/${id}.mjs bundles a CommonJS dependency; keep the shim's value imports on @hooknostic/sdk and @hooknostic/runtime`,
+    );
+  }
 }
 
 // 4. Declarations.

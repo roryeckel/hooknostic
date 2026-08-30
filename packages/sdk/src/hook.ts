@@ -29,6 +29,22 @@ export interface TargetScope {
 }
 
 /**
+ * True when the hook applies to `targetId` given its intentional scoping.
+ *
+ * This lives in the SDK rather than the compiler because adapter shims need
+ * it at dispatch time: importing it from `@hooknostic/core` would drag the
+ * build-time dependency graph (esbuild) into every runtime artifact.
+ */
+export function hookAppliesToTarget(
+  hook: { targets?: TargetScope | undefined },
+  targetId: string,
+): boolean {
+  if (hook.targets?.include && !hook.targets.include.includes(targetId)) return false;
+  if (hook.targets?.exclude && hook.targets.exclude.includes(targetId)) return false;
+  return true;
+}
+
+/**
  * Authoring shape for a single portable hook. `C` is inferred from the
  * declared capability map, and constrains which effects `run` may return:
  * an undeclared effect is a compile-time error (and independently a runtime

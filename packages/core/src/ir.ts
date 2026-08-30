@@ -41,12 +41,11 @@ export interface BuildIRResult {
   diagnostics: Diagnostic[];
 }
 
-/** True when the hook applies to `targetId` given its intentional scoping. */
-export function hookAppliesToTarget(hook: Pick<HookIR, "targets">, targetId: string): boolean {
-  if (hook.targets?.include && !hook.targets.include.includes(targetId)) return false;
-  if (hook.targets?.exclude && hook.targets.exclude.includes(targetId)) return false;
-  return true;
-}
+/**
+ * Re-exported from the SDK, which owns the predicate so adapter shims can
+ * reach it without importing the compiler (and with it esbuild).
+ */
+export { hookAppliesToTarget } from "@hooknostic/sdk";
 
 /**
  * Validate an evaluated plugin spec and build the deterministic IR.
