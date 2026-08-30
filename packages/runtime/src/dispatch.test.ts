@@ -709,7 +709,14 @@ describe("error and timeout policy", () => {
     });
     expect(contextAdditions(result)).toEqual(["finished"]);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({ hookId: "impatient", kind: "timeout" });
+    // The message is the only place the budget actually appears. Matching just
+    // hookId/kind passes either way, because `impatient` times out under the
+    // shared 50ms default too -- so only `patient` was carrying this test.
+    expect(result.errors[0]).toMatchObject({
+      hookId: "impatient",
+      kind: "timeout",
+      message: expect.stringContaining("timed out after 20ms"),
+    });
   });
 });
 

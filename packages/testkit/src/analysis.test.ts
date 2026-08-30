@@ -182,6 +182,16 @@ describe("analyzeCapabilities", () => {
       severity: "info",
       support: "approximate",
     });
+
+    // A declared capability CAN be made optional, but only helps alongside a
+    // feature-detect -- an optional capability below the floor is reported
+    // unavailable too. The remediation has to say both halves or it reads like
+    // declaring it is the whole fix.
+    const remediation = strict.targets.poor?.diagnostics.find(
+      (d) => d.code === "HN201",
+    )?.remediation;
+    expect(remediation).toContain('targets.poor.compatibility: { minimum: "approximate" }');
+    expect(remediation).toContain("branch on `ctx.capabilities.has()`");
   });
 
   it("tells you how to fix a degraded event observation, which you cannot declare", () => {
@@ -212,9 +222,13 @@ describe("analyzeCapabilities", () => {
       support: "approximate",
       rationale: "an aborted turn signals twice",
     });
-    // The fix that works must be named, and the one that cannot must not be.
-    expect(hn201?.remediation).toContain("minimum");
-    expect(hn201?.remediation).not.toContain("optional");
+    // Substring matching is too loose here -- "minimum" also matches
+    // `onBelowMinimum` and "optional" matches `optionalUnavailable`, so both
+    // assertions could pass on the wrong string. Pin the actual advice: the
+    // level observed, the target it belongs under, and no suggestion to declare
+    // a capability the author cannot declare.
+    expect(hn201?.remediation).toContain('targets.hazy.compatibility: { minimum: "approximate" }');
+    expect(hn201?.remediation).not.toMatch(/declare the capability optional/);
 
     // And taking the advice has to actually build.
     const relaxed = analyzeCapabilities(
