@@ -76,10 +76,36 @@ under a TUI — inert under `opencode run` and `opencode serve`. Making the mech
 depend on execution mode would be worse for a portability product than one honest
 `approximate` cell.
 
-### `session.idle` cardinality
+### `session.idle` cardinality — why `turn.stop.observe` stays `approximate`
 
-One `session.idle` per completed turn, measured on a 1-turn run (1 idle) and a
-2-turn run (2 idles). **Not yet measured:** aborted turns and compaction. This
-bears on whether `turn.stop.observe` can be raised from `approximate` to
-`emulated`, which is what decides whether a `turn.stop` hook can build against
-OpenCode under the default compatibility policy at all.
+On a normally-completed turn it is exactly one per turn: 1 idle on a 1-turn run,
+2 on a 2-turn run.
+
+**On an aborted turn it fires twice.** A single `POST /session/{id}/abort` on a
+busy session produced, back to back:
+
+```
+201  session.status  {"status":{"type":"idle"}}
+202  session.idle
+205  message.updated
+206  session.status  {"status":{"type":"idle"}}
+207  session.idle
+```
+
+So one turn ending yields two `turn.stop` dispatches. That is a material
+divergence from "the turn stopped", not merely a different mechanism, so
+`turn.stop.observe` must stay **`approximate`** — raising it to `emulated` would
+be overclaiming.
+
+The consequence is load-bearing for consumers. `DEFAULT_COMPATIBILITY` is
+`minimum: "emulated"` with `onBelowMinimum: "error"`, and the compiler checks the
+*implicit* `turn.stop.observe` before it considers any declared capability. So
+**any `turn.stop` hook fails the OpenCode build under the default policy**, and a
+consumer that wants one must opt in with `compatibility: { minimum: "approximate" }`
+on the OpenCode target. That is true today and is not changed by adding `notify`
+or by making `turn.stop.prevent` supported.
+
+A second consequence for hook authors: because a single turn can dispatch
+`turn.stop` twice, a hook that posts on every dispatch will post twice. Hooks that
+prevent a stop need their own terminating condition regardless — OpenCode has no
+`stop_hook_active` equivalent and no block cap.
