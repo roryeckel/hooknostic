@@ -1,6 +1,20 @@
 import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import { hooksByNativeEvent, nativeTimeoutSeconds } from "@hooknostic/core";
+import {
+  assertNativeTimeoutFits,
+  hooksByNativeEvent,
+  nativeTimeoutSeconds,
+} from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
+
+/**
+ * Native events whose timeout codex-cli caps regardless of the configured
+ * value. `SessionEnd` is clamped to SESSION_END_MAX_TIMEOUT_SEC = 3 in
+ * codex-rs/hooks/src/events/session_end.rs (rust-v0.148.0); every other event
+ * treats the configured value as a floor with no cap.
+ */
+export const CODEX_NATIVE_TIMEOUT_CEILING_SECONDS: Record<string, number | undefined> = {
+  SessionEnd: 3,
+};
 
 export const CODEX_NATIVE_EVENT: Partial<Record<HookEventName, string>> = {
   "session.start": "SessionStart",
@@ -28,6 +42,21 @@ const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
  * Note: repo-level hooks only run for trusted projects, and Codex prompts
  * once per hook for hook trust — generation never touches trust state.
  */
+function codexNativeTimeout(
+  nativeEvent: string,
+  reaching: Parameters<typeof nativeTimeoutSeconds>[0],
+  runtime: Parameters<typeof nativeTimeoutSeconds>[1],
+): number {
+  const seconds = nativeTimeoutSeconds(reaching, runtime);
+  assertNativeTimeoutFits(
+    nativeEvent,
+    seconds,
+    CODEX_NATIVE_TIMEOUT_CEILING_SECONDS,
+    "codex-cli",
+  );
+  return seconds;
+}
+
 export function generateCodexArtifacts(
   plugin: PluginIR,
   target: TargetSpec,
@@ -60,7 +89,7 @@ export function generateCodexArtifacts(
                 // Relative to the session cwd (the trusted project root the
                 // .codex directory is copied into).
                 command: `node ${RUNTIME_PATH}`,
-                timeout: nativeTimeoutSeconds(reaching, options.runtime),
+                timeout: codexNativeTimeout(nativeEvent, reaching, options.runtime),
               },
             ],
           },

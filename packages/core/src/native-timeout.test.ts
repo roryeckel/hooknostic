@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimePolicy } from "@hooknostic/sdk";
 import type { HookIR } from "./ir.js";
-import { hooksByNativeEvent, nativeTimeoutSeconds } from "./native-timeout.js";
+import {
+  assertNativeTimeoutFits,
+  hooksByNativeEvent,
+  nativeTimeoutSeconds,
+} from "./native-timeout.js";
 
 const RUNTIME: Required<RuntimePolicy> = {
   onHookError: "continue",
@@ -96,5 +100,29 @@ describe("nativeTimeoutSeconds", () => {
         RUNTIME,
       ),
     ).toBe(7);
+  });
+});
+
+describe("assertNativeTimeoutFits", () => {
+  const CEILINGS = { SessionEnd: 3 };
+
+  it("refuses a budget the harness will not grant", () => {
+    // codex-cli clamps SessionEnd to 3s (SESSION_END_MAX_TIMEOUT_SEC). Asking
+    // for 6 and being given 3 kills the dispatch before it answers -- the same
+    // failure nativeTimeoutSeconds prevents, arriving from the other side.
+    expect(() => assertNativeTimeoutFits("SessionEnd", 6, CEILINGS, "codex-cli")).toThrow(
+      /grants at most 3s/,
+    );
+  });
+
+  it("names the fix, not just the problem", () => {
+    expect(() => assertNativeTimeoutFits("SessionEnd", 6, CEILINGS, "codex-cli")).toThrow(
+      /Lower the hooks' timeoutMs/,
+    );
+  });
+
+  it("allows a budget at the ceiling, and any event without one", () => {
+    expect(() => assertNativeTimeoutFits("SessionEnd", 3, CEILINGS, "codex-cli")).not.toThrow();
+    expect(() => assertNativeTimeoutFits("PreToolUse", 901, CEILINGS, "codex-cli")).not.toThrow();
   });
 });

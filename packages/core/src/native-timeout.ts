@@ -64,3 +64,34 @@ export function nativeTimeoutSeconds(
   );
   return Math.ceil(totalMs / 1000) + 1;
 }
+
+/**
+ * Fail a build whose budgets exceed what the harness will actually grant.
+ *
+ * Some native events carry a hard cap the harness enforces regardless of the
+ * configured timeout — Codex clamps `SessionEnd` to 3 seconds, Claude to 60 —
+ * and a dispatcher that believes it has longer is killed mid-dispatch, which
+ * produces no response at all rather than a partial one. That is the same
+ * failure `nativeTimeoutSeconds` exists to prevent, arriving from the other
+ * direction, so it gets the same treatment: refuse at build time rather than
+ * emit an artifact that cannot work.
+ *
+ * Clamping instead would be the silent option. The budget the dispatcher uses
+ * lives in the bundle, not in the manifest, so lowering only the manifest value
+ * leaves the mismatch in place and hides it.
+ */
+export function assertNativeTimeoutFits(
+  nativeEvent: string,
+  seconds: number,
+  ceilings: Record<string, number | undefined>,
+  targetLabel: string,
+): void {
+  const ceiling = ceilings[nativeEvent];
+  if (ceiling === undefined || seconds <= ceiling) return;
+  throw new Error(
+    `hooks on "${nativeEvent}" need ${seconds}s but ${targetLabel} grants at most ${ceiling}s ` +
+      `for that event, so the dispatch would be killed before it answers. ` +
+      `Lower the hooks' timeoutMs (or runtime.timeoutMs) so the total fits, or move the work ` +
+      `to an event without that cap.`,
+  );
+}
