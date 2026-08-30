@@ -9,7 +9,7 @@ import type {
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import { planOpenCodeApplication } from "./apply.js";
 import type { OpenCodeNativeEvent } from "./decode.js";
 import { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
@@ -154,6 +154,11 @@ export function createHooknosticHooks(
       if (Array.isArray(context)) context.push(...application.mutations.context);
       else output["context"] = [...application.mutations.context];
     }
+    // In-process: no stdout of our own, and a stray write corrupts the TUI's
+    // alternate screen mid-turn. console.error is the one channel that does not.
+    const diagnostics = formatHandlerErrors(result);
+    if (diagnostics !== undefined) console.error(diagnostics);
+
     await postPrompts(event, application);
 
     if (application.throwMessage !== undefined) {

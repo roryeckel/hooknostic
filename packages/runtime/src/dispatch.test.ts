@@ -428,7 +428,7 @@ describe("dispatch composition (ADR-0003)", () => {
     );
     expect(result.effects).toEqual([]);
     expect(result.errors[0]).toMatchObject({ hookId: "misplaced", kind: "unsupported-effect" });
-    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.code).toBe("HN401");
   });
 
   it("filters by tool matcher and by intentional target scoping", async () => {
@@ -490,7 +490,7 @@ describe("runtime contract violations (HN401)", () => {
     expect(result.errors).toEqual([
       expect.objectContaining({ hookId: "sneaky", kind: "unsupported-effect" }),
     ]);
-    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.code).toBe("HN401");
     // fail-open: the effect was not applied and later handlers ran
     expect(result.terminatedBy).toBeUndefined();
     expect(contextAdditions(result)).toEqual(["still ran"]);
@@ -762,7 +762,7 @@ describe("policy-aware hook capability detection", () => {
       },
     );
     expect(observed).toEqual([[false, "unsupported"]]);
-    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.code).toBe("HN401");
     expect(replacedInput(result)).toBeUndefined();
   });
 
@@ -826,7 +826,7 @@ describe("effect payload JSON rule at dispatch", () => {
     expect(result.errors).toEqual([
       expect.objectContaining({ hookId: "cyclic-rewrite", kind: "unsupported-effect" }),
     ]);
-    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.code).toBe("HN401");
     expect(result.errors[0]?.message).toContain("not a JSON value");
     // The rejected payload never reached the event or the result…
     expect(event.tool.input).toEqual({ command: "ls" });
@@ -881,7 +881,7 @@ describe("effect payload JSON rule at dispatch", () => {
     expect(result.errors).toEqual([
       expect.objectContaining({ hookId: "hostile-output", kind: "unsupported-effect" }),
     ]);
-    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.code).toBe("HN401");
     expect(replacedOutput(result)).toBeUndefined();
   });
 
@@ -930,7 +930,7 @@ describe("effect payload JSON rule at dispatch", () => {
     expect(result.errors).toEqual([
       expect.objectContaining({ hookId: "hostile-effect", kind: "unsupported-effect" }),
     ]);
-    expect(result.errors[0]?.message).toContain("HN401");
+    expect(result.errors[0]?.code).toBe("HN401");
     expect(result.errors[0]?.message).toContain("uninspectable thrown value");
     expect(ran).toEqual(["after"]);
   });

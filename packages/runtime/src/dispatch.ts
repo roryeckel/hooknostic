@@ -218,7 +218,8 @@ export async function dispatch(
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
+        code: "HN401",
+        message: `hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
       }, capabilities);
       if (terminal) break;
       continue;
@@ -228,7 +229,8 @@ export async function dispatch(
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook.id}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
+        code: "HN401",
+        message: `hook "${hook.id}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
       }, capabilities);
       if (terminal) break;
       continue;
@@ -240,7 +242,8 @@ export async function dispatch(
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: "unsupported-effect",
-        message: `HN401: effect "${effect.kind}" is not defined for event "${event.event}".`,
+        code: "HN401",
+        message: `effect "${effect.kind}" is not defined for event "${event.event}".`,
       }, capabilities);
       if (terminal) break;
       continue;
@@ -249,7 +252,8 @@ export async function dispatch(
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook.id}" returned "${effect.kind}" without declaring capability "${capability}".`,
+        code: "HN401",
+        message: `hook "${hook.id}" returned "${effect.kind}" without declaring capability "${capability}".`,
       }, capabilities);
       if (terminal) break;
       continue;
@@ -258,7 +262,8 @@ export async function dispatch(
       const terminal = failDispatch(hook.id, {
         hookId: hook.id,
         kind: "unsupported-effect",
-        message: `HN401: capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`,
+        code: "HN401",
+        message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`,
       }, capabilities);
       if (terminal) break;
       continue;
@@ -278,11 +283,35 @@ export async function dispatch(
         break;
       }
       case "addContext": {
-        if (contextBudget <= 0) break; // cap reached: deterministic drop
+        // Recorded, not dropped in silence. The argument the notify case below
+        // makes -- a clipped message is a changed behaviour, so say so -- is
+        // just as true of context: a hook whose house-rules injection was cut
+        // at the cap behaves differently and nothing told anyone.
+        if (contextBudget <= 0) {
+          result.errors.push({
+            hookId: hook.id,
+            kind: "budget-exceeded",
+            code: "HN103",
+            message:
+              `context addition dropped; no context budget remained in this ` +
+              `dispatch (limit ${policy.contextCharLimit} characters).`,
+          });
+          break;
+        }
         const context =
           effect.context.length > contextBudget
             ? effect.context.slice(0, contextBudget)
             : effect.context;
+        if (context.length < effect.context.length) {
+          result.errors.push({
+            hookId: hook.id,
+            kind: "budget-exceeded",
+            code: "HN103",
+            message:
+              `context addition truncated to ${context.length} of ` +
+              `${effect.context.length} characters by the context budget.`,
+          });
+        }
         contextBudget -= context.length;
         result.effects.push({ hookId: hook.id, effect: { kind: "addContext", context } });
         break;
@@ -304,8 +333,9 @@ export async function dispatch(
           result.errors.push({
             hookId: hook.id,
             kind: "budget-exceeded",
+            code: "HN103",
             message:
-              `HN103: notification dropped; no notification budget remained in ` +
+              `notification dropped; no notification budget remained in ` +
               `this dispatch (limit ${policy.notifyCharLimit} characters).`,
           });
           break;
@@ -315,8 +345,9 @@ export async function dispatch(
           result.errors.push({
             hookId: hook.id,
             kind: "budget-exceeded",
+            code: "HN103",
             message:
-              `HN103: notification truncated to ${message.length} of ` +
+              `notification truncated to ${message.length} of ` +
               `${effect.message.length} characters by the notification budget.`,
           });
         }
@@ -337,6 +368,25 @@ export async function dispatch(
   }
 
   return result;
+}
+
+/**
+ * Handler failures rendered for a human, or undefined when there are none.
+ *
+ * `HookResult.errors` was recorded and then discarded by every adapter, so a
+ * hook that timed out, returned an effect its target cannot support, or had a
+ * notification clipped produced *no output on any harness*. Fail-open is the
+ * contract; fail-silent was not, and it cost the first real consumer two
+ * production defects that a single line of stderr would have named.
+ *
+ * Adapters route this to whatever channel they own -- the structured array
+ * stays the source of truth for anything programmatic.
+ */
+export function formatHandlerErrors(result: HookResult): string | undefined {
+  if (result.errors.length === 0) return undefined;
+  return result.errors
+    .map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`)
+    .join("\n");
 }
 
 /** Accumulated model-visible context additions, in application order. */

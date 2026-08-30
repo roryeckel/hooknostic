@@ -1,6 +1,6 @@
 import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import { applyCodex } from "./apply.js";
 import { CodexDecodeError, decodeCodex } from "./decode.js";
 
@@ -58,6 +58,11 @@ export async function runCodexCommandShim(
     const native = await applyCodex(result, nativeEvent, invocation);
     if (native.body !== undefined) await writeStream(process.stdout, JSON.stringify(native.body));
     if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
+    // Handler failures go to stderr on the exit-0 path. Both harnesses capture
+    // it, and it must not go in the JSON body: Codex's wire schemas are
+    // additionalProperties:false, so an unknown field is a hard vendor error.
+    const diagnostics = formatHandlerErrors(result);
+    if (diagnostics !== undefined) await writeStream(process.stderr, `${diagnostics}\n`);
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CodexDecodeError)) {
