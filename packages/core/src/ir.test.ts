@@ -31,6 +31,62 @@ function examplePlugin() {
   });
 }
 
+describe("buildPluginIR authoring round-trip", () => {
+  // Every field on HookSpec has to survive the schema, and the schema is
+  // .strict(). `timeoutMs` was added to the type, the IR and the dispatcher but
+  // not here, so authoring it the documented way failed the build with HN501
+  // while both of its unit tests passed -- they reached the IR by mutating it
+  // after this function, and the dispatcher by constructing HookDefinitions by
+  // hand. Neither crossed the seam a user crosses.
+  it("carries a per-hook timeout declared through hook() all the way to the IR", () => {
+    const { ir, diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "budgets",
+        hooks: [
+          hook("turn.stop", {
+            id: "slow",
+            timeoutMs: 899_000,
+            async run() {
+              return;
+            },
+          }),
+          hook("tool.before", {
+            id: "fast",
+            async run() {
+              return;
+            },
+          }),
+        ],
+      }),
+    );
+    expect(diagnostics).toEqual([]);
+    expect(ir?.hooks.map((h) => h.timeoutMs)).toEqual([899_000, undefined]);
+  });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -1],
+    ["fractional", 1.5],
+    ["past the Node timer clamp", 2_147_483_648],
+  ])("rejects a %s budget rather than emitting one that cannot work", (_label, timeoutMs) => {
+    const { diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "budgets",
+        hooks: [
+          hook("tool.before", {
+            id: "bad",
+            timeoutMs,
+            async run() {
+              return;
+            },
+          }),
+        ],
+      }),
+    );
+    expect(diagnostics.some((d) => d.code === "HN501" && d.severity === "error")).toBe(true);
+  });
+});
+
 describe("buildPluginIR", () => {
   it("produces a deterministic, serializable IR", () => {
     const a = buildPluginIR(examplePlugin());

@@ -4401,6 +4401,12 @@ var hookDefinitionSchema = external_exports.object({
   id: external_exports.string().min(1),
   match: toolMatchSchema.optional(),
   targets: targetScopeSchema.optional(),
+  // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
+  // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
+  // hook time out on every dispatch instead of never. `positive` also keeps
+  // 0 out, which would not fall back through `hook.timeoutMs ?? policy...`
+  // and would time the hook out permanently.
+  timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
   run: external_exports.custom((v) => typeof v === "function", {
     message: "run must be a function"

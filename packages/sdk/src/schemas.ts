@@ -148,6 +148,12 @@ export const hookDefinitionSchema = z
     id: z.string().min(1),
     match: toolMatchSchema.optional(),
     targets: targetScopeSchema.optional(),
+    // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
+    // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
+    // hook time out on every dispatch instead of never. `positive` also keeps
+    // 0 out, which would not fall back through `hook.timeoutMs ?? policy...`
+    // and would time the hook out permanently.
+    timeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
     capabilities: z.record(capabilityIdSchema, requirementLevelSchema),
     run: z.custom<(...args: never[]) => unknown>((v) => typeof v === "function", {
       message: "run must be a function",
