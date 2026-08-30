@@ -1,8 +1,6 @@
 
-import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -11,7 +9,7 @@ import type {
   RuntimeBundle,
   TargetSpec,
 } from "@hooknostic/core";
-import { resolveCapabilityMatrix } from "@hooknostic/core";
+import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyOpenCode } from "./apply.js";
@@ -35,8 +33,6 @@ export { opencodeCapabilityProfiles } from "./profile.js";
 export { createHooknosticHooks } from "./shim.js";
 export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
 export { classifyOpenCodeTool, opencodeShellCodec, OPENCODE_SHELL_SHAPES } from "./toolmap.js";
-
-const execFileAsync = promisify(execFile);
 
 function resolveShimPath(): string {
   try {
@@ -107,18 +103,9 @@ export function opencodeAdapter(): HarnessAdapter {
     },
 
     async detect(): Promise<DetectionResult> {
-      try {
-        const { stdout } = await execFileAsync("opencode", ["--version"], {
-          shell: process.platform === "win32",
-          timeout: 15_000,
-        });
-        const version = /(\d+\.\d+\.\d+)/.exec(stdout)?.[1];
-        return version !== undefined
-          ? { installed: true, version, detail: stdout.trim() }
-          : { installed: true, detail: stdout.trim() };
-      } catch {
-        return { installed: false, detail: "opencode CLI not found on PATH" };
-      }
+      return detectCommandVersion("opencode", {
+        notFoundDetail: "opencode CLI not found on PATH",
+      });
     },
 
     async compile(

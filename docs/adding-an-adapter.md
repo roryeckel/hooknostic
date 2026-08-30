@@ -128,6 +128,30 @@ profile for a broad range.
   ([Decision 0002](decisions/0002-invocation-stateless-contract.md)) — add an
   invocation-statelessness test.
 
+## 5b. Detection
+
+`detect()` is optional and advisory: only `doctor` reads it, and `build` never
+consults a locally installed harness. Implement it with
+`detectCommandVersion()` from `@hooknostic/core` rather than spawning yourself:
+
+```ts
+async detect(): Promise<DetectionResult> {
+  return detectCommandVersion("myharness", {
+    notFoundDetail: "myharness CLI not found on PATH",
+  });
+}
+```
+
+The helper exists because the Windows path is easy to get wrong twice over. A
+harness installed from npm is a PATHEXT shim (`myharness.cmd`), which `spawn`
+will not resolve without a shell — so a detector without one silently reports
+"not detected" for a perfectly good install. But Node 24 deprecates passing an
+args *array* alongside `shell: true` (DEP0190: the args are concatenated onto
+the command line, not escaped), so the naive fix prints a security deprecation
+over `doctor`'s output on every run. The helper takes the shell path with the
+whole line as the command and no args, and refuses any probe part that would
+need quoting.
+
 ## 6. Tests
 
 Decode fixtures, apply fixtures, generation determinism + self-validation,
@@ -138,7 +162,8 @@ verifies at least one blocking effect and one mutating effect end-to-end.
 ## 7. Register
 
 Add the adapter to `defaultAdapterRegistry()` in `packages/cli/src/registry.ts`,
-its shim to `SHIMS` in `packages/cli/scripts/bundle.mjs`, and the adapter to
-the coverage-audit subjects; the simulated registry install in
+its shim to `SHIMS` in `packages/cli/scripts/bundle.mjs`. The coverage audit
+reads the registry, so registering is what enrols the adapter in it — there is
+no second list to update. The simulated registry install in
 `packages/cli/src/package.test.ts` must still pass. Update
 `docs/baseline-<date>.md` with the verified native facts and their sources.
