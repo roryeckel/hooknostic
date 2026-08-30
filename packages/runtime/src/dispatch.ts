@@ -107,7 +107,15 @@ export async function dispatch(
   // dispatch. Guarding only the new field would read as if the other were
   // deliberately unguarded.
   let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
-  let notifyBudget = policy.notifyCharLimit ?? DEFAULT_RUNTIME.notifyCharLimit;
+  // RuntimePolicy is public and dispatch() can be called without config-schema
+  // validation. NaN would otherwise produce an empty notification after slice(),
+  // while Infinity would disable the cap entirely.
+  let notifyBudget =
+    typeof policy.notifyCharLimit === "number" &&
+    Number.isFinite(policy.notifyCharLimit) &&
+    policy.notifyCharLimit > 0
+      ? policy.notifyCharLimit
+      : DEFAULT_RUNTIME.notifyCharLimit;
 
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;

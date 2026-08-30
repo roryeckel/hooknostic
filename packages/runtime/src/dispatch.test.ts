@@ -370,6 +370,29 @@ describe("dispatch composition (ADR-0003)", () => {
     expect(result.errors.map((e) => e.kind)).toEqual(["budget-exceeded"]);
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])(
+    "falls back to the default notification cap for an invalid direct-dispatch budget (%s)",
+    async (notifyCharLimit) => {
+      const hooks = Array.from({ length: 3 }, (_unused, index) =>
+        hook("turn.stop", {
+          id: `n${index}`,
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("x".repeat(1_000));
+          },
+        }),
+      );
+      const result = await dispatch(hooks, turnStop(), {
+        ...OPTIONS,
+        policy: { notifyCharLimit } as RuntimePolicy,
+      });
+
+      expect(notifications(result).join("").length).toBe(2_000);
+      expect(notifications(result)).not.toContain("");
+      expect(result.errors.map((e) => e.kind)).toEqual(["budget-exceeded"]);
+    },
+  );
+
   it("never emits an empty notification from a fractional budget", async () => {
     const result = await dispatch(
       [
