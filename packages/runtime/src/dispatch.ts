@@ -175,7 +175,11 @@ export async function dispatch(
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Per hook, not per dispatch: a hook that shells out to a linter can declare
     // minutes without licensing a string matcher beside it to hang for the same.
-    const budgetMs = hook.timeoutMs ?? policy.timeoutMs;
+    // The second `??` is the same guard the two char budgets above carry -- an
+    // explicitly-`undefined` policy key survives the spread, and `setTimeout`
+    // with `undefined` fires in about a millisecond while reporting
+    // "timed out after undefinedms".
+    const budgetMs = hook.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
     try {
       outcome = await Promise.race([
         Promise.resolve(hook.run(event, ctx)),

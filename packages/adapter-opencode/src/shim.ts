@@ -96,6 +96,9 @@ export function createHooknosticHooks(
       .map((hook) => hook.event),
   );
 
+  /** A block the plugin meant to deliver, as opposed to a bug escaping. */
+  class HooknosticBlock extends Error {}
+
   const run = async (native: OpenCodeNativeEvent): Promise<void> => {
     let event;
     try {
@@ -154,7 +157,28 @@ export function createHooknosticHooks(
     await postPrompts(event, application);
 
     if (application.throwMessage !== undefined) {
-      throw new Error(application.throwMessage);
+      throw new HooknosticBlock(application.throwMessage);
+    }
+  };
+
+  /**
+   * Fail open, the way the command-hook shims do.
+   *
+   * Throwing is how a block is delivered on this harness, so an *unintended*
+   * throw out of `run` denies the user's tool call. Claude and Codex force
+   * `exitCode = 0` on any internal error and the call proceeds; here the same
+   * bug did the opposite, which is the worse direction and the one this
+   * project's fail-open contract exists to rule out. Only a deliberate
+   * `HooknosticBlock` propagates.
+   */
+  const runFailingOpen = async (native: OpenCodeNativeEvent): Promise<void> => {
+    try {
+      await run(native);
+    } catch (error) {
+      if (error instanceof HooknosticBlock) throw error;
+      // Nowhere to report this yet -- surfacing HookResult.errors is separate
+      // work -- but a stray console write corrupts OpenCode's TUI mid-turn, so
+      // swallowing is the honest option until that channel exists.
     }
   };
 
@@ -208,7 +232,7 @@ export function createHooknosticHooks(
   const callback =
     (hook: string): Callback =>
     async (input, output) => {
-      await run({
+      await runFailingOpen({
         hook,
         directory: pluginInput.directory,
         ...(pluginInput.worktree !== undefined ? { worktree: pluginInput.worktree } : {}),

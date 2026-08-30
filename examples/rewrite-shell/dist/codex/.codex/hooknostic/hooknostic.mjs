@@ -4550,7 +4550,7 @@ async function dispatch(hooks, event, options) {
     let outcome;
     let timedOut = false;
     let timer;
-    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
     try {
       outcome = await Promise.race([
         Promise.resolve(hook2.run(event, ctx)),

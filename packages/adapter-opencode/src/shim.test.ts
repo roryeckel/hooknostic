@@ -205,6 +205,34 @@ describe("createHooknosticHooks", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("does not deny the user's tool call when the shim itself fails", async () => {
+    // Throwing IS the block channel here, so an unintended throw out of the
+    // dispatch path denies the call. Claude and Codex force exitCode 0 on an
+    // internal error and the call proceeds; this harness did the opposite,
+    // which is the worse direction -- a hooknostic bug becoming a denial.
+    //
+    // A handler that throws proves nothing: dispatch() catches those itself and
+    // records them in HookResult.errors. The exposed paths are the ones after
+    // it -- applying mutations, and posting. A frozen `output` makes the
+    // context assignment throw in the same place a real bug would.
+    const h = hooks();
+    const frozen = Object.freeze({});
+    await expect(
+      h["experimental.session.compacting"]!({ sessionID: "s" }, frozen),
+    ).resolves.toBeUndefined();
+  });
+
+  it("still delivers a block the plugin actually asked for", async () => {
+    // The wrapper must not swallow the deliberate throw the block rides on.
+    const h = hooks();
+    await expect(
+      h["tool.execute.before"]!(
+        { tool: "bash", sessionID: "s", callID: "c" },
+        { args: { command: "rm -rf /" } },
+      ),
+    ).rejects.toThrow("blocked by guard");
+  });
+
   it("does not register callbacks used only by hooks scoped away from OpenCode", () => {
     const plugin = definePlugin({
       name: "other-target",
