@@ -14,3 +14,6 @@ examples/*/com.anthropic.claude-code/
 coverage/
 *.log
 .DS_Store
+
+# Generated from hooks.json.template; embeds an absolute machine path.
+.capture/codex-output/.codex/hooks.json
