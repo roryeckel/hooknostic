@@ -25,7 +25,8 @@ const plugin = definePlugin({
       async run(event, ctx) {
         // One hook body serving both Codex shell tools: the codec lowers the
         // rewrite to `command` for Bash and `cmd` for exec_command.
-        const command = event.tool.shell?.command ?? "";
+        const raw = (event.tool.input as { command?: unknown }).command;
+        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");
         if (
           ctx.capabilities.has("tool.before.input.replace") &&
