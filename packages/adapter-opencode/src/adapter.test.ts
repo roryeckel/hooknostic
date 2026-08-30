@@ -21,6 +21,7 @@ describe("decodeOpenCode fixtures", () => {
     "session-deleted",
     "session-idle",
     "session-compacted",
+    "chat-message",
   ] as const;
 
   for (const name of CASES) {
@@ -234,6 +235,83 @@ describe("generateOpenCodeArtifacts", () => {
   });
 });
 
+describe("planOpenCodeApplication on turn.stop", () => {
+  it("posts a stop-prevention reason as a reply-driving prompt", () => {
+    expect(
+      planOpenCodeApplication(
+        result({
+          event: "turn.stop",
+          effects: [
+            {
+              hookId: "continue",
+              effect: {
+                kind: "preventStop",
+                reason: "Tests have not been run yet; keep working.",
+              },
+            },
+          ],
+          terminatedBy: "continue",
+        }),
+      ),
+    ).toEqual(loadFixture("opencode", "1.18", "session-idle-prevent.output.json"));
+  });
+
+  it("posts a notification without driving a turn", () => {
+    expect(
+      planOpenCodeApplication(
+        result({
+          event: "turn.stop",
+          effects: [
+            {
+              hookId: "notice",
+              effect: { kind: "notify", message: "hooknostic: 3 files are still uncommitted." },
+            },
+          ],
+        }),
+      ),
+    ).toEqual(loadFixture("opencode", "1.18", "session-idle-notify.output.json"));
+  });
+
+  it("orders notifications before the reply-driving prompt", () => {
+    // The invariant the array shape exists for: the agent must read every
+    // notice before the instruction that keeps it working, and exactly one
+    // entry may drive a turn.
+    const plan = planOpenCodeApplication(
+      result({
+        event: "turn.stop",
+        effects: [
+          {
+            hookId: "notice",
+            effect: { kind: "notify", message: "hooknostic: 3 files are still uncommitted." },
+          },
+          {
+            hookId: "continue",
+            effect: {
+              kind: "preventStop",
+              reason: "Tests have not been run yet; keep working.",
+            },
+          },
+        ],
+        terminatedBy: "continue",
+      }),
+    );
+    expect(plan).toEqual(loadFixture("opencode", "1.18", "session-idle-notify-prevent.output.json"));
+    expect(plan.prompts?.filter((p) => p.reply)).toHaveLength(1);
+    expect(plan.prompts?.at(-1)?.reply).toBe(true);
+  });
+
+  it("posts nothing on events with no session-posting semantic", () => {
+    expect(
+      planOpenCodeApplication(
+        result({
+          event: "tool.before",
+          effects: [{ hookId: "n", effect: { kind: "notify", message: "ignored" } }],
+        }),
+      ).prompts,
+    ).toBeUndefined();
+  });
+});
+
 describe("opencodeAdapter capability data", () => {
   it("resolves the 1.1x profile with rationale on every non-exact cell", () => {
     const resolved = opencodeAdapter().capabilities({
@@ -247,8 +325,12 @@ describe("opencodeAdapter capability data", () => {
     expect(resolved.matrix?.["permission.request.block"]?.level).toBe("exact");
     expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("approximate");
     expect(resolved.matrix?.["tool.before.context.add"]).toBeUndefined();
-    expect(resolved.matrix?.["turn.stop.prevent"]).toBeUndefined();
+    // Reached by posting into the session; measured live on 1.18.25.
+    expect(resolved.matrix?.["turn.stop.prevent"]?.level).toBe("emulated");
+    expect(resolved.matrix?.["turn.stop.notify"]?.level).toBe("approximate");
+    // No subagent lifecycle callbacks exist at all on this surface.
     expect(resolved.matrix?.["agent.start.observe"]).toBeUndefined();
+    expect(resolved.matrix?.["agent.stop.notify"]).toBeUndefined();
     for (const [id, entry] of Object.entries(resolved.matrix ?? {})) {
       if (entry.level !== "exact") {
         expect(entry.rationale, `capability ${id} needs a rationale`).toBeTruthy();

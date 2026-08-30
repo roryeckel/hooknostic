@@ -17,6 +17,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       references: [
         "https://code.claude.com/docs/en/hooks",
         "fixtures/claude/2.1 (captured 2.1.238)",
+        "Stop/SubagentStop output semantics verified live on 2.1.250 (.capture/claude-output)",
       ],
     },
     matrix: {
@@ -66,9 +67,11 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
 
       "agent.stop.observe": { level: "exact" },
       "agent.stop.prevent": { level: "exact" },
+      "agent.stop.notify": { level: "exact" },
 
       "turn.stop.observe": { level: "exact" },
       "turn.stop.prevent": { level: "exact" },
+      "turn.stop.notify": { level: "exact" },
     },
   },
 ];

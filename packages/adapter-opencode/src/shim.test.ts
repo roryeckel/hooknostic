@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { addContext, block, definePlugin, hook, replaceInput, replaceOutput } from "@hooknostic/sdk";
+import {
+  addContext,
+  block,
+  definePlugin,
+  hook,
+  notify,
+  preventStop,
+  replaceInput,
+  replaceOutput,
+} from "@hooknostic/sdk";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { createHooknosticHooks } from "./shim.js";
 
@@ -232,5 +241,98 @@ describe("createHooknosticHooks", () => {
         { args: { command: "rm -rf /" } },
       ),
     ).rejects.toThrow("blocked by guard");
+  });
+});
+
+describe("createHooknosticHooks turn.stop posting", () => {
+  interface Post {
+    path: { id: string };
+    body: { parts: { type: "text"; text: string }[]; noReply?: boolean };
+  }
+
+  function stopPlugin() {
+    return definePlugin({
+      name: "stop-test",
+      hooks: [
+        hook("turn.stop", {
+          id: "notice",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("lint could not run");
+          },
+        }),
+        hook("turn.stop", {
+          id: "continue",
+          capabilities: { "turn.stop.prevent": "required" },
+          async run() {
+            return preventStop("tests have not run");
+          },
+        }),
+      ],
+    });
+  }
+
+  function idleHooks(client?: unknown) {
+    return createHooknosticHooks(
+      stopPlugin(),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, ...(client === undefined ? {} : { client }) } as never,
+    );
+  }
+
+  const idle = {
+    event: { type: "session.idle", properties: { sessionID: "ses_1" } },
+  };
+
+  function recorder(): { calls: Post[]; client: unknown } {
+    const calls: Post[] = [];
+    return {
+      calls,
+      client: {
+        session: {
+          promptAsync: (options: Post) => {
+            calls.push(options);
+            return Promise.resolve();
+          },
+        },
+      },
+    };
+  }
+
+  it("posts notifications with noReply and the stop reason without it", async () => {
+    const { calls, client } = recorder();
+    await idleHooks(client)["event"]!(idle, {});
+
+    // Notice first, continuation last: the agent must read the notice before
+    // the instruction that keeps it working.
+    expect(calls.map((c) => [c.body.parts[0]!.text, c.body.noReply])).toEqual([
+      ["lint could not run", true],
+      ["tests have not run", undefined],
+    ]);
+    expect(calls.every((c) => c.path.id === "ses_1")).toBe(true);
+  });
+
+  it("is a silent no-op when the host supplies no client", async () => {
+    await expect(idleHooks()["event"]!(idle, {})).resolves.toBeUndefined();
+  });
+
+  it("fails open when a post rejects", async () => {
+    const client = {
+      session: { promptAsync: () => Promise.reject(new Error("server gone")) },
+    };
+    // A stop event is the worst place to throw: the user's session must survive.
+    await expect(idleHooks(client)["event"]!(idle, {})).resolves.toBeUndefined();
+  });
+
+  it("posts identically on every dispatch in one module lifetime (ADR-0002)", async () => {
+    const { calls, client } = recorder();
+    const h = idleHooks(client); // one persistent hooks object, as in a real session
+    for (let i = 0; i < 3; i++) await h["event"]!(idle, {});
+
+    // Three dispatches, three identical pairs. This is what a dedupe set, a
+    // memo, or a rate limiter added to the post path would break.
+    expect(calls).toHaveLength(6);
+    expect(calls.slice(0, 2)).toEqual(calls.slice(2, 4));
+    expect(calls.slice(0, 2)).toEqual(calls.slice(4, 6));
   });
 });

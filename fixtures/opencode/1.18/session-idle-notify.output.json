@@ -1,0 +1,5 @@
+{
+  "prompts": [
+    { "text": "hooknostic: 3 files are still uncommitted.", "reply": false }
+  ]
+}

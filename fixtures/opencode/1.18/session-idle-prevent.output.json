@@ -1,0 +1,5 @@
+{
+  "prompts": [
+    { "text": "Tests have not been run yet; keep working.", "reply": true }
+  ]
+}

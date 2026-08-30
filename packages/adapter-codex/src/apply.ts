@@ -49,7 +49,13 @@ export function applyCodex(
   };
   let hasHookSpecific = false;
 
-  if (context.length > 0) {
+  // The stop-family wire schemas have no hookSpecificOutput property at all and
+  // are additionalProperties:false, so emitting one there is a hard vendor-side
+  // error. Unreachable today (no stop-scoped context capability is registered),
+  // but this wire now carries new fields and the guard costs one condition.
+  const stopFamily = result.event === "turn.stop" || result.event === "agent.stop";
+
+  if (context.length > 0 && !stopFamily) {
     hookSpecificOutput["additionalContext"] = context.join("\n");
     hasHookSpecific = true;
   }
@@ -91,6 +97,10 @@ export function applyCodex(
       break;
     }
     case "preventStop": {
+      // JSON only. Verified on 0.148.0: exit 2 with a continuation prompt on
+      // stderr does NOT prevent a stop here, despite the binary carrying an
+      // error string that implies it should. Claude honours both encodings;
+      // Codex honours only this one.
       body["decision"] = "block";
       body["reason"] = terminal.reason ?? "hooknostic: continue working";
       break;

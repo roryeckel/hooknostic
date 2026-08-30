@@ -21,6 +21,17 @@ export interface OpenCodeApplication {
     /** experimental.session.compacting: appended to output.context. */
     context?: string[];
   };
+  /**
+   * Messages the shim posts back into the session with
+   * `client.session.promptAsync`, in application order.
+   *
+   * `reply: true` omits `noReply` and so makes the agent take another turn —
+   * OpenCode's only stop-prevention channel. `reply: false` sets `noReply` and
+   * posts the text without one. Invariant, guaranteed by construction below: at
+   * most one entry has `reply: true`, and it is last, so the agent reads every
+   * notice before the instruction that keeps it working.
+   */
+  prompts?: { text: string; reply: boolean }[];
 }
 
 const UNREPRESENTABLE_OUTPUT = "[hooknostic: unrepresentable output]";
@@ -81,6 +92,21 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
     .map((e) => (e.effect as { context: string }).context);
   if (context.length > 0 && result.event === "context.compact.before") {
     mutations.context = context;
+  }
+
+  // OpenCode has no notification or stop-prevention callback; both are reached
+  // by posting into the session, which only makes sense on turn.stop.
+  if (result.event === "turn.stop") {
+    const prompts: NonNullable<OpenCodeApplication["prompts"]> = result.effects
+      .filter((e) => e.effect.kind === "notify")
+      .map((e) => ({ text: (e.effect as { message: string }).message, reply: false }));
+    if (terminal?.kind === "preventStop") {
+      prompts.push({
+        text: terminal.reason ?? "hooknostic: continue working",
+        reply: true,
+      });
+    }
+    if (prompts.length > 0) application.prompts = prompts;
   }
 
   if (Object.keys(mutations).length > 0) application.mutations = mutations;

@@ -13,11 +13,12 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
   {
     range: ">=1.10 <2",
     source: {
-      date: "2026-08-20",
+      date: "2026-08-29",
       references: [
         "@opencode-ai/plugin@1.18.19 dist/index.d.ts",
         "https://opencode.ai/docs/plugins",
         "fixtures/opencode/1.18",
+        "opencode-ai 1.18.25 live plugin-client probe (.capture/opencode-client)",
       ],
     },
     matrix: {
@@ -89,9 +90,21 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
 
       "turn.stop.observe": {
         level: "approximate",
-        rationale: "session.idle on the event bus approximates turn completion.",
+        rationale:
+          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once.",
       },
-      // No stop-prevention channel → turn.stop.prevent unsupported.
+
+      "turn.stop.prevent": {
+        level: "emulated",
+        rationale:
+          "no native stop-prevention channel; the reason is posted back into the session with client.session.promptAsync (no noReply), which makes the agent take another turn. Best-effort: a silent no-op if the host supplies no client or the post fails. Unlike Claude and Codex there is no stop_hook_active flag and no block cap, so a hook that always prevents will loop -- it must carry its own terminating condition.",
+      },
+
+      "turn.stop.notify": {
+        level: "approximate",
+        rationale:
+          "no user-only message channel; the message is posted with client.session.promptAsync noReply:true, which reaches the user without driving a turn but also appends it to the conversation as a user-role message, so the model reads it on the next turn. Best-effort: a silent no-op without a client.",
+      },
     },
   },
 ];
