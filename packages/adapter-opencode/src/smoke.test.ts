@@ -26,6 +26,10 @@ const enabled = smokeFlag === "1" || smokeFlag.split(",").includes("opencode");
 const PACKAGES = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const REPO = resolve(PACKAGES, "..");
 const SMOKE_DIR = join(REPO, ".capture", "opencode-smoke");
+// Separate from SMOKE_DIR so the stop test's loop-guard sentinel lives in a
+// directory that test itself wipes; sharing one leaves a stale sentinel that
+// silently short-circuits the hook on every subsequent run.
+const STOP_DIR = join(REPO, ".capture", "opencode-stop-smoke");
 const MODEL = "ollama-cloud/deepseek-v4-flash";
 const ALIAS = {
   "@hooknostic/sdk": join(PACKAGES, "sdk/src/index.ts"),
@@ -60,6 +64,41 @@ export default definePlugin({
             command: command.replace("hooknostic-original", "hooknostic-rewritten"),
           });
         }
+      },
+    }),
+  ],
+});
+`;
+
+const STOP_HOOKS_SOURCE = `
+import { definePlugin, hook, notify, preventStop } from "@hooknostic/sdk";
+import { existsSync, writeFileSync } from "node:fs";
+
+// Self-limiting on purpose. preventStop posts a prompt, which drives another
+// turn, which fires session.idle again -- an unconditional hook would loop until
+// the test times out. OpenCode has no stop_hook_active flag and no block cap, so
+// the terminating condition has to live in the hook.
+const SENTINEL = ${JSON.stringify(join(STOP_DIR, "stop-fired").replaceAll("\\", "/"))};
+
+export default definePlugin({
+  name: "stop-smoke",
+  hooks: [
+    hook("turn.stop", {
+      id: "smoke-notice",
+      capabilities: { "turn.stop.notify": "optional" },
+      async run(_event, ctx) {
+        if (existsSync(SENTINEL)) return;
+        if (!ctx.capabilities.has("turn.stop.notify")) return;
+        return notify("hooknostic-notice");
+      },
+    }),
+    hook("turn.stop", {
+      id: "smoke-continue",
+      capabilities: { "turn.stop.prevent": "required" },
+      async run() {
+        if (existsSync(SENTINEL)) return;
+        writeFileSync(SENTINEL, "", "utf8");
+        return preventStop("Reply with the single word hooknostic-continued.");
       },
     }),
   ],
@@ -152,6 +191,118 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
       const transcript = stdout + "\n" + stderr;
       expect(transcript).toContain("hooknostic-rewritten");
       expect(existsSync(join(SMOKE_DIR, "forbidden-marker.txt"))).toBe(false);
+    },
+  );
+
+  it(
+    "stop prevention drives another turn in a live session",
+    { timeout: 300_000 },
+    async () => {
+      const dir = STOP_DIR;
+      await rm(dir, { recursive: true, force: true });
+      await mkdir(dir, { recursive: true });
+      await runCommand("git", ["init"], { cwd: dir, timeoutMs: 30_000 });
+      await writeFile(join(dir, "hooks.ts"), STOP_HOOKS_SOURCE, "utf8");
+
+      const levels = Object.fromEntries(
+        Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
+      );
+      const bundle = await bundleRuntime({
+        source: opencodeShimEntrySource({
+          entryImportPath: join(dir, "hooks.ts").replaceAll("\\", "/"),
+          capabilities: levels,
+          // turn.stop.observe is approximate on OpenCode (an aborted turn fires
+          // session.idle twice) and the default floor is emulated, so without
+          // this an OpenCode turn.stop hook cannot dispatch at all.
+          minimumCapabilityLevel: "approximate",
+          policy: {
+            onHookError: "continue",
+            timeoutMs: 5000,
+            contextCharLimit: 16_000,
+            notifyCharLimit: 2_000,
+          },
+          harnessVersion: "1.18.25",
+        }),
+        resolveDir: dir,
+        alias: ALIAS,
+      });
+
+      const { ir } = buildPluginIR(
+        definePlugin({
+          name: "stop-smoke",
+          hooks: [hook("turn.stop", { id: "smoke-continue", async run() {} })],
+        }),
+      );
+      for (const artifact of generateOpenCodeArtifacts(
+        ir!,
+        { id: "opencode", version: ">=1.18 <2", mode: "local", output: dir },
+        bundle,
+      )) {
+        const target = join(dir, artifact.path);
+        await mkdir(join(target, ".."), { recursive: true });
+        await writeFile(target, artifact.contents, "utf8");
+      }
+
+      // `opencode run` cannot observe this: it exits at session.idle, before a
+      // posted turn can start. A persistent server is the only vehicle.
+      const port = 47411;
+      const server = spawn("opencode", ["serve", "--port", String(port)], {
+        cwd: dir,
+        shell: process.platform === "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      try {
+        const base = `http://127.0.0.1:${port}`;
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          try {
+            if ((await fetch(`${base}/app`)).ok) break;
+          } catch {
+            /* not listening yet */
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+
+        const session = (await (
+          await fetch(`${base}/session`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          })
+        ).json()) as { id: string };
+
+        await fetch(`${base}/session/${session.id}/message`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: { providerID: MODEL.split("/")[0], modelID: MODEL.split("/")[1] },
+            parts: [{ type: "text", text: "Say the single word ready, then stop." }],
+          }),
+        });
+
+        // The post happens during session.idle, which resolves only after the
+        // prompt request returns; give the driven turn room to run.
+        await new Promise((r) => setTimeout(r, 45_000));
+
+        const messages = (await (
+          await fetch(`${base}/session/${session.id}/message`)
+        ).json()) as { info?: { role?: string }; parts?: { type?: string; text?: string }[] }[];
+        const rendered = messages.map((m) => ({
+          role: m.info?.role,
+          text: (m.parts ?? [])
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join(" "),
+        }));
+
+        // preventStop posted a prompt and the agent answered it — a turn that
+        // would not exist had the stop been allowed to stand.
+        expect(rendered.filter((m) => m.role === "assistant").length).toBeGreaterThan(1);
+        expect(rendered.some((m) => m.text?.includes("hooknostic-continued"))).toBe(true);
+        // notify posted with noReply, so it is present without a turn of its own.
+        expect(rendered.some((m) => m.text?.includes("hooknostic-notice"))).toBe(true);
+      } finally {
+        server.kill();
+      }
     },
   );
 });

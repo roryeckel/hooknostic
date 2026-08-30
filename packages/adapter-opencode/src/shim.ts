@@ -152,8 +152,14 @@ export function createHooknosticHooks(
     if (application.prompts === undefined) return;
     // HookResult carries no session id, so it comes from the decoded event.
     const id = event.session.id;
-    const post = pluginInput.client?.session?.promptAsync;
-    if (id === undefined || typeof post !== "function") return;
+    // Called as `session.promptAsync(...)`, never detached: the real SDK client
+    // carries these as prototype methods that use `this`, so a destructured
+    // reference throws at call time. A plain test double hides that, and the
+    // fail-open catch below would swallow it into a silent no-op.
+    const session = pluginInput.client?.session;
+    if (id === undefined || session === undefined || typeof session.promptAsync !== "function") {
+      return;
+    }
 
     for (const prompt of application.prompts) {
       try {
@@ -161,7 +167,7 @@ export function createHooknosticHooks(
         // in OpenCode's host is an unhandled rejection. promptAsync answers
         // immediately, so this does not stall the event bus.
         await Promise.resolve(
-          post({
+          session.promptAsync({
             path: { id },
             body: {
               parts: [{ type: "text", text: prompt.text }],
