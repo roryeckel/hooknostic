@@ -37,3 +37,5 @@ coverage/
 # agent resolves the path against the repo root instead of the scratch project,
 # the debris lands here.
 forbidden-marker.txt
+# Scratch copies the CLI build tests work in (see cleanExample).
+examples/.buildtest-*/
