@@ -7,7 +7,7 @@ import { generateClaudeArtifacts } from "./generate.js";
 const TARGET = { id: "claude", version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
-  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000 },
+  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
 };
 
 function exampleIR() {

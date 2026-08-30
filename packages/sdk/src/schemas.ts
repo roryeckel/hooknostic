@@ -88,6 +88,7 @@ export const effectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("addContext"), context: z.string() }).strict(),
   z.object({ kind: z.literal("preventStop"), reason: z.string().optional() }).strict(),
   z.object({ kind: z.literal("blockContinuation"), reason: z.string() }).strict(),
+  z.object({ kind: z.literal("notify"), message: z.string().min(1) }).strict(),
 ]);
 
 export const compatibilityPolicySchema = z
@@ -103,6 +104,7 @@ export const runtimePolicySchema = z
     onHookError: z.enum(["continue", "block"]).optional(),
     timeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
     contextCharLimit: z.number().int().positive().optional(),
+    notifyCharLimit: z.number().int().positive().optional(),
   })
   .strict();
 
