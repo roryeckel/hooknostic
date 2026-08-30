@@ -23,6 +23,15 @@ export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBund
       loader: "ts",
       sourcefile: "hooknostic-shim-entry.ts",
     },
+    // Anchor esbuild's own bookkeeping to the project, not to wherever the CLI
+    // was invoked. esbuild writes every module's path into a `// <path>` banner
+    // relative to absWorkingDir, which defaults to process.cwd() -- so without
+    // this the emitted bytes differ between `hooknostic build` run from the
+    // repo root and the same build run from the config's own directory. That
+    // makes "the committed artifact matches its source" a claim about where you
+    // happened to stand, and a consumer's drift check reports staleness when
+    // nothing is stale.
+    absWorkingDir: options.resolveDir,
     bundle: true,
     format: "esm",
     platform: "node",
