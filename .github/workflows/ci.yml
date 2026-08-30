@@ -48,6 +48,12 @@ jobs:
       # defect (artifact bytes varying with the invocation directory) on the day
       # it landed, rather than in a downstream consumer months later.
       - name: Committed example artifacts are reproducible
+        # bash explicitly: the matrix includes windows-latest, where an
+        # unshelled `run:` executes under PowerShell and the POSIX `if [ ... ]`
+        # below is a parse error -- failing every Windows run before the
+        # comparison, so the gate never actually ran on the platform most
+        # likely to expose byte drift.
+        shell: bash
         # `git status --porcelain`, not `git diff --exit-code`: diff reports
         # modifications and deletions of tracked files and is blind to a NEW
         # one. An adapter that starts emitting a fourth artifact would leave it
