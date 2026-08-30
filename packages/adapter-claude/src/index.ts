@@ -1,4 +1,3 @@
-export const ADAPTER_CLAUDE_VERSION = "0.1.0";
 
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
@@ -20,6 +19,8 @@ import { decodeClaude } from "./decode.js";
 import { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
+import { claudeHarness } from "./harness.js";
+export { claudeHarness } from "./harness.js";
 
 export { applyClaude } from "./apply.js";
 export { ClaudeDecodeError, decodeClaude } from "./decode.js";
@@ -74,7 +75,8 @@ export function claudeShimEntrySource(options: {
 export function claudeAdapter(): HarnessAdapter {
   return {
     id: "claude",
-    adapterVersion: ADAPTER_CLAUDE_VERSION,
+    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    harness: claudeHarness,
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",
     shellCodec: claudeShellCodec,

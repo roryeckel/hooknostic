@@ -3,8 +3,9 @@ import { loadFixture } from "@hooknostic/testkit";
 import { baseHookEventSchema } from "@hooknostic/sdk";
 import { CodexDecodeError, decodeCodex } from "./decode.js";
 import { classifyCodexTool } from "./toolmap.js";
+import { codexHarness } from "./harness.js";
 
-const INVOCATION = { targetId: "codex", harnessVersion: "0.148.0" };
+const INVOCATION = { targetId: "codex", harnessVersion: codexHarness.referenceVersion };
 
 const CASES = [
   "session-start",
@@ -31,7 +32,7 @@ describe("decodeCodex fixtures", () => {
       const decoded = decodeCodex(input, INVOCATION);
       expect(decoded).toEqual({
         ...canonical,
-        harness: { ...(canonical["harness"] as object), version: "0.148.0" },
+        harness: { ...(canonical["harness"] as object), version: codexHarness.referenceVersion },
         raw: input,
       });
       expect(baseHookEventSchema.parse(decoded)).toBeTruthy();

@@ -1,4 +1,3 @@
-export const ADAPTER_CODEX_VERSION = "0.1.0";
 
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
@@ -20,6 +19,8 @@ import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
+import { codexHarness } from "./harness.js";
+export { codexHarness } from "./harness.js";
 
 export { applyCodex } from "./apply.js";
 export { CodexDecodeError, decodeCodex } from "./decode.js";
@@ -67,7 +68,8 @@ export function codexShimEntrySource(options: {
 export function codexAdapter(): HarnessAdapter {
   return {
     id: "codex",
-    adapterVersion: ADAPTER_CODEX_VERSION,
+    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    harness: codexHarness,
     // Codex spawns `node <artifact>` per hook event.
     shimExecution: "command",
     shellCodec: codexShellCodec,

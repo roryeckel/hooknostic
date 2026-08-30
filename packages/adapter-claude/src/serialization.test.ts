@@ -4,6 +4,7 @@ import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 import { dispatch } from "@hooknostic/runtime";
 import { applyClaude } from "./apply.js";
 import { claudeCapabilityProfiles } from "./profile.js";
+import { claudeHarness } from "./harness.js";
 
 const LEVELS = Object.fromEntries(
   Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
@@ -13,7 +14,7 @@ function preToolUse(): ToolBeforeEvent {
   return {
     schemaVersion: 1,
     event: "tool.before",
-    harness: { id: "claude", version: "2.1.238", nativeEvent: "PreToolUse" },
+    harness: { id: "claude", version: claudeHarness.referenceVersion, nativeEvent: "PreToolUse" },
     session: { id: "s", cwd: "C:/repo" },
     correlation: { toolCallId: "toolu_1" },
     raw: {},
@@ -46,7 +47,7 @@ describe("Claude response serialization", () => {
     });
     const result = await dispatch(plugin.hooks, preToolUse(), {
       targetId: "claude",
-      harness: { id: "claude", version: "2.1.238" },
+      harness: { id: "claude", version: claudeHarness.referenceVersion },
       capabilities: LEVELS,
     });
     expect(result.errors.map((e) => e.hookId)).toEqual(["rewrite"]);

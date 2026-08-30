@@ -5,8 +5,18 @@ import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
 import type { AdapterRegistry, CapabilityProfile } from "@hooknostic/core";
 import { makeFakeAdapter } from "./fake-adapter.js";
 
+// Synthetic profiles need a syntactically valid source; provenance is
+// meaningless for a fake harness, so one shared stub keeps the noise down.
+const SRC: CapabilityProfile["source"] = {
+  date: "2026-01-01",
+  validatedOn: [
+    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
+  ],
+};
+
 const richProfile: CapabilityProfile = {
   range: ">=1.0 <2",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "tool.before.block": { level: "exact" },
@@ -21,6 +31,7 @@ const richProfile: CapabilityProfile = {
 
 const poorProfile: CapabilityProfile = {
   range: ">=1.0 <2",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "tool.before.block": { level: "approximate", rationale: "block is advisory only" },
@@ -37,6 +48,7 @@ const poorProfile: CapabilityProfile = {
  */
 const hazyProfile: CapabilityProfile = {
   range: ">=1.0 <2",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "turn.stop.observe": { level: "approximate", rationale: "an aborted turn signals twice" },

@@ -1,4 +1,3 @@
-export const ADAPTER_OPENCODE_VERSION = "0.1.0";
 
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
@@ -20,6 +19,8 @@ import { decodeOpenCode } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { opencodeShellCodec, OPENCODE_SHELL_SHAPES } from "./toolmap.js";
+import { opencodeHarness } from "./harness.js";
+export { opencodeHarness } from "./harness.js";
 
 export {
   applyOpenCode,
@@ -78,7 +79,8 @@ export function opencodeShimEntrySource(options: {
 export function opencodeAdapter(): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: ADAPTER_OPENCODE_VERSION,
+    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    harness: opencodeHarness,
     // OpenCode imports the plugin module in-process.
     shimExecution: "module",
     shellCodec: opencodeShellCodec,

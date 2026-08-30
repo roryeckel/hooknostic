@@ -8,25 +8,56 @@ const NOTIFY_ACCEPTED_AND_DISCARDED =
   "systemMessage is accepted by the stop.command.output / subagent-stop.command.output wire schemas -- a live 0.148.0 run validates cleanly and logs \"Stop Completed\" -- but 0.148.0 has no rendering path for it and the message appears nowhere. Accepted-and-discarded is not support: claiming it would make a portable hook lose every notice on this target, silently.";
 
 /**
- * Codex CLI capability data. Validated against codex-cli 0.148.0 (fixtures
- * captured 2026-08-20 on Windows) and the wire JSON Schemas embedded in the
- * 0.148.0 binary (`*.command.input` / `*.command.output`). Vendor docs
- * (https://developers.openai.com/codex/hooks → learn.chatgpt.com/docs/hooks,
- * fetched 2026-08-20) were used as secondary sources; where docs and the
- * binary disagreed, the binary won (e.g. `plugin_hooks` is removed, and
- * `permissionDecision` uses "ask", not an escalate variant).
+ * Codex CLI capability data. Where docs and the binary disagreed, the binary
+ * won (e.g. `plugin_hooks` is removed, and `permissionDecision` uses "ask",
+ * not an escalate variant). Version facts live in `source.validatedOn`, not
+ * prose.
  */
 export const codexCapabilityProfiles: CapabilityProfile[] = [
   {
     range: ">=0.140 <1",
     source: {
       date: "2026-08-29",
-      references: [
-        "codex-cli 0.148.0 embedded wire schemas",
-        "fixtures/codex/0.148 (captured 0.148.0)",
-        "https://learn.chatgpt.com/docs/hooks",
-        "Stop output semantics verified live on 0.148.0 (.capture/codex-output)",
+      validatedOn: [
+        {
+          version: "0.148.0",
+          date: "2026-08-20",
+          method: "captured",
+          artifact: "fixtures/codex/0.148",
+          what: "hook payload fixtures via a trusted teeing project, captured on Windows",
+        },
+        {
+          version: "0.148.0",
+          date: "2026-08-20",
+          method: "schema-derived",
+          artifact: ".capture/codex",
+          what: "wire JSON Schemas embedded in the binary (*.command.input/output)",
+        },
+        {
+          version: "0.148.0",
+          date: "2026-08-29",
+          method: "live-probe",
+          artifact: ".capture/codex-output",
+          what: "Stop output semantics: systemMessage accepted-and-discarded, never rendered",
+        },
+        {
+          version: "0.151.0",
+          date: "2026-08-30",
+          method: "router-log",
+          artifact: ".capture/codex-tools",
+          what:
+            "exec_command router args (cmd/workdir); NOTE the hook boundary translates " +
+            "these calls to Bash/command payloads and drops workdir",
+        },
+        {
+          version: "0.151.0",
+          date: "2026-08-30",
+          method: "live-probe",
+          artifact: ".capture/codex-tools",
+          what: "updatedInput write channel verified honoured (rewritten command reached spawn)",
+        },
       ],
+      notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
     },
     matrix: {
       "session.start.observe": { level: "exact" },

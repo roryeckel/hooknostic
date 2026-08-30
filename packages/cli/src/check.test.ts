@@ -8,6 +8,16 @@ import { makeFakeAdapter } from "@hooknostic/testkit";
 import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
+import { codexHarness } from "@hooknostic/adapter-codex";
+
+// Synthetic profiles need a syntactically valid source; provenance is
+// meaningless for a fake harness, so one shared stub keeps the noise down.
+const SRC: CapabilityProfile["source"] = {
+  date: "2026-01-01",
+  validatedOn: [
+    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
+  ],
+};
 
 const SDK_PATH = resolve(
   fileURLToPath(new URL(".", import.meta.url)),
@@ -17,6 +27,7 @@ const EVALUATE = { alias: { "@hooknostic/sdk": SDK_PATH } };
 
 const fullProfile: CapabilityProfile = {
   range: ">=1.0 <2",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "tool.before.block": { level: "exact" },
@@ -28,6 +39,7 @@ const fullProfile: CapabilityProfile = {
 
 const limitedProfile: CapabilityProfile = {
   range: ">=1.0 <2",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "session.start.observe": { level: "exact" },
@@ -176,7 +188,7 @@ describe("hooknostic check", () => {
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        targets: { codex: { version: ">=0.148 <1", mode: "plugin", output: "./dist" } },
+        targets: { codex: { version: "${codexHarness.recommendedRange}", mode: "plugin", output: "./dist" } },
       };`,
       "utf8",
     );

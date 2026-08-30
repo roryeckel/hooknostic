@@ -1,25 +1,40 @@
 import type { CapabilityProfile } from "@hooknostic/core";
 
 /**
- * OpenCode capability data. Validated against opencode 1.18.18 and the
- * `@opencode-ai/plugin@1.18.19` published Hooks type definitions
- * (dist/index.d.ts, inspected 2026-08-20); vendor docs
- * (https://opencode.ai/docs/plugins, fetched 2026-08-20) as secondary source.
- *
- * OpenCode plugins are persistent in-process modules, not subprocesses; the
- * generated shim never exposes module lifetime as portable state (ADR-0002).
+ * OpenCode capability data. OpenCode plugins are persistent in-process
+ * modules, not subprocesses; the generated shim never exposes module lifetime
+ * as portable state (ADR-0002). Version facts live in `source.validatedOn`,
+ * not prose.
  */
 export const opencodeCapabilityProfiles: CapabilityProfile[] = [
   {
     range: ">=1.10 <2",
     source: {
       date: "2026-08-29",
-      references: [
-        "@opencode-ai/plugin@1.18.19 dist/index.d.ts",
-        "https://opencode.ai/docs/plugins",
-        "fixtures/opencode/1.18",
-        "opencode-ai 1.18.25 live plugin-client probe (.capture/opencode-client)",
+      validatedOn: [
+        {
+          version: "1.18.18",
+          date: "2026-08-20",
+          method: "captured",
+          artifact: "fixtures/opencode/1.18",
+          what: "live plugin hook payloads incl. in-place args-mutation behaviour",
+        },
+        {
+          version: "1.18.19",
+          date: "2026-08-20",
+          method: "type-derived",
+          artifact: ".capture/opencode",
+          what: "@opencode-ai/plugin published Hooks type definitions (dist/index.d.ts)",
+        },
+        {
+          version: "1.18.25",
+          date: "2026-08-29",
+          method: "live-probe",
+          artifact: ".capture/opencode-client",
+          what: "plugin-client probe: promptAsync notification channel and session.idle timing",
+        },
       ],
+      notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
     matrix: {
       "session.start.observe": {

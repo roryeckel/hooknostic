@@ -12,6 +12,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { opencodeHarness } from "./harness.js";
 import { bundleRuntime, buildPluginIR } from "@hooknostic/core";
 import { definePlugin, hook } from "@hooknostic/sdk";
 import {
@@ -202,7 +203,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
           entryImportPath: join(SMOKE_DIR, "hooks.ts").replaceAll("\\", "/"),
           capabilities: levels,
           policy: { onHookError: "continue", timeoutMs: 5000 },
-          harnessVersion: "1.18.18",
+          harnessVersion: opencodeHarness.referenceVersion,
         }),
         resolveDir: SMOKE_DIR,
         alias: ALIAS,
@@ -216,7 +217,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
       );
       const artifacts = generateOpenCodeArtifacts(
         ir!,
-        { id: "opencode", version: ">=1.18 <2", mode: "local", output: SMOKE_DIR },
+        { id: "opencode", version: opencodeHarness.recommendedRange, mode: "local", output: SMOKE_DIR },
         bundle,
       );
       for (const artifact of artifacts) {
@@ -270,6 +271,8 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
             contextCharLimit: 16_000,
             notifyCharLimit: 2_000,
           },
+          // Deliberately a literal, newer than referenceVersion: this probe
+          // exercised a later build than the fixture capture.
           harnessVersion: "1.18.25",
         }),
         resolveDir: dir,
@@ -284,7 +287,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
       );
       for (const artifact of generateOpenCodeArtifacts(
         ir!,
-        { id: "opencode", version: ">=1.18 <2", mode: "local", output: dir },
+        { id: "opencode", version: opencodeHarness.recommendedRange, mode: "local", output: dir },
         bundle,
       )) {
         const target = join(dir, artifact.path);

@@ -6,8 +6,9 @@ import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
 import { claudeShellCodec } from "./toolmap.js";
 import { claudeCapabilityProfiles } from "./profile.js";
+import { claudeHarness } from "./harness.js";
 
-const INVOCATION = { targetId: "claude", harnessVersion: "2.1.238" };
+const INVOCATION = { targetId: "claude", harnessVersion: claudeHarness.referenceVersion };
 
 const LEVELS = Object.fromEntries(
   Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, entry]) => [

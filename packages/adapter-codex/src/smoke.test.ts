@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { codexHarness } from "./harness.js";
 import { bundleRuntime, buildPluginIR } from "@hooknostic/core";
 import { definePlugin, hook } from "@hooknostic/sdk";
 import { codexShimEntrySource, codexCapabilityProfiles, generateCodexArtifacts } from "./index.js";
@@ -136,7 +137,7 @@ describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
           entryImportPath: join(SMOKE_DIR, "hooks.ts").replaceAll("\\", "/"),
           capabilities: levels,
           policy: { onHookError: "continue", timeoutMs: 5000 },
-          harnessVersion: "0.148.0",
+          harnessVersion: codexHarness.referenceVersion,
         }),
         resolveDir: SMOKE_DIR,
         alias: ALIAS,
@@ -153,7 +154,7 @@ describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
       );
       const artifacts = generateCodexArtifacts(
         ir!,
-        { id: "codex", version: ">=0.148 <1", mode: "local", output: SMOKE_DIR },
+        { id: "codex", version: codexHarness.recommendedRange, mode: "local", output: SMOKE_DIR },
         bundle,
         {
           runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },

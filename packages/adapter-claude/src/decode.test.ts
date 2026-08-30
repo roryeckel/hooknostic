@@ -3,8 +3,9 @@ import { loadFixture } from "@hooknostic/testkit";
 import { baseHookEventSchema } from "@hooknostic/sdk";
 import { ClaudeDecodeError, decodeClaude } from "./decode.js";
 import { classifyClaudeTool } from "./toolmap.js";
+import { claudeHarness } from "./harness.js";
 
-const INVOCATION = { targetId: "claude", harnessVersion: "2.1.238" };
+const INVOCATION = { targetId: "claude", harnessVersion: claudeHarness.referenceVersion };
 
 const CASES = [
   "session-start",
@@ -36,7 +37,7 @@ describe("decodeClaude fixtures", () => {
       // Canonical fixtures omit raw and harness.version; splice them in.
       expect(decoded).toEqual({
         ...canonical,
-        harness: { ...(canonical["harness"] as object), version: "2.1.238" },
+        harness: { ...(canonical["harness"] as object), version: claudeHarness.referenceVersion },
         raw: input,
       });
       expect(baseHookEventSchema.parse(decoded)).toBeTruthy();

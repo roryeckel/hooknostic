@@ -11,11 +11,21 @@ import { makeFakeAdapter } from "@hooknostic/testkit";
 import { runBuild } from "./build.js";
 import { runCli } from "./cli.js";
 
+// Synthetic profiles need a syntactically valid source; provenance is
+// meaningless for a fake harness, so one shared stub keeps the noise down.
+const SRC: CapabilityProfile["source"] = {
+  date: "2026-01-01",
+  validatedOn: [
+    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
+  ],
+};
+
 const SDK_PATH = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../sdk/src/index.ts");
 const EVALUATE = { alias: { "@hooknostic/sdk": SDK_PATH } };
 
 const PROFILE: CapabilityProfile = {
   range: ">=1.0 <2",
+  source: SRC,
   matrix: { "session.start.observe": { level: "exact" } },
 };
 
