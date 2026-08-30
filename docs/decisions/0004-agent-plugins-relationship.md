@@ -1,6 +1,11 @@
-# ADR 0004 — Agent Plugins is a peer standard
+# Decision 0004 — Agent Plugins is a peer, not a dependency
 
-**Status:** Accepted — 2026-08-20
+**Status:** Accepted — 2026-08-20 · Referenced from code and docs as **ADR-0004**
+
+**In short:** the Agent Plugins standard already covers portable packaging (skills, MCP
+config). Hooknostic fills the one gap it leaves open — lifecycle hooks — using the
+standard's own extension mechanism, and never modifies or forks its schema. You can use
+Hooknostic with or without an Agent Plugins package.
 
 ## Context
 

@@ -206,5 +206,6 @@ With `agentPlugin: { root: "." }` configured, the Claude artifacts (minus
 `.claude-plugin/`) are additionally emitted to `./com.anthropic.claude-code/`,
 the Agent Plugins 1.0 client-extension namespace, so a repository that is
 already an Agent Plugin carries its hooks in the conventional location rather
-than a Hooknostic-specific one. See [ADR-0004](adr/) for the boundary: Hooknostic
+than a Hooknostic-specific one. See
+[Decision 0004](decisions/0004-agent-plugins-relationship.md) for the boundary: Hooknostic
 consumes a `plugin.json` for metadata and never writes one.
