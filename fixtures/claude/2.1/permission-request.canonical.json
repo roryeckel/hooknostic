@@ -1,7 +1,10 @@
 {
   "schemaVersion": 1,
   "event": "permission.request",
-  "harness": { "id": "claude", "nativeEvent": "PermissionRequest" },
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PermissionRequest"
+  },
   "session": {
     "id": "1d998646-7c2a-4a64-befa-c1b0e23e53cf",
     "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude"
@@ -13,6 +16,11 @@
   "tool": {
     "kind": "shell",
     "nativeName": "Bash",
-    "input": { "command": "mkdir hooknostic-permission-test" }
+    "input": {
+      "command": "mkdir hooknostic-permission-test"
+    },
+    "shell": {
+      "command": "mkdir hooknostic-permission-test"
+    }
   }
 }

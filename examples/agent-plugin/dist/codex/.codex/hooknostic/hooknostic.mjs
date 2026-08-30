@@ -4320,7 +4320,8 @@ var toolInvocationSchema = external_exports.object({
   kind: toolKindSchema,
   nativeName: external_exports.string(),
   input: external_exports.unknown(),
-  mcp: external_exports.object({ server: external_exports.string().optional(), tool: external_exports.string().optional() }).strict().optional()
+  mcp: external_exports.object({ server: external_exports.string().optional(), tool: external_exports.string().optional() }).strict().optional(),
+  shell: external_exports.object({ command: external_exports.string(), cwd: external_exports.string().optional() }).strict().optional()
 }).strict();
 var baseHookEventSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
@@ -4417,9 +4418,12 @@ var pluginSpecSchema = external_exports.object({
 }).strict();
 
 // ../../packages/sdk/dist/result.js
+var RUNTIME_DIAGNOSTIC_CODES = ["HN103", "HN401"];
+var runtimeDiagnosticCodeSchema = external_exports.enum(RUNTIME_DIAGNOSTIC_CODES);
 var handlerErrorSchema = external_exports.object({
   hookId: external_exports.string(),
   kind: external_exports.enum(["error", "timeout", "unsupported-effect", "budget-exceeded"]),
+  code: runtimeDiagnosticCodeSchema.optional(),
   message: external_exports.string()
 }).strict();
 var hookResultSchema = external_exports.object({
@@ -4571,7 +4575,8 @@ async function dispatch(hooks, event, options) {
       const terminal = failDispatch(hook2.id, {
         hookId: hook2.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
+        code: "HN401",
+        message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
       }, capabilities);
       if (terminal) break;
       continue;
@@ -4581,7 +4586,8 @@ async function dispatch(hooks, event, options) {
       const terminal = failDispatch(hook2.id, {
         hookId: hook2.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
+        code: "HN401",
+        message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
       }, capabilities);
       if (terminal) break;
       continue;
@@ -4592,7 +4598,8 @@ async function dispatch(hooks, event, options) {
       const terminal = failDispatch(hook2.id, {
         hookId: hook2.id,
         kind: "unsupported-effect",
-        message: `HN401: effect "${effect.kind}" is not defined for event "${event.event}".`
+        code: "HN401",
+        message: `effect "${effect.kind}" is not defined for event "${event.event}".`
       }, capabilities);
       if (terminal) break;
       continue;
@@ -4601,7 +4608,8 @@ async function dispatch(hooks, event, options) {
       const terminal = failDispatch(hook2.id, {
         hookId: hook2.id,
         kind: "unsupported-effect",
-        message: `HN401: hook "${hook2.id}" returned "${effect.kind}" without declaring capability "${capability}".`
+        code: "HN401",
+        message: `hook "${hook2.id}" returned "${effect.kind}" without declaring capability "${capability}".`
       }, capabilities);
       if (terminal) break;
       continue;
@@ -4610,7 +4618,8 @@ async function dispatch(hooks, event, options) {
       const terminal = failDispatch(hook2.id, {
         hookId: hook2.id,
         kind: "unsupported-effect",
-        message: `HN401: capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`
+        code: "HN401",
+        message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`
       }, capabilities);
       if (terminal) break;
       continue;
@@ -4628,8 +4637,24 @@ async function dispatch(hooks, event, options) {
         break;
       }
       case "addContext": {
-        if (contextBudget <= 0) break;
+        if (contextBudget <= 0) {
+          result.errors.push({
+            hookId: hook2.id,
+            kind: "budget-exceeded",
+            code: "HN103",
+            message: `context addition dropped; no context budget remained in this dispatch (limit ${policy.contextCharLimit} characters).`
+          });
+          break;
+        }
         const context = effect.context.length > contextBudget ? effect.context.slice(0, contextBudget) : effect.context;
+        if (context.length < effect.context.length) {
+          result.errors.push({
+            hookId: hook2.id,
+            kind: "budget-exceeded",
+            code: "HN103",
+            message: `context addition truncated to ${context.length} of ${effect.context.length} characters by the context budget.`
+          });
+        }
         contextBudget -= context.length;
         result.effects.push({ hookId: hook2.id, effect: { kind: "addContext", context } });
         break;
@@ -4640,7 +4665,8 @@ async function dispatch(hooks, event, options) {
           result.errors.push({
             hookId: hook2.id,
             kind: "budget-exceeded",
-            message: `HN103: notification dropped; no notification budget remained in this dispatch (limit ${policy.notifyCharLimit} characters).`
+            code: "HN103",
+            message: `notification dropped; no notification budget remained in this dispatch (limit ${policy.notifyCharLimit} characters).`
           });
           break;
         }
@@ -4649,7 +4675,8 @@ async function dispatch(hooks, event, options) {
           result.errors.push({
             hookId: hook2.id,
             kind: "budget-exceeded",
-            message: `HN103: notification truncated to ${message.length} of ${effect.message.length} characters by the notification budget.`
+            code: "HN103",
+            message: `notification truncated to ${message.length} of ${effect.message.length} characters by the notification budget.`
           });
         }
         notifyBudget -= message.length;
@@ -4667,6 +4694,10 @@ async function dispatch(hooks, event, options) {
     }
   }
   return result;
+}
+function formatHandlerErrors(result) {
+  if (result.errors.length === 0) return void 0;
+  return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
 }
 var NATIVE_EVENT = {
   "session.start": "SessionStart",
@@ -4763,6 +4794,12 @@ var EXACT = {
   Agent: "agent",
   update_plan: "other"
 };
+function codexShell(nativeName, input) {
+  const args = input;
+  const command = nativeName === "Bash" ? args?.command : nativeName === "exec_command" ? args?.cmd : void 0;
+  if (typeof command !== "string") return void 0;
+  return typeof args?.workdir === "string" ? { command, cwd: args.workdir } : { command };
+}
 function classifyCodexTool(nativeName, input) {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
   if (mcpMatch) {
@@ -4773,7 +4810,13 @@ function classifyCodexTool(nativeName, input) {
       mcp: { server: mcpMatch[1], tool: mcpMatch[2] }
     };
   }
-  return { kind: EXACT[nativeName] ?? "other", nativeName, input };
+  const shell = codexShell(nativeName, input);
+  return {
+    kind: EXACT[nativeName] ?? "other",
+    nativeName,
+    input,
+    ...shell !== void 0 ? { shell } : {}
+  };
 }
 var CodexDecodeError = class extends Error {
 };
@@ -4898,6 +4941,9 @@ async function runCodexCommandShim(plugin, options) {
     const native = await applyCodex(result, nativeEvent, invocation);
     if (native.body !== void 0) await writeStream(process.stdout, JSON.stringify(native.body));
     if (native.stderr !== void 0) await writeStream(process.stderr, native.stderr);
+    const diagnostics = formatHandlerErrors(result);
+    if (diagnostics !== void 0) await writeStream(process.stderr, `${diagnostics}
+`);
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CodexDecodeError)) {

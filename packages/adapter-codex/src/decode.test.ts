@@ -63,6 +63,35 @@ describe("decodeCodex fixtures", () => {
   });
 });
 
+describe("shell argument normalization", () => {
+  it("reads the command from whichever key the native tool uses", () => {
+    // The finding this exists for: `Bash` names it `command`, `exec_command`
+    // names it `cmd`. A portable guard matching `kind: "shell"` and reading
+    // `input.command` matched every target and silently permitted every Codex
+    // exec_command call. Captured on codex-cli 0.151.0 --
+    // see .capture/codex-tools/README.md.
+    expect(classifyCodexTool("Bash", { command: "echo one" }).shell).toEqual({
+      command: "echo one",
+    });
+    expect(
+      classifyCodexTool("exec_command", { cmd: "echo two", workdir: "C:/proj" }).shell,
+    ).toEqual({ command: "echo two", cwd: "C:/proj" });
+  });
+
+  it("leaves shell undefined for a shell tool whose shape was never captured", () => {
+    // `shell` is classified as a shell tool but was never observed as a tool
+    // NAME, so its argument shape is unknown. Undefined tells a hook to fall
+    // back to `input`; a guess would tell it nothing and be wrong silently.
+    expect(classifyCodexTool("shell", { cmd: "echo three" }).kind).toBe("shell");
+    expect(classifyCodexTool("shell", { cmd: "echo three" }).shell).toBeUndefined();
+  });
+
+  it("never replaces the verbatim input", () => {
+    const input = { cmd: "echo four", workdir: "C:/proj", login: false };
+    expect(classifyCodexTool("exec_command", input).input).toBe(input);
+  });
+});
+
 describe("classifyCodexTool", () => {
   it("classifies codex tool paths", () => {
     expect(classifyCodexTool("Bash", {}).kind).toBe("shell");

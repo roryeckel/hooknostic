@@ -31,6 +31,27 @@ export interface ToolInvocation {
     server?: string;
     tool?: string;
   };
+
+  /**
+   * The shell invocation, normalized, when the adapter knows this tool's
+   * argument shape.
+   *
+   * `kind` is portable but `input` is not: Claude's `Bash` names the command
+   * `command`, Codex's `exec_command` names it `cmd` (captured on 0.151.0 --
+   * see `.capture/codex-tools/README.md`). A guard matching `kind: "shell"` and
+   * reading `input.command` therefore compiles, checks and matches everywhere
+   * while silently permitting a whole harness's shell calls.
+   *
+   * Deliberately optional, and its absence is informative: where a shell-kind
+   * tool's argument shape has not been captured, the adapter leaves this
+   * undefined rather than guessing, and a hook should fall back to `input`.
+   * `input` always stays the verbatim payload -- this is derived from it, never
+   * a replacement for it.
+   */
+  shell?: {
+    command: string;
+    cwd?: string;
+  };
 }
 
 /** Declarative matcher applied to tool-scoped events before handlers run. */

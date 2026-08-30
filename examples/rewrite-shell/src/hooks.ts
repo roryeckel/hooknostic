@@ -19,15 +19,16 @@ export default definePlugin({
         "tool.before.input.replace": "optional",
       },
       async run(event, ctx) {
-        const input = event.tool.input as { command?: string };
-        const command = input.command ?? "";
+        const input = event.tool.input as Record<string, unknown>;
+        // Portable read. The write-back below still needs the harness's own key.
+        const command = event.tool.shell?.command ?? "";
 
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
 
         if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          return replaceInput({ ...input, command: command.replace(/^npm /, "pnpm ") });
+          return replaceInput({ ...input, ["cmd" in input ? "cmd" : "command"]: command.replace(/^npm /, "pnpm ") });
         }
       },
     }),

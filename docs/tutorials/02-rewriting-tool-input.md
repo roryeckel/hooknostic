@@ -27,15 +27,16 @@ hook("tool.before", {
     "tool.before.input.replace": "optional",
   },
   async run(event, ctx) {
-    const input = event.tool.input as { command?: string };
-    const command = input.command ?? "";
+    const input = event.tool.input as Record<string, unknown>;
+    // Portable read. The write-back below still needs the harness's own key.
+    const command = event.tool.shell?.command ?? "";
 
     if (command.includes("rm -rf /")) {
       return block("Refusing destructive root deletion");
     }
 
     if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-      return replaceInput({ ...input, command: command.replace(/^npm /, "pnpm ") });
+      return replaceInput({ ...input, ["cmd" in input ? "cmd" : "command"]: command.replace(/^npm /, "pnpm ") });
     }
   },
 }),
@@ -57,6 +58,15 @@ violation (diagnostic HN401, handled per your configured error policy). The
 Notice also the rewrite spreads the original input (`{ ...input, command }`).
 `replaceInput` replaces the *whole* input object, so preserve the fields you aren't
 changing.
+
+**Reading a shell command is portable; writing one back is not.**
+`event.tool.shell.command` is normalized by the adapter, because the harnesses
+disagree about the key — Claude's `Bash` uses `command`, Codex's `exec_command`
+uses `cmd`. `replaceInput` takes the *native* shape, so a rewrite has to put the
+value back under the key that harness used: spread the original input and set the
+key you found there. If `event.tool.shell` is undefined for a shell tool, its
+argument shape has not been captured — read `event.tool.input` directly and treat
+the tool as unknown rather than assuming a key.
 
 ## See the degradation ledger
 
