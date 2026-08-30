@@ -4450,7 +4450,7 @@ var hooks_default = definePlugin({
   ]
 });
 
-// ../../packages/runtime/src/dispatch.ts
+// ../../packages/cli/dist/shims/codex.mjs
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4668,8 +4668,6 @@ async function dispatch(hooks, event, options) {
   }
   return result;
 }
-
-// ../../packages/adapter-codex/src/apply.ts
 var NATIVE_EVENT = {
   "session.start": "SessionStart",
   "session.end": "SessionEnd",
@@ -4750,8 +4748,6 @@ function applyCodex(result, _nativeEvent, _invocation) {
   }
   return Promise.resolve({ exitCode: 0, body });
 }
-
-// ../../packages/adapter-codex/src/toolmap.ts
 var EXACT = {
   Bash: "shell",
   exec_command: "shell",
@@ -4779,8 +4775,6 @@ function classifyCodexTool(nativeName, input) {
   }
   return { kind: EXACT[nativeName] ?? "other", nativeName, input };
 }
-
-// ../../packages/adapter-codex/src/decode.ts
 var CodexDecodeError = class extends Error {
 };
 function decodeCodex(nativeEvent, invocation) {
@@ -4871,8 +4865,6 @@ function decodeCodex(nativeEvent, invocation) {
       throw new CodexDecodeError(`unmapped native event "${nativeName}"`);
   }
 }
-
-// ../../packages/adapter-codex/src/shim.ts
 async function readStdin() {
   let data = "";
   process.stdin.setEncoding("utf8");
