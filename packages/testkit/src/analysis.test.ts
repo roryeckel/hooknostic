@@ -29,10 +29,26 @@ const poorProfile: CapabilityProfile = {
   },
 };
 
+/**
+ * Observation of the event itself is degraded — the shape a real harness takes
+ * when its stop signal can fire twice for one turn. The hook author cannot
+ * declare `<event>.observe`, so this is only reachable through the implicit
+ * requirement the analyzer synthesizes.
+ */
+const hazyProfile: CapabilityProfile = {
+  range: ">=1.0 <2",
+  matrix: {
+    "tool.before.observe": { level: "exact" },
+    "turn.stop.observe": { level: "approximate", rationale: "an aborted turn signals twice" },
+    "turn.stop.prevent": { level: "exact" },
+  },
+};
+
 function registry(): AdapterRegistry {
   return {
     rich: makeFakeAdapter({ id: "rich", profiles: [richProfile] }),
     poor: makeFakeAdapter({ id: "poor", profiles: [poorProfile] }),
+    hazy: makeFakeAdapter({ id: "hazy", profiles: [hazyProfile] }),
   };
 }
 
@@ -166,6 +182,56 @@ describe("analyzeCapabilities", () => {
       severity: "info",
       support: "approximate",
     });
+  });
+
+  it("tells you how to fix a degraded event observation, which you cannot declare", () => {
+    // The implicit `<event>.observe` requirement is the one an author never
+    // wrote and cannot make optional -- DeclarableCapability excludes it by
+    // construction. This branch previously shared its remediation with the
+    // genuinely-unsupported case and so advised four fixes, of which the first
+    // was impossible here and the rest amounted to dropping the harness. A real
+    // consumer hit it writing a turn.stop hook for OpenCode, which is the most
+    // likely second hook anyone writes.
+    const stopHook = () => [
+      hook("turn.stop", {
+        id: "verify",
+        capabilities: { "turn.stop.prevent": "required" },
+        async run() {
+          return preventStop("not yet");
+        },
+      }),
+    ];
+    const hazyTarget = { hazy: { version: ">=1.0 <2", mode: "plugin" as const, output: "./d" } };
+
+    const strict = analyzeCapabilities(ir(stopHook()), config({ targets: hazyTarget }), registry());
+    expect(strict.ok).toBe(false);
+    const hn201 = strict.targets.hazy?.diagnostics.find((d) => d.code === "HN201");
+    expect(hn201).toMatchObject({
+      severity: "error",
+      capability: "turn.stop.observe",
+      support: "approximate",
+      rationale: "an aborted turn signals twice",
+    });
+    // The fix that works must be named, and the one that cannot must not be.
+    expect(hn201?.remediation).toContain("minimum");
+    expect(hn201?.remediation).not.toContain("optional");
+
+    // And taking the advice has to actually build.
+    const relaxed = analyzeCapabilities(
+      ir(stopHook()),
+      config({
+        targets: {
+          hazy: {
+            version: ">=1.0 <2",
+            mode: "plugin",
+            output: "./d",
+            compatibility: { minimum: "approximate" },
+          },
+        },
+      }),
+      registry(),
+    );
+    expect(relaxed.ok).toBe(true);
   });
 
   it("records optional misses as HN102 info without failing the build", () => {
