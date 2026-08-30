@@ -97,7 +97,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.prevent": {
         level: "emulated",
         rationale:
-          "no native stop-prevention channel; the reason is posted back into the session with client.session.promptAsync (no noReply), which makes the agent take another turn. Best-effort: a silent no-op if the host supplies no client or the post fails. Unlike Claude and Codex there is no stop_hook_active flag and no block cap, so a hook that always prevents will loop -- it must carry its own terminating condition.",
+          "no native stop-prevention channel; the reason is posted back into the session with client.session.promptAsync (no noReply), which makes the agent take another turn. Requires a session that outlives the event: under `opencode run` the process exits at session.idle before the posted turn can start, so prevention is inert there -- it works in an interactive session or against `opencode serve`. Also a silent no-op if the host supplies no client or the post fails. Unlike Claude and Codex there is no stop_hook_active flag and no block cap, so a hook that always prevents will loop -- it must carry its own terminating condition.",
       },
 
       "turn.stop.notify": {

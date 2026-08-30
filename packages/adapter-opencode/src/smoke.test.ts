@@ -135,6 +135,28 @@ function runCommand(
   });
 }
 
+/**
+ * Terminate the whole process tree and wait for it.
+ *
+ * On Windows the server is spawned through a shell, so the child handle is
+ * `cmd.exe`, not `opencode`: `kill()` would leave the real server orphaned,
+ * holding the port and its inherited pipes, which fails the next run and can
+ * hang Vitest on open handles.
+ */
+async function stopServer(server: ReturnType<typeof spawn>): Promise<void> {
+  const exited = new Promise<void>((resolvePromise) => server.on("close", () => resolvePromise()));
+  if (process.platform === "win32" && server.pid !== undefined) {
+    await new Promise<void>((resolvePromise) => {
+      spawn("taskkill", ["/pid", String(server.pid), "/T", "/F"], {
+        stdio: "ignore",
+      }).on("close", () => resolvePromise());
+    });
+  } else {
+    server.kill();
+  }
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 10_000))]);
+}
+
 describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
   it(
     "block and input rewrite function in a live session",
@@ -301,7 +323,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
         // notify posted with noReply, so it is present without a turn of its own.
         expect(rendered.some((m) => m.text?.includes("hooknostic-notice"))).toBe(true);
       } finally {
-        server.kill();
+        await stopServer(server);
       }
     },
   );
