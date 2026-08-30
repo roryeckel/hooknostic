@@ -68,6 +68,74 @@ describe("commitStagedOutputs", () => {
     expect(await fs.readFile(f.reportOutput, "utf8")).toBe("new-report");
   });
 
+  it("retries an install rename that fails with a transient Windows error", async () => {
+    const f = await fixture();
+    let attempts = 0;
+    const delays: number[] = [];
+    const result = await commitStagedOutputs(f.entries, {
+      ...fs,
+      async rename(from, to) {
+        if (String(from).endsWith("payload") && attempts < 3) {
+          attempts += 1;
+          throw Object.assign(new Error("EPERM: operation not permitted, rename"), {
+            code: "EPERM",
+          });
+        }
+        await fs.rename(from, to);
+      },
+      sleep: async (ms: number) => void delays.push(ms),
+    });
+    expect(result).toEqual({ ok: true });
+    expect(attempts).toBe(3);
+    expect(delays).toEqual([10, 25, 50]);
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("new-first");
+    expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("new-second");
+  });
+
+  it("rolls back when a transient rename never recovers", async () => {
+    const f = await fixture();
+    let attempts = 0;
+    const result = await commitStagedOutputs(f.entries, {
+      ...fs,
+      async rename(from, to) {
+        if (String(from).endsWith("payload")) {
+          attempts += 1;
+          throw Object.assign(new Error("EPERM: operation not permitted, rename"), {
+            code: "EPERM",
+          });
+        }
+        await fs.rename(from, to);
+      },
+      sleep: async () => undefined,
+    });
+    // One initial attempt plus the full backoff schedule, then the commit fails.
+    expect(attempts).toBe(7);
+    expect(result).toMatchObject({ ok: false, failure: { failedKey: "first" } });
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("old-first");
+    expect(await fs.readFile(join(f.secondOutput, "value"), "utf8")).toBe("old-second");
+  });
+
+  it("does not retry a rename that fails for a non-transient reason", async () => {
+    const f = await fixture();
+    let attempts = 0;
+    let sleeps = 0;
+    const result = await commitStagedOutputs(f.entries, {
+      ...fs,
+      async rename(from, to) {
+        if (String(from).endsWith("payload")) {
+          attempts += 1;
+          throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+        }
+        await fs.rename(from, to);
+      },
+      sleep: async () => void (sleeps += 1),
+    });
+    expect(attempts).toBe(1);
+    expect(sleeps).toBe(0);
+    expect(result).toMatchObject({ ok: false, failure: { failedKey: "first" } });
+    expect(await fs.readFile(join(f.firstOutput, "value"), "utf8")).toBe("old-first");
+  });
+
   it("restores directories and the previous report when report installation fails", async () => {
     const f = await fixtureWithReport();
     let renameCount = 0;

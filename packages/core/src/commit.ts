@@ -29,9 +29,49 @@ interface FileOperations {
   mkdtemp: typeof mkdtemp;
   rename: typeof rename;
   rm: typeof rm;
+  /** Injected by tests so retry backoff costs no wall-clock time. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 const FILES: FileOperations = { cp, lstat, mkdir, mkdtemp, rename, rm };
+
+/**
+ * Directory renames and removals are not reliably atomic on Windows: while
+ * any other process still holds a handle on a file inside the tree — a search
+ * indexer or virus scanner that noticed the freshly written artifacts, or an
+ * editor watching the output directory — the operation fails with EPERM,
+ * EACCES, EBUSY or ENOTEMPTY even though nothing is actually wrong. Those
+ * handles are released within milliseconds, so the operation is retried
+ * rather than failing the commit.
+ *
+ * Every other error, and exhaustion of the retries, still fails the
+ * transaction with the rollback guarantees intact.
+ */
+const TRANSIENT_CODES = new Set(["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"]);
+const RETRY_DELAYS_MS = [10, 25, 50, 100, 200, 400];
+
+function isTransient(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code !== undefined && TRANSIENT_CODES.has(code);
+}
+
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+async function retryTransient<T>(
+  files: FileOperations,
+  operation: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isTransient(error)) throw error;
+      await (files.sleep ?? defaultSleep)(delay);
+    }
+  }
+}
 
 async function exists(path: string, files: FileOperations): Promise<boolean> {
   try {
@@ -103,7 +143,11 @@ export async function commitStagedOutputs(
     }
   } catch (error) {
     await Promise.allSettled(
-      prepared.map((entry) => files.rm(entry.transactionDir, { recursive: true, force: true })),
+      prepared.map((entry) =>
+        retryTransient(files, () =>
+          files.rm(entry.transactionDir, { recursive: true, force: true }),
+        ),
+      ),
     );
     const entry = preparing ?? entries.at(-1);
     return {
@@ -123,10 +167,10 @@ export async function commitStagedOutputs(
     for (const entry of prepared) {
       failed = entry;
       if (await exists(entry.outputDir, files)) {
-        await files.rename(entry.outputDir, entry.backupDir);
+        await retryTransient(files, () => files.rename(entry.outputDir, entry.backupDir));
         entry.backedUp = true;
       }
-      await files.rename(entry.payloadDir, entry.outputDir);
+      await retryTransient(files, () => files.rename(entry.payloadDir, entry.outputDir));
       entry.installed = true;
       failed = undefined;
     }
@@ -139,11 +183,13 @@ export async function commitStagedOutputs(
     for (const entry of [...prepared].reverse()) {
       try {
         if (entry.installed) {
-          await files.rm(entry.outputDir, { recursive: true, force: true });
+          await retryTransient(files, () =>
+            files.rm(entry.outputDir, { recursive: true, force: true }),
+          );
           entry.installed = false;
         }
         if (entry.backedUp) {
-          await files.rename(entry.backupDir, entry.outputDir);
+          await retryTransient(files, () => files.rename(entry.backupDir, entry.outputDir));
           entry.backedUp = false;
         }
       } catch (error) {
@@ -158,7 +204,11 @@ export async function commitStagedOutputs(
     await Promise.allSettled(
       prepared
         .filter((entry) => !entry.backedUp)
-        .map((entry) => files.rm(entry.transactionDir, { recursive: true, force: true })),
+        .map((entry) =>
+          retryTransient(files, () =>
+            files.rm(entry.transactionDir, { recursive: true, force: true }),
+          ),
+        ),
     );
     return {
       ok: false,
