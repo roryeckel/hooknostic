@@ -39,6 +39,7 @@ jobs:
       - name: Test
         run: pnpm test
         env:
+          HOOKNOSTIC_PLAYBACK: ""
           HOOKNOSTIC_SMOKE: ""
 
       # The reproducibility gate. rewrite-shell commits its build output, so a
@@ -86,3 +87,55 @@ jobs:
             git diff -- examples/rewrite-shell examples/agent-plugin
             exit 1
           fi
+
+  harness-playback:
+    name: offline harness playback (${{ matrix.harness }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: claude
+            package: "@anthropic-ai/claude-code"
+          - harness: codex
+            package: "@openai/codex"
+          - harness: opencode
+            package: "opencode-ai"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+
+      - name: Install repository dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve captured harness version
+        id: harness
+        shell: bash
+        run: |
+          version="$(node --experimental-strip-types scripts/harness-playback-version.mjs '${{ matrix.harness }}')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install captured harness version
+        run: npm install --global '${{ matrix.package }}@${{ steps.harness.outputs.version }}'
+
+      - name: Bundle SDK
+        run: pnpm --filter @hooknostic/sdk run bundle
+
+      - name: Bundle CLI
+        run: pnpm --filter hooknostic run bundle
+
+      - name: Run model-free playback
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+        env:
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          # Deliberately blank: the test routes model traffic to loopback.
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""

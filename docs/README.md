@@ -33,6 +33,7 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | [Publishing & packaging](publishing.md) | Maintainers: what ships, and testing the npm story without publishing |
 | [Releases](releases.md) | Maintainers: the three-stage release pipeline, gates, and recovery paths |
 | [Harness support](harness-support.md) | Generated: validated harness versions and evidence |
+| [Testing without model spend](testing.md) | Maintainers: real-harness CI with recorded payloads and loopback model playback |
 
 ## 📖 Appendix — reference material
 
