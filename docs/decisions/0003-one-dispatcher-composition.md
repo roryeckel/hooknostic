@@ -1,6 +1,11 @@
-# ADR 0003 — One native dispatcher per lifecycle point
+# Decision 0003 — One entry point runs all your hooks, in order
 
-**Status:** Accepted — 2026-08-20
+**Status:** Accepted — 2026-08-20 · Referenced from code and docs as **ADR-0003**
+
+**In short:** if every hook you wrote became its own native hook, each agent tool would
+decide the ordering and how results merge — differently. Instead, Hooknostic registers
+*one* native hook per lifecycle point and runs your handlers itself, in the order you
+declared them, with the same rules everywhere.
 
 ## Context
 

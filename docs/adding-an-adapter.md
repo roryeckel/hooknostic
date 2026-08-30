@@ -89,7 +89,8 @@ profile for a broad range.
   interpolate payload data into shell strings. Throwing from `compile()` or
   `validateArtifacts()` fails the target with HN301 — it never crashes the build.
 - Persistent process models must not expose module memory as portable state
-  (ADR-0002) — add an invocation-statelessness test.
+  ([Decision 0002](decisions/0002-invocation-stateless-contract.md)) — add an
+  invocation-statelessness test.
 
 ## 6. Tests
 

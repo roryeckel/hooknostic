@@ -2,6 +2,11 @@
 
 *Portable lifecycle hooks for coding-agent harnesses.*
 
+> This is the deep technical reference — the complete contracts, diagnostics, adapter
+> interfaces, and milestones. For a gentler introduction to the same ideas, start with
+> [Core concepts](concepts.md); for hands-on material, see
+> [Getting started](getting-started.md) and the [tutorials](tutorials/).
+
 > Converted from `crossharness_implementation_plan.docx` (baseline 2026-08-20) with the
 > project renamed **hooknostic** (packages `@hooknostic/*`, CLI `hooknostic`, config
 > `hooknostic.config.ts`, build report `hooknostic-build.json`, diagnostic codes
@@ -87,7 +92,7 @@ alongside Agent Plugins.
 | Agent Skills abstraction | Skills define their own portable convention. |
 | Custom tool abstraction | Separate problem. |
 | Daemon / background service | Unjustified lifecycle/state/socket complexity. |
-| Persistent state API | Portable process-lifetime semantics deferred (ADR-0002). |
+| Persistent state API | Portable process-lifetime semantics deferred ([ADR-0002](decisions/0002-invocation-stateless-contract.md)). |
 | UI / marketplace / registry | Distribution is separate from compilation. |
 | Perfect semantic parity | The capability model exists because parity is impossible. |
 
@@ -99,11 +104,11 @@ alongside Agent Plugins.
 | Events ≠ effects | Observing a lifecycle point doesn't imply every control effect. |
 | Degradation must be visible | Approximation/emulation recorded and surfaced; nothing silently dropped. |
 | Raw data remains accessible | Every event keeps native payload + native identifiers. |
-| One native dispatcher per lifecycle point | Hooknostic owns ordering/composition (ADR-0003). |
-| Portable code is invocation-stateless | Module memory is not durable portable state (ADR-0002). |
+| One native dispatcher per lifecycle point | Hooknostic owns ordering/composition ([ADR-0003](decisions/0003-one-dispatcher-composition.md)). |
+| Portable code is invocation-stateless | Module memory is not durable portable state ([ADR-0002](decisions/0002-invocation-stateless-contract.md)). |
 | Tolerant readers, strict writers | Decode liberally, preserve unknowns, emit only validated outputs. |
 | Reproducible builds | Versions, resolutions, diagnostics captured in the build report. |
-| Agent Plugins is a peer | Use its extension mechanism; never redefine it (ADR-0004). |
+| Agent Plugins is a peer | Use its extension mechanism; never redefine it ([ADR-0004](decisions/0004-agent-plugins-relationship.md)). |
 
 ## 5. System architecture
 
@@ -555,7 +560,7 @@ parser is available to the published CLI to make the check structural.
 ### 10.1 One native hook dispatcher
 
 One native entry point per lifecycle event/matcher group; portable handlers dispatched
-internally (ADR-0003).
+internally ([ADR-0003](decisions/0003-one-dispatcher-composition.md)).
 
 ```
 native lifecycle event
@@ -595,7 +600,8 @@ and translates the timeout to native hook timeout settings where possible.
 
 ### 10.4 Process lifetime and state
 
-Portable hooks are invocation-stateless (ADR-0002). v0.1 has no persistence
+Portable hooks are invocation-stateless
+([ADR-0002](decisions/0002-invocation-stateless-contract.md)). v0.1 has no persistence
 abstraction.
 
 ## 11. Adapter contract
@@ -694,7 +700,8 @@ adapter-owned facts; this document is not normative truth for any cell.
 
 ## 13. Agent Plugins integration
 
-Hooknostic consumes/augments an Agent Plugins package (ADR-0004). With `plugin.json`
+Hooknostic consumes/augments an Agent Plugins package
+([ADR-0004](decisions/0004-agent-plugins-relationship.md)). With `plugin.json`
 present it may reuse metadata and generate client extension directories; it never adds
 unknown root-level manifest fields. Standalone mode (config + source only) is
 first-class.
@@ -811,7 +818,7 @@ in reproducible configs.
 
 ## 18. Milestones
 
-- **M0** Repo + ADRs + baseline doc.
+- **M0** Repo + decision records + baseline doc.
 - **M1** Canonical SDK and schemas.
 - **M2** Capability compiler (fake adapters prove the model first).
 - **M3** Runtime dispatcher (bundled, cold-start validated).
@@ -851,7 +858,7 @@ dictate the core abstraction.
 
 | PR | Deliverable | Exit condition |
 | --- | --- | --- |
-| 1 | Monorepo + ADR skeleton | Build/test/lint green. |
+| 1 | Monorepo + decision-record skeleton | Build/test/lint green. |
 | 2 | Canonical types | Type tests + runtime schema tests pass. |
 | 3 | Config + Plugin IR | Example source → deterministic IR. |
 | 4 | Capability resolver + fake adapters | Expected HN diagnostics for all cases. |

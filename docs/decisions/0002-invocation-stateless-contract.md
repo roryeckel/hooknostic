@@ -1,6 +1,11 @@
-# ADR 0002 — Invocation-stateless portable hooks
+# Decision 0002 — Hooks can't keep state between calls
 
-**Status:** Accepted — 2026-08-20
+**Status:** Accepted — 2026-08-20 · Referenced from code and docs as **ADR-0002**
+
+**In short:** some agent tools run each hook as a fresh process, others keep your code
+loaded in memory. Anything you stash in a variable would survive on one and vanish on
+the other — so the portable contract says: treat every hook call as starting from
+scratch.
 
 ## Context
 

@@ -1,6 +1,11 @@
-# ADR 0001 — Semantic capability model
+# Decision 0001 — Capabilities are separate from events
 
-**Status:** Accepted — 2026-08-20
+**Status:** Accepted — 2026-08-20 · Referenced from code and docs as **ADR-0001**
+
+**In short:** two tools can both fire a "before tool runs" event and still let hook code
+do very different things with it. Hooknostic tracks *what you can do* (block, rewrite,
+add context, …) separately from *when you're told about it*, and makes every gap
+visible instead of papering over it.
 
 ## Context
 
