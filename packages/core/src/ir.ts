@@ -22,6 +22,8 @@ export interface HookIR {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
+  /** Per-hook dispatch budget; falls back to the runtime policy when absent. */
+  timeoutMs?: number;
   /**
    * Declared capabilities. The implicit `<event>.observe` requirement is
    * added during capability analysis, not stored here.
@@ -122,6 +124,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
     };
     if (h.match !== undefined) ir.match = h.match;
     if (h.targets !== undefined) ir.targets = h.targets;
+    if (h.timeoutMs !== undefined) ir.timeoutMs = h.timeoutMs;
     hooks.push(ir);
   });
 

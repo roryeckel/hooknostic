@@ -173,6 +173,9 @@ export async function dispatch(
     let outcome: Effect | undefined | void;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Per hook, not per dispatch: a hook that shells out to a linter can declare
+    // minutes without licensing a string matcher beside it to hang for the same.
+    const budgetMs = hook.timeoutMs ?? policy.timeoutMs;
     try {
       outcome = await Promise.race([
         Promise.resolve(hook.run(event, ctx)),
@@ -180,8 +183,8 @@ export async function dispatch(
           timer = setTimeout(() => {
             timedOut = true;
             controller.abort();
-            reject(new Error(`timed out after ${policy.timeoutMs}ms`));
-          }, policy.timeoutMs);
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
         }),
       ]);
     } catch (error) {

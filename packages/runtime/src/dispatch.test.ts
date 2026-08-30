@@ -656,6 +656,38 @@ describe("error and timeout policy", () => {
     expect(aborted).toBe(true);
     expect(contextAdditions(result)).toEqual(["made it"]);
   });
+
+  it("honours a hook's own budget over the policy default, in both directions", async () => {
+    // A hook that shells out needs longer than its neighbours; giving the whole
+    // plugin that budget instead means a bug in the fast hook hangs the harness
+    // for the slow one's allowance.
+    const hooks = [
+      hook("tool.before", {
+        id: "patient",
+        timeoutMs: 400,
+        capabilities: { "tool.before.context.add": "required" },
+        async run() {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          return addContext("finished");
+        },
+      }),
+      hook("tool.before", {
+        id: "impatient",
+        timeoutMs: 20,
+        async run() {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        },
+      }),
+    ];
+    const result = await dispatch(hooks, toolBefore({}), {
+      ...OPTIONS,
+      // Both hooks would resolve the opposite way under the shared default.
+      policy: { timeoutMs: 50 },
+    });
+    expect(contextAdditions(result)).toEqual(["finished"]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ hookId: "impatient", kind: "timeout" });
+  });
 });
 
 describe("createCapabilitySet", () => {

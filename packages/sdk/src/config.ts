@@ -23,7 +23,13 @@ export const DEFAULT_COMPATIBILITY: Required<CompatibilityPolicy> = {
 export interface RuntimePolicy {
   /** Fail-open by default: a general SDK must not block on hook bugs. */
   onHookError?: "continue" | "block";
-  /** Per-dispatch handler timeout; also translated to native settings where possible. */
+  /**
+   * Default per-*handler* timeout, overridable per hook with
+   * `HookSpec.timeoutMs`. Note this is not a whole-dispatch budget: the timer is
+   * armed around each matching handler in turn, so N handlers on one native
+   * event can occupy up to N times this. The build accounts for that when it
+   * translates the budget into each harness's native timeout.
+   */
   timeoutMs?: number;
   /** Conservative cap on accumulated model-visible context per dispatch. */
   contextCharLimit?: number;

@@ -73,8 +73,14 @@ describe("generateClaudeArtifacts", () => {
       type: "command",
       command: "node",
       args: ["${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"],
-      timeout: 6,
+      // Two hooks reach PreToolUse and the dispatcher runs both, each under its
+      // own budget -- so the native ceiling covers the pair (2 x 5s + 1), not
+      // one of them. Sized for a single hook, the harness killed the process
+      // mid-dispatch and the response was not partial but absent.
+      timeout: 11,
     });
+    // SessionStart has one hook, so it keeps the single-hook ceiling.
+    expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(6);
 
     expect(artifacts[2]!.contents).toBe(BUNDLE.code);
   });
@@ -92,16 +98,32 @@ describe("generateClaudeArtifacts", () => {
     expect(a).toEqual(b);
   });
 
+  // PreToolUse carries two hooks in this fixture, so the ceiling is the pair.
   it.each([
     [1, 2],
-    [1_000, 2],
-    [61_000, 62],
-  ])("maps runtime timeout %ims to native timeout %is", (timeoutMs, expected) => {
+    [1_000, 3],
+    [61_000, 123],
+  ])("covers every hook on the event: runtime %ims -> native %is", (timeoutMs, expected) => {
     const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, {
       runtime: { ...OPTIONS.runtime, timeoutMs },
     });
     const hooksJson = JSON.parse(artifacts[1]!.contents);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(expected);
+  });
+
+  it("lets one slow hook raise its own ceiling without inflating its neighbours", () => {
+    // The reason a per-hook budget exists: a hook that shells out to a linter
+    // needs minutes, and before this it had to buy those minutes for every hook
+    // in the plugin -- including a string matcher whose bug would then hang the
+    // harness for the same minutes.
+    const ir = exampleIR();
+    ir.hooks[0]!.timeoutMs = 120_000;
+    const artifacts = generateClaudeArtifacts(ir, TARGET, BUNDLE, OPTIONS);
+    const hooksJson = JSON.parse(artifacts[1]!.contents);
+    // 120s for the slow hook + 5s for its neighbour, + 1.
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(126);
+    // The event it does not touch is unchanged.
+    expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(6);
   });
 });
 
