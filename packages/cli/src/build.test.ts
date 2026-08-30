@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { runBuild } from "./build.js";
@@ -25,14 +25,55 @@ function captureIO() {
 
 const cleanupDirs: string[] = [];
 afterAll(async () => {
-  await Promise.all(cleanupDirs.map((d) => rm(d, { recursive: true, force: true })));
+  await Promise.all(
+    cleanupDirs.map(async (d) => {
+      // Drop the node_modules junction before the recursive remove. On Windows
+      // rm(recursive) descends into a junction rather than unlinking it, which
+      // both takes the real tree's handles and fails the rmdir with EPERM.
+      await rm(join(d, "node_modules"), { force: true, recursive: false }).catch(() => {});
+      // Same transient-handle race the output commit path retries for (HN302):
+      // esbuild and the just-written tree can still be held briefly.
+      for (const waitMs of [0, 25, 100, 400]) {
+        if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+        try {
+          await rm(d, { recursive: true, force: true });
+          return;
+        } catch {
+          // retry
+        }
+      }
+    }),
+  );
 });
 
+/**
+ * Build an example in a scratch copy rather than in place.
+ *
+ * `rewrite-shell` and `agent-plugin` commit their output (ADR-0006), and it is
+ * the *packaged* CLI that must produce it: `resolveShimPath` finds the bundled
+ * shim under `packages/cli/dist` when the CLI runs, and the adapter's own
+ * `src/shim.ts` when `runBuild` is called from source as these tests do. The two
+ * embed different modules, so building in place left the committed artifacts
+ * disagreeing with the CI reproducibility gate depending on which ran last.
+ *
+ * The copy sits beside the real example, at the same depth, so `@hooknostic/sdk`
+ * still resolves and the emitted path banners are identical.
+ */
 async function cleanExample(name: string) {
-  const dir = join(EXAMPLES, name);
-  for (const artifact of ["dist", "hooknostic-build.json", "com.anthropic.claude-code"]) {
-    await rm(join(dir, artifact), { recursive: true, force: true });
-  }
+  const dir = join(EXAMPLES, `.buildtest-${name}`);
+  await rm(dir, { recursive: true, force: true });
+  await cp(join(EXAMPLES, name), dir, {
+    recursive: true,
+    filter: (src) =>
+      !["dist", "hooknostic-build.json", "com.anthropic.claude-code", "node_modules"].includes(
+        basename(src),
+      ),
+  });
+  // pnpm links workspace deps into each package's own node_modules, and
+  // resolution walks up from the importing file -- so the copy needs its own
+  // link or `@hooknostic/sdk` does not resolve and the config fails to load.
+  await symlink(join(EXAMPLES, name, "node_modules"), join(dir, "node_modules"), "junction");
+  cleanupDirs.push(dir);
   return dir;
 }
 
