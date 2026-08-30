@@ -23,6 +23,17 @@ const EXACT: Record<string, ToolKind> = {
   Agent: "agent",
 };
 
+/**
+ * Claude's shell tools name the command `command`. Verified against
+ * `fixtures/claude/2.1/pre-tool-bash.input.json`; `PowerShell` uses the same
+ * key. Anything else shell-kind is left undefined rather than guessed.
+ */
+function claudeShell(nativeName: string, input: unknown): { command: string } | undefined {
+  if (nativeName !== "Bash" && nativeName !== "PowerShell") return undefined;
+  const command = (input as { command?: unknown } | null | undefined)?.command;
+  return typeof command === "string" ? { command } : undefined;
+}
+
 export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
   if (mcpMatch) {
@@ -33,5 +44,11 @@ export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvo
       mcp: { server: mcpMatch[1]!, tool: mcpMatch[2]! },
     };
   }
-  return { kind: EXACT[nativeName] ?? "other", nativeName, input };
+  const shell = claudeShell(nativeName, input);
+  return {
+    kind: EXACT[nativeName] ?? "other",
+    nativeName,
+    input,
+    ...(shell !== undefined ? { shell } : {}),
+  };
 }

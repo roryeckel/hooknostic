@@ -1,0 +1,15 @@
+{
+  "session_id": "01a05419-67b9-7082-b773-2c69e6fe382f",
+  "turn_id": "01a05419-684e-7d72-8ffd-1d977f66dce3",
+  "transcript_path": null,
+  "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools",
+  "hook_event_name": "PreToolUse",
+  "model": "gpt-5.3-codex-spark",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "exec_command",
+  "tool_input": {
+    "cmd": "echo hooknostic-capture",
+    "workdir": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools"
+  },
+  "tool_use_id": "call_GK3RztUTJ4OGr6VIzXg1PIdx"
+}

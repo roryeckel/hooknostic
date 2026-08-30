@@ -43,7 +43,7 @@ export default definePlugin({
         "tool.before.block": "required",              // we rely on being able to block
       },
       async run(event) {
-        const { command = "" } = event.tool.input as { command?: string };
+        const command = event.tool.shell?.command ?? "";
         if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {
           return block("Use --force-with-lease instead of --force.");
         }

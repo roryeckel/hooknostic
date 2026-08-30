@@ -1,7 +1,10 @@
 {
   "schemaVersion": 1,
   "event": "tool.after",
-  "harness": { "id": "claude", "nativeEvent": "PostToolUse" },
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PostToolUse"
+  },
   "session": {
     "id": "1d998646-7c2a-4a64-befa-c1b0e23e53cf",
     "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\claude"
@@ -13,7 +16,13 @@
   "tool": {
     "kind": "shell",
     "nativeName": "Bash",
-    "input": { "command": "echo hooknostic-fixture", "description": "Echo fixture string" }
+    "input": {
+      "command": "echo hooknostic-fixture",
+      "description": "Echo fixture string"
+    },
+    "shell": {
+      "command": "echo hooknostic-fixture"
+    }
   },
   "output": {
     "stdout": "hooknostic-fixture",

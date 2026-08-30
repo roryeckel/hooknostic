@@ -33,7 +33,7 @@ hook("tool.before", {
   capabilities: { "tool.before.context.add": "optional" },
   async run(event, ctx) {
     if (!ctx.capabilities.has("tool.before.context.add")) return;
-    const { command = "" } = event.tool.input as { command?: string };
+    const command = event.tool.shell?.command ?? "";
     if (command.startsWith("cd ")) {
       return addContext("Reminder: prefer absolute paths over cd for tooling commands.");
     }

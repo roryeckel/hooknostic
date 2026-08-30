@@ -1,16 +1,26 @@
 {
   "schemaVersion": 1,
   "event": "tool.after",
-  "harness": { "id": "opencode", "nativeEvent": "tool.execute.after" },
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "tool.execute.after"
+  },
   "session": {
     "id": "ses_8f2a1c",
     "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
   },
-  "correlation": { "toolCallId": "call_01hn" },
+  "correlation": {
+    "toolCallId": "call_01hn"
+  },
   "tool": {
     "kind": "shell",
     "nativeName": "bash",
-    "input": { "command": "echo hooknostic-fixture" }
+    "input": {
+      "command": "echo hooknostic-fixture"
+    },
+    "shell": {
+      "command": "echo hooknostic-fixture"
+    }
   },
   "output": "hooknostic-fixture\n"
 }
