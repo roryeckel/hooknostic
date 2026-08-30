@@ -312,6 +312,25 @@ describe("createHooknosticHooks turn.stop posting", () => {
     expect(calls.every((c) => c.path.id === "ses_1")).toBe(true);
   });
 
+  it("calls promptAsync with its receiver, not detached", async () => {
+    // The real SDK client exposes these as prototype methods that use `this`
+    // (its own namespaces enumerate only `_client` as an own property), so a
+    // destructured reference throws at call time and the fail-open catch turns
+    // that into a silent no-op. A plain object-literal double cannot catch it.
+    class Session {
+      readonly calls: Post[] = [];
+      private readonly tag = "bound";
+      promptAsync(options: Post): Promise<void> {
+        if (this?.tag !== "bound") throw new TypeError("promptAsync called without a receiver");
+        this.calls.push(options);
+        return Promise.resolve();
+      }
+    }
+    const session = new Session();
+    await idleHooks({ session })["event"]!(idle, {});
+    expect(session.calls).toHaveLength(2);
+  });
+
   it("is a silent no-op when the host supplies no client", async () => {
     await expect(idleHooks()["event"]!(idle, {})).resolves.toBeUndefined();
   });
