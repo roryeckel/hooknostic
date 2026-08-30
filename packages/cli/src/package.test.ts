@@ -158,7 +158,10 @@ describe("simulated registry install", () => {
     "builds a consumer project from only the published packages and their registry dependencies",
     { timeout: 180_000 },
     async () => {
-      const root = await mkdtemp(join(tmpdir(), "hooknostic-install-"));
+      // Resolve the long path: GitHub's Windows runners expose TEMP as
+      // C:\Users\RUNNER~1\..., and "~" percent-encodes to %7E in a file URL
+      // (see the same guard in core's evaluateModule, vitest#7084).
+      const root = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-install-"));
       temp.push(root);
       // Two install roots, as with a global CLI and a project that depends only
       // on the SDK: the CLI must not need the project's tree, and the built
@@ -236,11 +239,26 @@ describe("simulated registry install", () => {
       }
 
       // OpenCode loads its plugin as a module, so plain Node must be able to
-      // import the artifact — a bundled CommonJS dependency throws here.
-      const loaded = (await import(
-        pathToFileURL(join(project, "dist/opencode/.opencode/plugins/hooknostic.js")).href
-      )) as { HooknosticPlugin?: unknown };
-      expect(loaded.HooknosticPlugin).toBeTypeOf("function");
+      // import the artifact — a bundled CommonJS dependency throws on import.
+      // Spawned rather than imported in-process: vitest routes import()
+      // through vite-node, which resolves and transforms differently than
+      // Node, so an in-process import would not test the stated contract.
+      const artifact = pathToFileURL(
+        join(project, "dist/opencode/.opencode/plugins/hooknostic.js"),
+      ).href;
+      const load = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `const m = await import(${JSON.stringify(artifact)});
+           if (typeof m.HooknosticPlugin !== "function") {
+             throw new Error("artifact does not export HooknosticPlugin");
+           }`,
+        ],
+        { cwd: project, encoding: "utf8", stdio: "pipe", timeout: 60_000 },
+      );
+      expect(load.status, `stdout:\n${load.stdout}\nstderr:\n${load.stderr}`).toBe(0);
     },
   );
 });
