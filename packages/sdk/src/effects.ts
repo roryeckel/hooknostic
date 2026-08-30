@@ -47,6 +47,21 @@ export interface BlockContinuationEffect {
   readonly reason: string;
 }
 
+/**
+ * Surface a message to the *user*, changing no control flow. Deliberately not
+ * `addContext`: that is model-facing and this is not, and on the stop events the
+ * two are separate native channels.
+ *
+ * Non-terminal, so notifications accumulate and later handlers still run. Note a
+ * handler returns a single effect, so one hook cannot both notify and prevent a
+ * stop; that needs two hooks, and the notifying one must be declared first or the
+ * terminal effect will cut it off.
+ */
+export interface NotifyEffect {
+  readonly kind: "notify";
+  readonly message: string;
+}
+
 export type Effect =
   | BlockEffect
   | RequestApprovalEffect
@@ -54,7 +69,8 @@ export type Effect =
   | ReplaceOutputEffect
   | AddContextEffect
   | PreventStopEffect
-  | BlockContinuationEffect;
+  | BlockContinuationEffect
+  | NotifyEffect;
 
 export type EffectKind = Effect["kind"];
 
@@ -97,6 +113,11 @@ export function blockContinuation(reason: string): BlockContinuationEffect {
   return { kind: "blockContinuation", reason };
 }
 
+/** Show `message` to the user without affecting what the agent does next. */
+export function notify(message: string): NotifyEffect {
+  return { kind: "notify", message };
+}
+
 /**
  * The capability suffix each effect kind maps to. Combined with the event an
  * effect is returned from, this yields the event-scoped capability the hook
@@ -110,6 +131,7 @@ const EFFECT_CAPABILITY_SUFFIX: Record<EffectKind, string> = {
   addContext: "context.add",
   preventStop: "prevent",
   blockContinuation: "blockContinuation",
+  notify: "notify",
 };
 
 /**
@@ -128,6 +150,8 @@ export function capabilityForEffect(
 /**
  * Type-level mapping from a capability ID to the effect it licenses. Suffix
  * checks are ordered so that longer suffixes are not shadowed by shorter ones.
+ * `.notify` shares no suffix with any other registered id, so its position is
+ * free; it sits by length to keep the longest-first rule honest.
  */
 export type EffectForCapability<Id extends CapabilityId> = Id extends `${string}.input.replace`
   ? ReplaceInputEffect
@@ -141,16 +165,34 @@ export type EffectForCapability<Id extends CapabilityId> = Id extends `${string}
           ? BlockContinuationEffect
           : Id extends `${string}.prevent`
             ? PreventStopEffect
-            : Id extends `${string}.block`
-              ? BlockEffect
-              : never;
+            : Id extends `${string}.notify`
+              ? NotifyEffect
+              : Id extends `${string}.block`
+                ? BlockEffect
+                : never;
 
-/** Terminal effects stop remaining handlers for a dispatch (ADR-0003). */
+/**
+ * Which effects end a dispatch (ADR-0005, superseding ADR-0003 rules 4-6).
+ *
+ * A total record rather than a condition chain: adding an effect kind cannot
+ * compile until "does this end the dispatch?" has been answered, which is the
+ * one classification mistake this file could otherwise make silently.
+ */
+const TERMINAL_EFFECT: Record<EffectKind, boolean> = {
+  block: true,
+  requestApproval: true,
+  preventStop: true,
+  blockContinuation: true,
+  replaceInput: false,
+  replaceOutput: false,
+  addContext: false,
+  notify: false,
+};
+
+/** Terminal effects stop remaining handlers for a dispatch (ADR-0005). */
 export function isTerminalEffect(effect: Effect): boolean {
-  return (
-    effect.kind === "block" ||
-    effect.kind === "requestApproval" ||
-    effect.kind === "preventStop" ||
-    effect.kind === "blockContinuation"
-  );
+  // `=== true`, not the bare lookup: this is public API reachable with an
+  // unvalidated object, and a `kind` of "toString" would otherwise return a
+  // truthy function off the prototype chain.
+  return TERMINAL_EFFECT[effect.kind] === true;
 }

@@ -12,7 +12,7 @@ export interface AppliedEffect {
 
 export interface HandlerError {
   hookId: string;
-  kind: "error" | "timeout" | "unsupported-effect";
+  kind: "error" | "timeout" | "unsupported-effect" | "budget-exceeded";
   message: string;
 }
 
@@ -35,7 +35,7 @@ export interface HookResult {
 export const handlerErrorSchema = z
   .object({
     hookId: z.string(),
-    kind: z.enum(["error", "timeout", "unsupported-effect"]),
+    kind: z.enum(["error", "timeout", "unsupported-effect", "budget-exceeded"]),
     message: z.string(),
   })
   .strict();

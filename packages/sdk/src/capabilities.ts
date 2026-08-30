@@ -47,9 +47,11 @@ export const ALL_CAPABILITY_IDS = [
 
   "agent.stop.observe",
   "agent.stop.prevent",
+  "agent.stop.notify",
 
   "turn.stop.observe",
   "turn.stop.prevent",
+  "turn.stop.notify",
 ] as const;
 
 export type CapabilityId = (typeof ALL_CAPABILITY_IDS)[number];

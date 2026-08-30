@@ -90,6 +90,7 @@ export async function dispatch(
   };
 
   let contextBudget = policy.contextCharLimit;
+  let notifyBudget = policy.notifyCharLimit;
 
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;
@@ -254,6 +255,36 @@ export async function dispatch(
         result.effects.push({ hookId: hook.id, effect: { kind: "addContext", context } });
         break;
       }
+      case "notify": {
+        // Unlike the context budget above, exhaustion is RECORDED rather than
+        // silently swallowed: "the user sees this" is the entire semantic of a
+        // notification, so losing one without a trace defeats the point.
+        const remaining = notifyBudget;
+        if (remaining <= 0) {
+          result.errors.push({
+            hookId: hook.id,
+            kind: "budget-exceeded",
+            message:
+              `HN103: notification dropped; the dispatch already used its ` +
+              `${policy.notifyCharLimit}-character notification budget.`,
+          });
+          break;
+        }
+        const message =
+          effect.message.length > remaining ? effect.message.slice(0, remaining) : effect.message;
+        if (message.length < effect.message.length) {
+          result.errors.push({
+            hookId: hook.id,
+            kind: "budget-exceeded",
+            message:
+              `HN103: notification truncated to ${message.length} of ` +
+              `${effect.message.length} characters by the notification budget.`,
+          });
+        }
+        notifyBudget -= message.length;
+        result.effects.push({ hookId: hook.id, effect: { kind: "notify", message } });
+        break;
+      }
       default: {
         result.effects.push({ hookId: hook.id, effect });
         break;
@@ -274,6 +305,13 @@ export function contextAdditions(result: HookResult): string[] {
   return result.effects
     .filter((e) => e.effect.kind === "addContext")
     .map((e) => (e.effect as { context: string }).context);
+}
+
+/** Accumulated user-visible notifications, in application order. */
+export function notifications(result: HookResult): string[] {
+  return result.effects
+    .filter((e) => e.effect.kind === "notify")
+    .map((e) => (e.effect as { message: string }).message);
 }
 
 /** The terminal effect, when dispatch was terminated. */

@@ -5,6 +5,7 @@ import {
   block,
   blockContinuation,
   hook,
+  notify,
   preventStop,
   replaceInput,
   replaceOutput,
@@ -15,6 +16,7 @@ import {
   contextAdditions,
   createCapabilitySet,
   dispatch,
+  notifications,
   replacedInput,
   replacedOutput,
   terminalEffect,
@@ -31,8 +33,20 @@ const FULL: CapabilityLevels = {
   "tool.after.blockContinuation": "exact",
   "turn.stop.observe": "exact",
   "turn.stop.prevent": "exact",
+  "turn.stop.notify": "exact",
   "session.end.observe": "exact",
 };
+
+function turnStop(): HookEvent {
+  return {
+    schemaVersion: 1,
+    event: "turn.stop",
+    harness: { id: "fake", nativeEvent: "Stop" },
+    session: { cwd: "C:/repo" },
+    correlation: {},
+    raw: {},
+  } satisfies HookEvent;
+}
 
 function toolBefore(input: unknown): ToolBeforeEvent {
   return {
@@ -221,6 +235,131 @@ describe("dispatch composition (ADR-0003)", () => {
     // 5 chars of budget spent on "alpha", 4 remain: "beta-is-long" truncated,
     // third addition dropped deterministically.
     expect(contextAdditions(result)).toEqual(["alpha", "beta"]);
+  });
+
+  it("accumulates notifications without terminating the dispatch", async () => {
+    const ran: string[] = [];
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "n1",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            ran.push("n1");
+            return notify("lint could not run");
+          },
+        }),
+        hook("turn.stop", {
+          id: "n2",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            ran.push("n2");
+            return notify("budget expired");
+          },
+        }),
+        hook("turn.stop", {
+          id: "observer",
+          async run() {
+            ran.push("observer");
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(notifications(result)).toEqual(["lint could not run", "budget expired"]);
+    expect(result.terminatedBy).toBeUndefined();
+    expect(ran).toEqual(["n1", "n2", "observer"]);
+  });
+
+  it("keeps notifications emitted before a terminal preventStop", async () => {
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "notice",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("3 files still uncommitted");
+          },
+        }),
+        hook("turn.stop", {
+          id: "prevent",
+          capabilities: { "turn.stop.prevent": "required" },
+          async run() {
+            return preventStop("tests have not run");
+          },
+        }),
+        hook("turn.stop", {
+          id: "after-terminal",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("never reached");
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    // The notice survives, the terminal effect is still last (which every
+    // adapter relies on), and the hook declared after it never runs.
+    expect(notifications(result)).toEqual(["3 files still uncommitted"]);
+    expect(result.terminatedBy).toBe("prevent");
+    expect(terminalEffect(result)).toEqual({ kind: "preventStop", reason: "tests have not run" });
+  });
+
+  it("records rather than silently drops notifications over the budget", async () => {
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "n1",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("alpha");
+          },
+        }),
+        hook("turn.stop", {
+          id: "n2",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("beta-is-long");
+          },
+        }),
+        hook("turn.stop", {
+          id: "n3",
+          capabilities: { "turn.stop.notify": "required" },
+          async run() {
+            return notify("dropped entirely");
+          },
+        }),
+      ],
+      turnStop(),
+      { ...OPTIONS, policy: { notifyCharLimit: 9 } },
+    );
+    expect(notifications(result)).toEqual(["alpha", "beta"]);
+    // Unlike the context budget, a clamped notification leaves a trace: losing
+    // one silently would defeat the point of the effect.
+    expect(result.errors.map((e) => [e.hookId, e.kind])).toEqual([
+      ["n2", "budget-exceeded"],
+      ["n3", "budget-exceeded"],
+    ]);
+  });
+
+  it("rejects notify where the event has no notification channel", async () => {
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "misplaced",
+          async run() {
+            return notify("nope") as never;
+          },
+        }),
+      ],
+      toolBefore({}),
+      OPTIONS,
+    );
+    expect(result.effects).toEqual([]);
+    expect(result.errors[0]).toMatchObject({ hookId: "misplaced", kind: "unsupported-effect" });
+    expect(result.errors[0]?.message).toContain("HN401");
   });
 
   it("filters by tool matcher and by intentional target scoping", async () => {

@@ -27,12 +27,19 @@ export interface RuntimePolicy {
   timeoutMs?: number;
   /** Conservative cap on accumulated model-visible context per dispatch. */
   contextCharLimit?: number;
+  /**
+   * Cap on accumulated user-visible notification text per dispatch. Much smaller
+   * than the context budget: this is terminal chrome for a person to read, not
+   * material for a model.
+   */
+  notifyCharLimit?: number;
 }
 
 export const DEFAULT_RUNTIME: Required<RuntimePolicy> = {
   onHookError: "continue",
   timeoutMs: 5_000,
   contextCharLimit: 16_000,
+  notifyCharLimit: 2_000,
 };
 
 export interface TargetConfig {

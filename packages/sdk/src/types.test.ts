@@ -9,6 +9,7 @@ import {
   block,
   definePlugin,
   hook,
+  notify,
   preventStop,
   replaceInput,
   replaceOutput,
@@ -114,6 +115,43 @@ describe("compile-time hook contracts", () => {
 
     expect(ok.match).toEqual({ kind: "shell" });
     expect(bad.id).toBe("no-match-here");
+  });
+
+  it("scopes notify to the stop events", () => {
+    const ok = hook("turn.stop", {
+      id: "notifier",
+      capabilities: { "turn.stop.notify": "optional" },
+      async run(_event, ctx) {
+        if (ctx.capabilities.has("turn.stop.notify")) return notify("idle check skipped");
+        return;
+      },
+    });
+
+    const wrongEvent = hook("tool.before", {
+      id: "notify-on-tool",
+      capabilities: {
+        // @ts-expect-error notify is not available on tool.before
+        "tool.before.notify": "optional",
+      },
+      async run() {},
+    });
+
+    // The case that catches a botched EffectForCapability ladder edit: the
+    // capability is real, but it does not license this effect.
+    const undeclared = hook("turn.stop", {
+      id: "notify-undeclared",
+      capabilities: { "turn.stop.prevent": "required" },
+      // @ts-expect-error notify requires declaring turn.stop.notify
+      async run() {
+        return notify("unannounced");
+      },
+    });
+
+    expect([ok.id, wrongEvent.id, undeclared.id]).toEqual([
+      "notifier",
+      "notify-on-tool",
+      "notify-undeclared",
+    ]);
   });
 
   it("erases to a uniform HookDefinition inside definePlugin", () => {

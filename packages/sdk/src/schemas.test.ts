@@ -16,6 +16,7 @@ import {
   requestApproval,
   preventStop,
   blockContinuation,
+  notify,
   replaceOutput,
   HOOK_EVENT_NAMES,
   ALL_CAPABILITY_IDS,
@@ -50,6 +51,16 @@ describe("capability registry", () => {
   });
 
   it("lists capabilities per event", () => {
+    expect(capabilitiesForEvent("turn.stop")).toEqual([
+      "turn.stop.observe",
+      "turn.stop.prevent",
+      "turn.stop.notify",
+    ]);
+    expect(capabilitiesForEvent("agent.stop")).toEqual([
+      "agent.stop.observe",
+      "agent.stop.prevent",
+      "agent.stop.notify",
+    ]);
     expect(capabilitiesForEvent("tool.before")).toEqual([
       "tool.before.observe",
       "tool.before.block",
@@ -80,6 +91,8 @@ describe("effect → capability mapping", () => {
     );
     expect(capabilityForEffect("turn.stop", "preventStop")).toBe("turn.stop.prevent");
     expect(capabilityForEffect("agent.stop", "preventStop")).toBe("agent.stop.prevent");
+    expect(capabilityForEffect("turn.stop", "notify")).toBe("turn.stop.notify");
+    expect(capabilityForEffect("agent.stop", "notify")).toBe("agent.stop.notify");
   });
 
   it("returns undefined for structurally impossible effects", () => {
@@ -87,9 +100,13 @@ describe("effect → capability mapping", () => {
     expect(capabilityForEffect("tool.before", "replaceOutput")).toBeUndefined();
     expect(capabilityForEffect("tool.after", "replaceInput")).toBeUndefined();
     expect(capabilityForEffect("session.start", "preventStop")).toBeUndefined();
+    // notify is scoped to the stop events; nowhere else has a user-visible
+    // channel that does not also change control flow.
+    expect(capabilityForEffect("tool.before", "notify")).toBeUndefined();
+    expect(capabilityForEffect("session.end", "notify")).toBeUndefined();
   });
 
-  it("classifies terminal effects per ADR-0003", () => {
+  it("classifies terminal effects per ADR-0005", () => {
     expect(isTerminalEffect(block("x"))).toBe(true);
     expect(isTerminalEffect(requestApproval())).toBe(true);
     expect(isTerminalEffect(preventStop())).toBe(true);
@@ -97,6 +114,13 @@ describe("effect → capability mapping", () => {
     expect(isTerminalEffect(replaceInput({}))).toBe(false);
     expect(isTerminalEffect(replaceOutput({}))).toBe(false);
     expect(isTerminalEffect(addContext("x"))).toBe(false);
+    expect(isTerminalEffect(notify("x"))).toBe(false);
+  });
+
+  it("does not treat a prototype-chain key as terminal", () => {
+    // isTerminalEffect is public API and reachable with an unvalidated object;
+    // a bare table lookup would return a truthy function here.
+    expect(isTerminalEffect({ kind: "toString" } as never)).toBe(false);
   });
 });
 
@@ -133,6 +157,12 @@ describe("canonical schemas", () => {
     expect(() => effectSchema.parse({ kind: "block" })).toThrow();
     expect(() => effectSchema.parse({ kind: "allow" })).toThrow();
     expect(() => effectSchema.parse({ kind: "block", reason: "x", extra: 1 })).toThrow();
+    expect(effectSchema.parse(notify("hi"))).toEqual({ kind: "notify", message: "hi" });
+    expect(() => effectSchema.parse({ kind: "notify" })).toThrow();
+    // An empty user-facing notification is definitionally a bug, so it is
+    // rejected rather than emitted as a blank line.
+    expect(() => effectSchema.parse({ kind: "notify", message: "" })).toThrow();
+    expect(() => effectSchema.parse({ kind: "notify", message: "x", extra: 1 })).toThrow();
   });
 
   it("validates config and rejects unknown keys", () => {

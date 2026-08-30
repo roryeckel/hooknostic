@@ -7,7 +7,7 @@ import { generateCodexArtifacts } from "./generate.js";
 const TARGET = { id: "codex", version: ">=0.148 <1", mode: "local" as const, output: "./dist/codex" };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
-  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000 },
+  runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
 };
 
 function exampleIR() {

@@ -123,6 +123,7 @@ export interface ShimEntryOptions {
     onHookError: "continue" | "block";
     timeoutMs: number;
     contextCharLimit: number;
+    notifyCharLimit: number;
   };
   harnessVersion?: string;
 }
