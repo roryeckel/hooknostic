@@ -15,7 +15,7 @@ import { analyzeCapabilities } from "./analysis.js";
 import { validateGeneratedArtifacts } from "./artifacts.js";
 import type { EvaluateOptions } from "./load.js";
 import { loadConfig, loadPluginSource } from "./load.js";
-import { bundleRuntime } from "./bundle.js";
+import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
 import { buildPluginIR } from "./ir.js";
@@ -237,6 +237,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     return failUncommitted();
   }
 
+  // A bundled CLI main-module guard only misfires where the harness *executes*
+  // the artifact, so it is collected per target and reported once, naming the
+  // targets it actually affects.
+  const mainGuardTargets: string[] = [];
+
   try {
     for (const id of Object.keys(analysis.targets)) {
       const adapter = options.registry[id]!;
@@ -278,6 +283,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           resolveDir: configDir,
           ...(Object.keys(alias).length > 0 ? { alias } : {}),
         });
+
+        if (adapter.shimExecution === "command" && bundleHasMainModuleGuard(bundle.code)) {
+          mainGuardTargets.push(id);
+        }
 
         phase = "generation";
         const artifacts = await adapter.compile(ir, spec, bundle, { runtime: runtimePolicy });
@@ -340,6 +349,17 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         target.status = "failed";
         continue;
       }
+    }
+
+    if (mainGuardTargets.length > 0) {
+      diagnostics.push({
+        code: "HN502",
+        severity: "warn",
+        message:
+          `the bundled hook source contains a CLI main-module guard (import.meta.url compared against process.argv[1]); ${mainGuardTargets.join(", ")} run the generated artifact as a command, so both sides of that comparison name the artifact and the guarded code executes on every hook dispatch.`,
+        remediation:
+          "move the command-line entry point into a module the hook source does not import, or gate it on an explicit environment variable instead.",
+      });
     }
 
     if (hasFatal(diagnostics)) {

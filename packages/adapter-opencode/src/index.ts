@@ -78,6 +78,8 @@ export function opencodeAdapter(): HarnessAdapter {
   return {
     id: "opencode",
     adapterVersion: ADAPTER_OPENCODE_VERSION,
+    // OpenCode imports the plugin module in-process.
+    shimExecution: "module",
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);
