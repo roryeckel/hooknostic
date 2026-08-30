@@ -90,10 +90,18 @@ export function describeAdapterContract(
     it("rates only registered capability ids", () => {
       // A typo'd id is not a loud failure: the matrix is Partial and absence
       // means unsupported, so `tool.before.blcok` silently rates nothing while
-      // looking like a considered decision in the profile source.
+      // looking like a considered decision in the profile source. Checked on
+      // each profile's RAW matrix, not the resolved one: multi-profile
+      // resolution reconstructs the matrix by iterating the registry, which
+      // drops an unregistered key before this test could see it.
       const registered = new Set<string>(ALL_CAPABILITY_IDS);
-      const unknown = Object.keys(matrix).filter((id) => !registered.has(id));
-      expect(unknown, `unregistered capability ids: ${unknown.join(", ")}`).toEqual([]);
+      for (const profile of resolved.profilesUsed) {
+        const unknown = Object.keys(profile.matrix).filter((id) => !registered.has(id));
+        expect(
+          unknown,
+          `profile ${profile.range}: unregistered capability ids: ${unknown.join(", ")}`,
+        ).toEqual([]);
+      }
     });
 
     it("round-trips the shell view of every fixture through its codec", () => {
