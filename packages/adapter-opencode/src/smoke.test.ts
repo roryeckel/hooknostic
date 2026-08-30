@@ -136,6 +136,24 @@ function runCommand(
 }
 
 /**
+ * Windows holds directory handles briefly after a process exits, and an
+ * `opencode serve` orphaned by an earlier run holds this one outright — so a
+ * plain rm fails with EBUSY and takes the test with it. Same transient-lock
+ * class the output commit path already retries.
+ */
+async function removeScratch(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt >= 5) throw error;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+}
+
+/**
  * Terminate the whole process tree and wait for it.
  *
  * On Windows the server is spawned through a shell, so the child handle is
@@ -221,7 +239,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
     { timeout: 300_000 },
     async () => {
       const dir = STOP_DIR;
-      await rm(dir, { recursive: true, force: true });
+      await removeScratch(dir);
       await mkdir(dir, { recursive: true });
       await runCommand("git", ["init"], { cwd: dir, timeoutMs: 30_000 });
       await writeFile(join(dir, "hooks.ts"), STOP_HOOKS_SOURCE, "utf8");
