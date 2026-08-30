@@ -40,3 +40,49 @@ export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBund
   if (code === undefined) throw new Error("esbuild produced no runtime bundle output");
   return { code };
 }
+
+/**
+ * The idiomatic ESM "am I the entry module?" guard, in both orderings:
+ *
+ *   if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+ *   if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+ *
+ * A *comparison* between the two is required, not mere proximity: code that
+ * reads both values for unrelated reasons (logging, path construction) must
+ * not be reported. The filler between operand and operator therefore excludes
+ * statement punctuation (`;{}`) so a match cannot span two statements, and
+ * logical operators (`&|`) so it cannot span two operands of a larger
+ * expression — `process.argv[1] !== undefined && import.meta.url…` is not a
+ * main-module guard.
+ *
+ * This stays a regex deliberately: a structural check needs a JS parser, and
+ * neither esbuild (no AST access) nor anything else in this package's
+ * dependency tree provides one that the published CLI could carry. The
+ * diagnostic is a warning, and the residual imprecision is a contrived
+ * expression that compares the two values without guarding on the result.
+ */
+const OPERAND_GAP = "[^;{}&|]{0,80}";
+const MAIN_MODULE_GUARD = new RegExp(
+  [
+    `import\\.meta\\.url${OPERAND_GAP}[!=]==?${OPERAND_GAP}process\\.argv\\[1\\]`,
+    `process\\.argv\\[1\\]${OPERAND_GAP}[!=]==?${OPERAND_GAP}import\\.meta\\.url`,
+  ].join("|"),
+);
+
+/**
+ * True when a bundled module still carries a CLI main-module guard.
+ *
+ * Bundling collapses the whole import graph into one file, so both sides of
+ * such a guard end up naming the *generated artifact*. A guard that was
+ * dormant in the source — it only fired when the module was run directly —
+ * therefore becomes unconditionally true inside the artifact, and its CLI
+ * body runs on every hook dispatch (typically consuming the harness's stdin
+ * before the dispatcher can read the event payload).
+ *
+ * This only misfires in artifacts the harness *executes*
+ * (`shimExecution: "command"`); one the harness imports keeps `process.argv[1]`
+ * pointed at the harness's own entry, so the guard stays false.
+ */
+export function bundleHasMainModuleGuard(code: string): boolean {
+  return MAIN_MODULE_GUARD.test(code);
+}

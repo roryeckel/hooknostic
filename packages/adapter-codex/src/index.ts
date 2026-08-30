@@ -67,6 +67,8 @@ export function codexAdapter(): HarnessAdapter {
   return {
     id: "codex",
     adapterVersion: ADAPTER_CODEX_VERSION,
+    // Codex spawns `node <artifact>` per hook event.
+    shimExecution: "command",
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);

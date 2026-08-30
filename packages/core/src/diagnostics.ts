@@ -25,6 +25,7 @@ export const DIAGNOSTIC_CODES = {
   HN302: "output commit failure",
   HN401: "unsupported effect returned at runtime",
   HN501: "invalid configuration",
+  HN502: "bundled CLI entry point",
 } as const;
 
 export type DiagnosticCode = keyof typeof DIAGNOSTIC_CODES;

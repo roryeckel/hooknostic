@@ -74,6 +74,8 @@ export function claudeAdapter(): HarnessAdapter {
   return {
     id: "claude",
     adapterVersion: ADAPTER_CLAUDE_VERSION,
+    // Claude spawns `node <artifact>` per hook event.
+    shimExecution: "command",
 
     supportedHarnessVersions() {
       return claudeCapabilityProfiles.map((p) => p.range);

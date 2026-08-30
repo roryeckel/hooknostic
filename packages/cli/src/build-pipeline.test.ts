@@ -71,6 +71,22 @@ async function stagingLeftovers(dir: string): Promise<string[]> {
   return (await readdir(dir)).filter((entry) => entry.startsWith(".hooknostic-staging-"));
 }
 
+/** A shim that actually imports the entry, as every real adapter's does. */
+const importsEntry = (options: { entryImportPath: string }) =>
+  `import plugin from ${JSON.stringify(options.entryImportPath)};\nexport default plugin;`;
+
+/**
+ * Hook source whose CLI main-module guard is dormant where it was written but
+ * unconditionally true once bundled, because both sides then name the
+ * generated artifact.
+ */
+const mainGuardSource = `import { pathToFileURL } from "node:url";
+   import { definePlugin, hook } from "@hooknostic/sdk";
+   if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+     console.log("cli main");
+   }
+   export default definePlugin({ name: "p", hooks: [hook("session.start", { id: "s", async run() {} })] });`;
+
 describe("build pipeline hardening", () => {
   it("rejects artifact paths that escape the output directory without writing anything", async () => {
     const dir = await project();
@@ -208,6 +224,54 @@ describe("build pipeline hardening", () => {
     expect(existsSync(join(dir, "dist/fake/fake-plugin.json"))).toBe(true);
     expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(true);
     expect(await stagingLeftovers(dir)).toEqual([]);
+    expect(result.report.diagnostics.filter((d) => d.code === "HN502")).toEqual([]);
+  });
+
+  it("warns once when the bundled hook source carries a CLI main-module guard", async () => {
+    const dir = await project();
+    // Two targets, to prove the sharp edge is reported once for the shared
+    // import graph rather than once per bundle.
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          fake: { version: ">=1.0 <2", mode: "plugin", output: "./dist/fake" },
+          other: { version: ">=1.0 <2", mode: "plugin", output: "./dist/other" },
+        },
+      };`,
+      "utf8",
+    );
+    await writeFile(join(dir, "hooks.ts"), mainGuardSource, "utf8");
+    const result = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: {
+        fake: fake({ shimEntry: importsEntry, shimExecution: "command" }),
+        other: fake({ id: "other", shimEntry: importsEntry, shimExecution: "command" }),
+      },
+      evaluate: EVALUATE,
+    });
+    expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
+    const warnings = result.report.diagnostics.filter((d) => d.code === "HN502");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.severity).toBe("warn");
+    expect(warnings[0]?.message).toContain("process.argv[1]");
+    // Named so the reader knows which artifacts actually execute the guard.
+    expect(warnings[0]?.message).toContain("fake, other");
+  });
+
+  it("stays silent when the harness imports the artifact instead of running it", async () => {
+    const dir = await project();
+    await writeFile(join(dir, "hooks.ts"), mainGuardSource, "utf8");
+    // An in-process plugin keeps process.argv[1] pointed at the harness's own
+    // entry, so the guard never becomes true and there is nothing to warn about.
+    const result = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: { fake: fake({ shimEntry: importsEntry, shimExecution: "module" }) },
+      evaluate: EVALUATE,
+    });
+    expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
+    expect(result.report.diagnostics.filter((d) => d.code === "HN502")).toEqual([]);
   });
 });
 

@@ -145,6 +145,18 @@ export interface HarnessAdapter {
   shimEntry?(options: ShimEntryOptions): string;
 
   /**
+   * How the harness runs the generated artifact: `"command"` spawns it as a
+   * process (`node <artifact>`, stdin/stdout protocol), `"module"` imports it
+   * in-process. Undeclared means unknown.
+   *
+   * This is not cosmetic — it decides whether `process.argv[1]` inside the
+   * artifact *is* the artifact, which is what makes a bundled CLI main-module
+   * guard fire (HN502) on command-executed targets and stay dormant on
+   * imported ones.
+   */
+  readonly shimExecution?: "command" | "module";
+
+  /**
    * Module-specifier aliases needed to bundle the shim entry. User projects
    * depend only on the SDK, so each adapter maps its own shim specifier to a
    * concrete file path resolved from the adapter package itself.

@@ -26,6 +26,8 @@ export interface FakeAdapterOptions {
    * commit; omit it for analysis-only fakes (the pipeline then stops at HN301).
    */
   shimEntry?: string | ((options: ShimEntryOptions) => string);
+  /** How the fake harness runs the artifact; undeclared means unknown. */
+  shimExecution?: "command" | "module";
   /** Override the emitted artifacts (default: one fake-plugin.json). */
   compile?(
     plugin: PluginIR,
@@ -49,6 +51,7 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
   const adapter: HarnessAdapter = {
     id: options.id,
     adapterVersion,
+    ...(options.shimExecution !== undefined ? { shimExecution: options.shimExecution } : {}),
 
     supportedHarnessVersions() {
       return options.profiles.map((p) => p.range);
