@@ -11,6 +11,7 @@ const CASES = [
   "session-end",
   "prompt-submit",
   "pre-tool-bash",
+  "pre-tool-powershell",
   "pre-tool-read",
   "post-tool-bash",
   "post-tool-failure",

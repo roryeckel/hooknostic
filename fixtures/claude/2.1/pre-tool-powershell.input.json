@@ -1,0 +1,12 @@
+{
+  "session_id": "1eefd156-fb61-4977-a4d9-575022b0adce",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\1eefd156-fb61-4977-a4d9-575022b0adce.jsonl",
+  "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude",
+  "prompt_id": "f224c43e-f47e-4791-afb7-adaac157a8c1",
+  "permission_mode": "bypassPermissions",
+  "effort": { "level": "xhigh" },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "PowerShell",
+  "tool_input": { "command": "echo hooknostic-ps-capture", "description": "Echo capture string" },
+  "tool_use_id": "toolu_01TuxWXFFuUz6pW53zuHkzSR"
+}

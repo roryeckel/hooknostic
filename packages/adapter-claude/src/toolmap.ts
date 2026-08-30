@@ -25,10 +25,11 @@ const EXACT: Record<string, ToolKind> = {
 };
 
 /**
- * Claude's shell tools name the command `command`. Verified against
- * `fixtures/claude/2.1/pre-tool-bash.input.json`; `PowerShell` uses the same
- * key. Anything else shell-kind is absent from the table, so both codec
- * directions decline rather than guess. Neither tool has a working-directory
+ * Claude's shell tools name the command `command`. Both entries are
+ * capture-backed: `fixtures/claude/2.1/pre-tool-bash.input.json` and
+ * `pre-tool-powershell.input.json` (the latter captured 2.1.250 -- it had
+ * rested on inference). Anything else shell-kind is absent from the table, so
+ * both codec directions decline rather than guess. Neither tool has a working-directory
  * key.
  */
 export const CLAUDE_SHELL_SHAPES: ShellShapes = {

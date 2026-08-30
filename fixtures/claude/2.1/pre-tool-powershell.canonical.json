@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "event": "tool.before",
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "1eefd156-fb61-4977-a4d9-575022b0adce",
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude"
+  },
+  "correlation": {
+    "turnId": "f224c43e-f47e-4791-afb7-adaac157a8c1",
+    "toolCallId": "toolu_01TuxWXFFuUz6pW53zuHkzSR"
+  },
+  "tool": {
+    "kind": "shell",
+    "nativeName": "PowerShell",
+    "input": {
+      "command": "echo hooknostic-ps-capture",
+      "description": "Echo capture string"
+    },
+    "shell": {
+      "command": "echo hooknostic-ps-capture",
+      "commandKey": "command"
+    }
+  }
+}
