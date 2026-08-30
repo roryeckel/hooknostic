@@ -39,4 +39,5 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 1.18.18 | 2026-08-20 | captured | `fixtures/opencode/1.18` | live plugin hook payloads incl. in-place args-mutation behaviour |
 | 1.18.19 | 2026-08-20 | type-derived | `.capture/opencode` | @opencode-ai/plugin published Hooks type definitions (dist/index.d.ts) |
 | 1.18.25 | 2026-08-29 | live-probe | `.capture/opencode-client` | plugin-client probe: promptAsync notification channel and session.idle timing |
+| 1.18.25 | 2026-08-30 | live-probe | — | PWD env precedence: opencode trusts an inherited PWD over the process cwd and runs the session in PWD's project -- where plugins may not exist. Spawners must set PWD to agree with cwd (see the smoke's runCommand). |
 
