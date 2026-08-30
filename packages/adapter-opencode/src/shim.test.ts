@@ -31,7 +31,8 @@ function smokePlugin() {
           "tool.before.input.replace": "optional",
         },
         async run(event, ctx) {
-          const command = event.tool.shell?.command ?? "";
+          const raw = (event.tool.input as { command?: unknown }).command;
+          const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
           if (command.includes("rm -rf /")) return block("blocked by guard");
           if (
             ctx.capabilities.has("tool.before.input.replace") &&
