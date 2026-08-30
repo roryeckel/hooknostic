@@ -48,6 +48,20 @@ jobs:
       # defect (artifact bytes varying with the invocation directory) on the day
       # it landed, rather than in a downstream consumer months later.
       - name: Committed example artifacts are reproducible
+        # `git status --porcelain`, not `git diff --exit-code`: diff reports
+        # modifications and deletions of tracked files and is blind to a NEW
+        # one. An adapter that starts emitting a fourth artifact would leave it
+        # untracked, the gate would pass, and the committed set would be
+        # silently incomplete -- which under ADR-0006 fails silently downstream.
+        #
+        # agent-plugin is rebuilt as well as rewrite-shell because it is the
+        # only example using `agentPlugin`, whose build report is where an
+        # absolute machine path can leak.
         run: |
           node packages/cli/bin/hooknostic.mjs build --config examples/rewrite-shell/hooknostic.config.ts
-          git diff --exit-code -- examples/rewrite-shell
+          node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hooknostic.config.ts
+          if [ -n "$(git status --porcelain -- examples/rewrite-shell examples/agent-plugin)" ]; then
+            git status --porcelain -- examples/rewrite-shell examples/agent-plugin
+            git diff -- examples/rewrite-shell examples/agent-plugin
+            exit 1
+          fi

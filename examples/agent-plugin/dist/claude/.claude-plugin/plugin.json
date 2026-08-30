@@ -1,0 +1,5 @@
+{
+  "name": "combined-example",
+  "version": "1.0.0",
+  "description": "Agent Plugins package with hooknostic-compiled lifecycle hooks"
+}
