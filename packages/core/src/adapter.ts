@@ -38,6 +38,59 @@ export interface CapabilityEntry {
 export type CapabilityMatrix = Partial<Record<CapabilityId, CapabilityEntry>>;
 
 /**
+ * Per-harness version metadata: the single source the rest of the repository
+ * derives its version literals from. Profiles record what was *validated*;
+ * this records what is *recommended* and what the tests exercise.
+ * Contract-audited by `describeAdapterContract` (recommendedRange must be a
+ * subset of profile coverage, referenceVersion must be a captured build, and
+ * fixtureDir must match the adapter's fixture directory basename).
+ */
+export interface HarnessMetadata {
+  /** Human name for docs and generated tables, e.g. "Claude Code". */
+  readonly displayName: string;
+  /**
+   * The range this project recommends consumers target. Deliberately allowed
+   * to be narrower than the widest validated profile range.
+   */
+  readonly recommendedRange: string;
+  /** Basename of the adapter's fixture directory, e.g. "2.1". */
+  readonly fixtureDir: string;
+  /**
+   * The exact harness build tests pass as `InvocationContext.harnessVersion`.
+   * Must satisfy `recommendedRange` and appear as a `captured` validation
+   * record in some profile.
+   */
+  readonly referenceVersion: string;
+}
+
+/**
+ * How a validation fact was established. Mirrors the provenance classes the
+ * capture discipline records (see `.agents/skills/harness-capture/SKILL.md`);
+ * `router-log` is the carved exception for shapes observed one level below
+ * the hook boundary.
+ */
+export type ValidationMethod =
+  | "captured"
+  | "live-probe"
+  | "schema-derived"
+  | "type-derived"
+  | "doc-derived"
+  | "router-log";
+
+/** One validation event: which build, when, how, and what it established. */
+export interface ValidationRecord {
+  /** Exact harness version, e.g. "2.1.250". */
+  readonly version: string;
+  /** ISO date (yyyy-mm-dd) of the validation session. */
+  readonly date: string;
+  readonly method: ValidationMethod;
+  /** Repo-relative evidence path, e.g. "fixtures/claude/2.1". */
+  readonly artifact?: string;
+  /** What this run established, one line. */
+  readonly what: string;
+}
+
+/**
  * Capability support is a function of harness *and version*. Adapters encode
  * it as data — versioned profiles — rather than scattering version checks.
  */
@@ -45,10 +98,12 @@ export interface CapabilityProfile {
   /** Semver range of native harness versions this matrix was validated for. */
   range: string;
   matrix: CapabilityMatrix;
-  /** Provenance: when and from what sources the profile was derived. */
-  source?: {
+  /** Provenance: structured validation events, not prose. */
+  source: {
     date: string;
-    references?: string[];
+    validatedOn: readonly ValidationRecord[];
+    /** Non-version notes that are not validation events (e.g. doc URLs). */
+    notes?: readonly string[];
   };
 }
 
@@ -134,6 +189,9 @@ export interface ShimEntryOptions {
 export interface HarnessAdapter {
   readonly id: string;
   readonly adapterVersion: string;
+
+  /** Per-harness version metadata; see {@link HarnessMetadata}. */
+  readonly harness: HarnessMetadata;
 
   /** Ranges with validated capability data, in profile declaration order. */
   supportedHarnessVersions(): string[];

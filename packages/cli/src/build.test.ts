@@ -9,6 +9,8 @@ import { runBuild } from "./build.js";
 import { runDoctor } from "./doctor.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
+import { claudeHarness } from "@hooknostic/adapter-claude";
+import { opencodeHarness } from "@hooknostic/adapter-opencode";
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const EXAMPLES = join(REPO, "examples");
@@ -225,8 +227,8 @@ ${run.stderr}`).toBe(0);
         `export default {
           entry: "./hooks.ts",
           targets: {
-            claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
-            opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },
+            claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" },
+            opencode: { version: "${opencodeHarness.recommendedRange}", mode: "local", output: "./dist/opencode" },
           },
         };`,
         "utf8",
@@ -283,7 +285,7 @@ ${run.stderr}`).toBe(0);
       configPath,
       `export default {
         entry: "./hooks.ts",
-        targets: { claude: { version: ">=2.1 <3", mode: "plugin", output: "." } },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "." } },
       };`,
       "utf8",
     );
@@ -318,7 +320,7 @@ ${run.stderr}`).toBe(0);
       configPath,
       `export default {
         entry: "./hooks.ts",
-        targets: { claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" } },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } },
       };`,
       "utf8",
     );

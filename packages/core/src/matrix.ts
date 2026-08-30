@@ -169,6 +169,17 @@ function isRangeFullyCovered(requestedRange: string, profileRanges: readonly str
  *   intersection per capability. Never assume the newest profile for a broad
  *   range.
  */
+/**
+ * Whether an exact harness version falls inside a validated range. Exported so
+ * the contract suite (and third-party adapters) can pin metadata like
+ * `referenceVersion` against `recommendedRange` without a second semver dep.
+ * `includePrerelease` so a prerelease build of an in-range version still
+ * counts -- validation evidence is about the build actually run.
+ */
+export function rangeCoversVersion(range: string, version: string): boolean {
+  return semver.satisfies(version, range, { includePrerelease: true });
+}
+
 export function resolveCapabilityMatrix(
   adapterId: string,
   profiles: readonly CapabilityProfile[],

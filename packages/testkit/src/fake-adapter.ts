@@ -2,6 +2,7 @@ import type {
   AdapterCompileOptions,
   CapabilityProfile,
   Diagnostic,
+  HarnessMetadata,
   GeneratedArtifact,
   HarnessAdapter,
   InvocationContext,
@@ -28,6 +29,8 @@ export interface FakeAdapterOptions {
   shimEntry?: string | ((options: ShimEntryOptions) => string);
   /** How the fake harness runs the artifact; undeclared means unknown. */
   shimExecution?: "command" | "module";
+  /** Override the harness metadata (default: synthetic values off the first profile). */
+  harness?: HarnessMetadata;
   /** Override the emitted artifacts (default: one fake-plugin.json). */
   compile?(
     plugin: PluginIR,
@@ -51,6 +54,12 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
   const adapter: HarnessAdapter = {
     id: options.id,
     adapterVersion,
+    harness: options.harness ?? {
+      displayName: options.id,
+      recommendedRange: options.profiles[0]?.range ?? ">=1.0 <2",
+      fixtureDir: "fake",
+      referenceVersion: "1.0.0",
+    },
     ...(options.shimExecution !== undefined ? { shimExecution: options.shimExecution } : {}),
 
     supportedHarnessVersions() {
@@ -99,4 +108,18 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
     adapter.validateArtifacts = async (artifacts, target) => validateArtifacts(artifacts, target);
   }
   return adapter;
+}
+
+/**
+ * A minimal valid `CapabilityProfile.source` for synthetic test profiles.
+ * Real adapters never use this -- their provenance is the point; fake ones
+ * should not have to invent it.
+ */
+export function syntheticSource(): CapabilityProfile["source"] {
+  return {
+    date: "2026-01-01",
+    validatedOn: [
+      { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic test profile" },
+    ],
+  };
 }

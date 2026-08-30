@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { HookResult } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
 import { applyCodex } from "./apply.js";
+import { codexHarness } from "./harness.js";
 
-const INVOCATION = { targetId: "codex", harnessVersion: "0.148.0" };
+const INVOCATION = { targetId: "codex", harnessVersion: codexHarness.referenceVersion };
 
 function result(partial: Partial<HookResult> & Pick<HookResult, "event">): HookResult {
   return { schemaVersion: 1, effects: [], errors: [], ...partial };

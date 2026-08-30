@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { HarnessAdapter } from "@hooknostic/core";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,4 +29,13 @@ export function loadFixture<T = unknown>(
  */
 export function loadFixtureFrom<T = unknown>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
+}
+
+/**
+ * This monorepo's fixture directory for an adapter, derived from its own
+ * metadata: `fixtures/<id>/<harness.fixtureDir>`. Repo-local convenience --
+ * external adapters pass an explicit `fixturesDir` instead.
+ */
+export function adapterFixturesDir(adapter: HarnessAdapter): string {
+  return resolve(FIXTURES_ROOT, adapter.id, adapter.harness.fixtureDir);
 }

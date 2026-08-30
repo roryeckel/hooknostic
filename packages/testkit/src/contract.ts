@@ -1,9 +1,10 @@
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { HookEventName } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 import type { HarnessAdapter } from "@hooknostic/core";
+import { rangeCoversVersion } from "@hooknostic/core";
 import { loadFixtureFrom } from "./fixtures.js";
 
 export interface AdapterContractOptions {
@@ -13,8 +14,9 @@ export interface AdapterContractOptions {
    * pair so an adapter living outside this repository can run the suite.
    */
   fixturesDir: string;
-  /** Version range to resolve capabilities at; should match the fixtures. */
-  version: string;
+  /** Version range to resolve capabilities at. Defaults to the adapter's
+   * `harness.recommendedRange`; pass explicitly to audit another range. */
+  version?: string;
   mode?: "plugin" | "local";
 }
 
@@ -43,7 +45,7 @@ export function describeAdapterContract(
   describe(`adapter contract: ${adapter.id}`, () => {
     const resolved = adapter.capabilities({
       id: adapter.id,
-      version: options.version,
+      version: options.version ?? adapter.harness.recommendedRange,
       mode: options.mode ?? "local",
       output: ".",
     });
@@ -82,8 +84,18 @@ export function describeAdapterContract(
 
     it("records provenance on every capability profile", () => {
       for (const profile of resolved.profilesUsed) {
-        expect(profile.source?.date, `profile ${profile.range} needs source date`).toBeTruthy();
-        expect(profile.source?.references?.length).toBeGreaterThan(0);
+        expect(profile.source.date, `profile ${profile.range} needs source date`).toBeTruthy();
+        // Structured records, not prose: at least one validation event, and
+        // at least one of them captured -- doc-derived-only support is not
+        // validation.
+        expect(
+          profile.source.validatedOn.length,
+          `profile ${profile.range} needs validatedOn records`,
+        ).toBeGreaterThan(0);
+        expect(
+          profile.source.validatedOn.some((record) => record.method === "captured"),
+          `profile ${profile.range} needs at least one captured record`,
+        ).toBe(true);
       }
     });
 
@@ -153,6 +165,48 @@ export function describeAdapterContract(
         (key) => !shellFixtureNames.has(key.toLowerCase()),
       );
       expect(uncovered, `shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
+    });
+
+    it("keeps its harness metadata consistent with its profiles and fixtures", () => {
+      const meta = adapter.harness;
+      // fixtureDir pins the one name that was previously derived from nothing.
+      expect(basename(options.fixturesDir), "fixturesDir basename must equal harness.fixtureDir").toBe(
+        meta.fixtureDir,
+      );
+      // recommendedRange must resolve cleanly (i.e. be a subset of profile
+      // coverage) -- HN203 here means the recommendation outruns the evidence.
+      const atRecommended = adapter.capabilities({
+        id: adapter.id,
+        version: meta.recommendedRange,
+        mode: options.mode ?? "local",
+        output: ".",
+      });
+      expect(
+        atRecommended.diagnostics.map((d) => d.code),
+        `recommendedRange ${meta.recommendedRange} must resolve without diagnostics`,
+      ).toEqual([]);
+      expect(
+        rangeCoversVersion(meta.recommendedRange, meta.referenceVersion),
+        `referenceVersion ${meta.referenceVersion} must satisfy recommendedRange`,
+      ).toBe(true);
+      // The build tests exercise referenceVersion; it must be a captured
+      // build, not an inferred one.
+      const records = resolved.profilesUsed.flatMap((profile) => profile.source.validatedOn);
+      expect(
+        records.some((r) => r.version === meta.referenceVersion && r.method === "captured"),
+        `referenceVersion ${meta.referenceVersion} needs a captured validatedOn record`,
+      ).toBe(true);
+    });
+
+    it("claims validation only for versions inside some profile range", () => {
+      for (const profile of resolved.profilesUsed) {
+        for (const record of profile.source.validatedOn) {
+          expect(
+            adapter.supportedHarnessVersions().some((range) => rangeCoversVersion(range, record.version)),
+            `validatedOn ${record.version} (${record.method}) falls outside every profile range`,
+          ).toBe(true);
+        }
+      }
     });
 
     it("declares how its artifact is executed", () => {

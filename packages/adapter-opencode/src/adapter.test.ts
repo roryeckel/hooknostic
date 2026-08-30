@@ -8,8 +8,9 @@ import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeAdapter } from "./index.js";
 import { classifyOpenCodeTool } from "./toolmap.js";
+import { opencodeHarness } from "./harness.js";
 
-const INVOCATION = { targetId: "opencode", harnessVersion: "1.18.18" };
+const INVOCATION = { targetId: "opencode", harnessVersion: opencodeHarness.referenceVersion };
 
 describe("decodeOpenCode fixtures", () => {
   const CASES = [
@@ -35,7 +36,7 @@ describe("decodeOpenCode fixtures", () => {
       const decoded = decodeOpenCode(input, INVOCATION);
       expect(decoded).toEqual({
         ...canonical,
-        harness: { ...(canonical["harness"] as object), version: "1.18.18" },
+        harness: { ...(canonical["harness"] as object), version: opencodeHarness.referenceVersion },
         raw: input,
       });
     });
@@ -206,7 +207,7 @@ describe("planOpenCodeApplication", () => {
 describe("generateOpenCodeArtifacts", () => {
   const TARGET = {
     id: "opencode",
-    version: ">=1.18 <2",
+    version: opencodeHarness.recommendedRange,
     mode: "local" as const,
     output: "./dist/opencode",
   };
@@ -316,7 +317,7 @@ describe("opencodeAdapter capability data", () => {
   it("resolves the 1.1x profile with rationale on every non-exact cell", () => {
     const resolved = opencodeAdapter().capabilities({
       id: "opencode",
-      version: ">=1.18 <2",
+      version: opencodeHarness.recommendedRange,
       mode: "local",
       output: "./d",
     });
@@ -353,7 +354,7 @@ describe("opencodeAdapter capability data", () => {
     );
     const adapter = opencodeAdapter();
     const target = {
-      version: ">=1.18 <2",
+      version: opencodeHarness.recommendedRange,
       mode: "local" as const,
       output: "./dist/opencode",
     };

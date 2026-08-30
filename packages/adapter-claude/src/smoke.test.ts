@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { claudeHarness } from "./harness.js";
 import { bundleRuntime } from "@hooknostic/core";
 import { claudeShimEntrySource, claudeCapabilityProfiles } from "./index.js";
 
@@ -93,7 +94,7 @@ describe.skipIf(!enabled)("Claude Code smoke (real harness)", () => {
           entryImportPath: join(dir, "hooks.ts").replaceAll("\\", "/"),
           capabilities: levels,
           policy: { onHookError: "continue", timeoutMs: 5000 },
-          harnessVersion: "2.1.238",
+          harnessVersion: claudeHarness.referenceVersion,
         }),
         resolveDir: dir,
         alias: ALIAS,

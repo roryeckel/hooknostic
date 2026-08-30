@@ -3,8 +3,9 @@ import { block, definePlugin, hook } from "@hooknostic/sdk";
 import { buildPluginIR } from "@hooknostic/core";
 import { codexAdapter } from "./index.js";
 import { generateCodexArtifacts } from "./generate.js";
+import { codexHarness } from "./harness.js";
 
-const TARGET = { id: "codex", version: ">=0.148 <1", mode: "local" as const, output: "./dist/codex" };
+const TARGET = { id: "codex", version: codexHarness.recommendedRange, mode: "local" as const, output: "./dist/codex" };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
   runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },

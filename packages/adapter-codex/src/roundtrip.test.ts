@@ -6,8 +6,9 @@ import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { codexShellCodec } from "./toolmap.js";
+import { codexHarness } from "./harness.js";
 
-const INVOCATION = { targetId: "codex", harnessVersion: "0.148.0" };
+const INVOCATION = { targetId: "codex", harnessVersion: codexHarness.referenceVersion };
 const LEVELS = Object.fromEntries(
   Object.entries(codexCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
 );

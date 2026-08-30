@@ -1,24 +1,40 @@
 import type { CapabilityProfile } from "@hooknostic/core";
 
 /**
- * Claude Code capability data. Validated against Claude Code 2.1.238
- * (fixtures captured 2026-08-20 on Windows) plus the hooks reference
- * (https://code.claude.com/docs/en/hooks, fetched 2026-08-20).
- *
- * Non-exact levels carry rationale. "Doc-derived" markers in
- * fixtures/claude/2.1/README.md flag cells whose fixtures were not captured
- * from a live session.
+ * Claude Code capability data. Non-exact levels carry rationale; per-fixture
+ * provenance (captured vs doc-derived cells) lives in
+ * fixtures/claude/2.1/README.md. Version facts live in `source.validatedOn`,
+ * not prose.
  */
 export const claudeCapabilityProfiles: CapabilityProfile[] = [
   {
     range: ">=2.0 <3",
     source: {
       date: "2026-08-29",
-      references: [
-        "https://code.claude.com/docs/en/hooks",
-        "fixtures/claude/2.1 (captured 2.1.238)",
-        "Stop/SubagentStop output semantics verified live on 2.1.250 (.capture/claude-output)",
+      validatedOn: [
+        {
+          version: "2.1.238",
+          date: "2026-08-20",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "hook payload fixtures for every observable event, captured on Windows",
+        },
+        {
+          version: "2.1.250",
+          date: "2026-08-29",
+          method: "live-probe",
+          artifact: ".capture/claude-output",
+          what: "Stop/SubagentStop output semantics (systemMessage rendering) verified live",
+        },
+        {
+          version: "2.1.250",
+          date: "2026-08-30",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key",
+        },
       ],
+      notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
     },
     matrix: {
       "session.start.observe": { level: "exact" },

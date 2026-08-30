@@ -2,8 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { CapabilityProfile } from "./adapter.js";
 import { resolveCapabilityMatrix } from "./matrix.js";
 
+// Synthetic profiles need a syntactically valid source; provenance is
+// meaningless for a fake harness, so one shared stub keeps the noise down.
+const SRC: CapabilityProfile["source"] = {
+  date: "2026-01-01",
+  validatedOn: [
+    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
+  ],
+};
+
 const older: CapabilityProfile = {
   range: ">=1.0 <1.5",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "tool.before.block": { level: "emulated", rationale: "older mechanism" },
@@ -13,6 +23,7 @@ const older: CapabilityProfile = {
 
 const newer: CapabilityProfile = {
   range: ">=1.5 <2",
+  source: SRC,
   matrix: {
     "tool.before.observe": { level: "exact" },
     "tool.before.block": { level: "exact" },
@@ -66,6 +77,7 @@ describe("resolveCapabilityMatrix", () => {
   it("accepts an explicit prerelease only when its profile explicitly covers it", () => {
     const prerelease: CapabilityProfile = {
       range: ">=2.0.0-beta.1 <2.0.0",
+      source: SRC,
       matrix: { "tool.before.observe": { level: "exact" } },
     };
     const result = resolveCapabilityMatrix("fake", [prerelease], "2.0.0-beta.2");
