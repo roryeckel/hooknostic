@@ -1,6 +1,13 @@
 import type { CapabilityProfile } from "@hooknostic/core";
 
 /**
+ * Shared by both stop events: `systemMessage` is accepted on the wire and never
+ * rendered, which is the one place the three harnesses genuinely diverge.
+ */
+const NOTIFY_ACCEPTED_AND_DISCARDED =
+  "systemMessage is accepted by the stop.command.output / subagent-stop.command.output wire schemas -- a live 0.148.0 run validates cleanly and logs \"Stop Completed\" -- but 0.148.0 has no rendering path for it and the message appears nowhere. Accepted-and-discarded is not support: claiming it would make a portable hook lose every notice on this target, silently.";
+
+/**
  * Codex CLI capability data. Validated against codex-cli 0.148.0 (fixtures
  * captured 2026-08-20 on Windows) and the wire JSON Schemas embedded in the
  * 0.148.0 binary (`*.command.input` / `*.command.output`). Vendor docs
@@ -13,7 +20,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
   {
     range: ">=0.140 <1",
     source: {
-      date: "2026-08-20",
+      date: "2026-08-29",
       references: [
         "codex-cli 0.148.0 embedded wire schemas",
         "fixtures/codex/0.148 (captured 0.148.0)",
@@ -79,12 +86,19 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
 
       "turn.stop.observe": { level: "exact" },
       "turn.stop.prevent": { level: "exact" },
-      // notify is UNSUPPORTED on both stop events. `systemMessage` is accepted by
-      // the stop.command.output / subagent-stop.command.output wire schemas --
-      // a live 0.148.0 run validates cleanly and logs "Stop Completed" -- but
-      // 0.148.0 has no rendering path for it and the message appears nowhere.
-      // Accepted-and-discarded is not support: claiming it would make a portable
-      // hook lose every notice on this target, silently.
+
+      // Stated explicitly rather than left absent. Absent would resolve to the
+      // same level, but `hooknostic inspect` can only print a rationale that
+      // belongs to an entry -- and "we checked, and it does not work" is worth
+      // more to a user than silence.
+      "turn.stop.notify": {
+        level: "unsupported",
+        rationale: NOTIFY_ACCEPTED_AND_DISCARDED,
+      },
+      "agent.stop.notify": {
+        level: "unsupported",
+        rationale: NOTIFY_ACCEPTED_AND_DISCARDED,
+      },
     },
   },
 ];

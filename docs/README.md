@@ -39,7 +39,7 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | [Glossary](glossary.md) | Every term of art in these docs, defined in a sentence or two |
 | [Design document](design.md) | The complete technical design: contracts, diagnostics, adapter interfaces, test strategy, milestones. The deep end — read the concepts page first |
 | [Native surface baseline](baseline-2026-08-20.md) | The verified snapshot of each harness's real hook behavior (captured 2026-08-20) that the adapters are built against — including where vendor docs turned out to be wrong |
-| [Design decisions](decisions/) | The four foundational choices, each recorded with its context and consequences |
+| [Design decisions](decisions/) | The foundational choices, each recorded with its context and consequences |
 
 ## How the pieces fit
 

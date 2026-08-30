@@ -84,7 +84,8 @@ tutorials built on the [examples](examples/).
   primary-source snapshot of each harness the adapters are built against
 - [Adding an adapter](docs/adding-an-adapter.md) — how to support a new harness
 - [Design decisions](docs/decisions/) — why capabilities are separate from events, why
-  hooks are stateless, why one dispatcher, and how Agent Plugins fits in
+  hooks are stateless, why one dispatcher, how Agent Plugins fits in, and which
+  effects end a dispatch
 - [Glossary](docs/glossary.md) — every term of art used in these docs, defined
 
 ## Repository

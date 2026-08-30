@@ -102,13 +102,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
         // prevent higher would invert the two.
         level: "approximate",
         rationale:
-          "no native stop-prevention channel; the reason is posted back into the session with client.session.promptAsync (no noReply), which makes the agent take another turn. Requires a session that outlives the event: under `opencode run` the process exits at session.idle before the posted turn can start, so prevention is inert there -- it works in an interactive session or against `opencode serve`. Also a silent no-op if the host supplies no client or the post fails. Unlike Claude and Codex there is no stop_hook_active flag and no block cap, so a hook that always prevents will loop -- it must carry its own terminating condition.",
+          "no native stop-prevention channel; the reason is posted back into the session with client.session.promptAsync (no noReply), which makes the agent take another turn. Requires a session that outlives the event: under `opencode run` the process exits at session.idle before the posted turn can start, so prevention is inert there -- it works in an interactive session or against `opencode serve`. Also a silent no-op if the host supplies no client, if the bus event carries no session id, or if the post fails. Unlike Claude and Codex there is no stop_hook_active flag and no block cap, so a hook that always prevents will loop -- it must carry its own terminating condition.",
       },
 
       "turn.stop.notify": {
         level: "approximate",
         rationale:
-          "no user-only message channel; the message is posted with client.session.promptAsync noReply:true, which reaches the user without driving a turn but also appends it to the conversation as a user-role message, so the model reads it on the next turn. Best-effort: a silent no-op without a client.",
+          "no user-only message channel; the message is posted with client.session.promptAsync noReply:true, which reaches the user without driving a turn but also appends it to the conversation as a user-role message, so the model reads it on the next turn. Best-effort: a silent no-op without a client, without a session id on the bus event, or if the post fails.",
       },
     },
   },

@@ -50,6 +50,18 @@ function toolOf(event: HookEvent): ToolInvocation | undefined {
   return "tool" in event ? event.tool : undefined;
 }
 
+/**
+ * Clamp user-visible notification text to `limit` UTF-16 code units without
+ * splitting a surrogate pair — a lone surrogate would render as a replacement
+ * character in the middle of a message a person is meant to read.
+ */
+function truncateNotification(message: string, limit: number): string {
+  if (message.length <= limit) return message;
+  const code = message.charCodeAt(limit - 1);
+  const splitsPair = code >= 0xd800 && code <= 0xdbff; // high surrogate at the cut
+  return message.slice(0, splitsPair ? limit - 1 : limit);
+}
+
 /** Convert an arbitrary thrown value without letting hostile proxies escape dispatch. */
 function errorMessage(error: unknown): string {
   try {
@@ -89,8 +101,13 @@ export async function dispatch(
     errors: [],
   };
 
-  let contextBudget = policy.contextCharLimit;
-  let notifyBudget = policy.notifyCharLimit;
+  // Coalesced, not just spread: `{...DEFAULT_RUNTIME, ...options.policy}` lets a
+  // caller passing an explicit `undefined` clobber the default, after which
+  // `budget -= n` is NaN and the cap is silently off for the rest of the
+  // dispatch. Guarding only the new field would read as if the other were
+  // deliberately unguarded.
+  let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
+  let notifyBudget = policy.notifyCharLimit ?? DEFAULT_RUNTIME.notifyCharLimit;
 
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;
@@ -256,22 +273,29 @@ export async function dispatch(
         break;
       }
       case "notify": {
-        // Unlike the context budget above, exhaustion is RECORDED rather than
-        // silently swallowed: "the user sees this" is the entire semantic of a
-        // notification, so losing one without a trace defeats the point.
-        const remaining = notifyBudget;
+        // Unlike the context budget above, exhaustion is recorded as a
+        // budget-exceeded HandlerError rather than dropped without a trace:
+        // "the user sees this" is the entire semantic of a notification.
+        // Note nothing surfaces HookResult.errors to users yet — the adapters
+        // all discard it — so today the record reaches callers of dispatch()
+        // and tests. That is a gap in reporting, not in the record itself.
+        //
+        // Floored because a fractional budget would let slice(0, 0.5) produce
+        // an EMPTY message, which effectSchema rejects (message: min(1)).
+        // Config values are guarded by .int().positive(); the direct dispatch()
+        // API is not.
+        const remaining = Math.floor(notifyBudget);
         if (remaining <= 0) {
           result.errors.push({
             hookId: hook.id,
             kind: "budget-exceeded",
             message:
-              `HN103: notification dropped; the dispatch already used its ` +
-              `${policy.notifyCharLimit}-character notification budget.`,
+              `HN103: notification dropped; no notification budget remained in ` +
+              `this dispatch (limit ${policy.notifyCharLimit} characters).`,
           });
           break;
         }
-        const message =
-          effect.message.length > remaining ? effect.message.slice(0, remaining) : effect.message;
+        const message = truncateNotification(effect.message, remaining);
         if (message.length < effect.message.length) {
           result.errors.push({
             hookId: hook.id,

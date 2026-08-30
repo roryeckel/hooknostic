@@ -121,7 +121,10 @@ function runCommand(
     child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));
     child.stderr.setEncoding("utf8").on("data", (d: string) => (stderr += d));
     const timer = setTimeout(() => {
-      child.kill();
+      // Tree-kill, not child.kill(): with shell:true on Windows the handle is
+      // cmd.exe, and this wraps a 280s live `opencode run` whose orphan would
+      // hold the scratch directory for every later run.
+      void stopProcessTree(child);
       rejectPromise(new Error(`${command} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
     }, options.timeoutMs);
     child.on("error", (error) => {
@@ -154,24 +157,30 @@ async function removeScratch(dir: string): Promise<void> {
 }
 
 /**
- * Terminate the whole process tree and wait for it.
+ * Terminate a whole process tree.
  *
- * On Windows the server is spawned through a shell, so the child handle is
- * `cmd.exe`, not `opencode`: `kill()` would leave the real server orphaned,
- * holding the port and its inherited pipes, which fails the next run and can
- * hang Vitest on open handles.
+ * On Windows these children are spawned through a shell, so the handle is
+ * `cmd.exe`, not the harness: `kill()` leaves the real process orphaned,
+ * holding its port, scratch directory and inherited pipes — which fails the
+ * next run and can hang Vitest on open handles.
  */
+function stopProcessTree(child: ReturnType<typeof spawn>): Promise<void> {
+  if (process.platform !== "win32" || child.pid === undefined) {
+    child.kill();
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolvePromise) => {
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" }).on(
+      "close",
+      () => resolvePromise(),
+    );
+  });
+}
+
+/** Tree-kill a server and wait for it to actually go away. */
 async function stopServer(server: ReturnType<typeof spawn>): Promise<void> {
   const exited = new Promise<void>((resolvePromise) => server.on("close", () => resolvePromise()));
-  if (process.platform === "win32" && server.pid !== undefined) {
-    await new Promise<void>((resolvePromise) => {
-      spawn("taskkill", ["/pid", String(server.pid), "/T", "/F"], {
-        stdio: "ignore",
-      }).on("close", () => resolvePromise());
-    });
-  } else {
-    server.kill();
-  }
+  await stopProcessTree(server);
   await Promise.race([exited, new Promise((r) => setTimeout(r, 10_000))]);
 }
 
@@ -180,7 +189,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
     "block and input rewrite function in a live session",
     { timeout: 300_000 },
     async () => {
-      await rm(SMOKE_DIR, { recursive: true, force: true });
+      await removeScratch(SMOKE_DIR);
       await mkdir(SMOKE_DIR, { recursive: true });
       await runCommand("git", ["init"], { cwd: SMOKE_DIR, timeoutMs: 30_000 });
 

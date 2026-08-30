@@ -63,6 +63,16 @@ A system notice — not an assistant message, not a synthetic user message. The
 model never sees it, and the turn is not affected. `turn.stop.notify` on Claude is
 therefore **`exact`**.
 
+### Both stop events behave identically
+
+The table above is the `Stop` run. `SubagentStop` was driven separately, with a
+prompt forcing one Task-tool subagent, and matched on every point: `D-notify`
+surfaced the same `{"type":"system","subtype":"informational"}` notice, and
+`E-compose` produced **two** `SubagentStop` dispatches with `stop_hook_active:
+true` on the second — so exit-0 JSON prevents a subagent stop exactly as it
+prevents a turn stop. Both `agent.stop` cells rest on that run, not on
+extrapolation from `Stop`.
+
 ### They compose in one body
 
 `E` produced both, from a single response:
@@ -78,10 +88,10 @@ only the user. This is the composition the whole change depends on, and it works
 
 ### Corrections to `docs/baseline-2026-08-20.md`
 
-- **`:76-77` is wrong.** It says stop-family events take `decision: "allow"|"deny"`.
+- **`:74-75` is wrong.** It says stop-family events take `decision: "allow"|"deny"`.
   `C` was rejected outright and did not prevent the stop. The binary's enum is
   `["approve","block"]`; `"block"` is what works, matching Codex.
-- **`:82-83` does not extend to `Stop`.** Plain exit-0 stdout becomes context on
+- **`:86-87` does not extend to `Stop`.** Plain exit-0 stdout becomes context on
   `SessionStart` / `UserPromptSubmit`, but `G` shows it is discarded on `Stop` —
   not shown, not context, not blocking.
 

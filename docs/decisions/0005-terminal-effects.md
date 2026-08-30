@@ -1,7 +1,8 @@
 # Decision 0005 — Which effects end a dispatch, stated once
 
 **Status:** Accepted — 2026-08-29 · Referenced from code and docs as **ADR-0005**
-**Supersedes:** ADR-0003 composition rules 4–6. The rest of ADR-0003 stands.
+**Supersedes:** ADR-0003 composition rules 4–6, and amends rule 3 (context additions
+and notifications now accumulate under *separate* caps). Rules 1, 2, 7 and 8 stand.
 
 **In short:** some effects stop the remaining hooks from running and some don't, and
 until now that list lived in three places that disagreed with each other. Here it is,
@@ -51,8 +52,9 @@ both they are separate native channels. Notifications accumulate in declaration
 order under a configurable size cap; the runtime keeps them attributed and
 separate, and each adapter joins them for its own native channel.
 
-This replaces ADR-0003 composition rules 4, 5 and 6. Rules 1, 2, 3, 7 and 8 stand
-unchanged.
+This replaces ADR-0003 composition rules 4, 5 and 6, and amends rule 3: context
+additions and notifications each accumulate under their own cap, rather than sharing
+one. Rules 1, 2, 7 and 8 stand unchanged.
 
 ## Consequences
 
