@@ -8,6 +8,7 @@ import type {
   HookEvent,
   HookResult,
   RuntimePolicy,
+  ShellCodec,
   SupportLevel,
   ToolInvocation,
 } from "@hooknostic/sdk";
@@ -44,10 +45,31 @@ export interface DispatchOptions {
   /** Compatibility floor applied to optional capabilities for this target. */
   minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
+  /**
+   * This target's two-way knowledge of shell tool argument shapes, supplied by
+   * the adapter's shim. Without it, `updateShell` is rejected everywhere and a
+   * raw `replaceInput` drops `tool.shell` (absent, never stale).
+   */
+  shellCodec?: ShellCodec;
 }
 
 function toolOf(event: HookEvent): ToolInvocation | undefined {
   return "tool" in event ? event.tool : undefined;
+}
+
+/**
+ * Replace a tool invocation's input and re-derive the normalized shell view
+ * from it. `tool.shell` is documented as derived from `input`; leaving the
+ * pre-rewrite value in place would let a rewrite smuggle a command past a
+ * later guard hook reading `event.tool.shell.command`. When the new input no
+ * longer classifies (or no codec was supplied), the view is deleted -- absence
+ * tells a hook to fall back to `input`, where a stale value tells it a lie.
+ */
+function setToolInput(tool: ToolInvocation, input: unknown, codec: ShellCodec | undefined): void {
+  tool.input = input;
+  const shell = codec?.classify(tool.nativeName, input);
+  if (shell !== undefined) tool.shell = shell;
+  else delete tool.shell;
 }
 
 /**
@@ -273,7 +295,7 @@ export async function dispatch(
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) tool.input = effect.input;
+        if (tool) setToolInput(tool, effect.input, options.shellCodec);
         result.effects.push({ hookId: hook.id, effect });
         break;
       }

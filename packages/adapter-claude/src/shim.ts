@@ -3,6 +3,7 @@ import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import { applyClaude } from "./apply.js";
 import { ClaudeDecodeError, decodeClaude } from "./decode.js";
+import { claudeShellCodec } from "./toolmap.js";
 
 export interface ClaudeShimOptions {
   /** Build-time-resolved capability levels for the executing target range. */
@@ -56,6 +57,7 @@ export async function runClaudeCommandShim(
         ? { minimumCapabilityLevel: options.minimumCapabilityLevel }
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
+      shellCodec: claudeShellCodec,
     });
     const native = await applyClaude(result, nativeEvent, invocation);
     if (native.body !== undefined) await writeStream(process.stdout, JSON.stringify(native.body));

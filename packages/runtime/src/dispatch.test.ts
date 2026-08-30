@@ -10,6 +10,7 @@ import {
   replaceInput,
   replaceOutput,
   requestApproval,
+  shellCodec,
 } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "./dispatch.js";
 import {
@@ -933,5 +934,75 @@ describe("effect payload JSON rule at dispatch", () => {
     expect(result.errors[0]?.code).toBe("HN401");
     expect(result.errors[0]?.message).toContain("uninspectable thrown value");
     expect(ran).toEqual(["after"]);
+  });
+});
+
+describe("shell view coherence across rewrites", () => {
+  const codec = shellCodec({ Bash: { commandKey: "command" } });
+
+  function shellEvent(): ToolBeforeEvent {
+    const event = toolBefore({ command: "npm install" });
+    const shell = codec.classify("Bash", event.tool.input);
+    if (shell !== undefined) event.tool.shell = shell;
+    return event;
+  }
+
+  it("re-derives tool.shell after a replaceInput so a later guard sees the rewritten command", async () => {
+    // The staleness this pins: shell is derived once at decode time, so
+    // without re-derivation a rewrite could smuggle a command past a later
+    // guard hook reading event.tool.shell.command.
+    const seen: (string | undefined)[] = [];
+    const hooks = [
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return replaceInput({ command: "pnpm install" });
+        },
+      }),
+      hook("tool.before", {
+        id: "guard",
+        async run(event) {
+          seen.push(event.tool.shell?.command);
+        },
+      }),
+    ];
+    const event = shellEvent();
+    await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
+    expect(seen).toEqual(["pnpm install"]);
+    expect(event.tool.shell?.command).toBe("pnpm install");
+  });
+
+  it("drops tool.shell rather than leaving it stale when no codec was supplied", async () => {
+    const hooks = [
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return replaceInput({ command: "pnpm install" });
+        },
+      }),
+    ];
+    const event = shellEvent();
+    await dispatch(hooks, event, OPTIONS);
+    // Absence tells a later reader to fall back to input; a stale value
+    // would tell it a lie.
+    expect(event.tool.shell).toBeUndefined();
+    expect(event.tool.input).toEqual({ command: "pnpm install" });
+  });
+
+  it("drops tool.shell when the replacement input no longer classifies", async () => {
+    const hooks = [
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return replaceInput({ notACommand: true });
+        },
+      }),
+    ];
+    const event = shellEvent();
+    await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
+    expect(event.tool.shell).toBeUndefined();
   });
 });

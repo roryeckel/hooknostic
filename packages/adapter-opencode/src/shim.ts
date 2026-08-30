@@ -12,6 +12,7 @@ import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import { planOpenCodeApplication } from "./apply.js";
 import type { OpenCodeNativeEvent } from "./decode.js";
+import { opencodeShellCodec } from "./toolmap.js";
 import { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 
 export interface OpenCodeShimOptions {
@@ -115,6 +116,7 @@ export function createHooknosticHooks(
         ? { minimumCapabilityLevel: options.minimumCapabilityLevel }
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
+      shellCodec: opencodeShellCodec,
     });
     const application = planOpenCodeApplication(result);
 

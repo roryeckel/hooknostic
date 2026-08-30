@@ -3,6 +3,7 @@ import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import { applyCodex } from "./apply.js";
 import { CodexDecodeError, decodeCodex } from "./decode.js";
+import { codexShellCodec } from "./toolmap.js";
 
 export interface CodexShimOptions {
   capabilities: CapabilityLevels;
@@ -54,6 +55,7 @@ export async function runCodexCommandShim(
         ? { minimumCapabilityLevel: options.minimumCapabilityLevel }
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
+      shellCodec: codexShellCodec,
     });
     const native = await applyCodex(result, nativeEvent, invocation);
     if (native.body !== undefined) await writeStream(process.stdout, JSON.stringify(native.body));
