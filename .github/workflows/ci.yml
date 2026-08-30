@@ -47,6 +47,21 @@ jobs:
       # on. This is the check that would have caught the esbuild absWorkingDir
       # defect (artifact bytes varying with the invocation directory) on the day
       # it landed, rather than in a downstream consumer months later.
+      # Same discipline as the artifact gate below, for version facts: the
+      # harness-support table is generated from adapter metadata, and every
+      # adapter-adjacent range literal in docs must match that metadata.
+      - name: Version metadata drives the docs
+        shell: bash
+        run: |
+          node scripts/generate-harness-support.mjs
+          if [ -n "$(git status --porcelain -- docs/)" ]; then
+            git status --porcelain -- docs/
+            git diff -- docs/
+            echo "docs drifted from adapter metadata; run scripts/generate-harness-support.mjs"
+            exit 1
+          fi
+          node scripts/check-version-literals.mjs
+
       - name: Committed example artifacts are reproducible
         # bash explicitly: the matrix includes windows-latest, where an
         # unshelled `run:` executes under PowerShell and the POSIX `if [ ... ]`

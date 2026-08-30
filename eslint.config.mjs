@@ -16,10 +16,10 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // Package build scripts run under Node (e.g. packages/cli/scripts/bundle.mjs).
-    files: ["packages/*/scripts/**/*.mjs"],
+    // Package build scripts and repo scripts run under Node.
+    files: ["packages/*/scripts/**/*.mjs", "scripts/**/*.mjs"],
     languageOptions: {
-      globals: { console: "readonly", process: "readonly" },
+      globals: { console: "readonly", process: "readonly", URL: "readonly" },
     },
   },
   {

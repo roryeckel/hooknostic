@@ -35,7 +35,10 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     return 2;
   }
 
-  const version = options.version ?? adapter.supportedHarnessVersions()[0] ?? "*";
+  // Default to the RECOMMENDED range, not the widest validated one: without
+  // --version this command should answer for the range users are told to
+  // target, which can be deliberately narrower than the validated union.
+  const version = options.version ?? adapter.harness.recommendedRange;
   const resolved = adapter.capabilities({
     id: adapter.id,
     version,
@@ -65,14 +68,15 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     options.io.stdout(
       JSON.stringify(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
           command: "inspect",
           target: adapter.id,
           adapterVersion: adapter.adapterVersion,
+          harness: adapter.harness,
           version,
           profiles: resolved.profilesUsed.map((p) => ({
             range: p.range,
-            ...(p.source !== undefined ? { source: p.source } : {}),
+            source: p.source,
           })),
           capabilities: rows,
         },
