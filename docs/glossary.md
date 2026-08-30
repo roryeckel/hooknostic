@@ -55,8 +55,9 @@ dispatcher: a stdin/stdout subprocess entry for Claude and Codex, an in-process 
 for OpenCode.
 
 **Terminal effect** — an effect that ends a dispatch immediately; hooks declared after
-it don't run for that event. `block`, `requestApproval`, and `blockContinuation` are
-terminal; input/output replacement and context addition are not.
+it don't run for that event. `block`, `requestApproval`, `preventStop`, and
+`blockContinuation` are terminal; input/output replacement, context addition, and
+notification are not. ([Decision 0005](decisions/0005-terminal-effects.md))
 
 **Plugin IR** (intermediate representation) — the normalized internal model the
 compiler builds from your config and hook source before analyzing and emitting

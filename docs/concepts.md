@@ -63,6 +63,7 @@ do something:
 | `replaceOutput(output)` | Replace or redact a tool's output |
 | `preventStop(reason)` | Keep the agent/turn going when it wants to stop |
 | `blockContinuation(reason)` | After a tool ran, stop the agent from continuing |
+| `notify(message)` | Show the user a message, changing nothing about what happens next |
 
 Returning nothing means "continue unchanged" — there is deliberately no `allow()`
 helper, because "explicitly allow" means subtly different (and sometimes
@@ -80,7 +81,7 @@ So each effect, at each event, is a named **capability**:
 ```
 tool.before.block          tool.after.output.replace     session.start.context.add
 tool.before.input.replace  tool.after.blockContinuation  turn.stop.prevent
-tool.before.requestApproval  ...
+tool.before.requestApproval  ...                          turn.stop.notify
 ```
 
 (Using an event at all implies its `<event>.observe` capability.)
@@ -165,9 +166,11 @@ context. ([Decision 0002](decisions/0002-invocation-stateless-contract.md))
 **Your hooks run in declaration order, everywhere.** Hooknostic registers one native
 hook per lifecycle point and dispatches your handlers itself: sequentially, in the
 order you declared them; input/output replacements take effect immediately so later
-handlers see them; context additions accumulate; `block`, `requestApproval`, and
-`blockContinuation` end the dispatch. Same rules on every harness.
-([Decision 0003](decisions/0003-one-dispatcher-composition.md))
+handlers see them; context additions and notifications accumulate; `block`,
+`requestApproval`, `preventStop`, and `blockContinuation` end the dispatch. Same
+rules on every harness.
+([Decision 0003](decisions/0003-one-dispatcher-composition.md),
+[Decision 0005](decisions/0005-terminal-effects.md))
 
 ## What Hooknostic is *not*
 

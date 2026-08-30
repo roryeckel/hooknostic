@@ -245,6 +245,7 @@ to exist merely because the event exists. Initial family (event-scoped equivalen
 - Replace/redact tool output — `replaceOutput(output)`
 - Prevent agent/turn stop — `preventStop(reason)`
 - Block continuation after a completed tool event — `blockContinuation(reason)`
+- Show the user a message without changing control flow — `notify(message)`
 
 Every helper maps to an event-scoped capability. A generic `allow()` helper is
 intentionally omitted: returning no effect means continue, avoiding vendor-specific
@@ -265,6 +266,7 @@ tool.before.context.add                                    context.compact.befor
 
 turn.stop.observe
 turn.stop.prevent
+turn.stop.notify
 ```
 
 Using an event implicitly requires its `observe` capability; additional effects are
@@ -514,6 +516,7 @@ Initial codes: **HN101** degraded capability, **HN102** optional capability unav
 version outside adapter data, **HN204** artifact mode unsupported, **HN301** adapter
 generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
 at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point.
+**HN103** an effect was truncated or dropped by a runtime budget.
 
 #### HN502 — bundled CLI entry point
 
@@ -577,11 +580,14 @@ composed HookResult
 
 1. Sequential execution in declaration order after matcher filtering.
 2. Input replacements apply immediately; later handlers see updated input.
-3. Context additions accumulate in declaration order; conservative configurable size
-   cap.
-4. `block` is terminal.
-5. `requestApproval` is terminal.
-6. Post-tool: output replacements apply immediately; `blockContinuation` is terminal.
+3. Context additions and notifications accumulate in declaration order, each under
+   its own conservative configurable size cap.
+4. `block`, `requestApproval`, `preventStop` and `blockContinuation` are terminal;
+   `replaceInput`, `replaceOutput`, `addContext` and `notify` are not. An effect is
+   terminal iff applying it makes every later handler's decision unsound
+   (ADR-0005, superseding the earlier rules 4-6).
+5. Post-tool: output replacements apply immediately.
+6. Reserved (folded into rule 4 by ADR-0005).
 7. No effect = continue unchanged.
 8. First terminal effect in declaration order wins; the runtime records the terminator.
 
@@ -589,8 +595,10 @@ composed HookResult
 
 ```ts
 runtime: {
-  onHookError: "continue",   // default for a general SDK
+  onHookError: "continue",     // default for a general SDK
   timeoutMs: 5_000,
+  contextCharLimit: 16_000,    // accumulated model-visible context per dispatch
+  notifyCharLimit: 2_000,      // accumulated user-visible notification text
 }
 ```
 
