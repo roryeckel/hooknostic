@@ -145,7 +145,29 @@ since nothing regenerates it; the plugin form is the maintainable option.
 
 ## Codex CLI
 
-Copy the generated tree to the project root:
+For a repository consuming its own hooks, point `.codex/hooks.json` at the built
+artifact instead of copying the tree:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node dist/codex/.codex/hooknostic/hooknostic.mjs", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The command is relative to the session's project directory. Referencing beats
+copying here: there is no second copy of the bundle to go stale, and nothing to
+repeat after a rebuild. It also lets you scope each event's timeout, which the
+generated manifest cannot — it gives every event the same dispatch budget.
+
+To distribute the artifact to a *different* repository, copy the tree instead:
 
 ```bash
 cp -r dist/codex/.codex .
@@ -159,14 +181,44 @@ mechanisms; Hooknostic never writes trust state. In practice that means:
   `~/.codex/config.toml`.
 - Each hook needs persisted hook trust
   (`[hooks.state.'<path>:<event>:i:j'] trusted_hash = "sha256:…"`), granted by
-  accepting the prompt, or `--dangerously-bypass-hook-trust` for throwaway runs.
+  accepting the prompt.
 
 Because the trusted hash covers the hook command, re-granting is only needed
 when the command itself changes — not on every rebuild of the bundled runtime.
 
+Three things measured on codex-cli 0.151.0 that the obvious reading gets wrong,
+each of which can leave a correctly built and correctly wired artifact silently
+not running:
+
+- **Codex prints `hook: <Event> Completed` for a hook it skipped.** That line is
+  not evidence the hook ran. Verify by effect — did the thing your hook does
+  actually happen — never by Codex's own output.
+- **Trust is per entry, not per file.** A stale hash on one event does not stop
+  another from running, so approving `Stop` says nothing about
+  `UserPromptSubmit`. Check for an entry per event you wired.
+- **`--dangerously-bypass-hook-trust` did not rescue an entry whose recorded
+  hash was stale.** It is accepted and the hook still did not run. (It has been
+  observed to work for an entry with *no* recorded trust state on 0.148.0, so
+  these may not conflict — but do not rely on the flag to test a modified hook
+  config.)
+
 ## OpenCode
 
-Copy the generated tree to the project root:
+Output directories are sandboxed strictly below the config directory, so the
+build cannot write `<project>/.opencode/` itself. For a repository consuming its
+own hooks, bridge to it with a one-line re-export rather than a copy —
+`.opencode/plugins/hooknostic.ts`:
+
+```ts
+export { HooknosticPlugin } from "../../dist/opencode/.opencode/plugins/hooknostic.js";
+```
+
+The loader scans `.opencode/plugins/` for `*.ts` / `*.js`, and a re-export
+satisfies it. This is the better shape: one bundle, nothing to re-copy after a
+rebuild, and it cannot drift from the artifact. It is also type-checked if you
+type-check that directory.
+
+To distribute the artifact to a *different* repository, copy the tree instead:
 
 ```bash
 cp -r dist/opencode/.opencode .
@@ -179,24 +231,41 @@ applying it to every project.
 
 ## Committing artifacts, or building them
 
-Both work, and the choice is about review rather than mechanics:
+**Commit `dist/`.** That is the default, and the reasoning is in
+[ADR-0006](decisions/0006-artifact-distribution.md): the artifact is
+dependency-free by design, has to be on disk before a session starts, fails
+*silently* when it is missing, and committing is the only arrangement where the
+thing you reviewed is the thing that runs — which matters for files that execute
+on every session event and can block a shell command. This repository practises
+it too: `examples/rewrite-shell` and `examples/agent-plugin` commit their output
+and CI rebuilds both and fails on any diff.
 
-- **Commit `dist/`.** Collaborators and CI get working artifacts with no build
-  step, and artifact changes show up in review — which matters, since these
-  files run on every session event. The generated bundle is deterministic for a
-  given source and configured version range, so diffs stay meaningful.
-- **Build in a setup step.** Keeps a large generated bundle out of history.
-  Requires every consumer to run `hooknostic build` before the harness starts,
-  and the harness silently runs no hooks until they do.
+Two things to set up alongside it:
+
+- **A drift check.** Rebuild in CI and fail if anything changed — `git status
+  --porcelain` rather than `git diff`, so a *new* artifact file is caught as
+  well as a changed one. Push it earlier than CI if you can; the person most
+  likely to be running a stale artifact is the one who just edited an imported
+  module, and CI tells them after they push.
+- **`linguist-generated=true`** on the output directory, so review collapses it.
+  Not `-diff`, which would hide a hand edit — the drift check is the real
+  defence there.
+
+**Building in a setup step** stays supported for a consumer who accepts the
+trade: nothing is in history, and until every consumer runs `hooknostic build`
+their harness silently runs no hooks.
 
 Either way, keep `hooknostic-build.json` — it records which capability each hook
 resolved to per target, and is the first thing to read when a hook behaves
 differently across harnesses.
 
-Note that **no target picks a rebuild up on its own.** Output directories are
-sandboxed strictly below the config directory, so `.codex/` and `.opencode/`
-cannot be emitted straight to the project root — the copy step has to be
-repeated after every build. A marketplace-installed Claude plugin needs the
+Note that **no target picks a rebuild up on its own** — every harness reads its
+hook configuration at session start, so restart it after a build. Output
+directories are also sandboxed strictly below the config directory, so `.codex/`
+and `.opencode/` cannot be emitted straight to the project root. If you *copy*
+the tree there, the copy has to be repeated after every build; the
+reference-in-place wiring above avoids that entirely and is why it is the
+recommended shape for a repo consuming its own hooks. A marketplace-installed Claude plugin needs the
 version bump and update flow above. This is worth a `postbuild` script or a
 `justfile` target rather than a line in a README nobody re-reads.
 
