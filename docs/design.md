@@ -147,7 +147,7 @@ produces a diagnostic **before** final artifacts are committed.
 | Runtime (`@hooknostic/runtime`) | Dispatch: adapter decode → portable handlers → effect composition → adapter encode/apply. |
 | Adapters | Capability matrices, decoders/encoders, detection, artifact generation, validation. |
 | CLI (`hooknostic`) | `check` / `build` / `doctor` / `inspect`, human + JSON diagnostics, target narrowing. |
-| Testkit | Fixtures, fake adapters, contract tests, snapshot helpers. |
+| Testkit | Fixtures, fake adapters, and `describeAdapterContract` — the obligations every adapter must meet, as tests a third-party adapter can run. |
 
 ## 6. Canonical hook model
 

@@ -99,7 +99,7 @@ Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |
 | `hooknostic` | CLI: `check` / `build` / `doctor` / `inspect` |
 | `@hooknostic/adapter-{claude,codex,opencode}` | Per-harness adapters (internal) |
-| `@hooknostic/testkit` | Fixtures, fake adapters, contract-test helpers |
+| `@hooknostic/testkit` | Fixtures, fake adapters, and the adapter contract suite |
 
 ```
 pnpm install

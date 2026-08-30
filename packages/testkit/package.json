@@ -4,7 +4,9 @@
   "private": true,
   "description": "Hooknostic fixture loaders, fake adapters, and adapter contract-test helpers",
   "type": "module",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -15,5 +17,8 @@
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
   }
 }

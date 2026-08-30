@@ -107,11 +107,9 @@ describe("codexAdapter capability data", () => {
     expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("approximate");
     expect(resolved.matrix?.["tool.error.observe"]).toBeUndefined();
     expect(resolved.matrix?.["context.compact.before.block"]).toBeUndefined();
-    for (const [id, entry] of Object.entries(resolved.matrix ?? {})) {
-      if (entry.level !== "exact") {
-        expect(entry.rationale, `capability ${id} needs a rationale`).toBeTruthy();
-      }
-    }
+    // The rationale sweep lives in the shared adapter contract
+    // (@hooknostic/testkit), so it covers a third-party adapter too. These
+    // assertions stay because they pin THIS adapter's specific ratings.
   });
 
   it("errors on tool.error requirements through analysis (event unavailable)", () => {

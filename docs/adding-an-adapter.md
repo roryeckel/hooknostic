@@ -33,10 +33,27 @@ vendor binaries, and published plugin type definitions (`@opencode-ai/plugin`).
 - `<case>.output.json` — expected apply/native-application result.
 - `README.md` — provenance table: captured vs doc-derived vs schema-derived.
 
-The coverage audit (`packages/cli/src/coverage.test.ts`) fails if any
-advertised observable event lacks a fixture, if fixtures exist for
-unadvertised events, if a non-exact cell lacks a rationale, or if a profile
-lacks source/date metadata.
+Run the contract suite from your own package — it is the definition of done for
+an adapter, and it is the same one the three shipped adapters run:
+
+```ts
+import { describeAdapterContract } from "@hooknostic/testkit";
+
+describeAdapterContract(myAdapter(), {
+  fixturesDir: resolve(import.meta.dirname, "../fixtures/1.0"),
+  version: ">=1.0 <2",
+});
+```
+
+It fails if any advertised observable event lacks a fixture, if fixtures exist
+for unadvertised events, if a non-exact cell lacks a rationale, if a profile
+lacks source/date metadata, if the matrix rates an unregistered capability id
+(a typo there is silent — the matrix is `Partial`, so an unknown key simply
+rates nothing), or if the adapter does not declare how its artifact executes.
+
+An adapter shipped from this repository also has to be added to `SUBJECTS` in
+`packages/cli/src/coverage.test.ts`, which asserts it matches the default
+registry so a new adapter cannot skip the suite by omission.
 
 ## 3. Capability profile
 
