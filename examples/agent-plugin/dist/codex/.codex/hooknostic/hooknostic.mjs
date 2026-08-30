@@ -4293,6 +4293,35 @@ var TOOL_KINDS = [
   "mcp",
   "other"
 ];
+function isPlainObject2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function shellCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapes[normalize(nativeName)];
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      const command = input[shape.commandKey];
+      if (typeof command !== "string")
+        return void 0;
+      const cwd = shape.cwdKey !== void 0 ? input[shape.cwdKey] : void 0;
+      return {
+        command,
+        ...typeof cwd === "string" ? { cwd } : {},
+        commandKey: shape.commandKey,
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {}
+      };
+    },
+    encode(nativeName, input, patch) {
+      const shape = shapes[normalize(nativeName)];
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      return { ...input, [shape.commandKey]: patch.command };
+    }
+  };
+}
 function matchesTool(match, tool) {
   if (!match)
     return true;
@@ -4321,7 +4350,12 @@ var toolInvocationSchema = external_exports.object({
   nativeName: external_exports.string(),
   input: external_exports.unknown(),
   mcp: external_exports.object({ server: external_exports.string().optional(), tool: external_exports.string().optional() }).strict().optional(),
-  shell: external_exports.object({ command: external_exports.string(), cwd: external_exports.string().optional() }).strict().optional()
+  shell: external_exports.object({
+    command: external_exports.string(),
+    cwd: external_exports.string().optional(),
+    commandKey: external_exports.string(),
+    cwdKey: external_exports.string().optional()
+  }).strict().optional()
 }).strict();
 var baseHookEventSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
@@ -4794,12 +4828,11 @@ var EXACT = {
   Agent: "agent",
   update_plan: "other"
 };
-function codexShell(nativeName, input) {
-  const args = input;
-  const command = nativeName === "Bash" ? args?.command : nativeName === "exec_command" ? args?.cmd : void 0;
-  if (typeof command !== "string") return void 0;
-  return typeof args?.workdir === "string" ? { command, cwd: args.workdir } : { command };
-}
+var CODEX_SHELL_SHAPES = {
+  Bash: { commandKey: "command" },
+  exec_command: { commandKey: "cmd", cwdKey: "workdir" }
+};
+var codexShellCodec = shellCodec(CODEX_SHELL_SHAPES);
 function classifyCodexTool(nativeName, input) {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
   if (mcpMatch) {
@@ -4810,7 +4843,7 @@ function classifyCodexTool(nativeName, input) {
       mcp: { server: mcpMatch[1], tool: mcpMatch[2] }
     };
   }
-  const shell = codexShell(nativeName, input);
+  const shell = codexShellCodec.classify(nativeName, input);
   return {
     kind: EXACT[nativeName] ?? "other",
     nativeName,

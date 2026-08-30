@@ -20,7 +20,8 @@
       "command": "echo hooknostic-fixture"
     },
     "shell": {
-      "command": "echo hooknostic-fixture"
+      "command": "echo hooknostic-fixture",
+      "commandKey": "command"
     }
   },
   "output": "hooknostic-fixture\r\n"

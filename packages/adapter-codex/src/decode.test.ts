@@ -72,10 +72,11 @@ describe("shell argument normalization", () => {
     // see .capture/codex-tools/README.md.
     expect(classifyCodexTool("Bash", { command: "echo one" }).shell).toEqual({
       command: "echo one",
+      commandKey: "command",
     });
     expect(
       classifyCodexTool("exec_command", { cmd: "echo two", workdir: "C:/proj" }).shell,
-    ).toEqual({ command: "echo two", cwd: "C:/proj" });
+    ).toEqual({ command: "echo two", cwd: "C:/proj", commandKey: "cmd", cwdKey: "workdir" });
   });
 
   it("leaves shell undefined for a shell tool whose shape was never captured", () => {

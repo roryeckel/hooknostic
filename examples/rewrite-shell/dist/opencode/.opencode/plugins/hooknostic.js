@@ -4296,6 +4296,35 @@ var TOOL_KINDS = [
   "mcp",
   "other"
 ];
+function isPlainObject2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function shellCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapes[normalize(nativeName)];
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      const command = input[shape.commandKey];
+      if (typeof command !== "string")
+        return void 0;
+      const cwd = shape.cwdKey !== void 0 ? input[shape.cwdKey] : void 0;
+      return {
+        command,
+        ...typeof cwd === "string" ? { cwd } : {},
+        commandKey: shape.commandKey,
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {}
+      };
+    },
+    encode(nativeName, input, patch) {
+      const shape = shapes[normalize(nativeName)];
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      return { ...input, [shape.commandKey]: patch.command };
+    }
+  };
+}
 function matchesTool(match, tool) {
   if (!match)
     return true;
@@ -4324,7 +4353,12 @@ var toolInvocationSchema = external_exports.object({
   nativeName: external_exports.string(),
   input: external_exports.unknown(),
   mcp: external_exports.object({ server: external_exports.string().optional(), tool: external_exports.string().optional() }).strict().optional(),
-  shell: external_exports.object({ command: external_exports.string(), cwd: external_exports.string().optional() }).strict().optional()
+  shell: external_exports.object({
+    command: external_exports.string(),
+    cwd: external_exports.string().optional(),
+    commandKey: external_exports.string(),
+    cwdKey: external_exports.string().optional()
+  }).strict().optional()
 }).strict();
 var baseHookEventSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
@@ -4777,16 +4811,17 @@ var EXACT = {
   todowrite: "other",
   todoread: "other"
 };
-function opencodeShell(nativeName, input) {
-  if (nativeName.toLowerCase() !== "bash") return void 0;
-  const command = input?.command;
-  return typeof command === "string" ? { command } : void 0;
-}
+var OPENCODE_SHELL_SHAPES = {
+  bash: { commandKey: "command" }
+};
+var opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
+  normalizeName: (name) => name.toLowerCase()
+});
 function classifyOpenCodeTool(nativeName, input) {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
   const known = EXACT[nativeName.toLowerCase()];
   if (known !== void 0) {
-    const shell = opencodeShell(nativeName, input);
+    const shell = opencodeShellCodec.classify(nativeName, input);
     return { kind: known, nativeName, input, ...shell !== void 0 ? { shell } : {} };
   }
   if (mcpMatch) {

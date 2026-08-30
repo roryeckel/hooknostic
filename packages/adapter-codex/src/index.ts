@@ -26,7 +26,7 @@ export { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
 export { codexCapabilityProfiles } from "./profile.js";
 export { runCodexCommandShim } from "./shim.js";
 export type { CodexShimOptions } from "./shim.js";
-export { classifyCodexTool } from "./toolmap.js";
+export { classifyCodexTool, codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
 
 const execFileAsync = promisify(execFile);
 
