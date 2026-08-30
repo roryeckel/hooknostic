@@ -14,6 +14,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0003 — One entry point runs all your hooks, in order](0003-one-dispatcher-composition.md) | Who decides the order when several hooks match the same event? |
 | [0004 — Agent Plugins is a peer, not a dependency](0004-agent-plugins-relationship.md) | How does Hooknostic relate to the Agent Plugins packaging standard? |
 | [0005 — Which effects end a dispatch, stated once](0005-terminal-effects.md) | Which effects stop the remaining hooks, and which just add to the result? |
+| [0006 — Commit the built artifacts](0006-artifact-distribution.md) | Should build output be checked into the consumer's repository, or generated? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

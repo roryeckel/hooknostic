@@ -40,3 +40,14 @@ jobs:
         run: pnpm test
         env:
           HOOKNOSTIC_SMOKE: ""
+
+      # The reproducibility gate. rewrite-shell commits its build output, so a
+      # rebuild that changes bytes is either an undeclared input to the bundle or
+      # a genuine source change someone forgot to rebuild -- both worth failing
+      # on. This is the check that would have caught the esbuild absWorkingDir
+      # defect (artifact bytes varying with the invocation directory) on the day
+      # it landed, rather than in a downstream consumer months later.
+      - name: Committed example artifacts are reproducible
+        run: |
+          node packages/cli/bin/hooknostic.mjs build --config examples/rewrite-shell/hooknostic.config.ts
+          git diff --exit-code -- examples/rewrite-shell

@@ -28,10 +28,15 @@ node ../../packages/cli/bin/hooknostic.mjs check
 node ../../packages/cli/bin/hooknostic.mjs build
 ```
 
-`rewrite-shell/` and `agent-plugin/` have their built output (`dist/`,
-`hooknostic-build.json`, and for `agent-plugin/` the generated
-`com.anthropic.claude-code/` extension directory) committed, so you can inspect what a
-build produces without running one.
+`rewrite-shell/` commits its built output (`dist/` and `hooknostic-build.json`),
+so you can inspect what a build produces without running one — and so this
+repository practises the committed-artifact model that
+[ADR-0006](../docs/decisions/0006-artifact-distribution.md) recommends to
+consumers. CI rebuilds it and fails on any diff, which is what keeps the two
+honest: an unreproducible build is caught here rather than in someone else's
+repository.
+
+The other three examples are built on demand and their output is gitignored.
 
 To load the output into a real harness, see
 [Installing built output](../docs/installing-artifacts.md).

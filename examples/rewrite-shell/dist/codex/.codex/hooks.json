@@ -1,0 +1,16 @@
+{
+  "description": "Protect and normalize shell commands",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooknostic/hooknostic.mjs",
+            "timeout": 6
+          }
+        ]
+      }
+    ]
+  }
+}

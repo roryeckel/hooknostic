@@ -1,0 +1,19 @@
+{
+  "description": "Protect and normalize shell commands",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"
+            ],
+            "timeout": 6
+          }
+        ]
+      }
+    ]
+  }
+}
