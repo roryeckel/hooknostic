@@ -1,4 +1,10 @@
-import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+import type {
+  HookEvent,
+  HookEventName,
+  PluginSpec,
+  RuntimePolicy,
+  SupportLevel,
+} from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
 import { hookAppliesToTarget } from "@hooknostic/sdk";
@@ -15,10 +21,35 @@ export interface OpenCodeShimOptions {
   harnessVersion?: string;
 }
 
+/**
+ * Minimal structural view of the OpenCode SDK client. Described locally rather
+ * than imported: this package deliberately has no dependency on
+ * `@opencode-ai/plugin`, and everything is optional because the guard that
+ * matters is the runtime feature-detect, not the type.
+ */
+export interface OpenCodeClient {
+  session?: {
+    /**
+     * Posts a message into a session (answers 204). Without `noReply` the agent
+     * takes another turn — verified live on 1.18.25.
+     */
+    promptAsync?: (options: {
+      path: { id: string };
+      body: { parts: { type: "text"; text: string }[]; noReply?: boolean };
+    }) => unknown;
+  };
+}
+
 /** Minimal structural type for the OpenCode PluginInput we rely on. */
 export interface OpenCodePluginInput {
   directory: string;
   worktree?: string;
+  /**
+   * Present in every real PluginInput; optional here so a caller can construct
+   * one without it, and so a host that stops supplying it degrades to a no-op
+   * rather than throwing inside a lifecycle callback.
+   */
+  client?: OpenCodeClient;
 }
 
 type Callback = (input: unknown, output: unknown) => Promise<void>;
@@ -101,8 +132,46 @@ export function createHooknosticHooks(
       if (Array.isArray(context)) context.push(...application.mutations.context);
       else output["context"] = [...application.mutations.context];
     }
+    await postPrompts(event, application);
+
     if (application.throwMessage !== undefined) {
       throw new Error(application.throwMessage);
+    }
+  };
+
+  /**
+   * Deliver notifications and stop-prevention. Best-effort by design: a
+   * hooknostic problem must never break the user's session, and a stop event is
+   * the worst possible place to throw. A missing client or a failed post is a
+   * silent no-op, which the capability rationales state explicitly.
+   */
+  const postPrompts = async (
+    event: HookEvent,
+    application: ReturnType<typeof planOpenCodeApplication>,
+  ): Promise<void> => {
+    if (application.prompts === undefined) return;
+    // HookResult carries no session id, so it comes from the decoded event.
+    const id = event.session.id;
+    const post = pluginInput.client?.session?.promptAsync;
+    if (id === undefined || typeof post !== "function") return;
+
+    for (const prompt of application.prompts) {
+      try {
+        // Awaited inside the try, not fired and forgotten: a floating rejection
+        // in OpenCode's host is an unhandled rejection. promptAsync answers
+        // immediately, so this does not stall the event bus.
+        await Promise.resolve(
+          post({
+            path: { id },
+            body: {
+              parts: [{ type: "text", text: prompt.text }],
+              ...(prompt.reply ? {} : { noReply: true }),
+            },
+          }),
+        );
+      } catch {
+        // Fail open.
+      }
     }
   };
 

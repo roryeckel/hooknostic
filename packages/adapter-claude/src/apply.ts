@@ -41,6 +41,16 @@ export function applyClaude(
     | { input: unknown }
     | undefined;
 
+  const notices = result.effects
+    .filter((e) => e.effect.kind === "notify")
+    .map((e) => (e.effect as { message: string }).message);
+
+  // `systemMessage` is a TOP-LEVEL field, not part of hookSpecificOutput, so the
+  // response has to be assembled as a body rather than as a lone
+  // hookSpecificOutput. Verified on 2.1.250: it renders as
+  // {"type":"system","subtype":"informational","content":"Stop says: …"} — seen
+  // by the user, never by the model, and it does not affect the turn.
+  const body: Record<string, unknown> = {};
   const hookSpecificOutput: Record<string, unknown> = {
     hookEventName: NATIVE_EVENT[result.event] ?? result.event,
   };
@@ -54,6 +64,7 @@ export function applyClaude(
     hookSpecificOutput["updatedInput"] = replacedInput.input;
     hasJsonOutput = true;
   }
+  if (notices.length > 0) body["systemMessage"] = notices.join("\n");
 
   switch (terminal?.kind) {
     case "block": {
@@ -76,11 +87,16 @@ export function applyClaude(
       break;
     }
     case "preventStop": {
-      // Stop/SubagentStop: exit 2 prevents stopping; stderr reason is shown.
-      return Promise.resolve({
-        exitCode: 2,
-        stderr: terminal.reason ?? "hooknostic: continue working",
-      });
+      // Stop/SubagentStop: exit 0 with a top-level `decision` prevents stopping,
+      // identically to the exit-2 form this used to emit (both verified on
+      // 2.1.250). JSON is what lets a notification ride along in the same
+      // response; exit 2 cannot carry a body at all.
+      //
+      // The enum is "approve"|"block" — NOT "allow"|"deny". A "deny" candidate
+      // was rejected outright and did not prevent the stop.
+      body["decision"] = "block";
+      body["reason"] = terminal.reason ?? "hooknostic: continue working";
+      break;
     }
     case "blockContinuation": {
       // Approximate on Claude: the tool already ran and exit 2 is not
@@ -91,8 +107,9 @@ export function applyClaude(
       break;
   }
 
-  if (!hasJsonOutput) {
+  if (hasJsonOutput) body["hookSpecificOutput"] = hookSpecificOutput;
+  if (Object.keys(body).length === 0) {
     return Promise.resolve({ exitCode: 0 });
   }
-  return Promise.resolve({ exitCode: 0, body: { hookSpecificOutput } });
+  return Promise.resolve({ exitCode: 0, body });
 }

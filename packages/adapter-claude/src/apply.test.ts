@@ -84,7 +84,7 @@ describe("applyClaude", () => {
     expect(native).toEqual(loadFixture("claude", "2.1", "pre-tool-approval.output.json"));
   });
 
-  it("encodes preventStop as exit 2 with stderr (honored on Stop/SubagentStop)", async () => {
+  it("encodes preventStop as an exit-0 decision (honored on Stop/SubagentStop)", async () => {
     for (const event of ["turn.stop", "agent.stop"] as const) {
       const native = await applyClaude(
         result({
@@ -105,6 +105,71 @@ describe("applyClaude", () => {
       );
       expect(native).toEqual(loadFixture("claude", "2.1", "stop-prevent.output.json"));
     }
+  });
+
+  it("encodes notify as a top-level systemMessage", async () => {
+    for (const event of ["turn.stop", "agent.stop"] as const) {
+      const native = await applyClaude(
+        result({
+          event,
+          effects: [
+            {
+              hookId: "notice",
+              effect: {
+                kind: "notify",
+                message: "hooknostic: 3 files are still uncommitted.",
+              },
+            },
+          ],
+        }),
+        {},
+        INVOCATION,
+      );
+      expect(native).toEqual(loadFixture("claude", "2.1", "stop-notify.output.json"));
+    }
+  });
+
+  it("carries a notification through a terminal preventStop", async () => {
+    // The composition the JSON encoding exists for: exit 2 cannot carry a body,
+    // so under the old encoding this notice was unreachable. Verified live on
+    // 2.1.250 — the reason reaches the model, the notice reaches only the user.
+    const native = await applyClaude(
+      result({
+        event: "turn.stop",
+        effects: [
+          {
+            hookId: "notice",
+            effect: { kind: "notify", message: "hooknostic: 3 files are still uncommitted." },
+          },
+          {
+            hookId: "continue",
+            effect: {
+              kind: "preventStop",
+              reason: "Tests have not been run yet; keep working.",
+            },
+          },
+        ],
+        terminatedBy: "continue",
+      }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual(loadFixture("claude", "2.1", "stop-notify-prevent.output.json"));
+  });
+
+  it("joins multiple notifications in declaration order", async () => {
+    const native = await applyClaude(
+      result({
+        event: "turn.stop",
+        effects: [
+          { hookId: "a", effect: { kind: "notify", message: "first" } },
+          { hookId: "b", effect: { kind: "notify", message: "second" } },
+        ],
+      }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual({ exitCode: 0, body: { systemMessage: "first\nsecond" } });
   });
 
   it("encodes blockContinuation approximately via exit 2 stderr", async () => {

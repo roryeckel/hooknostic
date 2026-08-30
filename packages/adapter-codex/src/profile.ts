@@ -18,6 +18,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         "codex-cli 0.148.0 embedded wire schemas",
         "fixtures/codex/0.148 (captured 0.148.0)",
         "https://learn.chatgpt.com/docs/hooks",
+        "Stop output semantics verified live on 0.148.0 (.capture/codex-output)",
       ],
     },
     matrix: {
@@ -78,6 +79,12 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
 
       "turn.stop.observe": { level: "exact" },
       "turn.stop.prevent": { level: "exact" },
+      // notify is UNSUPPORTED on both stop events. `systemMessage` is accepted by
+      // the stop.command.output / subagent-stop.command.output wire schemas --
+      // a live 0.148.0 run validates cleanly and logs "Stop Completed" -- but
+      // 0.148.0 has no rendering path for it and the message appears nowhere.
+      // Accepted-and-discarded is not support: claiming it would make a portable
+      // hook lose every notice on this target, silently.
     },
   },
 ];
