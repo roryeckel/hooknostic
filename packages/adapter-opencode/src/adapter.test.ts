@@ -326,7 +326,7 @@ describe("opencodeAdapter capability data", () => {
     expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("approximate");
     expect(resolved.matrix?.["tool.before.context.add"]).toBeUndefined();
     // Reached by posting into the session; measured live on 1.18.25.
-    expect(resolved.matrix?.["turn.stop.prevent"]?.level).toBe("emulated");
+    expect(resolved.matrix?.["turn.stop.prevent"]?.level).toBe("approximate");
     expect(resolved.matrix?.["turn.stop.notify"]?.level).toBe("approximate");
     // No subagent lifecycle callbacks exist at all on this surface.
     expect(resolved.matrix?.["agent.start.observe"]).toBeUndefined();

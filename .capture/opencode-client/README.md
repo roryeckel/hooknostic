@@ -53,8 +53,16 @@ Session transcript after the probe posted during the first `session.idle`:
 | **assistant** | **continued** |
 
 `session.idle` fired **twice** — once per turn. This is the evidence for
-`turn.stop.prevent: emulated`: no native stop veto exists, but posting the reason
-back genuinely keeps the agent working.
+`turn.stop.prevent`: no native stop veto exists, but posting the reason back
+genuinely keeps the agent working.
+
+The cell is **`approximate`**, not `emulated`, because that only holds in a
+session that outlives the event. Under `opencode run` the process exits at
+`session.idle` before the posted turn can start — measured: the message lands in
+the session and no assistant reply ever follows. Behaviour that depends on how
+the harness was launched is a material semantic difference, not merely a
+different mechanism. It also keeps the cell from being rated *above*
+`turn.stop.notify`, which still lands its message under `opencode run`.
 
 ### `noReply: true` posts without a turn — but the model still sees it
 
