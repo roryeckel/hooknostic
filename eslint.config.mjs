@@ -19,7 +19,7 @@ export default tseslint.config(
     // Package build scripts and repo scripts run under Node.
     files: ["packages/*/scripts/**/*.mjs", "scripts/**/*.mjs"],
     languageOptions: {
-      globals: { console: "readonly", process: "readonly", URL: "readonly" },
+      globals: { console: "readonly", process: "readonly", URL: "readonly", fetch: "readonly" },
     },
   },
   {

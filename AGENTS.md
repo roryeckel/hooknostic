@@ -13,9 +13,12 @@ artifacts per harness (Claude Code, OpenAI Codex CLI, OpenCode). pnpm
 workspace: library packages in `packages/`, runnable examples in `examples/`,
 captured harness payloads in `fixtures/`, capture projects in `.capture/`.
 
-- **Private and unreleased.** Never run `npm publish` or `pnpm publish`.
-  Distribution is `pnpm pack` tarballs only — `npm pack` does not rewrite
-  `workspace:*` dependencies and ships broken tarballs.
+- **Never run `npm publish` or `pnpm publish`** — not locally, not from an
+  agent session. Publication happens only through
+  `.github/workflows/release-publish.yml`, triggered by a human publishing a
+  draft GitHub Release (`docs/releases.md`). Local distribution is
+  `pnpm pack` tarballs only — `npm pack` does not rewrite `workspace:*`
+  dependencies and ships broken tarballs.
 - Do not push to any remote unless the owner asks.
 - Downstream consumers are never named in this repository — not in code,
   docs, ADRs, commit messages, or capture records. Write "the pilot

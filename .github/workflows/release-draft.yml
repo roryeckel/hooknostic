@@ -1,0 +1,152 @@
+name: Release draft
+
+# Stage 2 of the release pipeline (docs/releases.md): when the release PR
+# merges, generate release notes and create a DRAFT release. A draft
+# materializes no tag -- deleting a bad one leaves nothing public, which is the
+# key safety property of the design. The human publish click in the GitHub UI
+# is what fires stage 3. The dispatch inputs are the recovery path (draft
+# deleted after the PR already merged).
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v, e.g. 0.1.0"
+        required: true
+      target_ref:
+        description: "Commit/ref the release points at (default: master)"
+        required: false
+        default: master
+      previous_tag:
+        description: "Override the previous tag for the notes range"
+        required: false
+      draft:
+        description: "Create as draft"
+        required: false
+        default: "true"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  draft:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Resolve version and target
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ inputs.target_ref }}" >> "$GITHUB_OUTPUT"
+            echo "draft=${{ inputs.draft }}" >> "$GITHUB_OUTPUT"
+          else
+            HEAD_REF="${{ github.event.pull_request.head.ref }}"
+            echo "version=${HEAD_REF#release/v}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.pull_request.merge_commit_sha }}" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.meta.outputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Version carriers agree with the release version
+        run: node scripts/set-versions.mjs --check "${{ steps.meta.outputs.version }}"
+
+      # The private:true guard and the release flow cooperate rather than
+      # collide: this fails BEFORE the human gate, naming the checklist item.
+      - name: Publish guard removed?
+        shell: bash
+        run: |
+          for pkg in packages/sdk packages/cli; do
+            if node -e "process.exit(require('./$pkg/package.json').private === true ? 1 : 0)"; then :; else
+              echo "$pkg still carries \"private\": true. The release PR checklist's"
+              echo "first-public-release items were not completed (docs/releases.md)."
+              exit 1
+            fi
+          done
+
+      # CI green on the target sha, bounded poll. The committed-artifact byte
+      # gate and the docs drift gate live inside CI, so this one gate covers
+      # both -- a version bump is exactly the change most likely to trip them.
+      - name: CI green at the target sha
+        shell: bash
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          for i in $(seq 1 40); do
+            RUNS="$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" --jq '[.check_runs[] | {name, status, conclusion}]')"
+            TOTAL="$(echo "$RUNS" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const r=JSON.parse(d);console.log(r.length)})')"
+            BAD="$(echo "$RUNS" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const r=JSON.parse(d);console.log(r.filter(x=>x.status==="completed"&&x.conclusion!=="success"&&x.conclusion!=="skipped").length)})')"
+            PENDING="$(echo "$RUNS" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const r=JSON.parse(d);console.log(r.filter(x=>x.status!=="completed").length)})')"
+            echo "check runs: total=$TOTAL failed=$BAD pending=$PENDING"
+            if [ "$BAD" != "0" ]; then echo "CI failed at $SHA"; exit 1; fi
+            if [ "$TOTAL" != "0" ] && [ "$PENDING" = "0" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "timed out waiting for CI at $SHA"; exit 1
+
+      - name: Previous tag
+        id: prev
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.previous_tag }}" ]; then
+            echo "tag=${{ inputs.previous_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            # First release has no previous tag; empty is a handled input to
+            # the notes script, not an error.
+            echo "tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate release notes
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pnpm build
+          PREV="${{ steps.prev.outputs.tag }}"
+          node scripts/release-notes.mjs \
+            --version "${{ steps.meta.outputs.version }}" \
+            --sha "$(git rev-parse HEAD)" \
+            ${PREV:+--previous-tag "$PREV"} \
+            --repo "${{ github.repository }}" \
+            --output release-notes.md
+
+      - name: Create draft release
+        shell: bash
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          FLAGS=(--target "$(git rev-parse HEAD)" --notes-file release-notes.md --title "v$VERSION")
+          [ "${{ steps.meta.outputs.draft }}" = "true" ] && FLAGS+=(--draft)
+          # Prerelease flag from the version suffix; a prerelease also gets the
+          # npm `next` dist-tag in stage 3.
+          if echo "$VERSION" | grep -qiE -- '-(rc|alpha|a|beta|b|dev|pre|preview)[.-]?[0-9]*$'; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "v$VERSION" "${FLAGS[@]}"
+
+      - name: Delete the release branch
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/${{ github.event.pull_request.head.ref }}" \
+            || echo "branch already gone"
