@@ -5,6 +5,15 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+
+// The version stamped into build reports must track the release version, not
+// a hard-coded literal that breaks on every bump.
+const ROOT_VERSION = (
+  JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
 import { runBuild } from "./build.js";
 import { runDoctor } from "./doctor.js";
 import { runInspect } from "./inspect.js";
@@ -121,7 +130,7 @@ describe("hooknostic build end-to-end", () => {
         await readFile(join(dir, "hooknostic-build.json"), "utf8"),
       );
       expect(onDisk.schemaVersion).toBe(1);
-      expect(onDisk.hooknosticVersion).toBe("0.1.0");
+      expect(onDisk.hooknosticVersion).toBe(ROOT_VERSION);
 
       // Determinism: a second build emits identical manifests.
       const firstHooksJson = await readFile(join(dir, "dist/claude/hooks/hooks.json"), "utf8");
