@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node ${CAPTURE_DIR}/probe.mjs", "timeout": 10 }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node ${CAPTURE_DIR}/probe.mjs", "timeout": 10 }] }]
+  }
+}
