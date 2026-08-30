@@ -58,18 +58,31 @@ const REMEDIATION_UNSUPPORTED =
  * `turn.stop` hook trips this under the default floor, which made "give up on
  * OpenCode" the advice for the most likely second hook anyone writes.
  */
-const REMEDIATION_OBSERVE_BELOW_MINIMUM =
-  'accept the lower fidelity for this target with `compatibility: { minimum: "<observed level>" }`, ' +
-  "or exclude this target from the hook.";
+function remediationObserveBelowMinimum(observed: SupportLevel, targetId: string): string {
+  return (
+    `accept the lower fidelity with \`targets.${targetId}.compatibility: ` +
+    `{ minimum: "${observed}" }\`, downgrade the failure with ` +
+    '`onBelowMinimum: "warn"`, or exclude this target from the hook.'
+  );
+}
 
 /**
- * A declared capability that exists but is below the floor. Making it optional
- * does not help: an optional capability below the minimum is reported
- * unavailable too, so `ctx.capabilities.has()` still returns false.
+ * A declared capability that exists but is below the floor.
+ *
+ * "Make it optional" is deliberately phrased as a two-step: an optional
+ * capability below the minimum is *also* reported unavailable, so declaring it
+ * optional only helps if the hook then branches on `ctx.capabilities.has()`.
+ * Naming the declaration without the branch is what makes it read like a fix on
+ * its own, which it is not.
  */
-const REMEDIATION_BELOW_MINIMUM =
-  'accept the lower fidelity with `compatibility: { minimum: "<observed level>" }` or ' +
-  '`onBelowMinimum: "warn"`, add a target-specific fallback, or exclude the target from this hook.';
+function remediationBelowMinimum(observed: SupportLevel, targetId: string): string {
+  return (
+    `accept the lower fidelity with \`targets.${targetId}.compatibility: ` +
+    `{ minimum: "${observed}" }\`, downgrade the failure with ` +
+    '`onBelowMinimum: "warn"`, declare the capability optional and branch on ' +
+    "`ctx.capabilities.has()`, or exclude this target from the hook."
+  );
+}
 
 /**
  * Capability analysis (design §7.7). Pure semantic analysis — requires no
@@ -243,7 +256,7 @@ export function analyzeCapabilities(
             support: observed.support,
             ...(observed.rationale !== undefined ? { rationale: observed.rationale } : {}),
             message: `observing "${hook.event}" on "${targetId}" is ${observed.support}, below the configured minimum fidelity "${policy.minimum}".`,
-            remediation: REMEDIATION_OBSERVE_BELOW_MINIMUM,
+            remediation: remediationObserveBelowMinimum(observed.support, targetId),
           });
         } else if (observed.support !== "exact") {
           targetDiagnostics.push({
@@ -296,7 +309,7 @@ export function analyzeCapabilities(
                 support,
                 ...rationaleField,
                 message: `required capability "${capability}" is ${support} on "${targetId}", below the configured minimum fidelity "${policy.minimum}".`,
-                remediation: REMEDIATION_BELOW_MINIMUM,
+                remediation: remediationBelowMinimum(support, targetId),
               });
             } else if (support !== "exact") {
               targetDiagnostics.push({
