@@ -4513,6 +4513,12 @@ function createCapabilitySet(levels) {
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
+function setToolInput(tool, input, codec) {
+  tool.input = input;
+  const shell = codec?.classify(tool.nativeName, input);
+  if (shell !== void 0) tool.shell = shell;
+  else delete tool.shell;
+}
 function truncateNotification(message, limit) {
   if (message.length <= limit) return message;
   const code = message.charCodeAt(limit - 1);
@@ -4671,7 +4677,7 @@ async function dispatch(hooks, event, options) {
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) tool.input = effect.input;
+        if (tool) setToolInput(tool, effect.input, options.shellCodec);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
@@ -4975,7 +4981,8 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       harness: event.harness,
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
-      ...options.policy !== void 0 ? { policy: options.policy } : {}
+      ...options.policy !== void 0 ? { policy: options.policy } : {},
+      shellCodec: opencodeShellCodec
     });
     const application = planOpenCodeApplication(result);
     const output = native.output ?? {};
