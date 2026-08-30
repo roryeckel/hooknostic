@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import type { SupportLevel } from "@hooknostic/sdk";
 import type {
   AdapterRegistry,
@@ -169,7 +169,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         ir.description = manifest.metadata.description;
       }
     }
-    report.agentPlugin = { root: agentPluginRoot, extensions: [] };
+    // Relative to the config, POSIX-normalized: the report is meant to be
+    // committed (ADR-0006), and an absolute root differs on every machine, so a
+    // consumer using agentPlugin could never make a drift check pass. The
+    // reproducibility gate cannot see this because the example it rebuilds has
+    // no agentPlugin.
+    report.agentPlugin = {
+      root: relative(configDir, agentPluginRoot).replaceAll("\\", "/") || ".",
+      extensions: [],
+    };
   }
 
   // 3. Capability analysis over the selected target set.

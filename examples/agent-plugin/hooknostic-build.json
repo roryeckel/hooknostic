@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "hooknosticVersion": "0.1.0",
+  "source": "./src/hooks.ts",
+  "targets": {
+    "claude": {
+      "status": "success",
+      "adapter": "claude@0.1.0",
+      "requestedVersion": ">=2.1 <3",
+      "output": "./dist/claude",
+      "capabilities": {
+        "exact": 2,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "artifacts": [
+        ".claude-plugin/plugin.json",
+        "hooks/hooks.json",
+        "runtime/hooknostic.mjs"
+      ]
+    },
+    "codex": {
+      "status": "success",
+      "adapter": "codex@0.1.0",
+      "requestedVersion": ">=0.148 <1",
+      "output": "./dist/codex",
+      "capabilities": {
+        "exact": 2,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "artifacts": [
+        ".codex/hooks.json",
+        ".codex/hooknostic/hooknostic.mjs"
+      ]
+    },
+    "opencode": {
+      "status": "success",
+      "adapter": "opencode@0.1.0",
+      "requestedVersion": ">=1.18 <2",
+      "output": "./dist/opencode",
+      "capabilities": {
+        "exact": 2,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "artifacts": [
+        ".opencode/plugins/hooknostic.js"
+      ]
+    }
+  },
+  "diagnostics": [],
+  "agentPlugin": {
+    "root": ".",
+    "extensions": [
+      "com.anthropic.claude-code"
+    ]
+  }
+}

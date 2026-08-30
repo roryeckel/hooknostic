@@ -7,3 +7,6 @@
 # reproducibility gate is a stronger defence than reading six thousand lines.
 examples/rewrite-shell/dist/** linguist-generated=true
 examples/rewrite-shell/hooknostic-build.json linguist-generated=true
+examples/agent-plugin/dist/** linguist-generated=true
+examples/agent-plugin/com.anthropic.claude-code/** linguist-generated=true
+examples/agent-plugin/hooknostic-build.json linguist-generated=true

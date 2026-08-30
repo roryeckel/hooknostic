@@ -1,0 +1,19 @@
+{
+  "description": "Agent Plugins package with hooknostic-compiled lifecycle hooks",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"
+            ],
+            "timeout": 6
+          }
+        ]
+      }
+    ]
+  }
+}
