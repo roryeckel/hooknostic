@@ -1,0 +1,22 @@
+# Categories for GitHub's generated release notes (the PR-grouped section the
+# release-notes script embeds). Five labels mirroring the commit-prefix
+# vocabulary the history already uses; the catch-all means forgetting a label
+# costs nothing. `release` marks the bot's own version-bump PR.
+changelog:
+  exclude:
+    labels:
+      - release
+      - skip-changelog
+  categories:
+    - title: Breaking changes
+      labels: [breaking]
+    - title: Features
+      labels: [feat]
+    - title: Fixes
+      labels: [fix]
+    - title: Harness evidence
+      labels: [capture]
+    - title: Documentation
+      labels: [docs]
+    - title: Other changes
+      labels: ["*"]
