@@ -46,6 +46,13 @@ captured harness payloads in `fixtures/`, capture projects in `.capture/`.
   rebuilt **from the repo root** in the same change as any source that
   affects them; CI byte-compares them (ADR-0006). Never hand-edit generated
   output.
+- **Harness version facts have one home**: each adapter's `harness` metadata
+  and profile `validatedOn` records (ADR-0008). A test literal derives from
+  them iff its pass/fail depends on matching real harness data; SDK/core test
+  strings and out-of-range probes stay literal. Illustrative doc examples use
+  fake harness names and versions -- `scripts/check-version-literals.mjs`
+  lints real-adapter range literals against the metadata, and
+  `docs/harness-support.md` is generated, never edited.
 - `HOOKNOSTIC_SMOKE=1 pnpm test` spawns real harnesses and has side effects
   (harness trust entries, cloud model calls). Run it only when the owner
   asks.
