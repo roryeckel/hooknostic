@@ -54,6 +54,25 @@ export interface OpenCodePluginInput {
 
 type Callback = (input: unknown, output: unknown) => Promise<void>;
 
+/** How long a single session post may take before the shim gives up on it. */
+const POST_TIMEOUT_MS = 10_000;
+
+/**
+ * Bound a promise without leaving a dangling rejection behind: racing alone
+ * would leave the loser unhandled if it rejects after the race resolves, which
+ * in OpenCode's host is an unhandled rejection.
+ */
+function withTimeout<T>(promise: Promise<T>): Promise<T | undefined> {
+  promise.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<undefined>((resolvePromise) => {
+    timer = setTimeout(() => resolvePromise(undefined), POST_TIMEOUT_MS);
+  });
+  return Promise.race([promise, expiry]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 /**
  * Build the native OpenCode Hooks object for a portable plugin. Persistent
  * module lifetime is deliberately not surfaced: every callback invocation
@@ -163,17 +182,21 @@ export function createHooknosticHooks(
 
     for (const prompt of application.prompts) {
       try {
-        // Awaited inside the try, not fired and forgotten: a floating rejection
-        // in OpenCode's host is an unhandled rejection. promptAsync answers
-        // immediately, so this does not stall the event bus.
-        await Promise.resolve(
-          session.promptAsync({
-            path: { id },
-            body: {
-              parts: [{ type: "text", text: prompt.text }],
-              ...(prompt.reply ? {} : { noReply: true }),
-            },
-          }),
+        // Awaited, not fired and forgotten: a floating rejection in OpenCode's
+        // host is an unhandled rejection. promptAsync answers 204 immediately,
+        // so this does not stall the event bus in the normal case -- but the
+        // host awaits this callback, and dispatch's own timeout does not reach
+        // here, so a post that never settles would hang the session. Bounded.
+        await withTimeout(
+          Promise.resolve(
+            session.promptAsync({
+              path: { id },
+              body: {
+                parts: [{ type: "text", text: prompt.text }],
+                ...(prompt.reply ? {} : { noReply: true }),
+              },
+            }),
+          ),
         );
       } catch {
         // Fail open.

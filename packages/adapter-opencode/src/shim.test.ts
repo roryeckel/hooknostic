@@ -335,6 +335,13 @@ describe("createHooknosticHooks turn.stop posting", () => {
     await expect(idleHooks()["event"]!(idle, {})).resolves.toBeUndefined();
   });
 
+  it("gives up on a post that never settles", async () => {
+    // The OpenCode host awaits this callback and dispatch's own timeout does
+    // not reach the post, so an unsettled promise would hang the session.
+    const client = { session: { promptAsync: () => new Promise(() => {}) } };
+    await expect(idleHooks(client)["event"]!(idle, {})).resolves.toBeUndefined();
+  }, 40_000);
+
   it("fails open when a post rejects", async () => {
     const client = {
       session: { promptAsync: () => Promise.reject(new Error("server gone")) },
