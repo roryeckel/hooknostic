@@ -227,8 +227,22 @@ interface ToolInvocation {
     server?: string;
     tool?: string;
   };
+
+  // Normalized shell view, present when the adapter's shape table knows this
+  // tool's argument keys; absent means uncaptured -- fall back to `input`.
+  // commandKey/cwdKey expose the native keys for hand-built replaceInput calls.
+  shell?: {
+    command: string;
+    cwd?: string;
+    commandKey: string;
+    cwdKey?: string;
+  };
 }
 ```
+
+Each adapter derives `shell` from a per-tool **shape table** (`ShellShapes`),
+which also drives the inverse: `updateShell` is lowered through the same table,
+so the normalized read and the portable write cannot skew (Decision 0007).
 
 The category is best-effort classification for portable matching; `nativeName` and
 `event.raw` remain available for intentional harness-specific behavior.
@@ -241,6 +255,9 @@ to exist merely because the event exists. Initial family (event-scoped equivalen
 - Block/prevent the pending action — `block(reason)`
 - Request/escalate approval — `requestApproval(reason)`
 - Replace pending tool input — `replaceInput(input)`
+- Rewrite the shell command portably — `updateShell({ command })` (lowered per
+  target to a `replaceInput` under the tool's own native key; legal only where
+  `event.tool.shell` is defined)
 - Add model-visible context — `addContext(text)`
 - Replace/redact tool output — `replaceOutput(output)`
 - Prevent agent/turn stop — `preventStop(reason)`
@@ -583,7 +600,7 @@ composed HookResult
 3. Context additions and notifications accumulate in declaration order, each under
    its own conservative configurable size cap.
 4. `block`, `requestApproval`, `preventStop` and `blockContinuation` are terminal;
-   `replaceInput`, `replaceOutput`, `addContext` and `notify` are not. An effect is
+   `replaceInput`, `replaceOutput`, `updateShell`, `addContext` and `notify` are not. An effect is
    terminal iff applying it makes every later handler's decision unsound
    (ADR-0005, superseding the earlier rules 4-6).
 5. Post-tool: output replacements apply immediately.
@@ -885,7 +902,7 @@ weakening capability semantics.
 
 ```ts
 // src/hooks.ts
-import { definePlugin, hook, block, replaceInput, addContext } from "@hooknostic/sdk";
+import { definePlugin, hook, block, updateShell, addContext } from "@hooknostic/sdk";
 
 export default definePlugin({
   name: "portable-repo-hooks",
@@ -899,16 +916,21 @@ export default definePlugin({
         "tool.before.input.replace": "optional",
       },
       async run(event, ctx) {
-        const input = event.tool.input as Record<string, unknown>;
-        // Portable read. The write-back below still needs the harness's own key.
         const command = event.tool.shell?.command ?? "";
 
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
 
-        if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          return replaceInput({ ...input, ["cmd" in input ? "cmd" : "command"]: command.replace(/^npm /, "pnpm ") });
+        if (
+          ctx.capabilities.has("tool.before.input.replace") &&
+          event.tool.shell !== undefined &&
+          command.startsWith("npm ")
+        ) {
+          // Portable write-back: the rewrite lands under whichever key this
+          // harness uses (`command` on Claude/OpenCode, `cmd` on Codex's
+          // exec_command), with every sibling input field preserved.
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
     }),

@@ -56,8 +56,8 @@ var DEFAULT_RUNTIME = {
 function block(reason) {
   return { kind: "block", reason };
 }
-function replaceInput(input) {
-  return { kind: "replaceInput", input };
+function updateShell(patch) {
+  return { kind: "updateShell", command: patch.command };
 }
 var EFFECT_CAPABILITY_SUFFIX = {
   block: "block",
@@ -4497,13 +4497,12 @@ var hooks_default = definePlugin({
         "tool.before.input.replace": "optional"
       },
       async run(event, ctx) {
-        const input = event.tool.input;
         const command = event.tool.shell?.command ?? "";
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
-        if (ctx.capabilities.has("tool.before.input.replace") && command.startsWith("npm ")) {
-          return replaceInput({ ...input, ["cmd" in input ? "cmd" : "command"]: command.replace(/^npm /, "pnpm ") });
+        if (ctx.capabilities.has("tool.before.input.replace") && event.tool.shell !== void 0 && command.startsWith("npm ")) {
+          return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       }
     })

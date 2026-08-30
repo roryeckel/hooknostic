@@ -27,6 +27,13 @@ export interface ReplaceInputEffect {
   readonly input: unknown;
 }
 
+/**
+ * Deliberately has no portable counterpart the way `replaceInput` has {@link
+ * UpdateShellEffect}: there is no captured cross-harness output shape to build
+ * one on. Claude exposes no replacement channel at all, Codex can replace only
+ * MCP tool outputs, and OpenCode string-coerces on the way out -- normalizing
+ * over that three-way divergence would be a guess, and this project doesn't.
+ */
 export interface ReplaceOutputEffect {
   readonly kind: "replaceOutput";
   readonly output: unknown;

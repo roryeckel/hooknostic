@@ -33,6 +33,22 @@ vendor binaries, and published plugin type definitions (`@opencode-ai/plugin`).
 - `<case>.output.json` — expected apply/native-application result.
 - `README.md` — provenance table: captured vs doc-derived vs schema-derived.
 
+## 2b. Shell tools: ship a shape table, not a classifier
+
+For every shell tool whose argument shape you have **captured**, add an entry
+to a `ShellShapes` table (`{ commandKey, cwdKey? }`) and build your codec with
+`shellCodec()` from the SDK. One table drives both directions: `classify`
+populates `event.tool.shell` (including `commandKey`/`cwdKey` as escape-hatch
+data), and `encode` lowers the portable `updateShell` effect under the same
+keys. Expose the codec as `adapter.shellCodec`, and pass it into `dispatch()`
+from your shim (`shellCodec: myShellCodec`) so rewrites re-derive the shell
+view instead of leaving it stale.
+
+Omit tools whose shape you have not captured — both directions then decline,
+`event.tool.shell` stays undefined, and hooks fall back to `input`. Never
+guess a key: a wrong entry silently rewrites the wrong field of a live tool
+call.
+
 Run the contract suite from your own package — it is the definition of done for
 an adapter, and it is the same one the three shipped adapters run:
 
@@ -49,7 +65,10 @@ It fails if any advertised observable event lacks a fixture, if fixtures exist
 for unadvertised events, if a non-exact cell lacks a rationale, if a profile
 lacks source/date metadata, if the matrix rates an unregistered capability id
 (a typo there is silent — the matrix is `Partial`, so an unknown key simply
-rates nothing), or if the adapter does not declare how its artifact executes.
+rates nothing), or if the adapter does not declare how its artifact executes, or if a fixture carries a
+normalized `tool.shell` view that the adapter's shell codec does not round-trip
+(classify the fixture's own input back to that view, and encode a command patch
+that re-classifies to the patched command).
 
 An adapter shipped from this repository also has to be added to `SUBJECTS` in
 `packages/cli/src/coverage.test.ts`, which asserts it matches the default
