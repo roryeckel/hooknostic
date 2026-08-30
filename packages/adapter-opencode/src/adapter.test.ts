@@ -331,11 +331,9 @@ describe("opencodeAdapter capability data", () => {
     // No subagent lifecycle callbacks exist at all on this surface.
     expect(resolved.matrix?.["agent.start.observe"]).toBeUndefined();
     expect(resolved.matrix?.["agent.stop.notify"]).toBeUndefined();
-    for (const [id, entry] of Object.entries(resolved.matrix ?? {})) {
-      if (entry.level !== "exact") {
-        expect(entry.rationale, `capability ${id} needs a rationale`).toBeTruthy();
-      }
-    }
+    // The rationale sweep lives in the shared adapter contract
+    // (@hooknostic/testkit), so it covers a third-party adapter too. These
+    // assertions stay because they pin THIS adapter's specific ratings.
   });
 
   it("requires an explicit approximate policy for output replacement", () => {

@@ -132,11 +132,9 @@ describe("claudeAdapter capability data", () => {
     const resolved = claudeAdapter().capabilities(TARGET);
     expect(resolved.diagnostics).toEqual([]);
     expect(resolved.matrix?.["tool.before.block"]?.level).toBe("exact");
-    for (const [id, entry] of Object.entries(resolved.matrix ?? {})) {
-      if (entry.level !== "exact") {
-        expect(entry.rationale, `capability ${id} needs a rationale`).toBeTruthy();
-      }
-    }
+    // The rationale sweep lives in the shared adapter contract
+    // (@hooknostic/testkit), so it covers a third-party adapter too. These
+    // assertions stay because they pin THIS adapter's specific ratings.
   });
 
   it("reports HN203 outside validated ranges", () => {

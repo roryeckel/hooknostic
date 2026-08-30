@@ -18,3 +18,14 @@ export function loadFixture<T = unknown>(
 ): T {
   return JSON.parse(readFileSync(fixturePath(harness, version, name), "utf8")) as T;
 }
+
+/**
+ * Load a fixture by absolute path.
+ *
+ * `fixturePath`/`loadFixture` resolve against this monorepo's `fixtures/`
+ * directory, which an adapter published from elsewhere does not have. The
+ * contract suite takes a directory instead so it can run anywhere.
+ */
+export function loadFixtureFrom<T = unknown>(path: string): T {
+  return JSON.parse(readFileSync(path, "utf8")) as T;
+}

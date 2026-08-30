@@ -24,7 +24,8 @@ export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSp
 
 /**
  * One capability's support on a target range. Non-exact levels must carry a
- * rationale (enforced by testkit contract assertions).
+ * rationale, enforced by `describeAdapterContract` in `@hooknostic/testkit` --
+ * which every shipped adapter runs, and which a third-party adapter should.
  */
 export interface CapabilityEntry {
   level: SupportLevel;
