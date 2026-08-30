@@ -17,6 +17,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
+const ROOT_VERSION = (
+  JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
+
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const SHIPPED_ADAPTERS = ["claude", "codex", "opencode"];
 
@@ -200,7 +206,8 @@ describe("simulated registry install", () => {
             name: "consumer",
             private: true,
             type: "module",
-            dependencies: { "@hooknostic/sdk": "0.1.0" },
+            // Track the workspace version so a release bump cannot strand this.
+            dependencies: { "@hooknostic/sdk": ROOT_VERSION },
           },
           null,
           2,
