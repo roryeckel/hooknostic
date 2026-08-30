@@ -58,6 +58,38 @@ describe("generateCodexArtifacts", () => {
     expect(await adapter.validateArtifacts!(artifacts, TARGET)).toEqual([]);
   });
 
+  it("covers every hook on the event, and refuses a capped event it cannot fit", () => {
+    // This fixture had one hook per native event, so sum-of-budgets and the old
+    // single-budget formula produced identical numbers -- the Codex half of the
+    // derivation was asserted by nothing and stayed green when reverted.
+    const ir = exampleIR();
+    ir.hooks.push({
+      index: ir.hooks.length,
+      event: "tool.before",
+      id: "second-tool-hook",
+      capabilities: {},
+    });
+    const artifacts = generateCodexArtifacts(ir, TARGET, BUNDLE, OPTIONS);
+    const hooksJson = JSON.parse(
+      artifacts.find((a) => a.path.endsWith("hooks.json"))!.contents,
+    );
+    expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(11);
+
+    // codex-cli clamps SessionEnd to 3s, so the 5s default cannot fit and the
+    // build must say so rather than emit a manifest asking for time it will not
+    // be given.
+    const capped = exampleIR();
+    capped.hooks.push({
+      index: capped.hooks.length,
+      event: "session.end",
+      id: "teardown",
+      capabilities: {},
+    });
+    expect(() => generateCodexArtifacts(capped, TARGET, BUNDLE, OPTIONS)).toThrow(
+      /SessionEnd.*grants at most 3s/,
+    );
+  });
+
   it("does not preempt runtime timeouts longer than 60 seconds", () => {
     const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, {
       runtime: { ...OPTIONS.runtime, timeoutMs: 61_000 },

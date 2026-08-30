@@ -1,6 +1,21 @@
 import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import { hooksByNativeEvent, nativeTimeoutSeconds } from "@hooknostic/core";
+import {
+  assertNativeTimeoutFits,
+  hooksByNativeEvent,
+  nativeTimeoutSeconds,
+} from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
+
+/**
+ * Native events whose timeout the harness caps regardless of what we ask for.
+ *
+ * Claude: "SessionEnd hooks of any type share a 1.5-second budget. If your
+ * settings set a longer per-hook timeout, Claude Code raises the budget to
+ * match, up to 60 seconds." (hooks guide, Limitations.)
+ */
+export const CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS: Record<string, number | undefined> = {
+  SessionEnd: 60,
+};
 
 export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string> = {
   "session.start": "SessionStart",
@@ -25,6 +40,21 @@ const RUNTIME_PATH = "runtime/hooknostic.mjs";
  * plugin uses; all matcher/handler composition happens inside the bundled
  * dispatcher (ADR-0003).
  */
+function claudeNativeTimeout(
+  nativeEvent: string,
+  reaching: Parameters<typeof nativeTimeoutSeconds>[0],
+  runtime: Parameters<typeof nativeTimeoutSeconds>[1],
+): number {
+  const seconds = nativeTimeoutSeconds(reaching, runtime);
+  assertNativeTimeoutFits(
+    nativeEvent,
+    seconds,
+    CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS,
+    "Claude Code",
+  );
+  return seconds;
+}
+
 export function generateClaudeArtifacts(
   plugin: PluginIR,
   target: TargetSpec,
@@ -49,7 +79,7 @@ export function generateClaudeArtifacts(
                 type: "command",
                 command: "node",
                 args: [`\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`],
-                timeout: nativeTimeoutSeconds(reaching, options.runtime),
+                timeout: claudeNativeTimeout(nativeEvent, reaching, options.runtime),
               },
             ],
           },
