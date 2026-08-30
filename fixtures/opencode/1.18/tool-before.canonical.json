@@ -20,7 +20,8 @@
       "description": "Echo fixture"
     },
     "shell": {
-      "command": "echo hooknostic-fixture"
+      "command": "echo hooknostic-fixture",
+      "commandKey": "command"
     }
   }
 }

@@ -1,4 +1,5 @@
-import type { ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { shellCodec } from "@hooknostic/sdk";
 
 /**
  * Codex tool-name classification (0.148.0): shell paths surface as `Bash` /
@@ -24,20 +25,21 @@ const EXACT: Record<string, ToolKind> = {
 
 /**
  * Codex's shell tools disagree about the key: `Bash` uses `command`,
- * `exec_command` uses `cmd` and carries `workdir` (captured on codex-cli
- * 0.151.0 -- see `.capture/codex-tools/README.md`). `shell` as a tool NAME was
- * never observed and its shape is unknown, so it is deliberately left
- * undefined: a hook falls back to `input` rather than being handed a guess.
+ * `exec_command` uses `cmd` and carries `workdir`. At the hook boundary,
+ * 0.151.0 translates `exec_command` calls into `Bash`/`command` payloads (and
+ * drops `workdir`), so the `exec_command` entry is defensive coverage for a
+ * version or surface that passes the router shape through -- its provenance is
+ * the router debug log, not a captured hook payload. See
+ * `.capture/codex-tools/README.md`. `shell` as a tool NAME was never observed
+ * and its shape is unknown, so it is deliberately absent: a hook falls back to
+ * `input` rather than being handed a guess.
  */
-function codexShell(
-  nativeName: string,
-  input: unknown,
-): { command: string; cwd?: string } | undefined {
-  const args = input as { command?: unknown; cmd?: unknown; workdir?: unknown } | null | undefined;
-  const command = nativeName === "Bash" ? args?.command : nativeName === "exec_command" ? args?.cmd : undefined;
-  if (typeof command !== "string") return undefined;
-  return typeof args?.workdir === "string" ? { command, cwd: args.workdir } : { command };
-}
+export const CODEX_SHELL_SHAPES: ShellShapes = {
+  Bash: { commandKey: "command" },
+  exec_command: { commandKey: "cmd", cwdKey: "workdir" },
+};
+
+export const codexShellCodec = shellCodec(CODEX_SHELL_SHAPES);
 
 export function classifyCodexTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
@@ -49,7 +51,7 @@ export function classifyCodexTool(nativeName: string, input: unknown): ToolInvoc
       mcp: { server: mcpMatch[1]!, tool: mcpMatch[2]! },
     };
   }
-  const shell = codexShell(nativeName, input);
+  const shell = codexShellCodec.classify(nativeName, input);
   return {
     kind: EXACT[nativeName] ?? "other",
     nativeName,

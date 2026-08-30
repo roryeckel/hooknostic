@@ -22,7 +22,9 @@
     },
     "shell": {
       "command": "echo hooknostic-capture",
-      "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools"
+      "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools",
+      "commandKey": "cmd",
+      "cwdKey": "workdir"
     }
   }
 }

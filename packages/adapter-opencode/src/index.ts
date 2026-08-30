@@ -32,7 +32,7 @@ export { generateOpenCodeArtifacts } from "./generate.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
 export { createHooknosticHooks } from "./shim.js";
 export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
-export { classifyOpenCodeTool } from "./toolmap.js";
+export { classifyOpenCodeTool, opencodeShellCodec, OPENCODE_SHELL_SHAPES } from "./toolmap.js";
 
 const execFileAsync = promisify(execFile);
 

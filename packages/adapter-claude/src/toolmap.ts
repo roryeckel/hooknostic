@@ -1,4 +1,5 @@
-import type { ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { shellCodec } from "@hooknostic/sdk";
 
 /**
  * Best-effort classification of Claude Code tool names into normalized
@@ -26,13 +27,16 @@ const EXACT: Record<string, ToolKind> = {
 /**
  * Claude's shell tools name the command `command`. Verified against
  * `fixtures/claude/2.1/pre-tool-bash.input.json`; `PowerShell` uses the same
- * key. Anything else shell-kind is left undefined rather than guessed.
+ * key. Anything else shell-kind is absent from the table, so both codec
+ * directions decline rather than guess. Neither tool has a working-directory
+ * key.
  */
-function claudeShell(nativeName: string, input: unknown): { command: string } | undefined {
-  if (nativeName !== "Bash" && nativeName !== "PowerShell") return undefined;
-  const command = (input as { command?: unknown } | null | undefined)?.command;
-  return typeof command === "string" ? { command } : undefined;
-}
+export const CLAUDE_SHELL_SHAPES: ShellShapes = {
+  Bash: { commandKey: "command" },
+  PowerShell: { commandKey: "command" },
+};
+
+export const claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);
 
 export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
@@ -44,7 +48,7 @@ export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvo
       mcp: { server: mcpMatch[1]!, tool: mcpMatch[2]! },
     };
   }
-  const shell = claudeShell(nativeName, input);
+  const shell = claudeShellCodec.classify(nativeName, input);
   return {
     kind: EXACT[nativeName] ?? "other",
     nativeName,

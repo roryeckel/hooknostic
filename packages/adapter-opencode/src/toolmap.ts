@@ -1,4 +1,5 @@
-import type { ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { shellCodec } from "@hooknostic/sdk";
 
 /** OpenCode tool ids are lowercase (bash, read, edit, …). */
 const EXACT: Record<string, ToolKind> = {
@@ -23,20 +24,22 @@ const EXACT: Record<string, ToolKind> = {
 /**
  * OpenCode's `bash` tool names the command `command`, verified against
  * `fixtures/opencode/1.18/tool-before.input.json`. `shell` appears in the
- * classification map but has no capture, so it is left undefined rather than
- * assumed to match.
+ * classification map but has no capture, so it is absent from the table and
+ * both codec directions decline rather than assume it matches.
  */
-function opencodeShell(nativeName: string, input: unknown): { command: string } | undefined {
-  if (nativeName.toLowerCase() !== "bash") return undefined;
-  const command = (input as { command?: unknown } | null | undefined)?.command;
-  return typeof command === "string" ? { command } : undefined;
-}
+export const OPENCODE_SHELL_SHAPES: ShellShapes = {
+  bash: { commandKey: "command" },
+};
+
+export const opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
+  normalizeName: (name) => name.toLowerCase(),
+});
 
 export function classifyOpenCodeTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
   const known = EXACT[nativeName.toLowerCase()];
   if (known !== undefined) {
-    const shell = opencodeShell(nativeName, input);
+    const shell = opencodeShellCodec.classify(nativeName, input);
     return { kind: known, nativeName, input, ...(shell !== undefined ? { shell } : {}) };
   }
   // MCP tools surface as `<server>_<tool>`; without a registry we can only

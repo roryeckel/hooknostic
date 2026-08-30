@@ -26,7 +26,7 @@ export { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
 export { claudeCapabilityProfiles } from "./profile.js";
 export { runClaudeCommandShim } from "./shim.js";
 export type { ClaudeShimOptions } from "./shim.js";
-export { classifyClaudeTool } from "./toolmap.js";
+export { classifyClaudeTool, claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
 
 const execFileAsync = promisify(execFile);
 

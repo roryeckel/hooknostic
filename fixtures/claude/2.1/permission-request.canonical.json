@@ -20,7 +20,8 @@
       "command": "mkdir hooknostic-permission-test"
     },
     "shell": {
-      "command": "mkdir hooknostic-permission-test"
+      "command": "mkdir hooknostic-permission-test",
+      "commandKey": "command"
     }
   }
 }

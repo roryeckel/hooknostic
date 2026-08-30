@@ -31,7 +31,12 @@ export const toolInvocationSchema = z
       .strict()
       .optional(),
     shell: z
-      .object({ command: z.string(), cwd: z.string().optional() })
+      .object({
+        command: z.string(),
+        cwd: z.string().optional(),
+        commandKey: z.string(),
+        cwdKey: z.string().optional(),
+      })
       .strict()
       .optional(),
   })

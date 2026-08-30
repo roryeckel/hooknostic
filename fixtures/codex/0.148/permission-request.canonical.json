@@ -19,7 +19,8 @@
       "command": "mkdir hooknostic-perm-probe"
     },
     "shell": {
-      "command": "mkdir hooknostic-perm-probe"
+      "command": "mkdir hooknostic-perm-probe",
+      "commandKey": "command"
     }
   }
 }
