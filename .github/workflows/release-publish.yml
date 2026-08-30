@@ -1,0 +1,107 @@
+name: Release publish
+
+# Stage 3 of the release pipeline (docs/releases.md): fires when a human
+# publishes the draft release that stage 2 created -- that click IS the ship
+# decision. The dispatch input is the recovery path for a failed publish.
+#
+# First-public-release bootstrap (see docs/releases.md): configure npm
+# Trusted Publisher for BOTH packages against THIS workflow filename
+# (release-publish.yml) and the `npm` environment, create that environment,
+# and remove `"private": true` from packages/{sdk,cli}/package.json in the
+# release PR. Until then, every run fails at the guard below -- deliberately.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)publish, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing (OIDC); no NPM_TOKEN exists, ever
+
+concurrency:
+  group: release-publish-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - uses: pnpm/action-setup@v6
+
+      # npm >= 11.5.1 is required for trusted publishing; Node 24 provides it.
+      # setup-node v7 no longer exports a placeholder NODE_AUTH_TOKEN, so the
+      # generated .npmrc carries no dead token for the OIDC flow to trip over.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish guard still armed?
+        shell: bash
+        run: |
+          for pkg in packages/sdk packages/cli; do
+            if node -e "process.exit(require('./$pkg/package.json').private === true ? 1 : 0)"; then :; else
+              echo "$pkg still carries \"private\": true -- the release PR must remove it (docs/releases.md, first-release checklist)."
+              exit 1
+            fi
+          done
+
+      - name: Versions match the tag
+        shell: bash
+        run: node scripts/set-versions.mjs --check "${RELEASE_TAG#v}"
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      # SDK first: the CLI's install story depends on the published SDK.
+      # pnpm publish (not npm publish): rewrites workspace:* specifiers to real
+      # versions in the shipped manifest, and its OIDC flow honors npm trusted
+      # publishing (id-token: write above) with no NPM_TOKEN secret involved.
+      #
+      # Each step is idempotent -- a version already on the registry is skipped
+      # -- which is the single mechanic that makes the sdk-published/cli-failed
+      # half-state recoverable by re-running this workflow. Never unpublish;
+      # `npm deprecate` is the tool of record for a defective artifact.
+      - name: Publish @hooknostic/sdk
+        working-directory: packages/sdk
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          if npm view "@hooknostic/sdk@$VERSION" version >/dev/null 2>&1; then
+            echo "@hooknostic/sdk@$VERSION already on the registry; skipping"
+          else
+            EXTRA=""
+            [[ "$VERSION" == *-* ]] && EXTRA="--tag next" # prerelease never becomes latest
+            pnpm publish --no-git-checks --access public $EXTRA
+          fi
+
+      - name: Publish hooknostic (CLI)
+        working-directory: packages/cli
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          if npm view "hooknostic@$VERSION" version >/dev/null 2>&1; then
+            echo "hooknostic@$VERSION already on the registry; skipping"
+          else
+            EXTRA=""
+            [[ "$VERSION" == *-* ]] && EXTRA="--tag next"
+            pnpm publish --no-git-checks --access public $EXTRA
+          fi

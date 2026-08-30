@@ -1,0 +1,130 @@
+name: Release prepare
+
+# Stage 1 of the release pipeline (docs/releases.md): bump every version
+# carrier on a release/vX.Y.Z branch, rebuild the committed example artifacts
+# (the bump changes hooknosticVersion/adapter@ in their build reports, and
+# CI's byte gate would fail otherwise), and open the release PR. Merging that
+# PR is human decision #1; stage 2 fires on the merge.
+#
+# Checkout uses RELEASE_PAT (fine-grained: this repo, Contents RW + Pull
+# requests RW) rather than GITHUB_TOKEN, because a branch pushed with the
+# default token does NOT trigger CI -- and stage 2 gates on CI green.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v, e.g. 0.1.0"
+        required: true
+      dry_run:
+        description: "Prepare everything but push nothing"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Validate version
+        shell: bash
+        run: |
+          if [[ "$VERSION" == v* ]]; then
+            echo "no leading v -- pass 0.1.0, the tag becomes v0.1.0"; exit 1
+          fi
+          if ! echo "$VERSION" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'; then
+            echo "not a semver: $VERSION"; exit 1
+          fi
+
+      - name: Guard duplicates
+        shell: bash
+        run: |
+          REPO="${{ github.repository }}"
+          if gh api "repos/$REPO/git/refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "tag v$VERSION already exists"; exit 1
+          fi
+          if gh api "repos/$REPO/branches/release/v$VERSION" >/dev/null 2>&1; then
+            echo "branch release/v$VERSION already exists -- delete it or pick another version"; exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Version must move forward
+        shell: bash
+        run: |
+          CURRENT="$(node -p "require('./package.json').version")"
+          node -e "
+            const semver = require('semver');
+            const [cur, next] = process.argv.slice(1);
+            if (!semver.gt(next, cur)) { console.error(next + ' does not sort above current ' + cur); process.exit(1); }
+            console.log(cur + ' -> ' + next);
+          " "$CURRENT" "$VERSION"
+
+      - name: Bump version carriers
+        run: node scripts/set-versions.mjs "$VERSION"
+
+      - name: Sync lockfile
+        run: pnpm install --lockfile-only
+
+      - name: Rebuild committed example artifacts (repo root)
+        shell: bash
+        run: |
+          pnpm build
+          node packages/cli/bin/hooknostic.mjs build --config examples/rewrite-shell/hooknostic.config.ts
+          node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hooknostic.config.ts
+
+      - name: Commit, push, open PR
+        if: inputs.dry_run != 'true'
+        id: pr
+        shell: bash
+        run: |
+          BRANCH="release/v$VERSION"
+          git config user.name "release-prepare"
+          git config user.email "release-prepare@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "chore(release): $VERSION"
+          git push origin "$BRANCH"
+          {
+            echo "## Release v$VERSION"
+            echo ""
+            echo "- [x] Versions bumped in every carrier (automated: scripts/set-versions.mjs)"
+            echo "- [x] Lockfile synced; example artifacts rebuilt from the repo root (automated)"
+            echo '- [ ] FIRST PUBLIC RELEASE ONLY -- remove `"private": true` from packages/sdk/package.json and packages/cli/package.json'
+            echo '- [ ] FIRST PUBLIC RELEASE ONLY -- add `"publishConfig": { "access": "public", "provenance": true }` to both'
+            echo "- [ ] FIRST PUBLIC RELEASE ONLY -- update the AGENTS.md publish carve-out (docs/releases.md)"
+            echo "- [ ] CI green on this PR (3-OS matrix, artifact byte gate, docs drift gate)"
+            echo "- [ ] Merge = decision 1. The draft release then appears; review its notes and publish = decision 2."
+            echo ""
+            echo "See docs/releases.md for the full runbook and recovery paths."
+          } > pr-body.md
+          gh pr create --base master --head "$BRANCH" --label release \
+            --title "Release v$VERSION" --body-file pr-body.md
+          rm -f pr-body.md
+
+      - name: Cleanup on failure
+        if: failure() && inputs.dry_run != 'true'
+        shell: bash
+        run: |
+          git push origin --delete "release/v$VERSION" 2>/dev/null || true

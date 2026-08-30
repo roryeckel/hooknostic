@@ -1,8 +1,10 @@
-# Publishing & release process
+# Publishing & packaging
 
 Current status: **npm publication is intentionally deferred.** Nothing is on the
-npm registry; the GitHub repo is private. The release workflow exists but is
-manually triggered only, so a stray `v*` tag cannot publish anything.
+npm registry; the GitHub repo is private, and `packages/{sdk,cli}` carry
+`"private": true` as an executable never-publish guard. The release protocol --
+the three-stage pipeline, its gates, and every recovery path -- lives in
+[releases.md](./releases.md); this page keeps the packaging story.
 
 ## Testing without publishing (the everyday flow)
 
@@ -34,28 +36,13 @@ pack with `pnpm pack`).
 `packages/cli/src/package.test.ts` additionally simulates the install story
 offline on every test run.
 
-## First real publish (when ready) — manual, once
+## Releasing
 
-1. `cd packages/sdk && pnpm publish --no-git-checks --access public`
-2. `cd packages/cli && pnpm publish --no-git-checks --access public`
-   (pnpm, not npm: it rewrites `workspace:*`; also claims both names)
-
-## Enable tag-driven publishing (when ready)
-
-1. Restore the tag trigger in `.github/workflows/release.yml` (see the comment
-   at the top of that file).
-2. npmjs.com → each package → Settings → Trusted Publisher: GitHub Actions,
-   `roryeckel/hooknostic`, workflow filename `release.yml`, environment `npm`,
-   allowed action `npm publish`.
-3. GitHub repo → Settings → Environments → create `npm`.
-4. `git tag v0.1.0 && git push origin v0.1.0`.
-5. Verify trustedPublisher/provenance on the npm package pages.
-
-## Going public later (repo)
-
-Flip repo visibility in GitHub settings; add `"provenance": true` to
-`publishConfig` in both publishable packages. Attestations begin automatically
-with the next tagged release — no workflow changes.
+See [releases.md](./releases.md). Publication happens only through
+`.github/workflows/release-publish.yml`, fired by a human publishing a draft
+release; the first public release's one-time bootstrap steps (npm Trusted
+Publisher against that workflow filename, the `npm` environment, removing the
+`private` guards in the release PR) are listed there.
 
 ## Notes
 

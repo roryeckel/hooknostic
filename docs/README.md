@@ -30,7 +30,9 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | --- | --- |
 | [Installing built output](installing-artifacts.md) | You ran `hooknostic build` and want each agent to actually load the result — including the common case of a repo consuming its own hooks |
 | [Adding a harness adapter](adding-an-adapter.md) | You want Hooknostic to support another coding agent |
-| [Publishing & release process](publishing.md) | Maintainers: testing the npm story without publishing, and the eventual release flow |
+| [Publishing & packaging](publishing.md) | Maintainers: what ships, and testing the npm story without publishing |
+| [Releases](releases.md) | Maintainers: the three-stage release pipeline, gates, and recovery paths |
+| [Harness support](harness-support.md) | Generated: validated harness versions and evidence |
 
 ## 📖 Appendix — reference material
 
