@@ -76,6 +76,13 @@ descending order of strength:
 ## First public release — one-time bootstrap
 
 - Flip the repository to public.
+- **Immediately after**, enable private vulnerability reporting (Settings →
+  Advanced Security, or `gh api --method PUT
+  repos/roryeckel/hooknostic/private-vulnerability-reporting`). This cannot be
+  done earlier: the endpoint 404s on a private repository, because the feature
+  exists so *outside* researchers can report privately and there are none while
+  nobody can see the repo. Until it is on, `SECURITY.md`'s advisory-form link
+  is dead and its email fallback is the only route.
 - npmjs.com: Trusted Publisher for **both** packages → this repository,
   workflow **`release-publish.yml`**, environment **`npm`**.
 - GitHub: create environment `npm` (required reviewer: owner; deployment
