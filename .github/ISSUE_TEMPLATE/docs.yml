@@ -1,6 +1,6 @@
 name: Documentation problem
 description: A page is wrong, unclear, out of date, or missing something it should cover.
-labels: ["docs", "needs-triage"]
+labels: ["documentation", "needs-triage"]
 body:
   - type: markdown
     attributes:
