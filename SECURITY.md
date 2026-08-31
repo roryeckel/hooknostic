@@ -4,7 +4,8 @@
 
 **Please do not open a public issue.** Report privately through GitHub's
 [security advisory form](https://github.com/roryeckel/hooknostic/security/advisories/new),
-which is visible only to the maintainer.
+which is visible only to the maintainer. If you would rather not use GitHub, or
+do not have an account, email **hooknostic@2labz.com** instead.
 
 Include the Hooknostic version, the harness and its exact version (the output of
 `hooknostic doctor` covers both), and enough detail to reproduce. If you have a
