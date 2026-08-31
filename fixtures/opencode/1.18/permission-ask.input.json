@@ -1,6 +1,6 @@
 {
   "hook": "permission.ask",
-  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
   "input": {
     "id": "per_2ka9",
     "type": "bash",

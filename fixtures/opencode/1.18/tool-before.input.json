@@ -1,6 +1,6 @@
 {
   "hook": "tool.execute.before",
-  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
   "input": {
     "tool": "bash",
     "sessionID": "ses_8f2a1c",

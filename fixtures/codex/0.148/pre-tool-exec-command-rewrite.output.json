@@ -6,7 +6,7 @@
       "permissionDecision": "allow",
       "updatedInput": {
         "cmd": "pnpm install",
-        "workdir": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools"
+        "workdir": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\codex-tools"
       }
     }
   }

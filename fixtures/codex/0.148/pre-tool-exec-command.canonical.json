@@ -7,7 +7,7 @@
   },
   "session": {
     "id": "01a05419-67b9-7082-b773-2c69e6fe382f",
-    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools"
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\codex-tools"
   },
   "correlation": {
     "turnId": "01a05419-684e-7d72-8ffd-1d977f66dce3",
@@ -18,11 +18,11 @@
     "nativeName": "exec_command",
     "input": {
       "cmd": "echo hooknostic-capture",
-      "workdir": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools"
+      "workdir": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\codex-tools"
     },
     "shell": {
       "command": "echo hooknostic-capture",
-      "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex-tools",
+      "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\codex-tools",
       "commandKey": "cmd",
       "cwdKey": "workdir"
     }

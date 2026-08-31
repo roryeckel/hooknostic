@@ -4,7 +4,7 @@
   "harness": { "id": "codex", "nativeEvent": "SubagentStop" },
   "session": {
     "id": "01a021d8-1568-7ac0-9db2-a7013528de23",
-    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex"
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\codex"
   },
   "correlation": {
     "turnId": "01a021d8-1602-7032-b00f-d5198424613b",

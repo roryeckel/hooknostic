@@ -1,7 +1,7 @@
 {
   "session_id": "1eefd156-fb61-4977-a4d9-575022b0adce",
-  "transcript_path": "C:\\Users\\ex0du\\.claude\\projects\\C--Users-ex0du-source-repos-hooknostic--capture-claude\\1eefd156-fb61-4977-a4d9-575022b0adce.jsonl",
-  "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\claude",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\1eefd156-fb61-4977-a4d9-575022b0adce.jsonl",
+  "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude",
   "prompt_id": "f224c43e-f47e-4791-afb7-adaac157a8c1",
   "permission_mode": "bypassPermissions",
   "effort": { "level": "xhigh" },

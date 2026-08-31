@@ -4,7 +4,7 @@
   "harness": { "id": "codex", "nativeEvent": "SessionEnd" },
   "session": {
     "id": "01a021d8-1568-7ac0-9db2-a7013528de23",
-    "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\codex"
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\codex"
   },
   "correlation": {},
   "reason": "other"

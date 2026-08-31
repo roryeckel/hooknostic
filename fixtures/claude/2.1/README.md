@@ -9,6 +9,12 @@ stdin-teeing command hooks (`.capture/claude`), except where noted.
 - `*.output.json` — expected native result from `apply()` for a given canonical
   HookResult (the driving HookResult lives in the adapter's apply tests).
 
+**One redaction.** The capturing machine's Windows account name is replaced with
+`user` throughout — in `cwd`, in `transcript_path`, and in the mangled
+`C--Users-user-…` project directory derived from it. Nothing else was altered:
+these stay Windows paths with their real drive letter, backslash escaping, and
+structure, because that shape is itself evidence about what the harness sends.
+
 Provenance notes:
 
 | Fixture | Source |

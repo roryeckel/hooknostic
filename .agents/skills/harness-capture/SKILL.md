@@ -70,6 +70,13 @@ writes a marker file, or read the spawned command line from the debug log.
 
 1. `fixtures/<harness>/<version>/<case>.{input,canonical}.json` + a provenance
    row in that directory's README. Canonical = decode result minus `raw`.
+   **Redact the capturing account name to `user` before committing** — this is
+   a public repository and every payload carries a home directory. Redact only
+   that segment: the drive letter, backslash escaping, and any derived form
+   (Claude's mangled `C--Users-user-…` project directory) stay intact and
+   mutually consistent, because path *shape* is evidence. Input and canonical
+   must move together. The README's redaction note already covers it; say so
+   again only if you redact something new.
 2. Wire the case into the adapter's `decode.test.ts` list; the testkit
    contract suite picks up shell-bearing fixtures automatically (codec
    round-trip obligation).

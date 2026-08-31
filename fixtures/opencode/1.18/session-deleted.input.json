@@ -1,6 +1,6 @@
 {
   "hook": "event",
-  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
   "input": {
     "event": {
       "type": "session.deleted",

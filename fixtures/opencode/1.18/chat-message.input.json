@@ -1,6 +1,6 @@
 {
   "hook": "chat.message",
-  "directory": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
   "input": {
     "sessionID": "ses_8f2a1c",
     "agent": "build",

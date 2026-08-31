@@ -1,7 +1,7 @@
 {
   "session_id": "9c558014-e40f-47b2-a8ce-85948bfa3af8",
-  "transcript_path": "C:\\Users\\ex0du\\.claude\\projects\\C--Users-ex0du-source-repos-hooknostic--capture-claude\\9c558014-e40f-47b2-a8ce-85948bfa3af8.jsonl",
-  "cwd": "C:\\Users\\ex0du\\source\\repos\\hooknostic\\.capture\\claude",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\9c558014-e40f-47b2-a8ce-85948bfa3af8.jsonl",
+  "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude",
   "prompt_id": "a17c3e6c-295a-4735-a7ed-f67648871f97",
   "permission_mode": "default",
   "agent_id": "aa333e83125928997",
@@ -9,7 +9,7 @@
   "effort": { "level": "xhigh" },
   "hook_event_name": "SubagentStop",
   "stop_hook_active": false,
-  "agent_transcript_path": "C:\\Users\\ex0du\\.claude\\projects\\C--Users-ex0du-source-repos-hooknostic--capture-claude\\9c558014-e40f-47b2-a8ce-85948bfa3af8\\subagents\\agent-aa333e83125928997.jsonl",
+  "agent_transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-source-repos-hooknostic--capture-claude\\9c558014-e40f-47b2-a8ce-85948bfa3af8\\subagents\\agent-aa333e83125928997.jsonl",
   "last_assistant_message": "Contents of the capture directory: capture.mjs, .claude/settings.json, captured/*.jsonl",
   "background_tasks": [],
   "session_crons": []
