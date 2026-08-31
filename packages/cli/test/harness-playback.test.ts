@@ -131,7 +131,9 @@ async function runCodexPlayback(
         "-c",
         'approval_policy="never"',
         "-c",
-        'sandbox_mode="workspace-write"',
+        // Playback exercises hooks, not Codex's host sandbox. A sandboxed
+        // spawn failure makes the block scenario pass vacuously.
+        'sandbox_mode="danger-full-access"',
         "-c",
         'model_providers.hooknostic_playback.name="Hooknostic Playback"',
         "-c",

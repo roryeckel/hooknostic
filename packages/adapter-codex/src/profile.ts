@@ -30,7 +30,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           version: "0.148.0",
           date: "2026-08-20",
           method: "schema-derived",
-          artifact: ".capture/codex",
+          artifact: "fixtures/codex/0.148",
           what: "wire JSON Schemas embedded in the binary (*.command.input/output)",
         },
         {
