@@ -1,7 +1,19 @@
 # Categories for GitHub's generated release notes (the PR-grouped section the
-# release-notes script embeds). Five labels mirroring the commit-prefix
-# vocabulary the history already uses; the catch-all means forgetting a label
-# costs nothing. `release` marks the bot's own version-bump PR.
+# release-notes script embeds).
+#
+# These use GitHub's stock labels wherever one fits -- `enhancement`, `bug`,
+# `documentation` -- so a contributor arriving from any other repository already
+# knows the vocabulary. Only `breaking` and `capture` are custom, because
+# nothing stock means either thing.
+#
+# The labels therefore do NOT match this project's commit prefixes: a commit
+# says `feat:` / `fix:` / `docs:` while its pull request is labelled
+# `enhancement` / `bug` / `documentation`. That divergence is deliberate --
+# commit prefixes are for maintainers reading `git log`, labels are for
+# contributors and for this file -- so please do not "fix" it into agreement.
+#
+# The catch-all means forgetting a label costs nothing. `release` marks the
+# automated version-bump PR.
 changelog:
   exclude:
     labels:
@@ -11,12 +23,12 @@ changelog:
     - title: Breaking changes
       labels: [breaking]
     - title: Features
-      labels: [feat]
+      labels: [enhancement]
     - title: Fixes
-      labels: [fix]
+      labels: [bug]
     - title: Harness evidence
       labels: [capture]
     - title: Documentation
-      labels: [docs]
+      labels: [documentation]
     - title: Other changes
       labels: ["*"]
