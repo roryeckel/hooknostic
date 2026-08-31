@@ -23,7 +23,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           version: "1.18.19",
           date: "2026-08-20",
           method: "type-derived",
-          artifact: ".capture/opencode",
+          artifact: "fixtures/opencode/1.18",
           what: "@opencode-ai/plugin published Hooks type definitions (dist/index.d.ts)",
         },
         {
