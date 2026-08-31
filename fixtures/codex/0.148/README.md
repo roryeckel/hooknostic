@@ -11,6 +11,11 @@ in the codex binary (`*.command.input` / `*.command.output`, draft-07,
   (tests splice `raw: input` back in).
 - `*.output.json` — expected native result from `apply()`.
 
+**One redaction.** The capturing machine's Windows account name is replaced with
+`user` throughout — in `cwd` and in `transcript_path`. Nothing else was altered:
+these stay Windows paths with their real drive letter, backslash escaping, and
+structure, because that shape is itself evidence about what the harness sends.
+
 Provenance:
 
 | Fixture | Source |

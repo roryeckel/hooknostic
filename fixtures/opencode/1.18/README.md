@@ -15,6 +15,12 @@ in). `*.output.json` files hold the expected `planOpenCodeApplication` result
 (throw/mutation plan), since native application is object mutation rather than
 a serialized response.
 
+**One redaction.** The capturing machine's Windows account name is replaced with
+`user` throughout — in the envelope's `directory` and in the `cwd` derived from
+it. Nothing else was altered: these stay Windows paths with their real drive
+letter, backslash escaping, and structure, because that shape is itself evidence
+about what the harness sends.
+
 Ground truth notes (1.18.x):
 
 - Local plugins load from `.opencode/plugin/` or `.opencode/plugins/`
