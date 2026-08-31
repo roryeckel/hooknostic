@@ -133,3 +133,32 @@ config — never from whatever happens to be installed locally.
 Generated integrations preserve each harness's own trust and review mechanisms — Codex
 in particular requires project trust plus per-hook trust for repo-level hooks — and
 Hooknostic never modifies that trust state on your behalf.
+
+**And on scope:** Hooknostic reports differences between harnesses rather than hiding
+them. Where a harness cannot do something, the answer is `unsupported` with a reason —
+never an emulation that quietly behaves differently. [CONTRIBUTING.md](CONTRIBUTING.md)
+states that boundary in full.
+
+## Contributing
+
+Contributions are welcome, and the scope statement in
+[CONTRIBUTING.md](CONTRIBUTING.md) is written so you can tell whether an idea fits
+*before* writing any code. The short version: every claim about a harness needs captured
+evidence, docs and bug fixes can arrive as pull requests directly, and anything touching
+a harness claim or the portable vocabulary should start as an issue.
+
+Adapter changes can be verified against the real harness binaries with **no model
+credentials and no spend** — see [docs/testing.md](docs/testing.md).
+
+Everyone participating is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Hooknostic generates code that runs inside your agent's trust boundary. Please report
+vulnerabilities privately rather than in a public issue —
+[SECURITY.md](SECURITY.md) explains the reporting route and what is in scope.
+
+## License
+
+[Apache License 2.0](LICENSE).

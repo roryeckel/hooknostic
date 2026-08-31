@@ -1,0 +1,110 @@
+name: Harness claim correction
+description: Hooknostic states something about a coding agent that is wrong — a capability level, a tool argument shape, whether a write channel is honoured.
+labels: ["capture", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most valuable kind of report this project receives, and the
+        one most likely to be *confidently wrong* — including when we write it.
+        Everything Hooknostic says about a harness is version-scoped and backed
+        by recorded evidence, so a correction needs the same.
+
+        You do **not** need a capture to file. If you noticed something real and
+        have not proved it yet, say so in the provenance field below and we will
+        work out together what would settle it. What matters is that an
+        unverified claim is labelled as one.
+
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      description: The adapter id — claude, codex, or opencode.
+      placeholder: codex
+    validations:
+      required: true
+
+  - type: input
+    id: harness-version
+    attributes:
+      label: Exact harness version
+      description: A claim is only ever true of specific builds. Give the full version, not a range.
+      placeholder: "0.151.0"
+    validations:
+      required: true
+
+  - type: input
+    id: capability
+    attributes:
+      label: Capability id or shape being disputed
+      description: For example `tool.before.input.replace`, or the shell shape table entry for a tool name.
+      placeholder: turn.stop.notify
+    validations:
+      required: true
+
+  - type: textarea
+    id: inspect-output
+    attributes:
+      label: "`hooknostic inspect <target> --capability <id>` output"
+      description: |
+        Paste it verbatim. This starts the thread from the adapter's own stated
+        rationale rather than a paraphrase of it — and now and then it turns out
+        the adapter already says what you are about to report, in which case you
+        have found a documentation bug instead.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: claim
+    attributes:
+      label: What Hooknostic says, and what is actually true
+      description: State both sides plainly.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provenance
+    attributes:
+      label: How do you know?
+      description: |
+        This is the evidence ladder Hooknostic records internally, strongest
+        first. Choosing honestly costs you nothing and is far more useful than
+        overstating — every claim in the codebase carries one of these labels
+        too.
+      options:
+        - Captured — I have a real hook payload from the harness, saved
+        - Live probe — I observed the behaviour end to end by its effect in a real session
+        - Router log — I saw it below the hook boundary (e.g. a debug log of the tool call)
+        - Schema — the harness publishes a schema that says so
+        - Types — the harness ships type definitions that say so
+        - Docs — the vendor documentation says so
+        - None yet — I noticed this but have not proved it
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: The evidence
+      description: |
+        Paste the payload, log excerpt, schema fragment, or link. If you chose
+        "None yet", describe what you observed and where — that is still a
+        useful report.
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: Evidence boundary
+      description: |
+        This project has been caught by exactly this once, so it is worth one
+        click. A harness may route a tool call under one name and argument shape
+        and then hand the hook a *translated* payload with a different name, a
+        different key, and fields dropped. Evidence about one is not evidence
+        about the other.
+      options:
+        - label: I understand that a router-level observation and a hook-boundary capture are different evidence, and I have said above which one I have.
+          required: true
