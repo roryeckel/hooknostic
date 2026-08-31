@@ -19,10 +19,15 @@ captured harness payloads in `fixtures/`, capture projects in `.capture/`.
   draft GitHub Release (`docs/releases.md`). Local distribution is
   `pnpm pack` tarballs only — `npm pack` does not rewrite `workspace:*`
   dependencies and ships broken tarballs.
-- Do not push to any remote unless the owner asks.
+- Push freely to a fork; never push to the upstream repository unless the
+  owner asks. Publication is workflow-only either way.
 - Downstream consumers are never named in this repository — not in code,
   docs, ADRs, commit messages, or capture records. Write "the pilot
-  consumer" or "a consumer".
+  consumer" or "a consumer". The reason is load-bearing, not cosmetic:
+  adapters are justified by captured harness evidence, never by one user's
+  needs, and anonymity keeps that honest.
+- Contributions are governed by `CONTRIBUTING.md`, which carries the
+  canonical scope statement. Link to it rather than restating it.
 
 ## Hard Rules
 
@@ -56,9 +61,13 @@ captured harness payloads in `fixtures/`, capture projects in `.capture/`.
   fake harness names and versions -- `scripts/check-version-literals.mjs`
   lints real-adapter range literals against the metadata, and
   `docs/harness-support.md` is generated, never edited.
-- `HOOKNOSTIC_SMOKE=1 pnpm test` spawns real harnesses and has side effects
-  (harness trust entries, cloud model calls). Run it only when the owner
-  asks.
+- Three tiers of harness verification, in increasing cost. `pnpm test` alone
+  replays captured fixtures. `HOOKNOSTIC_PLAYBACK=<harness>` drives the real
+  harness binary against a loopback model server — no credentials, no spend,
+  and it is what CI runs, so an adapter change should clear it before review
+  (`docs/testing.md`). `HOOKNOSTIC_SMOKE=1 pnpm test` spends real model
+  credits and has side effects (harness trust entries); run it only when the
+  owner asks.
 
 ## Skills
 
@@ -73,5 +82,8 @@ Claude Code compatibility symlink to the same directory.
 - Decisions: `docs/decisions/` — changes to the semantic model (events,
   effects, capabilities, distribution) get an ADR
 - New harness adapters: `docs/adding-an-adapter.md`
-- Release flow (not yet in use — see Hard Rules): `docs/publishing.md`
+- Contributor-facing scope, gates, and the adapter maintenance contract:
+  `CONTRIBUTING.md`
+- Harness verification without model spend: `docs/testing.md`
+- Release flow: `docs/releases.md` (packaging story: `docs/publishing.md`)
 - Capture projects and per-harness procedures: `.capture/*/README.md`

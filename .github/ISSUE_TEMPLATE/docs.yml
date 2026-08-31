@@ -1,0 +1,47 @@
+name: Documentation problem
+description: A page is wrong, unclear, out of date, or missing something it should cover.
+labels: ["docs", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Documentation bugs are real bugs here — several of this project's worst
+        mistakes were confidently written down before they were checked.
+
+  - type: input
+    id: page
+    attributes:
+      label: Which page
+      description: A path or a link. If it is a section, name it.
+      placeholder: docs/adding-an-adapter.md — "5b. Detection"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong
+      description: Quote the passage if you can.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should say instead
+      description: A rough sketch is fine — you do not have to write the final prose.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: generated
+    attributes:
+      label: Generated pages
+      description: |
+        `docs/harness-support.md` is generated from adapter metadata and is
+        never edited by hand. If that is the page, the fix belongs on the
+        metadata — file it as a harness claim correction instead, or say so
+        below and we will re-route it.
+      options:
+        - label: This is not about `docs/harness-support.md`, or I understand it will be re-routed.
+          required: true

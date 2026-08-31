@@ -1,0 +1,19 @@
+# The issue tracker is kept to actionable, evidenced work. Questions and
+# proposals go to Discussions; vulnerabilities go to a private advisory.
+blank_issues_enabled: false
+contact_links:
+  - name: Question — how do I do X?
+    url: https://github.com/roryeckel/hooknostic/discussions/new?category=q-a
+    about: Usage questions, "is this supposed to work like that", help with a config.
+
+  - name: Proposal — support for another coding agent
+    url: https://github.com/roryeckel/hooknostic/discussions/new?category=ideas
+    about: A new harness adapter is a standing commitment, not a one-time change. Start here so we can size it together — see CONTRIBUTING.md.
+
+  - name: Idea — a new capability, effect, or diagnostic
+    url: https://github.com/roryeckel/hooknostic/discussions/new?category=ideas
+    about: Changes to the portable vocabulary affect every adapter at once. Discuss before implementing.
+
+  - name: Security vulnerability
+    url: https://github.com/roryeckel/hooknostic/security/advisories/new
+    about: Report privately. Please do not open a public issue — see SECURITY.md for what is in scope.

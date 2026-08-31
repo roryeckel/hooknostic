@@ -1,0 +1,84 @@
+name: Bug report
+description: Hooknostic itself behaves incorrectly — a command fails, a build produces the wrong output, an artifact misbehaves at runtime.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this.
+
+        **If your report is that Hooknostic is _wrong about a harness_** — a
+        capability is rated incorrectly, a tool argument key is not what the
+        adapter thinks, a write channel is or is not honoured — please use the
+        **Harness claim correction** template instead. It asks for the evidence
+        that kind of report needs.
+
+  - type: input
+    id: hooknostic-version
+    attributes:
+      label: Hooknostic version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`hooknostic doctor` output"
+      description: Paste it verbatim. This identifies your harnesses and their exact versions, which is usually the first thing that matters.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected instead
+      description: Be concrete. "The build fails" is harder to act on than "`build` writes the Codex artifact but exits 1 with HN301".
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest hook source and set of steps that shows the problem. A link to a small repository is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your `hooknostic.config.ts`
+      description: Trim it to the targets involved.
+      render: typescript
+    validations:
+      required: true
+
+  - type: textarea
+    id: command-output
+    attributes:
+      label: "`check` / `build` output"
+      description: Include any HNxxx diagnostics in full — the code and its remediation text are usually the fastest route to the cause.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifact
+    attributes:
+      label: Generated artifact excerpt
+      description: Optional. If the problem shows up at runtime rather than at build time, the relevant part of the generated file often pins it down.
+      render: javascript
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have read the scope section of CONTRIBUTING.md and believe this is a defect in Hooknostic, not a limitation of the harness itself.
+          required: true
+        - label: I did not hand-edit the generated artifacts.
+          required: true
