@@ -27,7 +27,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 0.148.0 | 2026-08-20 | captured | `fixtures/codex/0.148` | hook payload fixtures via a trusted teeing project, captured on Windows |
-| 0.148.0 | 2026-08-20 | schema-derived | `.capture/codex` | wire JSON Schemas embedded in the binary (*.command.input/output) |
+| 0.148.0 | 2026-08-20 | schema-derived | `fixtures/codex/0.148` | wire JSON Schemas embedded in the binary (*.command.input/output) |
 | 0.148.0 | 2026-08-29 | live-probe | `.capture/codex-output` | Stop output semantics: systemMessage accepted-and-discarded, never rendered |
 | 0.151.0 | 2026-08-30 | router-log | `.capture/codex-tools` | exec_command router args (cmd/workdir); NOTE the hook boundary translates these calls to Bash/command payloads and drops workdir |
 | 0.151.0 | 2026-08-30 | live-probe | `.capture/codex-tools` | updatedInput write channel verified honoured (rewritten command reached spawn) |
@@ -37,7 +37,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 1.18.18 | 2026-08-20 | captured | `fixtures/opencode/1.18` | live plugin hook payloads incl. in-place args-mutation behaviour |
-| 1.18.19 | 2026-08-20 | type-derived | `.capture/opencode` | @opencode-ai/plugin published Hooks type definitions (dist/index.d.ts) |
+| 1.18.19 | 2026-08-20 | type-derived | `fixtures/opencode/1.18` | @opencode-ai/plugin published Hooks type definitions (dist/index.d.ts) |
 | 1.18.25 | 2026-08-29 | live-probe | `.capture/opencode-client` | plugin-client probe: promptAsync notification channel and session.idle timing |
 | 1.18.25 | 2026-08-30 | live-probe | — | PWD env precedence: opencode trusts an inherited PWD over the process cwd and runs the session in PWD's project -- where plugins may not exist. Spawners must set PWD to agree with cwd (see the smoke's runCommand). |
 

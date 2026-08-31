@@ -8,6 +8,7 @@
  * and audit ranges derive from each adapter's own `harness` metadata.
  */
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { adapterFixturesDir, describeAdapterContract } from "@hooknostic/testkit";
@@ -20,7 +21,7 @@ for (const adapter of Object.values(defaultAdapterRegistry())) {
 }
 
 describe("validation evidence", () => {
-  it("points every validatedOn artifact at an existing path", () => {
+  it("points every validatedOn artifact at an existing tracked path", () => {
     // Repo-local (a third party's evidence lives in its own tree): this is
     // what stops "fixtures/codex/0.148" from outliving the directory.
     for (const adapter of Object.values(defaultAdapterRegistry())) {
@@ -37,6 +38,13 @@ describe("validation evidence", () => {
             existsSync(resolve(REPO_ROOT, record.artifact)),
             `${adapter.id} ${profile.range}: artifact ${record.artifact} does not exist`,
           ).toBe(true);
+          expect(
+            execFileSync("git", ["ls-files", "--", record.artifact], {
+              cwd: REPO_ROOT,
+              encoding: "utf8",
+            }).trim(),
+            `${adapter.id} ${profile.range}: artifact ${record.artifact} is not tracked`,
+          ).not.toBe("");
         }
       }
     }
