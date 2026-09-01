@@ -37,9 +37,14 @@ For one harness at a time, CI:
 4. Starts a server bound to `127.0.0.1`, removes model credentials from the
    harness environment, and configures the harness model transport to use the
    server.
-5. Returns one shell tool call and then a completion response.
-6. Uses marker files and the generated hook trace to discriminate rewrite,
-   block, failure, discovery, and lifecycle outcomes.
+5. Returns the per-scenario scripted turns (tool calls and completions) from
+   `packages/testkit/src/scenarios.ts` — one scenario per capability family.
+6. Uses marker files, the recorded model requests, and the generated hook trace
+   to discriminate rewrite, block, failure, context-injection, stop-prevention,
+   notify, and lifecycle outcomes.
+7. For the pty-approval driver, runs the interactive TUI under `node-pty`,
+   walks the first-run dialogs by polling for their screen markers, and lets
+   the generated hook answer the native approval prompt.
 
 Run the same probe locally after installing the exact reference harness:
 
@@ -49,7 +54,14 @@ pnpm --filter hooknostic run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, or `opencode` for `HOOKNOSTIC_PLAYBACK`.
+Use `claude`, `codex`, or `opencode` for `HOOKNOSTIC_PLAYBACK`, and
+`HOOKNOSTIC_PLAYBACK_VERSION=<build>` to verify a newer build than
+`referenceVersion` (see `docs/testing.md`).
+
+Scenario-to-driver mapping and the coverage policy live in ADR-0010 and
+`docs/testing.md`. Two families are decided only by the manual `force_llm`
+lane, each for a recorded reason (Codex namespaced-call routing, context-fill
+impossibility); their drives remain in the suite behind explicit skips.
 
 ## What a passing run establishes
 
@@ -58,7 +70,14 @@ A successful run is a **live-probe** for only the installed version and harness:
 - the harness discovers the generated artifact through its real loader;
 - the common lifecycle events asserted by the test reach the artifact;
 - a shell rewrite reaches process execution, proven by rewritten marker content;
-- a blocked shell call does not execute, proven by the absent marker; and
+- a blocked shell call does not execute, proven by the absent marker;
+- context injected by a hook reaches the model side, proven by the marker
+  inside the scripted server's recorded requests;
+- a prevented stop produces a second model turn, proven by the served turn
+  count — the loop terminator is the harness's own `stop_hook_active` flag
+  read through the raw-event escape hatch, exactly as a portable hook must;
+- for Claude, an interactive permission prompt reaches the hook (pty lane) and
+  a denied command does not execute; and
 - for Claude, a nonzero shell exit reaches `tool.error`.
 
 The committed fixture replay remains the evidence for hook payload shapes. The

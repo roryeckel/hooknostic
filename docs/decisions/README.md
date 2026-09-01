@@ -17,6 +17,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0006 — Commit the built artifacts](0006-artifact-distribution.md) | Should build output be checked into the consumer's repository, or generated? |
 | [0007 — Portable shell write-back](0007-portable-shell-write-back.md) | How does a hook rewrite a shell command without knowing each harness's native key? |
 | [0008 — Harness version metadata](0008-harness-version-metadata.md) | Where do harness version facts live, and what keeps every other mention honest? |
+| [0010 — Capability coverage policy](0010-capability-coverage-policy.md) | What does "full automated coverage" of the capability profiles mean, and what enforces it? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.
