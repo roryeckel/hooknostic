@@ -11,13 +11,14 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { adapterFixturesDir, describeAdapterContract } from "@hooknostic/testkit";
+import { adapterFixturesDir, describeAdapterContract, describeScenarioCoverage } from "@hooknostic/testkit";
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 for (const adapter of Object.values(defaultAdapterRegistry())) {
   describeAdapterContract(adapter, { fixturesDir: adapterFixturesDir(adapter) });
+  describeScenarioCoverage(adapter);
 }
 
 describe("validation evidence", () => {
