@@ -177,6 +177,24 @@ describe("compareCaptures", () => {
     expect(report).toContain("timeout");
   });
 
+  it("reports drift when one of several captured instances of a variant changes shape", () => {
+    const fixture = CLAUDE_FIXTURES.find(
+      (f) => f.hook_event_name === "PreToolUse" && f.tool_name === "Bash",
+    );
+    const captured = [
+      fixture,
+      { ...fixture, tool_input: { ...fixture.tool_input, timeout: 30 } },
+    ];
+    const { verdict, report } = compareCaptures({
+      harness: "claude",
+      captured,
+      fixtures: CLAUDE_FIXTURES,
+      expectedVariants: [],
+    });
+    expect(verdict).toBe("drift");
+    expect(report).toContain("timeout");
+  });
+
   it("a removed fixture key in the capture is drift", () => {
     const fixture = CODEX_FIXTURES.find((f) => f.hook_event_name === "PreToolUse" && f.tool_name === "Bash");
     const withoutToolInput = { ...fixture };

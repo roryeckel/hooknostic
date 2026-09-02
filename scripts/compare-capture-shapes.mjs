@@ -272,9 +272,9 @@ export function compareCaptures({
     }
     const capturedShapes = payloadsForVariant.map((p) => shapeOf(p));
     const fixtureShapes = variantFixtures.map((f) => shapeOf(f));
-    // Clean if the capture's shape matches ANY committed fixture of this
+    // Every captured instance must match a committed fixture shape for this
     // variant (fixtures may legitimately differ among themselves).
-    const clean = capturedShapes.some((cs) =>
+    const clean = capturedShapes.every((cs) =>
       fixtureShapes.some((fs) => deepEqual(cs, fs)),
     );
     if (!clean) {

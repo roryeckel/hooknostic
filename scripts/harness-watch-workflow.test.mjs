@@ -56,6 +56,11 @@ describe("harness-watch workflow structure", () => {
     expect(record).toContain("steps.gate.outputs.skip");
   });
 
+  it("record still runs its per-harness artifact gates after a verify matrix leg fails", () => {
+    const record = jobSource("record");
+    expect(record).toMatch(/if: \$\{\{ always\(\) && needs\.detect\.outputs\.count != '0' \}\}/);
+  });
+
   it("report-failure downloads the outcome artifact before reading it", () => {
     const report = jobSource("report-failure");
     const dl = report.indexOf("actions/download-artifact");

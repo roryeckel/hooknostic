@@ -185,7 +185,10 @@ jobs:
 
   record:
     needs: [detect, verify]
-    if: needs.detect.outputs.count != '0'
+    # Run after a failed verify matrix leg too: each record leg gates itself
+    # on its own uploaded outcome artifact, so a passing harness can still
+    # advance its rolling validation record.
+    if: ${{ always() && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
