@@ -711,17 +711,6 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     }
   });
 
-  // --- scenario-registry drives (ADR-0010) --------------------------------
-  // Each drive below is registered against a scenario id from
-  // `packages/testkit/src/scenarios.ts`; the gate test outside this describe
-  // fails when a registry entry has no drive. The loop at the bottom runs
-  // every registered drive as a vitest case.
-
-  for (const scenario of SCENARIOS) {
-    const entry = scenarioDrives.get(scenario.id);
-    if (entry === undefined) continue;
-    it(scenario.title, { timeout: 240_000, skip: entry.skip() }, entry.drive);
-  }
 });
 
 // --- registry gate (ADR-0010) ---------------------------------------------
@@ -1576,3 +1565,13 @@ scenarioDrive(
   },
 );
 
+// Register after every `scenarioDrive` call above. Vitest executes describe
+// callbacks immediately during module evaluation, so registering this loop
+// beside the basic playback tests would inspect the still-empty map.
+describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${selected || "disabled"}`, () => {
+  for (const scenario of SCENARIOS) {
+    const entry = scenarioDrives.get(scenario.id);
+    if (entry === undefined) continue;
+    it(scenario.title, { timeout: 240_000, skip: entry.skip() }, entry.drive);
+  }
+});
