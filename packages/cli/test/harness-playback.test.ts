@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { execSync } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import type { HookEventName } from "@hooknostic/sdk";
 import type { IPty } from "node-pty";
-import { adapterFixturesDir } from "@hooknostic/testkit";
+import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
@@ -61,6 +62,9 @@ function playbackPrompt(scenario: PlaybackScenario): string {
   if (scenario === "block") {
     return "Use the shell tool once to create hooknostic-blocked.txt, then stop.";
   }
+  if (scenario === "continuation") {
+    return "Use the shell tool once to print hooknostic-block-continuation, then stop.";
+  }
   return "Use the shell tool once to run a command that exits 17, then stop.";
 }
 
@@ -80,10 +84,13 @@ interface DriveOptions {
   expectedExitCodes?: readonly (number | null)[];
   /**
    * Assert that at least one agent (tool-bearing) model request happened.
-   * Off for scenarios where the hook's expected effect is that the turn
-   * never starts (prompt-block): there the absence IS the assertion.
+   * Defaults to true; disable only for scenarios where the hook's expected
+   * effect is that the turn never starts (prompt-block): there the absence
+   * IS the assertion.
    */
   requireAgentRequest?: boolean;
+  /** Extra CLI args appended to the harness invocation (e.g. stream-json output). */
+  extraArgs?: readonly string[];
   /**
    * Path to the in-repo stdio MCP fixture server; registers it with the
    * harness (Codex: `mcp_servers.*`), enabling the MCP-only drive.
@@ -116,6 +123,7 @@ async function runClaudePlayback(
         "--dangerously-skip-permissions",
         "--max-turns",
         "6",
+        ...(options.extraArgs ?? []),
       ],
       {
         cwd: build.artifactDir,
@@ -137,8 +145,9 @@ async function runClaudePlayback(
       options.expectedExitCodes ?? [0],
       `claude exit ${result.code}: ${result.stdout}\n${result.stderr}`,
     ).toContain(result.code);
+    options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
     expect(server.errors).toEqual([]);
-    if (!options.requireAgentRequest) {
+    if (options.requireAgentRequest === false) {
       await options.verify?.({ server, dir: build.artifactDir });
       return;
     }
@@ -229,7 +238,7 @@ async function runCodexPlayback(
     ).toContain(result.code);
     options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
     expect(server.errors).toEqual([]);
-    if (!options.requireAgentRequest) {
+    if (options.requireAgentRequest === false) {
       await options.verify?.({ server, dir: build.artifactDir });
       return;
     }
@@ -311,7 +320,7 @@ async function runOpenCodePlayback(
       `opencode exit ${result.code}: ${result.stdout}\n${result.stderr}`,
     ).toContain(result.code);
     expect(server.errors).toEqual([]);
-    if (!options.requireAgentRequest) {
+    if (options.requireAgentRequest === false) {
       await options.verify?.({ server, dir: build.artifactDir });
       return;
     }
@@ -341,8 +350,47 @@ async function runInstalledHarness(
   else await runOpenCodePlayback(build, scenario, options);
 }
 
+/**
+ * The registry-to-drive map (ADR-0010): every scenario id in
+ * `packages/testkit/src/scenarios.ts` must be registered here with a drive
+ * that actually exercises it. `describeScenarioCoverage` only checks that a
+ * capability cell appears in some scenario's `covers`; this map is the other
+ * half of the contract — a scenario with no executable drive (or a deleted
+ * drive) fails the gate below instead of reporting phantom coverage.
+ */
+const scenarioDrives = new Map<
+  string,
+  { drive: () => Promise<void>; skip: () => boolean }
+>();
+
+function scenarioDrive(
+  id: string,
+  drive: () => Promise<void>,
+  skip: () => boolean = () => false,
+): void {
+  scenarioDrives.set(id, { drive, skip });
+}
+
+/** Manual-lane switch (docs/testing.md): drives that need a real model. */
+const forceLlm = process.env["HOOKNOSTIC_PLAYBACK_FORCE_LLM"] === "1";
+
 afterAll(async () => {
-  await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  // Windows: a pty-killed harness releases its CWD asynchronously, so an
+  // immediate recursive rm can hit EBUSY while claude.exe is still tearing
+  // down. Retry briefly before giving up — a leaked scratch dir must not turn
+  // a passing drive into a suite failure.
+  await Promise.all(
+    tempDirs.map(async (dir) => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+          await rm(dir, { recursive: true, force: true });
+          return;
+        } catch {
+          await new Promise((r) => setTimeout(r, 1_000));
+        }
+      }
+    }),
+  );
 });
 
 /** The adapter's resolved level for a cell at its own referenceVersion. */
@@ -355,6 +403,71 @@ function cellLevel(id: string): string | undefined {
     output: ".",
   });
   return resolution.matrix?.[id as keyof NonNullable<typeof resolution.matrix>]?.level;
+}
+
+// Extracts every string appearing as message content in the recorded model
+// requests, across the three wire protocols. A context injection is proven
+// when its marker text the hook emitted reaches the model side.
+function requestContents(requests: readonly unknown[]): string[] {
+  const contents: string[] = [];
+  const walk = (value: unknown): void => {
+    if (typeof value === "string") {
+      contents.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value as Record<string, unknown>)) walk(item);
+    }
+  };
+  for (const request of requests) walk(request);
+  return contents;
+}
+
+// --- pty-approval lane ----------------------------------------------------
+// Interactive-only cells (Claude permission.request.*, tool.before
+// requestApproval) need a real pseudo-terminal: headless `-p` sessions decide
+// without prompting. The drive starts the interactive TUI under node-pty,
+// walks the first-run dialogs, sends a prompt whose scripted tool call trips
+// the approval prompt, and lets the hook answer it â€” proven by the trace.
+let ptyModule: { spawn: (...args: readonly unknown[]) => IPty } | undefined;
+const nodePty = (): { spawn: (...args: readonly unknown[]) => IPty } =>
+  createRequire(import.meta.url)("node-pty") as { spawn: (...args: readonly unknown[]) => IPty };
+function ptyApprovable(): boolean {
+  if (process.platform !== "win32" && process.platform !== "linux") return false;
+  try {
+    // node-pty ships platform binaries via a build script; a dynamic probe
+    // keeps environments without the build working for the other scenarios.
+    ptyModule = nodePty();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Claude binary for the pty drives. Never hard-code an author's install
+ * path: an explicit override wins, then PATH resolution, then a clear error.
+ */
+function claudeBinaryPath(): string {
+  const override = process.env["HOOKNOSTIC_CLAUDE_BIN"];
+  if (override !== undefined && override !== "") return override;
+  const probe = process.platform === "win32" ? "where claude" : "which claude";
+  try {
+    const resolved = execSync(probe, { encoding: "utf8" })
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line !== "");
+    if (resolved !== undefined) return resolved;
+  } catch {
+    // fall through to the error below
+  }
+  throw new Error(
+    "claude binary not found: set HOOKNOSTIC_CLAUDE_BIN or add claude to PATH",
+  );
 }
 
 describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || "disabled"}`, () => {
@@ -383,444 +496,683 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     }
   });
 
-  it(
-    "loads the generated artifact in the real harness and executes a rewritten tool call",
-    { timeout: 120_000 },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-harness-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      await runInstalledHarness(build, "rewrite");
-
-      expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe(
-        "hooknostic-rewritten",
-      );
-      const events = await traceEvents(build.tracePath);
-      expect(events).toContain("session.start");
-      expect(events).toContain("prompt.before");
-      expect(events).toContain("tool.before");
-      expect(events).toContain("tool.after");
-      expect(events).toContain("turn.stop");
-      if (adapter!.shimExecution === "command") expect(events).toContain("session.end");
-    },
-  );
-
-  it(
-    "blocks a tool call before its marker command executes",
-    { timeout: 120_000 },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-block-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      await runInstalledHarness(build, "block");
-
-      await expect(access(join(dir, "hooknostic-blocked.txt"))).rejects.toMatchObject({
-        code: "ENOENT",
-      });
-      expect(await traceEvents(build.tracePath)).toContain("tool.before");
-    },
-  );
-
-  it.skipIf(adapter?.id !== "claude")(
-    "dispatches tool.error when Claude runs a failing shell command",
-    { timeout: 120_000 },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), "hooknostic-failure-claude-"));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      await runInstalledHarness(build, "fail");
-
-      expect(await traceEvents(build.tracePath)).toContain("tool.error");
-    },
-  );
-
   // --- scenario-registry drives (ADR-0010) --------------------------------
+  // Each drive below is registered against a scenario id from
+  // `packages/testkit/src/scenarios.ts`; the gate test outside this describe
+  // fails when a registry entry has no drive. The loop at the bottom runs
+  // every registered drive as a vitest case.
 
-  // Extracts every string appearing as message content in the recorded model
-  // requests, across the three wire protocols. A context injection is proven
-  // when its marker text the hook emitted reaches the model side.
-  function requestContents(requests: readonly unknown[]): string[] {
-    const contents: string[] = [];
-    const walk = (value: unknown): void => {
-      if (typeof value === "string") {
-        contents.push(value);
-        return;
-      }
-      if (Array.isArray(value)) {
-        for (const item of value) walk(item);
-        return;
-      }
-      if (value !== null && typeof value === "object") {
-        for (const item of Object.values(value as Record<string, unknown>)) walk(item);
-      }
-    };
-    for (const request of requests) walk(request);
-    return contents;
+  for (const scenario of SCENARIOS) {
+    const entry = scenarioDrives.get(scenario.id);
+    if (entry === undefined) continue;
+    it(scenario.title, { timeout: 240_000, skip: entry.skip() }, entry.drive);
   }
-
-  // --- pty-approval lane ----------------------------------------------------
-  // Interactive-only cells (Claude permission.request.*, tool.before
-  // requestApproval) need a real pseudo-terminal: headless `-p` sessions decide
-  // without prompting. The drive starts the interactive TUI under node-pty,
-  // walks the first-run dialogs, sends a prompt whose scripted tool call trips
-  // the approval prompt, and lets the hook deny it — proven by the trace.
-  let ptyModule: { spawn: (...args: readonly unknown[]) => IPty } | undefined;
-  const nodePty = (): { spawn: (...args: readonly unknown[]) => IPty } =>
-    createRequire(import.meta.url)("node-pty") as { spawn: (...args: readonly unknown[]) => IPty };
-  function ptyApprovable(): boolean {
-    if (process.platform !== "win32" && process.platform !== "linux") return false;
-    try {
-      // node-pty ships platform binaries via a build script; a dynamic probe
-      // keeps environments without the build working for the other scenarios.
-      ptyModule = nodePty();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  it(
-    "delivers context injected on session.start to the model",
-    // Only where the adapter claims the cell: OpenCode has no session-start
-    // context channel, and the profile is the truth (skipped ≠ silent — the
-    // coverage gate in testkit already ties every claimed cell to a lane).
-    { timeout: 180_000, skip: cellLevel("session.start.context.add") === undefined },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-ctxadd-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      let recordedRequests: readonly unknown[] = [];
-      await runInstalledHarness(build, "rewrite", {
-        effects: ["context-add"],
-        verify: async ({ server }) => {
-          recordedRequests = server.requests;
-        },
-      });
-
-      // The agent request after session.start must carry the hook's
-      // injected context. The walk is protocol-agnostic: any string deep in
-      // the recorded request bodies matching the injected marker proves the
-      // harness delivered hook context to the model side.
-      const contents = requestContents(recordedRequests);
-      expect(
-        contents.some((text) => text.includes("hooknostic-context [session.start]")),
-        `injected session.start context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
-      ).toBe(true);
-    },
-  );
-
-  it(
-    "delivers context injected at prompt submit to the model and observes the prompt",
-    { timeout: 180_000, skip: cellLevel("prompt.before.context.add") === undefined },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-promptctx-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      let recordedRequests: readonly unknown[] = [];
-      await runInstalledHarness(build, "rewrite", {
-        effects: ["context-add"],
-        verify: async ({ server }) => {
-          recordedRequests = server.requests;
-        },
-      });
-
-      const contents = requestContents(recordedRequests);
-      expect(
-        contents.some((text) => text.includes("hooknostic-context [prompt.before]")),
-        `injected prompt.before context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
-      ).toBe(true);
-    },
-  );
-
-  it(
-    "stops the turn from a prompt.before block before any model call",
-    { timeout: 180_000, skip: cellLevel("prompt.before.block") === undefined },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-promptblock-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      let recordedRequests: readonly unknown[] = [];
-      await runInstalledHarness(build, "rewrite", {
-        effects: ["block-prompt"],
-        prompt: "hooknostic-block-this-prompt: then stop.",
-        // Blocking the prompt is the success signal; Claude surfaces it as a
-        // nonzero exit ("the turn did not start"), a clean stop is fine too.
-        expectedExitCodes: [0, 1, 2],
-        verify: async ({ server }) => {
-          recordedRequests = server.requests;
-        },
-      });
-
-      const events = await traceEvents(build.tracePath);
-      expect(events).toContain("prompt.before");
-      // Blocked before the agent turn: no model request ever carried tools
-      // (a blocked prompt means the model is never reached for the turn).
-      const agentRequests = recordedRequests.filter(
-        (request) =>
-          request !== null &&
-          typeof request === "object" &&
-          Array.isArray((request as Record<string, unknown>)["tools"]) &&
-          ((request as Record<string, unknown>)["tools"] as unknown[]).length > 0,
-      );
-      expect(agentRequests, "blocked prompt still reached the model side").toEqual([]);
-      expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8").catch(() => null)).toBeNull();
-    },
-  );
-
-  it(
-    "prevents the first stop and makes the harness take another model turn",
-    {
-      timeout: 180_000,
-      // OpenCode's prevent channel is inert under `opencode run` (the process
-      // exits at session.idle before the posted turn can start) -- profile
-      // documents this; the opencode-serve lane covers it separately.
-      skip:
-        cellLevel("turn.stop.prevent") === undefined ||
-        (adapter!.id === "opencode" && process.platform !== "linux"),
-    },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-stopprevent-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      let servedTurns = 0;
-      await runInstalledHarness(build, "rewrite", {
-        effects: ["prevent-stop-once"],
-        // Turn 2+ completes immediately: the prevented stop makes the
-        // harness re-prompt, and the model's completion ends the retry loop
-        // (the hook prevents exactly once -- see control.prevented).
-        script: [
-          { kind: "tool", disposition: "rewrite" },
-          { kind: "text", text: "Stop hook active; standing down now." },
-        ],
-        verify: async ({ server }) => {
-          servedTurns = server.turnCount;
-        },
-      });
-
-      expect(
-        servedTurns,
-        `stop prevention did not produce a second model turn (turns served: ${servedTurns})`,
-      ).toBeGreaterThanOrEqual(2);
-      expect(await traceEvents(build.tracePath)).toContain("turn.stop");
-    },
-  );
-
-  it(
-    "surfaces notify on stop where the harness honors it and records the stop event",
-    { timeout: 180_000, skip: cellLevel("turn.stop.notify") === undefined },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-notify-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      await runInstalledHarness(build, "rewrite", { effects: ["notify"] });
-
-      const events = await traceEvents(build.tracePath);
-      expect(events).toContain("turn.stop");
-    },
-  );
-
-  it(
-    "replaces an MCP tool output before the model reads it",
-     {
-      timeout: 180_000,
-      skip:
-        cellLevel("tool.after.output.replace") === undefined ||
-        adapter?.id !== "codex" || // the mcp-stdio drive is Codex-specific
-        // Scheduled loopback cannot drive this drive today: codex's tool
-        // router rejects scripted namespaced function calls from custom
-        // Responses providers with "unsupported call" (upstream issue
-        // openai/codex#31354 -- the OpenAI-native path rewrites namespaced
-        // calls, custom providers do not). The drive stays for the manual
-        // `force_llm` lane, where the OpenAI-native model emits the
-        // namespaced call Codex dispatches correctly. Skipped ≠ silent: the
-        // step summary reports the inconclusive lane every run.
-        true,
-    },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcpreplace-codex-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      let recordedRequests: readonly unknown[] = [];
-      let servedUrls: string[] = [];
-      let driveStdout = "";
-      let driveStderr = "";
-      await runInstalledHarness(build, "rewrite", {
-        effects: ["replace-outputs", "prevent-stop-once"],
-        mcpServerPath: McpFixtureServerPath,
-        // Codex registers stdio MCP servers asynchronously, so the first
-        // turn's tool list usually lacks the fixture tool. Turn 1 completes
-        // with text; the stop hook prevents that stop (exactly once, gated on
-        // stop_hook_active), which forces turn 2 — by then the MCP tool is
-        // registered and the script calls it. Turn 3 completes.
-        script: [
-          { kind: "text", text: "I will call the echo tool on the next step." },
-          { kind: "tool", toolName: "hooknostic_echo" },
-          { kind: "text", text: "Stop hook active; standing down now." },
-        ],
-        verify: async ({ server }) => {
-          recordedRequests = server.requests;
-          servedUrls = server.urls;
-        },
-        capture: (raw) => {
-          driveStdout = raw.stdout;
-          driveStderr = raw.stderr;
-        },
-      });
-
-      const events = await traceEvents(build.tracePath);
-      // The replaced output must be what the model sees in the next request.
-      const contents = requestContents(recordedRequests);
-      expect(
-        events,
-        `no tool.after\nstdout: ${driveStdout}\nstderr: ${driveStderr}\nurls: ${JSON.stringify(servedUrls)}\nevents: ${JSON.stringify(events)}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
-      ).toContain("tool.after");
-      expect(
-        contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
-        `replaced MCP output missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
-      ).toBe(true);
-    },
-  );
-
-  it(
-    "denies an interactive permission prompt and surfaces the request to the hook",
-    {
-      timeout: 240_000,
-      skip: !ptyApprovable() || adapter?.id !== "claude" || cellLevel("permission.request.block") === undefined,
-    },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-ptyperm-claude-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      const server = await startModelPlayback(
-        "anthropic-messages",
-        "rewrite",
-        // Turn 1 emits the shell call that trips the approval prompt; the
-        // hook's permission-deny effect answers it; turn 2 completes.
-        [
-          { kind: "tool", disposition: "rewrite", marker: "hooknostic-approval.txt" },
-          { kind: "text" },
-        ],
-      );
-      try {
-        await runProcess("git", ["init"], { cwd: dir, env: process.env, timeoutMs: 30_000 });
-        // The TUI drive: first-run dialogs (trust + API key), then the prompt,
-        // then leave the denial to the hook. Terminal state matters only for
-        // diagnostics; the trace is the assertion surface.
-        const claudePath = process.platform === "win32" ? "c:/users/ex0du/.local/bin/claude.exe" : "claude";
-        const pty = ptyModule!.spawn(
-          claudePath,
-          ["--plugin-dir", build.artifactDir],
-          {
-            name: "xterm-256color",
-            cols: 110,
-            rows: 34,
-            cwd: dir,
-            env: {
-              ...withoutCredentials(),
-              ANTHROPIC_API_KEY: "hooknostic-playback",
-              ANTHROPIC_BASE_URL: server.baseUrl,
-              CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-              CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
-              DISABLE_AUTOUPDATER: "1",
-              DISABLE_TELEMETRY: "1",
-              HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
-              HOOKNOSTIC_PLAYBACK_EFFECTS: "context-add,permission-deny",
-            } as NodeJS.ProcessEnv,
-          } as never,
-        );
-        let screen = "";
-        pty.onData((data: string) => {
-          screen += data;
-        });
-        const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
-        const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
-          const deadline = Date.now() + timeoutMs;
-          while (Date.now() < deadline) {
-            if (plainScreen().includes(marker)) return true;
-            await new Promise((r) => setTimeout(r, 500));
-          }
-          return false;
-        };
-        // Walk first-run dialogs. Order varies by local state (trust is always
-        // first; the API-key dialog only appears when the key isn't already
-        // accepted) — poll for each dialog's marker and only then acknowledge.
-        await waitUntil("Quicksafetycheck", 15_000);
-        pty.write("\u001b[B\r"); // select "Yes, I trust this folder"
-        // The API-key dialog, when it appears, starts with the word
-        // "customAPIkey" on 2.1.250.
-        if (await waitUntil("customAPIkey", 10_000)) {
-          await new Promise((r) => setTimeout(r, 800));
-          pty.write("\u001b[B\r");
-        }
-        // Wait for the TUI input line, then send the prompt.
-        await waitUntil("\u276f ", 20_000);
-        await new Promise((r) => setTimeout(r, 1_500));
-        pty.write("Use the shell tool once to create hooknostic-approval.txt.\r");
-        // The approval prompt appears; the plugin denies it. Wait out the turn.
-        await waitUntil("Doyouwanttoproceed", 30_000);
-        await new Promise((r) => setTimeout(r, 15_000));
-        try {
-          pty.kill();
-        } catch {
-          // already gone
-        }
-        const events = await traceEvents(build.tracePath).catch(() => [] as HookEventName[]);
-        expect(
-          events,
-          `permission.request never fired; requests: ${server.requests.length}; screen: ${JSON.stringify(
-            plainScreen().slice(0, 2600),
-          )}`,
-        ).toContain("permission.request");
-        // The deny must prevent the command: the marker never appears.
-        expect(
-          await readFile(join(dir, "hooknostic-approval.txt"), "utf8").catch(() => null),
-          "denied command executed anyway",
-        ).toBeNull();
-      } finally {
-        await server.close();
-      }
-    },
-  );
-
-  it(
-    "dispatches compaction hooks when the context fills",
-    {
-      timeout: 240_000,
-      skip:
-        cellLevel("context.compact.before.observe") === undefined ||
-        // The free loopback lane cannot deterministically fill the context:
-        // claude caps each shell result (~30k chars) and the drive caps turns
-        // (6), so the context never nears the 200k-token limit. The drive
-        // below stays for the manual `force_llm` lane, where real turns grow
-        // the context naturally. Skipped ≠ silent: the step summary reports
-        // the inconclusive lane every run.
-        true,
-    },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), `hooknostic-compact-${adapter!.id}-`));
-      tempDirs.push(dir);
-      const build = await buildPlaybackArtifact(adapter!, dir);
-      // Each scripted turn is a tool call whose result carries a huge fill
-      // payload (see HOOKNOSTIC_PLAYBACK_FILL in harness-playback.ts): after a
-      // handful of turns the context is near the limit and the harness must
-      // compact, dispatching the before/after hooks.
-      process.env["HOOKNOSTIC_PLAYBACK_FILL"] = "hooknostic-fill ".repeat(24_000);
-      try {
-        await runInstalledHarness(build, "rewrite", {
-          // The drive caps claude at 6 turns; "reached max turns" (exit 1) is
-          // the expected end state for this drive — the events are what matter.
-          script: Array.from({ length: 12 }, () => ({ kind: "tool" as const })),
-          expectedExitCodes: [0, 1],
-          verify: async () => {},
-        });
-      } finally {
-        delete process.env["HOOKNOSTIC_PLAYBACK_FILL"];
-      }
-      const events = await traceEvents(build.tracePath);
-      expect(
-        events,
-        `compaction never dispatched; events: ${JSON.stringify(events)}`,
-      ).toContain("context.compact.before");
-    },
-  );
 });
+
+// --- registry gate (ADR-0010) ---------------------------------------------
+// The coverage audit in testkit only checks that a capability cell appears in
+// some scenario's `covers`. This gate is the other half: every scenario in
+// the registry must have an executable drive registered above. A placeholder
+// entry — or a deleted drive — fails here instead of reporting phantom
+// coverage. Runs even when no harness is selected, so CI always sees it.
+it("every scenario in the registry has an executable drive", () => {
+  const missing = SCENARIOS.filter((scenario) => !scenarioDrives.has(scenario.id)).map(
+    (scenario) => scenario.id,
+  );
+  expect(missing, `scenarios without a drive: ${missing.join(", ")}`).toEqual([]);
+});
+
+// --- drive registrations ---------------------------------------------------
+
+scenarioDrive("lifecycle-observe", async () => {
+  const dir = await mkdtemp(join(tmpdir(), `hooknostic-harness-${adapter!.id}-`));
+  tempDirs.push(dir);
+  const build = await buildPlaybackArtifact(adapter!, dir);
+  await runInstalledHarness(build, "rewrite");
+
+  expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe(
+    "hooknostic-rewritten",
+  );
+  const events = await traceEvents(build.tracePath);
+  expect(events).toContain("session.start");
+  expect(events).toContain("prompt.before");
+  expect(events).toContain("tool.before");
+  expect(events).toContain("tool.after");
+  expect(events).toContain("turn.stop");
+  if (adapter!.shimExecution === "command") expect(events).toContain("session.end");
+});
+
+scenarioDrive("tool-before-block", async () => {
+  const dir = await mkdtemp(join(tmpdir(), `hooknostic-block-${adapter!.id}-`));
+  tempDirs.push(dir);
+  const build = await buildPlaybackArtifact(adapter!, dir);
+  await runInstalledHarness(build, "block");
+
+  await expect(access(join(dir, "hooknostic-blocked.txt"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  expect(await traceEvents(build.tracePath)).toContain("tool.before");
+});
+
+scenarioDrive("tool-before-rewrite", async () => {
+  const dir = await mkdtemp(join(tmpdir(), `hooknostic-rewrite-${adapter!.id}-`));
+  tempDirs.push(dir);
+  const build = await buildPlaybackArtifact(adapter!, dir);
+  await runInstalledHarness(build, "rewrite");
+
+  // The rewrite must reach process execution: the marker file carries the
+  // rewritten command's output, not the original's.
+  expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe(
+    "hooknostic-rewritten",
+  );
+  expect(await traceEvents(build.tracePath)).toContain("tool.before");
+});
+
+scenarioDrive("shell-tool-variants", async () => {
+  const dir = await mkdtemp(join(tmpdir(), `hooknostic-shellvariants-${adapter!.id}-`));
+  tempDirs.push(dir);
+  const build = await buildPlaybackArtifact(adapter!, dir);
+  await runInstalledHarness(build, "rewrite");
+
+  // Every shell shape the adapter classifies must be drivable end to end:
+  // the rewrite drive already proves the harness's default shell tool; the
+  // observe cells ride along every drive, so the trace is the assertion.
+  const events = await traceEvents(build.tracePath);
+  expect(events).toContain("tool.before");
+  expect(events).toContain("tool.after");
+});
+
+scenarioDrive(
+  "tool-error",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-failure-claude-"));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    await runInstalledHarness(build, "fail");
+
+    expect(await traceEvents(build.tracePath)).toContain("tool.error");
+  },
+  () => adapter?.id !== "claude",
+);
+
+scenarioDrive(
+  "session-start-context-add",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-ctxadd-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["context-add"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    // The agent request after session.start must carry the hook's
+    // injected context. The walk is protocol-agnostic: any string deep in
+    // the recorded request bodies matching the injected marker proves the
+    // harness delivered hook context to the model side.
+    const contents = requestContents(recordedRequests);
+    expect(
+      contents.some((text) => text.includes("hooknostic-context [session.start]")),
+      `injected session.start context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
+  },
+  () => cellLevel("session.start.context.add") === undefined,
+);
+
+scenarioDrive(
+  "prompt-before-context-add",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-promptctx-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["context-add"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    const contents = requestContents(recordedRequests);
+    expect(
+      contents.some((text) => text.includes("hooknostic-context [prompt.before]")),
+      `injected prompt.before context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
+  },
+  () => cellLevel("prompt.before.context.add") === undefined,
+);
+
+scenarioDrive(
+  "prompt-before-block",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-promptblock-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["block-prompt"],
+      prompt: "hooknostic-block-this-prompt: then stop.",
+      // Blocking the prompt is the success signal; Claude surfaces it as a
+      // nonzero exit ("the turn did not start"), a clean stop is fine too.
+      expectedExitCodes: [0, 1, 2],
+      // The absence of a model request IS the assertion here.
+      requireAgentRequest: false,
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    const events = await traceEvents(build.tracePath);
+    expect(events).toContain("prompt.before");
+    // Blocked before the agent turn: no model request ever carried tools
+    // (a blocked prompt means the model is never reached for the turn).
+    const agentRequests = recordedRequests.filter(
+      (request) =>
+        request !== null &&
+        typeof request === "object" &&
+        Array.isArray((request as Record<string, unknown>)["tools"]) &&
+        ((request as Record<string, unknown>)["tools"] as unknown[]).length > 0,
+    );
+    expect(agentRequests, "blocked prompt still reached the model side").toEqual([]);
+    expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8").catch(() => null)).toBeNull();
+  },
+  () => cellLevel("prompt.before.block") === undefined,
+);
+
+scenarioDrive(
+  "tool-before-context-add",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-toolctx-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["context-add"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    const contents = requestContents(recordedRequests);
+    expect(
+      contents.some((text) => text.includes("hooknostic-context [tool.before]")),
+      `injected tool.before context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
+  },
+  () => cellLevel("tool.before.context.add") === undefined,
+);
+
+scenarioDrive(
+  "tool-after-context-add",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-toolafterctx-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["context-add"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    const contents = requestContents(recordedRequests);
+    expect(
+      contents.some((text) => text.includes("hooknostic-context [tool.after]")),
+      `injected tool.after context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
+  },
+  () => cellLevel("tool.after.context.add") === undefined,
+);
+
+scenarioDrive(
+  "stop-prevent",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-stopprevent-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let servedTurns = 0;
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["prevent-stop-once"],
+      // Turn 2+ completes immediately: the prevented stop makes the
+      // harness re-prompt, and the model's completion ends the retry loop
+      // (the hook prevents exactly once -- see control.prevented).
+      script: [
+        { kind: "tool", disposition: "rewrite" },
+        { kind: "text", text: "Stop hook active; standing down now." },
+      ],
+      verify: async ({ server }) => {
+        servedTurns = server.turnCount;
+      },
+    });
+
+    expect(
+      servedTurns,
+      `stop prevention did not produce a second model turn (turns served: ${servedTurns})`,
+    ).toBeGreaterThanOrEqual(2);
+    expect(await traceEvents(build.tracePath)).toContain("turn.stop");
+  },
+  () =>
+    cellLevel("turn.stop.prevent") === undefined ||
+    // OpenCode's prevent channel is inert under `opencode run` (the process
+    // exits at session.idle before the posted turn can start) -- profile
+    // documents this; the opencode-serve lane covers it separately.
+    (adapter!.id === "opencode" && process.platform !== "linux"),
+);
+
+scenarioDrive(
+  "stop-notify",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-notify-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let driveStdout = "";
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["notify"],
+      // Claude renders systemMessage as a system notice in the stream
+      // (captured: .capture/claude-output); plain `-p` text mode discards it.
+      // stream-json requires --verbose.
+      extraArgs:
+        adapter!.id === "claude" ? ["--output-format", "stream-json", "--verbose"] : [],
+      capture: (raw) => {
+        driveStdout = raw.stdout;
+      },
+    });
+
+    const events = await traceEvents(build.tracePath);
+    expect(events).toContain("turn.stop");
+    // The notify marker must reach the harness's user-facing channel, not
+    // just be accepted on the wire. Claude renders systemMessage as a system
+    // notice in the stream (captured: .capture/claude-output); Codex accepts
+    // and discards it (captured: .capture/codex-output) -- the profile's
+    // "unsupported" is the assertion there.
+    if (adapter!.id === "claude") {
+      expect(
+        driveStdout,
+        `notify marker missing from claude stream output: ${JSON.stringify(driveStdout.slice(0, 2000))}`,
+      ).toContain("hooknostic-notify-marker");
+    }
+  },
+  () => cellLevel("turn.stop.notify") === undefined,
+);
+
+scenarioDrive(
+  "tool-after-output-replace",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcpreplace-codex-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    let servedUrls: string[] = [];
+    let driveStdout = "";
+    let driveStderr = "";
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["replace-outputs", "prevent-stop-once"],
+      mcpServerPath: McpFixtureServerPath,
+      // Codex registers stdio MCP servers asynchronously, so the first
+      // turn's tool list usually lacks the fixture tool. Turn 1 completes
+      // with text; the stop hook prevents that stop (exactly once, gated on
+      // stop_hook_active), which forces turn 2 — by then the MCP tool is
+      // registered and the script calls it. Turn 3 completes.
+      script: [
+        { kind: "text", text: "I will call the echo tool on the next step." },
+        { kind: "tool", toolName: "hooknostic_echo" },
+        { kind: "text", text: "Stop hook active; standing down now." },
+      ],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+        servedUrls = server.urls;
+      },
+      capture: (raw) => {
+        driveStdout = raw.stdout;
+        driveStderr = raw.stderr;
+      },
+    });
+
+    const events = await traceEvents(build.tracePath);
+    // The replaced output must be what the model sees in the next request.
+    const contents = requestContents(recordedRequests);
+    expect(
+      events,
+      `no tool.after\nstdout: ${driveStdout}\nstderr: ${driveStderr}\nurls: ${JSON.stringify(servedUrls)}\nevents: ${JSON.stringify(events)}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toContain("tool.after");
+    expect(
+      contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
+      `replaced MCP output missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
+  },
+  () =>
+    cellLevel("tool.after.output.replace") === undefined ||
+    adapter?.id !== "codex" || // the mcp-stdio drive is Codex-specific
+    // Scheduled loopback cannot drive this drive today: codex's tool
+    // router rejects scripted namespaced function calls from custom
+    // Responses providers with "unsupported call" (upstream issue
+    // openai/codex#31354 -- the OpenAI-native path rewrites namespaced
+    // calls, custom providers do not). The drive stays for the manual
+    // `force_llm` lane, where the OpenAI-native model emits the
+    // namespaced call Codex dispatches correctly. Skipped ≠ silent: the
+    // step summary reports the inconclusive lane every run.
+    !forceLlm,
+);
+
+scenarioDrive(
+  "permission-request",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-ptyperm-claude-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    const server = await startModelPlayback(
+      "anthropic-messages",
+      "rewrite",
+      // Turn 1 emits the shell call that trips the approval prompt; the
+      // hook's permission-deny effect answers it; turn 2 completes.
+      [
+        { kind: "tool", disposition: "rewrite", marker: "hooknostic-approval.txt" },
+        { kind: "text" },
+      ],
+    );
+    try {
+      await runProcess("git", ["init"], { cwd: dir, env: process.env, timeoutMs: 30_000 });
+      // The TUI drive: first-run dialogs (trust + API key), then the prompt,
+      // then leave the denial to the hook. Terminal state matters only for
+      // diagnostics; the trace is the assertion surface.
+      const pty = ptyModule!.spawn(
+        claudeBinaryPath(),
+        ["--plugin-dir", build.artifactDir],
+        {
+          name: "xterm-256color",
+          cols: 110,
+          rows: 34,
+          cwd: dir,
+          env: {
+            ...withoutCredentials(),
+            ANTHROPIC_API_KEY: "hooknostic-playback",
+            ANTHROPIC_BASE_URL: server.baseUrl,
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+            CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+            DISABLE_AUTOUPDATER: "1",
+            DISABLE_TELEMETRY: "1",
+            HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+            // permission-deny only: context-add would return first and the
+            // permission block branch would never run (the denial is the
+            // assertion, so the effect must not be shadowed).
+            HOOKNOSTIC_PLAYBACK_EFFECTS: "permission-deny",
+          } as NodeJS.ProcessEnv,
+        } as never,
+      );
+      let screen = "";
+      pty.onData((data: string) => {
+        screen += data;
+      });
+      const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+      const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          if (plainScreen().includes(marker)) return true;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return false;
+      };
+      // Walk first-run dialogs. Order varies by local state (trust is always
+      // first; the API-key dialog only appears when the key isn't already
+      // accepted) — poll for each dialog's marker and only then acknowledge.
+      await waitUntil("Quicksafetycheck", 15_000);
+      pty.write("\u001b[B\r"); // select "Yes, I trust this folder"
+      // The API-key dialog, when it appears, starts with the word
+      // "customAPIkey" on 2.1.250.
+      if (await waitUntil("customAPIkey", 10_000)) {
+        await new Promise((r) => setTimeout(r, 800));
+        pty.write("\u001b[B\r");
+      }
+      // Wait for the TUI input line, then send the prompt.
+      await waitUntil("\u276f ", 20_000);
+      await new Promise((r) => setTimeout(r, 1_500));
+      pty.write("Use the shell tool once to create hooknostic-approval.txt.\r");
+      // The approval prompt appears; the plugin denies it. The denial must be
+      // honored natively: the turn continues past the prompt and completes
+      // (the scripted turn-2 text renders), rather than the TUI being killed
+      // mid-flight with the marker absent for the wrong reason.
+      await waitUntil("Doyouwanttoproceed", 30_000);
+      // The TUI renders text with its own word layout: the space in "playback
+      // complete" is emitted as a cursor-right escape, so the plain screen
+      // carries "playbackcomplete" with no space (observed in the raw pty
+      // stream on 2.1.250). Match the space-free form; 45s covers the deny
+      // round-trip plus the second model turn.
+      const turnCompleted = await waitUntil("playbackcomplete", 45_000);
+      try {
+        pty.kill();
+      } catch {
+        // already gone
+      }
+      const events = await traceEvents(build.tracePath).catch(() => [] as HookEventName[]);
+      expect(
+        events,
+        `permission.request never fired; requests: ${server.requests.length}; screen: ${JSON.stringify(
+          plainScreen().slice(0, 2600),
+        )}`,
+      ).toContain("permission.request");
+      // The denial must be honored natively: the turn completed after the
+      // prompt (the harness continued past the denied call), and the denied
+      // command never executed.
+      expect(
+        turnCompleted,
+        `turn never completed after the denial; screen: ${JSON.stringify(plainScreen().slice(0, 2600))}`,
+      ).toBe(true);
+      expect(
+        await readFile(join(dir, "hooknostic-approval.txt"), "utf8").catch(() => null),
+        "denied command executed anyway",
+      ).toBeNull();
+    } finally {
+      await server.close();
+    }
+  },
+  () => !ptyApprovable() || adapter?.id !== "claude" || cellLevel("permission.request.block") === undefined,
+);
+
+scenarioDrive(
+  "context-compact",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-compact-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    // Each scripted turn is a tool call whose result carries a huge fill
+    // payload (see HOOKNOSTIC_PLAYBACK_FILL in harness-playback.ts): after a
+    // handful of turns the context is near the limit and the harness must
+    // compact, dispatching the before/after hooks.
+    process.env["HOOKNOSTIC_PLAYBACK_FILL"] = "hooknostic-fill ".repeat(24_000);
+    try {
+      await runInstalledHarness(build, "rewrite", {
+        // The drive caps claude at 6 turns; "reached max turns" (exit 1) is
+        // the expected end state for this drive — the events are what matter.
+        script: Array.from({ length: 12 }, () => ({ kind: "tool" as const })),
+        expectedExitCodes: [0, 1],
+        verify: async () => {},
+      });
+    } finally {
+      delete process.env["HOOKNOSTIC_PLAYBACK_FILL"];
+    }
+    const events = await traceEvents(build.tracePath);
+    expect(
+      events,
+      `compaction never dispatched; events: ${JSON.stringify(events)}`,
+    ).toContain("context.compact.before");
+  },
+  () =>
+    cellLevel("context.compact.before.observe") === undefined ||
+    // The free loopback lane cannot deterministically fill the context:
+    // claude caps each shell result (~30k chars) and the drive caps turns
+    // (6), so the context never nears the 200k-token limit. The drive
+    // below stays for the manual `force_llm` lane, where real turns grow
+    // the context naturally. Skipped ≠ silent: the step summary reports
+    // the inconclusive lane every run.
+    !forceLlm,
+);
+
+// --- tool-before-approval (pty-approval) ----------------------------------
+// Interactive-only: headless `-p` sessions decide without prompting. The
+// drive starts the interactive TUI under node-pty, walks the first-run
+// dialogs, sends a prompt whose scripted tool call trips the approval
+// prompt, and lets the hook's requestApproval surface the native prompt.
+scenarioDrive(
+  "tool-before-approval",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-ptyapproval-claude-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    const server = await startModelPlayback(
+      "anthropic-messages",
+      "rewrite",
+      // Turn 1 emits the shell call that trips the approval prompt; the
+      // hook's request-approval effect surfaces it; turn 2 completes.
+      [
+        { kind: "tool", disposition: "rewrite", marker: "hooknostic-approval.txt" },
+        { kind: "text" },
+      ],
+    );
+    try {
+      await runProcess("git", ["init"], { cwd: dir, env: process.env, timeoutMs: 30_000 });
+      const pty = ptyModule!.spawn(
+        claudeBinaryPath(),
+        ["--plugin-dir", build.artifactDir],
+        {
+          name: "xterm-256color",
+          cols: 110,
+          rows: 34,
+          cwd: dir,
+          env: {
+            ...withoutCredentials(),
+            ANTHROPIC_API_KEY: "hooknostic-playback",
+            ANTHROPIC_BASE_URL: server.baseUrl,
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+            CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+            DISABLE_AUTOUPDATER: "1",
+            DISABLE_TELEMETRY: "1",
+            HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+            HOOKNOSTIC_PLAYBACK_EFFECTS: "request-approval",
+          } as NodeJS.ProcessEnv,
+        } as never,
+      );
+      let screen = "";
+      pty.onData((data: string) => {
+        screen += data;
+      });
+      const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+      const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          if (plainScreen().includes(marker)) return true;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return false;
+      };
+      // Walk first-run dialogs (same order as the permission-request drive).
+      await waitUntil("Quicksafetycheck", 15_000);
+      pty.write("\u001b[B\r"); // select "Yes, I trust this folder"
+      if (await waitUntil("customAPIkey", 10_000)) {
+        await new Promise((r) => setTimeout(r, 800));
+        pty.write("\u001b[B\r");
+      }
+      await waitUntil("\u276f ", 20_000);
+      await new Promise((r) => setTimeout(r, 1_500));
+      pty.write("Use the shell tool once to create hooknostic-approval.txt.\r");
+      // The hook's requestApproval surfaces the native approval prompt.
+      const prompted = await waitUntil("Doyouwanttoproceed", 30_000);
+      // Approve it: the command must then execute.
+      pty.write("y\r");
+      await new Promise((r) => setTimeout(r, 15_000));
+      try {
+        pty.kill();
+      } catch {
+        // already gone
+      }
+      const events = await traceEvents(build.tracePath).catch(() => [] as HookEventName[]);
+      expect(
+        events,
+        `tool.before never fired; requests: ${server.requests.length}; screen: ${JSON.stringify(
+          plainScreen().slice(0, 2600),
+        )}`,
+      ).toContain("tool.before");
+      // The native prompt must have surfaced (the effect's whole point).
+      expect(
+        prompted,
+        `native approval prompt never appeared; screen: ${JSON.stringify(plainScreen().slice(0, 2600))}`,
+      ).toBe(true);
+      // Approving must let the command run: the marker appears.
+      expect(
+        await readFile(join(dir, "hooknostic-approval.txt"), "utf8").catch(() => null),
+        "approved command never executed",
+      ).toBe("hooknostic-original");
+    } finally {
+      await server.close();
+    }
+  },
+  () => !ptyApprovable() || adapter?.id !== "claude" || cellLevel("tool.before.requestApproval") === undefined,
+);
+
+// --- tool-after-block-continuation (loopback) ------------------------------
+// The scripted tool output carries the sentinel; the hook's
+// block-continuation effect answers it. The block reason must reach the
+// model (Claude: stderr; Codex: decision block), which decides whether to
+// stop — the turn ends either way, so the model-side marker is the assertion.
+scenarioDrive(
+  "tool-after-block-continuation",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-continuation-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "continuation", {
+      effects: ["block-continuation"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    const events = await traceEvents(build.tracePath);
+    expect(events).toContain("tool.after");
+    // The block reason must reach the model side (the harness decides
+    // whether to stop from it).
+    const contents = requestContents(recordedRequests);
+    expect(
+      contents.some((text) => text.includes("continuation blocked by harness playback")),
+      `block reason missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
+  },
+  () => cellLevel("tool.after.blockContinuation") === undefined,
+);
+
+// --- agent-subagent (subagent) ---------------------------------------------
+// The scripted model emits the harness's own subagent tool call (Claude
+// `Task`, Codex `spawn_agent`); the harness spawns the subagent and
+// dispatches agent.start/agent.stop to the artifact.
+scenarioDrive(
+  "agent-subagent",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-subagent-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    // The subagent tool name is per-harness: Claude 2.1.250 exposes `Agent`
+    // (the toolmap's EXACT table), Codex `spawn_agent`.
+    const subagentTool = adapter!.id === "codex" ? "spawn_agent" : "Agent";
+    await runInstalledHarness(build, "rewrite", {
+      script: [
+        { kind: "tool", toolName: subagentTool },
+        { kind: "text" },
+      ],
+    });
+
+    const events = await traceEvents(build.tracePath);
+    expect(
+      events,
+      `subagent lifecycle never dispatched; events: ${JSON.stringify(events)}`,
+    ).toContain("agent.start");
+    expect(events).toContain("agent.stop");
+  },
+  () =>
+    cellLevel("agent.start.observe") === undefined ||
+    cellLevel("agent.stop.observe") === undefined,
+);
+

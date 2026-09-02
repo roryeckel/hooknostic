@@ -31,7 +31,7 @@ export interface PlaybackBuild {
 }
 
 export type ModelProtocol = "anthropic-messages" | "openai-responses" | "openai-chat";
-export type PlaybackScenario = "rewrite" | "block" | "fail";
+export type PlaybackScenario = "rewrite" | "block" | "fail" | "continuation";
 // These model-side envelopes are constructed test inputs, not captured hook
 // payloads. Keep their evidence boundary and promotion procedure explicit in
 // .capture/harness-playback/README.md.
@@ -110,8 +110,14 @@ function playbackPluginSource(events: readonly HookEventName[]): string {
         : undefined,
       event === "permission.request" ? `"permission.request.block": "optional"` : undefined,
       event === "prompt.before" ? `"prompt.before.block": "optional"` : undefined,
-      event === "agent.stop" ? `"agent.stop.prevent": "optional"` : undefined,
-      event === "turn.stop" ? `"turn.stop.prevent": "optional"` : undefined,
+      event === "agent.stop"
+        ? `"agent.stop.prevent": "optional",
+        "agent.stop.notify": "optional"`
+        : undefined,
+      event === "turn.stop"
+        ? `"turn.stop.prevent": "optional",
+        "turn.stop.notify": "optional"`
+        : undefined,
       // context-add applies to every event with a context.add cell resolved
       // at build time; addContext on an unsupported event is a no-op error,
       // so only declare it where the resolution advertises the capability.
@@ -134,10 +140,17 @@ function playbackPluginSource(events: readonly HookEventName[]): string {
             typeof event.prompt === "string" && event.prompt.includes("hooknostic-block-this-prompt")) {
           return block("prompt blocked by harness playback");
         }
-        if (effects.includes("block-continuation") && "${event}" === "tool.after" &&
-            typeof event.output === "string" &&
-            event.output.includes("hooknostic-block-continuation")) {
-          return blockContinuation("continuation blocked by harness playback");
+        if (effects.includes("block-continuation") && "${event}" === "tool.after") {
+          const outputText =
+            typeof event.output === "string"
+              ? event.output
+              : typeof event.output === "object" && event.output !== null &&
+                  typeof (event.output as { stdout?: unknown }).stdout === "string"
+                ? (event.output as { stdout: string }).stdout
+                : "";
+          if (outputText.includes("hooknostic-block-continuation")) {
+            return blockContinuation("continuation blocked by harness playback");
+          }
         }
         if (effects.includes("replace-outputs") && "${event}" === "tool.after" &&
             event.tool?.kind === "mcp") {
@@ -249,9 +262,11 @@ export async function buildPlaybackArtifact(
         }
         if (event === "agent.stop") {
           declared["agent.stop.prevent"] = "optional" as const;
+          declared["agent.stop.notify"] = "optional" as const;
         }
         if (event === "turn.stop") {
           declared["turn.stop.prevent"] = "optional" as const;
+          declared["turn.stop.notify"] = "optional" as const;
         }
         const context = contextCapabilityFor(event);
         if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
@@ -448,13 +463,36 @@ function scriptedTool(
       : {};
   const key = ["command", "cmd"].find((candidate) => properties[candidate] !== undefined);
   if (key === undefined) {
-    throw new Error(`playback shell tool has no captured command key: ${JSON.stringify(tool)}`);
+    // Agent tools (Claude `Agent`, Codex `spawn_agent`) take a prompt, not a
+    // command. The subagent drive emits a minimal call; the harness's own
+    // router validates it against the live tool schema. `run_in_background:
+    // false` keeps the subagent synchronous so SubagentStart/SubagentStop
+    // both dispatch inside the turn.
+    const promptKey = ["prompt", "description"].find(
+      (candidate) => properties[candidate] !== undefined,
+    );
+    if (promptKey === undefined) {
+      throw new Error(`playback shell tool has no captured command key: ${JSON.stringify(tool)}`);
+    }
+    return {
+      name: toolName(tool)!,
+      arguments: JSON.stringify({
+        ...(properties["description"] !== undefined
+          ? { description: "Playback subagent probe" }
+          : {}),
+        [promptKey]: "Say the single word ready, then stop.",
+        ...(properties["subagent_type"] !== undefined ? { subagent_type: "general-purpose" } : {}),
+        ...(properties["run_in_background"] !== undefined ? { run_in_background: false } : {}),
+      }),
+    };
   }
   let script: string;
   if (scenario === "rewrite") {
     script = `require('node:fs').writeFileSync('${marker}','hooknostic-original')`;
   } else if (scenario === "block") {
     script = `require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')`;
+  } else if (scenario === "continuation") {
+    script = `process.stdout.write('hooknostic-block-continuation')`;
   } else {
     script = "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
   }
@@ -723,7 +761,7 @@ export async function startModelPlayback(
 ): Promise<ModelPlayback> {
   const turns: ScenarioScript =
     script ??
-    (scenario === "rewrite" || scenario === "block" || scenario === "fail"
+    (scenario === "rewrite" || scenario === "block" || scenario === "fail" || scenario === "continuation"
       ? [
           { kind: "tool", disposition: scenario },
           { kind: "text" },

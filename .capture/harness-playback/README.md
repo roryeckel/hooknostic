@@ -61,7 +61,13 @@ Use `claude`, `codex`, or `opencode` for `HOOKNOSTIC_PLAYBACK`, and
 Scenario-to-driver mapping and the coverage policy live in ADR-0010 and
 `docs/testing.md`. Two families are decided only by the manual `force_llm`
 lane, each for a recorded reason (Codex namespaced-call routing, context-fill
-impossibility); their drives remain in the suite behind explicit skips.
+impossibility); their drives remain in the suite behind
+`HOOKNOSTIC_PLAYBACK_FORCE_LLM=1`.
+
+Every scenario in the registry (`packages/testkit/src/scenarios.ts`) has an
+executable drive registered in `harness-playback.test.ts`; a gate test fails
+when a registry entry has no drive, so placeholder entries or deleted drives
+cannot report phantom coverage.
 
 ## What a passing run establishes
 
@@ -77,8 +83,17 @@ A successful run is a **live-probe** for only the installed version and harness:
   count — the loop terminator is the harness's own `stop_hook_active` flag
   read through the raw-event escape hatch, exactly as a portable hook must;
 - for Claude, an interactive permission prompt reaches the hook (pty lane) and
-  a denied command does not execute; and
-- for Claude, a nonzero shell exit reaches `tool.error`.
+  a denied command does not execute;
+- for Claude, a nonzero shell exit reaches `tool.error`;
+- for Claude, a `requestApproval` surfaces the native approval prompt and an
+  approved command executes (pty lane);
+- a blocked continuation surfaces its reason to the model, which decides
+  whether to stop;
+- a spawned subagent dispatches `agent.start`/`agent.stop` (Claude `Agent`,
+  Codex `spawn_agent`); and
+- a stop-time notification reaches the harness's user-facing channel where
+  claimed (Claude stream-json system notice), and stays inert where
+  explicitly unsupported (Codex).
 
 The committed fixture replay remains the evidence for hook payload shapes. The
 scripted model responses remain constructed even when a harness accepts them.

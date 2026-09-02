@@ -21,6 +21,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 2.1.238 | 2026-08-20 | captured | `fixtures/claude/2.1` | hook payload fixtures for every observable event, captured on Windows |
 | 2.1.250 | 2026-08-29 | live-probe | `.capture/claude-output` | Stop/SubagentStop output semantics (systemMessage rendering) verified live |
 | 2.1.250 | 2026-08-30 | captured | `fixtures/claude/2.1` | PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key |
+| 2.1.250 | 2026-09-01 | live-probe | `packages/cli/test/harness-playback.test.ts` | PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298) |
 
 ### Codex CLI
 

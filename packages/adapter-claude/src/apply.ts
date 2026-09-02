@@ -68,7 +68,7 @@ export function applyClaude(
 
   switch (terminal?.kind) {
     case "block": {
-      if (result.event === "tool.before" || result.event === "permission.request") {
+      if (result.event === "tool.before") {
         hookSpecificOutput["permissionDecision"] = "deny";
         hookSpecificOutput["permissionDecisionReason"] = terminal.reason;
         // Denial precedence, matching the other adapters: a rewrite recorded
@@ -76,6 +76,20 @@ export function applyClaude(
         // this, one portable plugin denied-and-discarded on two harnesses and
         // denied-carrying-a-rewrite here.
         delete hookSpecificOutput["updatedInput"];
+        hasJsonOutput = true;
+        break;
+      }
+      if (result.event === "permission.request") {
+        // PermissionRequest uses a DIFFERENT decision shape from PreToolUse:
+        // hookSpecificOutput.decision.behavior, not permissionDecision. The
+        // permissionDecision spelling is silently ignored on this event — the
+        // interactive prompt stays up and the turn never completes (observed
+        // live on 2.1.250, 2026-09-01, and independently reported upstream as
+        // anthropics/claude-code#19298). `message` carries the deny reason.
+        hookSpecificOutput["decision"] = {
+          behavior: "deny",
+          message: terminal.reason,
+        };
         hasJsonOutput = true;
         break;
       }

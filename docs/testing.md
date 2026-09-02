@@ -58,8 +58,10 @@ and their tests record exactly why:
   200k-token context). Same routing: the drive runs only on the `force_llm`
   lane.
 
-Skipped ≠ silent: harness-watch's workflow summary reports every
-inconclusive lane on every run.
+Both drives are gated on `HOOKNOSTIC_PLAYBACK_FORCE_LLM=1` (the manual-lane
+switch): unset, they skip with their recorded reason; set, they run against
+the real model. Skipped ≠ silent: harness-watch's workflow summary reports
+every inconclusive lane on every run.
 
 ## Verifying a newer harness build
 

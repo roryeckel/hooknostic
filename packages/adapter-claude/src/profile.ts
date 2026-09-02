@@ -33,6 +33,14 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/claude/2.1",
           what: "PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key",
         },
+        {
+          version: "2.1.250",
+          date: "2026-09-01",
+          method: "live-probe",
+          artifact: "packages/cli/test/harness-playback.test.ts",
+          what:
+            "PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298)",
+        },
       ],
       notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
     },
