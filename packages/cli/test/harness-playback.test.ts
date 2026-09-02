@@ -98,8 +98,34 @@ interface DriveOptions {
   mcpServerPath?: string;
   /** Captures the raw harness stdout/stderr for scenario-level diagnostics. */
   capture?: (raw: { stdout: string; stderr: string; code: number | null }) => void;
+  /**
+   * One message from the OpenCode serve transcript API (GET /session/:id/message).
+   */
+  serve?: {
+    /** The drive's own session id. */
+    sessionId: string;
+    /** Fresh transcript read; each call re-fetches. */
+    messages: () => Promise<ServeMessage[]>;
+  };
   /** Extra per-drive assertions once the session ended cleanly. */
-  verify?: (outcome: { server: Awaited<ReturnType<typeof startModelPlayback>>; dir: string }) => Promise<void>;
+  verify?: (outcome: {
+    server: Awaited<ReturnType<typeof startModelPlayback>>;
+    dir: string;
+    /** Present only on the opencode-serve lane. */
+    serve?: OpenCodeServeSession;
+  }) => Promise<void>;
+}
+
+/** A message row from OpenCode's GET /session/:id/message (smoke-proven shape). */
+interface ServeMessage {
+  info?: { role?: string };
+  parts?: { type?: string; text?: string }[];
+}
+
+/** Transcript access for drives on the opencode-serve lane. */
+interface OpenCodeServeSession {
+  sessionId: string;
+  messages: () => Promise<ServeMessage[]>;
 }
 
 /* eslint-disable no-control-regex -- ANSI stripping needs the escape control char */
@@ -437,7 +463,8 @@ async function runOpenCodeServePlayback(
     });
   };
   try {
-    const base = `http://127.0.0.1:${port}`;
+    const serveBase = `http://127.0.0.1:${port}`;
+    const base = serveBase;
     // Ready = /app answers 200 to OUR pinned credential. Reachability alone is
     // not enough: if a parent opencode daemon already listens nearby, a 401
     // from it would otherwise be mistaken for our server being slow, and the
@@ -498,7 +525,23 @@ async function runOpenCodeServePlayback(
       code: 0,
     });
     expect(server.errors, `loopback errors: ${JSON.stringify(server.errors)}`).toEqual([]);
-    await options.verify?.({ server, dir: build.artifactDir });
+    await options.verify?.({
+      server,
+      dir: build.artifactDir,
+      // The session transcript API, authenticated with the drive's pinned
+      // credential: GET returns every message (info.role + text parts), the
+      // surface where promptAsync-posted notifications land (captured:
+      // .capture/opencode-client -- user-role message, no turn of its own).
+      serve: {
+        sessionId: session.id,
+        messages: async () =>
+          (await (
+            await fetch(`${serveBase}/session/${session.id}/message`, {
+              headers: authHeaders,
+            })
+          ).json()) as ServeMessage[],
+      },
+    });
   } finally {
     await stopServer();
     await server.close();
@@ -966,6 +1009,63 @@ scenarioDrive(
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-notify-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
+    if (adapter!.id === "opencode") {
+      // OpenCode's notify channel is a promptAsync post into the session
+      // (captured: .capture/opencode-client) -- only a session that outlives
+      // the turn exposes the transcript it lands in, so this scenario's
+      // opencode lane runs on the opencode-serve driver (registry override).
+      let transcript: ServeMessage[] = [];
+      let servedTurns = 0;
+      await runOpenCodeServePlayback(build, "rewrite", {
+        effects: ["notify"],
+        verify: async ({ server, serve }) => {
+          servedTurns = server.turnCount;
+          // The post lands during session.idle, right as the drive's
+          // turn-count poll is finishing; poll the transcript briefly so the
+          // assertion reads state after the post, not a race with it.
+          const deadline = Date.now() + 30_000;
+          while (Date.now() < deadline) {
+            transcript = await serve!.messages();
+            if (
+              transcript.some((m) =>
+                (m.parts ?? []).some((p) => p.text?.includes("hooknostic-notify-marker")),
+              )
+            ) {
+              return;
+            }
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        },
+      });
+      const events = await traceEvents(build.tracePath);
+      expect(events).toContain("turn.stop");
+      const rendered = transcript.map((m) => ({
+        role: m.info?.role,
+        text: (m.parts ?? [])
+          .filter((p) => p.type === "text")
+          .map((p) => p.text)
+          .join(" "),
+      }));
+      // Approximate semantics, asserted as documented (profile rationale):
+      // the marker reaches the session transcript as a user-role message
+      // without driving a turn of its own (promptAsync noReply).
+      expect(
+        rendered.some((m) => m.text.includes("hooknostic-notify-marker")),
+        `notify marker missing from the serve transcript: ${JSON.stringify(rendered, null, 2).slice(0, 2000)}`,
+      ).toBe(true);
+      expect(
+        rendered.find((m) => m.text.includes("hooknostic-notify-marker"))?.role,
+        `notify message role unexpected: ${JSON.stringify(rendered, null, 2).slice(0, 2000)}`,
+      ).toBe("user");
+      // No extra turn: the scripted rewrite session serves exactly two agent
+      // requests (tool call + completion); a third would mean the noReply
+      // notification drove a turn of its own.
+      expect(
+        servedTurns,
+        `notify posted with noReply but drove an extra agent request (${servedTurns} served)`,
+      ).toBe(2);
+      return;
+    }
     let driveStdout = "";
     await runInstalledHarness(build, "rewrite", {
       effects: ["notify"],
@@ -991,6 +1091,18 @@ scenarioDrive(
         driveStdout,
         `notify marker missing from claude stream output: ${JSON.stringify(driveStdout.slice(0, 2000))}`,
       ).toContain("hooknostic-notify-marker");
+    }
+    // Inverted watch (ADR-0010 §4): Codex accepts the systemMessage on the
+    // wire and discards it (captured: .capture/codex-output, variant D --
+    // validated, logged "Stop Completed", rendered nowhere). If the marker
+    // ever appears in output, the profile's explicit "unsupported" has
+    // drifted and the adapter decision must be revisited with fresh
+    // evidence, not silently updated.
+    if (adapter!.id === "codex") {
+      expect(
+        driveStdout,
+        `turn.stop.notify was rated unsupported but the marker rendered: ${JSON.stringify(driveStdout.slice(0, 2000))}`,
+      ).not.toContain("hooknostic-notify-marker");
     }
   },
   () => cellLevel("turn.stop.notify") === undefined,

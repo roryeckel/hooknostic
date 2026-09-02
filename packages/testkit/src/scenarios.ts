@@ -188,6 +188,10 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     title: "stop-time notifications surface where claimed, and stay inert where explicitly unsupported",
     covers: ["agent.stop.notify", "turn.stop.notify"],
     driver: "loopback",
+    // OpenCode's notify channel posts into the session via promptAsync
+    // (noReply); only a session that outlives the turn exposes the
+    // transcript it lands in (see turn.stop.prevent's rationale).
+    driverByHarness: { opencode: "opencode-serve" },
   },
   {
     id: "shell-tool-variants",
