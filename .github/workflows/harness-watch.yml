@@ -376,7 +376,9 @@ jobs:
 
   report-failure:
     needs: [detect, verify]
-    if: needs.detect.outputs.count != '0'
+    # `always()` lets this job run after a failed verify leg; the count guard
+    # still skips it when detect produced no matrix entries.
+    if: ${{ always() && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
