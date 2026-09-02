@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -270,32 +270,7 @@ async function runOpenCodePlayback(
       env: process.env,
       timeoutMs: 30_000,
     });
-    await writeFile(
-      join(build.artifactDir, "opencode.json"),
-      JSON.stringify(
-        {
-          $schema: "https://opencode.ai/config.json",
-          model: "playback/hooknostic-playback",
-          enabled_providers: ["playback"],
-          provider: {
-            playback: {
-              npm: "@ai-sdk/openai-compatible",
-              name: "Hooknostic Playback",
-              options: { baseURL: `${server.baseUrl}/v1`, apiKey: "hooknostic-playback" },
-              models: {
-                "hooknostic-playback": {
-                  name: "Hooknostic Playback",
-                  limit: { context: 32_768, output: 4_096 },
-                },
-              },
-            },
-          },
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
+    await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl);
     const result = await runProcess(
       "opencode",
       [
@@ -348,6 +323,199 @@ async function runInstalledHarness(
   if (adapter!.id === "claude") await runClaudePlayback(build, scenario, options);
   else if (adapter!.id === "codex") await runCodexPlayback(build, scenario, options);
   else await runOpenCodePlayback(build, scenario, options);
+}
+
+/** The playback provider config every OpenCode drive needs in the artifact dir. */
+async function writeOpenCodeProviderConfig(
+  artifactDir: string,
+  baseUrl: string,
+): Promise<void> {
+  await writeFile(
+    join(artifactDir, "opencode.json"),
+    JSON.stringify(
+      {
+        $schema: "https://opencode.ai/config.json",
+        model: "playback/hooknostic-playback",
+        enabled_providers: ["playback"],
+        provider: {
+          playback: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Hooknostic Playback",
+            options: { baseURL: `${baseUrl}/v1`, apiKey: "hooknostic-playback" },
+            models: {
+              "hooknostic-playback": {
+                name: "Hooknostic Playback",
+                limit: { context: 32_768, output: 4_096 },
+              },
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+}
+
+/**
+ * The opencode-serve driver (ADR-0010): a persistent `opencode serve` instead
+ * of `opencode run`. `run` exits at session.idle, before a promptAsync-posted
+ * turn can start, so stop prevention is inert there (captured:
+ * .capture/opencode-client) — the server lane is the only vehicle where the
+ * prevent channel is observable. The session is driven over OpenCode's HTTP
+ * API; the plugin posts into the same server from inside the process.
+ */
+async function runOpenCodeServePlayback(
+  build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
+  scenario: PlaybackScenario,
+  options: DriveOptions = {},
+): Promise<void> {
+  const server = await startModelPlayback("openai-chat", scenario, options.script);
+  // The serve lane must be an independent instance. The parent environment of
+  // an opencode-hosted session carries OPENCODE=1 / OPENCODE_PID (the host's
+  // own `opencode serve`); anything left set links this child to that daemon
+  // instead of starting fresh — and the daemon's credential is enforced on its
+  // port, so a reachability-only probe can silently interrogate the wrong
+  // server. Strip the linkage, pin a known Basic credential for the drive's
+  // own server (OPENCODE_SERVER_PASSWORD is otherwise inherited from whatever
+  // host launched us), and verify identity via the session API below.
+  const port = await freePort();
+  const servePassword = "hooknostic-playback-serve";
+  const serveEnv: Record<string, string | undefined> = {
+    ...withoutCredentials(),
+    PWD: build.artifactDir,
+    // Same env contract as the `opencode run` drive: the generated plugin
+    // traces to this file and gates its effects on this list.
+    HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+    ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+    OPENCODE_SERVER_PASSWORD: servePassword,
+    OPENCODE_SERVER_USERNAME: "hooknostic",
+  };
+  delete serveEnv["OPENCODE"];
+  delete serveEnv["OPENCODE_PID"];
+  delete serveEnv["OPENCODE_BINARY"];
+  delete serveEnv["OPENCODE_CONFIG_CONTENT"];
+  const authHeaders = {
+    authorization: `Basic ${Buffer.from(`hooknostic:${servePassword}`).toString("base64")}`,
+  };
+  // git init + provider config must precede the server: the plugin resolves
+  // from the project directory at server start.
+  await runProcess("git", ["init"], {
+    cwd: build.artifactDir,
+    env: process.env,
+    timeoutMs: 30_000,
+  });
+  await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl);
+  const child = spawn("opencode", ["serve", "--port", String(port), "--print-logs"], {
+    cwd: build.artifactDir,
+    shell: process.platform === "win32",
+    // PWD must agree with cwd (validated live on 1.18.25: opencode trusts an
+    // inherited PWD and would run the session in a second instance's project,
+    // where no plugins exist). The runOpenCodePlayback drive already does this
+    // for the same reason.
+    env: serveEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let serveStderr = "";
+  let serveStdout = "";
+  child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (serveStderr += chunk));
+  child.stdout?.setEncoding("utf8").on("data", (chunk: string) => (serveStdout += chunk));
+  const stopServer = async (): Promise<void> => {
+    if (child.pid === undefined) return;
+    if (process.platform !== "win32") {
+      child.kill();
+      return;
+    }
+    // With shell:true the handle is cmd.exe; kill() would orphan the real
+    // server holding the port and scratch dir (same tree-kill the smoke uses).
+    await new Promise<void>((resolvePromise) => {
+      spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" }).on(
+        "close",
+        () => resolvePromise(),
+      );
+    });
+  };
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    // Ready = /app answers 200 to OUR pinned credential. Reachability alone is
+    // not enough: if a parent opencode daemon already listens nearby, a 401
+    // from it would otherwise be mistaken for our server being slow, and the
+    // drive would interrogate the wrong instance (the daemon rejects foreign
+    // credentials). A 200 to the pinned credential can only come from the
+    // server we just spawned with that exact env.
+    let lastStatus: number | string = "unreachable";
+    let up = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      try {
+        const response = await fetch(`${base}/app`, { headers: authHeaders });
+        lastStatus = response.status;
+        if (response.ok) {
+          up = true;
+          break;
+        }
+      } catch (error) {
+        lastStatus = String(error).slice(0, 120);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(
+      up,
+      `opencode serve never became ready with the drive's pinned credential (last probe: ${lastStatus})\nstdout: ${serveStdout.slice(0, 1500)}\nstderr: ${serveStderr.slice(-1500)}`,
+    ).toBe(true);
+
+    const session = (await (
+      await fetch(`${base}/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders },
+        body: "{}",
+      })
+    ).json()) as { id: string };
+
+    await fetch(`${base}/session/${session.id}/message`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders },
+      body: JSON.stringify({
+        model: { providerID: "playback", modelID: "hooknostic-playback" },
+        parts: [{ type: "text", text: options.prompt ?? playbackPrompt(scenario) }],
+      }),
+    });
+
+    // The prevent post happens during session.idle, which resolves only after
+    // the prompt request returns; the posted turn then runs against the
+    // loopback server. Give it room, as the capture procedure does.
+    const postedTurns = await (async (): Promise<number> => {
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        if (server.turnCount >= 2) return server.turnCount;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      return server.turnCount;
+    })();
+    options.capture?.({
+      stdout: `served turns: ${postedTurns}`,
+      stderr: serveStderr,
+      code: 0,
+    });
+    expect(server.errors, `loopback errors: ${JSON.stringify(server.errors)}`).toEqual([]);
+    await options.verify?.({ server, dir: build.artifactDir });
+  } finally {
+    await stopServer();
+    await server.close();
+  }
+}
+
+/** A free TCP port the OS is not holding (bind-and-close race is acceptable here). */
+async function freePort(): Promise<number> {
+  const net = await import("node:net");
+  return new Promise((resolvePromise, rejectPromise) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const address = srv.address() as { port: number };
+      srv.close(() => resolvePromise(address.port));
+    });
+    srv.on("error", rejectPromise);
+  });
 }
 
 /**
@@ -735,19 +903,36 @@ scenarioDrive(
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
     let servedTurns = 0;
-    await runInstalledHarness(build, "rewrite", {
-      effects: ["prevent-stop-once"],
-      // Turn 2+ completes immediately: the prevented stop makes the
-      // harness re-prompt, and the model's completion ends the retry loop
-      // (the hook prevents exactly once -- see control.prevented).
-      script: [
-        { kind: "tool", disposition: "rewrite" },
-        { kind: "text", text: "Stop hook active; standing down now." },
-      ],
-      verify: async ({ server }) => {
-        servedTurns = server.turnCount;
-      },
-    });
+    if (adapter!.id === "opencode") {
+      // OpenCode's prevent channel is inert under `opencode run` (the process
+      // exits at session.idle before the posted turn can start) — the
+      // opencode-serve driver lane is the executable form of this scenario
+      // (captured: .capture/opencode-client).
+      await runOpenCodeServePlayback(build, "rewrite", {
+        effects: ["prevent-stop-once"],
+        script: [
+          { kind: "tool", disposition: "rewrite" },
+          { kind: "text", text: "Stop hook active; standing down now." },
+        ],
+        verify: async ({ server }) => {
+          servedTurns = server.turnCount;
+        },
+      });
+    } else {
+      await runInstalledHarness(build, "rewrite", {
+        effects: ["prevent-stop-once"],
+        // Turn 2+ completes immediately: the prevented stop makes the
+        // harness re-prompt, and the model's completion ends the retry loop
+        // (the hook prevents exactly once -- see control.prevented).
+        script: [
+          { kind: "tool", disposition: "rewrite" },
+          { kind: "text", text: "Stop hook active; standing down now." },
+        ],
+        verify: async ({ server }) => {
+          servedTurns = server.turnCount;
+        },
+      });
+    }
 
     expect(
       servedTurns,
@@ -755,12 +940,7 @@ scenarioDrive(
     ).toBeGreaterThanOrEqual(2);
     expect(await traceEvents(build.tracePath)).toContain("turn.stop");
   },
-  () =>
-    cellLevel("turn.stop.prevent") === undefined ||
-    // OpenCode's prevent channel is inert under `opencode run` (the process
-    // exits at session.idle before the posted turn can start) -- profile
-    // documents this; the opencode-serve lane covers it separately.
-    (adapter!.id === "opencode" && process.platform !== "linux"),
+  () => cellLevel("turn.stop.prevent") === undefined,
 );
 
 scenarioDrive(
