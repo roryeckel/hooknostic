@@ -10,9 +10,9 @@
 //     [<harness>] [--version <v>] [--force] [--matrix]
 //
 // --matrix emits a GitHub Actions matrix.include array (dispatch wiring):
-// every assessed entry is included -- the workflow's record/report legs gate
-// on newerAvailable themselves, and `--force`/`--version` dispatches need an
-// entry even when nothing is newer.
+// entries with newerAvailable are included; a quiet week is {"include":[]}.
+// A pinned --version or --force dispatch keeps its entry even when nothing
+// is newer — the human asked for that leg explicitly.
 //
 // The npm lookup is CLI-only; `assessRelease` is pure and unit-tested.
 import { execFileSync } from "node:child_process";
@@ -99,6 +99,16 @@ export function fetchLatestDistTag(pkg, execFile = execFileSync) {
   return String(out).trim();
 }
 
+/**
+ * Matrix inclusion predicate. A quiet week is `{"include":[]}`; dispatches
+ * that pin a version or force the LLM lane keep their entry even when
+ * nothing is newer (the human asked for that leg explicitly).
+ */
+export function shouldInclude(assessment, { force, pinned } = {}) {
+  if (pinned || force) return true;
+  return assessment.newerAvailable;
+}
+
 function parseArgs(argv) {
   const opts = { harness: undefined, version: undefined, force: false, matrix: false };
   for (let i = 0; i < argv.length; i += 1) {
@@ -157,7 +167,11 @@ async function main() {
       latest,
       semver,
     });
-    if (opts.matrix || opts.force || assessment.newerAvailable) {
+    // A quiet week emits {"include":[]}; every matrix job then gates on
+    // count == '0' and skips. Pinned (--version) or forced (--force)
+    // dispatches keep their entry even when nothing is newer — the human
+    // asked for that leg explicitly.
+    if (shouldInclude(assessment, { force: opts.force, pinned: opts.version !== undefined })) {
       entries.push(assessment);
     }
   }

@@ -3,6 +3,7 @@ import {
   assessRelease,
   classifyJump,
   rollingPlaybackVersion,
+  shouldInclude,
 } from "./check-harness-releases.mjs";
 import semver from "semver";
 
@@ -107,5 +108,31 @@ describe("assessRelease", () => {
     const r = assessRelease({ ...BASE, latest: "0.147.0" });
     expect(r.playbackBaseline).toBe("0.148.0");
     expect(r.newerAvailable).toBe(false);
+  });
+});
+
+describe("shouldInclude (matrix inclusion)", () => {
+  const NEWER = { newerAvailable: true };
+  const QUIET = { newerAvailable: false };
+
+  it("includes entries with a newer build; a quiet week is an empty matrix", () => {
+    expect(shouldInclude(NEWER)).toBe(true);
+    expect(shouldInclude(QUIET)).toBe(false);
+  });
+
+  it("a pinned dispatch keeps its entry even when nothing is newer", () => {
+    // The human asked for that leg explicitly (--version <v>).
+    expect(shouldInclude(QUIET, { pinned: true })).toBe(true);
+  });
+
+  it("a forced dispatch keeps its entry even when nothing is newer", () => {
+    expect(shouldInclude(QUIET, { force: true })).toBe(true);
+  });
+
+  it("flags do not force-include an entry that already passed through newerAvailable", () => {
+    // Inclusion must never depend on anything but newerAvailable plus the
+    // explicit dispatch flags — no accidental widening via other truthy
+    // fields on the assessment object.
+    expect(shouldInclude({ newerAvailable: false, jump: "major", latest: "1.0.0" })).toBe(false);
   });
 });
