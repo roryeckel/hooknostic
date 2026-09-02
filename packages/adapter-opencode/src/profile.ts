@@ -54,6 +54,12 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
             'response "reject" (API true, command not executed, turn halts). The 1.18 ' +
             "permission fixtures' callback-envelope shape is type-derived, not captured.",
         },
+        // scheduled-playback: at most one rolling live-probe record, rewritten
+        // in place by scripts/record-playback-validation.mjs (harness-watch
+        // workflow). Git history is the audit trail; see ADR-0009 and
+        // .capture/harness-playback/README.md. Keep field order stable.
+        // scheduled-playback:begin
+        // scheduled-playback:end
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },

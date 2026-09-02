@@ -171,10 +171,12 @@ async function main() {
     baseline = existing.version;
   }
 
-  // Same-version no-op (idempotent rerun).
+  // Same-version no-op (idempotent rerun). Machine-readable outcome line:
+  // the harness-watch record job greps `outcome=noop` to skip the commit
+  // leg cleanly instead of failing on an empty index.
   if (existing !== undefined && existing.version === version) {
     process.stdout.write(
-      `${harness}: rolling record already at ${version} -- no-op\n`,
+      `${harness}: rolling record already at ${version} -- no-op\noutcome=noop\n`,
     );
     process.exit(0);
   }
@@ -193,7 +195,7 @@ async function main() {
   }
   writeFileSync(resolve(ROOT, entry.profilePath), next, "utf8");
   process.stdout.write(
-    `WROTE ${harness} rolling record -> ${version} (${date})\n` +
+    `WROTE ${harness} rolling record -> ${version} (${date})\noutcome=wrote\n` +
       `next: pnpm build && node scripts/generate-harness-support.mjs && pnpm lint && pnpm test\n`,
   );
 }

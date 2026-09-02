@@ -1,0 +1,436 @@
+name: Harness watch
+
+# Scheduled harness-version compatibility automation (issue #1, plan §7).
+# Lanes, in increasing cost:
+#   detect   — free, secret-free: npm dist-tags vs the playback baseline
+#              (max(referenceVersion, rolling scheduled-playback record),
+#              ADR-0009). A quiet week emits an empty matrix; every matrix
+#              job carries `if: needs.detect.outputs.count != '0'` because
+#              {"include":[]} cannot expand.
+#   verify   — free, ZERO secrets: installs the newer harness build
+#              (--ignore-scripts, persist-credentials: false — the installed
+#              package must never see a token) and runs the model-free
+#              playback suite against it. Outcome flows downstream via an
+#              uploaded artifact, not job outputs (matrix jobs share one
+#              outputs map).
+#   record   — PAT job that never installs or runs the harness: rewrites the
+#              rolling scheduled-playback record (ADR-0009) on pass, opens or
+#              updates harness-watch/<harness>, optionally auto-merges via the
+#              HARNESS_WATCH_AUTOMERGE repo variable. Range-extension exits
+#              (3) file a deduped issue with GITHUB_TOKEN — the PAT
+#              deliberately has no Issues scope.
+#   report-failure — GITHUB_TOKEN only: deduped issue on playback failure.
+#
+# Drift capture-compare and the paid LLM lane are later plan steps (7); they
+# will gate on `needs.verify` the same way. The version-facts hard rule
+# (ADR-0008) holds end to end: nothing here moves referenceVersion,
+# fixtureDir, recommendedRange, or profile ranges.
+#
+# Repo configuration (ops, not commits): secrets HARNESS_WATCH_PAT
+# (fine-grained: this repo, Contents RW + Pull requests RW); repo variable
+# HARNESS_WATCH_AUTOMERGE (opt-in auto-merge, off by default). The
+# harness-watch label is created by this workflow's first record/report run
+# if missing (gh label create || true in each writer).
+
+on:
+  schedule:
+    # Weekly, Monday 05:23 UTC — off-minute against the top-of-hour stampede.
+    # GitHub disables scheduled workflows after 60 days of repo inactivity;
+    # workflow_dispatch is the backstop (docs/harness-watch.md runbook).
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: "Harness filter (claude|codex|opencode); empty = all"
+        required: false
+        default: ""
+      version:
+        description: "Pin the version under test (overrides the npm dist-tag)"
+        required: false
+        default: ""
+      force_llm:
+        description: "Reserved for the paid LLM drift lane (plan step 7)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-watch
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    # Fork no-op: scheduled runs on forks would otherwise burn minutes.
+    if: github.repository == 'roryeckel/hooknostic'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      count: ${{ steps.detect.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Detect newer harness builds
+        id: detect
+        shell: bash
+        run: |
+          ARGS=()
+          if [ -n "${{ inputs.harness }}" ]; then ARGS+=("${{ inputs.harness }}"); fi
+          if [ -n "${{ inputs.version }}" ]; then ARGS+=(--version "${{ inputs.version }}"); fi
+          if [ "${{ inputs.force_llm }}" = "true" ]; then ARGS+=(--force); fi
+          # --matrix: every assessed entry is included; downstream legs gate on
+          # newerAvailable themselves, and pinned/forced dispatches need an
+          # entry even when nothing is newer.
+          OUT="$(node --experimental-strip-types scripts/check-harness-releases.mjs "${ARGS[@]}" --matrix)"
+          echo "$OUT"
+          COUNT="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).include.length))' "$OUT")"
+          {
+            echo "matrix=$(echo "$OUT" | tr -d '\n')"
+            echo "count=$COUNT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Assert count emitted
+        shell: bash
+        run: |
+          if [ -z "${{ steps.detect.outputs.count }}" ]; then echo "detect produced no count"; exit 1; fi
+
+  verify:
+    needs: detect
+    if: needs.detect.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The installed third-party package must never see a token.
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+
+      - name: Install repository dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install newer harness build
+        # --ignore-scripts: no third-party postinstall runs. One retry for
+        # registry flakiness. A harness that genuinely needs install scripts
+        # fails here loudly; the documented fallback keeps this job
+        # secret-free either way (docs/harness-watch.md).
+        run: |
+          npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@${{ matrix.latest }}" \
+            || npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@${{ matrix.latest }}"
+
+      - name: Bundle SDK
+        run: pnpm --filter @hooknostic/sdk run bundle
+
+      - name: Bundle CLI
+        run: pnpm --filter hooknostic run bundle
+
+      - name: Model-free playback against the newer build
+        id: playback
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+        env:
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
+          # Deliberately blank: the test routes model traffic to loopback.
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+
+      - name: Capture outcome
+        if: always()
+        shell: bash
+        run: |
+          # Distinguish install-failure from playback-failure in the artifact.
+          # steps.playback.outcome is "" when the step never ran (an earlier
+          # step failed) — that is an install/toolchain failure, not playback.
+          if [ "${{ steps.playback.outcome }}" = "success" ]; then
+            outcome=pass
+          elif [ -n "${{ steps.playback.outcome }}" ]; then
+            outcome=playback-failure
+          else
+            outcome=install-failure
+          fi
+          printf '{"harness":"%s","latest":"%s","outcome":"%s","stepOutcome":"%s"}\n' \
+            "${{ matrix.harness }}" "${{ matrix.latest }}" "$outcome" "${{ steps.playback.outcome }}" \
+            > watch-outcome-${{ matrix.harness }}.json
+          cat watch-outcome-${{ matrix.harness }}.json
+
+      - name: Upload outcome artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+          path: watch-outcome-${{ matrix.harness }}.json
+          retention-days: 7
+
+  record:
+    needs: [detect, verify]
+    if: needs.detect.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Every gh call authenticates as the PAT, not just git — the pattern
+      # release-prepare.yml demonstrates. Default-token pushes don't trigger
+      # CI, and the PR's CI gate relies on the PAT push. The PAT deliberately
+      # has no Issues scope: the range-extension issue is filed with
+      # GITHUB_TOKEN in its own step.
+      GH_TOKEN: ${{ secrets.HARNESS_WATCH_PAT }}
+    # Matrix jobs share one outputs map, so per-harness results flow through
+    # artifacts; this job re-runs the same matrix with a leading gate that
+    # downloads the outcome and skips non-passing legs.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - name: Download the verify outcome artifact
+        id: artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+
+      - name: Gate on pass
+        id: gate
+        shell: bash
+        run: |
+          if [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            echo "no outcome artifact — verify leg did not complete; skipping record"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif jq -e '.outcome == "pass"' watch-outcome-${{ matrix.harness }}.json > /dev/null; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome was $(jq -r .outcome watch-outcome-${{ matrix.harness }}.json) — skipping record"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.gate.outputs.skip == 'false'
+        with:
+          token: ${{ secrets.HARNESS_WATCH_PAT }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        if: steps.gate.outputs.skip == 'false'
+
+      - uses: actions/setup-node@v7
+        if: steps.gate.outputs.skip == 'false'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip == 'false'
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure harness-watch label exists
+        if: steps.gate.outputs.skip == 'false'
+        run: gh label create harness-watch --description "Scheduled harness-version verification" --color 0E8A16 || true
+
+      - name: Idempotency — skip if the open PR already names this version
+        id: pr
+        if: steps.gate.outputs.skip == 'false'
+        shell: bash
+        run: |
+          BRANCH="harness-watch/${{ matrix.harness }}"
+          EXISTING="$(gh pr view "$BRANCH" --json headRefName,title --jq '.title // ""' 2>/dev/null || true)"
+          if [[ "$EXISTING" == *"${{ matrix.latest }}"* ]]; then
+            echo "PR already names ${{ matrix.latest }} — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rewrite the rolling validation record
+        id: record
+        if: steps.gate.outputs.skip == 'false' && steps.pr.outputs.skip == 'false'
+        shell: bash
+        run: |
+          set +e
+          # First invocation writes the record (or is the idempotent no-op
+          # rerun); its machine-readable outcome line drives the leg routing.
+          OUT="$(node --experimental-strip-types scripts/record-playback-validation.mjs \
+            "${{ matrix.harness }}" "${{ matrix.latest }}")"
+          CODE=$?
+          set -e
+          echo "$OUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = "3" ]; then
+            echo "outcome=range" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = "4" ]; then
+            echo "outcome=noop" >> "$GITHUB_OUTPUT"
+          elif echo "$OUT" | grep -q "outcome=noop"; then
+            echo "outcome=noop" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = "0" ]; then
+            echo "outcome=wrote" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=error" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: File the range-extension issue (exit 3)
+        if: steps.record.outputs.outcome == 'range'
+        env:
+          # The PAT deliberately lacks Issues scope; the default token files
+          # and dedupes the issue.
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} is outside every profile range"
+          FOUND="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq 'length')"
+          if [ "$FOUND" != "0" ]; then
+            echo "issue exists — commenting"
+            gh issue comment "$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number')" \
+              --body "Still outside every profile range on this run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            exit 0
+          fi
+          gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<'EOF'
+          The scheduled verification found a newer harness build whose version does not satisfy any profile range.
+
+          That means a **major** harness change is out, and the adapter's validated `range` cannot be extended by automation — range extension requires real captured evidence via the harness-capture skill (`.agents/skills/harness-capture/SKILL.md`).
+
+          Runbook:
+          - [ ] Install the build locally and capture real sessions (`.capture/<harness>/README.md`)
+          - [ ] Diff payload shapes against committed fixtures (`scripts/compare-capture-shapes.mjs`)
+          - [ ] If the profiles still hold: extend the profile `range` with the new ValidationRecord, regenerate `docs/harness-support.md`
+          - [ ] If they do not: re-rate affected cells with rationale before extending anything
+          EOF
+          )"
+
+      - name: Stop when there is nothing to record
+        if: steps.record.outputs.outcome == 'noop'
+        shell: bash
+        run: |
+          echo "nothing to record (already recorded, no-op, or pinned-older dispatch) — skipping commit/PR"
+
+      - name: Fail on unexpected record-script exits
+        if: steps.record.outputs.outcome == 'error'
+        run: exit 1
+
+      - name: Verify the change
+        if: steps.record.outputs.outcome == 'wrote'
+        shell: bash
+        run: |
+          pnpm build;  BUILD=$?
+          node scripts/generate-harness-support.mjs;  GEN=$?
+          pnpm lint;   LINT=$?
+          pnpm test;   TEST=$?
+          echo "BUILD=$BUILD GEN=$GEN LINT=$LINT TEST=$TEST"
+          [ "$BUILD" = "0" ] && [ "$GEN" = "0" ] && [ "$LINT" = "0" ] && [ "$TEST" = "0" ]
+
+      - name: Commit, push, open or update PR
+        if: steps.record.outputs.outcome == 'wrote'
+        shell: bash
+        run: |
+          BRANCH="harness-watch/${{ matrix.harness }}"
+          git config user.name "harness-watch"
+          git config user.email "harness-watch@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "empty index — nothing to commit (should not happen after outcome=wrote)"; exit 1
+          fi
+          git add -A
+          git commit -m "chore(harness-watch): record ${{ matrix.harness }} ${{ matrix.latest }} playback validation"
+          git push origin "$BRANCH" --force
+          BODY="$(cat <<EOF
+          Scheduled model-free playback passed against \`${{ matrix.harness }} ${{ matrix.latest }}\` (baseline: \`${{ matrix.playbackBaseline }}\`, reference: \`${{ matrix.referenceVersion }}\`, jump: \`${{ matrix.jump }}\`).
+
+          - Rolling \`live-probe\` record rewritten in place (ADR-0009); \`docs/harness-support.md\` regenerated.
+          - Version facts untouched: \`referenceVersion\`, \`fixtureDir\`, ranges require captured evidence (ADR-0008).
+          - Merging is the human decision; set repo variable \`HARNESS_WATCH_AUTOMERGE=true\` to gate auto-merge.
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          )"
+          EXISTING="$(gh pr view "$BRANCH" --json url --jq '.url // ""' 2>/dev/null || true)"
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$BRANCH" --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
+          else
+            gh pr create --base master --head "$BRANCH" --label harness-watch \
+              --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
+          fi
+
+      - name: Auto-merge (opt-in via repo variable)
+        if: steps.record.outputs.outcome == 'wrote' && vars.HARNESS_WATCH_AUTOMERGE == 'true'
+        run: gh pr merge "harness-watch/${{ matrix.harness }}" --auto --squash
+
+  report-failure:
+    needs: [detect, verify]
+    if: needs.detect.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - name: Download the verify outcome artifact
+        id: artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+
+      - name: Resolve verify outcome
+        id: outcome
+        shell: bash
+        run: |
+          # Legs without an artifact (e.g. a matrix leg skipped by the gate)
+          # must not report failure.
+          if [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            echo "no outcome artifact — skipping"; echo "failed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
+          if [ "$OUTCOME" = "pass" ]; then echo "failed=false" >> "$GITHUB_OUTPUT"; else echo "failed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v7
+        if: steps.outcome.outputs.failed == 'true'
+
+      - name: Deduped failure issue
+        if: steps.outcome.outputs.failed == 'true'
+        shell: bash
+        run: |
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} failed model-free playback"
+          NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
+          LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$NUMBER" ]; then
+            gh issue comment "$NUMBER" --body "Failed again: $LINK"
+            exit 0
+          fi
+          gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<EOF
+          The scheduled model-free playback failed for \`${{ matrix.harness }} ${{ matrix.latest }}\`.
+
+          Outcome: \`$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)\` (install-failure vs playback-failure matters — install failure is a packaging problem, playback failure is behavior drift).
+
+          Run: $LINK
+
+          Runbook:
+          - [ ] Reproduce locally: \`HOOKNOSTIC_PLAYBACK=${{ matrix.harness }} HOOKNOSTIC_PLAYBACK_VERSION=${{ matrix.latest }} pnpm exec vitest run packages/cli/test/harness-playback.test.ts\` (bundle first — docs/testing.md)
+          - [ ] If real harness drift: follow the harness-capture skill; fixtures and ranges extend only with captured evidence
+          - [ ] If an adapter regression: fix, mutation-verify, let the next scheduled run close this issue
+          - [ ] If install failure: check \`--ignore-scripts\` viability for this package (docs/harness-watch.md)
+          EOF
+          )"
