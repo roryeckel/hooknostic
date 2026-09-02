@@ -69,6 +69,12 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
             "therefore unsupported on the hook channel; the output parser also shows the MCP " +
             "connector path (not hooks) is the only output-replacement surface.",
         },
+        // scheduled-playback: at most one rolling live-probe record, rewritten
+        // in place by scripts/record-playback-validation.mjs (harness-watch
+        // workflow). Git history is the audit trail; see ADR-0009 and
+        // .capture/harness-playback/README.md. Keep field order stable.
+        // scheduled-playback:begin
+        // scheduled-playback:end
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
     },

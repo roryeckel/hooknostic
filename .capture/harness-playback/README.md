@@ -107,3 +107,17 @@ profile with the exact harness version and date, use this directory as its
 `docs/harness-support.md`. If exact request or response bodies become adapter
 evidence, capture them verbatim in a versioned fixture location and record their
 own provenance instead of citing this constructed procedure.
+
+## The scheduled rolling-record variant
+
+The harness-watch workflow records its passes differently: a scheduled run
+against a newer build writes the **rolling record** — the single
+marker-delimited `validatedOn` entry in the adapter profile that
+`scripts/record-playback-validation.mjs` rewrites in place (ADR-0009). The
+evidence class is unchanged — still `live-probe`, still this directory as the
+`artifact`, still never fixture evidence. What differs is bookkeeping, not
+trust: weekly runs would otherwise append near-identical rows, and the one
+claim consumers need is "newest build that passed scheduled playback". Only
+that script writes the region; human captures stay append-only, and the
+record's `what` string is the marker the release checker keys the playback
+baseline on.
