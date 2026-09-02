@@ -137,9 +137,13 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   },
   {
     id: "tool-after-output-replace",
-    title: "replacing the tool output replaces what the model sees",
+    title: "replacing the tool output replaces what the model sees (or stays rejected where explicitly unsupported)",
     covers: ["tool.after.output.replace"],
     driver: "loopback",
+    // Captured live on 0.151.0 (.capture/codex-tools): the hook engine
+    // strictly rejects updatedMCPToolOutput from a PostToolUse hook (fails
+    // open). The codex lane is an inverted watch: the drive must observe the
+    // rejection, not a replaced output.
     driverByHarness: { codex: "mcp-stdio" },
   },
   {

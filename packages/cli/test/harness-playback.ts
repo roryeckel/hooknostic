@@ -474,16 +474,23 @@ function scriptedTool(
     throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
   }
   const name = toolName(tool)!;
-  if (tool["namespace"] !== undefined) {
-    // MCP tools route by their flattened identifier `mcp__<server>__<tool>`
-    // (the JS-identifier form the router registers; verified formatting in the
-    // codex 0.151.0 code-mode docs embedded in the binary). The fixture tool
-    // takes no arguments.
-    return {
-      name: `${String(tool["namespace"])}__${name}`,
-      arguments: JSON.stringify({}),
-    };
-  }
+  // Namespace tools (Codex MCP groups, multi_agent_v1) resolve by the exact
+  // {namespace, name} pair; the pair emission is the same for every payload,
+  // so compute it once and branch only on the arguments below.
+  const namespaceEmission = tool["namespace"] !== undefined
+    ? {
+        // The namespace tool spec the model sees carries name
+        // "mcp__<server>", and the callable emission mirrors it verbatim:
+        // name = bare inner tool name, namespace = the container name
+        // ("mcp__<server>", no trailing underscores). The flattened-name form
+        // (`mcp__<server>__<tool>` in `name` alone) and the trailing-__
+        // namespace variant both fail the exact match with "unsupported
+        // call" on codex 0.151.0 (verified live; upstream openai/codex#33263
+        // records the same resolution failure for proxy-flattened calls).
+        name,
+        namespace: String(tool["namespace"]),
+      }
+    : { name };
   const schema = jsonSchemaForTool(tool);
   const properties =
     schema["properties"] !== null && typeof schema["properties"] === "object"
@@ -496,23 +503,29 @@ function scriptedTool(
     // router validates it against the live tool schema. `run_in_background:
     // false` keeps the subagent synchronous so SubagentStart/SubagentStop
     // both dispatch inside the turn.
-    const promptKey = ["prompt", "description"].find(
+    // Codex 0.151.0's spawn_agent names the task `message` ("Use either
+    // message or items"); Claude's Agent uses `prompt`. `description` last:
+    // some schemas carry one, and emitting it alone fails the harness's own
+    // "one of: message or items" validation (observed live on 0.151.0).
+    const promptKey = ["message", "prompt", "task", "description"].find(
       (candidate) => properties[candidate] !== undefined,
     );
-    if (promptKey === undefined) {
-      throw new Error(`playback shell tool has no captured command key: ${JSON.stringify(tool)}`);
+    if (promptKey !== undefined) {
+      return {
+        ...namespaceEmission,
+        arguments: JSON.stringify({
+          ...(properties["description"] !== undefined
+            ? { description: "Playback subagent probe" }
+            : {}),
+          [promptKey]: "Say the single word ready, then stop.",
+          ...(properties["subagent_type"] !== undefined ? { subagent_type: "general-purpose" } : {}),
+          ...(properties["run_in_background"] !== undefined ? { run_in_background: false } : {}),
+        }),
+      };
     }
-    return {
-      name: toolName(tool)!,
-      arguments: JSON.stringify({
-        ...(properties["description"] !== undefined
-          ? { description: "Playback subagent probe" }
-          : {}),
-        [promptKey]: "Say the single word ready, then stop.",
-        ...(properties["subagent_type"] !== undefined ? { subagent_type: "general-purpose" } : {}),
-        ...(properties["run_in_background"] !== undefined ? { run_in_background: false } : {}),
-      }),
-    };
+    // No prompt key either: a namespace tool taking no arguments (the MCP
+    // fixture tool).
+    return { ...namespaceEmission, arguments: JSON.stringify({}) };
   }
   let script: string;
   if (scenario === "rewrite") {
@@ -535,13 +548,7 @@ function scriptedTool(
   }
   const command = `node -e "${script}"`;
   const value = properties[key]?.["type"] === "array" ? ["node", "-e", script] : command;
-  return {
-    // For MCP tools the router expects the ResponseItem's `namespace` field to
-    // carry the server id and `name` the bare tool name.
-    name: toolName(tool)!,
-    ...(tool["namespace"] !== undefined ? { namespace: String(tool["namespace"]) } : {}),
-    arguments: JSON.stringify({ [key]: value }),
-  };
+  return { ...namespaceEmission, arguments: JSON.stringify({ [key]: value }) };
 }
 
 function sse(

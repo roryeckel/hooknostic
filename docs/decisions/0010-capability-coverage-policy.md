@@ -55,14 +55,22 @@ would notice.
 6. **Known free-lane limits are recorded, not worked around.** Two cells cannot
    be decided by the scheduled free lanes today, with the blocking mechanism
    documented in the test itself:
-   - `tool.after.output.replace` (Codex): the tool router rejects scripted
-     namespaced calls from custom Responses providers (`unsupported call`,
-     upstream issue openai/codex#31354 — the OpenAI-native provider path
-     rewrites namespaced calls; custom providers do not). Decisive check runs
-     on the manual `force_llm` lane against the OpenAI-native model.
-   - compaction family: the free lane cannot fill the context deterministically
-     (shell results are capped ~30k chars; the drive caps turns at 6 against a
-     200k-token context). Decisive check runs on the manual `force_llm` lane.
+   - `agent.start/stop.observe` (Codex): SubagentStart/Stop fire in the spawned
+     child session, which does not inherit the parent's hook-trust bypass
+     (observed live on 0.151.0; upstream openai/codex#33097). Decisive check
+     runs on the manual `force_llm` lane, where hook trust can be persisted.
+    - compaction family: the free lane cannot fill the context deterministically
+      (shell results are capped ~30k chars; the drive caps turns at 6 against a
+      200k-token context). Decisive check runs on the manual `force_llm` lane.
+
+   Codex `tool.after.output.replace` was re-rated `unsupported` on 2026-09-02
+   (captured live on 0.151.0: the hook engine strictly rejects
+   `updatedMCPToolOutput` from a PostToolUse hook, failing open). Its
+   mcp-stdio drive runs as an inverted watch on the scheduled lane — the MCP
+   call must dispatch (the scripted namespace-pair emission resolves the
+   router's exact `{namespace, name}` lookup, itself a correction of the
+   earlier #31354 reading: the flattened-name form was ours to fix, not an
+   upstream limitation) and the replacement must never reach the model.
 
 ## Consequences
 

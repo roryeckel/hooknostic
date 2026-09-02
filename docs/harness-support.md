@@ -32,6 +32,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 0.148.0 | 2026-08-29 | live-probe | `.capture/codex-output` | Stop output semantics: systemMessage accepted-and-discarded, never rendered |
 | 0.151.0 | 2026-08-30 | router-log | `.capture/codex-tools` | exec_command router args (cmd/workdir); NOTE the hook boundary translates these calls to Bash/command payloads and drops workdir |
 | 0.151.0 | 2026-08-30 | live-probe | `.capture/codex-tools` | updatedInput write channel verified honoured (rewritten command reached spawn) |
+| 0.151.0 | 2026-09-02 | live-probe | `.capture/codex-tools` | PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with "PostToolUse hook returned unsupported updatedMCPToolOutput", run status Failed; matches upstream codex-rs hooks/src/events/post_tool_use.rs unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is therefore unsupported on the hook channel; the output parser also shows the MCP connector path (not hooks) is the only output-replacement surface. |
 
 ### OpenCode
 

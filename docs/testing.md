@@ -48,17 +48,28 @@ capability cell without a scenario fails CI.
 Two capability families cannot be decided by the scheduled free lanes today,
 and their tests record exactly why:
 
-- **Codex MCP output replacement** — the tool router rejects scripted
-  namespaced calls from custom Responses providers (`unsupported call`,
-  upstream issue openai/codex#31354). The drive stays in the suite for the
-  manual `force_llm` lane, where the OpenAI-native model emits the namespaced
-  call Codex dispatches correctly.
+- **Codex subagent lifecycle** — `SubagentStart`/`SubagentStop` fire in the
+  spawned *child* session, which does not inherit the parent's
+  `--dangerously-bypass-hook-trust` (session-scoped override lost in the
+  child's config rebuild; observed live on 0.151.0 and matches upstream
+  openai/codex#33097). The drive runs on the manual `force_llm` lane, where
+  hook trust can be persisted.
 - **Compaction** — the free lane cannot fill the context deterministically
   (shell results are capped ~30k chars, turn count is capped at 6 against a
   200k-token context). Same routing: the drive runs only on the `force_llm`
   lane.
 
-Both drives are gated on `HOOKNOSTIC_PLAYBACK_FORCE_LLM=1` (the manual-lane
+Codex's `tool.after.output.replace` is rated `unsupported` (captured live on
+0.151.0: the hook engine strictly rejects `updatedMCPToolOutput` from a
+PostToolUse hook — it fails open with "PostToolUse hook returned unsupported
+updatedMCPToolOutput"). The mcp-stdio drive therefore runs as an inverted
+watch on the scheduled lane: the MCP tool call must dispatch end to end (the
+scripted namespace-pair emission resolves the router's exact
+`{namespace, name}` lookup), the model must see the fixture's *original*
+output, and the replaced marker must surface nowhere. If upstream starts
+honouring the field, the watch fails and the rating is revisited.
+
+Two drives are gated on `HOOKNOSTIC_PLAYBACK_FORCE_LLM=1` (the manual-lane
 switch): unset, they skip with their recorded reason; set, they run against
 the real model. Skipped ≠ silent: harness-watch's workflow summary reports
 every inconclusive lane on every run.

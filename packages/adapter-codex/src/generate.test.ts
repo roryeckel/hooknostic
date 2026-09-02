@@ -105,7 +105,9 @@ describe("codexAdapter capability data", () => {
     const resolved = codexAdapter().capabilities(TARGET);
     expect(resolved.diagnostics).toEqual([]);
     expect(resolved.matrix?.["tool.before.requestApproval"]?.level).toBe("exact");
-    expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("approximate");
+    // Captured live on 0.151.0 (.capture/codex-tools): the hook engine
+    // rejects updatedMCPToolOutput outright (fails open).
+    expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("unsupported");
     expect(resolved.matrix?.["tool.error.observe"]).toBeUndefined();
     expect(resolved.matrix?.["context.compact.before.block"]).toBeUndefined();
     // The rationale sweep lives in the shared adapter contract

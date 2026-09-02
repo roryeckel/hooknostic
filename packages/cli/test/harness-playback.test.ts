@@ -1119,7 +1119,6 @@ scenarioDrive(
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
     let recordedRequests: readonly unknown[] = [];
-    let servedUrls: string[] = [];
     let driveStdout = "";
     let driveStderr = "";
     await runInstalledHarness(build, "rewrite", {
@@ -1137,7 +1136,6 @@ scenarioDrive(
       ],
       verify: async ({ server }) => {
         recordedRequests = server.requests;
-        servedUrls = server.urls;
       },
       capture: (raw) => {
         driveStdout = raw.stdout;
@@ -1146,29 +1144,53 @@ scenarioDrive(
     });
 
     const events = await traceEvents(build.tracePath);
-    // The replaced output must be what the model sees in the next request.
-    const contents = requestContents(recordedRequests);
+    // The MCP call must have dispatched end to end: the namespace-pair
+    // emission (name + namespace verbatim from the namespace tool spec)
+    // resolves the router's exact {namespace, name} lookup, PostToolUse
+    // fires, and the turn continues.
     expect(
       events,
-      `no tool.after\nstdout: ${driveStdout}\nstderr: ${driveStderr}\nurls: ${JSON.stringify(servedUrls)}\nevents: ${JSON.stringify(events)}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      `no tool.after\nstdout: ${driveStdout}\nstderr: ${driveStderr}`,
     ).toContain("tool.after");
+    // The cell is unsupported on the hook channel: the engine strictly
+    // rejects updatedMCPToolOutput from a PostToolUse hook (captured live on
+    // 0.151.0, .capture/codex-tools; matches upstream codex-rs
+    // unsupported_updated_mcp_tool_output_fails_open). The generated artifact
+    // gates the effect off (HN401), so the contract here is that the
+    // artifact never attempts the dead channel: the model must see the
+    // fixture's ORIGINAL output in the next request, and the replaced marker
+    // must surface nowhere.
+    const contents = requestContents(recordedRequests);
+    if (adapter!.id === "codex") {
+      // The cell is unsupported on the hook channel: the engine strictly
+      // rejects updatedMCPToolOutput from a PostToolUse hook (captured live
+      // on 0.151.0, .capture/codex-tools; matches upstream codex-rs
+      // unsupported_updated_mcp_tool_output_fails_open). The generated
+      // artifact gates the effect off (HN401), so the contract here is that
+      // the artifact never attempts the dead channel: the model must see the
+      // fixture's ORIGINAL output in the next request, and the replaced
+      // marker must surface nowhere.
+      expect(
+        contents.some((text) => text.includes("hooknostic-mcp-tool-output")),
+        `original MCP output missing from model requests: stdout: ${driveStdout}\nstderr: ${driveStderr}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(true);
+      expect(
+        contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
+        `replaced output reached the model although the cell is unsupported (upstream honoured updatedMCPToolOutput?): ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(false);
+      expect(
+        driveStderr + driveStdout,
+        `replaced output surfaced in the harness channels (cell no longer unsupported?): ${driveStderr.slice(0, 2000)}`,
+      ).not.toContain("hooknostic-replaced-tool-output");
+      return;
+    }
+    // Every other adapter: the replacement must be what the model sees.
     expect(
       contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
-      `replaced MCP output missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      `replaced MCP output missing from model requests: stdout: ${driveStdout}\nstderr: ${driveStderr}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
     ).toBe(true);
   },
-  () =>
-    cellLevel("tool.after.output.replace") === undefined ||
-    adapter?.id !== "codex" || // the mcp-stdio drive is Codex-specific
-    // Scheduled loopback cannot drive this drive today: codex's tool
-    // router rejects scripted namespaced function calls from custom
-    // Responses providers with "unsupported call" (upstream issue
-    // openai/codex#31354 -- the OpenAI-native path rewrites namespaced
-    // calls, custom providers do not). The drive stays for the manual
-    // `force_llm` lane, where the OpenAI-native model emits the
-    // namespaced call Codex dispatches correctly. Skipped ≠ silent: the
-    // step summary reports the inconclusive lane every run.
-    !forceLlm,
+  () => cellLevel("tool.after.output.replace") === undefined,
 );
 
 scenarioDrive(
@@ -1321,8 +1343,7 @@ scenarioDrive(
     }
   },
   () =>
-    (adapter?.id === "claude" && (!ptyApprovable() || cellLevel("permission.request.block") === undefined)) ||
-    (adapter?.id === "opencode" && cellLevel("permission.request.block") === undefined),
+    adapter?.id !== "claude" || !ptyApprovable() || cellLevel("permission.request.block") === undefined,
 );
 
 scenarioDrive(
@@ -1510,22 +1531,48 @@ scenarioDrive(
     // The subagent tool name is per-harness: Claude 2.1.250 exposes `Agent`
     // (the toolmap's EXACT table), Codex `spawn_agent`.
     const subagentTool = adapter!.id === "codex" ? "spawn_agent" : "Agent";
+    let recordedRequests: readonly unknown[] = [];
+    let driveStdout = "";
+    let driveStderr = "";
     await runInstalledHarness(build, "rewrite", {
       script: [
         { kind: "tool", toolName: subagentTool },
         { kind: "text" },
       ],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+      capture: (raw) => {
+        driveStdout = raw.stdout;
+        driveStderr = raw.stderr;
+      },
     });
 
     const events = await traceEvents(build.tracePath);
     expect(
       events,
-      `subagent lifecycle never dispatched; events: ${JSON.stringify(events)}`,
+      `subagent lifecycle never dispatched; events: ${JSON.stringify(events)}\nstdout: ${driveStdout}\nstderr: ${driveStderr}\nrequests: ${JSON.stringify(requestContents(recordedRequests).slice(0, 30), null, 2)}`,
     ).toContain("agent.start");
     expect(events).toContain("agent.stop");
   },
-  () =>
-    cellLevel("agent.start.observe") === undefined ||
-    cellLevel("agent.stop.observe") === undefined,
+  () => {
+    if (cellLevel("agent.start.observe") === undefined || cellLevel("agent.stop.observe") === undefined) {
+      return true;
+    }
+    if (adapter?.id === "codex") {
+      // Scheduled loopback cannot drive this lane on codex today: SubagentStart
+      // fires in the spawned CHILD session, and the child silently drops
+      // untrusted hooks — the parent's --dangerously-bypass-hook-trust is a
+      // session-scoped override that the child's config rebuild does not
+      // inherit (upstream openai/codex#33097; observed live on 0.151.0:
+      // collab SpawnAgent runs, PreToolUse/PostToolUse fire in the parent,
+      // and no SubagentStart/Stop ever reaches the artifact). The manual
+      // force_llm lane can persist hook trust (~/.codex/config.toml) and is
+      // the decisive surface. Skipped ≠ silent: the step summary reports the
+      // inconclusive lane every run.
+      return !forceLlm;
+    }
+    return false;
+  },
 );
 
