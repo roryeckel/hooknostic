@@ -71,6 +71,23 @@ export function observedEvents(adapter: HarnessAdapter): HookEventName[] {
 }
 
 /**
+ * Events whose `context.add` cell resolves at the adapter's referenceVersion.
+ * The single source of truth for both the IR declarations and the generated
+ * plugin source: `addContext` on an event outside this set is an HN401
+ * unsupported-effect error at runtime (fail-open, unasserted), so both views
+ * must limit the effect to this set.
+ */
+export function contextAddEvents(adapter: HarnessAdapter): ReadonlySet<HookEventName> {
+  const target = targetFor(adapter, ".");
+  const matrix = adapter.capabilities(target).matrix ?? {};
+  return new Set(
+    HOOK_EVENT_NAMES.filter(
+      (event) => matrix[`${event}.context.add` as keyof typeof matrix] !== undefined,
+    ),
+  );
+}
+
+/**
  * Effect behaviors the generated playback artifact wires in, on top of trace
  * observation. All env-gated at runtime so one artifact serves every scenario
  * drive: `HOOKNOSTIC_PLAYBACK_EFFECTS` is a comma-separated list.
@@ -96,7 +113,10 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "replace-outputs",
 ];
 
-function playbackPluginSource(events: readonly HookEventName[]): string {
+function playbackPluginSource(
+  events: readonly HookEventName[],
+  contextAdd: ReadonlySet<HookEventName>,
+): string {
   const definitions = events.map((event) => {
     const capabilities = [
       event === "tool.before"
@@ -118,10 +138,12 @@ function playbackPluginSource(events: readonly HookEventName[]): string {
         ? `"turn.stop.prevent": "optional",
         "turn.stop.notify": "optional"`
         : undefined,
-      // context-add applies to every event with a context.add cell resolved
-      // at build time; addContext on an unsupported event is a no-op error,
-      // so only declare it where the resolution advertises the capability.
-      `"${event}.context.add": "optional"`,
+      // context-add is declared and emitted only on events whose context.add
+      // cell resolved at build time — exactly the IR's declaration set. It
+      // must mirror contextAddEvents(): addContext on an unsupported event is
+      // an HN401 unsupported-effect error at runtime (fail-open), so a
+      // declared-but-unresolved cell would produce unasserted dispatch noise.
+      contextAdd.has(event) ? `"${event}.context.add": "optional"` : undefined,
     ].filter(Boolean);
     const capabilityBlock =
       capabilities.length > 0
@@ -130,12 +152,17 @@ function playbackPluginSource(events: readonly HookEventName[]): string {
       },`
         : "";
 
-    const extraEffects = `
-        const effects = (process.env["HOOKNOSTIC_PLAYBACK_EFFECTS"] ?? "").split(",").filter(Boolean);
-        const command = event.tool?.shell?.command;
+    const contextAddBranch =
+      contextAdd.has(event)
+        ? `
         if (effects.includes("context-add")) {
           return addContext("hooknostic-context [${event}]");
-        }
+        }`
+        : "";
+
+    const extraEffects = `
+        const effects = (process.env["HOOKNOSTIC_PLAYBACK_EFFECTS"] ?? "").split(",").filter(Boolean);
+        const command = event.tool?.shell?.command;${contextAddBranch}
         if (effects.includes("block-prompt") && "${event}" === "prompt.before" &&
             typeof event.prompt === "string" && event.prompt.includes("hooknostic-block-this-prompt")) {
           return block("prompt blocked by harness playback");
@@ -228,18 +255,19 @@ export async function buildPlaybackArtifact(
   }
 
   const events = observedEvents(adapter);
+  const contextAdd = contextAddEvents(adapter);
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events), "utf8");
+  await writeFile(entryPath, playbackPluginSource(events, contextAdd), "utf8");
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared
-  // set, so an effect the source can emit must also be declared here.
+  // set, so an effect the source can emit must also be declared here. Both
+  // views take their context.add set from the same contextAddEvents()
+  // resolution.
   const contextCapabilityFor = (event: HookEventName): string | undefined =>
-    `${event}.context.add` in (adapter.capabilities(targetFor(adapter, ".")).matrix ?? {})
-      ? `${event}.context.add`
-      : undefined;
+    contextAdd.has(event) ? `${event}.context.add` : undefined;
   const hooks = events.map((event) =>
     hook(event, {
       id: `playback-${event}`,
