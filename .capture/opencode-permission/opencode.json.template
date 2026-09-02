@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "playback/hooknostic-playback",
+  "enabled_providers": ["playback"],
+  "permission": {
+    "bash": "ask"
+  },
+  "provider": {
+    "playback": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Hooknostic Playback",
+      "options": {
+        "baseURL": "http://127.0.0.1:PORT_PLACEHOLDER/v1",
+        "apiKey": "hooknostic-playback"
+      },
+      "models": {
+        "hooknostic-playback": {
+          "name": "Hooknostic Playback",
+          "limit": { "context": 32768, "output": 4096 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "event": "permission.request",
+  "harness": { "id": "opencode", "nativeEvent": "event" },
+  "session": {
+    "id": "ses_f9f9da5a6ffedvP8DniYS95HRh",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-perm-capture"
+  },
+  "correlation": { "toolCallId": "call_playback" },
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": { "command": "mkdir hooknostic-perm-probe" },
+    "shell": {
+      "command": "mkdir hooknostic-perm-probe",
+      "commandKey": "command"
+    }
+  }
+}

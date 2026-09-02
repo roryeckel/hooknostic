@@ -157,7 +157,12 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
       "permission.request.context.add",
     ],
     driver: "pty-approval",
-    driverByHarness: { opencode: "loopback" },
+    // Captured live on 1.18.25 (.capture/opencode-permission): OpenCode's
+    // permission ask surfaces as the permission.asked bus event whether or
+    // not a terminal is attached, and the deny is delivered via the client
+    // reply API -- so the serve lane drives it headlessly (the dedicated
+    // permission.ask callback never fires; upstream anomalyco/opencode #9229).
+    driverByHarness: { opencode: "opencode-serve" },
   },
   {
     id: "context-compact",

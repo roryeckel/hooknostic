@@ -39,6 +39,18 @@ export interface OpenCodeClient {
       body: { parts: { type: "text"; text: string }[]; noReply?: boolean };
     }) => unknown;
   };
+  /**
+   * Answers a pending permission request ("Respond to a permission request",
+   * SDK method postSessionIdPermissionsPermissionId; answers 200 with the
+   * boolean handled). Verified live on 1.18.25: response "reject" makes the
+   * pending ask throw, the tool call is denied, and the command does not run.
+   * Called as `client.postSessionIdPermissionsPermissionId(...)` — prototype
+   * method, same `this` caveat as promptAsync.
+   */
+  postSessionIdPermissionsPermissionId?: (options: {
+    path: { id: string; permissionID: string };
+    body: { response: "once" | "always" | "reject" };
+  }) => unknown;
 }
 
 /** Minimal structural type for the OpenCode PluginInput we rely on. */
@@ -162,6 +174,7 @@ export function createHooknosticHooks(
     if (diagnostics !== undefined) console.error(diagnostics);
 
     await postPrompts(event, application);
+    await replyPermission(event, native, application);
 
     if (application.throwMessage !== undefined) {
       throw new HooknosticBlock(application.throwMessage);
@@ -235,6 +248,46 @@ export function createHooknosticHooks(
     }
   };
 
+  /**
+   * Deliver a permission denial through the client reply API. Best-effort like
+   * postPrompts: a missing client or a failed reply is a silent no-op (the
+   * user answers the ask themselves), which the capability rationale states.
+   * The permission id and session live only on the native bus event (the
+   * portable event carries them as correlation/tool input, not as reply keys),
+   * so they are read from `raw` here — the same split as postPrompts.
+   */
+  const replyPermission = async (
+    event: HookEvent,
+    native: OpenCodeNativeEvent,
+    application: ReturnType<typeof planOpenCodeApplication>,
+  ): Promise<void> => {
+    if (application.permissionReply === undefined) return;
+    const properties = ((native.input as { event?: { properties?: Record<string, unknown> } })
+      ?.event?.properties ?? {}) as { id?: unknown; sessionID?: unknown };
+    const permissionID = typeof properties.id === "string" ? properties.id : undefined;
+    const sessionID = typeof properties.sessionID === "string" ? properties.sessionID : undefined;
+    if (permissionID === undefined || sessionID === undefined) return;
+    // Called as `client.postSessionIdPermissionsPermissionId(...)` — the SDK
+    // client carries these as prototype methods that use `this`, so a
+    // destructured reference throws at call time (same as promptAsync).
+    const client = pluginInput.client;
+    if (client === undefined || typeof client.postSessionIdPermissionsPermissionId !== "function") {
+      return;
+    }
+    try {
+      await withTimeout(
+        Promise.resolve(
+          client.postSessionIdPermissionsPermissionId({
+            path: { id: sessionID, permissionID },
+            body: { response: "reject" },
+          }),
+        ),
+      );
+    } catch {
+      // Fail open: the ask stays pending and the user answers it.
+    }
+  };
+
   const hooks: Record<string, Callback> = {};
   const callback =
     (hook: string): Callback =>
@@ -250,7 +303,11 @@ export function createHooknosticHooks(
 
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
   if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
-  if (events.has("permission.request")) hooks["permission.ask"] = callback("permission.ask");
+  // permission.request arrives on the generic event bus as
+  // `permission.asked` (the dedicated permission.ask callback never fires on
+  // 1.18.x — captured live, .capture/opencode-permission). Denial goes
+  // through the client reply API, not an output mutation.
+  if (events.has("permission.request")) hooks["event"] = callback("event");
   if (events.has("prompt.before")) hooks["chat.message"] = callback("chat.message");
   if (events.has("context.compact.before")) {
     hooks["experimental.session.compacting"] = callback("experimental.session.compacting");

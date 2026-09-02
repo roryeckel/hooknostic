@@ -114,6 +114,8 @@ interface DriveOptions {
     /** Present only on the opencode-serve lane. */
     serve?: OpenCodeServeSession;
   }) => Promise<void>;
+  /** Extra provider-config keys for the opencode lanes (e.g. permission rules). */
+  opencodeConfig?: { permission?: Record<string, string> };
 }
 
 /** A message row from OpenCode's GET /session/:id/message (smoke-proven shape). */
@@ -355,6 +357,7 @@ async function runInstalledHarness(
 async function writeOpenCodeProviderConfig(
   artifactDir: string,
   baseUrl: string,
+  options: { permission?: Record<string, string> } = {},
 ): Promise<void> {
   await writeFile(
     join(artifactDir, "opencode.json"),
@@ -363,6 +366,7 @@ async function writeOpenCodeProviderConfig(
         $schema: "https://opencode.ai/config.json",
         model: "playback/hooknostic-playback",
         enabled_providers: ["playback"],
+        ...(options.permission !== undefined ? { permission: options.permission } : {}),
         provider: {
           playback: {
             npm: "@ai-sdk/openai-compatible",
@@ -432,7 +436,7 @@ async function runOpenCodeServePlayback(
     env: process.env,
     timeoutMs: 30_000,
   });
-  await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl);
+  await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, options.opencodeConfig);
   const child = spawn("opencode", ["serve", "--port", String(port), "--print-logs"], {
     cwd: build.artifactDir,
     shell: process.platform === "win32",
@@ -1170,6 +1174,44 @@ scenarioDrive(
 scenarioDrive(
   "permission-request",
   async () => {
+    if (adapter!.id === "opencode") {
+      // Captured live on 1.18.25 (.capture/opencode-permission): the
+      // permission.ask callback never fires (upstream #9229); the ask
+      // surfaces as the permission.asked bus event and the deny is delivered
+      // via the client reply API. The bus fires whether or not a terminal is
+      // attached, so the serve lane drives it headlessly: bash:ask makes the
+      // scripted mkdir trip a real ask; the hook's permission-deny effect
+      // rejects it; the denied command must never run and the turn must
+      // complete.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-perm-opencode-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let permissionObserved = false;
+      await runOpenCodeServePlayback(build, "rewrite", {
+        effects: ["permission-deny"],
+        opencodeConfig: { permission: { bash: "ask" } },
+        script: [
+          { kind: "tool", disposition: "rewrite", marker: "hooknostic-perm-marker.txt" },
+          { kind: "text" },
+        ],
+        verify: async ({ server }) => {
+          // The deny round-trip (bus event → reply API) happens inside the
+          // turn; a third agent request would mean the rejection did not
+          // halt-and-continue as captured.
+          permissionObserved = server.turnCount >= 1;
+        },
+      });
+      const events = await traceEvents(build.tracePath);
+      expect(
+        events,
+        `permission.request never fired (observed flag: ${permissionObserved})`,
+      ).toContain("permission.request");
+      expect(
+        await readFile(join(dir, "hooknostic-perm-marker.txt"), "utf8").catch(() => null),
+        "denied command executed anyway",
+      ).toBeNull();
+      return;
+    }
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-ptyperm-claude-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
@@ -1278,7 +1320,9 @@ scenarioDrive(
       await server.close();
     }
   },
-  () => !ptyApprovable() || adapter?.id !== "claude" || cellLevel("permission.request.block") === undefined,
+  () =>
+    (adapter?.id === "claude" && (!ptyApprovable() || cellLevel("permission.request.block") === undefined)) ||
+    (adapter?.id === "opencode" && cellLevel("permission.request.block") === undefined),
 );
 
 scenarioDrive(

@@ -81,7 +81,6 @@ describe("createHooknosticHooks", () => {
     expect(Object.keys(hooks()).sort()).toEqual([
       "event",
       "experimental.session.compacting",
-      "permission.ask",
       "tool.execute.after",
       "tool.execute.before",
     ]);
@@ -187,14 +186,86 @@ describe("createHooknosticHooks", () => {
     expect(output.output).toBe("before");
   });
 
-  it("denies permissions by mutating output.status", async () => {
-    const h = hooks();
-    const output = { status: "ask" };
-    await h["permission.ask"]!(
-      { id: "p", type: "bash", sessionID: "s", callID: "c", title: "mkdir x", metadata: {}, time: {} },
-      output,
-    );
-    expect(output.status).toBe("deny");
+  it("denies bus-event permissions through the client reply API", async () => {
+    // Captured live on 1.18.25 (.capture/opencode-permission): the dedicated
+    // permission.ask callback never fires (upstream anomalyco/opencode #9229);
+    // the ask arrives as the permission.asked bus event, and "reject" via
+    // postSessionIdPermissionsPermissionId denies it.
+    const replies: { path: { id: string; permissionID: string }; body: { response: string } }[] = [];
+    const plugin = definePlugin({
+      name: "deny-all-perms",
+      hooks: [
+        hook("permission.request", {
+          id: "deny-all",
+          capabilities: { "permission.request.block": "required" },
+          async run() {
+            return block("no permissions for you");
+          },
+        }),
+      ],
+    });
+    const client = {
+      postSessionIdPermissionsPermissionId: (options: {
+        path: { id: string; permissionID: string };
+        body: { response: string };
+      }) => {
+        replies.push(options);
+        return Promise.resolve({ data: true });
+      },
+    };
+    const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, { ...PLUGIN_INPUT, client });
+    expect(Object.keys(h)).toEqual(["event"]);
+    const native = {
+      hook: "event",
+      directory: PLUGIN_INPUT.directory,
+      input: {
+        event: {
+          type: "permission.asked",
+          properties: {
+            id: "per_1",
+            sessionID: "ses_1",
+            permission: "bash",
+            patterns: ["mkdir *"],
+            metadata: { command: "mkdir x" },
+            tool: { messageID: "m", callID: "c1" },
+          },
+        },
+      },
+    };
+    await h["event"]!(native.input, undefined);
+    expect(replies).toEqual([
+      { path: { id: "ses_1", permissionID: "per_1" }, body: { response: "reject" } },
+    ]);
+  });
+
+  it("is a silent no-op denying a permission without a client or ids", async () => {
+    const plugin = definePlugin({
+      name: "deny-all-perms",
+      hooks: [
+        hook("permission.request", {
+          id: "deny-all",
+          capabilities: { "permission.request.block": "required" },
+          async run() {
+            return block("no permissions for you");
+          },
+        }),
+      ],
+    });
+    const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
+    const native = {
+      hook: "event",
+      directory: PLUGIN_INPUT.directory,
+      input: {
+        event: {
+          type: "permission.asked",
+          properties: { id: "per_1", sessionID: "ses_1", permission: "bash" },
+        },
+      },
+    };
+    // No client: silent no-op (the user answers the ask themselves).
+    await expect(h["event"]!(native.input, undefined)).resolves.toBeUndefined();
+    // A client without the method (older SDK surface): same.
+    await expect(h["event"]!(native.input, undefined)).resolves.toBeUndefined();
   });
 
   it("appends compaction context", async () => {
