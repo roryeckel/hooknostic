@@ -753,14 +753,31 @@ scenarioDrive("shell-tool-variants", async () => {
 scenarioDrive(
   "tool-error",
   async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hooknostic-failure-claude-"));
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-failure-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
-    await runInstalledHarness(build, "fail");
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "fail", {
+      effects: ["context-add"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
 
-    expect(await traceEvents(build.tracePath)).toContain("tool.error");
+    const events = await traceEvents(build.tracePath);
+    expect(events).toContain("tool.error");
+    // The scenario covers tool.error.context.add, so the assertion must prove
+    // the injected error context reaches the model side — observing the event
+    // alone would report the context channel as covered while unexercised.
+    const contents = requestContents(recordedRequests);
+    expect(
+      contents.some((text) => text.includes("hooknostic-context [tool.error]")),
+      `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+    ).toBe(true);
   },
-  () => adapter?.id !== "claude",
+  () =>
+    adapter?.id !== "claude" ||
+    cellLevel("tool.error.context.add") === undefined,
 );
 
 scenarioDrive(
