@@ -37,9 +37,14 @@ For one harness at a time, CI:
 4. Starts a server bound to `127.0.0.1`, removes model credentials from the
    harness environment, and configures the harness model transport to use the
    server.
-5. Returns one shell tool call and then a completion response.
-6. Uses marker files and the generated hook trace to discriminate rewrite,
-   block, failure, discovery, and lifecycle outcomes.
+5. Returns the per-scenario scripted turns (tool calls and completions) from
+   `packages/testkit/src/scenarios.ts` — one scenario per capability family.
+6. Uses marker files, the recorded model requests, and the generated hook trace
+   to discriminate rewrite, block, failure, context-injection, stop-prevention,
+   notify, and lifecycle outcomes.
+7. For the pty-approval driver, runs the interactive TUI under `node-pty`,
+   walks the first-run dialogs by polling for their screen markers, and lets
+   the generated hook answer the native approval prompt.
 
 Run the same probe locally after installing the exact reference harness:
 
@@ -49,7 +54,20 @@ pnpm --filter hooknostic run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, or `opencode` for `HOOKNOSTIC_PLAYBACK`.
+Use `claude`, `codex`, or `opencode` for `HOOKNOSTIC_PLAYBACK`, and
+`HOOKNOSTIC_PLAYBACK_VERSION=<build>` to verify a newer build than
+`referenceVersion` (see `docs/testing.md`).
+
+Scenario-to-driver mapping and the coverage policy live in ADR-0010 and
+`docs/testing.md`. The loopback suite does not have a real-model mode: a
+scenario whose driver cannot establish the claim is recorded as an explicit
+inconclusive outcome in harness-watch, then requires its own captured live
+procedure to become decisive.
+
+Every scenario in the registry (`packages/testkit/src/scenarios.ts`) has an
+executable drive registered in `harness-playback.test.ts`; a gate test fails
+when a registry entry has no drive, so placeholder entries or deleted drives
+cannot report phantom coverage.
 
 ## What a passing run establishes
 
@@ -58,8 +76,24 @@ A successful run is a **live-probe** for only the installed version and harness:
 - the harness discovers the generated artifact through its real loader;
 - the common lifecycle events asserted by the test reach the artifact;
 - a shell rewrite reaches process execution, proven by rewritten marker content;
-- a blocked shell call does not execute, proven by the absent marker; and
-- for Claude, a nonzero shell exit reaches `tool.error`.
+- a blocked shell call does not execute, proven by the absent marker;
+- context injected by a hook reaches the model side, proven by the marker
+  inside the scripted server's recorded requests;
+- a prevented stop produces a second model turn, proven by the served turn
+  count — the loop terminator is the harness's own `stop_hook_active` flag
+  read through the raw-event escape hatch, exactly as a portable hook must;
+- for Claude, an interactive permission prompt reaches the hook (pty lane) and
+  a denied command does not execute;
+- for Claude, a nonzero shell exit reaches `tool.error`;
+- for Claude, a `requestApproval` surfaces the native approval prompt and an
+  approved command executes (pty lane);
+- a blocked continuation surfaces its reason to the model, which decides
+  whether to stop;
+- a spawned subagent dispatches `agent.start`/`agent.stop` (Claude `Agent`,
+  Codex `spawn_agent`); and
+- a stop-time notification reaches the harness's user-facing channel where
+  claimed (Claude stream-json system notice), and stays inert where
+  explicitly unsupported (Codex).
 
 The committed fixture replay remains the evidence for hook payload shapes. The
 scripted model responses remain constructed even when a harness accepts them.
@@ -73,3 +107,17 @@ profile with the exact harness version and date, use this directory as its
 `docs/harness-support.md`. If exact request or response bodies become adapter
 evidence, capture them verbatim in a versioned fixture location and record their
 own provenance instead of citing this constructed procedure.
+
+## The scheduled rolling-record variant
+
+The harness-watch workflow records its passes differently: a scheduled run
+against a newer build writes the **rolling record** — the single
+marker-delimited `validatedOn` entry in the adapter profile that
+`scripts/record-playback-validation.mjs` rewrites in place (ADR-0009). The
+evidence class is unchanged — still `live-probe`, still this directory as the
+`artifact`, still never fixture evidence. What differs is bookkeeping, not
+trust: weekly runs would otherwise append near-identical rows, and the one
+claim consumers need is "newest build that passed scheduled playback". Only
+that script writes the region; human captures stay append-only, and the
+record's `what` string is the marker the release checker keys the playback
+baseline on.

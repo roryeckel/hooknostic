@@ -66,7 +66,12 @@ export function applyCodex(
     hasHookSpecific = true;
   }
   if (replacedOutput !== undefined && result.event === "tool.after") {
-    // Only MCP tool outputs are replaceable on Codex (approximate cell).
+    // Only MCP tool outputs have a wire field (updatedMCPToolOutput). Note the
+    // hook engine REJECTS this field at runtime (fails open, "PostToolUse hook
+    // returned unsupported updatedMCPToolOutput"; captured live on 0.151.0) —
+    // this encoding is kept for wire correctness, and the profile rates the
+    // cell unsupported. If a future codex honours it, the inverted watch in
+    // the playback suite fails and this comment is revisited.
     hookSpecificOutput["updatedMCPToolOutput"] = replacedOutput.output;
     hasHookSpecific = true;
   }

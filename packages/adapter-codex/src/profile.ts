@@ -56,6 +56,25 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/codex-tools",
           what: "updatedInput write channel verified honoured (rewritten command reached spawn)",
         },
+        {
+          version: "0.151.0",
+          date: "2026-09-02",
+          method: "live-probe",
+          artifact: ".capture/codex-tools",
+          what:
+            "PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with " +
+            "\"PostToolUse hook returned unsupported updatedMCPToolOutput\", run status Failed; " +
+            "matches upstream codex-rs hooks/src/events/post_tool_use.rs " +
+            "unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is " +
+            "therefore unsupported on the hook channel; the output parser also shows the MCP " +
+            "connector path (not hooks) is the only output-replacement surface.",
+        },
+        // scheduled-playback: at most one rolling live-probe record, rewritten
+        // in place by scripts/record-playback-validation.mjs (harness-watch
+        // workflow). Git history is the audit trail; see ADR-0009 and
+        // .capture/harness-playback/README.md. Keep field order stable.
+        // scheduled-playback:begin
+        // scheduled-playback:end
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
     },
@@ -87,10 +106,28 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.context.add": { level: "exact" },
 
       "tool.after.observe": { level: "exact" },
+      // The output parser strictly rejects updatedMCPToolOutput from a
+      // PostToolUse hook (fails open, run status Failed; captured live on
+      // 0.151.0 and pinned by upstream's own
+      // unsupported_updated_mcp_tool_output_fails_open test). The
+      // updatedMCPToolOutput encoding stays in apply.ts as defensive wire
+      // correctness, but no hook can deliver an output replacement here.
+      // The output parser strictly rejects updatedMCPToolOutput from a
+      // PostToolUse hook (fails open, run status Failed; captured live on
+      // 0.151.0 and pinned by upstream's own
+      // unsupported_updated_mcp_tool_output_fails_open test). The
+      // updatedMCPToolOutput encoding stays in apply.ts as defensive wire
+      // correctness, but no hook can deliver an output replacement here; the
+      // mcp-stdio playback drive is the inverted watch. The MCP connector
+      // path (not hooks) is the only output-replacement surface upstream.
       "tool.after.output.replace": {
-        level: "approximate",
+        level: "unsupported",
         rationale:
-          "only MCP tool outputs are replaceable (updatedMCPToolOutput); shell/file tool outputs cannot be replaced.",
+          "the hook engine strictly rejects updatedMCPToolOutput from a PostToolUse hook " +
+          "(fails open: run logs \"PostToolUse hook returned unsupported updatedMCPToolOutput\", " +
+          "status Failed; captured live on 0.151.0, .capture/codex-tools, and pinned by upstream " +
+          "codex-rs unsupported_updated_mcp_tool_output_fails_open). Only additionalContext is " +
+          "honoured on this event; the MCP connector path is the only output-replacement surface.",
       },
       "tool.after.blockContinuation": { level: "exact" },
       "tool.after.context.add": { level: "exact" },

@@ -85,5 +85,7 @@ Claude Code compatibility symlink to the same directory.
 - Contributor-facing scope, gates, and the adapter maintenance contract:
   `CONTRIBUTING.md`
 - Harness verification without model spend: `docs/testing.md`
+- Scheduled harness-version automation (lanes, runbook, PAT/vars):
+  `docs/harness-watch.md`
 - Release flow: `docs/releases.md` (packaging story: `docs/publishing.md`)
 - Capture projects and per-harness procedures: `.capture/*/README.md`

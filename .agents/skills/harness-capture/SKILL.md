@@ -99,5 +99,9 @@ writes a marker file, or read the spawned command line from the debug log.
    version to fall inside a profile range, and `doctor`/`inspect`/the
    generated `docs/harness-support.md` all read it -- a capture session that
    skips this step is invisible to every consumer surface. Then rerun
-   `node scripts/generate-harness-support.mjs`.
+   `node scripts/generate-harness-support.mjs`. **One exception to
+   append-only**: the marker-delimited scheduled-playback region in each
+   profile holds a single rolling record that
+   `scripts/record-playback-validation.mjs` rewrites in place — never edit it
+   by hand; the policy is ADR-0009.
 6. Never name downstream consumers in capture records (see `AGENTS.md`).

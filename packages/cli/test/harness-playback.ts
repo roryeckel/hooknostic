@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { HarnessAdapter } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { HookEventName } from "@hooknostic/sdk";
+import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 import { expect } from "vitest";
 
@@ -31,8 +31,7 @@ export interface PlaybackBuild {
 }
 
 export type ModelProtocol = "anthropic-messages" | "openai-responses" | "openai-chat";
-export type PlaybackScenario = "rewrite" | "block" | "fail";
-
+export type PlaybackScenario = "rewrite" | "block" | "fail" | "continuation";
 // These model-side envelopes are constructed test inputs, not captured hook
 // payloads. Keep their evidence boundary and promotion procedure explicit in
 // .capture/harness-playback/README.md.
@@ -41,6 +40,9 @@ export interface ModelPlayback {
   baseUrl: string;
   requests: unknown[];
   errors: string[];
+  urls: string[];
+  /** How many agent turns (model requests carrying tools) have been served. */
+  readonly turnCount: number;
   close(): Promise<void>;
 }
 
@@ -68,45 +70,171 @@ export function observedEvents(adapter: HarnessAdapter): HookEventName[] {
   );
 }
 
-function playbackPluginSource(events: readonly HookEventName[]): string {
+/**
+ * Events whose `context.add` cell resolves at the adapter's referenceVersion.
+ * The single source of truth for both the IR declarations and the generated
+ * plugin source: `addContext` on an event outside this set is an HN401
+ * unsupported-effect error at runtime (fail-open, unasserted), so both views
+ * must limit the effect to this set.
+ */
+export function contextAddEvents(adapter: HarnessAdapter): ReadonlySet<HookEventName> {
+  const target = targetFor(adapter, ".");
+  const matrix = adapter.capabilities(target).matrix ?? {};
+  return new Set(
+    HOOK_EVENT_NAMES.filter(
+      (event) => matrix[`${event}.context.add` as keyof typeof matrix] !== undefined,
+    ),
+  );
+}
+
+/**
+ * Effect behaviors the generated playback artifact wires in, on top of trace
+ * observation. All env-gated at runtime so one artifact serves every scenario
+ * drive: `HOOKNOSTIC_PLAYBACK_EFFECTS` is a comma-separated list.
+ */
+export type PlaybackEffect =
+  | "context-add" // addContext on every event that has the cell
+  | "block-prompt" // prompt.before.block fires on the sentinel prompt
+  | "prevent-stop-once" // stop.prevent on the first stop event only
+  | "notify" // notify on stop events
+  | "block-continuation" // tool.after.blockContinuation on the sentinel marker
+  | "request-approval" // tool.before.requestApproval on the sentinel marker
+  | "permission-deny" // permission.request.block on any permission prompt
+  | "replace-outputs"; // tool.after.output.replace
+
+export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
+  "context-add",
+  "block-prompt",
+  "prevent-stop-once",
+  "notify",
+  "block-continuation",
+  "request-approval",
+  "permission-deny",
+  "replace-outputs",
+];
+
+function playbackPluginSource(
+  events: readonly HookEventName[],
+  contextAdd: ReadonlySet<HookEventName>,
+): string {
   const definitions = events.map((event) => {
-    const capabilities =
+    const capabilities = [
       event === "tool.before"
-        ? `capabilities: {
-        "tool.before.block": "optional",
+        ? `"tool.before.block": "optional",
         "tool.before.input.replace": "optional",
+        "tool.before.requestApproval": "optional"`
+        : undefined,
+      event === "tool.after"
+        ? `"tool.after.blockContinuation": "optional",
+        "tool.after.output.replace": "optional"`
+        : undefined,
+      event === "permission.request" ? `"permission.request.block": "optional"` : undefined,
+      event === "prompt.before" ? `"prompt.before.block": "optional"` : undefined,
+      event === "agent.stop"
+        ? `"agent.stop.prevent": "optional",
+        "agent.stop.notify": "optional"`
+        : undefined,
+      event === "turn.stop"
+        ? `"turn.stop.prevent": "optional",
+        "turn.stop.notify": "optional"`
+        : undefined,
+      // context-add is declared and emitted only on events whose context.add
+      // cell resolved at build time — exactly the IR's declaration set. It
+      // must mirror contextAddEvents(): addContext on an unsupported event is
+      // an HN401 unsupported-effect error at runtime (fail-open), so a
+      // declared-but-unresolved cell would produce unasserted dispatch noise.
+      contextAdd.has(event) ? `"${event}.context.add": "optional"` : undefined,
+    ].filter(Boolean);
+    const capabilityBlock =
+      capabilities.length > 0
+        ? `capabilities: {
+        ${capabilities.join(",\n        ")},
       },`
         : "";
-    const rewrite =
-      event === "tool.before"
+
+    const contextAddBranch =
+      contextAdd.has(event)
         ? `
-        const command = event.tool.shell?.command;
-        if (command?.includes("hooknostic-blocked")) {
+        if (effects.includes("context-add")) {
+          return addContext("hooknostic-context [${event}]");
+        }`
+        : "";
+
+    const extraEffects = `
+        const effects = (process.env["HOOKNOSTIC_PLAYBACK_EFFECTS"] ?? "").split(",").filter(Boolean);
+        const command = event.tool?.shell?.command;${contextAddBranch}
+        if (effects.includes("block-prompt") && "${event}" === "prompt.before" &&
+            typeof event.prompt === "string" && event.prompt.includes("hooknostic-block-this-prompt")) {
+          return block("prompt blocked by harness playback");
+        }
+        if (effects.includes("block-continuation") && "${event}" === "tool.after") {
+          const outputText =
+            typeof event.output === "string"
+              ? event.output
+              : typeof event.output === "object" && event.output !== null &&
+                  typeof (event.output as { stdout?: unknown }).stdout === "string"
+                ? (event.output as { stdout: string }).stdout
+                : "";
+          if (outputText.includes("hooknostic-block-continuation")) {
+            return blockContinuation("continuation blocked by harness playback");
+          }
+        }
+        if (effects.includes("replace-outputs") && "${event}" === "tool.after") {
+          return replaceOutput("hooknostic-replaced-tool-output");
+        }
+        if (effects.includes("request-approval") && "${event}" === "tool.before" &&
+            command?.includes("hooknostic-approval")) {
+          return requestApproval("approval requested by harness playback");
+        }
+        if (effects.includes("permission-deny") && "${event}" === "permission.request") {
+          return block("permission denied by harness playback");
+        }
+        if (effects.includes("prevent-stop-once") && ("${event}" === "turn.stop" || "${event}" === "agent.stop") &&
+            (event.raw?.stop_hook_active ?? false) !== true) {
+          return preventStop("stop prevented once by harness playback");
+        }
+        if (effects.includes("notify") && ("${event}" === "turn.stop" || "${event}" === "agent.stop")) {
+          return notify("hooknostic-notify-marker");
+        }
+        if (event.event === "tool.before" && command?.includes("hooknostic-blocked")) {
           return block("blocked by harness playback");
         }
-        if (command?.includes("hooknostic-original")) {
+        if (event.event === "tool.before" && command?.includes("hooknostic-original")) {
           return updateShell({
             command: command.replace("hooknostic-original", "hooknostic-rewritten"),
           });
-        }`
-        : "";
+        }`;
+
     return `
     hook(${JSON.stringify(event)}, {
       id: ${JSON.stringify(`playback-${event}`)},
-      ${capabilities}
+      ${capabilityBlock}
       async run(event) {
         appendFileSync(tracePath, JSON.stringify({
           event: event.event,
           nativeEvent: event.harness.nativeEvent,
           harnessVersion: event.harness.version,
-        }) + "\\n");${rewrite}
+          toolKind: event.tool?.kind,
+          toolNativeName: event.tool?.nativeName,
+        }) + "\\n");${extraEffects}
       },
     })`;
   });
 
   return `
 import { appendFileSync } from "node:fs";
-import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";
+import {
+  addContext,
+  block,
+  blockContinuation,
+  definePlugin,
+  hook,
+  notify,
+  preventStop,
+  replaceOutput,
+  requestApproval,
+  updateShell,
+} from "@hooknostic/sdk";
 
 const tracePath = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
 if (!tracePath) throw new Error("HOOKNOSTIC_PLAYBACK_TRACE is required");
@@ -128,22 +256,53 @@ export async function buildPlaybackArtifact(
   }
 
   const events = observedEvents(adapter);
+  const contextAdd = contextAddEvents(adapter);
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events), "utf8");
+  await writeFile(entryPath, playbackPluginSource(events, contextAdd), "utf8");
 
+  // IR capability declarations must mirror the generated source's `capabilities`
+  // blocks: the analyzer validates every returned effect against the declared
+  // set, so an effect the source can emit must also be declared here. Both
+  // views take their context.add set from the same contextAddEvents()
+  // resolution.
+  const contextCapabilityFor = (event: HookEventName): string | undefined =>
+    contextAdd.has(event) ? `${event}.context.add` : undefined;
   const hooks = events.map((event) =>
     hook(event, {
       id: `playback-${event}`,
-      ...(event === "tool.before"
-        ? {
-            capabilities: {
-              "tool.before.block": "optional" as const,
-              "tool.before.input.replace": "optional" as const,
-            },
-          }
-        : {}),
+      ...((): { capabilities: Record<CapabilityId, "optional"> } | Record<string, never> => {
+        const declared: Partial<Record<CapabilityId, "optional">> = {};
+        if (event === "tool.before") {
+          declared["tool.before.block"] = "optional" as const;
+          declared["tool.before.input.replace"] = "optional" as const;
+          declared["tool.before.requestApproval"] = "optional" as const;
+        }
+        if (event === "tool.after") {
+          declared["tool.after.blockContinuation"] = "optional" as const;
+          declared["tool.after.output.replace"] = "optional" as const;
+        }
+        if (event === "permission.request") {
+          declared["permission.request.block"] = "optional" as const;
+        }
+        if (event === "prompt.before") {
+          declared["prompt.before.block"] = "optional" as const;
+        }
+        if (event === "agent.stop") {
+          declared["agent.stop.prevent"] = "optional" as const;
+          declared["agent.stop.notify"] = "optional" as const;
+        }
+        if (event === "turn.stop") {
+          declared["turn.stop.prevent"] = "optional" as const;
+          declared["turn.stop.notify"] = "optional" as const;
+        }
+        const context = contextCapabilityFor(event);
+        if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
+        return Object.keys(declared).length > 0
+          ? { capabilities: declared as Record<CapabilityId, "optional"> }
+          : {};
+      })(),
       async run() {},
     }),
   );
@@ -279,7 +438,20 @@ function toolName(tool: Record<string, unknown>): string | undefined {
 
 function requestTools(request: Record<string, unknown>): Record<string, unknown>[] {
   const tools = request["tools"];
-  if (Array.isArray(tools)) return tools as Record<string, unknown>[];
+  // Codex wraps MCP tools in namespace groups: {type:"namespace", name:
+  // "mcp__<server>", tools:[...]}. Track the namespace so a scripted call can
+  // emit the fully-qualified routable name `mcp__<server>.<tool>` (verified on
+  // codex 0.151.0 -- the router rejects the bare inner name).
+  const flatten = (entries: unknown[], namespace?: string): Record<string, unknown>[] =>
+    entries.flatMap((entry) => {
+      if (entry === null || typeof entry !== "object") return [];
+      const record = entry as Record<string, unknown>;
+      if (record["type"] === "namespace" && Array.isArray(record["tools"])) {
+        return flatten(record["tools"] as unknown[], String(record["name"] ?? ""));
+      }
+      return [namespace ? { ...record, namespace } : record];
+    });
+  if (Array.isArray(tools)) return flatten(tools);
   if (tools !== null && typeof tools === "object") {
     return Object.entries(tools).map(([name, value]) => ({
       ...(value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {}),
@@ -289,15 +461,37 @@ function requestTools(request: Record<string, unknown>): Record<string, unknown>
   return [];
 }
 
-function scriptedTool(
+export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
-): { name: string; arguments: string } {
+  marker = "hooknostic-tool.txt",
+  preferredTool?: string,
+): { name: string; namespace?: string; arguments: string } {
   const tools = requestTools(request);
-  const tool = tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
+  const tool = preferredTool
+    ? tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool))
+    : tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
   if (tool === undefined) {
-    throw new Error(`playback request exposed no shell tool: ${JSON.stringify(tools)}`);
+    throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
   }
+  const name = toolName(tool)!;
+  // Namespace tools (Codex MCP groups, multi_agent_v1) resolve by the exact
+  // {namespace, name} pair; the pair emission is the same for every payload,
+  // so compute it once and branch only on the arguments below.
+  const namespaceEmission = tool["namespace"] !== undefined
+    ? {
+        // The namespace tool spec the model sees carries name
+        // "mcp__<server>", and the callable emission mirrors it verbatim:
+        // name = bare inner tool name, namespace = the container name
+        // ("mcp__<server>", no trailing underscores). The flattened-name form
+        // (`mcp__<server>__<tool>` in `name` alone) and the trailing-__
+        // namespace variant both fail the exact match with "unsupported
+        // call" on codex 0.151.0 (verified live; upstream openai/codex#33263
+        // records the same resolution failure for proxy-flattened calls).
+        name,
+        namespace: String(tool["namespace"]),
+      }
+    : { name };
   const schema = jsonSchemaForTool(tool);
   const properties =
     schema["properties"] !== null && typeof schema["properties"] === "object"
@@ -305,17 +499,68 @@ function scriptedTool(
       : {};
   const key = ["command", "cmd"].find((candidate) => properties[candidate] !== undefined);
   if (key === undefined) {
-    throw new Error(`playback shell tool has no captured command key: ${JSON.stringify(tool)}`);
+    // Agent tools (Claude `Agent`, Codex `spawn_agent`) take a prompt, not a
+    // command. The subagent drive emits a minimal call; the harness's own
+    // router validates it against the live tool schema. `run_in_background:
+    // false` keeps the subagent synchronous so SubagentStart/SubagentStop
+    // both dispatch inside the turn.
+    // Codex 0.151.0's spawn_agent names the task `message` ("Use either
+    // message or items"); Claude's Agent uses `prompt`. `description` last:
+    // some schemas carry one, and emitting it alone fails the harness's own
+    // "one of: message or items" validation (observed live on 0.151.0).
+    const promptKey = ["message", "prompt", "task", "description"].find(
+      (candidate) => properties[candidate] !== undefined,
+    );
+    if (promptKey !== undefined) {
+      return {
+        ...namespaceEmission,
+        arguments: JSON.stringify({
+          ...(properties["description"] !== undefined
+            ? { description: "Playback subagent probe" }
+            : {}),
+          [promptKey]: "Say the single word ready, then stop.",
+          ...(properties["subagent_type"] !== undefined ? { subagent_type: "general-purpose" } : {}),
+          ...(properties["run_in_background"] !== undefined ? { run_in_background: false } : {}),
+        }),
+      };
+    }
+    // No prompt key either: a namespace tool taking no arguments (the MCP
+    // fixture tool).
+    return { ...namespaceEmission, arguments: JSON.stringify({}) };
   }
-  const script =
-    scenario === "rewrite"
-      ? "require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')"
-      : scenario === "block"
-        ? "require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')"
-        : "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
+  let script: string;
+  if (scenario === "rewrite") {
+    script = `require('node:fs').writeFileSync('${marker}','hooknostic-original')`;
+  } else if (scenario === "block") {
+    script = `require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')`;
+  } else if (scenario === "continuation") {
+    script = `process.stdout.write('hooknostic-block-continuation')`;
+  } else {
+    script = "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
+  }
+  if (process.env["HOOKNOSTIC_PLAYBACK_FILL"] !== undefined) {
+    // Compaction drive: the command emits a huge stdout payload on top of the
+    // marker write so each tool result fills the context window and forces the
+    // harness to compact. The fill marker in the output lets the test assert
+    // the growth reached the model side.
+    const fill = "hooknostic-fill ".repeat(6_000);
+    script += `;process.stdout.write(process.env['HOOKNOSTIC_PLAYBACK_FILL'])`;
+    void fill;
+  }
   const command = `node -e "${script}"`;
   const value = properties[key]?.["type"] === "array" ? ["node", "-e", script] : command;
-  return { name: toolName(tool)!, arguments: JSON.stringify({ [key]: value }) };
+  // Emit `description` when the tool schema declares one (Claude's Bash does;
+  // fixtures carry it in tool_input). Without it a live capture reads as
+  // shape drift against the committed fixtures for purely scripted reasons.
+  return {
+    ...namespaceEmission,
+    arguments: JSON.stringify({
+      [key]: value,
+      ...(properties["description"] !== undefined
+        ? { description: "Playback probe command" }
+        : {}),
+    }),
+  };
 }
 
 function sse(
@@ -338,11 +583,33 @@ function sse(
   response.end("data: [DONE]\n\n");
 }
 
+/** True for any URL path serving a model list (models-manager refresh). */
+function urlPathToModels(urlPath: string): boolean {
+  return /\/v\d+\/models$/.test(urlPath) || urlPath === "/models";
+}
+
+/**
+ * What the scripted model does on one agent turn. `tool` emits one tool call
+ * (the harness's shell tool by default, or `toolName` â€” e.g. the MCP fixture
+ * tool â€” when set), `text` completes the conversation with plain text.
+ */
+export interface TurnAction {
+  kind: "tool" | "text";
+  /** The disposition of the emitted tool call; only for `kind: "tool"`. */
+  disposition?: PlaybackScenario;
+  /** Marker filename the tool script writes; only for `kind: "tool"`. */
+  marker?: string;
+  /** Exact tool name to call (defaults to the first shell-like tool declared). */
+  toolName?: string;
+  /** Text emitted for `kind: "text"`. */
+  text?: string;
+}
+
 function anthropicTurn(
   response: ServerResponse,
   request: Record<string, unknown>,
   turn: number,
-  scenario: PlaybackScenario,
+  action: TurnAction,
 ): void {
   const message = {
     id: `msg_playback_${turn}`,
@@ -355,8 +622,8 @@ function anthropicTurn(
     usage: { input_tokens: 10, output_tokens: 1 },
   };
   const events: unknown[] = [{ type: "message_start", message }];
-  if (turn === 1) {
-    const tool = scriptedTool(request, scenario);
+  if (action.kind === "tool") {
+    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
     events.push(
       {
         type: "content_block_start",
@@ -385,7 +652,7 @@ function anthropicTurn(
       {
         type: "content_block_delta",
         index: 0,
-        delta: { type: "text_delta", text: "playback complete" },
+        delta: { type: "text_delta", text: action.text ?? "playback complete" },
       },
       { type: "content_block_stop", index: 0 },
       {
@@ -403,17 +670,18 @@ function responsesTurn(
   response: ServerResponse,
   request: Record<string, unknown>,
   turn: number,
-  scenario: PlaybackScenario,
+  action: TurnAction,
 ): void {
   const id = `resp_playback_${turn}`;
   const events: unknown[] = [{ type: "response.created", response: { id } }];
-  if (turn === 1) {
-    const tool = scriptedTool(request, scenario);
+  if (action.kind === "tool") {
+    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
     const item = {
       id: "fc_playback",
       call_id: "call_playback",
       type: "function_call",
       name: tool.name,
+      ...(tool.namespace !== undefined ? { namespace: tool.namespace } : {}),
       arguments: tool.arguments,
       status: "completed",
     };
@@ -437,7 +705,9 @@ function responsesTurn(
           role: "assistant",
           id: "msg_playback",
           status: "completed",
-          content: [{ type: "output_text", text: "playback complete", annotations: [] }],
+          content: [
+            { type: "output_text", text: action.text ?? "playback complete", annotations: [] },
+          ],
         },
       },
     );
@@ -462,7 +732,7 @@ function chatTurn(
   response: ServerResponse,
   request: Record<string, unknown>,
   turn: number,
-  scenario: PlaybackScenario,
+  action: TurnAction,
 ): void {
   const base = {
     id: `chatcmpl-playback-${turn}`,
@@ -471,8 +741,8 @@ function chatTurn(
     model: "hooknostic-playback",
   };
   const events: unknown[] = [];
-  if (turn === 1) {
-    const tool = scriptedTool(request, scenario);
+  if (action.kind === "tool") {
+    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
     events.push(
       {
         ...base,
@@ -511,7 +781,11 @@ function chatTurn(
       {
         ...base,
         choices: [
-          { index: 0, delta: { role: "assistant", content: "playback complete" }, finish_reason: null },
+          {
+            index: 0,
+            delta: { role: "assistant", content: action.text ?? "playback complete" },
+            finish_reason: null,
+          },
         ],
       },
       { ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
@@ -520,23 +794,86 @@ function chatTurn(
   sse(response, events);
 }
 
+/**
+ * A scenario script: one TurnAction per agent turn. Turn 1 runs the shell
+ * tool; a final `text` turn completes the conversation; intermediate `tool`
+ * turns drive multi-call drives (stop-prevention's second model turn).
+ */
+export type ScenarioScript = readonly TurnAction[];
+
 export async function startModelPlayback(
   protocol: ModelProtocol,
   scenario: PlaybackScenario = "rewrite",
+  script?: ScenarioScript,
 ): Promise<ModelPlayback> {
+  const turns: ScenarioScript =
+    script ??
+    (scenario === "rewrite" || scenario === "block" || scenario === "fail" || scenario === "continuation"
+      ? [
+          { kind: "tool", disposition: scenario },
+          { kind: "text" },
+        ]
+      : [{ kind: "text", text: "playback complete" }]);
   const requests: unknown[] = [];
   const errors: string[] = [];
+  const urls: string[] = [];
   let turn = 0;
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
+    urls.push(`${request.method} ${request.url}`);
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      if (request.method === "GET" && request.url?.endsWith("/models")) {
+      // Models refresh hits /models, /v1/models, sometimes with a query
+      // string. Codex's manager expects `models` as a list of ModelInfo
+      // structs (slug, supported_reasoning_levels, ...); other harnesses
+      // expect the OpenAI `data` list. Serve both keys with a full struct.
+      const urlPath = request.url?.split("?")[0] ?? "";
+      if (urlPathToModels(urlPath)) {
         response.writeHead(200, { "content-type": "application/json" });
+        const modelInfo = {
+          slug: "hooknostic-playback",
+          display_name: "Hooknostic Playback",
+          default_reasoning_level: "medium",
+          supported_reasoning_levels: [
+            { effort: "minimal", description: "fastest" },
+            { effort: "low", description: "low" },
+            { effort: "medium", description: "default" },
+            { effort: "high", description: "deepest" },
+          ],
+          shell_type: "default",
+          visibility: "list",
+          supported_in_api: true,
+          priority: 1,
+          supports_reasoning_summary_parameter: false,
+          default_reasoning_summary: "none",
+          support_verbosity: false,
+          default_verbosity: "medium",
+          apply_patch_tool_type: "freeform",
+          web_search_tool_type: "text",
+          truncation_policy: { mode: "tokens", limit: 30_000 },
+          supports_image_detail_original: false,
+          max_context_window_tokens: 32_768,
+          auto_compact_token_limit: 24_576,
+          effective_context_window_percent: 100,
+          input_modalities: ["text"],
+          experimental_supported_tools: [],
+          base_instructions: "You are a playback model for hooknostic tests.",
+          supports_search_tool: false,
+          use_responses_lite: false,
+          tool_mode: "unified",
+          multi_agent_reasoning_effort: "medium",
+          context_window: 32_768,
+          max_output_tokens: 4_096,
+          supports_parallel_tool_calls: false,
+          supports_reasoning_summaries: false,
+        };
         response.end(
           JSON.stringify({
             object: "list",
-            data: [{ id: "hooknostic-playback", object: "model", owned_by: "hooknostic" }],
+            models: [modelInfo],
+            data: [
+              { ...modelInfo, object: "model", owned_by: "hooknostic" },
+            ],
           }),
         );
         return;
@@ -555,13 +892,16 @@ export async function startModelPlayback(
         // playback step.
         const isAgentTurn = requestTools(parsed).length > 0;
         if (isAgentTurn) turn += 1;
-        const scriptedTurn = isAgentTurn ? turn : 2;
+        // Past the script's last turn the model keeps completing with text:
+        // a harness that re-prompts (stop prevention) or retries gets a
+        // defined response, never a 500.
+        const action = turns[Math.min(turn, turns.length) - 1] ?? { kind: "text" as const };
         if (protocol === "anthropic-messages") {
-          anthropicTurn(response, parsed, scriptedTurn, scenario);
+          anthropicTurn(response, parsed, turn, action);
         } else if (protocol === "openai-responses") {
-          responsesTurn(response, parsed, scriptedTurn, scenario);
+          responsesTurn(response, parsed, turn, action);
         } else {
-          chatTurn(response, parsed, scriptedTurn, scenario);
+          chatTurn(response, parsed, turn, action);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -580,6 +920,10 @@ export async function startModelPlayback(
     baseUrl: `http://127.0.0.1:${address.port}`,
     requests,
     errors,
+    urls,
+    get turnCount() {
+      return turn;
+    },
     close: () => new Promise<void>((resolvePromise) => server.close(() => resolvePromise())),
   };
 }

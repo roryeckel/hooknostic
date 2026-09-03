@@ -42,6 +42,24 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
             "and runs the session in PWD's project -- where plugins may not exist. " +
             "Spawners must set PWD to agree with cwd (see the smoke's runCommand).",
         },
+        {
+          version: "1.18.25",
+          date: "2026-09-01",
+          method: "captured",
+          artifact: ".capture/opencode-permission",
+          what:
+            "permission.ask plugin hook NEVER fires (upstream anomalyco/opencode #9229): " +
+            "observe arrives via the permission.asked bus event on the generic event " +
+            "callback, and denial works via client.postSessionIdPermissionsPermissionId " +
+            'response "reject" (API true, command not executed, turn halts). The 1.18 ' +
+            "permission fixtures' callback-envelope shape is type-derived, not captured.",
+        },
+        // scheduled-playback: at most one rolling live-probe record, rewritten
+        // in place by scripts/record-playback-validation.mjs (harness-watch
+        // workflow). Git history is the audit trail; see ADR-0009 and
+        // .capture/harness-playback/README.md. Keep field order stable.
+        // scheduled-playback:begin
+        // scheduled-playback:end
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
@@ -88,10 +106,24 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
 
       // No tool-failure callback → tool.error unsupported.
 
-      "permission.request.observe": { level: "exact" },
+      "permission.request.observe": {
+        level: "emulated",
+        rationale:
+          "observed via the permission.asked bus event on the generic event callback -- NOT " +
+          "via the documented permission.ask hook, which never fires on 1.18.x (captured live " +
+          "on 1.18.25, .capture/opencode-permission; upstream anomalyco/opencode #9229). The " +
+          "emulation covers the normalizing view only: a permission.ask registration in a " +
+          "user plugin would also never fire.",
+      },
       "permission.request.block": {
-        level: "exact",
-        rationale: "permission.ask exposes a mutable status output; \"deny\" blocks.",
+        level: "approximate",
+        rationale:
+          "denial posts client.postSessionIdPermissionsPermissionId { response: \"reject\" } " +
+          "from the permission.asked bus event (captured live on 1.18.25: API answers true, " +
+          "the command does not run, the turn halts). Approximate because it is a round-trip " +
+          "through the server API rather than an in-callback mutation, it is a silent no-op " +
+          "without a client, and the documented output.status channel is unreachable on " +
+          "1.18.x (the permission.ask callback never fires; upstream anomalyco/opencode #9229).",
       },
 
       "context.compact.before.observe": {

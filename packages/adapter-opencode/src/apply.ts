@@ -16,10 +16,23 @@ export interface OpenCodeApplication {
     args?: unknown;
     /** tool.execute.after: replaces output.output (string-coerced). */
     output?: string;
-    /** permission.ask: sets output.status. */
+    /** permission.ask (callback surface): sets output.status. */
     status?: "deny";
     /** experimental.session.compacting: appended to output.context. */
     context?: string[];
+  };
+  /**
+   * Deny a permission request through the client reply API
+   * (postSessionIdPermissionsPermissionId, response "reject"). This is the
+   * only working deny channel on 1.18.x: the `permission.ask` callback whose
+   * output this would mutate never fires (captured live on 1.18.25,
+   * .capture/opencode-permission; upstream anomalyco/opencode #9229). The
+   * permission and session ids live only on the native bus event — the shim
+   * reads them from `raw` and completes the reply.
+   */
+  permissionReply?: {
+    /** Fixed: a permission.request block denies. */
+    response: "reject";
   };
   /**
    * Messages the shim posts back into the session with
@@ -63,6 +76,9 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
 
   if (terminal?.kind === "block") {
     if (result.event === "permission.request") {
+      // The reply API is the live deny channel (see permissionReply above).
+      // The legacy output.status mutation is kept for the callback surface,
+      // which never fires on 1.18.x but costs nothing to keep correct.
       mutations.status = "deny";
     } else {
       application.throwMessage = terminal.reason;
@@ -107,6 +123,12 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
       });
     }
     if (prompts.length > 0) application.prompts = prompts;
+  }
+
+  if (result.event === "permission.request" && terminal?.kind === "block") {
+    // The permission id and session come from the native bus event, not from
+    // the portable HookResult — the shim wires them in (like postPrompts).
+    application.permissionReply = { response: "reject" };
   }
 
   if (Object.keys(mutations).length > 0) application.mutations = mutations;

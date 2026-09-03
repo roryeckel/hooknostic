@@ -4829,10 +4829,18 @@ function applyClaude(result, _nativeEvent, _invocation) {
   if (notices.length > 0) body["systemMessage"] = notices.join("\n");
   switch (terminal?.kind) {
     case "block": {
-      if (result.event === "tool.before" || result.event === "permission.request") {
+      if (result.event === "tool.before") {
         hookSpecificOutput["permissionDecision"] = "deny";
         hookSpecificOutput["permissionDecisionReason"] = terminal.reason;
         delete hookSpecificOutput["updatedInput"];
+        hasJsonOutput = true;
+        break;
+      }
+      if (result.event === "permission.request") {
+        hookSpecificOutput["decision"] = {
+          behavior: "deny",
+          message: terminal.reason
+        };
         hasJsonOutput = true;
         break;
       }

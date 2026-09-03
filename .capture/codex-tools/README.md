@@ -96,3 +96,39 @@ as defensive coverage (another version or surface may pass it through), but
 its provenance is "router debug log", not "captured hook payload", and
 `fixtures/codex/0.148/pre-tool-exec-command.input.json` is a constructed
 payload (log-derived args in a schema-derived envelope), not a capture.
+
+## Namespaced tool-call routing + MCP output replacement (2026-09-02, 0.151.0)
+
+Two follow-ups captured during the loopback playback drives:
+
+1. **The router resolves `{namespace, name}` exactly.** A scripted
+   `function_call` for an MCP tool must carry `name` = the bare inner tool
+   name and `namespace` = the namespace tool spec's `name` verbatim
+   (`mcp__<server>`, no trailing underscores). The flattened-name form
+   (`mcp__<server>__<tool>` in `name` alone) and a trailing-`__` namespace
+   both fail the exact match with `unsupported call`. The earlier reading in
+   this file's history — that codex's router "rejects scripted namespaced
+   calls from custom providers" as an upstream limitation (#31354) — was
+   wrong: the emission shape was ours to fix. The same pair emission routes
+   the `multi_agent_v1` agent tools (`spawn_agent` and siblings), which the
+   0.151.0 router also registers under a namespace container. `spawn_agent`
+   additionally validates "Provide one of: message or items" — the task key
+   is `message`.
+2. **`updatedMCPToolOutput` is rejected, not honoured.** A PostToolUse hook
+   returning `hookSpecificOutput.updatedMCPToolOutput` fails open: the run
+   logs `hook: PostToolUse Failed`, the original output reaches the model,
+   and the replacement is discarded. This matches upstream codex-rs
+   `hooks/src/events/post_tool_use.rs`'s own
+   `unsupported_updated_mcp_tool_output_fails_open` test and the output
+   parser's `unsupported_post_tool_use_hook_specific_output` (the field is
+   unconditionally reported unsupported; only `additionalContext` is read).
+   `tool.after.output.replace` is therefore `unsupported` on the hook
+   channel for codex — the 0.148.0-era "approximate" rating came from the
+   wire schema's existence, never from a live honoured write.
+
+Also observed on 0.151.0: `SubagentStart`/`SubagentStop` fire in the spawned
+child session, which does not inherit the parent's
+`--dangerously-bypass-hook-trust` (upstream openai/codex#33097) — with the
+bypass flag, `collab: SpawnAgent` runs and the parent dispatches
+PreToolUse/PostToolUse, but no subagent lifecycle hook ever reaches the
+artifact.

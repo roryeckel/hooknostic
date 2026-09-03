@@ -401,8 +401,10 @@ describe("hooknostic inspect", () => {
     const replace = report.capabilities.find(
       (c: { capability: string }) => c.capability === "tool.after.output.replace",
     );
-    expect(replace.level).toBe("approximate");
-    expect(replace.rationale).toContain("MCP");
+    // Captured live on 0.151.0: the hook engine rejects updatedMCPToolOutput
+    // outright, so the cell is unsupported (see the codex profile rationale).
+    expect(replace.level).toBe("unsupported");
+    expect(replace.rationale).toContain("updatedMCPToolOutput");
     const err = report.capabilities.find(
       (c: { capability: string }) => c.capability === "tool.error.observe",
     );

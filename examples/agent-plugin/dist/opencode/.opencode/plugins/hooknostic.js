@@ -4831,6 +4831,9 @@ function planOpenCodeApplication(result) {
     }
     if (prompts.length > 0) application.prompts = prompts;
   }
+  if (result.event === "permission.request" && terminal?.kind === "block") {
+    application.permissionReply = { response: "reject" };
+  }
   if (Object.keys(mutations).length > 0) application.mutations = mutations;
   return application;
 }
@@ -4975,6 +4978,20 @@ function decodeOpenCode(nativeEvent, invocation) {
           return { ...withSession(propertySessionId), event: "turn.stop" };
         case "session.compacted":
           return { ...withSession(propertySessionId), event: "context.compact.after" };
+        case "permission.asked": {
+          const properties = busEvent.properties ?? {};
+          return {
+            ...withSession(properties.sessionID),
+            correlation: {
+              ...typeof properties.tool?.callID === "string" ? { toolCallId: properties.tool.callID } : {}
+            },
+            event: "permission.request",
+            tool: classifyOpenCodeTool(
+              typeof properties.permission === "string" ? properties.permission : "unknown",
+              properties.metadata
+            )
+          };
+        }
         default:
           throw new OpenCodeDecodeError(`unmapped bus event "${busEvent?.type}"`);
       }
@@ -5049,6 +5066,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== void 0) console.error(diagnostics);
     await postPrompts(event, application);
+    await replyPermission(event, native, application);
     if (application.throwMessage !== void 0) {
       throw new HooknosticBlock(application.throwMessage);
     }
@@ -5084,6 +5102,28 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       }
     }
   };
+  const replyPermission = async (event, native, application) => {
+    if (application.permissionReply === void 0) return;
+    const properties = native.input?.event?.properties ?? {};
+    const permissionID = typeof properties.id === "string" ? properties.id : void 0;
+    const sessionID = typeof properties.sessionID === "string" ? properties.sessionID : void 0;
+    if (permissionID === void 0 || sessionID === void 0) return;
+    const client = pluginInput.client;
+    if (client === void 0 || typeof client.postSessionIdPermissionsPermissionId !== "function") {
+      return;
+    }
+    try {
+      await withTimeout(
+        Promise.resolve(
+          client.postSessionIdPermissionsPermissionId({
+            path: { id: sessionID, permissionID },
+            body: { response: "reject" }
+          })
+        )
+      );
+    } catch {
+    }
+  };
   const hooks = {};
   const callback = (hook2) => async (input, output) => {
     await runFailingOpen({
@@ -5096,7 +5136,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   };
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
   if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
-  if (events.has("permission.request")) hooks["permission.ask"] = callback("permission.ask");
+  if (events.has("permission.request")) hooks["event"] = callback("event");
   if (events.has("prompt.before")) hooks["chat.message"] = callback("chat.message");
   if (events.has("context.compact.before")) {
     hooks["experimental.session.compacting"] = callback("experimental.session.compacting");
@@ -5109,7 +5149,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
 
 // hooknostic-shim-entry.ts
 var HooknosticPlugin = async (input) => createHooknosticHooks(hooks_default, {
-  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
+  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 }, input);

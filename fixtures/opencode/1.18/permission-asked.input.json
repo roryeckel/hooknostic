@@ -1,0 +1,22 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-perm-capture",
+  "input": {
+    "event": {
+      "id": "evt_0606261c900293Kc9lYzjzxIWd",
+      "type": "permission.asked",
+      "properties": {
+        "id": "per_0606261c90015cAPzKQSAlywI5",
+        "sessionID": "ses_f9f9da5a6ffedvP8DniYS95HRh",
+        "permission": "bash",
+        "patterns": ["mkdir hooknostic-perm-probe"],
+        "metadata": { "command": "mkdir hooknostic-perm-probe" },
+        "always": ["mkdir *"],
+        "tool": {
+          "messageID": "msg_060625c8e0019Fs36Io0A4Doyw",
+          "callID": "call_playback"
+        }
+      }
+    }
+  }
+}

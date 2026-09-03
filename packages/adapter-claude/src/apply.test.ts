@@ -236,7 +236,7 @@ describe("applyClaude", () => {
     }
   });
 
-  it("encodes permission.request block as a JSON deny (exit 2 is not honored there)", async () => {
+  it("encodes permission.request block as hookSpecificOutput.decision.behavior deny (permissionDecision is ignored on that event)", async () => {
     const native = await applyClaude(
       result({
         event: "permission.request",
@@ -250,8 +250,7 @@ describe("applyClaude", () => {
     expect(native.body).toEqual({
       hookSpecificOutput: {
         hookEventName: "PermissionRequest",
-        permissionDecision: "deny",
-        permissionDecisionReason: "nope",
+        decision: { behavior: "deny", message: "nope" },
       },
     });
   });

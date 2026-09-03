@@ -152,6 +152,33 @@ export function decodeOpenCode(
           return { ...withSession(propertySessionId), event: "turn.stop" };
         case "session.compacted":
           return { ...withSession(propertySessionId), event: "context.compact.after" };
+        case "permission.asked": {
+          // The active Permission module publishes this bus event instead of
+          // triggering the documented `permission.ask` plugin hook (captured
+          // live on 1.18.25: .capture/opencode-permission -- the callback
+          // never fires, upstream defect anomalyco/opencode #9229). The
+          // request's `permission` names the tool path; `metadata` carries the
+          // tool's own input (e.g. {command}); `tool.callID` correlates.
+          const properties = (busEvent.properties ?? {}) as {
+            sessionID?: unknown;
+            permission?: unknown;
+            metadata?: unknown;
+            tool?: { callID?: unknown };
+          };
+          return {
+            ...withSession(properties.sessionID),
+            correlation: {
+              ...(typeof properties.tool?.callID === "string"
+                ? { toolCallId: properties.tool.callID }
+                : {}),
+            },
+            event: "permission.request",
+            tool: classifyOpenCodeTool(
+              typeof properties.permission === "string" ? properties.permission : "unknown",
+              properties.metadata,
+            ),
+          };
+        }
         default:
           throw new OpenCodeDecodeError(`unmapped bus event "${busEvent?.type}"`);
       }

@@ -1,0 +1,834 @@
+name: Harness watch
+
+# Scheduled harness-version compatibility automation (issue #1, plan §7).
+# Lanes, in increasing cost:
+#   detect   — free, secret-free: npm dist-tags vs the playback baseline
+#              (max(referenceVersion, rolling scheduled-playback record),
+#              ADR-0009). A quiet week emits an empty matrix; every matrix
+#              job carries `if: needs.detect.outputs.count != '0'` because
+#              {"include":[]} cannot expand.
+#   verify   — free, ZERO secrets: installs the newer harness build
+#              (--ignore-scripts, persist-credentials: false — the installed
+#              package must never see a token) and runs the model-free
+#              playback suite against it. Outcome flows downstream via an
+#              uploaded artifact, not job outputs (matrix jobs share one
+#              outputs map).
+#   record   — PAT job that never installs or runs the harness: rewrites the
+#              rolling scheduled-playback record (ADR-0009) on pass, opens or
+#              updates harness-watch/<harness>, optionally auto-merges via the
+#              HARNESS_WATCH_AUTOMERGE repo variable. Range-extension exits
+#              (3) file a deduped issue with GITHUB_TOKEN — the PAT
+#              deliberately has no Issues scope.
+#   report-failure — GITHUB_TOKEN only: deduped issue on playback failure.
+#   drift        — capture-compare: drives a real harness session against the
+#                  loopback model (playback transport, free, no secrets) or the
+#                  owner's LLM via a LiteLLM sidecar (llm transport, paid,
+#                  force_llm dispatches only), then structurally diffs the
+#                  captured native payloads against committed fixtures.
+#                  Exits 4 (drift) and 5 (inconclusive) are reportable
+#                  outcomes, not job failures; the job posts nothing.
+#   publish-verdict — GITHUB_TOKEN only, the single final writer: lands every
+#                  verdict in the step summary, comments on the PR or failure
+#                  issue, files a deduped report issue for non-clean verdicts
+#                  with no destination, and closes reconciled failure issues.
+#
+# The version-facts hard rule (ADR-0008) holds end to end: nothing here moves
+# referenceVersion, fixtureDir, recommendedRange, or profile ranges. The drift
+# lane is advisory only: it never writes fixtures and never upgrades
+# provenance; drift routes humans to the harness-capture skill.
+#
+# Repo configuration (ops, not commits): secrets HARNESS_WATCH_PAT
+# (fine-grained: this repo, Contents RW + Pull requests RW); repo variable
+# HARNESS_WATCH_AUTOMERGE (opt-in auto-merge, off by default). The
+# harness-watch label is created by this workflow's first record/report run
+# if missing (gh label create || true in each writer). The paid llm transport
+# additionally reads vars HARNESS_LLM_BASE_URL / HARNESS_LLM_MODEL and secret
+# HARNESS_LLM_API_KEY. The key stays in the LiteLLM sidecar; harness processes
+# receive only a disposable local proxy credential.
+
+on:
+  schedule:
+    # Weekly, Monday 05:23 UTC — off-minute against the top-of-hour stampede.
+    # GitHub disables scheduled workflows after 60 days of repo inactivity;
+    # workflow_dispatch is the backstop (docs/harness-watch.md runbook).
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: "Harness filter (claude|codex|opencode); empty = all"
+        required: false
+        default: ""
+      version:
+        description: "Pin the version under test (overrides the npm dist-tag)"
+        required: false
+        default: ""
+      force_llm:
+        description: "Run the paid LLM drift transport (LiteLLM sidecar + Ollama Cloud)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-watch
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    # Fork no-op: scheduled runs on forks would otherwise burn minutes.
+    if: github.repository == 'roryeckel/hooknostic'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      count: ${{ steps.detect.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Detect newer harness builds
+        id: detect
+        shell: bash
+        run: |
+          ARGS=()
+          if [ -n "${{ inputs.harness }}" ]; then ARGS+=("${{ inputs.harness }}"); fi
+          if [ -n "${{ inputs.version }}" ]; then ARGS+=(--version "${{ inputs.version }}"); fi
+          if [ "${{ inputs.force_llm }}" = "true" ]; then ARGS+=(--force); fi
+          # --matrix: every assessed entry is included; downstream legs gate on
+          # newerAvailable themselves, and pinned/forced dispatches need an
+          # entry even when nothing is newer.
+          OUT="$(node --experimental-strip-types scripts/check-harness-releases.mjs "${ARGS[@]}" --matrix)"
+          echo "$OUT"
+          COUNT="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).include.length))' "$OUT")"
+          {
+            echo "matrix=$(echo "$OUT" | tr -d '\n')"
+            echo "count=$COUNT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Assert count emitted
+        shell: bash
+        run: |
+          if [ -z "${{ steps.detect.outputs.count }}" ]; then echo "detect produced no count"; exit 1; fi
+
+  verify:
+    needs: detect
+    if: needs.detect.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The installed third-party package must never see a token.
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+
+      - name: Install repository dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install newer harness build
+        # --ignore-scripts: no third-party postinstall runs. One retry for
+        # registry flakiness. A harness that genuinely needs install scripts
+        # fails here loudly; the documented fallback keeps this job
+        # secret-free either way (docs/harness-watch.md).
+        run: |
+          npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@${{ matrix.latest }}" \
+            || npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@${{ matrix.latest }}"
+
+      - name: Bundle SDK
+        run: pnpm --filter @hooknostic/sdk run bundle
+
+      - name: Bundle CLI
+        run: pnpm --filter hooknostic run bundle
+
+      - name: Model-free playback against the newer build
+        id: playback
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+        env:
+          HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
+          # The suite writes declared driver limitations here. They are
+          # published below as explicit inconclusive outcomes, never hidden
+          # behind a passing/skipped Vitest case.
+          HOOKNOSTIC_PLAYBACK_INCONCLUSIVE_PATH: ${{ github.workspace }}/harness-inconclusive-${{ matrix.harness }}.json
+          # Deliberately blank: the test routes model traffic to loopback.
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
+          OPENAI_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+
+      - name: Publish inconclusive scenario outcomes
+        if: always()
+        shell: bash
+        run: |
+          REPORT="harness-inconclusive-${{ matrix.harness }}.json"
+          {
+            echo "### Harness playback: ${{ matrix.harness }} ${{ matrix.latest }}"
+            echo
+            echo "#### Inconclusive scenarios"
+            echo
+            if [ ! -f "$REPORT" ]; then
+              echo "- No report was produced (the playback suite did not reach scenario registration)."
+            elif [ "$(jq '.scenarios | length' "$REPORT")" = "0" ]; then
+              echo "- None."
+            else
+              jq -r '.scenarios[] | "- `\(.id)` — \(.reason) (cells: \(.cells | join(", ")))"' "$REPORT"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Capture outcome
+        if: always()
+        shell: bash
+        run: |
+          # Distinguish install-failure from playback-failure in the artifact.
+          # steps.playback.outcome is "" when the step never ran (an earlier
+          # step failed) — that is an install/toolchain failure, not playback.
+          if [ "${{ steps.playback.outcome }}" = "success" ]; then
+            outcome=pass
+          elif [ -n "${{ steps.playback.outcome }}" ]; then
+            outcome=playback-failure
+          else
+            outcome=install-failure
+          fi
+          printf '{"harness":"%s","latest":"%s","outcome":"%s","stepOutcome":"%s"}\n' \
+            "${{ matrix.harness }}" "${{ matrix.latest }}" "$outcome" "${{ steps.playback.outcome }}" \
+            > watch-outcome-${{ matrix.harness }}.json
+          cat watch-outcome-${{ matrix.harness }}.json
+
+      - name: Upload outcome artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+          path: watch-outcome-${{ matrix.harness }}.json
+          retention-days: 7
+
+  record:
+    needs: [detect, verify]
+    # Run after a failed verify matrix leg too: each record leg gates itself
+    # on its own uploaded outcome artifact, so a passing harness can still
+    # advance its rolling validation record.
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      # Every gh call authenticates as the PAT, not just git — the pattern
+      # release-prepare.yml demonstrates. Default-token pushes don't trigger
+      # CI, and the PR's CI gate relies on the PAT push. The PAT deliberately
+      # has no Issues scope: the range-extension issue is filed with
+      # GITHUB_TOKEN in its own step.
+      GH_TOKEN: ${{ secrets.HARNESS_WATCH_PAT }}
+    # Matrix jobs share one outputs map, so per-harness results flow through
+    # artifacts; this job re-runs the same matrix with a leading gate that
+    # downloads the outcome and skips non-passing legs.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - name: Download the verify outcome artifact
+        id: artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+
+      - name: Gate on pass
+        id: gate
+        shell: bash
+        run: |
+          if [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            echo "no outcome artifact — verify leg did not complete; skipping record"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif jq -e '.outcome == "pass"' watch-outcome-${{ matrix.harness }}.json > /dev/null; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome was $(jq -r .outcome watch-outcome-${{ matrix.harness }}.json) — skipping record"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.gate.outputs.skip == 'false'
+        with:
+          token: ${{ secrets.HARNESS_WATCH_PAT }}
+          # The commit step pushes this branch with the PAT so its normal CI
+          # runs. Unlike verify's third-party checkout, this credential must
+          # remain available to git push.
+          persist-credentials: true
+
+      - uses: pnpm/action-setup@v6
+        if: steps.gate.outputs.skip == 'false'
+
+      - uses: actions/setup-node@v7
+        if: steps.gate.outputs.skip == 'false'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip == 'false'
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure harness-watch label exists
+        if: steps.gate.outputs.skip == 'false'
+        # The PAT is deliberately limited to contents/PR operations; labels
+        # and range-extension issues use the job-scoped token with Issues RW.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh label create harness-watch --description "Scheduled harness-version verification" --color 0E8A16 || true
+
+      - name: Idempotency — skip if the open PR already names this version
+        id: pr
+        if: steps.gate.outputs.skip == 'false'
+        shell: bash
+        run: |
+          BRANCH="harness-watch/${{ matrix.harness }}"
+          EXISTING="$(gh pr view "$BRANCH" --json headRefName,title --jq '.title // ""' 2>/dev/null || true)"
+          if [[ "$EXISTING" == *"${{ matrix.latest }}"* ]]; then
+            echo "PR already names ${{ matrix.latest }} — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rewrite the rolling validation record
+        id: record
+        if: steps.gate.outputs.skip == 'false' && steps.pr.outputs.skip == 'false'
+        shell: bash
+        run: |
+          set +e
+          # First invocation writes the record (or is the idempotent no-op
+          # rerun); its machine-readable outcome line drives the leg routing.
+          OUT="$(node --experimental-strip-types scripts/record-playback-validation.mjs \
+            "${{ matrix.harness }}" "${{ matrix.latest }}")"
+          CODE=$?
+          set -e
+          echo "$OUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = "3" ]; then
+            echo "outcome=range" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = "4" ]; then
+            echo "outcome=noop" >> "$GITHUB_OUTPUT"
+          elif echo "$OUT" | grep -q "outcome=noop"; then
+            echo "outcome=noop" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = "0" ]; then
+            echo "outcome=wrote" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=error" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: File the range-extension issue (exit 3)
+        if: steps.record.outputs.outcome == 'range'
+        env:
+          # The PAT deliberately lacks Issues scope; the default token files
+          # and dedupes the issue.
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} is outside every profile range"
+          FOUND="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq 'length')"
+          if [ "$FOUND" != "0" ]; then
+            echo "issue exists — commenting"
+            gh issue comment "$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number')" \
+              --body "Still outside every profile range on this run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            exit 0
+          fi
+          gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<'EOF'
+          The scheduled verification found a newer harness build whose version does not satisfy any profile range.
+
+          That means a **major** harness change is out, and the adapter's validated `range` cannot be extended by automation — range extension requires real captured evidence via the harness-capture skill (`.agents/skills/harness-capture/SKILL.md`).
+
+          Runbook:
+          - [ ] Install the build locally and capture real sessions (`.capture/<harness>/README.md`)
+          - [ ] Diff payload shapes against committed fixtures (`scripts/compare-capture-shapes.mjs`)
+          - [ ] If the profiles still hold: extend the profile `range` with the new ValidationRecord, regenerate `docs/harness-support.md`
+          - [ ] If they do not: re-rate affected cells with rationale before extending anything
+          EOF
+          )"
+
+      - name: Stop when there is nothing to record
+        if: steps.record.outputs.outcome == 'noop'
+        shell: bash
+        run: |
+          echo "nothing to record (already recorded, no-op, or pinned-older dispatch) — skipping commit/PR"
+
+      - name: Fail on unexpected record-script exits
+        if: steps.record.outputs.outcome == 'error'
+        run: exit 1
+
+      - name: Verify the change
+        if: steps.record.outputs.outcome == 'wrote'
+        shell: bash
+        run: |
+          pnpm build;  BUILD=$?
+          node scripts/generate-harness-support.mjs;  GEN=$?
+          pnpm lint;   LINT=$?
+          pnpm test;   TEST=$?
+          echo "BUILD=$BUILD GEN=$GEN LINT=$LINT TEST=$TEST"
+          [ "$BUILD" = "0" ] && [ "$GEN" = "0" ] && [ "$LINT" = "0" ] && [ "$TEST" = "0" ]
+
+      - name: Commit, push, open or update PR
+        if: steps.record.outputs.outcome == 'wrote'
+        shell: bash
+        run: |
+          BRANCH="harness-watch/${{ matrix.harness }}"
+          git config user.name "harness-watch"
+          git config user.email "harness-watch@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "empty index — nothing to commit (should not happen after outcome=wrote)"; exit 1
+          fi
+          git add -A
+          git commit -m "chore(harness-watch): record ${{ matrix.harness }} ${{ matrix.latest }} playback validation"
+          git push origin "$BRANCH" --force
+          BODY="$(cat <<EOF
+          Scheduled model-free playback passed against \`${{ matrix.harness }} ${{ matrix.latest }}\` (baseline: \`${{ matrix.playbackBaseline }}\`, reference: \`${{ matrix.referenceVersion }}\`, jump: \`${{ matrix.jump }}\`).
+
+          - Rolling \`live-probe\` record rewritten in place (ADR-0009); \`docs/harness-support.md\` regenerated.
+          - Version facts untouched: \`referenceVersion\`, \`fixtureDir\`, ranges require captured evidence (ADR-0008).
+          - Merging is the human decision; set repo variable \`HARNESS_WATCH_AUTOMERGE=true\` to gate auto-merge.
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          )"
+          EXISTING="$(gh pr view "$BRANCH" --json url --jq '.url // ""' 2>/dev/null || true)"
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$BRANCH" --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
+          else
+            gh pr create --base master --head "$BRANCH" --label harness-watch \
+              --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
+          fi
+
+      - name: Auto-merge (opt-in via repo variable)
+        if: steps.record.outputs.outcome == 'wrote' && vars.HARNESS_WATCH_AUTOMERGE == 'true'
+        run: gh pr merge "harness-watch/${{ matrix.harness }}" --auto --squash
+
+  report-failure:
+    needs: [detect, verify]
+    # `always()` lets this job run after a failed verify leg; the count guard
+    # still skips it when detect produced no matrix entries.
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - name: Download the verify outcome artifact
+        id: artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+
+      - name: Resolve verify outcome
+        id: outcome
+        shell: bash
+        run: |
+          # Legs without an artifact (e.g. a matrix leg skipped by the gate)
+          # must not report failure.
+          if [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            echo "no outcome artifact — skipping"; echo "failed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
+          if [ "$OUTCOME" = "pass" ]; then echo "failed=false" >> "$GITHUB_OUTPUT"; else echo "failed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v7
+        if: steps.outcome.outputs.failed == 'true'
+
+      - name: Ensure harness-watch label exists
+        if: steps.outcome.outputs.failed == 'true'
+        run: gh label create harness-watch --description "Scheduled harness-version verification" --color 0E8A16 || true
+
+      - name: Deduped failure issue
+        if: steps.outcome.outputs.failed == 'true'
+        shell: bash
+        run: |
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} failed model-free playback"
+          NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
+          LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$NUMBER" ]; then
+            gh issue comment "$NUMBER" --body "Failed again: $LINK"
+            exit 0
+          fi
+          gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<EOF
+          The scheduled model-free playback failed for \`${{ matrix.harness }} ${{ matrix.latest }}\`.
+
+          Outcome: \`$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)\` (install-failure vs playback-failure matters — install failure is a packaging problem, playback failure is behavior drift).
+
+          Run: $LINK
+
+          Runbook:
+          - [ ] Reproduce locally: \`HOOKNOSTIC_PLAYBACK=${{ matrix.harness }} HOOKNOSTIC_PLAYBACK_VERSION=${{ matrix.latest }} pnpm exec vitest run packages/cli/test/harness-playback.test.ts\` (bundle first — docs/testing.md)
+          - [ ] If real harness drift: follow the harness-capture skill; fixtures and ranges extend only with captured evidence
+          - [ ] If an adapter regression: fix, mutation-verify, let the next scheduled run close this issue
+          - [ ] If install failure: check \`--ignore-scripts\` viability for this package (docs/harness-watch.md)
+          EOF
+          )"
+
+  drift:
+    needs: [detect, verify]
+    # Capture-compare on a real harness session. Gate (issue #1 §7): playback
+    # failure, a non-patch jump, or an explicit force_llm dispatch. Runs after
+    # a failed verify leg too — capture-compare is exactly the diagnostic a
+    # playback failure calls for.
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    # Posts nothing — publish-verdict owns all writes — and it executes
+    # third-party harness code, so read-only scopes only. contents: read is
+    # required for checkout itself.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - name: Download the verify outcome artifact
+        id: artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+
+      - name: Gate on drift relevance
+        id: gate
+        shell: bash
+        run: |
+          # No outcome artifact → verify leg never completed; drift would be
+          # noise. force_llm always runs the lane.
+          RUN=false
+          if [ "${{ inputs.force_llm }}" = "true" ]; then
+            RUN=true
+          elif [ -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
+            if [ "$OUTCOME" != "pass" ] || [ "${{ matrix.jump }}" != "patch" ]; then RUN=true; fi
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "drift gate: run=$RUN (outcome=$( [ -f watch-outcome-${{ matrix.harness }}.json ] && jq -r .outcome watch-outcome-${{ matrix.harness }}.json || echo none), jump=${{ matrix.jump }}, force_llm=${{ inputs.force_llm }})"
+
+      - uses: actions/checkout@v7
+        if: steps.gate.outputs.run == 'true'
+        with:
+          # The installed third-party harness must never see a token.
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@v7
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+
+      - name: Install repository dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Bundle SDK
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm --filter @hooknostic/sdk run bundle
+
+      - name: Bundle CLI
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm --filter hooknostic run bundle
+
+      - name: Install LiteLLM sidecar (llm transport only)
+        if: steps.gate.outputs.run == 'true' && inputs.force_llm == 'true'
+        # Keep the upstream secret out of dependency installation too. The
+        # following step is the first process that receives it.
+        run: pipx install "litellm[proxy]==1.80.5"
+
+      - name: Start LiteLLM sidecar (llm transport only)
+        if: steps.gate.outputs.run == 'true' && inputs.force_llm == 'true'
+        # Pinned version; translates Anthropic Messages (/v1/messages, claude)
+        # and the Responses API (/v1/responses, codex) into upstream OpenAI-
+        # compatible chat completions. The driver probes both paths first and
+        # degrades to exit 5 (inconclusive) on probe failure — never a false
+        # verdict. The untrusted harness does not run on this process host:
+        # the next step runs it in an isolated container and receives only the
+        # host-gateway proxy URL plus a disposable proxy credential.
+        shell: bash
+        env:
+          HARNESS_LLM_BASE_URL: ${{ vars.HARNESS_LLM_BASE_URL }}
+          HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}
+        run: |
+          SIDECAR_URL="http://127.0.0.1:4000"
+          litellm --model "openai/${{ vars.HARNESS_LLM_MODEL }}" \
+            --api_base "$HARNESS_LLM_BASE_URL" --api_key "$HARNESS_LLM_API_KEY" \
+            --port 4000 &
+          for i in $(seq 1 30); do
+            if curl -sf "$SIDECAR_URL/health" > /dev/null; then break; fi
+            sleep 2
+          done
+          {
+            # `host.docker.internal` resolves only inside the isolated driver
+            # container (via --add-host below). The sidecar's process and
+            # upstream token are never visible to the globally installed
+            # harness package.
+            echo "HARNESS_LLM_PROXY_URL=http://host.docker.internal:4000"
+            echo "HARNESS_LLM_PROXY_KEY=hooknostic-drift"
+          } >> "$GITHUB_ENV"
+
+      - name: Run the drift capture-compare
+        if: steps.gate.outputs.run == 'true'
+        id: drive
+        # The third-party harness and its npm package run only inside the
+        # container below. The workspace is read-only, the sole writable mount
+        # is the throwaway capture directory, and no Docker socket is mounted;
+        # neither the LiteLLM process nor its upstream credential is in that
+        # process namespace.
+        # Exits 4 (drift) and 5 (inconclusive) are expected reportable
+        # outcomes; letting them fail the step would kill the job exactly
+        # when reporting matters. The verdict artifact below records the code.
+        continue-on-error: true
+        shell: bash
+        env:
+          # The upstream secret remains in the host LiteLLM process. The
+          # container gets this model name and the disposable proxy settings
+          # from GITHUB_ENV, never HARNESS_LLM_API_KEY.
+          HARNESS_LLM_MODEL: ${{ vars.HARNESS_LLM_MODEL }}
+        run: |
+          set +e
+          if [ "${{ inputs.force_llm }}" = "true" ]; then TRANSPORT=llm; else TRANSPORT=playback; fi
+          SCRATCH_ROOT="$RUNNER_TEMP/drift"
+          SCRATCH_HOST="$SCRATCH_ROOT/${{ matrix.harness }}"
+          mkdir -p "$SCRATCH_ROOT"
+          CONTAINER_ENVS=()
+          if [ "$TRANSPORT" = "llm" ]; then
+            CONTAINER_ENVS+=(-e "HARNESS_LLM_MODEL=$HARNESS_LLM_MODEL")
+            CONTAINER_ENVS+=(-e "HARNESS_LLM_PROXY_URL=$HARNESS_LLM_PROXY_URL")
+            CONTAINER_ENVS+=(-e "HARNESS_LLM_PROXY_KEY=$HARNESS_LLM_PROXY_KEY")
+          fi
+          docker run --rm --network bridge --add-host host.docker.internal:host-gateway \
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" \
+            --mount "type=bind,src=$SCRATCH_ROOT,dst=/drift" \
+            "${CONTAINER_ENVS[@]}" --workdir /workspace node:22.13.1-bookworm \
+            sh -ec '
+              npm install --global --ignore-scripts --no-fund --no-audit "$1@$2" \
+                || npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
+              exec node --experimental-strip-types scripts/drive-capture-session.mjs \
+                "$3" --transport "$4" --scratch "/drift/$3"
+            ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" "$TRANSPORT" \
+            > "drift-report-${{ matrix.harness }}.log" 2>&1
+          CODE=$?
+          set -e
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          cat "drift-report-${{ matrix.harness }}.log"
+          # Copy capture + report next to the workspace for artifact upload.
+          if [ -d "$SCRATCH_HOST/.opencode/plugins/captured" ]; then
+            cp -r "$SCRATCH_HOST/.opencode/plugins/captured" "./captured-${{ matrix.harness }}"
+          elif [ -d "$SCRATCH_HOST/captured" ]; then
+            cp -r "$SCRATCH_HOST/captured" "./captured-${{ matrix.harness }}"
+          fi
+
+      - name: Write the verdict artifact
+        if: always() && steps.gate.outputs.run == 'true'
+        shell: bash
+        run: |
+          # Exit contract (drive-capture-session.mjs): 0 clean, 4 drift,
+          # 5 inconclusive, 6 drive failure. 4/5 are reportable outcomes;
+          # 6 (no capture or a failed harness process) is also non-clean.
+          CODE="${{ steps.drive.outputs.code }}"
+          if [ "$CODE" = "0" ]; then VERDICT=clean
+          elif [ "$CODE" = "4" ]; then VERDICT=drift
+          elif [ "$CODE" = "5" ]; then VERDICT=inconclusive
+          else VERDICT=drive-failure; fi
+          printf '{"harness":"%s","latest":"%s","transport":"%s","exitCode":"%s","verdict":"%s"}\n' \
+            "${{ matrix.harness }}" "${{ matrix.latest }}" \
+            "$([ "${{ inputs.force_llm }}" = "true" ] && echo llm || echo playback)" \
+            "$CODE" "$VERDICT" > drift-verdict-${{ matrix.harness }}.json
+          cat drift-verdict-${{ matrix.harness }}.json
+
+      - name: Upload verdict, report, and raw captures
+        if: always() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-verdict-${{ matrix.harness }}
+          path: |
+            drift-verdict-${{ matrix.harness }}.json
+            drift-report-${{ matrix.harness }}.log
+            captured-${{ matrix.harness }}/**
+          retention-days: 7
+
+  publish-verdict:
+    needs: [detect, record, report-failure, drift]
+    # The single final writer: runs after both destination-producing jobs so
+    # publishing is serialized (no duplicate/orphaned posts). always() lets it
+    # run after skipped/failed legs, but a skipped/failed detect has an empty
+    # count — the two guards below exclude the fork no-op and detect failure.
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # The reconciliation path runs even when drift gated itself off, so this
+      # job may not have checked out a repository for gh to infer.
+      GH_REPO: ${{ github.repository }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix).include }}
+    steps:
+      - name: Download the verify outcome artifact
+        id: outcome
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: watch-outcome-${{ matrix.harness }}
+
+      - name: Download the drift verdict artifact
+        id: verdict
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: drift-verdict-${{ matrix.harness }}
+
+      - name: Resolve verdict
+        id: resolve
+        shell: bash
+        run: |
+          if [ ! -f "drift-verdict-${{ matrix.harness }}.json" ]; then
+            # The drift leg gated itself off (patch jump + pass + no force_llm)
+            # or never ran; nothing to publish for this harness.
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "verdict=$(jq -r .verdict drift-verdict-${{ matrix.harness }}.json)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.resolve.outputs.publish == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Ensure harness-watch label exists
+        if: steps.resolve.outputs.publish == 'true'
+        run: gh label create harness-watch --description "Scheduled harness-version verification" --color 0E8A16 || true
+
+      - name: Always write the verdict into the run summary
+        if: steps.resolve.outputs.publish == 'true'
+        shell: bash
+        run: |
+          # Durable destination for every verdict — including clean/inconclusive
+          # results of a forced run of an already-recorded version, which
+          # produce no PR and no issue.
+          {
+            echo "### Harness drift verdict: ${{ matrix.harness }} ${{ matrix.latest }}"
+            echo
+            echo '```json'
+            cat drift-verdict-${{ matrix.harness }}.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Locate the conversation destination (PR first, else failure issue)
+        id: destination
+        if: steps.resolve.outputs.publish == 'true'
+        shell: bash
+        run: |
+          EXPECTED_PR_TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation"
+          PR_URL="$(gh pr view "harness-watch/${{ matrix.harness }}" --json url --jq '.url // ""' 2>/dev/null || true)"
+          PR_TITLE="$(gh pr view "harness-watch/${{ matrix.harness }}" --json title --jq '.title // ""' 2>/dev/null || true)"
+          if [ -n "$PR_URL" ] && [ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]; then
+            echo "destination=pr" >> "$GITHUB_OUTPUT"
+            echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} failed model-free playback"
+          NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
+          if [ -n "$NUMBER" ]; then
+            echo "destination=issue" >> "$GITHUB_OUTPUT"
+            echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "destination=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: File a deduped report issue for a non-clean verdict with no destination
+        if: steps.resolve.outputs.publish == 'true' && steps.resolve.outputs.verdict != 'clean' && steps.destination.outputs.destination == 'none'
+        id: report-issue
+        shell: bash
+        run: |
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} drift verdict: ${{ steps.resolve.outputs.verdict }}"
+          NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
+          LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$NUMBER" ]; then
+            gh issue comment "$NUMBER" --body "Verdict \`${{ steps.resolve.outputs.verdict }}\` again: $LINK"
+            echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<EOF
+          The drift capture-compare for \`${{ matrix.harness }} ${{ matrix.latest }}\` came back **${{ steps.resolve.outputs.verdict }}** (transport: \`${{ steps.resolve.outputs.verdict && 'see artifact' }}\`).
+
+          Drift is advisory: it never changes fixtures or provenance. Route:
+          - [ ] Download the run's \`drift-verdict-${{ matrix.harness }}\` artifact (raw captures + report)
+          - [ ] Follow the harness-capture skill (`.agents/skills/harness-capture/SKILL.md`) for a real capture
+          - [ ] If the shapes are legitimate: capture-shaped fixtures quiet the comparator
+          - [ ] If a hook stopped being emitted: treat as behavior drift, re-rate affected cells
+
+          Run: $LINK
+          EOF
+          )"
+            echo "issue_number=$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment the verdict on the destination
+        if: steps.resolve.outputs.publish == 'true' && steps.resolve.outputs.verdict != 'clean' && steps.destination.outputs.destination != 'none'
+        shell: bash
+        run: |
+          BODY="Drift verdict for \`${{ matrix.harness }} ${{ matrix.latest }}\`: **${{ steps.resolve.outputs.verdict }}** (transport \`$(jq -r .transport drift-verdict-${{ matrix.harness }}.json)\`, exit \`$(jq -r .exitCode drift-verdict-${{ matrix.harness }}.json)\`). Raw captures + report: artifact \`drift-verdict-${{ matrix.harness }}\` of ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "${{ steps.destination.outputs.destination }}" = "pr" ]; then
+            gh pr comment "${{ steps.destination.outputs.pr_url }}" --body "$BODY"
+          else
+            gh issue comment "${{ steps.destination.outputs.issue_number }}" --body "$BODY"
+          fi
+
+      - name: Reconcile failure issues after a passing run
+        if: always()
+        # When the harness passed and its PR exists, close the failure issue
+        # that matches this exact harness+version — a transient failure's
+        # issue must not linger as a stale signal.
+        shell: bash
+        run: |
+          # Reconcile independently of a drift verdict: the normal patch-pass
+          # path deliberately gates drift off, but still must close a stale
+          # failure issue once its verification and PR both succeed.
+          OUTCOME_FILE="watch-outcome-${{ matrix.harness }}.json"
+          if [ ! -f "$OUTCOME_FILE" ] || ! jq -e '.outcome == "pass"' "$OUTCOME_FILE" > /dev/null; then
+            exit 0
+          fi
+          TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} failed model-free playback"
+          NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
+          if [ -z "$NUMBER" ]; then exit 0; fi
+          EXPECTED_PR_TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation"
+          PR_URL="$(gh pr view "harness-watch/${{ matrix.harness }}" --json url --jq '.url // ""' 2>/dev/null || true)"
+          PR_TITLE="$(gh pr view "harness-watch/${{ matrix.harness }}" --json title --jq '.title // ""' 2>/dev/null || true)"
+          if [ -n "$PR_URL" ] && [ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]; then
+            gh issue close "$NUMBER" --comment "Passing run with the matching PR ($PR_URL): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi

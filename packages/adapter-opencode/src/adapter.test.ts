@@ -17,6 +17,7 @@ describe("decodeOpenCode fixtures", () => {
     "tool-before",
     "tool-after",
     "permission-ask",
+    "permission-asked",
     "compacting",
     "session-created",
     "session-deleted",
@@ -27,7 +28,11 @@ describe("decodeOpenCode fixtures", () => {
 
   for (const name of CASES) {
     it(`decodes ${name} to its canonical event`, () => {
-      const input = loadFixture("opencode", "1.18", `${name}.input.json`);
+      const input = loadFixture(
+        "opencode",
+        "1.18",
+        name === "permission-ask" ? "permission-ask.type-derived.json" : `${name}.input.json`,
+      );
       const canonical = loadFixture<Record<string, unknown>>(
         "opencode",
         "1.18",
@@ -174,7 +179,7 @@ describe("planOpenCodeApplication", () => {
     expect(serializeOpenCodeOutput(hostile)).toBe("[hooknostic: unrepresentable output]");
   });
 
-  it("denies permission requests via status mutation, not a throw", () => {
+  it("denies permission requests via the reply API plus the legacy status mutation, not a throw", () => {
     expect(
       planOpenCodeApplication(
         result({
@@ -323,7 +328,10 @@ describe("opencodeAdapter capability data", () => {
     });
     expect(resolved.diagnostics).toEqual([]);
     expect(resolved.matrix?.["tool.before.block"]?.level).toBe("exact");
-    expect(resolved.matrix?.["permission.request.block"]?.level).toBe("exact");
+    // Captured live on 1.18.25 (.capture/opencode-permission): the ask is a
+    // bus event, and denial is a client reply-API round-trip, not a callback.
+    expect(resolved.matrix?.["permission.request.observe"]?.level).toBe("emulated");
+    expect(resolved.matrix?.["permission.request.block"]?.level).toBe("approximate");
     expect(resolved.matrix?.["tool.after.output.replace"]?.level).toBe("approximate");
     expect(resolved.matrix?.["tool.before.context.add"]).toBeUndefined();
     // Reached by posting into the session; measured live on 1.18.25.

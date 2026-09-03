@@ -21,6 +21,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 2.1.238 | 2026-08-20 | captured | `fixtures/claude/2.1` | hook payload fixtures for every observable event, captured on Windows |
 | 2.1.250 | 2026-08-29 | live-probe | `.capture/claude-output` | Stop/SubagentStop output semantics (systemMessage rendering) verified live |
 | 2.1.250 | 2026-08-30 | captured | `fixtures/claude/2.1` | PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key |
+| 2.1.250 | 2026-09-01 | live-probe | `packages/cli/test/harness-playback.test.ts` | PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298) |
 
 ### Codex CLI
 
@@ -31,6 +32,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 0.148.0 | 2026-08-29 | live-probe | `.capture/codex-output` | Stop output semantics: systemMessage accepted-and-discarded, never rendered |
 | 0.151.0 | 2026-08-30 | router-log | `.capture/codex-tools` | exec_command router args (cmd/workdir); NOTE the hook boundary translates these calls to Bash/command payloads and drops workdir |
 | 0.151.0 | 2026-08-30 | live-probe | `.capture/codex-tools` | updatedInput write channel verified honoured (rewritten command reached spawn) |
+| 0.151.0 | 2026-09-02 | live-probe | `.capture/codex-tools` | PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with "PostToolUse hook returned unsupported updatedMCPToolOutput", run status Failed; matches upstream codex-rs hooks/src/events/post_tool_use.rs unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is therefore unsupported on the hook channel; the output parser also shows the MCP connector path (not hooks) is the only output-replacement surface. |
 
 ### OpenCode
 
@@ -40,4 +42,5 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 1.18.19 | 2026-08-20 | type-derived | `fixtures/opencode/1.18` | @opencode-ai/plugin published Hooks type definitions (dist/index.d.ts) |
 | 1.18.25 | 2026-08-29 | live-probe | `.capture/opencode-client` | plugin-client probe: promptAsync notification channel and session.idle timing |
 | 1.18.25 | 2026-08-30 | live-probe | — | PWD env precedence: opencode trusts an inherited PWD over the process cwd and runs the session in PWD's project -- where plugins may not exist. Spawners must set PWD to agree with cwd (see the smoke's runCommand). |
+| 1.18.25 | 2026-09-01 | captured | `.capture/opencode-permission` | permission.ask plugin hook NEVER fires (upstream anomalyco/opencode #9229): observe arrives via the permission.asked bus event on the generic event callback, and denial works via client.postSessionIdPermissionsPermissionId response "reject" (API true, command not executed, turn halts). The 1.18 permission fixtures' callback-envelope shape is type-derived, not captured. |
 
