@@ -790,6 +790,10 @@ function dialogScreen(plainScreen: () => string): string {
  * (ink repaints only the changed lines, so the current cursor marker sits
  * after any stale frame); poll the frame and nudge with the up key — the
  * select widget wraps — until the wanted option is selected, then Enter.
+ * The wanted frame is matched against the whitespace-stripped screen, where
+ * adjacent options run together ("YesNo (recommended)" loses its separator),
+ * so the pattern must not rely on word boundaries or option numbers (both
+ * version-dependent: 2.1.238 renders "1. Yes" prefixes, 2.1.250 does not).
  */
 async function confirmDialogSelection(
   pty: IPty,
@@ -815,6 +819,10 @@ async function walkFirstRunDialogs(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const current = screen();
+    // Onboarding is done when the main TUI input line renders (the prompt
+    // caret on the raw screen) — later dialogs cannot be assumed away, so
+    // the walk exits on this instead of after the last known dialog.
+    if (plainScreen().includes("\u276f ")) return;
     if (!handled.has("theme") && current.includes("Choosethetextstyle")) {
       handled.add("theme");
       // Any theme works: confirm the preselected entry.
@@ -823,10 +831,9 @@ async function walkFirstRunDialogs(
     } else if (!handled.has("api-key") && current.includes("DoyouwanttousethisAPIkey")) {
       handled.add("api-key");
       // Fresh state preselects "No (recommended)"; the loopback key must be
-      // accepted or the harness discards the env key entirely. Option
-      // numbering is version-dependent (2.1.238 numbers options, 2.1.250 does
-      // not), so the frame matches both forms.
-      await confirmDialogSelection(pty, screen, /❯\d*\.?Yes\b/);
+      // accepted or the harness discards the env key entirely and falls into
+      // the OAuth login flow, which cannot complete in playback.
+      await confirmDialogSelection(pty, screen, /❯\d*\.?Yes[^N]/);
     } else if (!handled.has("security") && current.includes("PressEnte")) {
       handled.add("security");
       pty.write("\r");
@@ -834,13 +841,8 @@ async function walkFirstRunDialogs(
     } else if (!handled.has("trust") && current.includes("Quicksafetycheck")) {
       handled.add("trust");
       // The preselected trust entry moved between versions (2.1.238 fresh
-      // defaults to "Yes"; the walk must not assume it). Option numbers are
-      // version-dependent too — 2.1.238 renders "1." prefixes, 2.1.250 does
-      // not — so the frame matches both forms.
+      // defaults to "Yes"; the walk must not assume it).
       await confirmDialogSelection(pty, screen, /❯\d*\.?Yes,Itrustthisfolder/);
-      // Trust is the last onboarding gate in every observed sequence; the
-      // drive's own prompt wait takes over from here.
-      return;
     } else {
       await new Promise((r) => setTimeout(r, 400));
     }
