@@ -852,10 +852,6 @@ async function walkFirstRunDialogs(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const current = screen();
-    // Onboarding is done when the main TUI input line renders (the prompt
-    // caret on the raw screen) — later dialogs cannot be assumed away, so
-    // the walk exits on this instead of after the last known dialog.
-    if (mainPromptVisible(plainScreen)) return;
     if (!handled.has("theme") && current.includes("Choosethetextstyle")) {
       handled.add("theme");
       // Any theme works: confirm the preselected entry.
@@ -878,11 +874,22 @@ async function walkFirstRunDialogs(
       handled.add("security");
       pty.write("\r");
       await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+    } else if (!handled.has("terminal-setup") && current.includes("terminalsetup?")) {
+      handled.add("terminal-setup");
+      // Recent Claude versions add this optional setup after the security
+      // notes. Accept the preselected recommended settings so the main input
+      // becomes available to the PTY drive.
+      pty.write("\r");
+      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
     } else if (!handled.has("trust") && current.includes("Quicksafetycheck")) {
       handled.add("trust");
       // The preselected trust entry moved between versions (2.1.238 fresh
       // defaults to "Yes"; the walk must not assume it).
       await confirmDialogSelection(pty, screen, "Yes,Itrustthisfolder");
+    } else if (mainPromptVisible(plainScreen)) {
+      // Onboarding is done when the main TUI input line renders. Check this
+      // only after known dialogs so stale frames cannot hide a later dialog.
+      return;
     } else {
       await new Promise((r) => setTimeout(r, 400));
     }
