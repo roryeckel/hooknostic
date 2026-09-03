@@ -768,6 +768,85 @@ function claudeBinaryPath(): string {
   );
 }
 
+// --- first-run dialog walk (pty drives) ------------------------------------
+// A fresh machine (CI) renders a different first-run sequence than a box with
+// local state, and the order moved between versions: 2.1.238 fresh renders
+// theme -> custom API key -> security notes -> trust, while 2.1.250 with
+// local state renders trust first and the API-key dialog only when the key
+// is not already accepted (both observed in the raw pty streams). So the
+// walk reacts to each dialog's own text instead of a fixed sequence and
+// answers every dialog at most once. The TUI emits spaces inconsistently
+// (sometimes as literal spaces, sometimes as cursor-right escapes), so
+// matching runs against a whitespace-stripped screen.
+const DIALOG_SETTLE_MS = 600;
+
+function dialogScreen(plainScreen: () => string): string {
+  return plainScreen().replace(/\s+/g, "");
+}
+
+/**
+ * Confirm a list dialog with the wanted option selected, wherever the cursor
+ * currently sits. The live selection is the most recently rendered frame
+ * (ink repaints only the changed lines, so the current cursor marker sits
+ * after any stale frame); poll the frame and nudge with the up key — the
+ * select widget wraps — until the wanted option is selected, then Enter.
+ */
+async function confirmDialogSelection(
+  pty: IPty,
+  screen: () => string,
+  selectedFrame: RegExp,
+): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    if (selectedFrame.test(screen().slice(-2500))) break;
+    pty.write("\u001b[A");
+    await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+  }
+  pty.write("\r");
+  await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+}
+
+async function walkFirstRunDialogs(
+  pty: IPty,
+  plainScreen: () => string,
+  timeoutMs = 60_000,
+): Promise<void> {
+  const screen = (): string => dialogScreen(plainScreen);
+  const handled = new Set<string>();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = screen();
+    if (!handled.has("theme") && current.includes("Choosethetextstyle")) {
+      handled.add("theme");
+      // Any theme works: confirm the preselected entry.
+      pty.write("\r");
+      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+    } else if (!handled.has("api-key") && current.includes("DoyouwanttousethisAPIkey")) {
+      handled.add("api-key");
+      // Fresh state preselects "No (recommended)"; the loopback key must be
+      // accepted or the harness discards the env key entirely. Option
+      // numbering is version-dependent (2.1.238 numbers options, 2.1.250 does
+      // not), so the frame matches both forms.
+      await confirmDialogSelection(pty, screen, /❯\d*\.?Yes\b/);
+    } else if (!handled.has("security") && current.includes("PressEnte")) {
+      handled.add("security");
+      pty.write("\r");
+      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+    } else if (!handled.has("trust") && current.includes("Quicksafetycheck")) {
+      handled.add("trust");
+      // The preselected trust entry moved between versions (2.1.238 fresh
+      // defaults to "Yes"; the walk must not assume it). Option numbers are
+      // version-dependent too — 2.1.238 renders "1." prefixes, 2.1.250 does
+      // not — so the frame matches both forms.
+      await confirmDialogSelection(pty, screen, /❯\d*\.?Yes,Itrustthisfolder/);
+      // Trust is the last onboarding gate in every observed sequence; the
+      // drive's own prompt wait takes over from here.
+      return;
+    } else {
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+}
+
 describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || "disabled"}`, () => {
   it("uses exactly the captured reference harness version", async () => {
     const detection = await adapter!.detect!();
@@ -1394,17 +1473,11 @@ scenarioDrive(
         }
         return false;
       };
-      // Walk first-run dialogs. Order varies by local state (trust is always
-      // first; the API-key dialog only appears when the key isn't already
-      // accepted) — poll for each dialog's marker and only then acknowledge.
-      await waitUntil("Quicksafetycheck", 15_000);
-      pty.write("\u001b[B\r"); // select "Yes, I trust this folder"
-      // The API-key dialog, when it appears, starts with the word
-      // "customAPIkey" on 2.1.250.
-      if (await waitUntil("customAPIkey", 10_000)) {
-        await new Promise((r) => setTimeout(r, 800));
-        pty.write("\u001b[B\r");
-      }
+      // Walk first-run dialogs reactively: fresh CI state renders a different
+      // sequence (theme -> API key -> security notes -> trust on 2.1.238)
+      // than a box with local state (trust first on 2.1.250), so the walk
+      // polls for each dialog's own text instead of assuming order.
+      await walkFirstRunDialogs(pty, plainScreen, 60_000);
       // Wait for the TUI input line, then send the prompt.
       await waitUntil("\u276f ", 20_000);
       await new Promise((r) => setTimeout(r, 1_500));
@@ -1540,13 +1613,8 @@ scenarioDrive(
         }
         return false;
       };
-      // Walk first-run dialogs (same order as the permission-request drive).
-      await waitUntil("Quicksafetycheck", 15_000);
-      pty.write("\u001b[B\r"); // select "Yes, I trust this folder"
-      if (await waitUntil("customAPIkey", 10_000)) {
-        await new Promise((r) => setTimeout(r, 800));
-        pty.write("\u001b[B\r");
-      }
+      // Walk first-run dialogs (same reactive walk as the permission drive).
+      await walkFirstRunDialogs(pty, plainScreen, 60_000);
       await waitUntil("\u276f ", 20_000);
       await new Promise((r) => setTimeout(r, 1_500));
       pty.write("Use the shell tool once to create hooknostic-approval.txt.\r");
