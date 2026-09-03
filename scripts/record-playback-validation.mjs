@@ -202,7 +202,11 @@ async function main() {
 
 // ESM top-level await, guarded so the pure helpers stay importable from the
 // test (same CLI guard as release-notes.mjs).
-if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replaceAll("\\", "/")}`).href) {
+export function isMainModule(moduleUrl, argv1) {
+  return argv1 !== undefined && fileURLToPath(moduleUrl) === resolve(argv1);
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
   await main();
 }
 

@@ -144,13 +144,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install newer harness build
-        # --ignore-scripts: no third-party postinstall runs. One retry for
-        # registry flakiness. A harness that genuinely needs install scripts
-        # fails here loudly; the documented fallback keeps this job
-        # secret-free either way (docs/harness-watch.md).
+        # Install without arbitrary lifecycle scripts, then run only the
+        # known harness bootstrap below. One retry for registry flakiness.
         run: |
           npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@${{ matrix.latest }}" \
             || npm install --global --ignore-scripts --no-fund --no-audit "${{ matrix.pkg }}@${{ matrix.latest }}"
+
+      - name: Run required harness bootstrap
+        # Claude and OpenCode package their native executable behind a known
+        # bootstrap script. Codex's package is usable without one. This is
+        # still secret-free; persist-credentials remains false.
+        shell: bash
+        run: |
+          case "${{ matrix.harness }}" in
+            claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
+            opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs" ;;
+            codex) : ;;
+          esac
 
       - name: Bundle SDK
         run: pnpm --filter @hooknostic/sdk run bundle
@@ -429,6 +439,7 @@ jobs:
     if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -615,9 +626,10 @@ jobs:
         run: |
           set +e
           if [ "${{ inputs.force_llm }}" = "true" ]; then TRANSPORT=llm; else TRANSPORT=playback; fi
-          SCRATCH_ROOT="$RUNNER_TEMP/drift"
-          SCRATCH_HOST="$SCRATCH_ROOT/${{ matrix.harness }}"
-          mkdir -p "$SCRATCH_ROOT"
+           SCRATCH_ROOT="$RUNNER_TEMP/drift"
+           SCRATCH_HOST="$SCRATCH_ROOT/${{ matrix.harness }}"
+           mkdir -p "$SCRATCH_ROOT"
+           chmod 777 "$SCRATCH_ROOT"
           CONTAINER_ENVS=()
           if [ "$TRANSPORT" = "llm" ]; then
             CONTAINER_ENVS+=(-e "HARNESS_LLM_MODEL=$HARNESS_LLM_MODEL")
@@ -729,6 +741,7 @@ jobs:
         if: steps.resolve.outputs.publish == 'true'
         with:
           persist-credentials: false
+          clean: false
 
       - name: Ensure harness-watch label exists
         if: steps.resolve.outputs.publish == 'true'

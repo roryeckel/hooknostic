@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   ROLLING_WHAT,
+  isMainModule,
   rewriteRollingRecord,
 } from "./record-playback-validation.mjs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const BEGIN = "// scheduled-playback:begin";
 const END = "// scheduled-playback:end";
+
+describe("isMainModule", () => {
+  it("recognizes an absolute script path on the current platform", () => {
+    const scriptPath = resolve("scripts/record-playback-validation.mjs");
+    expect(isMainModule(pathToFileURL(scriptPath).href, scriptPath)).toBe(true);
+    expect(isMainModule(pathToFileURL(scriptPath).href, resolve("other.mjs"))).toBe(false);
+  });
+});
 
 // A minimal stand-in for the real profile source: prior records above the
 // markers, empty marker region, trailing content after the array.
