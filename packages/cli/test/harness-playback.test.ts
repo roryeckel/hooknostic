@@ -872,7 +872,8 @@ async function walkFirstRunDialogs(
       // After accepting the API key, fresh state asks which account type owns
       // it. Select the Console account rather than the preselected subscription
       // account; otherwise Claude ignores the loopback API endpoint.
-      await confirmDialogSelection(pty, screen, "AnthropicConsoleaccount");
+      pty.write("\u001b[B\r");
+      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
     } else if (!handled.has("security") && current.includes("PressEnte")) {
       handled.add("security");
       pty.write("\r");
