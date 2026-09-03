@@ -791,7 +791,9 @@ function mainPromptVisible(plainScreen: () => string): boolean {
   // List dialogs leave their selected option immediately after the cursor;
   // the main input line is followed by status text instead. This survives
   // Claude rendering the cursor's trailing space as a cursor movement.
-  return !/^(?:\d+\.?)?(?:Yes|No)/.test(current.slice(marker + 1));
+  return !/^(?:\d+\.?)?(?:Yes|No|Claudeaccount|AnthropicConsoleaccount|3rd-partyplatform)/.test(
+    current.slice(marker + 1),
+  );
 }
 
 async function waitForMainPrompt(
@@ -865,6 +867,12 @@ async function walkFirstRunDialogs(
       // accepted or the harness discards the env key entirely and falls into
       // the OAuth login flow, which cannot complete in playback.
       await confirmDialogSelection(pty, screen, "Yes");
+    } else if (!handled.has("login-method") && current.includes("Selectloginmethod:")) {
+      handled.add("login-method");
+      // After accepting the API key, fresh state asks which account type owns
+      // it. Select the Console account rather than the preselected subscription
+      // account; otherwise Claude ignores the loopback API endpoint.
+      await confirmDialogSelection(pty, screen, "AnthropicConsoleaccount");
     } else if (!handled.has("security") && current.includes("PressEnte")) {
       handled.add("security");
       pty.write("\r");
