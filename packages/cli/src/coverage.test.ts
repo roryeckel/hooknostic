@@ -11,7 +11,12 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { adapterFixturesDir, describeAdapterContract, describeScenarioCoverage } from "@hooknostic/testkit";
+import {
+  adapterFixturesDir,
+  describeAdapterContract,
+  describeScenarioCoverage,
+  scenarioById,
+} from "@hooknostic/testkit";
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -20,6 +25,23 @@ for (const adapter of Object.values(defaultAdapterRegistry())) {
   describeAdapterContract(adapter, { fixturesDir: adapterFixturesDir(adapter) });
   describeScenarioCoverage(adapter);
 }
+
+describe("scheduled scenario limitations", () => {
+  it("declares non-silent limits for the unsupported Codex playback drivers", () => {
+    expect(scenarioById("tool-before-approval")?.inconclusiveByHarness?.["codex"]).toMatch(
+      /interactive approval driver/,
+    );
+    expect(scenarioById("permission-request")?.inconclusiveByHarness?.["codex"]).toMatch(
+      /interactive permission driver/,
+    );
+    expect(scenarioById("agent-subagent")?.inconclusiveByHarness?.["codex"]).toMatch(
+      /hook-trust bypass/,
+    );
+    expect(scenarioById("context-compact")?.inconclusiveByHarness?.["claude"]).toMatch(
+      /cannot deterministically fill/,
+    );
+  });
+});
 
 describe("validation evidence", () => {
   it("points every validatedOn artifact at an existing tracked path", () => {

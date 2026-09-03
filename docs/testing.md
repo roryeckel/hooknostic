@@ -45,19 +45,24 @@ Scenarios declare the driver that produces the harness session (loopback,
 pty-approval, mcp-stdio, compaction, subagent, opencode-serve); adding a
 capability cell without a scenario fails CI.
 
-Two capability families cannot be decided by the scheduled free lanes today,
+Some capability families cannot be decided by the scheduled free lanes today,
 and their tests record exactly why:
 
 - **Codex subagent lifecycle** — `SubagentStart`/`SubagentStop` fire in the
   spawned *child* session, which does not inherit the parent's
   `--dangerously-bypass-hook-trust` (session-scoped override lost in the
   child's config rebuild; observed live on 0.151.0 and matches upstream
-  openai/codex#33097). The drive runs on the manual `force_llm` lane, where
-  hook trust can be persisted.
+  openai/codex#33097). Decisive validation requires a separately prepared
+  live session with persisted hook trust.
 - **Compaction** — the free lane cannot fill the context deterministically
   (shell results are capped ~30k chars, turn count is capped at 6 against a
-  200k-token context). Same routing: the drive runs only on the `force_llm`
-  lane.
+  200k-token context). Decisive validation requires a separately captured
+  live run.
+- **Codex interactive permission and approval** — the capability profile has
+  captured evidence, but this suite has no captured Codex interactive driver.
+  The Claude pty driver is never treated as evidence for Codex; these cells
+  remain explicitly inconclusive in scheduled playback until that driver is
+  added.
 
 Codex's `tool.after.output.replace` is rated `unsupported` (captured live on
 0.151.0: the hook engine strictly rejects `updatedMCPToolOutput` from a
@@ -69,10 +74,11 @@ scripted namespace-pair emission resolves the router's exact
 output, and the replaced marker must surface nowhere. If upstream starts
 honouring the field, the watch fails and the rating is revisited.
 
-Two drives are gated on `HOOKNOSTIC_PLAYBACK_FORCE_LLM=1` (the manual-lane
-switch): unset, they skip with their recorded reason; set, they run against
-the real model. Skipped ≠ silent: harness-watch's workflow summary reports
-every inconclusive lane on every run.
+The loopback suite never switches to a paid model. Every declared driver
+limitation is written to the harness-watch workflow summary as an
+**inconclusive** outcome, including the affected capability cells. A decisive
+check requires the relevant captured live procedure; an environment flag must
+not turn a constructed loopback session into a claimed real-model validation.
 
 ## Verifying a newer harness build
 

@@ -58,10 +58,14 @@ would notice.
    - `agent.start/stop.observe` (Codex): SubagentStart/Stop fire in the spawned
      child session, which does not inherit the parent's hook-trust bypass
      (observed live on 0.151.0; upstream openai/codex#33097). Decisive check
-     runs on the manual `force_llm` lane, where hook trust can be persisted.
+     requires a separately prepared live session with persisted hook trust.
     - compaction family: the free lane cannot fill the context deterministically
       (shell results are capped ~30k chars; the drive caps turns at 6 against a
-      200k-token context). Decisive check runs on the manual `force_llm` lane.
+      200k-token context). Decisive check requires a captured live procedure.
+   - Codex interactive permission/approval: the profile has captured evidence,
+     but the suite has no captured Codex interactive driver. The Claude pty
+     driver is not cross-harness evidence, so these scenarios are reported
+     inconclusive until a Codex-specific driver exists.
 
    Codex `tool.after.output.replace` was re-rated `unsupported` on 2026-09-02
    (captured live on 0.151.0: the hook engine strictly rejects

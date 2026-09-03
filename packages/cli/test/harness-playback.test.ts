@@ -586,8 +586,16 @@ function scenarioDrive(
   scenarioDrives.set(id, { drive, skip });
 }
 
-/** Manual-lane switch (docs/testing.md): drives that need a real model. */
-const forceLlm = process.env["HOOKNOSTIC_PLAYBACK_FORCE_LLM"] === "1";
+/** A declared scheduled-lane limitation takes precedence over a local skip. */
+function scenarioSkipReason(
+  scenario: (typeof SCENARIOS)[number],
+  entry: { skip: () => boolean },
+): string | undefined {
+  const declared =
+    adapter === undefined ? undefined : scenario.inconclusiveByHarness?.[adapter.id];
+  if (declared !== undefined) return declared;
+  return entry.skip() ? "the scenario driver is unavailable in this environment" : undefined;
+}
 
 afterAll(async () => {
   // Windows: a pty-killed harness releases its CWD asynchronously, so an
@@ -1364,14 +1372,7 @@ scenarioDrive(
     ).toContain("context.compact.before");
   },
   () =>
-    cellLevel("context.compact.before.observe") === undefined ||
-    // The free loopback lane cannot deterministically fill the context:
-    // claude caps each shell result (~30k chars) and the drive caps turns
-    // (6), so the context never nears the 200k-token limit. The drive
-    // below stays for the manual `force_llm` lane, where real turns grow
-    // the context naturally. Skipped ≠ silent: the step summary reports
-    // the inconclusive lane every run.
-    !forceLlm,
+    cellLevel("context.compact.before.observe") === undefined,
 );
 
 // --- tool-before-approval (pty-approval) ----------------------------------
@@ -1548,22 +1549,23 @@ scenarioDrive(
     if (cellLevel("agent.start.observe") === undefined || cellLevel("agent.stop.observe") === undefined) {
       return true;
     }
-    if (adapter?.id === "codex") {
-      // Scheduled loopback cannot drive this lane on codex today: SubagentStart
-      // fires in the spawned CHILD session, and the child silently drops
-      // untrusted hooks — the parent's --dangerously-bypass-hook-trust is a
-      // session-scoped override that the child's config rebuild does not
-      // inherit (upstream openai/codex#33097; observed live on 0.151.0:
-      // collab SpawnAgent runs, PreToolUse/PostToolUse fire in the parent,
-      // and no SubagentStart/Stop ever reaches the artifact). The manual
-      // force_llm lane can persist hook trust (~/.codex/config.toml) and is
-      // the decisive surface. Skipped ≠ silent: the step summary reports the
-      // inconclusive lane every run.
-      return !forceLlm;
-    }
     return false;
   },
 );
+
+it("writes declared scheduled-lane inconclusives for the workflow summary", async () => {
+  const path = process.env["HOOKNOSTIC_PLAYBACK_INCONCLUSIVE_PATH"];
+  if (path === undefined || adapter === undefined) return;
+  const scenarios = SCENARIOS.flatMap((scenario) => {
+    const entry = scenarioDrives.get(scenario.id);
+    if (entry === undefined) return [];
+    const reason = scenarioSkipReason(scenario, entry);
+    if (reason === undefined) return [];
+    const cells = scenario.covers.filter((cell) => cellLevel(cell) !== undefined);
+    return cells.length === 0 ? [] : [{ id: scenario.id, cells, reason }];
+  });
+  await writeFile(path, JSON.stringify({ harness: adapter.id, scenarios }, null, 2) + "\n", "utf8");
+});
 
 // Register after every `scenarioDrive` call above. Vitest executes describe
 // callbacks immediately during module evaluation, so registering this loop
@@ -1572,6 +1574,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${se
   for (const scenario of SCENARIOS) {
     const entry = scenarioDrives.get(scenario.id);
     if (entry === undefined) continue;
-    it(scenario.title, { timeout: 240_000, skip: entry.skip() }, entry.drive);
+    const skipReason = scenarioSkipReason(scenario, entry);
+    it(scenario.title, { timeout: 240_000, skip: skipReason !== undefined }, entry.drive);
   }
 });

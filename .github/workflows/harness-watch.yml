@@ -150,11 +150,34 @@ jobs:
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
+          # The suite writes declared driver limitations here. They are
+          # published below as explicit inconclusive outcomes, never hidden
+          # behind a passing/skipped Vitest case.
+          HOOKNOSTIC_PLAYBACK_INCONCLUSIVE_PATH: ${{ github.workspace }}/harness-inconclusive-${{ matrix.harness }}.json
           # Deliberately blank: the test routes model traffic to loopback.
           ANTHROPIC_API_KEY: ""
           ANTHROPIC_AUTH_TOKEN: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
+
+      - name: Publish inconclusive scenario outcomes
+        if: always()
+        shell: bash
+        run: |
+          REPORT="harness-inconclusive-${{ matrix.harness }}.json"
+          {
+            echo "### Harness playback: ${{ matrix.harness }} ${{ matrix.latest }}"
+            echo
+            echo "#### Inconclusive scenarios"
+            echo
+            if [ ! -f "$REPORT" ]; then
+              echo "- No report was produced (the playback suite did not reach scenario registration)."
+            elif [ "$(jq '.scenarios | length' "$REPORT")" = "0" ]; then
+              echo "- None."
+            else
+              jq -r '.scenarios[] | "- `\(.id)` — \(.reason) (cells: \(.cells | join(", ")))"' "$REPORT"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Capture outcome
         if: always()

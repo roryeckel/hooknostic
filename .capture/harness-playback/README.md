@@ -59,10 +59,10 @@ Use `claude`, `codex`, or `opencode` for `HOOKNOSTIC_PLAYBACK`, and
 `referenceVersion` (see `docs/testing.md`).
 
 Scenario-to-driver mapping and the coverage policy live in ADR-0010 and
-`docs/testing.md`. Two families are decided only by the manual `force_llm`
-lane, each for a recorded reason (Codex namespaced-call routing, context-fill
-impossibility); their drives remain in the suite behind
-`HOOKNOSTIC_PLAYBACK_FORCE_LLM=1`.
+`docs/testing.md`. The loopback suite does not have a real-model mode: a
+scenario whose driver cannot establish the claim is recorded as an explicit
+inconclusive outcome in harness-watch, then requires its own captured live
+procedure to become decisive.
 
 Every scenario in the registry (`packages/testkit/src/scenarios.ts`) has an
 executable drive registered in `harness-playback.test.ts`; a gate test fails

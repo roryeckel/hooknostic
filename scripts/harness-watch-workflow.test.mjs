@@ -98,6 +98,17 @@ describe("harness-watch workflow structure", () => {
     expect(verify).toMatch(/outcome=install-failure/);
   });
 
+  it("publishes declared inconclusive scenarios instead of hiding skipped drivers", () => {
+    const verify = jobSource("verify");
+    expect(verify).toContain("HOOKNOSTIC_PLAYBACK_INCONCLUSIVE_PATH");
+    expect(verify).toContain("Publish inconclusive scenario outcomes");
+    expect(verify).toContain("#### Inconclusive scenarios");
+    expect(verify).toContain("GITHUB_STEP_SUMMARY");
+    expect(verify.indexOf("Publish inconclusive scenario outcomes")).toBeGreaterThan(
+      verify.indexOf("Model-free playback against the newer build"),
+    );
+  });
+
   it("every matrix-context job declares a strategy matrix", () => {
     const jobs = ["verify", "record", "report-failure"];
     for (const job of jobs) {

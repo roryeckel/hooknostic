@@ -62,8 +62,13 @@ export interface ScenarioDefinition {
   /** Default driver; `driverByHarness` overrides per harness id. */
   driver: ScenarioDriver;
   driverByHarness?: Partial<Record<string, ScenarioDriver>>;
+  /**
+   * A known reason the scheduled, model-free lane cannot decide this scenario
+   * for a harness. The playback suite records these as explicit
+   * `inconclusive` outcomes; they are not silently counted as a pass.
+   */
+  inconclusiveByHarness?: Partial<Record<string, string>>;
 }
-
 const EVERY_EVENT_OBSERVE = Object.freeze(
   HOOK_EVENT_NAMES.map((event) => `${event}.observe`) as CapabilityId[],
 );
@@ -116,6 +121,13 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     title: "asking for approval surfaces the harness's native interactive prompt",
     covers: ["tool.before.requestApproval"],
     driver: "pty-approval",
+    // Codex has the capability, but this suite has no captured interactive
+    // driver for its approval UI. Do not let a skipped Claude-only pty test
+    // masquerade as scheduled Codex coverage.
+    inconclusiveByHarness: {
+      codex:
+        "the scheduled playback suite has no captured Codex interactive approval driver",
+    },
   },
   {
     id: "tool-before-context-add",
@@ -167,6 +179,13 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     // reply API -- so the serve lane drives it headlessly (the dedicated
     // permission.ask callback never fires; upstream anomalyco/opencode #9229).
     driverByHarness: { opencode: "opencode-serve" },
+    // Codex permission prompts need their own interactive drive. The Claude
+    // pty recipe cannot establish Codex behavior, so scheduled playback must
+    // surface this as inconclusive rather than skip it silently.
+    inconclusiveByHarness: {
+      codex:
+        "the scheduled playback suite has no captured Codex interactive permission driver",
+    },
   },
   {
     id: "context-compact",
@@ -178,12 +197,24 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
       "context.compact.after.observe",
     ],
     driver: "compaction",
+    // The loopback transport cannot fill the real context window
+    // deterministically. A separate live validation/capture is required; do
+    // not present a skipped loopback case as a runnable manual "force" lane.
+    inconclusiveByHarness: {
+      claude: "loopback playback cannot deterministically fill Claude's context window",
+      codex: "loopback playback cannot deterministically fill Codex's context window",
+      opencode: "loopback playback cannot deterministically fill OpenCode's context window",
+    },
   },
   {
     id: "agent-subagent",
     title: "a spawned subagent dispatches agent start/stop",
     covers: ["agent.start.observe", "agent.stop.observe"],
     driver: "subagent",
+    inconclusiveByHarness: {
+      codex:
+        "Codex child sessions do not inherit the parent hook-trust bypass, so the scheduled drive cannot observe child lifecycle hooks",
+    },
   },
   {
     id: "stop-prevent",

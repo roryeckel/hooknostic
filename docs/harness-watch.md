@@ -76,6 +76,12 @@ via an uploaded artifact (`watch-outcome-<harness>.json`), because GitHub
 matrix jobs share one `outputs` map. The distinction matters: install failure
 is a packaging problem; playback failure is behavior drift.
 
+Known driver limitations are separate from that pass/fail outcome. The suite
+writes each applicable limitation and capability-cell list to the verify job's
+GitHub step summary as **Inconclusive scenarios**. They do not become passing
+coverage merely because Vitest skips the corresponding driver; a decisive
+claim still requires the relevant captured live procedure.
+
 ## The record leg, in detail
 
 Gated on the outcome artifact being `pass`; never installs or runs the
