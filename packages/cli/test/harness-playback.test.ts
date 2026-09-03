@@ -784,6 +784,28 @@ function dialogScreen(plainScreen: () => string): string {
   return plainScreen().replace(/\s+/g, "");
 }
 
+function mainPromptVisible(plainScreen: () => string): boolean {
+  const current = dialogScreen(plainScreen).slice(-2500);
+  const marker = current.lastIndexOf("\u276f");
+  if (marker === -1) return false;
+  // List dialogs leave their selected option immediately after the cursor;
+  // the main input line is followed by status text instead. This survives
+  // Claude rendering the cursor's trailing space as a cursor movement.
+  return !/^(?:\d+\.?)?(?:Yes|No)/.test(current.slice(marker + 1));
+}
+
+async function waitForMainPrompt(
+  plainScreen: () => string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (mainPromptVisible(plainScreen)) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
 /**
  * Confirm a list dialog with the wanted option selected, wherever the cursor
  * currently sits. The live selection is the most recently rendered frame
@@ -831,7 +853,7 @@ async function walkFirstRunDialogs(
     // Onboarding is done when the main TUI input line renders (the prompt
     // caret on the raw screen) — later dialogs cannot be assumed away, so
     // the walk exits on this instead of after the last known dialog.
-    if (plainScreen().includes("\u276f ")) return;
+    if (mainPromptVisible(plainScreen)) return;
     if (!handled.has("theme") && current.includes("Choosethetextstyle")) {
       handled.add("theme");
       // Any theme works: confirm the preselected entry.
@@ -1476,34 +1498,27 @@ scenarioDrive(
         screen += data;
       });
       const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
-      const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
-        const deadline = Date.now() + timeoutMs;
-        while (Date.now() < deadline) {
-          if (plainScreen().includes(marker)) return true;
-          await new Promise((r) => setTimeout(r, 500));
-        }
-        return false;
-      };
       // Walk first-run dialogs reactively: fresh CI state renders a different
       // sequence (theme -> API key -> security notes -> trust on 2.1.238)
       // than a box with local state (trust first on 2.1.250), so the walk
       // polls for each dialog's own text instead of assuming order.
       await walkFirstRunDialogs(pty, plainScreen, 60_000);
       // Wait for the TUI input line, then send the prompt.
-      await waitUntil("\u276f ", 20_000);
+      await waitForMainPrompt(plainScreen, 20_000);
       await new Promise((r) => setTimeout(r, 1_500));
       pty.write("Use the shell tool once to create hooknostic-approval.txt.\r");
-      // The approval prompt appears; the plugin denies it. The denial must be
-      // honored natively: the turn continues past the prompt and completes
-      // (the scripted turn-2 text renders), rather than the TUI being killed
-      // mid-flight with the marker absent for the wrong reason.
-      await waitUntil("Doyouwanttoproceed", 30_000);
-      // The TUI renders text with its own word layout: the space in "playback
-      // complete" is emitted as a cursor-right escape, so the plain screen
-      // carries "playbackcomplete" with no space (observed in the raw pty
-      // stream on 2.1.250). Match the space-free form; 45s covers the deny
-      // round-trip plus the second model turn.
-      const turnCompleted = await waitUntil("playbackcomplete", 45_000);
+      // The plugin denies the prompt. The PTY's rendered completion text is
+      // not stable across Claude versions (2.1.238 can remain on the tool's
+      // "Waiting" frame even after the follow-up request is served), so use
+      // the loopback model's agent-turn count as the completion signal.
+      const turnCompleted = await (async (): Promise<boolean> => {
+        const deadline = Date.now() + 45_000;
+        while (Date.now() < deadline) {
+          if (server.turnCount >= 2) return true;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return false;
+      })();
       try {
         pty.kill();
       } catch {
@@ -1521,7 +1536,9 @@ scenarioDrive(
       // command never executed.
       expect(
         turnCompleted,
-        `turn never completed after the denial; screen: ${JSON.stringify(plainScreen().slice(0, 2600))}`,
+        `turn never completed after the denial; model turns: ${server.turnCount}; screen: ${JSON.stringify(
+          plainScreen().slice(0, 2600),
+        )}`,
       ).toBe(true);
       expect(
         await readFile(join(dir, "hooknostic-approval.txt"), "utf8").catch(() => null),
@@ -1626,7 +1643,7 @@ scenarioDrive(
       };
       // Walk first-run dialogs (same reactive walk as the permission drive).
       await walkFirstRunDialogs(pty, plainScreen, 60_000);
-      await waitUntil("\u276f ", 20_000);
+      await waitForMainPrompt(plainScreen, 20_000);
       await new Promise((r) => setTimeout(r, 1_500));
       pty.write("Use the shell tool once to create hooknostic-approval.txt.\r");
       // The hook's requestApproval surfaces the native approval prompt.
