@@ -1160,17 +1160,20 @@ scenarioDrive(
     let driveStderr = "";
     await runInstalledHarness(build, "rewrite", {
       effects: ["replace-outputs", "prevent-stop-once"],
-      mcpServerPath: McpFixtureServerPath,
+      ...(adapter!.id === "codex" ? { mcpServerPath: McpFixtureServerPath } : {}),
       // Codex registers stdio MCP servers asynchronously, so the first
       // turn's tool list usually lacks the fixture tool. Turn 1 completes
       // with text; the stop hook prevents that stop (exactly once, gated on
       // stop_hook_active), which forces turn 2 — by then the MCP tool is
       // registered and the script calls it. Turn 3 completes.
-      script: [
-        { kind: "text", text: "I will call the echo tool on the next step." },
-        { kind: "tool", toolName: "hooknostic_echo" },
-        { kind: "text", text: "Stop hook active; standing down now." },
-      ],
+      script:
+        adapter!.id === "codex"
+          ? [
+              { kind: "text", text: "I will call the echo tool on the next step." },
+              { kind: "tool", toolName: "hooknostic_echo" },
+              { kind: "text", text: "Stop hook active; standing down now." },
+            ]
+          : [{ kind: "tool" }, { kind: "text", text: "Stop hook active; standing down now." }],
       verify: async ({ server }) => {
         recordedRequests = server.requests;
       },
@@ -1221,10 +1224,11 @@ scenarioDrive(
       ).not.toContain("hooknostic-replaced-tool-output");
       return;
     }
-    // Every other adapter: the replacement must be what the model sees.
+    // Other adapters exercise their native shell tool; the replacement must
+    // reach the following model request.
     expect(
       contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
-      `replaced MCP output missing from model requests: stdout: ${driveStdout}\nstderr: ${driveStderr}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      `replaced tool output missing from model requests: stdout: ${driveStdout}\nstderr: ${driveStderr}\nrequests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
     ).toBe(true);
   },
   () => cellLevel("tool.after.output.replace") === undefined,

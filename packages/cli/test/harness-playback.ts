@@ -100,7 +100,7 @@ export type PlaybackEffect =
   | "block-continuation" // tool.after.blockContinuation on the sentinel marker
   | "request-approval" // tool.before.requestApproval on the sentinel marker
   | "permission-deny" // permission.request.block on any permission prompt
-  | "replace-outputs"; // tool.after.output.replace on MCP tool outputs
+  | "replace-outputs"; // tool.after.output.replace
 
 export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "context-add",
@@ -179,8 +179,7 @@ function playbackPluginSource(
             return blockContinuation("continuation blocked by harness playback");
           }
         }
-        if (effects.includes("replace-outputs") && "${event}" === "tool.after" &&
-            event.tool?.kind === "mcp") {
+        if (effects.includes("replace-outputs") && "${event}" === "tool.after") {
           return replaceOutput("hooknostic-replaced-tool-output");
         }
         if (effects.includes("request-approval") && "${event}" === "tool.before" &&

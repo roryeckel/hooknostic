@@ -28,7 +28,11 @@ describe("decodeOpenCode fixtures", () => {
 
   for (const name of CASES) {
     it(`decodes ${name} to its canonical event`, () => {
-      const input = loadFixture("opencode", "1.18", `${name}.input.json`);
+      const input = loadFixture(
+        "opencode",
+        "1.18",
+        name === "permission-ask" ? "permission-ask.type-derived.json" : `${name}.input.json`,
+      );
       const canonical = loadFixture<Record<string, unknown>>(
         "opencode",
         "1.18",

@@ -29,7 +29,8 @@ Ground truth notes (1.18.x):
   is typed in the SDK but **never fires** on 1.18.x: the active Permission
   module publishes a `permission.asked` bus event instead of triggering the
   plugin hook (captured live on 1.18.25, `.capture/opencode-permission`;
-  upstream anomalyco/opencode #9229). The `permission-ask` fixture below is
+  upstream anomalyco/opencode #9229). The `permission-ask.type-derived.json`
+   fixture is
   therefore **type-derived** (callback envelope from the published Hooks type
   definitions), not captured; `permission-asked` is captured. Denial works
   via `client.postSessionIdPermissionsPermissionId { response: "reject" }`
