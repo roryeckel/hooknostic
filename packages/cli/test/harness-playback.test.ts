@@ -787,21 +787,30 @@ function dialogScreen(plainScreen: () => string): string {
 /**
  * Confirm a list dialog with the wanted option selected, wherever the cursor
  * currently sits. The live selection is the most recently rendered frame
- * (ink repaints only the changed lines, so the current cursor marker sits
- * after any stale frame); poll the frame and nudge with the up key — the
+ * (ink repaints only the changed lines, so the last cursor marker on the
+ * screen belongs to the current frame); poll and nudge with the up key — the
  * select widget wraps — until the wanted option is selected, then Enter.
- * The wanted frame is matched against the whitespace-stripped screen, where
- * adjacent options run together ("YesNo (recommended)" loses its separator),
- * so the pattern must not rely on word boundaries or option numbers (both
- * version-dependent: 2.1.238 renders "1. Yes" prefixes, 2.1.250 does not).
+ * Selection detection strips whitespace (adjacent options run together:
+ * "YesNo (recommended)") and optional "1."-style option numbers (2.1.238
+ * numbers options, 2.1.250 does not), then reads the label that follows the
+ * last cursor marker.
  */
 async function confirmDialogSelection(
   pty: IPty,
   screen: () => string,
-  selectedFrame: RegExp,
+  wantedPrefix: string,
 ): Promise<void> {
+  const selected = (): boolean => {
+    const stripped = screen().slice(-2500);
+    const marker = stripped.lastIndexOf("\u276f");
+    if (marker === -1) return false;
+    return stripped
+      .slice(marker + 1)
+      .replace(/^[0-9]*\.?/, "")
+      .startsWith(wantedPrefix);
+  };
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    if (selectedFrame.test(screen().slice(-2500))) break;
+    if (selected()) break;
     pty.write("\u001b[A");
     await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
   }
@@ -833,7 +842,7 @@ async function walkFirstRunDialogs(
       // Fresh state preselects "No (recommended)"; the loopback key must be
       // accepted or the harness discards the env key entirely and falls into
       // the OAuth login flow, which cannot complete in playback.
-      await confirmDialogSelection(pty, screen, /❯\d*\.?Yes[^N]/);
+      await confirmDialogSelection(pty, screen, "Yes");
     } else if (!handled.has("security") && current.includes("PressEnte")) {
       handled.add("security");
       pty.write("\r");
@@ -842,7 +851,7 @@ async function walkFirstRunDialogs(
       handled.add("trust");
       // The preselected trust entry moved between versions (2.1.238 fresh
       // defaults to "Yes"; the walk must not assume it).
-      await confirmDialogSelection(pty, screen, /❯\d*\.?Yes,Itrustthisfolder/);
+      await confirmDialogSelection(pty, screen, "Yes,Itrustthisfolder");
     } else {
       await new Promise((r) => setTimeout(r, 400));
     }
