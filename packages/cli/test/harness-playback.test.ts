@@ -15,6 +15,7 @@ import {
   replayCommandFixtures,
   replayOpenCodeFixtures,
   runProcess,
+  scriptedTool,
   startModelPlayback,
   traceEvents,
 } from "./harness-playback.js";
@@ -29,6 +30,45 @@ const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", i
 if (selected !== "" && adapter === undefined) {
   throw new Error(`unknown HOOKNOSTIC_PLAYBACK harness ${JSON.stringify(selected)}`);
 }
+
+describe("scriptedTool schema fidelity", () => {
+  it("does not invent a description field absent from the declared shell schema", () => {
+    const tool = scriptedTool(
+      {
+        tools: [
+          {
+            name: "Bash",
+            input_schema: { properties: { command: { type: "string" } } },
+          },
+        ],
+      },
+      "rewrite",
+    );
+
+    expect(JSON.parse(tool.arguments)).toEqual({ command: expect.any(String) });
+  });
+
+  it("includes a description when the declared shell schema supports one", () => {
+    const tool = scriptedTool(
+      {
+        tools: [
+          {
+            name: "Bash",
+            input_schema: {
+              properties: { command: { type: "string" }, description: { type: "string" } },
+            },
+          },
+        ],
+      },
+      "rewrite",
+    );
+
+    expect(JSON.parse(tool.arguments)).toMatchObject({
+      command: expect.any(String),
+      description: "Playback probe command",
+    });
+  });
+});
 
 function withoutCredentials(): NodeJS.ProcessEnv {
   const env = { ...process.env };

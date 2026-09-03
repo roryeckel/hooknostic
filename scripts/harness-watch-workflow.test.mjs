@@ -110,7 +110,7 @@ describe("harness-watch workflow structure", () => {
   });
 
   it("every matrix-context job declares a strategy matrix", () => {
-    const jobs = ["verify", "record", "report-failure"];
+    const jobs = ["verify", "record", "report-failure", "drift", "publish-verdict"];
     for (const job of jobs) {
       const src = jobSource(job);
       const usesMatrix = /\$\{\{ matrix\./.test(src);
@@ -121,5 +121,81 @@ describe("harness-watch workflow structure", () => {
         );
       }
     }
+  });
+
+  it("drift is read-only and never propagates expected non-clean exits", () => {
+    const drift = jobSource("drift");
+    // Posts nothing — publish-verdict owns all writes — and it executes
+    // third-party harness code, so read-only scopes only.
+    expect(drift).toMatch(/permissions:\s*\n\s*contents: read\s*\n/);
+    expect(drift).not.toContain("issues: write");
+    expect(drift).not.toContain("pull-requests: write");
+    // Exits 4/5/6 are reportable outcomes; the step must not fail the job.
+    expect(drift).toContain("continue-on-error: true");
+    expect(drift).toContain("drift-verdict-${{ matrix.harness }}");
+    expect(drift).toContain("drift-report-${{ matrix.harness }}.log");
+    const drive = drift.slice(
+      drift.indexOf("Run the drift capture-compare"),
+      drift.indexOf("Write the verdict artifact"),
+    );
+    expect(drive).not.toContain("HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}");
+    expect(drive).toContain("docker run --rm --network bridge");
+    expect(drive).toContain("dst=/workspace,readonly");
+    expect(drive).toContain("--security-opt no-new-privileges");
+    expect(drive).toContain("node:22.13.1-bookworm");
+    const sidecar = drift.slice(
+      drift.indexOf("Install LiteLLM sidecar"),
+      drift.indexOf("Run the drift capture-compare"),
+    );
+    expect(sidecar).toContain(
+      "Keep the upstream secret out of dependency installation too.",
+    );
+    expect(sidecar.indexOf("pipx install")).toBeLessThan(
+      sidecar.indexOf("HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}"),
+    );
+    // The paid llm transport runs only on force_llm.
+    expect(drift).toMatch(/inputs\.force_llm == 'true'/);
+  });
+
+  it("publish-verdict is the single final writer gated on detect", () => {
+    const publish = jobSource("publish-verdict");
+    expect(publish).toMatch(
+      /needs: \[detect, record, report-failure, drift\]/,
+    );
+    expect(publish).toMatch(
+      /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/,
+    );
+    expect(publish).toMatch(
+      /permissions:\s*\n\s*contents: read\s*\n\s*issues: write\s*\n\s*pull-requests: write/,
+    );
+    // Every verdict gets a durable destination even with no PR/issue.
+    const summary = publish.indexOf("GITHUB_STEP_SUMMARY");
+    const comment = publish.indexOf("Comment the verdict on the destination");
+    expect(summary).toBeGreaterThan(-1);
+    expect(comment).toBeGreaterThan(summary);
+  });
+
+  it("publish-verdict keeps gh's repository context for reconciliation without a drift verdict", () => {
+    const publish = jobSource("publish-verdict");
+    expect(publish).toMatch(/permissions:\s*\n\s*contents: read\s*\n\s*issues: write/);
+    // Patch-pass runs gate drift off, which also skips checkout. GH_REPO keeps
+    // the reconciliation gh calls targeted at this repository in that path.
+    expect(publish).toContain("GH_REPO: ${{ github.repository }}");
+    expect(publish).toContain("watch-outcome-${{ matrix.harness }}");
+    const reconcile = publish.slice(publish.indexOf("Reconcile failure issues after a passing run"));
+    expect(reconcile).toContain("if: always()");
+    expect(reconcile).not.toContain("steps.resolve.outputs.publish");
+    expect(reconcile).toContain("jq -e '.outcome == \"pass\"'");
+    expect(reconcile).toContain("EXPECTED_PR_TITLE");
+  });
+
+  it("routes verdicts only to a PR for the matrix version", () => {
+    const publish = jobSource("publish-verdict");
+    const destination = publish.slice(
+      publish.indexOf("Locate the conversation destination"),
+      publish.indexOf("File a deduped report issue"),
+    );
+    expect(destination).toContain("EXPECTED_PR_TITLE");
+    expect(destination).toContain('[ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]');
   });
 });

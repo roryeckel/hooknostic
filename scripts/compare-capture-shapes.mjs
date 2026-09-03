@@ -382,8 +382,10 @@ const FIXTURE_DIRS = {
  * Expected variant sets: the deterministic drive session must produce exactly
  * these (session start, prompt, PreToolUse+PostToolUse for the shell tool,
  * stop) — the partial-capture rule from the issue's review round 5.
+ * Exported: the drift driver (drive-capture-session.mjs) imports the
+ * comparator as a module and needs the same expected set.
  */
-const EXPECTED_VARIANTS = {
+export const EXPECTED_VARIANTS = {
   claude: [
     "SessionStart",
     "UserPromptSubmit",
@@ -401,7 +403,9 @@ const EXPECTED_VARIANTS = {
   ],
 };
 
-function readJsonDir(dir, { suffix = ".json" } = {}) {
+/** Read every `*.json` (or `suffix`) file in a dir as parsed payloads.
+ * Exported so the drift driver reads captures and fixtures identically. */
+export function readJsonDir(dir, { suffix = ".json" } = {}) {
   const out = [];
   for (const name of readdirSync(dir).filter((f) => f.endsWith(suffix))) {
     // Strip a UTF-8 BOM if a Windows writer added one.

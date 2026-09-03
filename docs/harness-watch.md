@@ -18,9 +18,28 @@ mutable rolling record), and ADR-0010 (capability coverage policy).
 | Playback verify | `verify` | Free, secret-free | The newer build passes model-free playback (artifact discovery, rewrite/block markers, lifecycle events) |
 | Record | `record` | PAT job; never runs harness code | Pass → rolling `live-probe` record + PR; range exit → deduped issue |
 | Report | `report-failure` | `GITHUB_TOKEN` only | Deduped failure issue with a runbook |
+| Drift | `drift` | Free (playback transport) / paid (`force_llm`) | Capture-compare of a real harness session's native hook payloads against committed fixtures |
+| Publish | `publish-verdict` | `GITHUB_TOKEN` only | Single final writer: step summary + PR/issue comment + reconciliation |
 
-The drift capture-compare lane and the paid LLM lane are later plan steps
-(issue #1 §6–7); their jobs gate on `verify`'s outcome the same way.
+The drift lane's two transports (issue #1 §6–7):
+
+- **`playback` (default, free)** — `scripts/drive-capture-session.mjs` starts
+  the loopback model server (`startModelPlayback`) and drives the installed
+  harness with the committed tee-capture templates (`.capture/claude/`,
+  `.capture/codex-capture/`, `.capture/opencode-capture/`) attached. The
+  harness is real and its hook payloads are real native output; only the
+  model side is scripted. No secrets, no spend.
+- **`llm` (paid, `force_llm` dispatch only)** — same session shape, but the
+  model side is the owner's OpenAI-compatible endpoint through a pinned
+  LiteLLM sidecar (`/v1/messages` and `/v1/responses` translation; the driver
+  probes each path first and degrades to exit 5 inconclusive on probe failure).
+  The sidecar remains on the runner host while the harness runs in a
+  restricted Docker container with a read-only workspace mount; the container
+  receives only the host-gateway proxy URL and a disposable local proxy
+  credential, never the upstream API key. What only this lane establishes:
+  how a real model's tool-call emission patterns flow through the real
+  provider path into hooks (the repo's codex router history shows these vary
+  by model).
 
 ## What automation edits — and what it never touches
 
@@ -46,8 +65,8 @@ scheduled run.
 
 - `schedule: cron "23 5 * * 1"` — weekly, Monday 05:23 UTC, off-minute.
 - `workflow_dispatch` with inputs `harness` (filter), `version` (pin a build
-  under test, overriding the dist-tag), `force_llm` (reserved for the paid
-  drift lane).
+  under test, overriding the dist-tag), `force_llm` (enables the paid drift
+  transport).
 
 Scheduled workflows are disabled by GitHub after 60 days of repository
 inactivity; the dispatch backstop is the documented recovery (`Actions →
@@ -110,6 +129,67 @@ this repository, Contents RW + Pull requests RW) because a branch pushed with
 the default token does not trigger CI. The PAT needs no Issues scope: issue
 steps override `GH_TOKEN: ${{ github.token }}` per step.
 
+## The drift lane, in detail
+
+Gate (per harness): playback failure, a non-`patch` jump, or a `force_llm`
+dispatch. `drift` runs with `contents: read` only — it posts nothing and
+executes third-party harness code; `publish-verdict` owns every write. The
+job's steps:
+
+1. Gate on the verify outcome artifact (`pass==false || jump != 'patch' ||
+   inputs.force_llm == 'true'`).
+2. Bundle the workspace on the runner, install the pinned LiteLLM dependency
+   before injecting its upstream key, then start the installed harness inside
+   `node:22.13.1-bookworm`: the third-party harness package is installed there
+   with `--ignore-scripts`, the repository is mounted read-only, only the
+   throwaway capture directory is writable, and no Docker socket is mounted.
+   In the paid transport, LiteLLM stays outside that container, so its upstream
+   credential cannot be read by the harness.
+3. The container runs `node --experimental-strip-types
+   scripts/drive-capture-session.mjs <harness> --transport playback|llm
+   --scratch ...`; its exit code is captured, never propagated: 0 clean,
+   **4 drift**, **5 inconclusive**, and 6 (drive failure) are all reportable
+   outcomes. Under `always()` the job uploads `drift-verdict-<harness>.json`,
+   the complete driver report, and the raw captures.
+4. The driver reuses `startModelPlayback` from
+   `packages/cli/test/harness-playback.ts` outside vitest via module-loader
+   hooks (`scripts/ts-resolve-hook.mjs` + `scripts/vitest-stub.mjs`), copies
+   the committed tee templates into the scratch dir (instantiating the Codex
+   `${CAPTURE_DIR}` hooks template), drives the harness with the same
+   provider wiring the playback lane uses (Codex: `wire_api="responses"` +
+   project trust + `git init`; OpenCode: `PWD` trap + `.opencode/plugins/`
+   load location), flattens the tee's `.jsonl` for the comparator, and exits
+   with the comparator's verdict code.
+
+**Advisory only.** The drift lane never writes fixtures and never upgrades
+provenance — a "clean" verdict is a confidence note, not captured evidence;
+drift routes humans to the harness-capture skill. The procedure and its
+provenance boundary are recorded in `.capture/harness-drift/README.md`. Known
+honest limitation: OpenCode's committed 1.18 fixtures are type-derived
+envelopes, so live captures legitimately verdict `drift` until capture-shaped
+fixtures land (documented in `.capture/opencode-capture/README.md`).
+
+## The publish leg, in detail
+
+`publish-verdict` is the single final writer (`needs: [detect, record,
+report-failure, drift]`, `if: always() && detect succeeded && count != '0'` —
+the `always()` also fires after a skipped/failed detect, where `count` is
+empty, so the guards exclude the fork no-op and detect failure). Per harness:
+
+1. Download `drift-verdict-<harness>` if present; absent → nothing to publish.
+2. **Always write the verdict into `$GITHUB_STEP_SUMMARY`** — a forced run of
+   an already-recorded version produces no PR and no failure issue, and a
+   clean/inconclusive result must not vanish.
+3. Locate the conversation destination: an open `harness-watch/<harness>` PR
+   whose title names this exact version first, else the deduped failure issue.
+   A non-clean verdict (drift *or* inconclusive) with no destination files a
+   new deduped report issue; the verdict comment lands on whichever matching
+   destination exists.
+4. **Failure-issue reconciliation**: when the harness passed and its PR
+   exists, the matching failure issue (exact harness+version title) is closed
+   with the passing run link — a transient failure must not linger as a stale
+   signal.
+
 ## Reporting and dedupe
 
 - **Playback failure** → issue `harness-watch: <harness> <version> failed
@@ -127,6 +207,9 @@ steps override `GH_TOKEN: ${{ github.token }}` per step.
 | --- | --- | --- |
 | `HARNESS_WATCH_PAT` | secret | Fine-grained PAT: this repo, Contents RW + Pull requests RW. Rotate like `RELEASE_PAT` (docs/releases.md). |
 | `HARNESS_WATCH_AUTOMERGE` | repo variable | Opt-in auto-merge of record PRs; absent/false = human merge. |
+| `HARNESS_LLM_BASE_URL` | repo variable | Upstream OpenAI-compatible endpoint for the paid llm drift transport. |
+| `HARNESS_LLM_MODEL` | repo variable | Model name the llm transport drives (`glm-5.3-flash`). |
+| `HARNESS_LLM_API_KEY` | secret | Spend-capped upstream key; supplied only to the host-side LiteLLM process, outside the harness container. |
 | `harness-watch` | label | Created by the first run if missing. |
 
 ## Failure runbook
@@ -146,7 +229,10 @@ steps override `GH_TOKEN: ${{ github.token }}` per step.
    genuinely needs them, adjust the verify step per the workflow comment
    (keep it secret-free, keep `persist-credentials: false`).
 5. A transient pass on the next scheduled run closes the failure issue
-   automatically (the reconciliation in the publish step, issue #1 §7 —
-   arrives with the drift lane).
+   automatically (`publish-verdict`'s reconciliation step).
 6. If scheduled runs stop (60-day auto-disable): dispatch manually, then
    commit anything — a push re-arms the schedule.
+7. A drift or inconclusive verdict: download the run's
+   `drift-verdict-<harness>` artifact (raw captures + report), then follow
+   the harness-capture skill. Drift is advisory; ranges and fixtures extend
+   only with captured evidence.

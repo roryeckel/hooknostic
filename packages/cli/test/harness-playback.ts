@@ -460,7 +460,7 @@ function requestTools(request: Record<string, unknown>): Record<string, unknown>
   return [];
 }
 
-function scriptedTool(
+export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
   marker = "hooknostic-tool.txt",
@@ -548,7 +548,18 @@ function scriptedTool(
   }
   const command = `node -e "${script}"`;
   const value = properties[key]?.["type"] === "array" ? ["node", "-e", script] : command;
-  return { ...namespaceEmission, arguments: JSON.stringify({ [key]: value }) };
+  // Emit `description` when the tool schema declares one (Claude's Bash does;
+  // fixtures carry it in tool_input). Without it a live capture reads as
+  // shape drift against the committed fixtures for purely scripted reasons.
+  return {
+    ...namespaceEmission,
+    arguments: JSON.stringify({
+      [key]: value,
+      ...(properties["description"] !== undefined
+        ? { description: "Playback probe command" }
+        : {}),
+    }),
+  };
 }
 
 function sse(
