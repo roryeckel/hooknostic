@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   assessRelease,
   classifyJump,
+  isMainModule,
   rollingPlaybackVersion,
   shouldInclude,
 } from "./check-harness-releases.mjs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import semver from "semver";
 
 const PROFILE = (rolling) => [
@@ -43,6 +46,14 @@ describe("rollingPlaybackVersion", () => {
   it("returns undefined for an empty region and for missing markers", () => {
     expect(rollingPlaybackVersion(PROFILE(undefined))).toBeUndefined();
     expect(rollingPlaybackVersion("export const x = 1;")).toBeUndefined();
+  });
+});
+
+describe("isMainModule", () => {
+  it("recognizes an absolute script path on every platform", () => {
+    const scriptPath = resolve("scripts/check-harness-releases.mjs");
+    expect(isMainModule(pathToFileURL(scriptPath).href, scriptPath)).toBe(true);
+    expect(isMainModule(pathToFileURL(scriptPath).href, resolve("other.mjs"))).toBe(false);
   });
 });
 

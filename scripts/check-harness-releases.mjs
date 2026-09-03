@@ -16,6 +16,8 @@
 //
 // The npm lookup is CLI-only; `assessRelease` is pure and unit-tested.
 import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const packages = {
   claude: {
@@ -190,6 +192,10 @@ async function main() {
 }
 
 // Same CLI guard as release-notes.mjs: pure helpers stay importable.
-if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replaceAll("\\", "/")}`).href) {
+export function isMainModule(moduleUrl, argv1) {
+  return argv1 !== undefined && fileURLToPath(moduleUrl) === resolve(argv1);
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
   await main();
 }
