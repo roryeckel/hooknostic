@@ -179,6 +179,22 @@ async function runClaudePlayback(
 ): Promise<void> {
   const server = await startModelPlayback("anthropic-messages", scenario, options.script);
   try {
+    const mcpConfigPath = join(build.artifactDir, "mcp-playback.json");
+    if (options.mcpServerPath !== undefined) {
+      await writeFile(
+        mcpConfigPath,
+        JSON.stringify({
+          mcpServers: {
+            hooknostic_fixture: {
+              type: "stdio",
+              command: "node",
+              args: [options.mcpServerPath],
+            },
+          },
+        }),
+        "utf8",
+      );
+    }
     const result = await runProcess(
       "claude",
       [
@@ -191,6 +207,9 @@ async function runClaudePlayback(
         "--dangerously-skip-permissions",
         "--max-turns",
         "6",
+        ...(options.mcpServerPath !== undefined
+          ? ["--strict-mcp-config", "--mcp-config", mcpConfigPath]
+          : []),
         ...(options.extraArgs ?? []),
       ],
       {
@@ -338,7 +357,9 @@ async function runOpenCodePlayback(
       env: process.env,
       timeoutMs: 30_000,
     });
-    await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl);
+    await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, {
+      ...(options.mcpServerPath !== undefined ? { mcpServerPath: options.mcpServerPath } : {}),
+    });
     const result = await runProcess(
       "opencode",
       [
@@ -397,7 +418,7 @@ async function runInstalledHarness(
 async function writeOpenCodeProviderConfig(
   artifactDir: string,
   baseUrl: string,
-  options: { permission?: Record<string, string> } = {},
+  options: { permission?: Record<string, string>; mcpServerPath?: string } = {},
 ): Promise<void> {
   await writeFile(
     join(artifactDir, "opencode.json"),
@@ -407,6 +428,17 @@ async function writeOpenCodeProviderConfig(
         model: "playback/hooknostic-playback",
         enabled_providers: ["playback"],
         ...(options.permission !== undefined ? { permission: options.permission } : {}),
+        ...(options.mcpServerPath !== undefined
+          ? {
+              mcp: {
+                hooknostic_fixture: {
+                  type: "local",
+                  command: ["node", options.mcpServerPath],
+                  enabled: true,
+                },
+              },
+            }
+          : {}),
         provider: {
           playback: {
             npm: "@ai-sdk/openai-compatible",
@@ -476,7 +508,10 @@ async function runOpenCodeServePlayback(
     env: process.env,
     timeoutMs: 30_000,
   });
-  await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, options.opencodeConfig);
+  await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, {
+    ...options.opencodeConfig,
+    ...(options.mcpServerPath !== undefined ? { mcpServerPath: options.mcpServerPath } : {}),
+  });
   const child = spawn("opencode", ["serve", "--port", String(port), "--print-logs"], {
     cwd: build.artifactDir,
     shell: process.platform === "win32",
@@ -757,6 +792,36 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     } else {
       await replayOpenCodeFixtures(build, fixturesDir);
     }
+  });
+
+  it("drives the fixture MCP tool through the generated production artifact", async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcp-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    await runInstalledHarness(build, "rewrite", {
+      ...(adapter!.id === "codex" ? { effects: ["prevent-stop-once"] } : {}),
+      mcpServerPath: McpFixtureServerPath,
+      // Codex discovers stdio MCP servers after the first agent turn. Its stop
+      // hook drives a second turn; Claude and OpenCode have the fixture tool
+      // before the first response.
+      script:
+        adapter!.id === "codex"
+          ? [
+              { kind: "text", text: "I will call the echo tool on the next step." },
+              { kind: "tool", toolName: "hooknostic_echo" },
+              { kind: "text", text: "MCP output received; standing down now." },
+            ]
+          : [
+              { kind: "tool", toolName: "hooknostic_echo" },
+              { kind: "text", text: "MCP output received; standing down now." },
+            ],
+    });
+    const trace = await readFile(build.tracePath, "utf8");
+    expect(trace, `fixture MCP tool did not reach the artifact: ${trace}`).toContain(
+      '"toolKind":"mcp"',
+    );
+    expect(trace).toContain('"event":"tool.before"');
+    expect(trace).toContain('"event":"tool.after"');
   });
 
 });
@@ -1184,10 +1249,9 @@ scenarioDrive(
     });
 
     const events = await traceEvents(build.tracePath);
-    // The MCP call must have dispatched end to end: the namespace-pair
-    // emission (name + namespace verbatim from the namespace tool spec)
-    // resolves the router's exact {namespace, name} lookup, PostToolUse
-    // fires, and the turn continues.
+    // Every output-replacement drive must reach the post-tool hook. Codex
+    // additionally uses the MCP fixture so its inverted watch can exercise
+    // the hook channel that rejects updatedMCPToolOutput.
     expect(
       events,
       `no tool.after\nstdout: ${driveStdout}\nstderr: ${driveStderr}`,
@@ -1224,7 +1288,7 @@ scenarioDrive(
       ).not.toContain("hooknostic-replaced-tool-output");
       return;
     }
-    // Other adapters exercise their native shell tool; the replacement must
+    // OpenCode exercises its native shell tool here; the replacement must
     // reach the following model request.
     expect(
       contents.some((text) => text.includes("hooknostic-replaced-tool-output")),

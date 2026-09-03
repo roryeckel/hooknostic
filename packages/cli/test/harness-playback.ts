@@ -214,6 +214,8 @@ function playbackPluginSource(
           event: event.event,
           nativeEvent: event.harness.nativeEvent,
           harnessVersion: event.harness.version,
+          toolKind: event.tool?.kind,
+          toolNativeName: event.tool?.nativeName,
         }) + "\\n");${extraEffects}
       },
     })`;

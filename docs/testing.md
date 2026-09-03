@@ -74,6 +74,13 @@ scripted namespace-pair emission resolves the router's exact
 output, and the replaced marker must surface nowhere. If upstream starts
 honouring the field, the watch fails and the rating is revisited.
 
+Every playback lane also configures and calls the in-repository stdio MCP
+fixture server. The dedicated MCP drive requires its tool to reach both
+`tool.before` and `tool.after` as normalized `mcp` events. Claude loads the
+fixture through `--mcp-config`, Codex through `mcp_servers`, and OpenCode
+through its local `mcp` configuration; the output-replacement drive remains
+separate because it is a capability-specific assertion.
+
 The loopback suite never switches to a paid model. Every declared driver
 limitation is written to the harness-watch workflow summary as an
 **inconclusive** outcome, including the affected capability cells. A decisive
