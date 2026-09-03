@@ -188,10 +188,11 @@ jobs:
     # Run after a failed verify matrix leg too: each record leg gates itself
     # on its own uploaded outcome artifact, so a passing harness can still
     # advance its rolling validation record.
-    if: ${{ always() && needs.detect.outputs.count != '0' }}
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: write
     env:
       # Every gh call authenticates as the PAT, not just git — the pattern
       # release-prepare.yml demonstrates. Default-token pushes don't trigger
@@ -232,7 +233,10 @@ jobs:
         if: steps.gate.outputs.skip == 'false'
         with:
           token: ${{ secrets.HARNESS_WATCH_PAT }}
-          persist-credentials: false
+          # The commit step pushes this branch with the PAT so its normal CI
+          # runs. Unlike verify's third-party checkout, this credential must
+          # remain available to git push.
+          persist-credentials: true
 
       - uses: pnpm/action-setup@v6
         if: steps.gate.outputs.skip == 'false'
@@ -249,6 +253,10 @@ jobs:
 
       - name: Ensure harness-watch label exists
         if: steps.gate.outputs.skip == 'false'
+        # The PAT is deliberately limited to contents/PR operations; labels
+        # and range-extension issues use the job-scoped token with Issues RW.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh label create harness-watch --description "Scheduled harness-version verification" --color 0E8A16 || true
 
       - name: Idempotency — skip if the open PR already names this version
@@ -381,7 +389,7 @@ jobs:
     needs: [detect, verify]
     # `always()` lets this job run after a failed verify leg; the count guard
     # still skips it when detect produced no matrix entries.
-    if: ${{ always() && needs.detect.outputs.count != '0' }}
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -413,6 +421,10 @@ jobs:
 
       - uses: actions/checkout@v7
         if: steps.outcome.outputs.failed == 'true'
+
+      - name: Ensure harness-watch label exists
+        if: steps.outcome.outputs.failed == 'true'
+        run: gh label create harness-watch --description "Scheduled harness-version verification" --color 0E8A16 || true
 
       - name: Deduped failure issue
         if: steps.outcome.outputs.failed == 'true'

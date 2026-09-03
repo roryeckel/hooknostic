@@ -301,6 +301,9 @@ export function compareCaptures({
     variant.includes("PreToolUse") ||
     variant.includes("PostToolUse");
   const toolExchangeFired = [...capturedByVariant.keys()].some(isToolVariant);
+  const toolExchangeMissing =
+    !toolExchangeFired &&
+    expectedVariants.filter(isToolVariant).some((variant) => !capturedByVariant.has(variant));
   for (const expected of expectedVariants) {
     if (capturedByVariant.has(expected)) continue;
     if (toolExchangeFired) {
@@ -323,6 +326,9 @@ export function compareCaptures({
     for (const v of newVariants) {
       report.push(`- new variant: ${v} — needs capture, not present in fixtures`);
     }
+  } else if (toolExchangeMissing) {
+    report.push("## Verdict: inconclusive", "");
+    report.push("No expected tool variant was captured, so the drive did not exercise the tool exchange.");
   } else {
     report.push("## Verdict: clean", "");
     report.push("All captured variants match committed fixture shapes.");
@@ -337,7 +343,12 @@ export function compareCaptures({
       report.push(`- ${p?.input?.event?.type}`);
     }
   }
-  const verdict = driftLines.length > 0 || newVariants.length > 0 ? "drift" : "clean";
+  const verdict =
+    driftLines.length > 0 || newVariants.length > 0
+      ? "drift"
+      : toolExchangeMissing
+        ? "inconclusive"
+        : "clean";
   return { verdict, report: report.join("\n") };
 }
 

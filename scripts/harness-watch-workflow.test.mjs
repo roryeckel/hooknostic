@@ -58,7 +58,26 @@ describe("harness-watch workflow structure", () => {
 
   it("record still runs its per-harness artifact gates after a verify matrix leg fails", () => {
     const record = jobSource("record");
-    expect(record).toMatch(/if: \$\{\{ always\(\) && needs\.detect\.outputs\.count != '0' \}\}/);
+    expect(record).toMatch(/if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/);
+  });
+
+  it("never expands a matrix when detect was skipped or failed", () => {
+    for (const job of ["record", "report-failure"]) {
+      expect(jobSource(job)).toMatch(
+        /needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0'/,
+      );
+    }
+  });
+
+  it("keeps credentials and issue permission for record writes", () => {
+    const record = jobSource("record");
+    expect(record).toMatch(/permissions:\s*\n\s*contents: read\s*\n\s*issues: write/);
+    expect(record).toContain("persist-credentials: true");
+    const labelStep = record.slice(
+      record.indexOf("Ensure harness-watch label exists"),
+      record.indexOf("Idempotency — skip if the open PR"),
+    );
+    expect(labelStep).toContain("GH_TOKEN: ${{ github.token }}");
   });
 
   it("report-failure downloads the outcome artifact before reading it", () => {
@@ -67,6 +86,7 @@ describe("harness-watch workflow structure", () => {
     const read = report.indexOf("jq -r .outcome");
     expect(dl).toBeGreaterThan(-1);
     expect(read).toBeGreaterThan(dl);
+    expect(report).toContain("Ensure harness-watch label exists");
   });
 
   it("verify classifies install-failure via steps.playback.outcome, not conclusion", () => {

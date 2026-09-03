@@ -251,7 +251,7 @@ describe("compareCaptures", () => {
     expect(report).toContain("empty");
   });
 
-  it("the whole tool exchange absent: missing expected variants stay inconclusive-adjacent (not drift)", () => {
+  it("the whole tool exchange absent is inconclusive, not clean or drift", () => {
     // Only lifecycle events fired — no tool capture at all. Expected tool
     // variants are NOT reported drift because their counterpart never fired.
     const captured = [
@@ -264,7 +264,8 @@ describe("compareCaptures", () => {
       fixtures: CODEX_FIXTURES,
       expectedVariants: ["PreToolUse+Bash", "PostToolUse+Bash", "Stop"],
     });
-    expect(verdict).toBe("clean");
+    expect(verdict).toBe("inconclusive");
+    expect(report).toContain("inconclusive");
     expect(report).not.toContain("expected variant PreToolUse+Bash absent");
   });
 

@@ -152,11 +152,11 @@ stage("prompt posted (async)");
 // text so deny runs get the full before/after picture. Observe mode stops at
 // the observed file -- the ask stays pending forever by design.
 const deadline = Date.now() + waitMs;
-const observedPath = join(scratch, "captured", "permission-observed.jsonl");
+const observedPath = join(scratch, "captured", "permission-bus.jsonl");
 const answeredPath = join(scratch, "captured", "permission-answered.jsonl");
 const waitUntil = async (predicate) => {
   while (Date.now() < deadline) {
-    if (predicate()) return true;
+    if (await predicate()) return true;
     await new Promise((r) => setTimeout(r, 500));
   }
   return false;
@@ -167,11 +167,16 @@ let transcript = [];
 if (mode === "deny") {
   const answered = await waitUntil(() => existsSync(answeredPath));
   stage(`answered jsonl: ${answered}`);
-  const done = await waitUntil(() =>
-    transcript.some(
-      (m) => m.info?.role === "assistant" && (m.parts ?? []).some((p) => p.type === "text" && p.text?.includes("playback complete")),
-    ),
-  );
+  const done = await waitUntil(async () => {
+    try {
+      transcript = await (await fetch(`${base}/session/${created.id}/message`, { headers: auth, signal: AbortSignal.timeout(5000) })).json();
+      return transcript.some(
+        (m) => m.info?.role === "assistant" && (m.parts ?? []).some((p) => p.type === "text" && p.text?.includes("playback complete")),
+      );
+    } catch {
+      return false;
+    }
+  });
   stage(`deny turn completed: ${done}`);
 }
 try {
@@ -188,7 +193,7 @@ server.closeAllConnections();
 server.close();
 stage("loopback closed");
 
-const capturedObserved = join(scratch, "captured", "permission-observed.jsonl");
+const capturedObserved = join(scratch, "captured", "permission-bus.jsonl");
 const rendered = transcript.map((m) => ({ role: m.info?.role, text: (m.parts ?? []).filter((p) => p.type === "text").map((p) => p.text).join(" ") }));
 console.log(JSON.stringify({
   mode,
