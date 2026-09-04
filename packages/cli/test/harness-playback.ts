@@ -393,19 +393,29 @@ export function runProcess(
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
       child.kill();
+      child.stdin.destroy();
+      child.stdout.destroy();
+      child.stderr.destroy();
       rejectPromise(
         new Error(`${command} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`),
       );
     }, options.timeoutMs ?? 60_000);
     child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       rejectPromise(error);
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolvePromise({ code, stdout, stderr });
     });
