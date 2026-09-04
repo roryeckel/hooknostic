@@ -609,7 +609,10 @@ async function runOpenCodeServePlayback(
     let up = false;
     for (let attempt = 0; attempt < 80; attempt += 1) {
       try {
-        const response = await fetch(`${base}/app`, { headers: authHeaders });
+        const response = await fetch(`${base}/app`, {
+          headers: authHeaders,
+          signal: AbortSignal.timeout(5_000),
+        });
         lastStatus = response.status;
         if (response.ok) {
           up = true;
@@ -630,21 +633,33 @@ async function runOpenCodeServePlayback(
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders },
         body: "{}",
+        signal: AbortSignal.timeout(10_000),
       })
     ).json()) as { id: string };
 
-    await fetch(`${base}/session/${session.id}/message`, {
+    // OpenCode's documented async endpoint acknowledges acceptance with 204;
+    // completion is observed independently below. This avoids treating the
+    // synchronous /message response as a lifecycle signal while the plugin
+    // posts back into the same session.
+    const promptResponse = await fetch(`${base}/session/${session.id}/prompt_async`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders },
       body: JSON.stringify({
         model: { providerID: "playback", modelID: "hooknostic-playback" },
         parts: [{ type: "text", text: options.prompt ?? playbackPrompt(scenario) }],
       }),
+      signal: AbortSignal.timeout(10_000),
     });
+    if (promptResponse.status !== 204) {
+      const body = await promptResponse.text().catch(() => "");
+      throw new Error(
+        `OpenCode async prompt returned ${promptResponse.status}${body ? `: ${body.slice(0, 500)}` : ""}`,
+      );
+    }
 
-    // The prevent post happens during session.idle, which resolves only after
-    // the prompt request returns; the posted turn then runs against the
-    // loopback server. Give it room, as the capture procedure does.
+    // prompt_async returns before the turn completes. Poll the model side so
+    // the drive can observe both the original tool-call turn and its completion
+    // (or the extra turn posted by stop prevention).
     const postedTurns = await (async (): Promise<number> => {
       const deadline = Date.now() + 90_000;
       while (Date.now() < deadline) {
@@ -672,6 +687,7 @@ async function runOpenCodeServePlayback(
           (await (
             await fetch(`${serveBase}/session/${session.id}/message`, {
               headers: authHeaders,
+              signal: AbortSignal.timeout(5_000),
             })
           ).json()) as ServeMessage[],
       },
@@ -1304,6 +1320,7 @@ scenarioDrive(
       // the turn exposes the transcript it lands in, so this scenario's
       // opencode lane runs on the opencode-serve driver (registry override).
       let transcript: ServeMessage[] = [];
+      let transcriptError = "";
       let servedTurns = 0;
       await runOpenCodeServePlayback(build, "rewrite", {
         effects: ["notify"],
@@ -1314,7 +1331,12 @@ scenarioDrive(
           // assertion reads state after the post, not a race with it.
           const deadline = Date.now() + 30_000;
           while (Date.now() < deadline) {
-            transcript = await serve!.messages();
+            try {
+              transcript = await serve!.messages();
+              transcriptError = "";
+            } catch (error) {
+              transcriptError = String(error);
+            }
             if (
               transcript.some((m) =>
                 (m.parts ?? []).some((p) => p.text?.includes("hooknostic-notify-marker")),
@@ -1340,7 +1362,7 @@ scenarioDrive(
       // without driving a turn of its own (promptAsync noReply).
       expect(
         rendered.some((m) => m.text.includes("hooknostic-notify-marker")),
-        `notify marker missing from the serve transcript: ${JSON.stringify(rendered, null, 2).slice(0, 2000)}`,
+        `notify marker missing from the serve transcript (last read error: ${transcriptError}): ${JSON.stringify(rendered, null, 2).slice(0, 2000)}`,
       ).toBe(true);
       expect(
         rendered.find((m) => m.text.includes("hooknostic-notify-marker"))?.role,

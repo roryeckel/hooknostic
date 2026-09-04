@@ -52,6 +52,14 @@ in both `.opencode/` and the redirected config directory. This is constructed
 playback bootstrap, not hook-payload evidence, and it never writes the user's
 global OpenCode installation or config.
 
+OpenCode's serve-backed scenarios start the main turn through the documented
+`POST /session/:id/prompt_async` endpoint and require its `204` acceptance
+response within a finite timeout. Because acceptance precedes completion, the
+driver then polls bounded observable model and transcript state; transient
+transcript timeouts are retried. This HTTP drive is constructed. The hook-side
+`client.session.promptAsync` behavior is captured in `.capture/opencode-client`;
+the playback responses themselves remain constructed test inputs.
+
 Run the same probe locally after installing the exact reference harness:
 
 ```bash
