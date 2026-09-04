@@ -381,25 +381,33 @@ async function runOpenCodePlayback(
     await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, {
       ...(options.mcpServerPath !== undefined ? { mcpServerPath: options.mcpServerPath } : {}),
     });
-    const result = await runProcess(
-      "opencode",
-      [
-        "run",
-        options.prompt ?? playbackPrompt(scenario),
-        "--model",
-        "playback/hooknostic-playback",
-      ],
-      {
-        cwd: build.artifactDir,
-        timeoutMs: 90_000,
-        env: {
-          ...withoutCredentials(),
-          PWD: build.artifactDir,
-          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
-          ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+    let result: Awaited<ReturnType<typeof runProcess>>;
+    try {
+      result = await runProcess(
+        "opencode",
+        [
+          "run",
+          options.prompt ?? playbackPrompt(scenario),
+          "--model",
+          "playback/hooknostic-playback",
+        ],
+        {
+          cwd: build.artifactDir,
+          timeoutMs: 90_000,
+          env: {
+            ...withoutCredentials(),
+            PWD: build.artifactDir,
+            HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+            ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+          },
         },
-      },
-    );
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${message}\nserverErrors: ${JSON.stringify(server.errors)}\nurls: ${JSON.stringify(server.urls)}\nrequests: ${JSON.stringify(server.requests)}`,
+      );
+    }
     expect(
       options.expectedExitCodes ?? [0],
       `opencode exit ${result.code}: ${result.stdout}\n${result.stderr}`,
