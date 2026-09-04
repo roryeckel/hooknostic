@@ -43,4 +43,5 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 1.18.25 | 2026-08-29 | live-probe | `.capture/opencode-client` | plugin-client probe: promptAsync notification channel and session.idle timing |
 | 1.18.25 | 2026-08-30 | live-probe | — | PWD env precedence: opencode trusts an inherited PWD over the process cwd and runs the session in PWD's project -- where plugins may not exist. Spawners must set PWD to agree with cwd (see the smoke's runCommand). |
 | 1.18.25 | 2026-09-01 | captured | `.capture/opencode-permission` | permission.ask plugin hook NEVER fires (upstream anomalyco/opencode #9229): observe arrives via the permission.asked bus event on the generic event callback, and denial works via client.postSessionIdPermissionsPermissionId response "reject" (API true, command not executed, turn halts). The 1.18 permission fixtures' callback-envelope shape is type-derived, not captured. |
+| 1.18.27 | 2026-09-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
