@@ -77,16 +77,22 @@ Harness watch → Run workflow`). The `detect` job no-ops on forks.
 Per harness (matrix from detect's `--matrix` output):
 
 1. `pnpm install --frozen-lockfile` for the workspace toolchain.
-2. `npm install -g --ignore-scripts <pkg>@<latest>` — the newer build is
-   installed with scripts disabled so no third-party postinstall runs; one
-   retry for registry flakiness. **Verified during implementation**: each
-   harness binary works under `--ignore-scripts`; if one genuinely needs
-   scripts, the failure is loud (detection/detection test fails) and the
-   fallback keeps the job secret-free with `persist-credentials: false`.
+2. `npm install -g --ignore-scripts <pkg>@<latest>` installs the newer build
+   with one retry for registry flakiness. Package lifecycle scripts stay
+   disabled during installation; the workflow then invokes the package-owned
+   bootstrap explicitly for Claude and OpenCode, while Codex needs none.
+   Keeping those steps explicit preserves a secret-free failure boundary and
+   makes a missing harness binary an `install-failure`, not behavior drift.
+   Checkout still uses `persist-credentials: false`.
 3. SDK + CLI bundles, then the playback suite with
    `HOOKNOSTIC_PLAYBACK=<harness>` and `HOOKNOSTIC_PLAYBACK_VERSION=<latest>`
    (`docs/testing.md`) — identical to CI's own playback job except for the
    version override.
+   OpenCode additionally receives a scratch-only `XDG_CONFIG_HOME`; before
+   each drive, the exact-version `@opencode-ai/plugin` dependency is installed
+   into both its project `.opencode/` directory and redirected config
+   directory. This avoids OpenCode's non-interactive dependency wait without
+   changing the user's global harness installation or config.
 4. Model credentials blanked; checkout runs `persist-credentials: false` so
    the installed package can never read a token.
 
@@ -143,6 +149,10 @@ job's steps:
    `node:22.13.1-bookworm`: the third-party harness package is installed there
    with `--ignore-scripts`, the repository is mounted read-only, only the
    throwaway capture directory is writable, and no Docker socket is mounted.
+   Claude and OpenCode then run their package-owned bootstrap explicitly.
+   For OpenCode, the driver also pre-seeds the exact-version plugin dependency
+   into its project and redirected config directories, both under the
+   throwaway capture root.
    In the paid transport, LiteLLM stays outside that container, so its upstream
    credential cannot be read by the harness.
 3. The container runs `node --experimental-strip-types
@@ -157,8 +167,9 @@ job's steps:
    the committed tee templates into the scratch dir (instantiating the Codex
    `${CAPTURE_DIR}` hooks template), drives the harness with the same
    provider wiring the playback lane uses (Codex: `wire_api="responses"` +
-   project trust + `git init`; OpenCode: `PWD` trap + `.opencode/plugins/`
-   load location), flattens the tee's `.jsonl` for the comparator, and exits
+   project trust + `git init`; OpenCode: `PWD` trap, `.opencode/plugins/`
+   load location, and exact-version dependency bootstrap in scratch), flattens
+   the tee's `.jsonl` for the comparator, and exits
    with the comparator's verdict code.
 
 **Advisory only.** The drift lane never writes fixtures and never upgrades
@@ -225,9 +236,10 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
    only with captured evidence; a failing scenario that pins an
    `unsupported` cell means the harness started honouring a channel —
    re-rate with fresh captures (ADR-0010's inverted watch).
-4. Install failure → check the package's install scripts; if a harness
-   genuinely needs them, adjust the verify step per the workflow comment
-   (keep it secret-free, keep `persist-credentials: false`).
+4. Install failure → check the explicit package bootstrap and binary path
+   before changing playback assertions. Keep lifecycle scripts disabled during
+   install, run only the documented package-owned bootstrap, and preserve the
+   secret-free `persist-credentials: false` boundary.
 5. A transient pass on the next scheduled run closes the failure issue
    automatically (`publish-verdict`'s reconciliation step).
 6. If scheduled runs stop (60-day auto-disable): dispatch manually, then

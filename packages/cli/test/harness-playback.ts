@@ -441,6 +441,48 @@ export function runProcess(
   });
 }
 
+/**
+ * Prepares the project-local dependency OpenCode installs before loading a
+ * plugin. OpenCode's internal installer can remain pending indefinitely in a
+ * fresh non-interactive container, so playback makes the same install
+ * explicit before starting the harness. The dependency remains confined to
+ * the throwaway playback project.
+ */
+export function openCodePlaybackConfigHome(projectDir: string): string {
+  return join(projectDir, ".opencode-config");
+}
+
+export async function prepareOpenCodePluginDependency(
+  projectDir: string,
+  harnessVersion: string,
+): Promise<void> {
+  const dependencyDirs = [
+    join(projectDir, ".opencode"),
+    join(openCodePlaybackConfigHome(projectDir), "opencode"),
+  ];
+  for (const dependencyDir of dependencyDirs) {
+    const result = await runProcess(
+      "npm",
+      [
+        "install",
+        "--prefix",
+        dependencyDir,
+        "--ignore-scripts",
+        "--no-fund",
+        "--no-audit",
+        "--save-exact",
+        `@opencode-ai/plugin@${harnessVersion}`,
+      ],
+      { cwd: projectDir, env: process.env, timeoutMs: 60_000 },
+    );
+    if (result.code !== 0) {
+      throw new Error(
+        `OpenCode plugin dependency install exited ${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+  }
+}
+
 function jsonSchemaForTool(tool: Record<string, unknown>): Record<string, unknown> {
   const direct = tool["parameters"] ?? tool["input_schema"];
   if (direct !== null && typeof direct === "object") return direct as Record<string, unknown>;

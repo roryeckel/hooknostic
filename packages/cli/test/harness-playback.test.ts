@@ -13,6 +13,8 @@ import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
   type PlaybackScenario,
+  prepareOpenCodePluginDependency,
+  openCodePlaybackConfigHome,
   replayCommandFixtures,
   replayOpenCodeFixtures,
   runProcess,
@@ -27,6 +29,7 @@ const tempDirs: string[] = [];
 
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
 const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", import.meta.url));
+const StdinEofFixturePath = fileURLToPath(new URL("./stdin-eof-fixture.mjs", import.meta.url));
 
 if (selected !== "" && adapter === undefined) {
   throw new Error(`unknown HOOKNOSTIC_PLAYBACK harness ${JSON.stringify(selected)}`);
@@ -72,6 +75,16 @@ describe("scriptedTool schema fidelity", () => {
 });
 
 describe("model playback cleanup", () => {
+  it("closes child stdin when no input is supplied", async () => {
+    const result = await runProcess("node", [StdinEofFixturePath], {
+      cwd: tmpdir(),
+      env: process.env,
+      timeoutMs: 1_000,
+    });
+
+    expect(result).toEqual({ code: 0, stdout: "stdin-eof\n", stderr: "" });
+  });
+
   it("closes with idle client connections still open", async () => {
     const server = await startModelPlayback("openai-chat");
     const socket = connect(Number(new URL(server.baseUrl).port), "127.0.0.1");
@@ -378,6 +391,10 @@ async function runOpenCodePlayback(
       env: process.env,
       timeoutMs: 30_000,
     });
+    await prepareOpenCodePluginDependency(
+      build.artifactDir,
+      process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
+    );
     await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, {
       ...(options.mcpServerPath !== undefined ? { mcpServerPath: options.mcpServerPath } : {}),
     });
@@ -390,6 +407,9 @@ async function runOpenCodePlayback(
           options.prompt ?? playbackPrompt(scenario),
           "--model",
           "playback/hooknostic-playback",
+          "--print-logs",
+          "--log-level",
+          "DEBUG",
         ],
         {
           cwd: build.artifactDir,
@@ -397,6 +417,7 @@ async function runOpenCodePlayback(
           env: {
             ...withoutCredentials(),
             PWD: build.artifactDir,
+            XDG_CONFIG_HOME: openCodePlaybackConfigHome(build.artifactDir),
             HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
             ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
           },
@@ -516,6 +537,7 @@ async function runOpenCodeServePlayback(
   const serveEnv: Record<string, string | undefined> = {
     ...withoutCredentials(),
     PWD: build.artifactDir,
+    XDG_CONFIG_HOME: openCodePlaybackConfigHome(build.artifactDir),
     // Same env contract as the `opencode run` drive: the generated plugin
     // traces to this file and gates its effects on this list.
     HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
@@ -537,6 +559,10 @@ async function runOpenCodeServePlayback(
     env: process.env,
     timeoutMs: 30_000,
   });
+  await prepareOpenCodePluginDependency(
+    build.artifactDir,
+    process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
+  );
   await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, {
     ...options.opencodeConfig,
     ...(options.mcpServerPath !== undefined ? { mcpServerPath: options.mcpServerPath } : {}),

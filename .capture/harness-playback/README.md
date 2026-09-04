@@ -46,6 +46,12 @@ For one harness at a time, CI:
    walks the first-run dialogs by polling for their screen markers, and lets
    the generated hook answer the native approval prompt.
 
+For OpenCode, the driver also redirects `XDG_CONFIG_HOME` into the scratch
+project and preinstalls the harness-matched `@opencode-ai/plugin` dependency
+in both `.opencode/` and the redirected config directory. This is constructed
+playback bootstrap, not hook-payload evidence, and it never writes the user's
+global OpenCode installation or config.
+
 Run the same probe locally after installing the exact reference harness:
 
 ```bash

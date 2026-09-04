@@ -644,7 +644,13 @@ jobs:
             sh -ec '
               npm install --global --ignore-scripts --no-fund --no-audit "$1@$2" \
                 || npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
-              exec node --experimental-strip-types scripts/drive-capture-session.mjs \
+              case "$3" in
+                claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
+                opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs" ;;
+                codex) : ;;
+              esac
+              HOOKNOSTIC_PLAYBACK_VERSION="$2" \
+                exec node --experimental-strip-types scripts/drive-capture-session.mjs \
                 "$3" --transport "$4" --scratch "/drift/$3"
             ' sh "${{ matrix.pkg }}" "${{ matrix.latest }}" "${{ matrix.harness }}" "$TRANSPORT" \
             > "drift-report-${{ matrix.harness }}.log" 2>&1

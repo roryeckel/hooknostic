@@ -32,6 +32,16 @@ the harness then executes.
   opencode.json                             ← provider config (the driver's)
 ```
 
+For OpenCode 1.18.27, the automated driver completes the harness's
+configuration dependency bootstrap before starting it. It installs
+`@opencode-ai/plugin@<harness-version>` into both the project `.opencode/`
+directory and a redirected scratch config directory, while setting
+`XDG_CONFIG_HOME` to the latter. OpenCode waits for dependency preparation
+across both config directories before loading a project plugin; leaving the
+fresh global-config directory unresolved can exceed the playback timeout.
+Both installs are scratch-local and disposable. This is execution-environment
+provenance only and does not upgrade any captured payload claim.
+
 Set `HKN_CAPTURE_DIR` to redirect `captured/` (the driver points it at the
 scratch dir so captures survive plugin re-instantiation); unset, it lands
 next to the plugin. OpenCode trusts an inherited `PWD` over the process cwd —

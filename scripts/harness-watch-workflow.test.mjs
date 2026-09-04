@@ -143,6 +143,20 @@ describe("harness-watch workflow structure", () => {
     expect(drive).toContain("dst=/workspace,readonly");
     expect(drive).toContain("--security-opt no-new-privileges");
     expect(drive).toContain("node:22.13.1-bookworm");
+    expect(drive).toContain('opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs"');
+    expect(drive.indexOf("npm install --global --ignore-scripts")).toBeLessThan(
+      drive.indexOf("opencode-ai/postinstall.mjs"),
+    );
+    expect(drive.indexOf("opencode-ai/postinstall.mjs")).toBeLessThan(
+      drive.indexOf('HOOKNOSTIC_PLAYBACK_VERSION="$2"'),
+    );
+    expect(drive).toContain('HOOKNOSTIC_PLAYBACK_VERSION="$2"');
+    expect(drive.indexOf('HOOKNOSTIC_PLAYBACK_VERSION="$2"')).toBeLessThan(
+      drive.indexOf("exec node --experimental-strip-types"),
+    );
+    expect(drive.indexOf("opencode-ai/postinstall.mjs")).toBeLessThan(
+      drive.indexOf("exec node --experimental-strip-types"),
+    );
     const sidecar = drift.slice(
       drift.indexOf("Install LiteLLM sidecar"),
       drift.indexOf("Run the drift capture-compare"),

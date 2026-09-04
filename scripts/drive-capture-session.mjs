@@ -54,7 +54,7 @@ const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const hookUrl = new URL("ts-resolve-hook.mjs", import.meta.url).href;
 register(hookUrl);
 
-const { startModelPlayback, runProcess } = await import(
+const { openCodePlaybackConfigHome, prepareOpenCodePluginDependency, startModelPlayback, runProcess } = await import(
   pathToFileURL(join(REPO, "packages/cli/test/harness-playback.ts")).href
 );
 
@@ -295,10 +295,16 @@ async function driveOpencode(scratch, modelLabel) {
     "run",
     DRIVE_PROMPT,
     "--model", `drift/${modelLabel}`,
+    "--print-logs",
+    "--log-level", "DEBUG",
   ], {
     cwd: scratch,
     timeoutMs: DRIVE_TIMEOUT_MS,
-    env: { ...withoutCredentials(), PWD: scratch },
+    env: {
+      ...withoutCredentials(),
+      PWD: scratch,
+      XDG_CONFIG_HOME: openCodePlaybackConfigHome(scratch),
+    },
   });
 }
 
@@ -362,6 +368,23 @@ async function main() {
 
   const scratch = prepareScratch(REPO, opts.harness, opts.scratch);
   console.log(`[drift] harness=${opts.harness} transport=${opts.transport} scratch=${scratch}`);
+  if (opts.harness === "opencode") {
+    const harnessVersion = process.env.HOOKNOSTIC_PLAYBACK_VERSION;
+    if (harnessVersion === undefined || harnessVersion === "") {
+      console.error("[drift] HOOKNOSTIC_PLAYBACK_VERSION is required for OpenCode");
+      process.exit(6);
+    }
+    try {
+      await prepareOpenCodePluginDependency(scratch, harnessVersion);
+      console.log(
+        `[drift] prepared @opencode-ai/plugin@${harnessVersion} in the scratch project`,
+      );
+    } catch (error) {
+      console.error(`[drift] OpenCode project dependency bootstrap failed: ${String(error)}`);
+      process.exit(6);
+    }
+  }
+
 
   let modelSide;
   if (opts.transport === "playback") {
