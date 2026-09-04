@@ -419,6 +419,15 @@ export function runProcess(
       clearTimeout(timer);
       resolvePromise({ code, stdout, stderr });
     });
+    child.stdin.on("error", (error) => {
+      // A harness may exit before consuming stdin; that is not a playback
+      // failure, but Node otherwise reports the resulting EPIPE as unhandled.
+      if ((error as NodeJS.ErrnoException).code === "EPIPE") return;
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      rejectPromise(error);
+    });
     child.stdin.end(options.input ?? "");
   });
 }
