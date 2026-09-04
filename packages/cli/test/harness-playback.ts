@@ -389,6 +389,7 @@ export function runProcess(
       cwd: options.cwd,
       env: options.env,
       shell: process.platform === "win32",
+      detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -399,7 +400,15 @@ export function runProcess(
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      child.kill();
+      if (process.platform === "win32" || child.pid === undefined) {
+        child.kill();
+      } else {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+      }
       child.stdin.destroy();
       child.stdout.destroy();
       child.stderr.destroy();
