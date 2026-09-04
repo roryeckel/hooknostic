@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { execSync, spawn } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +68,26 @@ describe("scriptedTool schema fidelity", () => {
       command: expect.any(String),
       description: "Playback probe command",
     });
+  });
+});
+
+describe("model playback cleanup", () => {
+  it("closes with idle client connections still open", async () => {
+    const server = await startModelPlayback("openai-chat");
+    const socket = connect(Number(new URL(server.baseUrl).port), "127.0.0.1");
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      socket.once("connect", resolvePromise);
+      socket.once("error", rejectPromise);
+    });
+
+    const close = server.close();
+    const result = await Promise.race([
+      close.then(() => true),
+      new Promise<boolean>((resolvePromise) => setTimeout(() => resolvePromise(false), 250)),
+    ]);
+    socket.destroy();
+    await close;
+    expect(result).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import type { ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { chmod, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -846,6 +846,7 @@ export async function startModelPlayback(
   const errors: string[] = [];
   const urls: string[] = [];
   let turn = 0;
+  const sockets = new Set<Socket>();
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     urls.push(`${request.method} ${request.url}`);
@@ -939,6 +940,10 @@ export async function startModelPlayback(
       }
     });
   });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
   await new Promise<void>((resolvePromise, rejectPromise) => {
     server.once("error", rejectPromise);
     server.listen(0, "127.0.0.1", () => resolvePromise());
@@ -952,7 +957,14 @@ export async function startModelPlayback(
     get turnCount() {
       return turn;
     },
-    close: () => new Promise<void>((resolvePromise) => server.close(() => resolvePromise())),
+    close: () =>
+      new Promise<void>((resolvePromise, rejectPromise) => {
+        server.close((error) => {
+          if (error) rejectPromise(error);
+          else resolvePromise();
+        });
+        for (const socket of sockets) socket.destroy();
+      }),
   };
 }
 
