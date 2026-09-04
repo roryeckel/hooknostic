@@ -167,6 +167,10 @@ describe("harness-watch workflow structure", () => {
     expect(sidecar.indexOf("pipx install")).toBeLessThan(
       sidecar.indexOf("HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}"),
     );
+    expect(sidecar).toContain('OPENAI_API_KEY="$HARNESS_LLM_API_KEY"');
+    expect(sidecar).not.toContain('--api_key "$HARNESS_LLM_API_KEY"');
+    expect(sidecar).toContain("SIDECAR_PID=$!");
+    expect(sidecar).toContain('if [ "$SIDECAR_READY" != true ]; then');
     // The paid llm transport runs only on force_llm.
     expect(drift).toMatch(/inputs\.force_llm == 'true'/);
   });

@@ -589,13 +589,28 @@ jobs:
           HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}
         run: |
           SIDECAR_URL="http://127.0.0.1:4000"
-          litellm --model "openai/${{ vars.HARNESS_LLM_MODEL }}" \
-            --api_base "$HARNESS_LLM_BASE_URL" --api_key "$HARNESS_LLM_API_KEY" \
-            --port 4000 &
+          SIDECAR_LOG="$RUNNER_TEMP/litellm-sidecar.log"
+          OPENAI_API_KEY="$HARNESS_LLM_API_KEY" \
+            litellm --model "openai/${{ vars.HARNESS_LLM_MODEL }}" \
+              --api_base "$HARNESS_LLM_BASE_URL" \
+              --port 4000 >"$SIDECAR_LOG" 2>&1 &
+          SIDECAR_PID=$!
+          SIDECAR_READY=false
           for i in $(seq 1 30); do
-            if curl -sf "$SIDECAR_URL/health" > /dev/null; then break; fi
+            if curl -sf "$SIDECAR_URL/health" > /dev/null; then
+              SIDECAR_READY=true
+              break
+            fi
+            if ! kill -0 "$SIDECAR_PID" 2>/dev/null; then
+              break
+            fi
             sleep 2
           done
+          if [ "$SIDECAR_READY" != true ]; then
+            echo "::error::LiteLLM sidecar failed to become healthy"
+            cat "$SIDECAR_LOG"
+            exit 1
+          fi
           {
             # `host.docker.internal` resolves only inside the isolated driver
             # container (via --add-host below). The sidecar's process and

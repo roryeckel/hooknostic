@@ -142,6 +142,21 @@ function playbackPrompt(scenario: PlaybackScenario): string {
   return "Use the shell tool once to run a command that exits 17, then stop.";
 }
 
+async function waitForTraceEvent(
+  path: string,
+  event: HookEventName,
+  timeoutMs = 30_000,
+): Promise<HookEventName[]> {
+  const deadline = Date.now() + timeoutMs;
+  let events: HookEventName[] = [];
+  while (Date.now() < deadline) {
+    events = await traceEvents(path).catch(() => []);
+    if (events.includes(event)) return events;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+  }
+  return events;
+}
+
 /** Options the effect scenarios pass through to the per-harness drives. */
 interface DriveOptions {
   /** Comma-separated PlaybackEffects the generated artifact should emit. */
@@ -1303,7 +1318,12 @@ scenarioDrive(
       servedTurns,
       `stop prevention did not produce a second model turn (turns served: ${servedTurns})`,
     ).toBeGreaterThanOrEqual(2);
-    expect(await traceEvents(build.tracePath)).toContain("turn.stop");
+    // OpenCode dispatches plugin event callbacks without awaiting their
+    // promises. The loopback server can therefore receive turn 2 before the
+    // first session.idle callback finishes writing this trace. Wait for the
+    // scenario's actual observable instead of treating request arrival as
+    // plugin completion.
+    expect(await waitForTraceEvent(build.tracePath, "turn.stop")).toContain("turn.stop");
   },
   () => cellLevel("turn.stop.prevent") === undefined,
 );
