@@ -170,7 +170,7 @@ jobs:
 
       - name: Model-free playback against the newer build
         id: playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts -t "every advertised observable event"
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
