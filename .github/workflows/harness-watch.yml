@@ -710,6 +710,10 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.detect.outputs.matrix).include }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Download the verify outcome artifact
         id: outcome
         continue-on-error: true
@@ -736,12 +740,6 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "verdict=$(jq -r .verdict drift-verdict-${{ matrix.harness }}.json)" >> "$GITHUB_OUTPUT"
           fi
-
-      - uses: actions/checkout@v7
-        if: steps.resolve.outputs.publish == 'true'
-        with:
-          persist-credentials: false
-          clean: false
 
       - name: Ensure harness-watch label exists
         if: steps.resolve.outputs.publish == 'true'
