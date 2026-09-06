@@ -13,7 +13,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { defaultAdapterRegistry } = await import(
+const { defaultAdapterRegistry, resolveAgentPluginProjection } = await import(
   new URL("../packages/cli/dist/index.js", import.meta.url).href
 );
 
@@ -62,6 +62,33 @@ for (const adapter of adapters) {
     }
   }
   lines.push("");
+  if (adapter.agentPluginProjector) {
+    const projection = resolveAgentPluginProjection(
+      {
+        id: adapter.id,
+        version: meta.recommendedRange,
+        mode: adapter.supportedModes()[0],
+        output: ".",
+      },
+      adapter.agentPluginProjector,
+    );
+    lines.push("#### Agent Plugin projection", "");
+    lines.push("| Component | Support | Rationale |", "| --- | --- | --- |");
+    for (const [component, support] of Object.entries(projection.matrix ?? {})) {
+      lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
+    }
+    lines.push("", "Projection validation records:", "");
+    lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
+    for (const profile of projection.profilesUsed) {
+      for (const record of profile.source.validatedOn) {
+        lines.push(
+          `| ${record.version} | ${record.date} | ${record.method} | ` +
+            `${record.artifact ? `\`${record.artifact}\`` : "—"} | ${record.what} |`,
+        );
+      }
+    }
+    lines.push("");
+  }
 }
 writeFileSync(resolve(ROOT, "docs/harness-support.md"), lines.join("\n") + "\n", "utf8");
 

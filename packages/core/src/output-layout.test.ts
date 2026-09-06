@@ -118,19 +118,19 @@ describe("validateOutputLayout", () => {
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501", target: "alpha" });
   });
 
-  it("rejects equal, nested, and Agent Plugin extension collisions", async () => {
+  it("rejects equal, nested, and Agent Plugin source-root collisions", async () => {
     const fixture = await project();
     const result = await validateOutputLayout({
       configPath: fixture.configPath,
       entryPath: fixture.entryPath,
       config: {
         entry: "./src/hooks.ts",
-        agentPlugin: { root: "." },
+        agentPlugin: { root: "./plugin", targets: ["claude"] },
         targets: {
           claude: {
             version: "1",
             mode: "plugin",
-            output: "./com.anthropic.claude-code",
+            output: "./plugin",
           },
           beta: { version: "1", mode: "local", output: "./dist" },
           gamma: { version: "1", mode: "local", output: "./dist/gamma" },

@@ -23,6 +23,26 @@ contract suite in `@hooknostic/testkit` audits every row.
 | 2.1.250 | 2026-08-30 | captured | `fixtures/claude/2.1` | PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key |
 | 2.1.250 | 2026-09-01 | live-probe | `packages/cli/test/harness-playback.test.ts` | PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298) |
 
+#### Agent Plugin projection
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | — |
+| `agent-plugin.skills` | exact | — |
+| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.client-extension.files` | exact | — |
+| `agent-plugin.runtime-package` | exact | — |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.1.260 | 2026-09-04 | live-probe | `.capture/harness-playback` | Claude discovered a projected skill, started projected stdio/HTTP/SSE MCP servers with root/data variables, and executed merged Hooknostic hooks. |
+| 2.1.260 | 2026-09-05 | captured | `.capture/claude-marketplace-deps` | Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version. |
+| 2.1.260 | 2026-09-04 | doc-derived | `docs/baseline-2026-08-20.md` | Claude documents HTTP and SSE MCP transports and plugin root/data variables. |
+
 ### Codex CLI
 
 | Version | Date | Method | Evidence | Established |

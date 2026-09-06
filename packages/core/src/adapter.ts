@@ -8,6 +8,7 @@ import type {
   TargetConfig,
   RuntimePolicy,
 } from "@hooknostic/sdk";
+import type { AgentPluginProjector } from "@hooknostic/agent-plugin";
 import type { Diagnostic } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
 
@@ -129,7 +130,9 @@ export interface DetectionResult {
  */
 export interface GeneratedArtifact {
   path: string;
-  contents: string;
+  contents: string | Uint8Array;
+  /** Permission bits to preserve for copied package files. */
+  mode?: number;
   executable?: boolean;
 }
 
@@ -249,6 +252,9 @@ export interface HarnessAdapter {
 
   /** Detect the locally installed harness for `doctor`, where feasible. */
   detect?(): Promise<DetectionResult>;
+
+  /** Optional complete Agent Plugins package projector for this harness. */
+  readonly agentPluginProjector?: AgentPluginProjector<TargetSpec>;
 
   compile(
     plugin: PluginIR,

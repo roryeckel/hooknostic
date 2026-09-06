@@ -1,13 +1,9 @@
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { AdapterRegistry, AnalysisResult, Diagnostic, EvaluateOptions } from "@hooknostic/core";
 import {
-  analyzeCapabilities,
-  buildPluginIR,
+  buildProject,
   formatDiagnostics,
   hasFatal,
-  loadConfig,
-  loadPluginSource,
-  validateOutputLayout,
 } from "@hooknostic/core";
 
 export interface CommandIO {
@@ -60,50 +56,26 @@ function emitFailure(options: CheckOptions, diagnostics: Diagnostic[]): number {
 /** `hooknostic check` — semantic analysis only; no artifacts are produced. */
 export async function runCheck(options: CheckOptions): Promise<number> {
   const configPath = resolve(options.config ?? "hooknostic.config.ts");
-
-  const configResult = await loadConfig(configPath, options.evaluate);
-  if (!configResult.config) return emitFailure(options, configResult.diagnostics);
-  const config = configResult.config;
-
-  const entryPath = resolve(dirname(configPath), config.entry);
-  const sourceResult = await loadPluginSource(entryPath, options.evaluate);
-  if (!sourceResult.plugin) return emitFailure(options, sourceResult.diagnostics);
-
-  const irResult = buildPluginIR(sourceResult.plugin);
-  if (!irResult.ir) return emitFailure(options, irResult.diagnostics);
-
-  const analysis = analyzeCapabilities(
-    irResult.ir,
-    config,
-    options.registry,
-    options.targets,
-  );
-  const layout = await validateOutputLayout({
+  const result = await buildProject({
     configPath,
-    entryPath,
-    config,
-    selectedTargets: Object.keys(analysis.targets),
+    registry: options.registry,
+    ...(options.targets === undefined ? {} : { targets: options.targets }),
+    ...(options.evaluate === undefined ? {} : { evaluate: options.evaluate }),
+    dryRun: true,
   });
-  analysis.diagnostics.push(...layout.diagnostics);
-  for (const diagnostic of layout.diagnostics) {
-    if (diagnostic.target && analysis.targets[diagnostic.target]) {
-      const target = analysis.targets[diagnostic.target]!;
-      target.diagnostics.push(diagnostic);
-      target.ok = false;
-    }
-  }
-  analysis.ok = !hasFatal(analysis.diagnostics);
+  const analysis = result.analysis;
+  if (analysis === undefined) return emitFailure(options, result.report.diagnostics);
 
   if (options.json) {
     const report: CheckReport = {
       schemaVersion: 1,
       command: "check",
-      ok: analysis.ok,
+      ok: result.ok,
       targets: Object.fromEntries(
         Object.entries(analysis.targets).map(([id, t]) => [
           id,
           {
-            ok: t.ok,
+            ok: result.report.targets[id]?.status === "success",
             adapter: t.adapter,
             requestedVersion: t.requestedVersion,
             counts: t.counts,
@@ -111,23 +83,24 @@ export async function runCheck(options: CheckOptions): Promise<number> {
           },
         ]),
       ),
-      diagnostics: analysis.diagnostics,
+      diagnostics: result.report.diagnostics,
     };
     options.io.stdout(JSON.stringify(report, null, 2));
-    return analysis.ok ? 0 : 1;
+    return result.ok ? 0 : 1;
   }
 
-  if (analysis.diagnostics.length > 0) {
-    options.io.stdout(formatDiagnostics(analysis.diagnostics));
+  if (result.report.diagnostics.length > 0) {
+    options.io.stdout(formatDiagnostics(result.report.diagnostics));
     options.io.stdout("");
   }
   for (const [id, target] of Object.entries(analysis.targets)) {
+    const ok = result.report.targets[id]?.status === "success";
     const summary = `${target.counts.exact} exact, ${target.counts.emulated} emulated, ${target.counts.approximate} approximate, ${target.counts.unsupported} unsupported`;
     options.io.stdout(
-      `${target.ok ? "PASS" : "FAIL"}  ${id}  (${target.adapter}, harness ${target.requestedVersion}) — ${summary}`,
+      `${ok ? "PASS" : "FAIL"}  ${id}  (${target.adapter}, harness ${target.requestedVersion}) — ${summary}`,
     );
   }
-  const failed = hasFatal(analysis.diagnostics);
+  const failed = hasFatal(result.report.diagnostics);
   options.io.stdout(
     failed
       ? "\ncheck failed: fix the errors above or adjust the target set."

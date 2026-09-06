@@ -1,5 +1,5 @@
 {
-  "description": "Agent Plugins package with hooknostic-compiled lifecycle hooks",
+  "description": "Agent Plugins package with a skill, MCP server, and hooknostic-compiled lifecycle hooks",
   "hooks": {
     "PreToolUse": [
       {

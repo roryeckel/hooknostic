@@ -4431,12 +4431,57 @@ var targetConfigSchema = external_exports.object({
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var hooknosticConfigSchema = external_exports.object({
-  entry: external_exports.string().min(1),
+  entry: external_exports.string().min(1).optional(),
   compatibility: compatibilityPolicySchema.optional(),
   runtime: runtimePolicySchema.optional(),
   targets: external_exports.record(external_exports.string().min(1), targetConfigSchema),
-  agentPlugin: external_exports.object({ root: external_exports.string().min(1) }).strict().optional()
-}).strict();
+  agentPlugin: external_exports.object({
+    root: external_exports.string().min(1),
+    targets: external_exports.array(external_exports.string().min(1)).min(1),
+    exclude: external_exports.array(external_exports.string().min(1)).optional(),
+    onUnsupported: external_exports.enum(["error", "warn"]).optional()
+  }).strict().optional()
+}).strict().superRefine((config, context) => {
+  if (config.entry === void 0 && config.agentPlugin === void 0) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "at least one of entry or agentPlugin is required"
+    });
+  }
+  if (config.agentPlugin) {
+    const configured = new Set(Object.keys(config.targets));
+    const seen = /* @__PURE__ */ new Set();
+    for (const target of config.agentPlugin.targets) {
+      if (seen.has(target)) {
+        context.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["agentPlugin", "targets"],
+          message: `duplicate Agent Plugin projection target ${JSON.stringify(target)}`
+        });
+      }
+      seen.add(target);
+      if (!configured.has(target)) {
+        context.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["agentPlugin", "targets"],
+          message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`
+        });
+      }
+    }
+    if (config.entry === void 0) {
+      const projected = new Set(config.agentPlugin.targets);
+      for (const target of configured) {
+        if (!projected.has(target)) {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["agentPlugin", "targets"],
+            message: `hookless builds must project configured target ${JSON.stringify(target)}`
+          });
+        }
+      }
+    }
+  }
+});
 var targetScopeSchema = external_exports.object({
   include: external_exports.array(external_exports.string().min(1)).optional(),
   exclude: external_exports.array(external_exports.string().min(1)).optional()

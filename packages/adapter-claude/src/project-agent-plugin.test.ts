@@ -1,0 +1,195 @@
+import { describe, expect, it } from "vitest";
+import {
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  type AgentPluginFile,
+  type AgentPluginPackage,
+} from "@hooknostic/agent-plugin";
+import { diagnosticsFromAgentPluginIssues } from "@hooknostic/core";
+import { projectAgentPluginToClaude } from "./project-agent-plugin.js";
+
+const encoder = new TextEncoder();
+const file = (path: string, contents: string | Uint8Array, mode = 0o644): AgentPluginFile => ({
+  path,
+  contents: typeof contents === "string" ? encoder.encode(contents) : contents,
+  mode,
+});
+
+function source(files: AgentPluginFile[] = []): AgentPluginPackage {
+  return {
+    specVersion: "1.0.0",
+    root: "/portable",
+    manifest: {
+      $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+      name: "portable-tools",
+      version: "1.2.3",
+      description: "portable description",
+      license: "MIT",
+    },
+    skills: [{ name: "review", description: "Review code", directory: "skills/review", manifestPath: "skills/review/SKILL.md" }],
+    mcp: {
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        local: { type: "stdio", command: "./bin/server", args: ["${PLUGIN_ROOT}/x", "${PLUGIN_DATA}/y"] },
+        remote: { type: "streamable-http", url: "https://example.com/mcp", headers: { Authorization: "Bearer literal" } },
+      },
+    },
+    files: [file("plugin.json", "{}"), file("skills/review/SKILL.md", "skill"), ...files],
+    contentDigest: "sha256:source",
+  };
+}
+
+const target = { id: "claude", version: ">=2.1 <3", mode: "plugin" as const, output: "dist" };
+
+function parsed(plan: Awaited<ReturnType<typeof projectAgentPluginToClaude>>, path: string) {
+  const artifact = plan.files.find((candidate) => candidate.path === path)!;
+  return JSON.parse(typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents));
+}
+
+describe("Agent Plugin to Claude projection", () => {
+  it("copies skills and converts identity metadata and every supported MCP transport", async () => {
+    const plan = await projectAgentPluginToClaude(source([file("bin/server", Uint8Array.from([0, 255]), 0o755)]), {
+      target,
+      hookArtifacts: [],
+      onUnsupported: "error",
+    });
+    expect(plan.issues).toEqual([]);
+    expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({
+      name: "portable-tools",
+      version: "1.2.3",
+      description: "portable description",
+      license: "MIT",
+    });
+    expect(plan.files.find((item) => item.path === "skills/review/SKILL.md")).toBeDefined();
+    const binary = plan.files.find((item) => item.path === "bin/server")!;
+    expect([...(binary.contents as Uint8Array)]).toEqual([0, 255]);
+    expect(binary.mode).toBe(0o755);
+    const mcp = parsed(plan, ".mcp.json");
+    expect(mcp.mcpServers.local).toMatchObject({
+      command: "${CLAUDE_PLUGIN_ROOT}/bin/server",
+      args: ["${CLAUDE_PLUGIN_ROOT}/x", "${CLAUDE_PLUGIN_DATA}/y"],
+      cwd: "${CLAUDE_PLUGIN_ROOT}",
+      env: {
+        PLUGIN_ROOT: "${CLAUDE_PLUGIN_ROOT}",
+        PLUGIN_DATA: "${CLAUDE_PLUGIN_DATA}",
+      },
+    });
+    expect(mcp.mcpServers.remote).toEqual({
+      type: "http",
+      url: "https://example.com/mcp",
+      headers: { Authorization: "Bearer literal" },
+    });
+  });
+
+  it("applies the Claude overlay, preserves extension-only fields, and gives portable identity precedence", async () => {
+    const namespace = "com.anthropic.claude-code";
+    const portable = source([
+      file("README.md", "base"),
+      file(`${namespace}/README.md`, "overlay"),
+      file(`${namespace}/.claude-plugin/plugin.json`, JSON.stringify({ name: "wrong", custom: true })),
+    ]);
+    portable.manifest.extensions = { [namespace]: { name: "also-wrong", manifestOnly: true } };
+    const plan = await projectAgentPluginToClaude(
+      portable,
+      { target, hookArtifacts: [], onUnsupported: "error" },
+    );
+    expect(new TextDecoder().decode(plan.files.find((item) => item.path === "README.md")!.contents as Uint8Array)).toBe("overlay");
+    expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({
+      name: "portable-tools",
+      custom: true,
+      manifestOnly: true,
+    });
+  });
+
+  it("runs native hooks first and appends one generated dispatcher per event", async () => {
+    const namespace = "com.anthropic.claude-code";
+    const native = { hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "native" }] }] } };
+    const generated = { hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "hooknostic" }] }] } };
+    const plan = await projectAgentPluginToClaude(
+      source([file(`${namespace}/hooks/hooks.json`, JSON.stringify(native))]),
+      {
+        target,
+        hookArtifacts: [
+          { path: "hooks/hooks.json", contents: JSON.stringify(generated) },
+          { path: "runtime/hooknostic.mjs", contents: "runtime" },
+        ],
+        onUnsupported: "error",
+      },
+    );
+    expect(parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map((entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command)).toEqual(["native", "hooknostic"]);
+  });
+
+  it("materializes a separate locked runtime package at the Claude plugin root", async () => {
+    const runtimeManifest = JSON.stringify({
+      name: "portable-runtime",
+      dependencies: { "is-number": "7.0.0" },
+    });
+    const runtimeLockfile = JSON.stringify({ lockfileVersion: 3, packages: { "": {} } });
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file("package.json", JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
+        file("runtime.package.json", runtimeManifest),
+        file("runtime.package-lock.json", runtimeLockfile),
+      ]),
+      {
+        target,
+        hookArtifacts: [],
+        runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
+        onUnsupported: "error",
+      },
+    );
+    expect(plan.issues).toEqual([]);
+    expect(parsed(plan, "package.json")).toEqual(JSON.parse(runtimeManifest));
+    expect(parsed(plan, "package-lock.json")).toEqual(JSON.parse(runtimeLockfile));
+    expect(plan.files.some((item) => item.path === "runtime.package.json")).toBe(false);
+    expect(plan.summary.components["agent-plugin.runtime-package"]).toEqual({
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
+  });
+
+  it("rejects a missing or unsafe runtime package input", async () => {
+    const plan = await projectAgentPluginToClaude(source(), {
+      target,
+      hookArtifacts: [],
+      runtimePackage: { manifest: "../package.json", lockfile: "runtime.package-lock.json" },
+      onUnsupported: "error",
+    });
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "file",
+        component: "agent-plugin.runtime-package",
+        message: expect.stringContaining("package-root-relative"),
+      }),
+    );
+    expect(diagnosticsFromAgentPluginIssues(plan.issues, "claude")).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        target: "claude",
+        component: "agent-plugin.runtime-package",
+      }),
+    );
+    expect(plan.summary.components["agent-plugin.runtime-package"]).toEqual({
+      discovered: 1,
+      emitted: 0,
+      skipped: 1,
+    });
+  });
+
+  it("rejects duplicate MCP names and reserved runtime collisions", async () => {
+    const namespace = "com.anthropic.claude-code";
+    const duplicate = await projectAgentPluginToClaude(
+      source([file(`${namespace}/.mcp.json`, JSON.stringify({ mcpServers: { local: { command: "other" } } }))]),
+      { target, hookArtifacts: [], onUnsupported: "error" },
+    );
+    expect(duplicate.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("both") }));
+
+    const collision = await projectAgentPluginToClaude(
+      source([file(`${namespace}/runtime/hooknostic.mjs`, "native")]),
+      { target, hookArtifacts: [{ path: "runtime/hooknostic.mjs", contents: "generated" }], onUnsupported: "error" },
+    );
+    expect(collision.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }));
+  });
+});

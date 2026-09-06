@@ -1,0 +1,46 @@
+{
+  "name": "@hooknostic/agent-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent Plugins 1.0 loading, validation, and native projection contracts",
+  "license": "Apache-2.0",
+  "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
+  "homepage": "https://github.com/roryeckel/hooknostic#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/roryeckel/hooknostic.git",
+    "directory": "packages/agent-plugin"
+  },
+  "bugs": "https://github.com/roryeckel/hooknostic/issues",
+  "keywords": [
+    "agent-plugins",
+    "agent-skills",
+    "mcp",
+    "plugin",
+    "compiler"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schemas/1.0.0/plugin.schema.json": "./schemas/1.0.0/plugin.schema.json",
+    "./schemas/1.0.0/mcp.schema.json": "./schemas/1.0.0/mcp.schema.json"
+  },
+  "scripts": {
+    "bundle": "node --input-type=commonjs -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "minimatch": "^10.0.1",
+    "yaml": "^2.7.0"
+  }
+}

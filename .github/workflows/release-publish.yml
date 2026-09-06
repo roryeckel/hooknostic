@@ -7,7 +7,7 @@ name: Release publish
 # First-public-release bootstrap (see docs/releases.md): configure npm
 # Trusted Publisher for BOTH packages against THIS workflow filename
 # (release-publish.yml) and the `npm` environment, create that environment,
-# and remove `"private": true` from packages/{sdk,cli}/package.json in the
+# and remove `"private": true` from packages/{agent-plugin,sdk,cli}/package.json in the
 # release PR. Until then, every run fails at the guard below -- deliberately.
 on:
   release:
@@ -54,7 +54,7 @@ jobs:
       - name: Publish guard still armed?
         shell: bash
         run: |
-          for pkg in packages/sdk packages/cli; do
+          for pkg in packages/agent-plugin packages/sdk packages/cli; do
             if node -e "process.exit(require('./$pkg/package.json').private === true ? 1 : 0)"; then :; else
               echo "$pkg still carries \"private\": true -- the release PR must remove it (docs/releases.md, first-release checklist)."
               exit 1
@@ -71,7 +71,7 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # SDK first: the CLI's install story depends on the published SDK.
+      # Libraries first, then the CLI.
       # pnpm publish (not npm publish): rewrites workspace:* specifiers to real
       # versions in the shipped manifest, and its OIDC flow honors npm trusted
       # publishing (id-token: write above) with no NPM_TOKEN secret involved.
@@ -90,6 +90,19 @@ jobs:
           else
             EXTRA=""
             [[ "$VERSION" == *-* ]] && EXTRA="--tag next" # prerelease never becomes latest
+            pnpm publish --no-git-checks --access public $EXTRA
+          fi
+
+      - name: Publish @hooknostic/agent-plugin
+        working-directory: packages/agent-plugin
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          if npm view "@hooknostic/agent-plugin@$VERSION" version >/dev/null 2>&1; then
+            echo "@hooknostic/agent-plugin@$VERSION already on the registry; skipping"
+          else
+            EXTRA=""
+            [[ "$VERSION" == *-* ]] && EXTRA="--tag next"
             pnpm publish --no-git-checks --access public $EXTRA
           fi
 

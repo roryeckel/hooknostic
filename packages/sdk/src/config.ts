@@ -58,14 +58,33 @@ export interface TargetConfig {
   compatibility?: CompatibilityPolicy;
 }
 
+/**
+ * Source files for a Node.js runtime package. Projectors choose how, or whether,
+ * a target can materialize this input.
+ */
+export interface AgentPluginRuntimePackageConfig {
+  /** Package manifest, relative to the Agent Plugin root. */
+  manifest: string;
+  /** npm lockfile, relative to the Agent Plugin root. */
+  lockfile: string;
+}
+
 export interface AgentPluginConfig {
-  /** Root of an Agent Plugins package to consume/augment. */
+  /** Root of an Agent Plugins package to project into native target packages. */
   root: string;
+  /** Configured targets that must receive a complete native package projection. */
+  targets: string[];
+  /** POSIX-style package-relative globs omitted from projected packages. */
+  exclude?: string[];
+  /** Optional runtime dependency input for projectors that support it. */
+  runtimePackage?: AgentPluginRuntimePackageConfig;
+  /** Whether a valid but unrepresentable component fails or degrades the build. */
+  onUnsupported?: "error" | "warn";
 }
 
 export interface HooknosticConfig {
-  /** Path to the plugin source entry (TypeScript). */
-  entry: string;
+  /** Optional path to the hook source entry. Agent Plugin-only builds omit it. */
+  entry?: string;
   compatibility?: CompatibilityPolicy;
   runtime?: RuntimePolicy;
   /** The allowed target set. CLI flags may narrow, never extend, this set. */

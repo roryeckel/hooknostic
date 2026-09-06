@@ -1,6 +1,6 @@
 # Decision 0004 — Agent Plugins is a peer, not a dependency
 
-**Status:** Accepted — 2026-08-20 · Referenced from code and docs as **ADR-0004**
+**Status:** Superseded by [ADR-0011](0011-agent-plugin-native-projection.md) — 2026-09-04
 
 **In short:** the Agent Plugins standard already covers portable packaging (skills, MCP
 config). Hooknostic fills the one gap it leaves open — lifecycle hooks — using the

@@ -98,8 +98,16 @@ handlers → apply → compare against the expected native result.
 
 **Agent Plugins** — a vendor-neutral packaging standard for portable agent extensions
 (skills, MCP config, `plugin.json` manifest). Hooknostic integrates with it as a peer
-([Decision 0004](decisions/0004-agent-plugins-relationship.md)); the integration is
-optional.
+([Decision 0011](decisions/0011-agent-plugin-native-projection.md)); the integration is
+optional and the source package is immutable.
+
+**Projector** — an adapter-owned, versioned translation from a validated Agent Plugin
+package model to a harness-native plugin file plan. Projection is independent of hook
+compilation, so a package may be hookless.
+
+**Component support** — the exact/emulated/approximate/unsupported classification for an
+Agent Plugin component such as skills or an MCP transport. It is separate from hook
+capability support and can be inspected with `hooknostic inspect --component`.
 
 **Skill** — an Agent Plugins portable component (`skills/<name>/SKILL.md`): reusable
 instructions a harness can invoke. Not something Hooknostic generates or modifies.

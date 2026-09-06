@@ -9,14 +9,17 @@ for its own sake — they are what keeps the project's central promise affordabl
 
 ## What Hooknostic is
 
-A compiler. One TypeScript hook source in, native per-harness artifacts out.
+A compiler. Portable Hooknostic hooks, an Agent Plugins package, or both go in;
+native per-harness artifacts come out. Projection is a packaging transform, not an
+installer, marketplace, or runtime service.
 
 Its actual product is **honest capability information**. Coding agents differ in
 what a hook is allowed to *do* — block a call, rewrite tool input, add
 model-visible context, prevent a stop — and Hooknostic's job is to state those
 differences rather than hide them. Every capability on every target resolves to
 `exact`, `emulated`, `approximate`, or `unsupported`, with a rationale you can
-print (see [inspect](#showing-your-work), below).
+print (see [inspect](#showing-your-work), below). Agent Plugin components use the
+same support levels through their adapter-owned projector profiles.
 
 A change is in scope if it makes that information more accurate, more complete,
 or easier to act on.
@@ -36,6 +39,9 @@ or easier to act on.
   a design smell here, not a shortcut.
 - **Not a host for out-of-tree adapters — yet.** See
   [Adapters](#adapters-are-a-standing-commitment).
+- **Not an Agent Plugins or Agent Skills authoring framework.** The
+  `@hooknostic/agent-plugin` package validates and projects the standard; it does not
+  redefine it.
 
 ## The rule that decides most contributions
 
@@ -83,6 +89,7 @@ It is written for coding agents, but it is a perfectly good human checklist.
 | A bug with a reproduction | Open a PR directly, or file an issue if you would rather not write the fix |
 | Any claim about a harness — capability level, shape table, honoured channel | **File an issue first**, with your evidence |
 | The portable vocabulary — an effect, capability id, diagnostic code, event, tool kind | **File an issue first** |
+| An Agent Plugin component id or projector support claim | **File an issue first**, with harness evidence |
 | A new harness adapter | **Start a [Discussion](https://github.com/roryeckel/hooknostic/discussions)** |
 
 The issue-first rule is not bureaucracy: for anything in the bottom three rows,

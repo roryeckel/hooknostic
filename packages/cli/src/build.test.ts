@@ -19,7 +19,12 @@ import { runDoctor } from "./doctor.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 import { claudeHarness } from "@hooknostic/adapter-claude";
+import { codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
+import {
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+} from "@hooknostic/agent-plugin";
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const EXAMPLES = join(REPO, "examples");
@@ -104,7 +109,7 @@ describe("hooknostic build end-to-end", () => {
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.schemaVersion).toBe(1);
+      expect(report.schemaVersion).toBe(2);
       expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode"]);
       for (const target of Object.values(report.targets) as { status: string }[]) {
         expect(target.status).toBe("success");
@@ -129,7 +134,7 @@ describe("hooknostic build end-to-end", () => {
       const onDisk = JSON.parse(
         await readFile(join(dir, "hooknostic-build.json"), "utf8"),
       );
-      expect(onDisk.schemaVersion).toBe(1);
+      expect(onDisk.schemaVersion).toBe(2);
       expect(onDisk.hooknosticVersion).toBe(ROOT_VERSION);
 
       // Determinism: a second build emits identical manifests.
@@ -187,7 +192,7 @@ ${run.stderr}`).toBe(0);
   );
 
   it(
-    "emits Agent Plugins extension directories and reuses manifest metadata",
+    "projects an Agent Plugin into Claude without modifying the source package",
     { timeout: 120_000 },
     async () => {
       const dir = await cleanExample("agent-plugin");
@@ -203,27 +208,221 @@ ${run.stderr}`).toBe(0);
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.agentPlugin.extensions).toEqual(["com.anthropic.claude-code"]);
+      expect(report.agentPlugin.targets).toEqual(["claude"]);
+      expect(report.targets.claude.projection).toMatchObject({ status: "success" });
 
-      // Legal client-extension directory; portable root untouched (ADR-0004).
-      expect(existsSync(join(dir, "com.anthropic.claude-code/hooks/hooks.json"))).toBe(true);
-      expect(existsSync(join(dir, "com.anthropic.claude-code/runtime/hooknostic.mjs"))).toBe(
-        true,
-      );
-      expect(existsSync(join(dir, "com.anthropic.claude-code/.claude-plugin"))).toBe(false);
+      // The portable root remains untouched; native material exists only in output.
+      expect(existsSync(join(dir, "com.anthropic.claude-code"))).toBe(false);
+      expect(existsSync(join(dir, "dist/claude/hooks/hooks.json"))).toBe(true);
+      expect(existsSync(join(dir, "dist/claude/runtime/hooknostic.mjs"))).toBe(true);
+      expect(existsSync(join(dir, "dist/claude/src/greet-mcp.mjs"))).toBe(true);
       expect(await readFile(join(dir, "plugin.json"), "utf8")).toBe(manifestBefore);
+
+      const mcpJson = JSON.parse(
+        await readFile(join(dir, "dist/claude/.mcp.json"), "utf8"),
+      );
+      expect(mcpJson.mcpServers.greeter).toMatchObject({
+        type: "stdio",
+        command: "node",
+        args: ["${CLAUDE_PLUGIN_ROOT}/src/greet-mcp.mjs"],
+      });
+
+      const runtimeManifest = JSON.parse(await readFile(join(dir, "dist/claude/package.json"), "utf8"));
+      expect(runtimeManifest).toMatchObject({
+        name: "combined-example-runtime",
+        dependencies: { "@modelcontextprotocol/server": "2.0.0", zod: "4.5.4" },
+      });
+      expect(existsSync(join(dir, "dist/claude/package-lock.json"))).toBe(true);
+      expect(existsSync(join(dir, "dist/claude/runtime.package.json"))).toBe(false);
 
       // plugin.json metadata filled the gaps in the plugin spec.
       const pluginJson = JSON.parse(
         await readFile(join(dir, "dist/claude/.claude-plugin/plugin.json"), "utf8"),
       );
-      expect(pluginJson).toEqual({
+      expect(pluginJson).toMatchObject({
         name: "combined-example",
         version: "1.0.0",
-        description: "Agent Plugins package with hooknostic-compiled lifecycle hooks",
+        description:
+          "Agent Plugins package with a skill, MCP server, and hooknostic-compiled lifecycle hooks",
+        license: "MIT",
       });
     },
   );
+
+  it("builds a hookless skill package without emitting a runtime", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-hookless-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    const manifest = JSON.stringify(
+      { $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "hookless-tools", version: "1.0.0" },
+      null,
+      2,
+    );
+    const skill = "---\nname: review\ndescription: Review a change\n---\nReview carefully.\n";
+    await writeFile(join(dir, "plugin.json"), manifest);
+    await writeFile(join(dir, "skills/review/SKILL.md"), skill);
+    await mkdir(join(dir, "dist/.hooknostic-claude-recovery/backup"), { recursive: true });
+    await writeFile(
+      join(dir, "dist/.hooknostic-claude-recovery/backup/private.txt"),
+      "stale transaction data",
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`,
+    );
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+      capture.out(),
+    ).toBe(0);
+    const report = JSON.parse(capture.out());
+    expect(report.source).toBeUndefined();
+    expect(report.agentPlugin.sourceFileCount).toBe(3);
+    expect(report.targets.claude.projection.components["agent-plugin.skills"]).toMatchObject({
+      support: "exact",
+      discovered: 1,
+      emitted: 1,
+    });
+    expect(existsSync(join(dir, "dist/claude/runtime/hooknostic.mjs"))).toBe(false);
+    expect(
+      existsSync(
+        join(dir, "dist/claude/dist/.hooknostic-claude-recovery/backup/private.txt"),
+      ),
+    ).toBe(false);
+    expect(await readFile(join(dir, "dist/claude/skills/review/SKILL.md"), "utf8")).toBe(skill);
+    expect(await readFile(join(dir, "plugin.json"), "utf8")).toBe(manifest);
+  });
+
+  it("records explicit warn-policy omissions while retaining hook artifacts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-omission-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+        name: "omission-test",
+      }),
+    );
+    await writeFile(join(dir, "README.md"), "portable");
+    for (const name of ["first", "second"]) {
+      await mkdir(join(dir, `skills/${name}`), { recursive: true });
+      await writeFile(
+        join(dir, `skills/${name}/SKILL.md`),
+        `---\nname: ${name}\ndescription: ${name} skill\n---\n`,
+      );
+    }
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          first: { type: "stdio", command: "node" },
+          second: { type: "stdio", command: "node" },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "omission-test", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["codex"], onUnsupported: "warn" },
+        targets: { codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" } }
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(0);
+    const report = JSON.parse(capture.out());
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.manifest" }),
+    );
+    expect(report.targets.codex.projection.omissions).toContainEqual(
+      expect.objectContaining({ component: "agent-plugin.manifest" }),
+    );
+    expect(report.targets.codex.projection.components).toMatchObject({
+      "agent-plugin.manifest": {
+        support: "unsupported",
+        discovered: 1,
+        emitted: 0,
+        skipped: 1,
+      },
+      "agent-plugin.skills": {
+        support: "unsupported",
+        discovered: 2,
+        emitted: 0,
+        skipped: 2,
+      },
+      "agent-plugin.mcp.stdio": {
+        support: "unsupported",
+        discovered: 2,
+        emitted: 0,
+        skipped: 2,
+      },
+    });
+    expect(existsSync(join(dir, "dist/codex/.codex/hooknostic/hooknostic.mjs"))).toBe(true);
+    expect(existsSync(join(dir, "dist/codex/README.md"))).toBe(false);
+  });
+
+  it("rolls back a projection when a native overlay collides with the Hooknostic runtime", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-projection-rollback-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "com.anthropic.claude-code/runtime"), { recursive: true });
+    await mkdir(join(dir, "dist/claude"), { recursive: true });
+    await writeFile(join(dir, "dist/claude/old-marker"), "old");
+    await writeFile(join(dir, "com.anthropic.claude-code/runtime/hooknostic.mjs"), "native collision");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "collision-test" }),
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "collision-test", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(1);
+    expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN503", target: "claude" }),
+    );
+    expect(await readFile(join(dir, "dist/claude/old-marker"), "utf8")).toBe("old");
+  });
 
   it(
     "commits nothing when any selected target fails analysis",
@@ -423,6 +622,23 @@ describe("hooknostic inspect", () => {
       }),
     ).toBe(0);
     expect(JSON.parse(single.out()).capabilities).toHaveLength(1);
+
+    const component = captureIO();
+    expect(
+      await runInspect({
+        target: "claude",
+        component: "agent-plugin.mcp.streamable-http",
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: component.io,
+      }),
+    ).toBe(0);
+    expect(JSON.parse(component.out()).components).toEqual([
+      expect.objectContaining({
+        component: "agent-plugin.mcp.streamable-http",
+        level: "exact",
+      }),
+    ]);
 
     const unknown = captureIO();
     expect(

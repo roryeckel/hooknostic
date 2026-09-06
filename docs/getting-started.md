@@ -7,10 +7,11 @@ on. Time: about 15 minutes.
 **Prerequisites:** Node.js 22.13 or newer, and at least one supported agent installed
 (Claude Code, OpenAI Codex CLI, or OpenCode).
 
-## 1. Install the two packages
+## 1. Install the authoring and CLI packages
 
-Hooknostic is two packages: `@hooknostic/sdk` (the authoring API your hook code
-imports) and `hooknostic` (the CLI that checks and builds).
+Hook authors use `@hooknostic/sdk` (the authoring API) and `hooknostic` (the CLI).
+`@hooknostic/agent-plugin` is the public loader/projection-contract package for tool
+authors; the CLI already contains what it needs to project Agent Plugins.
 
 ```bash
 npm install --save-dev @hooknostic/sdk hooknostic
@@ -19,7 +20,7 @@ npm install --save-dev @hooknostic/sdk hooknostic
 > **Not on npm yet?** While the packages are unpublished, build the exact same
 > tarballs locally from a checkout of this repo and install those instead — the
 > [publishing guide](publishing.md#testing-without-publishing-the-everyday-flow)
-> shows the two commands. Everything below is identical from that point on.
+> shows the packing commands. Everything below is identical from that point on.
 
 Your project needs `"type": "module"` in `package.json` (Hooknostic is ESM), and
 TypeScript if you want type checking while authoring (the CLI bundles your source

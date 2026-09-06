@@ -13,12 +13,13 @@ Usage:
   hooknostic check   [--config <path>] [--target <a,b>] [--json]
   hooknostic build   [--config <path>] [--target <a,b>] [--json]
   hooknostic doctor  [--json]
-  hooknostic inspect <target> [--capability <id>] [--version <range>] [--json]
+  hooknostic inspect <target> [--capability <id> | --component <id>] [--version <range>] [--json]
 
 Options:
   --config <path>     Path to hooknostic.config.ts (default ./hooknostic.config.ts)
   --target <a,b>      Narrow the configured target set (never adds targets)
   --capability <id>   Inspect a single capability
+  --component <id>    Inspect a single Agent Plugin component
   --version <range>   Harness version range for inspect
   --json              Machine-readable output
   -h, --help          Show this help
@@ -52,6 +53,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         config: { type: "string" },
         target: { type: "string" },
         capability: { type: "string" },
+        component: { type: "string" },
         version: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -121,6 +123,9 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
           target,
           ...(typeof parsed.values["capability"] === "string"
             ? { capability: parsed.values["capability"] }
+            : {}),
+          ...(typeof parsed.values["component"] === "string"
+            ? { component: parsed.values["component"] }
             : {}),
           ...(typeof parsed.values["version"] === "string"
             ? { version: parsed.values["version"] }

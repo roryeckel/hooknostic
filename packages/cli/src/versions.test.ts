@@ -31,6 +31,7 @@ describe("workspace version lockstep", () => {
     const root = packageVersion(".");
     for (const dir of [
       "packages/sdk",
+      "packages/agent-plugin",
       "packages/core",
       "packages/runtime",
       "packages/cli",
@@ -43,13 +44,14 @@ describe("workspace version lockstep", () => {
     }
   });
 
-  it("keeps exactly two packages publishable, and they are sdk and cli", () => {
+  it("keeps exactly three packages publishable: agent-plugin, sdk, and cli", () => {
     // The executable publish-surface statement. It outlives the private:true
     // guard fields: when they are removed for the first public release, this
     // still pins WHICH packages may ship.
     const publishable: string[] = [];
     for (const dir of [
       "packages/sdk",
+      "packages/agent-plugin",
       "packages/core",
       "packages/runtime",
       "packages/cli",
@@ -63,11 +65,21 @@ describe("workspace version lockstep", () => {
       ) as { name: string; private?: boolean };
       if (manifest.private !== true) publishable.push(manifest.name);
     }
-    // While unreleased, sdk and cli ALSO carry private:true as the
+    // While unreleased, all three ALSO carry private:true as the
     // never-publish guard, so nothing is publishable yet. The first public
-    // release removes exactly those two fields; either state passes, any
-    // third publishable package fails.
-    const allowed = [[], ["@hooknostic/sdk", "hooknostic"]];
+    // release removes exactly those fields; either state passes, any
+    // additional publishable package fails.
+    const allowed = [[], ["@hooknostic/agent-plugin", "@hooknostic/sdk", "hooknostic"]];
     expect(allowed).toContainEqual(publishable.sort());
+  });
+
+  it("keeps both release workflows guarded by all three public packages", () => {
+    const guard = "for pkg in packages/agent-plugin packages/sdk packages/cli; do";
+    for (const workflow of ["release-draft.yml", "release-publish.yml"]) {
+      expect(
+        readFileSync(resolve(REPO_ROOT, ".github/workflows", workflow), "utf8"),
+        workflow,
+      ).toContain(guard);
+    }
   });
 });

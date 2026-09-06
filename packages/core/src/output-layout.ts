@@ -1,7 +1,6 @@
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { HooknosticConfig } from "@hooknostic/sdk";
-import { AGENT_PLUGIN_NAMESPACES } from "./agent-plugin.js";
 import type { Diagnostic } from "./diagnostics.js";
 
 export interface ManagedOutput {
@@ -66,12 +65,13 @@ function layoutError(target: string, message: string, remediation: string): Diag
 
 /**
  * Resolve and validate every directory the build may recursively replace.
- * Target outputs are sandboxed to the config directory. Agent Plugin client
- * extensions are sandboxed to their explicitly configured plugin root.
+ * Target outputs are sandboxed to the config directory. An output may be a
+ * configured, inventory-excluded descendant of an Agent Plugin root, but may
+ * never replace the root itself or an ancestor containing it.
  */
 export async function validateOutputLayout(options: {
   configPath: string;
-  entryPath: string;
+  entryPath?: string;
   config: HooknosticConfig;
   selectedTargets: readonly string[];
 }): Promise<OutputLayoutResult> {
@@ -80,11 +80,19 @@ export async function validateOutputLayout(options: {
   const canonicalConfigDir = await canonicalCandidate(configDir);
   const protectedPaths = (
     await Promise.all(
-      [configPath, resolve(options.entryPath), join(configDir, "hooknostic-build.json")].map(
+      [
+        configPath,
+        ...(options.entryPath === undefined ? [] : [resolve(options.entryPath)]),
+        join(configDir, "hooknostic-build.json"),
+      ].map(
         pathIdentities,
       ),
     )
   ).flat();
+  const agentPluginPaths =
+    options.config.agentPlugin === undefined
+      ? []
+      : await pathIdentities(resolve(configDir, options.config.agentPlugin.root));
   const diagnostics: Diagnostic[] = [];
   const outputs: ManagedOutput[] = [];
   const comparisonPaths = new Map<ManagedOutput, string[]>();
@@ -120,53 +128,22 @@ export async function validateOutputLayout(options: {
       );
       continue;
     }
+    const overlappingAgentPlugin = agentPluginPaths.find((path) =>
+      identities.some((outputPath) => containsPath(outputPath, path)),
+    );
+    if (overlappingAgentPlugin !== undefined) {
+      diagnostics.push(
+        layoutError(
+          target,
+          `target "${target}" output overlaps the Agent Plugin source package: ${overlappingAgentPlugin}.`,
+          "choose a dedicated output directory outside agentPlugin.root.",
+        ),
+      );
+      continue;
+    }
     const output = { key: target, target, outputDir };
     outputs.push(output);
     comparisonPaths.set(output, identities);
-  }
-
-  if (options.config.agentPlugin) {
-    const pluginRoot = resolve(configDir, options.config.agentPlugin.root);
-    const canonicalPluginRoot = await canonicalCandidate(pluginRoot);
-    for (const target of options.selectedTargets) {
-      const namespace = (AGENT_PLUGIN_NAMESPACES as Record<string, string>)[target];
-      if (namespace === undefined) continue;
-      const outputDir = join(pluginRoot, namespace);
-      const identities = await pathIdentities(outputDir);
-      const escapedPath = identities.find(
-        (path) => !isStrictDescendant(canonicalPluginRoot, path),
-      );
-      if (escapedPath !== undefined) {
-        diagnostics.push(
-          layoutError(
-            target,
-            `Agent Plugin extension output escapes its declared root: ${escapedPath}.`,
-            "choose an Agent Plugin root whose client-extension directory is safely contained.",
-          ),
-        );
-        continue;
-      }
-      const protectedPath = protectedPaths.find((path) =>
-        identities.some((outputPath) => containsPath(outputPath, path)),
-      );
-      if (protectedPath !== undefined) {
-        diagnostics.push(
-          layoutError(
-            target,
-            `Agent Plugin extension output would recursively replace a protected project path: ${protectedPath}.`,
-            "move the Agent Plugin root or the Hooknostic config/source so the extension is isolated.",
-          ),
-        );
-        continue;
-      }
-      const output = {
-        key: `agent-plugin/${namespace}`,
-        target,
-        outputDir,
-      };
-      outputs.push(output);
-      comparisonPaths.set(output, identities);
-    }
   }
 
   for (let left = 0; left < outputs.length; left += 1) {

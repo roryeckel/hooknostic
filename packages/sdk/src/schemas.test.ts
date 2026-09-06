@@ -215,6 +215,29 @@ describe("canonical schemas", () => {
     ).toBe(true);
   });
 
+  it("validates hookless Agent Plugin projection target invariants", () => {
+    const target = { version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" };
+    expect(
+      hooknosticConfigSchema.safeParse({
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: target },
+      }).success,
+    ).toBe(true);
+    expect(hooknosticConfigSchema.safeParse({ targets: { claude: target } }).success).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        agentPlugin: { root: ".", targets: ["missing"] },
+        targets: { claude: target },
+      }).success,
+    ).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: target, codex: { ...target, mode: "local" as const } },
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates authored plugin structure", () => {
     const plugin = {
       name: "p",

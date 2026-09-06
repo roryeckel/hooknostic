@@ -78,7 +78,7 @@ jobs:
       - name: Publish guard removed?
         shell: bash
         run: |
-          for pkg in packages/sdk packages/cli; do
+          for pkg in packages/agent-plugin packages/sdk packages/cli; do
             if node -e "process.exit(require('./$pkg/package.json').private === true ? 1 : 0)"; then :; else
               echo "$pkg still carries \"private\": true. The release PR checklist's"
               echo "first-public-release items were not completed (docs/releases.md)."

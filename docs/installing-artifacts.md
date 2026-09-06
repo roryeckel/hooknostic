@@ -84,6 +84,22 @@ Copy-mode is safe for these artifacts: everything the hooks need — the manifes
 `hooks/hooks.json`, and the bundled runtime — lives inside `dist/claude`, and a
 copied plugin cannot reach files outside its own directory.
 
+### MCP runtime dependencies
+
+Hooknostic bundles hook runtimes, but an MCP server can have ordinary Node.js
+dependencies. Configure `agentPlugin.runtimePackage` with a dedicated runtime
+manifest and npm lockfile. Claude projection emits those files as
+`dist/claude/package.json` and `dist/claude/package-lock.json`; when it creates
+the marketplace cache entry, Claude runs its own locked `npm ci --ignore-scripts`.
+
+Keep this manifest separate from the project manifest used to build Hooknostic:
+it must contain only MCP runtime dependencies. Do not commit `node_modules` to
+the artifact. This path supports pure-JavaScript npm packages. Dependencies that
+need lifecycle scripts or native compilation are outside the contract, as are
+pnpm and Yarn lockfiles. The behavior is captured for Claude Code 2.1.260 in
+[`.capture/claude-marketplace-deps`](../.capture/claude-marketplace-deps/README.md)
+and defined in [ADR-0012](decisions/0012-claude-plugin-runtime-dependencies.md).
+
 ### Updating an installed plugin
 
 **Installing copies the plugin; it does not run `dist/claude` in place.** Claude
@@ -271,10 +287,12 @@ version bump and update flow above. This is worth a `postbuild` script or a
 
 ## Agent Plugins layout
 
-With `agentPlugin: { root: "." }` configured, the Claude artifacts (minus
-`.claude-plugin/`) are additionally emitted to `./com.anthropic.claude-code/`,
-the Agent Plugins 1.0 client-extension namespace, so a repository that is
-already an Agent Plugin carries its hooks in the conventional location rather
-than a Hooknostic-specific one. See
-[Decision 0004](decisions/0004-agent-plugins-relationship.md) for the boundary: Hooknostic
-consumes a `plugin.json` for metadata and never writes one.
+With `agentPlugin: { root: ".", targets: ["claude"] }`, the configured Claude
+output is a complete native plugin: `.claude-plugin/plugin.json`, copied skills,
+translated `.mcp.json`, any Claude-specific overlay, and optional Hooknostic hooks.
+Install or reference that output exactly like any other Claude plugin. No generated
+files are written beside the portable source components.
+
+Codex continues to consume the Agent Plugins package directly; Hooknostic's Codex
+output contains only its local hook integration. OpenCode package projection is not yet
+implemented. See [ADR-0011](decisions/0011-agent-plugin-native-projection.md).

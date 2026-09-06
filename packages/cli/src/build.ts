@@ -39,9 +39,9 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
       options.io.stdout(`         ${artifact}`);
     }
   }
-  if (result.report.agentPlugin && result.report.agentPlugin.extensions.length > 0) {
+  if (result.report.agentPlugin) {
     options.io.stdout(
-      `\nAgent Plugins extensions: ${result.report.agentPlugin.extensions.join(", ")} → ${result.report.agentPlugin.root}`,
+      `\nAgent Plugin ${result.report.agentPlugin.root} → ${result.report.agentPlugin.targets.join(", ")}`,
     );
   }
   options.io.stdout(

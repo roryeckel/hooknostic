@@ -22,11 +22,10 @@
 
 ## 1. Executive summary
 
-Hooknostic is a TypeScript SDK, compiler, and adapter runtime for authoring coding-agent
-lifecycle hooks once and compiling them into harness-native integrations. It is not
-another plugin packaging standard: Agent Plugins already provides a vendor-neutral
-package floor for skills and MCP; Hooknostic fills the lifecycle-hook gap that remains
-intentionally client-specific in Agent Plugins 1.0.
+Hooknostic is a TypeScript SDK and compiler for authoring coding-agent lifecycle hooks
+once and compiling them into harness-native integrations. It can also project an
+Agent Plugins 1.0 package into a harness-native plugin without redefining that peer
+standard.
 
 The central design rule is that **event availability and effect semantics are
 separate**. A harness may expose a "before tool" event while differing in whether code
@@ -49,9 +48,9 @@ payloads; OpenCode exposes JS/TS plugin callbacks with a different event vocabul
 process model. Identical plugin behavior gets reimplemented three times.
 
 Agent Plugins 1.0 is complementary: it standardizes a portable package and provides
-client-extension namespaces/directories for non-portable data (including a
-`hooks/hooks.json` extension example). Hooknostic uses that extension mechanism when
-present; it never mutates or forks the Agent Plugins root schema.
+client-extension namespaces/directories for non-portable data. Hooknostic validates the
+portable package and projects representable components into a separate native output;
+it never mutates or forks the Agent Plugins root schema.
 
 ### 2.2 Interoperability baseline
 
@@ -68,10 +67,9 @@ never a timeless boolean.
 
 ### 3.1 Product definition
 
-A build-time compiler plus a small runtime dispatcher. Input: a TypeScript hook plugin
-and target configuration. It builds a normalized IR, checks semantic portability, bundles
-the portable implementation, and emits per-harness native artifacts. Usable standalone or
-alongside Agent Plugins.
+A build-time compiler plus a small runtime dispatcher. Input is a TypeScript hook plugin,
+an Agent Plugins package, or both, plus target configuration. Hook compilation and package
+projection are independent phases composed into one atomic per-target output.
 
 ### 3.2 Goals
 
@@ -83,15 +81,15 @@ alongside Agent Plugins.
 - Normalized tool/action vocabulary retaining native names and raw payloads.
 - Deterministic composition of multiple portable handlers in one native entry point.
 - Versioned capability matrices and fixture-driven conformance tests.
-- Optional, clean Agent Plugins 1.0 integration.
+- Versioned, inspectable Agent Plugins 1.0 projection into native plugin layouts.
 
 ### 3.3 Non-goals for v0.1
 
 | Non-goal | Reason |
 | --- | --- |
 | Policy engine / guardrail DSL | Interoperability layer, not a security product. |
-| MCP abstraction | MCP is already portable. |
-| Agent Skills abstraction | Skills define their own portable convention. |
+| MCP runtime abstraction | MCP is already portable; projectors only translate native configuration. |
+| Agent Skills authoring abstraction | Skills define their own portable convention; projectors validate and copy them. |
 | Custom tool abstraction | Separate problem. |
 | Daemon / background service | Unjustified lifecycle/state/socket complexity. |
 | Persistent state API | Portable process-lifetime semantics deferred ([ADR-0002](decisions/0002-invocation-stateless-contract.md)). |
@@ -110,7 +108,7 @@ alongside Agent Plugins.
 | Portable code is invocation-stateless | Module memory is not durable portable state ([ADR-0002](decisions/0002-invocation-stateless-contract.md)). |
 | Tolerant readers, strict writers | Decode liberally, preserve unknowns, emit only validated outputs. |
 | Reproducible builds | Versions, resolutions, diagnostics captured in the build report. |
-| Agent Plugins is a peer | Use its extension mechanism; never redefine it ([ADR-0004](decisions/0004-agent-plugins-relationship.md)). |
+| Agent Plugins is a peer | Project its package model; never redefine or mutate it ([ADR-0011](decisions/0011-agent-plugin-native-projection.md)). |
 
 ## 5. System architecture
 
@@ -406,12 +404,24 @@ export default defineConfig({
     opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
   },
 
-  agentPlugin: { root: "." },
+  agentPlugin: {
+    root: ".",
+    targets: ["claude"],
+    runtimePackage: {
+      manifest: "./runtime.package.json",
+      lockfile: "./runtime.package-lock.json",
+    },
+  },
 });
 ```
 
 Version ranges are examples; adapters derive and document tested ranges from real
 fixtures and releases.
+
+`runtimePackage` is an optional projection input for an agent-plugin component
+whose runtime imports npm dependencies. Each projector defines how, or whether,
+it can materialize that package. Claude projects the selected npm manifest and
+lockfile to its plugin root; see [ADR-0012](decisions/0012-claude-plugin-runtime-dependencies.md).
 
 ### 8.2 CLI target narrowing
 
@@ -479,7 +489,7 @@ OpenCode ships local-file mode first; npm-package mode can follow.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "hooknosticVersion": "0.1.0",
   "source": "./src/hooks.ts",
   "targets": {
@@ -487,7 +497,16 @@ OpenCode ships local-file mode first; npm-package mode can follow.
       "status": "success",
       "adapter": "@hooknostic/adapter-claude@0.1.0",
       "requestedVersion": ">=2.1 <3",
-      "capabilities": { "exact": 11, "emulated": 1, "approximate": 0, "unsupported": 0 }
+      "capabilities": { "exact": 11, "emulated": 1, "approximate": 0, "unsupported": 0 },
+      "projection": {
+        "status": "success",
+        "copiedFileCount": 4,
+        "contentDigest": "sha256:…",
+        "components": {
+          "agent-plugin.skills": { "support": "exact", "discovered": 1, "emitted": 1, "skipped": 0 }
+        },
+        "omissions": []
+      }
     }
   },
   "diagnostics": []
@@ -532,9 +551,11 @@ HN201 capability unsupported
 
 Initial codes: **HN101** degraded capability, **HN102** optional capability unavailable,
 **HN201** required capability unsupported, **HN202** event unavailable, **HN203** target
-version outside adapter data, **HN204** artifact mode unsupported, **HN301** adapter
+version outside adapter data, **HN204** artifact mode unsupported, **HN205** valid Agent
+Plugin component unsupported, **HN301** adapter
 generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
-at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point.
+at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
+**HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay.
 **HN103** an effect was truncated or dropped by a runtime budget.
 
 #### HN502 — bundled CLI entry point
@@ -728,13 +749,13 @@ Matrices are built from current docs + verified fixture behavior, with rationale
 source/date metadata for every non-exact mapping. The CLI renders matrices from
 adapter-owned facts; this document is not normative truth for any cell.
 
-## 13. Agent Plugins integration
+## 13. Agent Plugins projection
 
-Hooknostic consumes/augments an Agent Plugins package
-([ADR-0004](decisions/0004-agent-plugins-relationship.md)). With `plugin.json`
-present it may reuse metadata and generate client extension directories; it never adds
-unknown root-level manifest fields. Standalone mode (config + source only) is
-first-class.
+Hooknostic treats Agent Plugins as a peer and read-only source format
+([ADR-0011](decisions/0011-agent-plugin-native-projection.md)). The public
+`@hooknostic/agent-plugin` package validates Agent Plugins 1.0, inventories its complete
+file tree safely, and defines a target-neutral projector contract. Projectors belong to
+adapters and carry versioned component support profiles.
 
 ```
 my-plugin/
@@ -743,18 +764,25 @@ my-plugin/
 ├── mcp.json
 ├── hooknostic.config.ts
 ├── src/hooks.ts
-├── com.anthropic.claude-code/hooks/hooks.json
-├── com.openai.codex/hooks/hooks.json
-└── <opencode-extension-namespace>/plugin.mjs
+└── dist/claude/
+    ├── .claude-plugin/plugin.json
+    ├── skills/
+    ├── .mcp.json
+    └── hooks/hooks.json         # only when hook source is present
 ```
 
-Namespace names must be confirmed against client conventions before the integration is
-declared stable.
+`entry` is optional for package-only builds. Client-extension directories are consumed
+as overlays, never generated beside the source. Valid but unrepresentable components
+produce HN205; invalid or unsafe input and unmergeable overlays produce HN503. Exclusion
+globs apply before component discovery: excluding `mcp.json`, a skill directory, or its
+`SKILL.md` removes that component, while `plugin.json` cannot be excluded. Any
+non-excluded symlink escaping the package root rejects the package before component
+contents are parsed.
 
 ## 14. Repository and package structure
 
-pnpm TypeScript monorepo; adapters are internal workspace packages; only the SDK and CLI
-are published until the adapter API stabilizes. The published CLI is therefore
+pnpm TypeScript monorepo; adapters are internal workspace packages. The SDK, Agent Plugin
+loader/contracts, and CLI are published. The published CLI is therefore
 self-contained (`packages/cli/scripts/bundle.mjs`): core and the adapters are inlined into
 `dist/index.js`; each adapter's runtime shim is prebundled into `dist/shims/<id>.mjs`
 (runtime inlined, SDK external — the build aliases `@hooknostic/sdk` to the user project's
@@ -765,7 +793,7 @@ third-party adapters is a post-stabilization step that reuses the SDK's dist pat
 
 ```
 hooknostic/
-├── packages/{sdk,core,runtime,cli,adapter-claude,adapter-codex,adapter-opencode,testkit}/
+├── packages/{agent-plugin,sdk,core,runtime,cli,adapter-claude,adapter-codex,adapter-opencode,testkit}/
 ├── fixtures/{claude,codex,opencode}/
 ├── examples/{basic,rewrite-shell,context-injection,agent-plugin}/
 ├── package.json / pnpm-workspace.yaml / tsconfig.json
@@ -774,6 +802,7 @@ hooknostic/
 | Package | Public? | Purpose |
 | --- | --- | --- |
 | `@hooknostic/sdk` | Yes | Authoring API and public types. |
+| `@hooknostic/agent-plugin` | Yes | Agent Plugins 1.0 loader, schemas, and projection contracts. |
 | `hooknostic` | Yes | CLI binary. |
 | `@hooknostic/core` | Not initially | Compiler/IR/capability analysis. |
 | `@hooknostic/runtime` | Not initially | Dispatcher/runtime. |
@@ -971,7 +1000,14 @@ export default defineConfig({
       compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
     },
   },
-  agentPlugin: { root: "." },
+  agentPlugin: {
+    root: ".",
+    targets: ["claude"],
+    runtimePackage: {
+      manifest: "./runtime.package.json",
+      lockfile: "./runtime.package-lock.json",
+    },
+  },
 });
 ```
 

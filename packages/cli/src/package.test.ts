@@ -71,6 +71,16 @@ function packageRoot(name: string, consumerDir: string): string {
 }
 
 describe("public package outputs", () => {
+  it("ships the Agent Plugins loader, declarations, and bundled schemas", async () => {
+    const root = resolve(REPO, "packages/agent-plugin");
+    const manifest = await manifestOf(root);
+    expect(manifest.files).toEqual(["dist", "schemas", "LICENSE"]);
+    expect(await readFile(resolve(root, "schemas/1.0.0/plugin.schema.json"), "utf8")).toContain(
+      "agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    );
+    const api = await import(pathToFileURL(resolve(root, "dist/index.js")).href);
+    expect(api.loadAgentPlugin).toBeTypeOf("function");
+  });
   it("ships the SDK as runnable ESM with declarations", async () => {
     const packageRoot = resolve(REPO, "packages/sdk");
     const manifest = await manifestOf(packageRoot);
@@ -128,7 +138,7 @@ describe("public package outputs", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       expect(await readFile(file, "utf8"), file).not.toMatch(
-        /["']@hooknostic\/(core|runtime|adapter-)/,
+        /["']@hooknostic\/(agent-plugin|core|runtime|adapter-)/,
       );
     }
   });
@@ -175,9 +185,11 @@ describe("simulated registry install", () => {
       const cliRoot = join(root, "cli");
       const project = join(root, "project");
       const sdkDir = resolve(REPO, "packages/sdk");
+      const agentPluginDir = resolve(REPO, "packages/agent-plugin");
       const cliDir = resolve(REPO, "packages/cli");
       const installs: [Manifest, string, string][] = [
         [await publish(cliDir, cliRoot), cliDir, cliRoot],
+        [await publish(agentPluginDir, cliRoot), agentPluginDir, cliRoot],
         [await publish(sdkDir, cliRoot), sdkDir, cliRoot],
         [await publish(sdkDir, project), sdkDir, project],
       ];
@@ -192,6 +204,10 @@ describe("simulated registry install", () => {
           await linkThirdParty(dependency, consumerDir, installRoot);
         }
       }
+      const installedAgentPlugin = await import(
+        pathToFileURL(join(cliRoot, "node_modules/@hooknostic/agent-plugin/dist/index.js")).href
+      );
+      expect(installedAgentPlugin.loadAgentPlugin).toBeTypeOf("function");
 
       await mkdir(join(project, "src"), { recursive: true });
       await cp(

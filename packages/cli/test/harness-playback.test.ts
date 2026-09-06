@@ -1,12 +1,19 @@
 import { createRequire } from "node:module";
 import { execSync, spawn } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import type { HookEventName } from "@hooknostic/sdk";
+import {
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  loadAgentPlugin,
+} from "@hooknostic/agent-plugin";
+import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
 import type { IPty } from "node-pty";
 import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 import { defaultAdapterRegistry } from "../src/registry.js";
@@ -30,6 +37,98 @@ const tempDirs: string[] = [];
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
 const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", import.meta.url));
 const StdinEofFixturePath = fileURLToPath(new URL("./stdin-eof-fixture.mjs", import.meta.url));
+const PluginMcpEnvFixturePath = fileURLToPath(new URL("./plugin-mcp-env-fixture.mjs", import.meta.url));
+
+async function startProjectionMcpTransports(): Promise<{
+  httpUrl: string;
+  sseUrl: string;
+  counts: { http: number; sseGet: number; ssePost: number };
+  close(): Promise<void>;
+}> {
+  const counts = { http: 0, sseGet: 0, ssePost: 0 };
+  let baseUrl = "";
+  let sse: ServerResponse | undefined;
+  const responseFor = (request: Record<string, unknown>, toolName: string) => {
+    if (request.method === "initialize") {
+      const parameters = request.params as { protocolVersion?: string } | undefined;
+      return {
+        protocolVersion: parameters?.protocolVersion ?? "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: `hooknostic-${toolName}`, version: "1.0.0" },
+      };
+    }
+    if (request.method === "tools/list") {
+      return {
+        tools: [
+          {
+            name: toolName,
+            description: "Projected transport playback marker.",
+            inputSchema: { type: "object", properties: {}, required: [] },
+          },
+        ],
+      };
+    }
+    if (request.method === "ping") return {};
+    return { content: [{ type: "text", text: `${toolName}-marker` }] };
+  };
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/sse") {
+      counts.sseGet += 1;
+      sse = response;
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      response.write(`event: endpoint\ndata: ${baseUrl}/sse/messages\n\n`);
+      return;
+    }
+    let body = "";
+    for await (const chunk of request) body += String(chunk);
+    const rpc = body === "" ? {} : (JSON.parse(body) as Record<string, unknown>);
+    if (request.method === "POST" && request.url === "/http") {
+      counts.http += 1;
+      if (rpc.id === undefined) {
+        response.writeHead(202).end();
+      } else {
+        response.writeHead(200, {
+          "content-type": "application/json",
+          "mcp-session-id": "hooknostic-http-session",
+        });
+        response.end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: responseFor(rpc, "http_probe") }));
+      }
+      return;
+    }
+    if (request.method === "POST" && request.url?.startsWith("/sse/messages")) {
+      counts.ssePost += 1;
+      response.writeHead(202).end();
+      if (rpc.id !== undefined) {
+        sse?.write(
+          `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: responseFor(rpc, "sse_probe") })}\n\n`,
+        );
+      }
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    server.once("error", rejectPromise);
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("transport server has no TCP address");
+  baseUrl = `http://127.0.0.1:${address.port}`;
+  return {
+    httpUrl: `${baseUrl}/http`,
+    sseUrl: `${baseUrl}/sse`,
+    counts,
+    async close() {
+      sse?.end();
+      server.closeAllConnections();
+      await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
+    },
+  };
+}
 
 if (selected !== "" && adapter === undefined) {
   throw new Error(`unknown HOOKNOSTIC_PLAYBACK harness ${JSON.stringify(selected)}`);
@@ -1007,6 +1106,132 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       await replayOpenCodeFixtures(build, fixturesDir);
     }
   });
+
+  it.skipIf(adapter?.id !== "claude")(
+    "discovers a projected skill, starts all MCP transports with native variables, and runs combined hooks",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-projection-playback-"));
+      tempDirs.push(dir);
+      const hookBuild = await buildPlaybackArtifact(adapter!, join(dir, "hook-build"));
+      const transports = await startProjectionMcpTransports();
+      const portable = join(dir, "portable");
+      await mkdir(join(portable, "skills/projection-probe"), { recursive: true });
+      await writeFile(
+        join(portable, "plugin.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+          name: "projection-playback",
+          version: "1.0.0",
+          description: "No-spend Agent Plugin projection playback fixture.",
+          author: { name: "Hooknostic contributors" },
+        }),
+      );
+      await writeFile(
+        join(portable, "skills/projection-probe/SKILL.md"),
+        "---\nname: projection-probe\ndescription: Exercise projected plugin discovery.\n---\nHOOKNOSTIC_SKILL_DISCOVERY_MARKER\n",
+      );
+      await writeFile(
+        join(portable, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            projection: {
+              type: "stdio",
+              command: "node",
+              args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"],
+              env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
+            },
+            projectedHttp: { type: "streamable-http", url: transports.httpUrl },
+            projectedSse: { type: "sse", url: transports.sseUrl },
+          },
+        }),
+      );
+      await writeFile(
+        join(portable, "plugin-mcp-env-fixture.mjs"),
+        await readFile(PluginMcpEnvFixturePath),
+      );
+      const loaded = await loadAgentPlugin({ root: portable });
+      expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+      const hookArtifacts = await Promise.all(
+        ["hooks/hooks.json", "runtime/hooknostic.mjs"].map(async (path) => ({
+          path,
+          contents: await readFile(join(hookBuild.artifactDir, path)),
+        })),
+      );
+      const plan = await claudeAgentPluginProjector.project(loaded.package!, {
+        target: {
+          id: "claude",
+          version: adapter!.harness.referenceVersion,
+          mode: "plugin",
+          output: ".",
+        },
+        hookArtifacts,
+        onUnsupported: "error",
+      });
+      expect(plan.issues).toEqual([]);
+      const pluginDir = join(dir, "plugin");
+      for (const artifact of plan.files) {
+        const path = join(pluginDir, artifact.path);
+        await mkdir(join(path, ".."), { recursive: true });
+        await writeFile(path, artifact.contents, { mode: artifact.mode });
+      }
+      const validation = await runProcess(
+        "claude",
+        ["plugin", "validate", "--strict", pluginDir, "--json"],
+        { cwd: dir, env: process.env, timeoutMs: 30_000 },
+      );
+      expect(validation.code, validation.stdout + validation.stderr).toBe(0);
+
+      const server = await startModelPlayback("anthropic-messages", "rewrite", [
+        { kind: "tool", toolName: "projection_echo" },
+        { kind: "text", text: "projection complete" },
+      ]);
+      try {
+        const result = await runProcess(
+          "claude",
+          [
+            "-p",
+            "/projection-probe",
+            "--model",
+            "hooknostic-playback",
+            "--plugin-dir",
+            pluginDir,
+            "--dangerously-skip-permissions",
+            "--max-turns",
+            "3",
+          ],
+          {
+            cwd: pluginDir,
+            timeoutMs: 90_000,
+            env: {
+              ...withoutCredentials(),
+              ANTHROPIC_API_KEY: "hooknostic-playback",
+              ANTHROPIC_BASE_URL: server.baseUrl,
+              CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+              CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+              DISABLE_AUTOUPDATER: "1",
+              DISABLE_TELEMETRY: "1",
+              HOOKNOSTIC_PLAYBACK_TRACE: hookBuild.tracePath,
+            },
+          },
+        );
+        expect(result.code, result.stdout + result.stderr).toBe(0);
+        expect(server.errors).toEqual([]);
+        expect(JSON.stringify(server.requests)).toContain("HOOKNOSTIC_SKILL_DISCOVERY_MARKER");
+        const environment = JSON.parse(await readFile(join(pluginDir, "mcp-environment.json"), "utf8"));
+        expect(environment.pluginRoot.replaceAll("/", "\\")).toBe(pluginDir);
+        expect(environment.pluginData).toBeTypeOf("string");
+        expect(environment.argv).toEqual([environment.pluginData]);
+        expect(transports.counts.http).toBeGreaterThan(0);
+        expect(transports.counts.sseGet).toBeGreaterThan(0);
+        expect(transports.counts.ssePost).toBeGreaterThan(0);
+        expect(await readFile(hookBuild.tracePath, "utf8")).toContain('"event":"prompt.before"');
+      } finally {
+        await Promise.all([server.close(), transports.close()]);
+      }
+    },
+    120_000,
+  );
 
   it("drives the fixture MCP tool through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcp-${adapter!.id}-`));

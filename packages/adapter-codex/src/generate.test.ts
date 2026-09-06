@@ -38,7 +38,7 @@ describe("generateCodexArtifacts", () => {
       ".codex/hooks.json",
       ".codex/hooknostic/hooknostic.mjs",
     ]);
-    const hooksJson = JSON.parse(artifacts[0]!.contents);
+    const hooksJson = JSON.parse(artifacts[0]!.contents as string);
     expect(Object.keys(hooksJson.hooks)).toEqual(["PreToolUse", "Stop"]);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0]).toEqual({
       type: "command",
@@ -72,7 +72,7 @@ describe("generateCodexArtifacts", () => {
     });
     const artifacts = generateCodexArtifacts(ir, TARGET, BUNDLE, OPTIONS);
     const hooksJson = JSON.parse(
-      artifacts.find((a) => a.path.endsWith("hooks.json"))!.contents,
+      artifacts.find((a) => a.path.endsWith("hooks.json"))!.contents as string,
     );
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(11);
 
@@ -95,7 +95,7 @@ describe("generateCodexArtifacts", () => {
     const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, {
       runtime: { ...OPTIONS.runtime, timeoutMs: 61_000 },
     });
-    const hooksJson = JSON.parse(artifacts[0]!.contents);
+    const hooksJson = JSON.parse(artifacts[0]!.contents as string);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(62);
   });
 });

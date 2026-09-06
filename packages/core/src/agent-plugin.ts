@@ -1,105 +1,137 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import semver from "semver";
+import {
+  AGENT_PLUGIN_COMPONENT_IDS,
+  type AgentPluginComponentId,
+  type AgentPluginComponentSupport,
+  type AgentPluginIssue,
+  type AgentPluginPackage,
+  type AgentPluginProjectionProfile,
+  type AgentPluginProjector,
+  type AgentPluginRuntimePackage,
+} from "@hooknostic/agent-plugin";
+import { leastCapable } from "@hooknostic/sdk";
+import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
+import { isRangeFullyCovered } from "./matrix.js";
 
-export interface AgentPluginMetadata {
-  name?: string;
-  version?: string;
-  description?: string;
+export interface AgentPluginProjectionResolution {
+  matrix?: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  profilesUsed: AgentPluginProjectionProfile[];
+  diagnostics: Diagnostic[];
 }
 
-/**
- * Read reusable metadata from an Agent Plugins 1.0 `plugin.json` when one is
- * present (ADR-0004). Hooknostic consumes the manifest — it never mutates it
- * and never adds root-level fields. Per spec §5.2, unknown top-level fields
- * are reported and ignored, not fatal.
- */
-export async function readAgentPluginMetadata(
-  root: string,
-): Promise<{ metadata?: AgentPluginMetadata; present: boolean; diagnostics: Diagnostic[] }> {
+export function diagnosticsFromAgentPluginIssues(
+  issues: readonly AgentPluginIssue[],
+  target?: string,
+): Diagnostic[] {
+  return issues.map((problem) => ({
+    code: problem.scope === "projection" && problem.component !== undefined ? "HN205" : "HN503",
+    severity: problem.severity,
+    ...(target === undefined ? {} : { target }),
+    ...(problem.component === undefined ? {} : { component: problem.component }),
+    ...(problem.path === undefined ? {} : { location: { file: problem.path } }),
+    message: problem.message,
+  }));
+}
+
+export function resolveAgentPluginProjection(
+  target: TargetSpec,
+  projector: AgentPluginProjector<TargetSpec>,
+): AgentPluginProjectionResolution {
   const diagnostics: Diagnostic[] = [];
-  const manifestPath = join(root, "plugin.json");
-
-  let text: string;
-  try {
-    text = await readFile(manifestPath, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      // Standalone mode is first-class: no plugin.json is not an error.
-      return { present: false, diagnostics };
+  if (!semver.validRange(target.version)) {
+    diagnostics.push({
+      code: "HN203",
+      severity: "error",
+      target: target.id,
+      message: `${JSON.stringify(target.version)} is not a valid semver range.`,
+    });
+    return { profilesUsed: [], diagnostics };
+  }
+  const used = projector.profiles.filter((profile) => semver.intersects(profile.range, target.version));
+  if (
+    used.length === 0 ||
+    !isRangeFullyCovered(target.version, used.map((profile) => profile.range))
+  ) {
+    diagnostics.push({
+      code: "HN203",
+      severity: "error",
+      target: target.id,
+      message: `requested version range ${JSON.stringify(target.version)} is not fully covered by Agent Plugin projection data (${projector.profiles.map((profile) => profile.range).join(", ") || "none"}).`,
+      remediation: "narrow the target version to a validated projection range.",
+    });
+    return { profilesUsed: [...used], diagnostics };
+  }
+  const matrix: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>> = {};
+  for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
+    let chosen: AgentPluginComponentSupport | undefined;
+    for (const profile of used) {
+      const candidate = profile.components[id] ?? { level: "unsupported" as const };
+      if (chosen === undefined || leastCapable(chosen.level, candidate.level) === candidate.level) {
+        chosen = candidate;
+      }
     }
-    diagnostics.push({
-      code: "HN501",
-      severity: "error",
-      message: `could not read Agent Plugin manifest: ${error instanceof Error ? error.message : String(error)}`,
-      location: { file: manifestPath },
-      remediation: "ensure plugin.json is a readable regular file, or remove agentPlugin from the configuration.",
-    });
-    return { present: true, diagnostics };
+    if (chosen !== undefined) matrix[id] = chosen;
   }
+  return { matrix, profilesUsed: [...used], diagnostics };
+}
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    diagnostics.push({
-      code: "HN501",
-      severity: "error",
-      message: `agentPlugin.root points at an invalid plugin.json: ${error instanceof Error ? error.message : String(error)}`,
-      location: { file: manifestPath },
-    });
-    return { present: true, diagnostics };
+function discoveredComponents(
+  source: AgentPluginPackage,
+  namespace: string,
+  runtimePackage?: AgentPluginRuntimePackage,
+): AgentPluginComponentId[] {
+  const ids = new Set<AgentPluginComponentId>(["agent-plugin.manifest"]);
+  if (source.skills.length > 0) ids.add("agent-plugin.skills");
+  for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
+    ids.add(`agent-plugin.mcp.${server.type}` as AgentPluginComponentId);
   }
-
-  if (typeof parsed !== "object" || parsed === null) {
-    diagnostics.push({
-      code: "HN501",
-      severity: "error",
-      message: "plugin.json must be a JSON object.",
-      location: { file: manifestPath },
-    });
-    return { present: true, diagnostics };
+  if (
+    source.files.some((file) => file.path.startsWith(`${namespace}/`))
+  ) {
+    ids.add("agent-plugin.client-extension.files");
   }
+  if (runtimePackage !== undefined) ids.add("agent-plugin.runtime-package");
+  return [...ids];
+}
 
-  const manifest = parsed as Record<string, unknown>;
-  const KNOWN = new Set([
-    "$schema",
-    "name",
-    "version",
-    "description",
-    "author",
-    "homepage",
-    "repository",
-    "license",
-    "keywords",
-    "extensions",
-  ]);
-  for (const key of Object.keys(manifest)) {
-    if (!KNOWN.has(key)) {
-      diagnostics.push({
-        code: "HN501",
-        severity: "info",
-        message: `plugin.json contains unknown top-level field "${key}" (reported and ignored per Agent Plugins 1.0 §5.2).`,
-        location: { file: manifestPath },
+export function analyzeAgentPluginProjection(
+  source: AgentPluginPackage,
+  adapter: HarnessAdapter,
+  target: TargetSpec,
+  onUnsupported: "error" | "warn",
+  runtimePackage?: AgentPluginRuntimePackage,
+): AgentPluginProjectionResolution {
+  const projector = adapter.agentPluginProjector;
+  if (projector === undefined) {
+    const components = discoveredComponents(source, "", runtimePackage);
+    return {
+      profilesUsed: [],
+      diagnostics: components.map((component) => ({
+          code: "HN205",
+          severity: onUnsupported,
+          target: target.id,
+          component,
+          message: `target ${JSON.stringify(target.id)} has no projector for Agent Plugin component ${JSON.stringify(component)}.`,
+          remediation: "remove the target from agentPlugin.targets or use an adapter with package projection support.",
+        })),
+    };
+  }
+  const resolved = resolveAgentPluginProjection(target, projector);
+  if (!resolved.matrix) return resolved;
+  for (const component of discoveredComponents(source, projector.namespace, runtimePackage)) {
+    const support = resolved.matrix[component] ?? { level: "unsupported" as const };
+    if (support.level === "unsupported") {
+      resolved.diagnostics.push({
+        code: "HN205",
+        severity: onUnsupported,
+        target: target.id,
+        component,
+        support: "unsupported",
+        ...(support.rationale === undefined ? {} : { rationale: support.rationale }),
+        message: `Agent Plugin component ${JSON.stringify(component)} is unsupported on ${JSON.stringify(target.id)}.`,
       });
     }
   }
-
-  const metadata: AgentPluginMetadata = {};
-  if (typeof manifest["name"] === "string") metadata.name = manifest["name"];
-  if (typeof manifest["version"] === "string") metadata.version = manifest["version"];
-  if (typeof manifest["description"] === "string") {
-    metadata.description = manifest["description"];
-  }
-  return { metadata, present: true, diagnostics };
+  return resolved;
 }
-
-/**
- * Agent Plugins client-extension namespaces Hooknostic can emit into. Only
- * Claude Code's is generated in v0.1: Codex 0.148 does not load plugin hooks
- * at all (plugin_hooks removed), and OpenCode has no published reverse-DNS
- * namespace convention yet.
- */
-export const AGENT_PLUGIN_NAMESPACES = {
-  claude: "com.anthropic.claude-code",
-} as const;

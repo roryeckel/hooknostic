@@ -1,29 +1,30 @@
 # Publishing & packaging
 
 Current status: **npm publication is intentionally deferred.** Nothing is on the
-npm registry; the GitHub repo is private, and `packages/{sdk,cli}` carry
+npm registry; the GitHub repo is private, and `packages/{agent-plugin,sdk,cli}` carry
 `"private": true` as an executable never-publish guard. The release protocol --
 the three-stage pipeline, its gates, and every recovery path -- lives in
 [releases.md](./releases.md); this page keeps the packaging story.
 
 ## Testing without publishing (the everyday flow)
 
-Both publishable packages can be packed into tarballs and consumed exactly as a
+All publishable packages can be packed into tarballs and consumed exactly as a
 registry install would be — no exposure at all:
 
 ```powershell
-pnpm build   # or rely on the test suite's pretest, which bundles both packages
+pnpm build   # or rely on the test suite's pretest
 
-# pack both tarballs into a scratch dir
+# pack all tarballs into a scratch dir
 $dst = "$env:TEMP\hooknostic-live"
 New-Item -ItemType Directory -Force $dst | Out-Null
 pnpm --filter @hooknostic/sdk exec pnpm pack --pack-destination $dst
+pnpm --filter @hooknostic/agent-plugin exec pnpm pack --pack-destination $dst
 pnpm --filter hooknostic exec pnpm pack --pack-destination $dst
 
 # consume them like a registry user
 mkdir $dst\demo; cd $dst\demo
 npm init -y
-npm install ..\hooknostic-sdk-0.1.0.tgz ..\hooknostic-0.1.0.tgz
+npm install ..\hooknostic-sdk-0.1.0.tgz ..\hooknostic-agent-plugin-0.1.0.tgz ..\hooknostic-0.1.0.tgz
 node node_modules\hooknostic\bin\hooknostic.mjs --help
 ```
 
@@ -46,7 +47,7 @@ Publisher against that workflow filename, the `npm` environment, removing the
 
 ## Notes
 
-- Only `@hooknostic/sdk` and `hooknostic` are ever published (design §14);
+- Only `@hooknostic/agent-plugin`, `@hooknostic/sdk`, and `hooknostic` are published;
   every other workspace package carries `"private": true`.
 - The unscoped `hooknostic` CLI can only ever be public on npmjs.org; if a
   private stopgap registry were ever wanted, GitHub Packages supports scoped

@@ -56,14 +56,14 @@ describe("generateClaudeArtifacts", () => {
       "runtime/hooknostic.mjs",
     ]);
 
-    const pluginJson = JSON.parse(artifacts[0]!.contents);
+    const pluginJson = JSON.parse(artifacts[0]!.contents as string);
     expect(pluginJson).toEqual({
       name: "portable-repo-hooks",
       version: "1.2.3",
       description: "Example",
     });
 
-    const hooksJson = JSON.parse(artifacts[1]!.contents);
+    const hooksJson = JSON.parse(artifacts[1]!.contents as string);
     // two tool.before hooks → ONE PreToolUse dispatcher; excluded turn.stop
     // hook contributes no Stop entry for this target.
     expect(Object.keys(hooksJson.hooks)).toEqual(["PreToolUse", "SessionStart"]);
@@ -108,7 +108,7 @@ describe("generateClaudeArtifacts", () => {
     const artifacts = generateClaudeArtifacts(exampleIR(), TARGET, BUNDLE, {
       runtime: { ...OPTIONS.runtime, timeoutMs },
     });
-    const hooksJson = JSON.parse(artifacts[1]!.contents);
+    const hooksJson = JSON.parse(artifacts[1]!.contents as string);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(expected);
   });
 
@@ -120,7 +120,7 @@ describe("generateClaudeArtifacts", () => {
     const ir = exampleIR();
     ir.hooks[0]!.timeoutMs = 120_000;
     const artifacts = generateClaudeArtifacts(ir, TARGET, BUNDLE, OPTIONS);
-    const hooksJson = JSON.parse(artifacts[1]!.contents);
+    const hooksJson = JSON.parse(artifacts[1]!.contents as string);
     // 120s for the slow hook + 5s for its neighbour, + 1.
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(126);
     // The event it does not touch is unchanged.

@@ -9,6 +9,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "../agent-plugin/src/**/*.ts",
     "../core/src/**/*.ts",
     "../runtime/src/**/*.ts",
     "../adapter-claude/src/**/*.ts",

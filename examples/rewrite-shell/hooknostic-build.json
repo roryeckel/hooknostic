@@ -1,7 +1,6 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "hooknosticVersion": "0.1.0",
-  "source": "./src/hooks.ts",
   "targets": {
     "claude": {
       "status": "success",
@@ -52,5 +51,6 @@
       ]
     }
   },
-  "diagnostics": []
+  "diagnostics": [],
+  "source": "./src/hooks.ts"
 }

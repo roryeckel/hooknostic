@@ -16,6 +16,7 @@ import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
 import { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
 import { claudeCapabilityProfiles } from "./profile.js";
+import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
 import { claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
 import { claudeHarness } from "./harness.js";
 export { claudeHarness } from "./harness.js";
@@ -24,6 +25,7 @@ export { applyClaude } from "./apply.js";
 export { ClaudeDecodeError, decodeClaude } from "./decode.js";
 export { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
 export { claudeCapabilityProfiles } from "./profile.js";
+export { claudeAgentPluginProjector, projectAgentPluginToClaude } from "./project-agent-plugin.js";
 export { runClaudeCommandShim } from "./shim.js";
 export type { ClaudeShimOptions } from "./shim.js";
 export { classifyClaudeTool, claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
@@ -73,6 +75,7 @@ export function claudeAdapter(): HarnessAdapter {
     id: "claude",
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
     harness: claudeHarness,
+    agentPluginProjector: claudeAgentPluginProjector,
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",
     shellCodec: claudeShellCodec,
@@ -120,7 +123,11 @@ export function claudeAdapter(): HarnessAdapter {
       const hooksJson = artifacts.find((a) => a.path === "hooks/hooks.json");
       if (hooksJson) {
         try {
-          const parsed = JSON.parse(hooksJson.contents) as {
+          const parsed = JSON.parse(
+            typeof hooksJson.contents === "string"
+              ? hooksJson.contents
+              : new TextDecoder().decode(hooksJson.contents),
+          ) as {
             hooks?: Record<string, unknown>;
           };
           const validNames = new Set(Object.values(CLAUDE_NATIVE_EVENT));

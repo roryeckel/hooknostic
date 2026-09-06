@@ -1,56 +1,44 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { readAgentPluginMetadata } from "./agent-plugin.js";
+import { describe, expect, it } from "vitest";
+import type { AgentPluginProjector } from "@hooknostic/agent-plugin";
+import { resolveAgentPluginProjection } from "./agent-plugin.js";
+import type { TargetSpec } from "./adapter.js";
 
-const cleanup: string[] = [];
-afterEach(async () => {
-  await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
-});
+const target: TargetSpec = { id: "test", version: ">=2.1 <3", mode: "plugin", output: "dist" };
+const projector: AgentPluginProjector<TargetSpec> = {
+  namespace: "example.test",
+  profiles: [
+    {
+      range: ">=2.1 <2.5",
+      components: { "agent-plugin.skills": { level: "exact" } },
+      source: {
+        date: "2026-09-04",
+        validatedOn: [{ version: "2.1.0", date: "2026-09-04", method: "captured", what: "first range" }],
+      },
+    },
+    {
+      range: ">=2.5 <3",
+      components: { "agent-plugin.skills": { level: "approximate", rationale: "loses metadata" } },
+      source: {
+        date: "2026-09-04",
+        validatedOn: [{ version: "2.5.0", date: "2026-09-04", method: "captured", what: "second range" }],
+      },
+    },
+  ],
+  async project() {
+    return { files: [], issues: [], summary: { components: {}, omissions: [], copiedFileCount: 0 } };
+  },
+};
 
-async function root(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "hooknostic-agent-plugin-"));
-  cleanup.push(dir);
-  return dir;
-}
-
-describe("readAgentPluginMetadata", () => {
-  it("treats only a missing plugin.json as standalone mode", async () => {
-    const dir = await root();
-    await expect(readAgentPluginMetadata(dir)).resolves.toEqual({
-      present: false,
-      diagnostics: [],
-    });
+describe("resolveAgentPluginProjection", () => {
+  it("takes the least capable support across every intersected profile", () => {
+    const result = resolveAgentPluginProjection(target, projector);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.matrix?.["agent-plugin.skills"]).toMatchObject({ level: "approximate" });
   });
 
-  it("reports a non-file plugin.json as HN501", async () => {
-    const dir = await root();
-    await mkdir(join(dir, "plugin.json"));
-    const result = await readAgentPluginMetadata(dir);
-    expect(result.present).toBe(true);
-    expect(result.metadata).toBeUndefined();
-    expect(result.diagnostics).toEqual([
-      expect.objectContaining({
-        code: "HN501",
-        severity: "error",
-        location: { file: join(dir, "plugin.json") },
-      }),
-    ]);
-  });
-
-  it("still reads valid manifest metadata", async () => {
-    const dir = await root();
-    await writeFile(
-      join(dir, "plugin.json"),
-      JSON.stringify({ name: "agent-plugin", version: "1.2.3", description: "test" }),
-      "utf8",
-    );
-    const result = await readAgentPluginMetadata(dir);
-    expect(result).toMatchObject({
-      present: true,
-      metadata: { name: "agent-plugin", version: "1.2.3", description: "test" },
-      diagnostics: [],
-    });
+  it("rejects version ranges not fully covered by projection evidence", () => {
+    const result = resolveAgentPluginProjection({ ...target, version: ">=2 <4" }, projector);
+    expect(result.matrix).toBeUndefined();
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "HN203", severity: "error" }));
   });
 });

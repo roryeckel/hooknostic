@@ -17,6 +17,10 @@ Hooknostic fixes that. You author hooks once in TypeScript, and Hooknostic:
    different way (`emulated`), close-but-different (`approximate`), or `unsupported`.
 3. **Builds** the smallest possible native integration for every target that passes.
 
+It can also validate an **Agent Plugins 1.0** package and project its manifest, skills,
+MCP servers, client overlay, and optional Hooknostic hooks into a complete Claude Code
+plugin. Hookless skill/MCP packages work too; OpenCode package projection is deferred.
+
 v0.1 targets **Claude Code**, **OpenAI Codex CLI**, and **OpenCode**.
 
 ## What it looks like
@@ -105,6 +109,7 @@ Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
 | Package | Purpose |
 | --- | --- |
 | `@hooknostic/sdk` | Public authoring API and canonical types |
+| `@hooknostic/agent-plugin` | Public Agent Plugins 1.0 loader, schemas, and projection contracts |
 | `@hooknostic/core` | Compiler: config loading, plugin model, capability analysis, diagnostics |
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |
 | `hooknostic` | CLI: `check` / `build` / `doctor` / `inspect` |

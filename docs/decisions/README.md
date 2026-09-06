@@ -13,6 +13,8 @@ Read these when you want to know *why* something works the way it does, not just
 | [0002 — Hooks can't keep state between calls](0002-invocation-stateless-contract.md) | Why is there no place to stash data between hook invocations? |
 | [0003 — One entry point runs all your hooks, in order](0003-one-dispatcher-composition.md) | Who decides the order when several hooks match the same event? |
 | [0004 — Agent Plugins is a peer, not a dependency](0004-agent-plugins-relationship.md) | How does Hooknostic relate to the Agent Plugins packaging standard? |
+| [0011 — Project Agent Plugins into native plugins](0011-agent-plugin-native-projection.md) | How are portable Agent Plugins compiled into harness-native plugins? |
+| [0012 — Claude plugin runtime dependencies](0012-claude-plugin-runtime-dependencies.md) | How can projected Claude MCP servers resolve Node dependencies? |
 | [0005 — Which effects end a dispatch, stated once](0005-terminal-effects.md) | Which effects stop the remaining hooks, and which just add to the result? |
 | [0006 — Commit the built artifacts](0006-artifact-distribution.md) | Should build output be checked into the consumer's repository, or generated? |
 | [0007 — Portable shell write-back](0007-portable-shell-write-back.md) | How does a hook rewrite a shell command without knowing each harness's native key? |

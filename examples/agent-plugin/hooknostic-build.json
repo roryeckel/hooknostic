@@ -1,7 +1,6 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "hooknosticVersion": "0.1.0",
-  "source": "./src/hooks.ts",
   "targets": {
     "claude": {
       "status": "success",
@@ -14,9 +13,44 @@
         "approximate": 0,
         "unsupported": 0
       },
+      "projection": {
+        "status": "success",
+        "contentDigest": "sha256:f2158ba57e8775b576bd02a8ac6ce10593b198db2735f926c5c01aee0b627868",
+        "copiedFileCount": 4,
+        "components": {
+          "agent-plugin.manifest": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.skills": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.mcp.stdio": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.runtime-package": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          }
+        },
+        "omissions": []
+      },
       "artifacts": [
         ".claude-plugin/plugin.json",
+        ".mcp.json",
         "hooks/hooks.json",
+        "package-lock.json",
+        "package.json",
         "runtime/hooknostic.mjs"
       ]
     },
@@ -55,8 +89,12 @@
   "diagnostics": [],
   "agentPlugin": {
     "root": ".",
-    "extensions": [
-      "com.anthropic.claude-code"
-    ]
-  }
+    "specVersion": "1.0.0",
+    "targets": [
+      "claude"
+    ],
+    "sourceFileCount": 9,
+    "contentDigest": "sha256:2af7d1e2cad94be17d37555ec8dacc78b9c02a0d7c870760f1bb3bf9034a2520"
+  },
+  "source": "./src/hooks.ts"
 }

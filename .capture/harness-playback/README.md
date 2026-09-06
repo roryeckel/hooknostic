@@ -45,6 +45,13 @@ For one harness at a time, CI:
 7. For the pty-approval driver, runs the interactive TUI under `node-pty`,
    walks the first-run dialogs by polling for their screen markers, and lets
    the generated hook answer the native approval prompt.
+8. For Claude Agent Plugin projection, builds a portable skill plus stdio,
+   Streamable HTTP, and SSE MCP
+   package, projects it together with the production hook artifact, validates
+   it strictly, and loads it through `--plugin-dir`. The model request must
+   contain the skill marker, the stdio process records resolved root/data
+   variables, both remote transports must complete initialization requests,
+   and the hook trace must contain `prompt.before`.
 
 For OpenCode, the driver also redirects `XDG_CONFIG_HOME` into the scratch
 project and preinstalls the harness-matched `@opencode-ai/plugin` dependency
@@ -108,6 +115,11 @@ A successful run is a **live-probe** for only the installed version and harness:
 - a stop-time notification reaches the harness's user-facing channel where
   claimed (Claude stream-json system notice), and stays inert where
   explicitly unsupported (Codex).
+- on Claude 2.1.260, a projected skill is discovered; projected stdio,
+  Streamable HTTP, and SSE MCP servers initialize; the stdio process receives
+  Claude's plugin-root/plugin-data values translated into the Agent Plugin
+  environment contract; and Hooknostic hooks still execute in the combined
+  plugin.
 
 The committed fixture replay remains the evidence for hook payload shapes. The
 scripted model responses remain constructed even when a harness accepts them.

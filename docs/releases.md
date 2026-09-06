@@ -5,7 +5,8 @@ tarball-testing flow, see [publishing.md](./publishing.md).
 
 ## What ships
 
-Two npm packages: `@hooknostic/sdk` and `hooknostic` (the CLI). Everything
+Three npm packages: `@hooknostic/agent-plugin`, `@hooknostic/sdk`, and `hooknostic`
+(the CLI). Everything
 else in `packages/` is bundled into the CLI at build time — internal package
 versions are metadata only, so the whole workspace versions **in lockstep**:
 one release version everywhere, written by `scripts/set-versions.mjs`.
@@ -40,7 +41,7 @@ Key safety property: **a draft release materializes no tag.** Until decision
 4. Open the draft in the GitHub UI, read the notes (edit freely — it is just
    text), and click **Publish** (**decision 2**).
 5. **Release publish** fires: checks out the tag, re-verifies versions and
-   the guard, builds, tests, and publishes sdk then cli via npm Trusted
+   the guard, builds, tests, and publishes the two libraries then the CLI via npm Trusted
    Publishing. A prerelease version gets the `next` dist-tag, never `latest`.
 
 ## Version policy
@@ -55,7 +56,7 @@ Key safety property: **a draft release materializes no tag.** Until decision
 
 ## The publish guard
 
-While unreleased, `packages/sdk` and `packages/cli` carry `"private": true` —
+While unreleased, `packages/agent-plugin`, `packages/sdk`, and `packages/cli` carry `"private": true` —
 an executable never-publish guard. The release flow **cooperates** with it:
 `release-draft` and `release-publish` both fail while the fields exist,
 naming the checklist item. The first release PR removes them (and adds
@@ -70,7 +71,7 @@ descending order of strength:
    environment. Stronger than `private: true` ever was.
 2. The `npm` environment (required reviewer; deployments limited to `v*`).
 3. A tag ruleset on `v*`.
-4. The "exactly two publishable packages" test in `versions.test.ts`.
+4. The "exactly three publishable packages" test in `versions.test.ts`.
 5. `provenance: true` — an out-of-band publish shows unattested on npm.
 
 ## First public release — one-time bootstrap
@@ -83,7 +84,7 @@ descending order of strength:
   exists so *outside* researchers can report privately and there are none while
   nobody can see the repo. Until it is on, `SECURITY.md`'s advisory-form link
   is dead and its email fallback is the only route.
-- npmjs.com: Trusted Publisher for **both** packages → this repository,
+- npmjs.com: Trusted Publisher for **all three** packages → this repository,
   workflow **`release-publish.yml`**, environment **`npm`**.
 - GitHub: create environment `npm` (required reviewer: owner; deployment
   tags limited to `v*`); add a tag ruleset for `v*`; create the fine-grained
@@ -101,13 +102,13 @@ descending order of strength:
 | Draft notes are wrong | Edit the body in the UI |
 | Draft points at the wrong sha | Delete the draft (leaves no tag), re-run **Release draft** via dispatch with `version`/`target_ref`/`previous_tag` |
 | Published; notes wrong | Edit the body; tag and npm artifacts are unaffected |
-| Published; npm publish failed | Re-run **Release publish** via dispatch with the tag — both publish steps skip versions already on the registry |
+| Published; npm publish failed | Re-run **Release publish** via dispatch with the tag — all publish steps skip versions already on the registry |
 | sdk published, cli failed | Re-run the publish workflow (sdk skips, cli publishes). If the sdk artifact itself is defective: cut a patch for both and `npm deprecate @hooknostic/sdk@X.Y.Z "superseded by X.Y.Z+1"` — **never unpublish** |
 | Tag points at the wrong sha, npm already published | Never move the tag; cut a patch release |
 
 ## Deliberately not automated
 
-Changesets/semantic-release (two shipped packages, lockstep, one
+Changesets/semantic-release (three shipped packages, lockstep, one
 maintainer), a hand-maintained CHANGELOG (the generated notes are the
 changelog), conventional-commit version selection, required approvals on the
 release PR (self-approval theater), routine release candidates, and

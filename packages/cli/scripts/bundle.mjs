@@ -2,8 +2,7 @@
 /**
  * Build the publishable `hooknostic` package.
  *
- * Only `@hooknostic/sdk` and `hooknostic` are published (design §14), so the
- * CLI must be self-contained:
+ * The adapters/core/runtime remain internal, so the CLI must be self-contained:
  *
  *   dist/index.js         programmatic API with core + adapters inlined
  *                         (esbuild stays external: it runs at build time)
@@ -27,6 +26,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(here, "..");
 const dist = join(packageDir, "dist");
 const require = createRequire(import.meta.url);
+const agentPluginRequire = createRequire(resolve(packageDir, "../agent-plugin/package.json"));
+const yamlBrowser = resolve(
+  dirname(agentPluginRequire.resolve("yaml/package.json")),
+  "browser/index.js",
+);
 
 /** Adapters whose shims ship inside the CLI; `defaultAdapterRegistry()` routes to them. */
 const SHIMS = {
@@ -36,7 +40,7 @@ const SHIMS = {
 };
 
 /** Bare specifiers of workspace packages that are not published. */
-const internalSpecifier = () => /(["'])@hooknostic\/(core|runtime|adapter-[a-z]+)(\/[^"']*)?\1/g;
+const internalSpecifier = () => /(["'])@hooknostic\/(agent-plugin|core|runtime|adapter-[a-z]+)(\/[^"']*)?\1/g;
 
 function fail(message) {
   console.error(`hooknostic bundle: ${message}`);
@@ -65,6 +69,7 @@ await build({
   entryPoints: [join(packageDir, "src/index.ts")],
   outfile: join(dist, "index.js"),
   external: ["esbuild"],
+  alias: { yaml: yamlBrowser },
 });
 
 // 2. Binary: transpile only; it imports ./index.js.

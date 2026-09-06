@@ -1,5 +1,15 @@
 {
   "name": "combined-example",
   "version": "1.0.0",
-  "description": "Agent Plugins package with hooknostic-compiled lifecycle hooks"
+  "description": "Agent Plugins package with a skill, MCP server, and hooknostic-compiled lifecycle hooks",
+  "author": {
+    "name": "Hooknostic contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "mcp",
+    "skills",
+    "example"
+  ]
 }

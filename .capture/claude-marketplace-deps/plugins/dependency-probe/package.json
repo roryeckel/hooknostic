@@ -1,0 +1,9 @@
+{
+  "name": "dependency-probe",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "is-number": "7.0.0"
+  }
+}

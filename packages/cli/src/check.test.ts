@@ -9,6 +9,7 @@ import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
 import { codexHarness } from "@hooknostic/adapter-codex";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
 
 // Synthetic profiles need a syntactically valid source; provenance is
 // meaningless for a fake harness, so one shared stub keeps the noise down.
@@ -161,6 +162,66 @@ describe("hooknostic check", () => {
           r.capability === "tool.before.observe" && r.requested === "observe",
       ),
     ).toBe(true);
+  });
+
+  it("marks a target failed in JSON when Agent Plugin projection fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-projection-check-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "projection-check" }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        agentPlugin: { root: ".", targets: ["codex"] },
+        targets: {
+          codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" },
+        },
+      };`,
+    );
+
+    const capture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+    ).toBe(1);
+    const report = JSON.parse(capture.out());
+    expect(report.ok).toBe(false);
+    expect(report.targets.codex.ok).toBe(false);
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", target: "codex" }),
+    );
+  });
+
+  it("prints FAIL when output-layout validation fails after capability analysis", async () => {
+    const dir = await fixtureProject();
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          alpha: { version: ">=1.0 <2", mode: "plugin", output: "." },
+        },
+      };`,
+    );
+
+    const capture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        registry: registry(),
+        io: capture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(1);
+    expect(capture.out()).toContain("HN501");
+    expect(capture.out()).toContain("FAIL  alpha");
+    expect(capture.out()).not.toContain("PASS  alpha");
   });
 
   it("reports config problems as HN501 JSON with exit 1", async () => {

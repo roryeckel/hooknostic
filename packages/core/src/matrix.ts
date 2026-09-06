@@ -129,7 +129,7 @@ function hasExplicitPrerelease(range: string): boolean {
   return /\d+\.\d+\.\d+-[0-9A-Za-z]/.test(range);
 }
 
-function isRangeFullyCovered(requestedRange: string, profileRanges: readonly string[]): boolean {
+export function isRangeFullyCovered(requestedRange: string, profileRanges: readonly string[]): boolean {
   const union = profileRanges.join(" || ");
   const options = hasExplicitPrerelease(requestedRange)
     ? { includePrerelease: true }

@@ -179,9 +179,9 @@ rules on every harness.
   environment, and some harness tool paths bypass hooks entirely. Generated
   integrations preserve each harness's own trust prompts; Hooknostic never bypasses or
   auto-accepts them.
-- **Not a plugin marketplace or packaging standard.** Agent Plugins already covers
-  portable packaging; Hooknostic slots into it as a peer
-  ([Decision 0004](decisions/0004-agent-plugins-relationship.md)).
+- **Not a plugin marketplace or packaging standard.** Agent Plugins already defines
+  portable packaging; Hooknostic validates and projects it as a peer without changing
+  its schema ([Decision 0011](decisions/0011-agent-plugin-native-projection.md)).
 - **Not a policy engine.** It's an interoperability layer; what your hooks enforce is
   up to you.
 

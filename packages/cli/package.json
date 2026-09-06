@@ -49,6 +49,7 @@
     "esbuild": "^0.24.2"
   },
   "devDependencies": {
+    "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",

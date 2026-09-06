@@ -16,6 +16,7 @@
     }
   },
   "dependencies": {
+    "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/sdk": "workspace:*"

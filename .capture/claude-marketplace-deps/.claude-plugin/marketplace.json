@@ -1,0 +1,11 @@
+{
+  "name": "hooknostic-dependency-capture",
+  "owner": { "name": "Hooknostic capture" },
+  "plugins": [
+    {
+      "name": "dependency-probe",
+      "version": "1.0.0",
+      "source": "./plugins/dependency-probe"
+    }
+  ]
+}

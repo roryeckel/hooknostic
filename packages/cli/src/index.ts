@@ -9,3 +9,5 @@ export type { DoctorCommandOptions } from "./doctor.js";
 export { runInspect } from "./inspect.js";
 export type { InspectCommandOptions } from "./inspect.js";
 export { defaultAdapterRegistry } from "./registry.js";
+/** Used by generated support documentation and programmatic inspection clients. */
+export { resolveAgentPluginProjection } from "@hooknostic/core";

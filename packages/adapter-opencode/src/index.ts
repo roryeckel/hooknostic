@@ -119,7 +119,13 @@ export function opencodeAdapter(): HarnessAdapter {
     async validateArtifacts(artifacts, _target) {
       const diagnostics = [];
       const module = artifacts.find((a) => a.path === ".opencode/plugins/hooknostic.js");
-      if (module && !module.contents.includes("HooknosticPlugin")) {
+      const moduleText =
+        module === undefined
+          ? undefined
+          : typeof module.contents === "string"
+            ? module.contents
+            : new TextDecoder().decode(module.contents);
+      if (moduleText !== undefined && !moduleText.includes("HooknosticPlugin")) {
         diagnostics.push({
           code: "HN301" as const,
           severity: "error" as const,

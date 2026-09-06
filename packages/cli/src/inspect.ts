@@ -1,4 +1,6 @@
+import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
 import type { AdapterRegistry } from "@hooknostic/core";
+import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { CapabilityId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, isCapabilityId } from "@hooknostic/sdk";
 import type { CommandIO } from "./check.js";
@@ -6,6 +8,7 @@ import type { CommandIO } from "./check.js";
 export interface InspectCommandOptions {
   target: string;
   capability?: string;
+  component?: string;
   /** Harness version range to resolve; defaults to the adapter's first validated range. */
   version?: string;
   json?: boolean;
@@ -34,6 +37,19 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     );
     return 2;
   }
+  if (
+    options.component !== undefined &&
+    !AGENT_PLUGIN_COMPONENT_IDS.includes(options.component as AgentPluginComponentId)
+  ) {
+    options.io.stderr(
+      `unknown component "${options.component}"; valid Agent Plugin component IDs: ${AGENT_PLUGIN_COMPONENT_IDS.join(", ")}.`,
+    );
+    return 2;
+  }
+  if (options.capability !== undefined && options.component !== undefined) {
+    options.io.stderr("--capability and --component are mutually exclusive.");
+    return 2;
+  }
 
   // Default to the RECOMMENDED range, not the widest validated one: without
   // --version this command should answer for the range users are told to
@@ -53,7 +69,11 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   }
 
   const ids: CapabilityId[] =
-    options.capability !== undefined ? [options.capability] : [...ALL_CAPABILITY_IDS];
+    options.capability !== undefined
+      ? [options.capability]
+      : options.component !== undefined
+        ? []
+        : [...ALL_CAPABILITY_IDS];
 
   const rows = ids.map((id) => {
     const entry = resolved.matrix![id];
@@ -61,6 +81,37 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       capability: id,
       level: entry?.level ?? "unsupported",
       ...(entry?.rationale !== undefined ? { rationale: entry.rationale } : {}),
+    };
+  });
+  const projection = adapter.agentPluginProjector
+    ? resolveAgentPluginProjection(
+        {
+          id: adapter.id,
+          version,
+          mode: adapter.supportedModes()[0] ?? "local",
+          output: ".",
+        },
+        adapter.agentPluginProjector,
+      )
+    : undefined;
+  if (projection && !projection.matrix) {
+    for (const diagnostic of projection.diagnostics) {
+      options.io.stderr(`${diagnostic.code}: ${diagnostic.message}`);
+    }
+    return 1;
+  }
+  const componentIds: AgentPluginComponentId[] =
+    options.component === undefined
+      ? options.capability === undefined
+        ? [...AGENT_PLUGIN_COMPONENT_IDS]
+        : []
+      : [options.component as AgentPluginComponentId];
+  const componentRows = componentIds.map((id) => {
+    const entry = projection?.matrix?.[id];
+    return {
+      component: id,
+      level: entry?.level ?? "unsupported",
+      ...(entry?.rationale === undefined ? {} : { rationale: entry.rationale }),
     };
   });
 
@@ -79,6 +130,8 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
             source: p.source,
           })),
           capabilities: rows,
+          components: componentRows,
+          projectionProfiles: projection?.profilesUsed ?? [],
         },
         null,
         2,
@@ -100,6 +153,14 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     options.io.stdout(
       `${row.level.padEnd(12)} ${row.capability}${row.rationale ? `\n             ${row.rationale}` : ""}`,
     );
+  }
+  if (componentRows.length > 0) {
+    options.io.stdout("");
+    for (const row of componentRows) {
+      options.io.stdout(
+        `${row.level.padEnd(12)} ${row.component}${row.rationale ? `\n             ${row.rationale}` : ""}`,
+      );
+    }
   }
   return 0;
 }
