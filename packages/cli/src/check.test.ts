@@ -287,6 +287,67 @@ describe("hooknostic check", () => {
     expect((await readdir(dir)).filter((name) => name.startsWith(".hooknostic-"))).toEqual([]);
   });
 
+  it("fails a runtime dependency that needs an install script until it is named in allowInstallScripts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-check-scripts-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "scripted" }),
+    );
+    await writeFile(join(dir, "runtime.package.json"), JSON.stringify({ dependencies: { native: "1.0.0" } }));
+    await writeFile(
+      join(dir, "runtime.package-lock.json"),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          "": { dependencies: { native: "1.0.0" } },
+          "node_modules/native": { version: "1.0.0", hasInstallScript: true },
+        },
+      }),
+    );
+    const config = (allow: string) =>
+      `export default {
+        agentPlugin: {
+          root: ".",
+          targets: ["claude"],
+          runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json"${allow} },
+        },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } },
+      };`;
+
+    await writeFile(join(dir, "hooknostic.config.ts"), config(""));
+    const rejected = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: rejected.io,
+      }),
+    ).toBe(1);
+    expect(JSON.parse(rejected.out()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        target: "claude",
+        message: expect.stringContaining("npm ci --ignore-scripts"),
+      }),
+    );
+
+    // The opt-out is per package and carries no other meaning: the script still
+    // never runs, the author has just taken responsibility for this one.
+    await writeFile(join(dir, "hooknostic.config.ts"), config(', allowInstallScripts: ["native"]'));
+    const allowed = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: allowed.io,
+      }),
+      allowed.out(),
+    ).toBe(0);
+  });
+
   it("prints FAIL when output-layout validation fails after capability analysis", async () => {
     const dir = await fixtureProject();
     await writeFile(

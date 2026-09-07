@@ -67,6 +67,17 @@ export interface AgentPluginRuntimePackageConfig {
   manifest: string;
   /** npm lockfile, relative to the Agent Plugin root. */
   lockfile: string;
+  /**
+   * Dependency names allowed to declare an npm lifecycle install script.
+   *
+   * This does not make the script run: the harness installs with scripts
+   * disabled, and Hooknostic never invokes a package manager. It records that
+   * you have verified the named package works without its script — a
+   * `postinstall` that only prints, or a build step that falls back to a
+   * prebuilt binary shipped in the tarball. Anything that genuinely needs its
+   * script is outside the runtime package contract (ADR-0012).
+   */
+  allowInstallScripts?: string[];
 }
 
 export interface AgentPluginConfig<TTarget extends string = string> {

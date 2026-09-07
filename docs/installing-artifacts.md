@@ -96,7 +96,12 @@ Keep this manifest separate from the project manifest used to build Hooknostic:
 it must contain only MCP runtime dependencies. Do not commit `node_modules` to
 the artifact. This path supports pure-JavaScript npm packages. Dependencies that
 need lifecycle scripts or native compilation are outside the contract, as are
-pnpm and Yarn lockfiles. The behavior is captured for Claude Code 2.1.260 in
+pnpm and Yarn lockfiles. A dependency whose lockfile entry declares
+`hasInstallScript` fails `check`: Claude's install skips lifecycle scripts
+rather than refusing them, so the package would install unbuilt and fail when
+the plugin imports it. If you have verified a package works without its script,
+name it in `agentPlugin.runtimePackage.allowInstallScripts` — that records your
+judgement, it does not make the script run. The behavior is captured for Claude Code 2.1.260 in
 [`.capture/claude-marketplace-deps`](../.capture/claude-marketplace-deps/README.md)
 and defined in [ADR-0012](decisions/0012-claude-plugin-runtime-dependencies.md).
 

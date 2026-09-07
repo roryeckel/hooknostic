@@ -291,6 +291,48 @@ describe("validateNpmRuntimePackage", () => {
     });
   });
 
+  // `npm ci --ignore-scripts` does not refuse these packages: it installs them
+  // with their own setup skipped, so the failure lands at import time in the
+  // installed plugin rather than here.
+  describe("lifecycle install scripts", () => {
+    const withScript = (extra: Record<string, unknown> = {}) =>
+      single("1.0.0", { version: "1.0.0", hasInstallScript: true }, extra);
+
+    it("rejects a direct dependency that needs an install script", () => {
+      const result = validateNpmRuntimePackage(...withScript());
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain("npm ci --ignore-scripts");
+        expect(result.error).toContain('"dep"');
+        expect(result.error).not.toContain("regenerate the lockfile");
+      }
+    });
+
+    it("rejects a transitive dependency that needs an install script", () => {
+      const result = validateNpmRuntimePackage(
+        ...single(
+          "1.0.0",
+          { version: "1.0.0", dependencies: { native: "^1" } },
+          { "node_modules/dep/node_modules/native": { version: "1.0.0", hasInstallScript: true } },
+        ),
+      );
+      expect(result.ok).toBe(false);
+      // Named by package, not by nesting location, since that is what the
+      // author writes in `allowInstallScripts`.
+      if (!result.ok) expect(result.error).toContain('"native"');
+    });
+
+    it("accepts one the author has named in allowInstallScripts", () => {
+      expect(validateNpmRuntimePackage(...withScript(), { allowInstallScripts: ["dep"] })).toMatchObject({ ok: true });
+      expect(validateNpmRuntimePackage(...withScript(), { allowInstallScripts: ["other"] }).ok).toBe(false);
+    });
+
+    it("accepts a lock entry that declares no install script", () => {
+      expect(validateNpmRuntimePackage(...single("1.0.0", { version: "1.0.0", hasInstallScript: false })).ok).toBe(true);
+      expect(validateNpmRuntimePackage(...single("1.0.0", { version: "1.0.0" })).ok).toBe(true);
+    });
+  });
+
   it("accepts binary input", () => {
     const encoder = new TextEncoder();
     expect(validateNpmRuntimePackage(encoder.encode(manifest), encoder.encode(lockfile())).ok).toBe(true);

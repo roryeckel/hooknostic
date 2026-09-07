@@ -4,7 +4,9 @@
  *
  * The pair is emitted verbatim and installed by the harness with a locked,
  * script-free `npm ci`-style install, so anything `npm ci` would reject must
- * be rejected here, at build time, rather than on the consumer's machine. The
+ * be rejected here, at build time, rather than on the consumer's machine —
+ * plus the one thing that install would *accept* and then silently under-do,
+ * a package whose lifecycle scripts are skipped (ADR-0012). The rest of the
  * rules are npm's own, taken from its own packages rather than reimplemented:
  * `validate-npm-package-name` for names, `npm-package-arg` (with
  * `hosted-git-info`) to classify every dependency spec, arborist's `dep-valid`
@@ -309,6 +311,40 @@ function lockedGraphProblem(packages: Record<string, unknown>, overrides: Record
   return undefined;
 }
 
+/** The installed package name a lock entry location addresses. */
+function lockedName(location: string): string {
+  const cut = location.lastIndexOf("node_modules/");
+  return cut === -1 ? location : location.slice(cut + "node_modules/".length);
+}
+
+/**
+ * Why a locked package needs setup the harness install will not run, or
+ * `undefined` when none does. This is the one rule not taken from npm: an
+ * install with lifecycle scripts disabled does not *reject* a package with
+ * `preinstall`/`install`/`postinstall`, it installs it with its own setup
+ * skipped — the failure surfaces at import time in the installed plugin
+ * instead. A runtime package is pure JavaScript (ADR-0012), so the rejection
+ * happens here, unless the author has named the package in
+ * `allowInstallScripts` to say they have verified it runs without its script.
+ *
+ * `hasInstallScript` is npm-emitted lockfile metadata, written only when true.
+ * It is the signal npm itself uses, not a guarantee: a hand-written lock may
+ * omit it, and a package shipping a prebuilt binary with no install script is
+ * not caught by it at all.
+ */
+function installScriptProblem(
+  packages: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): string | undefined {
+  for (const [location, entry] of Object.entries(packages)) {
+    if (location === "" || !object(entry) || entry["hasInstallScript"] !== true) continue;
+    const name = lockedName(location);
+    if (allowed.has(name)) continue;
+    return `lockfile entry ${JSON.stringify(location)} needs an npm lifecycle install script, which the harness install does not run (\`npm ci --ignore-scripts\`); the package would be installed unbuilt and fail when the plugin imports it. Use a dependency that ships ready-to-run JavaScript, or add ${JSON.stringify(name)} to agentPlugin.runtimePackage.allowInstallScripts once you have verified it works without its script`;
+  }
+  return undefined;
+}
+
 function sameDependencies(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a).sort();
   if (keys.length !== Object.keys(b).length) return false;
@@ -341,7 +377,12 @@ function sameDependencies(a: Record<string, string>, b: Record<string, string>):
  *   under the same rules, so the lock is a complete graph and `npm ci` has
  *   nothing to re-resolve; `link:` entries are rejected;
  * - local paths, `file:`, `git+file:`, and package-manager protocols
- *   (`workspace:`, `link:`, …) are rejected outright, on any edge.
+ *   (`workspace:`, `link:`, …) are rejected outright, on any edge;
+ * - no locked package declares `hasInstallScript`, unless its name is listed
+ *   in `options.allowInstallScripts`. This rule alone is not npm's: the
+ *   harness install skips lifecycle scripts rather than refusing them, so
+ *   without it a package that needs setup passes `check` and fails at import
+ *   time in the installed plugin.
  *
  * Flat `overrides` (`{ name: range }`) are applied to every edge the way
  * arborist applies them; nested, selector, and `$ref` overrides are rejected
@@ -351,6 +392,7 @@ function sameDependencies(a: Record<string, string>, b: Record<string, string>):
 export function validateNpmRuntimePackage(
   manifestInput: string | Uint8Array,
   lockfileInput: string | Uint8Array,
+  options: { allowInstallScripts?: readonly string[] } = {},
 ): NpmRuntimePackageValidation {
   try {
     const manifest = parseJson(manifestInput, "runtime package manifest is not valid JSON");
@@ -423,6 +465,13 @@ export function validateNpmRuntimePackage(
     const graphProblem = lockedGraphProblem(packages, parsedOverrides.overrides);
     if (graphProblem !== undefined) {
       return { ok: false, error: `runtime package ${graphProblem}; regenerate the lockfile from the manifest` };
+    }
+    // Kept out of `lockedGraphProblem`: its findings all end in "regenerate
+    // the lockfile", which would be wrong advice for a package that needs a
+    // script no regeneration can supply.
+    const scriptProblem = installScriptProblem(packages, new Set(options.allowInstallScripts ?? []));
+    if (scriptProblem !== undefined) {
+      return { ok: false, error: `runtime package ${scriptProblem}` };
     }
     return {
       ok: true,

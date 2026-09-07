@@ -153,6 +153,12 @@ export interface AgentPluginRuntimePackage {
   manifest: string;
   /** Package-root-relative source path for the npm lockfile. */
   lockfile: string;
+  /**
+   * Dependency names allowed to declare an npm lifecycle install script. The
+   * script still never runs; this records that the author verified the package
+   * works without it.
+   */
+  allowInstallScripts?: readonly string[];
 }
 
 export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTarget> {

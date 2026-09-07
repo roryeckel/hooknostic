@@ -62,3 +62,24 @@ copy.
   manifest and lockfile, so review covers the exact inputs Claude will install.
 - Future projectors choose their own materialization. In particular, OpenCode
   v2 is not committed to npm or npm-lock semantics by this decision.
+
+## Amendments — 2026-09-07
+
+- **The pure-JavaScript boundary is enforced, not just declared.** The
+  consequence above put lifecycle-script and native dependencies outside this
+  contract, but the validator only mirrored npm's own rejections — and
+  `npm ci --ignore-scripts` does not reject such a package, it installs it with
+  its setup skipped. So a dependency needing `preinstall`/`install`/`postinstall`
+  passed `check` and failed at import time in the user's installed plugin. A
+  lockfile entry declaring `hasInstallScript` is now rejected, which widens the
+  validator's charter from "reject what `npm ci` rejects" to "…plus enforce this
+  boundary". `agentPlugin.runtimePackage.allowInstallScripts` names packages
+  exempted from the rule: it does not run the script — Hooknostic invokes no
+  package manager and the flag is the harness's — it records that the author
+  verified the package works without it, per package rather than as one switch.
+- **`hasInstallScript` is npm's own signal, not a proof.** npm writes it only
+  when true, so a hand-written or pre-v2 lock may omit it, and a package
+  shipping a prebuilt binary with no install script is not caught at all. The
+  lock's `os`/`cpu` fields are the complementary signal for platform-specific
+  packages and remain unchecked; a plugin cache is per-machine, so that is a
+  differently shaped problem than this one.

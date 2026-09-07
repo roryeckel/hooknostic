@@ -422,6 +422,10 @@ fixtures and releases.
 whose runtime imports npm dependencies. Each projector defines how, or whether,
 it can materialize that package. Claude projects the selected npm manifest and
 lockfile to its plugin root; see [ADR-0012](decisions/0012-claude-plugin-runtime-dependencies.md).
+Because Claude's install skips lifecycle scripts, a lockfile entry declaring
+`hasInstallScript` fails the build unless its name appears in the optional
+`runtimePackage.allowInstallScripts` — which records the author's judgement that
+the package runs without its script, and never causes the script to run.
 It is the only route to that root pair: a `package.json` or `package-lock.json`
 in the package root or in the Claude client-extension overlay is omitted, since
 Claude would install it without the validation `runtimePackage` inputs receive.

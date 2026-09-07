@@ -85,7 +85,11 @@ function runtimePackageFiles(
   // cached plugin copy (ADR-0012), so the manifest and lockfile must agree and
   // every dependency must be locked, or installation fails on the consumer's
   // machine rather than here.
-  const validation = validateNpmRuntimePackage(manifest.contents, lockfile.contents);
+  const validation = validateNpmRuntimePackage(
+    manifest.contents,
+    lockfile.contents,
+    configured.allowInstallScripts === undefined ? {} : { allowInstallScripts: configured.allowInstallScripts },
+  );
   if (!validation.ok) throw new Error(validation.error);
   return {
     manifest: { path: "package.json", contents: manifest.contents, mode: manifest.mode },

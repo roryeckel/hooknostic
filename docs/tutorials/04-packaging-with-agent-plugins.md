@@ -65,7 +65,10 @@ keeps the MCP server's production dependencies separate: Claude projection write
 configured manifest and npm lockfile as `dist/claude/package.json` and
 `dist/claude/package-lock.json`. On marketplace installation, Claude runs the locked,
 script-free npm install in its cached plugin copy. This contract supports pure-JavaScript
-npm dependencies; packages that need lifecycle scripts are not supported. The pair is
+npm dependencies; packages that need lifecycle scripts are not supported, and a lockfile
+entry declaring `hasInstallScript` fails `check` rather than installing unbuilt on the
+user's machine. (Verified a package that works without its script anyway? Name it in
+`runtimePackage.allowInstallScripts`; the script still never runs.) The pair is otherwise
 validated at build time the way `npm ci` would validate it: the manifest declares only
 `dependencies` with registry ranges, dist-tags, tarball URLs, or git specs (no `file:` or
 `workspace:`); the lockfile must be an npm `package-lock.json` (v2 or v3, not a pnpm or

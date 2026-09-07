@@ -144,6 +144,7 @@ export const hooknosticConfigSchema = z
           .object({
             manifest: z.string().min(1),
             lockfile: z.string().min(1),
+            allowInstallScripts: z.array(z.string().min(1)).optional(),
           })
           .strict()
           .optional(),
