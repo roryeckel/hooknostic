@@ -14,6 +14,20 @@ const MANIFEST_PATH = ".claude-plugin/plugin.json";
 const MCP_PATH = ".mcp.json";
 const HOOKS_PATH = "hooks/hooks.json";
 
+// Claude treats a `package.json`/`package-lock.json` pair at the plugin root as
+// install input for its locked, script-free `npm ci` (ADR-0012), so only the
+// explicitly configured and validated `runtimePackage` may materialize there.
+// Both routes into the root — a plain package file and a Claude
+// client-extension overlay file — are filtered against this. The comparison
+// case-folds for the same reason inventory exclusions do: the package is
+// inventoried on one filesystem and installed on others, so a `Package.json`
+// that Linux distinguishes is npm's install input to a Windows or macOS
+// consumer.
+function isRootNpmManifestPath(path: string): boolean {
+  const name = path.toLowerCase();
+  return name === "package.json" || name === "package-lock.json";
+}
+
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -146,14 +160,14 @@ function componentCounts(source: AgentPluginPackage) {
       counts[`agent-plugin.mcp.${type}`] = { discovered: count, emitted: count, skipped: 0 };
     }
   }
-  const extensionFiles = source.files.filter(
-    (file) => file.path.startsWith(`${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`),
-  ).length;
-  if (extensionFiles > 0) {
+  const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
+  const extensionFiles = source.files.filter((file) => file.path.startsWith(prefix));
+  const skipped = extensionFiles.filter((file) => isRootNpmManifestPath(file.path.slice(prefix.length))).length;
+  if (extensionFiles.length > 0) {
     counts["agent-plugin.client-extension.files"] = {
-      discovered: extensionFiles,
-      emitted: extensionFiles,
-      skipped: 0,
+      discovered: extensionFiles.length,
+      emitted: extensionFiles.length - skipped,
+      skipped,
     };
   }
   return counts;
@@ -192,10 +206,8 @@ export async function projectAgentPluginToClaude(
       file.path === "plugin.json" ||
       file.path === "mcp.json" ||
       // A package root commonly has the source project's development manifest
-      // and lockfile. Claude treats a root pair as install input, so only the
-      // explicitly selected and validated runtime pair may reach its root.
-      file.path === "package.json" ||
-      file.path === "package-lock.json" ||
+      // and lockfile.
+      isRootNpmManifestPath(file.path) ||
       runtimePackage?.sourcePaths.has(file.path)
     ) continue;
     if (file.path.startsWith(`${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`)) continue;
@@ -209,15 +221,27 @@ export async function projectAgentPluginToClaude(
     const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
     if (!file.path.startsWith(prefix)) continue;
     const path = file.path.slice(prefix.length);
+    if (isRootNpmManifestPath(path)) {
+      // Dropping a declared overlay file degrades the client-extension
+      // component, so it obeys the same policy as any other unrepresentable
+      // component: fatal by default, silent only under `onUnsupported: "warn"`.
+      const reason = `Claude would install a plugin-root ${path} without the validation agentPlugin.runtimePackage inputs receive; declare npm dependencies with runtimePackage instead`;
+      omissions.push({ component: "agent-plugin.client-extension.files", name: file.path, reason });
+      issues.push({
+        severity: context.onUnsupported,
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: file.path,
+        message: `Claude client-extension file ${JSON.stringify(file.path)} was omitted: ${reason}.`,
+      });
+      continue;
+    }
     files.set(path, { path, contents: file.contents, mode: file.mode });
     copiedPaths.add(path);
   }
 
   try {
     if (runtimePackage !== undefined) {
-      if (files.has("package.json") || files.has("package-lock.json")) {
-        throw new Error("runtime package collides with a Claude client-extension package file");
-      }
       files.set("package.json", runtimePackage.manifest);
       files.set("package-lock.json", runtimePackage.lockfile);
     }

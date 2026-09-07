@@ -422,6 +422,12 @@ fixtures and releases.
 whose runtime imports npm dependencies. Each projector defines how, or whether,
 it can materialize that package. Claude projects the selected npm manifest and
 lockfile to its plugin root; see [ADR-0012](decisions/0012-claude-plugin-runtime-dependencies.md).
+It is the only route to that root pair: a `package.json` or `package-lock.json`
+in the package root or in the Claude client-extension overlay is omitted, since
+Claude would install it without the validation `runtimePackage` inputs receive.
+The root name is matched case-insensitively, like inventory exclusions. Omitting
+a declared overlay file degrades the client-extension component, so it follows
+`onUnsupported`: an HN205 error by default, a recorded omission under `"warn"`.
 
 ### 8.2 CLI target narrowing
 

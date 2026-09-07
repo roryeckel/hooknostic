@@ -115,6 +115,94 @@ describe("Agent Plugin to Claude projection", () => {
     expect(paths).not.toContain("package-lock.json");
   });
 
+  it("omits client-extension npm manifests instead of installing them unvalidated", async () => {
+    const namespace = "com.anthropic.claude-code";
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file(`${namespace}/package.json`, JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
+        file(`${namespace}/package-lock.json`, "lockfileVersion: '9.0'\nimporters:\n  .: {}\n"),
+        file(`${namespace}/README.md`, "overlay"),
+      ]),
+      { target, hookArtifacts: [], onUnsupported: "warn" },
+    );
+    const paths = plan.files.map((item) => item.path);
+    expect(paths).not.toContain("package.json");
+    expect(paths).not.toContain("package-lock.json");
+    expect(paths).toContain("README.md");
+    expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
+      discovered: 3,
+      emitted: 1,
+      skipped: 2,
+    });
+    expect(plan.summary.omissions).toEqual([
+      {
+        component: "agent-plugin.client-extension.files",
+        name: `${namespace}/package.json`,
+        reason: expect.stringContaining("runtimePackage") as unknown as string,
+      },
+      {
+        component: "agent-plugin.client-extension.files",
+        name: `${namespace}/package-lock.json`,
+        reason: expect.stringContaining("runtimePackage") as unknown as string,
+      },
+    ]);
+  });
+
+  it.each([
+    { label: "an exact-case", manifest: "package.json", lockfile: "package-lock.json" },
+    { label: "a case-folded", manifest: "Package.json", lockfile: "PACKAGE-LOCK.JSON" },
+  ])("fails the default error policy on $label client-extension npm manifest", async ({ manifest, lockfile }) => {
+    const namespace = "com.anthropic.claude-code";
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file(`${namespace}/${manifest}`, JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
+        file(`${namespace}/${lockfile}`, "lockfileVersion: '9.0'\n"),
+      ]),
+      { target, hookArtifacts: [], onUnsupported: "error" },
+    );
+    expect(plan.files.map((item) => item.path)).not.toContain(manifest);
+    expect(plan.issues).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: `${namespace}/${manifest}`,
+      }),
+      expect.objectContaining({ severity: "error", path: `${namespace}/${lockfile}` }),
+    ]);
+    expect(diagnosticsFromAgentPluginIssues(plan.issues, "claude")).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "error", component: "agent-plugin.client-extension.files" }),
+    );
+  });
+
+  it("materializes the validated runtime pair over client-extension npm manifests", async () => {
+    const namespace = "com.anthropic.claude-code";
+    const runtimeManifest = JSON.stringify({ name: "portable-runtime", dependencies: { "is-number": "7.0.0" } });
+    const runtimeLockfile = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { "is-number": "7.0.0" } },
+        "node_modules/is-number": { version: "7.0.0", resolved: "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz" },
+      },
+    });
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file(`${namespace}/package.json`, JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
+        file("runtime.package.json", runtimeManifest),
+        file("runtime.package-lock.json", runtimeLockfile),
+      ]),
+      {
+        target,
+        hookArtifacts: [],
+        runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
+        onUnsupported: "warn",
+      },
+    );
+    expect(plan.issues).toEqual([expect.objectContaining({ severity: "warn", path: `${namespace}/package.json` })]);
+    expect(parsed(plan, "package.json")).toEqual(JSON.parse(runtimeManifest));
+    expect(parsed(plan, "package-lock.json")).toEqual(JSON.parse(runtimeLockfile));
+  });
+
   it("runs native hooks first and appends one generated dispatcher per event", async () => {
     const namespace = "com.anthropic.claude-code";
     const native = { hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "native" }] }] } };
