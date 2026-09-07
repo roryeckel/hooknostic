@@ -4441,7 +4441,8 @@ var hooknosticConfigSchema = external_exports.object({
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
     runtimePackage: external_exports.object({
       manifest: external_exports.string().min(1),
-      lockfile: external_exports.string().min(1)
+      lockfile: external_exports.string().min(1),
+      allowInstallScripts: external_exports.array(external_exports.string().min(1)).optional()
     }).strict().optional(),
     onUnsupported: external_exports.enum(["error", "warn"]).optional(),
     onInvalid: external_exports.enum(["error", "warn"]).optional()
