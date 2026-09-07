@@ -62,7 +62,10 @@ const node = { format: "esm", platform: "node", target: "node22", logLevel: "war
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
-// 1. Programmatic entry: everything inlined except esbuild. Inlined CommonJS
+// 1. Programmatic entry: everything imported is inlined except esbuild.
+//    cross-spawn is a registry dependency resolved by the projector at build
+//    time and bundled into its emitted MCP launcher, not into this entry.
+//    Inlined CommonJS
 //    dependencies (npm-package-arg and its tree) `require` Node builtins; in
 //    ESM output esbuild routes those through a `__require` shim that throws
 //    unless a top-level `require` exists, so the banner provides one.

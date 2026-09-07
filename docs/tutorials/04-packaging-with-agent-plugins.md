@@ -94,6 +94,11 @@ runtime ships instead), every target output, the build report, and staging direc
 `agentPlugin.exclude` adds POSIX globs on top. The build report's
 `agentPlugin.sourceFiles` lists every inventoried path, so check it after adding files.
 
+Claude projection omits root `package.json`, `package-lock.json`, and
+`npm-shrinkwrap.json` files; only the validated `runtimePackage` pair becomes
+install input. These files in a Claude client extension follow `onUnsupported`
+(error by default, omitted with a warning under `"warn"`).
+
 Exclusions apply before discovery and packaging. Excluding `mcp.json`, a skill
 directory, or its required `SKILL.md` removes that component without an unsupported
 component warning; excluding an auxiliary skill file keeps the skill and omits only
@@ -143,7 +148,9 @@ starting the server, because Claude ignores the native MCP cwd field on the
 [probed version](../../.capture/claude-mcp-cwd/README.md). Node must be available on
 PATH. The launcher preserves the server's arguments, environment, stdio, and exit
 status; its generated `runtime/mcp-launcher.mjs` path cannot collide with package
-content.
+content. Windows npm command shims such as `npx.cmd` are supported; command
+resolution and argument escaping are bundled into the launcher, so the installed
+plugin does not need a separate launcher dependency.
 
 ## Unsupported and invalid components
 

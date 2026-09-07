@@ -1,3 +1,6 @@
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { build } from "esbuild";
 import {
   validateNpmRuntimePackage,
   type AgentPluginIssue,
@@ -25,7 +28,9 @@ const HOOKS_PATH = "hooks/hooks.json";
 // consumer.
 function isRootNpmManifestPath(path: string): boolean {
   const name = path.toLowerCase();
-  return name === "package.json" || name === "package-lock.json";
+  // npm prefers shrinkwrap over package-lock, so it must not override the
+  // validated runtime lock through either package content or the overlay.
+  return name === "package.json" || name === "package-lock.json" || name === "npm-shrinkwrap.json";
 }
 
 const CLAUDE_METADATA_PREFIX = ".claude-plugin/";
@@ -107,9 +112,20 @@ function replacePluginVariables(value: string): string {
 const MCP_LAUNCHER_PATH = "runtime/mcp-launcher.mjs";
 // Claude currently ignores stdio `cwd`. Establish the portable working
 // directory in the launcher before starting the server (live probe below).
-const MCP_LAUNCHER = `import { spawn } from "node:child_process";
+const MCP_LAUNCHER = `import spawn from "cross-spawn";
+import { spawn as nativeSpawn } from "node:child_process";
+import { normalize } from "node:path";
+import escape from "cross-spawn/lib/util/escape.js";
 const [cwd, command, ...args] = process.argv.slice(2);
-const child = spawn(command, args, { cwd, stdio: "inherit" });
+const options = { cwd, stdio: "inherit" };
+const parsed = spawn._parse(command, args, options);
+// npm's global shims also forward %*. cross-spawn only double-escapes shims
+// under node_modules/.bin; apply that protection to other batch files too.
+if (process.platform === "win32" && /\\.(cmd|bat)$/i.test(parsed.file ?? "")) {
+  const line = [escape.command(normalize(parsed.file)), ...args.map(arg => escape.argument(arg, true))].join(" ");
+  parsed.args = ["/d", "/s", "/c", '"' + line + '"'];
+}
+const child = nativeSpawn(parsed.command, parsed.args, parsed.options);
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => child.kill(signal));
 }
@@ -124,6 +140,25 @@ child.on("exit", (code, signal) => {
   } else process.exitCode = code ?? 1;
 });
 `;
+
+async function bundleMcpLauncher(): Promise<string> {
+  // Resolve from this adapter (or the installed CLI), never from the plugin
+  // author's dependencies. OS selection stays in the generated runtime so a
+  // package built on Linux also handles Windows PATH/PATHEXT and .cmd shims.
+  const entry = createRequire(import.meta.url).resolve("cross-spawn");
+  const result = await build({
+    stdin: { contents: MCP_LAUNCHER, resolveDir: dirname(entry) },
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    // Strip host-specific module-path comments for reproducible output.
+    minify: true,
+    write: false,
+    banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
+  });
+  return result.outputFiles[0]!.text;
+}
 
 function translateServer(server: AgentPluginMcpServer): Record<string, unknown> {
   if (server.type !== "stdio") {
@@ -333,7 +368,7 @@ export async function projectAgentPluginToClaude(
       if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
         throw new Error(`generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`);
       }
-      files.set(MCP_LAUNCHER_PATH, { path: MCP_LAUNCHER_PATH, contents: MCP_LAUNCHER });
+      files.set(MCP_LAUNCHER_PATH, { path: MCP_LAUNCHER_PATH, contents: await bundleMcpLauncher() });
     }
     const translated = Object.fromEntries(
       Object.entries(source.mcp?.mcpServers ?? {}).map(([name, server]) => [name, translateServer(server)]),

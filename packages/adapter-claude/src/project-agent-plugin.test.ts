@@ -130,6 +130,40 @@ describe("Agent Plugin to Claude projection", () => {
     expect(plan.issues).toEqual([expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") })]);
   });
 
+  it.skipIf(process.platform !== "win32").each(["probe", "probe.cmd"])(
+    "launches Windows command shim %s with literal arguments",
+    async (command) => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic cmd launcher "));
+      try {
+        const bin = join(dir, "bin with spaces");
+        const worker = join(dir, "worker");
+        await mkdir(bin);
+        await mkdir(worker);
+        await writeFile(join(bin, "probe.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0probe.cjs" %*\r\n`);
+        await writeFile(join(bin, "probe.cjs"), 'console.log(JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)}));process.exit(7);');
+        const args = ["", "with spaces", 'a"quote', "trailing\\", "%PATH%", "!literal!", "a&b|c<d>e^f(g)"];
+        const portable = source();
+        portable.mcp!.mcpServers = { worker: { type: "stdio", command, args } };
+        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported: "error" });
+        expect(plan.issues).toEqual([]);
+        const launcher = plan.files.find((item) => item.path === "runtime/mcp-launcher.mjs")!;
+        const launcherPath = join(dir, "launcher.mjs");
+        await writeFile(launcherPath, launcher.contents);
+        const env = { ...process.env };
+        const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+        env[pathKey] = `${bin};${env[pathKey] ?? ""}`;
+        const result = spawnSync(process.execPath, [launcherPath, worker, command, ...args], {
+          cwd: dir, env, encoding: "utf8", timeout: 10_000,
+        });
+        expect(result.error).toBeUndefined();
+        expect(result.status, result.stderr).toBe(7);
+        expect(JSON.parse(result.stdout)).toEqual({ cwd: worker, args });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("copies skills and converts identity metadata and every supported MCP transport", async () => {
     const plan = await projectAgentPluginToClaude(source([file("bin/server", Uint8Array.from([0, 255]), 0o755)]), {
       target,
@@ -216,6 +250,32 @@ describe("Agent Plugin to Claude projection", () => {
     expect(paths).not.toContain("package.json");
     expect(paths).not.toContain("package-lock.json");
   });
+
+  it.each(["npm-shrinkwrap.json", "NPM-SHRINKWRAP.JSON"])(
+    "prevents %s from overriding the validated runtime lockfile through either copy route",
+    async (name) => {
+      for (const prefix of ["", "com.anthropic.claude-code/"]) {
+        for (const onUnsupported of ["error", "warn"] as const) {
+          const plan = await projectAgentPluginToClaude(source([
+            file(`${prefix}${name}`, JSON.stringify({ lockfileVersion: 3, packages: {} })),
+            file("runtime.package.json", JSON.stringify({ dependencies: {} })),
+            file("runtime.package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: {} } } })),
+          ]), {
+            target, hookArtifacts: [], onUnsupported,
+            runtimePackage: { manifest: "runtime.package.json", lockfile: "runtime.package-lock.json" },
+          });
+          expect(plan.files.map((item) => item.path)).not.toContain(name);
+          expect(parsed(plan, "package-lock.json").packages).toHaveProperty("");
+          if (prefix) {
+            expect(plan.issues).toContainEqual(expect.objectContaining({ severity: onUnsupported, path: `${prefix}${name}` }));
+            expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+          } else {
+            expect(plan.issues).toEqual([]);
+          }
+        }
+      }
+    },
+  );
 
   it("omits client-extension npm manifests instead of installing them unvalidated", async () => {
     const namespace = "com.anthropic.claude-code";

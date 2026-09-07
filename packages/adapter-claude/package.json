@@ -19,7 +19,9 @@
     "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
-    "@hooknostic/sdk": "workspace:*"
+    "@hooknostic/sdk": "workspace:*",
+    "cross-spawn": "^7.0.6",
+    "esbuild": "^0.24.2"
   },
   "devDependencies": {
     "@hooknostic/testkit": "workspace:*"

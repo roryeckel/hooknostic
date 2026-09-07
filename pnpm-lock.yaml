@@ -74,6 +74,12 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
+      esbuild:
+        specifier: ^0.24.2
+        version: 0.24.2
     devDependencies:
       '@hooknostic/testkit':
         specifier: workspace:*
@@ -144,6 +150,9 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       esbuild:
         specifier: ^0.24.2
         version: 0.24.2

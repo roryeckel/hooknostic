@@ -243,7 +243,7 @@ describe("simulated registry install", () => {
       );
       expect(run.status, `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`).toBe(0);
       // Piped stdout arrived complete: the binary lets the loop drain instead of forcing exit.
-      const report = JSON.parse(run.stdout) as { targets: Record<string, { status: string }> };
+      const report = JSON.parse(run.stdout) as { targets: Record<string, { status: string; requestedVersion: string }> };
       expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode"]);
       for (const target of Object.values(report.targets)) expect(target.status).toBe("success");
 
@@ -282,6 +282,31 @@ describe("simulated registry install", () => {
         { cwd: project, encoding: "utf8", stdio: "pipe", timeout: 60_000 },
       );
       expect(load.status, `stdout:\n${load.stdout}\nstderr:\n${load.stderr}`).toBe(0);
+
+      // The installed compiler must resolve its own launcher dependencies;
+      // the projected launcher must then run with no node_modules beside it.
+      await mkdir(join(project, "portable"));
+      await writeFile(join(project, "portable/plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "portable-probe",
+      }));
+      await writeFile(join(project, "portable/mcp.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+        mcpServers: { probe: { type: "stdio", command: "node" } },
+      }));
+      const config = join(project, "projection.config.ts");
+      await writeFile(config, `export default ${JSON.stringify({
+        agentPlugin: { root: "portable", targets: ["claude"] },
+        targets: { claude: { version: report.targets["claude"]!.requestedVersion, mode: "plugin", output: "projected" } },
+      })};`);
+      const projection = spawnSync(process.execPath, [
+        join(cliRoot, "node_modules/hooknostic/bin/hooknostic.mjs"), "build", "--config", config,
+      ], { cwd: project, encoding: "utf8", timeout: 60_000 });
+      expect(projection.status, `${projection.stdout}\n${projection.stderr}`).toBe(0);
+      const launcher = spawnSync(process.execPath, [
+        join(project, "projected/runtime/mcp-launcher.mjs"), project, process.execPath, "-e", 'console.log("standalone launcher")',
+      ], { cwd: project, encoding: "utf8", timeout: 10_000 });
+      expect(launcher.status, launcher.stderr).toBe(0);
+      expect(launcher.stdout.trim()).toBe("standalone launcher");
     },
   );
 });
