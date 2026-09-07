@@ -363,7 +363,7 @@ export async function projectAgentPluginToClaude(
     }
     const extensionManifest = parseObject(files.get(MANIFEST_PATH), "Claude plugin manifest");
     const manifestExtension = source.manifest.extensions?.[CLAUDE_AGENT_PLUGIN_NAMESPACE] ?? {};
-    const manifest = {
+    const manifest: Record<string, unknown> = {
       ...extensionManifest,
       ...manifestExtension,
       name: source.manifest.name,
@@ -375,6 +375,22 @@ export async function projectAgentPluginToClaude(
       ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
       ...(source.manifest.keywords === undefined ? {} : { keywords: source.manifest.keywords }),
     };
+    // Native validation requires a non-empty name, unlike the portable
+    // author object (.capture/claude-plugin-author). Check after identity
+    // precedence is resolved so an overlay cannot invent a missing name.
+    const author = manifest["author"];
+    if (author !== undefined && (!object(author) || typeof author["name"] !== "string" || author["name"].length === 0)) {
+      const reason = "Claude requires author.name to be a non-empty string";
+      issues.push({
+        severity: context.onUnsupported,
+        scope: "projection",
+        component: "agent-plugin.manifest",
+        path: `${MANIFEST_PATH}#/author`,
+        message: `Author metadata cannot be projected: ${reason}; supply a name or use onUnsupported: "warn" to omit the author.`,
+      });
+      omissions.push({ component: "agent-plugin.manifest", name: "author", reason });
+      delete manifest["author"];
+    }
     files.set(MANIFEST_PATH, { path: MANIFEST_PATH, contents: stringify(manifest) });
     copiedPaths.delete(MANIFEST_PATH);
 
@@ -452,7 +468,10 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     {
       range: ">=2.1 <3",
       components: {
-        "agent-plugin.manifest": { level: "exact" },
+        "agent-plugin.manifest": {
+          level: "exact",
+          rationale: "Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn.",
+        },
         "agent-plugin.skills": { level: "exact" },
         "agent-plugin.mcp.stdio": { level: "exact" },
         "agent-plugin.mcp.streamable-http": { level: "exact" },
@@ -490,6 +509,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "live-probe",
             artifact: ".capture/claude-mcp-cwd",
             what: "Cross-directory MCP probe: Claude expanded plugin-root variables but ignored both relative and plugin-root-anchored native cwd; the subprocess inherited the project directory. A generated Node launcher then established the plugin subdirectory as the MCP cwd.",
+          },
+          {
+            version: "2.1.260",
+            date: "2026-09-07",
+            method: "live-probe",
+            artifact: ".capture/claude-plugin-author",
+            what: "Native plugin validation rejects author objects with a missing or empty name; omitting author or supplying a non-empty name passes, including whitespace-only names.",
           },
         ],
         notes: ["https://code.claude.com/docs/en/plugins-reference (checked 2026-09-04)"],

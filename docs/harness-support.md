@@ -27,7 +27,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 
 | Component | Support | Rationale |
 | --- | --- | --- |
-| `agent-plugin.manifest` | exact | — |
+| `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
 | `agent-plugin.skills` | exact | — |
 | `agent-plugin.mcp.stdio` | exact | — |
 | `agent-plugin.mcp.streamable-http` | exact | — |
@@ -43,6 +43,7 @@ Projection validation records:
 | 2.1.260 | 2026-09-05 | live-probe | `.capture/claude-marketplace-deps` | Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version. |
 | 2.1.260 | 2026-09-04 | doc-derived | `docs/baseline-2026-08-20.md` | Claude documents HTTP and SSE MCP transports and plugin root/data variables. |
 | 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-mcp-cwd` | Cross-directory MCP probe: Claude expanded plugin-root variables but ignored both relative and plugin-root-anchored native cwd; the subprocess inherited the project directory. A generated Node launcher then established the plugin subdirectory as the MCP cwd. |
+| 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-plugin-author` | Native plugin validation rejects author objects with a missing or empty name; omitting author or supplying a non-empty name passes, including whitespace-only names. |
 
 ### Codex CLI
 

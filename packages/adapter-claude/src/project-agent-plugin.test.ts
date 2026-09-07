@@ -238,6 +238,40 @@ describe("Agent Plugin to Claude projection", () => {
     });
   });
 
+  it.each([{}, { email: "maintainer@example.com" }, { url: "https://example.com" }, { name: "" }])(
+    "reports an unrepresentable author under both projection policies: %j", async (author) => {
+      const portable = source();
+      delete portable.mcp;
+      portable.manifest.author = author;
+      // Portable identity wins even when the native overlay supplies a name.
+      portable.manifest.extensions = { "com.anthropic.claude-code": { author: { name: "Overlay" } } };
+      for (const onUnsupported of ["error", "warn"] as const) {
+        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported });
+        expect(plan.issues).toEqual([expect.objectContaining({
+          severity: onUnsupported,
+          component: "agent-plugin.manifest",
+          message: expect.stringContaining("author.name"),
+        })]);
+        expect(parsed(plan, ".claude-plugin/plugin.json")).not.toHaveProperty("author");
+        expect(plan.summary.omissions).toEqual([expect.objectContaining({
+          component: "agent-plugin.manifest", name: "author",
+        })]);
+        expect(portable.manifest.author).toEqual(author);
+      }
+    },
+  );
+
+  it("preserves a representable author without tightening Claude's name rule", async () => {
+    const portable = source();
+    delete portable.mcp;
+    // The native validator accepts whitespace; the requirement is length, not trimming.
+    portable.manifest.author = { name: " ", email: "maintainer@example.com" };
+    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported: "error" });
+    expect(plan.issues).toEqual([]);
+    expect(parsed(plan, ".claude-plugin/plugin.json").author).toEqual(portable.manifest.author);
+    expect(plan.summary.omissions).toEqual([]);
+  });
+
   it("does not project the source development manifest without an explicit runtime package", async () => {
     const plan = await projectAgentPluginToClaude(
       source([

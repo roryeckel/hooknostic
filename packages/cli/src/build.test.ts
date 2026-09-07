@@ -166,6 +166,35 @@ function partialProjectorAdapter() {
 }
 
 describe("hooknostic build end-to-end", () => {
+  it("rejects nameless author metadata in check and build unless explicitly omitted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-author-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    const output = join(dir, "dist/claude");
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "author-probe", author: { email: "maintainer@example.com" },
+    }));
+    const writeConfig = async (onUnsupported?: "warn") => writeFile(config, `export default ${JSON.stringify({
+      agentPlugin: { root: ".", targets: ["claude"], ...(onUnsupported === undefined ? {} : { onUnsupported }) },
+      targets: { claude: { version: claudeHarness.recommendedRange, mode: "plugin", output: "dist/claude" } },
+    })};`);
+    await writeConfig();
+    for (const run of [runCheck, runBuild]) {
+      const capture = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io })).toBe(1);
+      expect(JSON.parse(capture.out()).diagnostics).toContainEqual(expect.objectContaining({
+        code: "HN205", severity: "error", component: "agent-plugin.manifest",
+      }));
+      expect(existsSync(output)).toBe(false);
+    }
+    await writeConfig("warn");
+    const capture = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io })).toBe(0);
+    expect(JSON.parse(await readFile(join(output, ".claude-plugin/plugin.json"), "utf8"))).not.toHaveProperty("author");
+    expect(JSON.parse(capture.out()).targets.claude.projection.omissions).toEqual([
+      expect.objectContaining({ component: "agent-plugin.manifest", name: "author" }),
+    ]);
+  });
   it(
     "builds the rewrite-shell example into three self-contained target artifacts",
     { timeout: 120_000 },

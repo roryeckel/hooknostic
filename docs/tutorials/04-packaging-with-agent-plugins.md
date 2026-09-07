@@ -135,6 +135,11 @@ counterpart. Manifests, MCP server maps, and hook maps are merged structurally:
 - existing native hooks run first, followed by Hooknostic's dispatcher;
 - collisions with Hooknostic's reserved runtime path fail with `HN503`.
 
+Claude requires a non-empty `author.name` when author metadata is present.
+A portable author containing only an email or URL fails projection with `HN205`.
+Supply a name, or set `onUnsupported: "warn"` to omit the whole author object;
+the build report records that omission. The portable source stays unchanged.
+
 Agent Plugin MCP placeholders in arguments, environment values, and working directories
 become Claude's persistent variables: `${PLUGIN_ROOT}` → `${CLAUDE_PLUGIN_ROOT}` and
 `${PLUGIN_DATA}` → `${CLAUDE_PLUGIN_DATA}`. A stdio command must be a bare executable or
