@@ -37,9 +37,8 @@ it required a source-side generated tree.
   non-excluded symbolic link that escapes the package rejects the whole package before
   component contents are parsed; this deliberately strengthens the standard's narrower
   component failure boundary so projection never reads outside its declared input root.
-- Claude Code is the first projector. Codex continues to consume Agent Plugins directly
-  and receives only Hooknostic's separate local hook artifact. OpenCode projection is
-  deferred until its plugin API has its own capture and adapter work.
+- Claude Code is the first projector. Codex and OpenCode projection are deferred
+  until their plugin APIs have their own capture and adapter work.
 
 ## Consequences
 

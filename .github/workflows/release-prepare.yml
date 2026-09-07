@@ -111,8 +111,8 @@ jobs:
             echo ""
             echo "- [x] Versions bumped in every carrier (automated: scripts/set-versions.mjs)"
             echo "- [x] Lockfile synced; example artifacts rebuilt from the repo root (automated)"
-            echo '- [ ] FIRST PUBLIC RELEASE ONLY -- remove `"private": true` from packages/sdk/package.json and packages/cli/package.json'
-            echo '- [ ] FIRST PUBLIC RELEASE ONLY -- add `"publishConfig": { "access": "public", "provenance": true }` to both'
+            echo '- [ ] FIRST PUBLIC RELEASE ONLY -- remove `"private": true` from packages/agent-plugin/package.json, packages/sdk/package.json, and packages/cli/package.json'
+            echo '- [ ] FIRST PUBLIC RELEASE ONLY -- add `"publishConfig": { "access": "public", "provenance": true }` to all three'
             echo "- [ ] FIRST PUBLIC RELEASE ONLY -- update the AGENTS.md publish carve-out (docs/releases.md)"
             echo "- [ ] CI green on this PR (3-OS matrix, artifact byte gate, docs drift gate)"
             echo "- [ ] Merge = decision 1. The draft release then appears; review its notes and publish = decision 2."

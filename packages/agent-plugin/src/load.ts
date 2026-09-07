@@ -320,11 +320,15 @@ function loadMcp(
     issue(issues, "warn", "mcp", "mcp.json has an invalid top-level document and MCP was disabled.", "mcp.json");
     return undefined;
   }
-  const servers: Record<string, AgentPluginMcpServer> = {};
+  const serverEntries: [string, AgentPluginMcpServer][] = [];
   for (const [name, server] of Object.entries(value["mcpServers"])) {
     const valid = validateServer(root, name, server, issues);
-    if (valid !== undefined) servers[name] = valid;
+    if (valid !== undefined) serverEntries.push([name, valid]);
   }
+  // Object.fromEntries defines own data properties, including `__proto__`.
+  // Assignment to a normal object would invoke Object.prototype's legacy
+  // setter and silently omit that schema-valid server name.
+  const servers = Object.fromEntries(serverEntries) as Record<string, AgentPluginMcpServer>;
   return { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: servers };
 }
 

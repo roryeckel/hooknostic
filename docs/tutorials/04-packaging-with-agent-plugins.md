@@ -75,9 +75,9 @@ rules, and the locked graph must be complete down to the last transitive depende
 Regenerate the lockfile from the manifest whenever you change either; a hand-edited lock
 fails `check` with the same message `npm ci` would have given the user.
 
-Only `claude` receives the portable package. Codex already consumes Agent Plugins
-natively, while this config continues to emit its separate local hook artifact.
-OpenCode package projection is intentionally deferred. Listing a target under
+Only `claude` receives a projected portable package. This config continues to emit its
+separate local hook artifact for Codex; Codex and OpenCode projection are intentionally
+deferred. Listing a target under
 `agentPlugin.targets` whose adapter has no projector is an error, whatever
 `onUnsupported` says: a projection that cannot happen is a configuration mistake, not a
 component to degrade.

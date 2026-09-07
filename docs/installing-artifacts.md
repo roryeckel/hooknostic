@@ -293,6 +293,6 @@ translated `.mcp.json`, any Claude-specific overlay, and optional Hooknostic hoo
 Install or reference that output exactly like any other Claude plugin. No generated
 files are written beside the portable source components.
 
-Codex continues to consume the Agent Plugins package directly; Hooknostic's Codex
-output contains only its local hook integration. OpenCode package projection is not yet
-implemented. See [ADR-0011](decisions/0011-agent-plugin-native-projection.md).
+Codex and OpenCode package projection are not yet implemented. Their Hooknostic outputs
+contain only their local hook integrations. See
+[ADR-0011](decisions/0011-agent-plugin-native-projection.md).

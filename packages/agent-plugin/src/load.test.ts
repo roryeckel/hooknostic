@@ -60,6 +60,24 @@ describe("loadAgentPlugin", () => {
     expect(loaded.issues.filter((issue) => issue.severity === "warn")).toHaveLength(2);
   });
 
+  it("preserves schema-valid MCP server names that shadow Object.prototype", async () => {
+    const root = await packageRoot();
+    // JSON.parse creates an own `__proto__` key; an assignment into `{}` would
+    // instead invoke Object.prototype's legacy setter and lose this server.
+    await writeFile(
+      join(root, "mcp.json"),
+      `{"$schema":"${AGENT_PLUGIN_MCP_SCHEMA}","mcpServers":{"__proto__":{"type":"stdio","command":"node"}}}`,
+    );
+
+    const loaded = await loadAgentPlugin({ root });
+    expect(loaded.issues).toEqual([]);
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["__proto__"]);
+    expect(loaded.package?.mcp?.mcpServers["__proto__"]).toEqual({
+      type: "stdio",
+      command: "node",
+    });
+  });
+
   it("rejects placeholders in MCP commands while retaining valid sibling servers", async () => {
     const root = await packageRoot();
     await writeFile(
