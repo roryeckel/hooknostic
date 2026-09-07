@@ -4,11 +4,9 @@ name: Release publish
 # publishes the draft release that stage 2 created -- that click IS the ship
 # decision. The dispatch input is the recovery path for a failed publish.
 #
-# First-public-release bootstrap (see docs/releases.md): configure npm
-# Trusted Publisher for BOTH packages against THIS workflow filename
-# (release-publish.yml) and the `npm` environment, create that environment,
-# and remove `"private": true` from packages/{agent-plugin,sdk,cli}/package.json in the
-# release PR. Until then, every run fails at the guard below -- deliberately.
+# First publication uses NPM_PUBLICATION_MODE=bootstrap in the protected npm
+# environment: attach CI-built pnpm tarballs for the owner's interactive 2FA
+# publication. After configuring trusted publishers, set the mode to oidc.
 on:
   release:
     types: [published]
@@ -19,8 +17,8 @@ on:
         required: true
 
 permissions:
-  contents: read
-  id-token: write # npm trusted publishing (OIDC); no NPM_TOKEN exists, ever
+  contents: write # bootstrap attaches verified tarballs to the release
+  id-token: write # npm trusted publishing (OIDC); no npm token secret
 
 concurrency:
   group: release-publish-${{ github.event.release.tag_name || inputs.tag }}
@@ -48,6 +46,20 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
+      - name: Validate publication mode
+        id: publication
+        # Resolve environment-scoped variables in a step, after the runner
+        # has entered the protected environment, and freeze the chosen mode.
+        env:
+          NPM_PUBLICATION_MODE: ${{ vars.NPM_PUBLICATION_MODE || 'oidc' }}
+        shell: bash
+        run: |
+          case "$NPM_PUBLICATION_MODE" in
+            bootstrap|oidc) ;;
+            *) echo "NPM_PUBLICATION_MODE must be bootstrap or oidc"; exit 1 ;;
+          esac
+          echo "mode=$NPM_PUBLICATION_MODE" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -71,6 +83,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Attach first-publication tarballs and checksums
+        if: steps.publication.outputs.mode == 'bootstrap'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/bootstrap-release.mjs "${{ github.repository }}" "$RELEASE_TAG" "$RUNNER_TEMP/hooknostic-release-assets-${{ github.run_id }}-${{ github.run_attempt }}"
+
       # Libraries first, then the CLI.
       # pnpm publish (not npm publish): rewrites workspace:* specifiers to real
       # versions in the shipped manifest, and its OIDC flow honors npm trusted
@@ -81,6 +99,7 @@ jobs:
       # half-state recoverable by re-running this workflow. Never unpublish;
       # `npm deprecate` is the tool of record for a defective artifact.
       - name: Publish @hooknostic/sdk
+        if: steps.publication.outputs.mode == 'oidc'
         working-directory: packages/sdk
         shell: bash
         run: |
@@ -94,6 +113,7 @@ jobs:
           fi
 
       - name: Publish @hooknostic/agent-plugin
+        if: steps.publication.outputs.mode == 'oidc'
         working-directory: packages/agent-plugin
         shell: bash
         run: |
@@ -107,6 +127,7 @@ jobs:
           fi
 
       - name: Publish hooknostic (CLI)
+        if: steps.publication.outputs.mode == 'oidc'
         working-directory: packages/cli
         shell: bash
         run: |

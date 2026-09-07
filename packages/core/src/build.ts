@@ -322,6 +322,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     const agentPluginRoot = resolve(configDir, config.agentPlugin.root);
     const loaded = await loadAgentPlugin({
       root: agentPluginRoot,
+      ...(config.agentPlugin.executableFiles === undefined ? {} : { executableFiles: config.agentPlugin.executableFiles }),
       exclude: await projectionExcludes(
         agentPluginRoot,
         configPath,

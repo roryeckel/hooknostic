@@ -30,6 +30,7 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  actions: read
 
 jobs:
   draft:
@@ -93,17 +94,7 @@ jobs:
         shell: bash
         run: |
           SHA="$(git rev-parse HEAD)"
-          for i in $(seq 1 40); do
-            RUNS="$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" --jq '[.check_runs[] | {name, status, conclusion}]')"
-            TOTAL="$(echo "$RUNS" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const r=JSON.parse(d);console.log(r.length)})')"
-            BAD="$(echo "$RUNS" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const r=JSON.parse(d);console.log(r.filter(x=>x.status==="completed"&&x.conclusion!=="success"&&x.conclusion!=="skipped").length)})')"
-            PENDING="$(echo "$RUNS" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const r=JSON.parse(d);console.log(r.filter(x=>x.status!=="completed").length)})')"
-            echo "check runs: total=$TOTAL failed=$BAD pending=$PENDING"
-            if [ "$BAD" != "0" ]; then echo "CI failed at $SHA"; exit 1; fi
-            if [ "$TOTAL" != "0" ] && [ "$PENDING" = "0" ]; then exit 0; fi
-            sleep 30
-          done
-          echo "timed out waiting for CI at $SHA"; exit 1
+          node scripts/wait-for-ci.mjs "${{ github.repository }}" "$SHA"
 
       - name: Previous tag
         id: prev

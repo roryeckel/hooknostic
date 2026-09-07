@@ -11,7 +11,8 @@
   "scripts": {
     "build": "pnpm --filter @hooknostic/agent-plugin run bundle && pnpm --filter @hooknostic/sdk run bundle && tsc --noEmit && pnpm -r --if-present run bundle",
     "typecheck": "pnpm --filter @hooknostic/agent-plugin run bundle && pnpm --filter @hooknostic/sdk run bundle && tsc --noEmit",
-    "pretest": "pnpm --filter @hooknostic/agent-plugin run bundle && pnpm --filter @hooknostic/sdk run bundle && pnpm --filter hooknostic run bundle",
+    "bundle": "pnpm --filter @hooknostic/agent-plugin run bundle && pnpm --filter @hooknostic/sdk run bundle && pnpm --filter hooknostic run bundle",
+    "pretest": "pnpm run bundle",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint ."

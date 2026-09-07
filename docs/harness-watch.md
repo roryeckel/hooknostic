@@ -228,7 +228,7 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
 1. Read the issue's outcome class: `install-failure` (packaging/toolchain) vs
    `playback-failure` (behavior drift).
 2. Reproduce locally:
-   `pnpm --filter @hooknostic/sdk run bundle && pnpm --filter hooknostic run bundle`
+   `pnpm run bundle`
    then
    `HOOKNOSTIC_PLAYBACK=<harness> HOOKNOSTIC_PLAYBACK_VERSION=<version> pnpm exec vitest run packages/cli/test/harness-playback.test.ts`.
 3. Playback failure → follow the harness-capture skill; the failing

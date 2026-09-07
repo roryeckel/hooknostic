@@ -1,0 +1,35 @@
+# ADR-0013: Explicit executable files and portable permission digests
+
+Status: accepted
+
+## Context
+
+Agent Plugin inventory formerly copied host permission bits into files and
+source/projection digests. A Windows-mounted checkout can report every file as
+0777 while a Linux checkout of identical Git contents reports 0644. This broke
+committed example reproducibility and made release identity depend on the host.
+
+## Decision
+
+`LoadAgentPluginOptions.executableFiles` and the SDK's
+`agentPlugin.executableFiles` declare exact, case-sensitive POSIX paths relative
+to the package root. An entry must name an included regular file, including a
+safe dereferenced file link. Absolute paths, backslashes, control characters,
+colon/drive paths, empty segments, `.`/`..` segments, missing paths, directories,
+excluded paths, and case mismatches fail loading. Entries are literal names,
+not globs. Duplicate declarations are harmless.
+
+Inventory assigns 0755 to declared files and 0644 to every other file, ignoring
+host permissions. Source and projection digests retain modes as inputs, now
+using these canonical modes. Projector-generated executables continue to use
+explicit artifact modes. No Git checkout or host-specific executable inference
+is required, and copied file bytes and raw plugin data remain unchanged.
+
+## Migration and consequences
+
+Authors who previously relied on `chmod +x` must list those files explicitly.
+Omitting the option makes all inventoried files non-executable. Sources and
+build reports must be regenerated; old digests are not expected to match.
+Windows, Linux, and macOS produce the same reports and artifact bytes from the
+same sources and configuration. Actual enforcement of POSIX bits still depends
+on the destination filesystem.

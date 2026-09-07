@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,7 @@ import { opencodeHarness } from "@hooknostic/adapter-opencode";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
+  loadAgentPlugin,
 } from "@hooknostic/agent-plugin";
 import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
@@ -633,6 +634,33 @@ ${run.stderr}`).toBe(0);
     ).toBe(0);
     expect(human.out()).toContain("BUILT  claude");
     expect(human.out()).toMatch(/Agent Plugin projection success: 2 components emitted, 0 omitted, 1 package files copied/);
+  });
+
+  it("projects declared executable files and keeps both digests independent of host modes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-executable-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "source/skills/review"), { recursive: true });
+    await writeFile(join(dir, "source/plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "executable" }));
+    await writeFile(join(dir, "source/skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    const script = "skills/review/tool.sh";
+    await writeFile(join(dir, "source", script), "#!/bin/sh\necho portable\n");
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(config, `export default {
+      agentPlugin: { root: "source", targets: ["claude"], executableFiles: [${JSON.stringify(script)}] },
+      targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "dist" } }
+    };`);
+    const build = async () => {
+      const io = captureIO();
+      expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: io.io }), io.out() + io.err()).toBe(0);
+      return JSON.parse(io.out());
+    };
+    await chmod(join(dir, "source", script), 0o600);
+    const first = await build();
+    const source = await loadAgentPlugin({ root: join(dir, "source"), executableFiles: [script] });
+    expect(first.agentPlugin.contentDigest).toBe(source.package?.contentDigest);
+    if (process.platform !== "win32") expect((await stat(join(dir, "dist", script))).mode & 0o777).toBe(0o755);
+    await chmod(join(dir, "source", script), 0o777);
+    expect(await build()).toEqual(first);
   });
 
   it("never ships dependencies, secrets, the config, or the hook source from a project-root package", async () => {

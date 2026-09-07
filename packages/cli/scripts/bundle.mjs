@@ -21,6 +21,7 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { createRequireBanner, licenseNoticesPlugin } from "../../core/src/bundle-support.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(here, "..");
@@ -57,7 +58,7 @@ async function walk(dir) {
   return nested.flat();
 }
 
-const node = { format: "esm", platform: "node", target: "node22", logLevel: "warning" };
+const node = { format: "esm", platform: "node", target: "node22", logLevel: "warning", legalComments: "eof" };
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
@@ -76,8 +77,9 @@ await build({
   outfile: join(dist, "index.js"),
   external: ["esbuild"],
   alias: { yaml: yamlBrowser },
+  plugins: [licenseNoticesPlugin({ noticeFile: join(dist, "THIRD_PARTY_NOTICES.txt") })],
   banner: {
-    js: 'import { createRequire as __hooknosticCreateRequire } from "node:module";\nconst require = __hooknosticCreateRequire(import.meta.url);',
+    js: createRequireBanner,
   },
 });
 
@@ -97,6 +99,7 @@ await build({
   outdir: join(dist, "shims"),
   outExtension: { ".js": ".mjs" },
   external: ["@hooknostic/sdk"],
+  plugins: [licenseNoticesPlugin()],
 });
 for (const id of Object.keys(SHIMS)) {
   const code = await readFile(join(dist, "shims", `${id}.mjs`), "utf8");

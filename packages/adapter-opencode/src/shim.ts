@@ -152,7 +152,8 @@ export function createHooknosticHooks(
         for (const key of Object.keys(existing as Record<string, unknown>)) {
           delete (existing as Record<string, unknown>)[key];
         }
-        Object.assign(existing as Record<string, unknown>, replacementSnapshot);
+        // Defining data properties avoids inherited setters (notably __proto__).
+        Object.defineProperties(existing, Object.getOwnPropertyDescriptors(replacementSnapshot));
       } else {
         output["args"] = replacement;
       }

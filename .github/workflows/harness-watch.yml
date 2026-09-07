@@ -162,11 +162,8 @@ jobs:
             codex) : ;;
           esac
 
-      - name: Bundle SDK
-        run: pnpm --filter @hooknostic/sdk run bundle
-
-      - name: Bundle CLI
-        run: pnpm --filter hooknostic run bundle
+      - name: Bundle compiler and dependencies
+        run: pnpm run bundle
 
       - name: Model-free playback against the newer build
         id: playback
@@ -560,13 +557,9 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Bundle SDK
+      - name: Bundle compiler and dependencies
         if: steps.gate.outputs.run == 'true'
-        run: pnpm --filter @hooknostic/sdk run bundle
-
-      - name: Bundle CLI
-        if: steps.gate.outputs.run == 'true'
-        run: pnpm --filter hooknostic run bundle
+        run: pnpm run bundle
 
       - name: Install LiteLLM sidecar (llm transport only)
         if: steps.gate.outputs.run == 'true' && inputs.force_llm == 'true'

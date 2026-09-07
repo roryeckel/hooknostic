@@ -39,11 +39,12 @@ offline on every test run.
 
 ## Releasing
 
-See [releases.md](./releases.md). Publication happens only through
+See [releases.md](./releases.md). Routine publication happens through
 `.github/workflows/release-publish.yml`, fired by a human publishing a draft
-release; the first public release's one-time bootstrap steps (npm Trusted
-Publisher against that workflow filename, the `npm` environment, removing the
-`private` guards in the release PR) are listed there.
+release. The first publication uses CI-built `pnpm pack` tarballs which the
+owner verifies and publishes interactively with 2FA. The runbook covers that
+narrow exception, the protected `npm` environment, and the transition to OIDC.
+Agents never publish.
 
 ## Notes
 
@@ -52,5 +53,9 @@ Publisher against that workflow filename, the `npm` environment, removing the
 - The unscoped `hooknostic` CLI can only ever be public on npmjs.org; if a
   private stopgap registry were ever wanted, GitHub Packages supports scoped
   `@hooknostic/*` but not unscoped names.
-- Provenance attestations are not generated while the source repo is private;
-  they start automatically once it is public.
+- Routine OIDC releases from the public repository carry npm provenance. The
+  owner's first-package bootstrap is published with `--provenance=false`;
+  its CI-built tarballs and checksums remain attached to the GitHub Release.
+- Published packages include their own READMEs and license. The CLI also ships
+  `dist/THIRD_PARTY_NOTICES.txt`; generated runtimes and MCP launchers embed
+  their bundled dependencies' license and notice text.

@@ -1,0 +1,31 @@
+# @hooknostic/sdk
+
+Author portable lifecycle hooks in TypeScript, then compile them for supported
+coding-agent harnesses with the `hooknostic` CLI. Requires Node.js 22.13.0 or newer.
+
+```sh
+npm install --save-dev @hooknostic/sdk hooknostic
+```
+
+```ts
+import { block, definePlugin, hook } from "@hooknostic/sdk";
+
+export default definePlugin({
+  name: "protect-shell",
+  hooks: [hook("tool.before", {
+    id: "guard",
+    capabilities: { "tool.before.block": "required" },
+    async run(event) {
+      if (event.tool.shell?.command.includes("rm -rf /")) {
+        return block("Review this command before proceeding.");
+      }
+    },
+  })],
+});
+```
+
+This illustrates a hook, not a comprehensive shell security policy. Configure
+targets and compile it using the [getting-started tutorial](https://github.com/roryeckel/hooknostic/blob/master/docs/tutorials/01-your-first-hook.md).
+See the [project documentation](https://github.com/roryeckel/hooknostic#readme)
+and [harness support](https://github.com/roryeckel/hooknostic/blob/master/docs/harness-support.md)
+for the supported events and effects. Licensed under Apache-2.0.

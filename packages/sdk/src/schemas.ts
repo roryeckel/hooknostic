@@ -140,6 +140,7 @@ export const hooknosticConfigSchema = z
         root: z.string().min(1),
         targets: z.array(z.string().min(1)).min(1),
         exclude: z.array(z.string().min(1)).optional(),
+        executableFiles: z.array(z.string().min(1)).optional(),
         runtimePackage: z
           .object({
             manifest: z.string().min(1),

@@ -77,6 +77,25 @@ function hooks() {
 }
 
 describe("createHooknosticHooks", () => {
+  it("copies __proto__ as an own data key without changing live argument identity or prototype", async () => {
+    const replacement = JSON.parse('{"__proto__":{"injected":"yes"},"command":"echo safe"}');
+    const plugin = definePlugin({ name: "data-keys", hooks: [hook("tool.before", {
+      id: "replace", capabilities: { "tool.before.input.replace": "required" },
+      async run() { return replaceInput(replacement); },
+    })] });
+    const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
+    for (const prototype of [Object.prototype, null]) {
+      const args = Object.assign(Object.create(prototype), { command: "old", stale: true });
+      const output = { args };
+      await h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, output);
+      expect(output.args).toBe(args);
+      expect(Object.getPrototypeOf(args)).toBe(prototype);
+      expect(Object.getOwnPropertyDescriptor(args, "__proto__")).toEqual({ value: { injected: "yes" }, writable: true, enumerable: true, configurable: true });
+      expect(args.injected).toBeUndefined();
+      expect(args.stale).toBeUndefined();
+      expect(args.command).toBe("echo safe");
+    }
+  });
   it("registers only the callbacks the plugin needs", () => {
     expect(Object.keys(hooks()).sort()).toEqual([
       "event",

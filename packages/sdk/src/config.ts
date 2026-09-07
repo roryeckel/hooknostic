@@ -96,6 +96,8 @@ export interface AgentPluginConfig<TTarget extends string = string> {
    * `entry`, every target output, the build report, and staging directories.
    */
   exclude?: string[];
+  /** Exact, case-sensitive POSIX paths of included files to emit as 0755; others use 0644. */
+  executableFiles?: string[];
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
   /** Whether a valid but unrepresentable component fails or degrades the build. Default `"error"`. */

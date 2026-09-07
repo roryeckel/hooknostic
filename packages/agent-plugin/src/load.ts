@@ -475,7 +475,7 @@ async function inventory(
       return;
     }
     if (!metadata.isFile()) throw new Error(`${logical} is not a regular file or directory`);
-    pending.push({ path: logical, physical: resolved, mode: metadata.mode & 0o777 });
+    pending.push({ path: logical, physical: resolved, mode: 0o644 });
   };
 
   try {
@@ -548,6 +548,18 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
 
   const inventoried = await inventory(root, patterns, issues);
   if (inventoried === undefined) return { issues };
+  for (const path of options.executableFiles ?? []) {
+    const file = inventoried.files.find((entry) => entry.path === path);
+    if (
+      typeof path !== "string" || /[\\:]/.test(path) || [...path].some((character) => character.charCodeAt(0) < 32) ||
+      path.split("/").some((part) => part === "" || part === "." || part === "..") ||
+      file === undefined
+    ) {
+      issue(issues, "error", "file", `executableFiles entry ${JSON.stringify(path)} must be an exact, case-sensitive POSIX path to an included file.`);
+      return { issues };
+    }
+    file.mode = 0o755;
+  }
   const manifestFile = inventoried.files.find((file) => file.path === "plugin.json");
   if (manifestFile === undefined) {
     issue(issues, "error", "manifest", "could not read plugin.json: file is missing or is not a regular file.", "plugin.json");

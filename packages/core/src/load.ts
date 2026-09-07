@@ -6,6 +6,7 @@ import { build } from "esbuild";
 import type { HooknosticConfig, PluginSpec } from "@hooknostic/sdk";
 import { hooknosticConfigSchema } from "@hooknostic/sdk";
 import type { Diagnostic } from "./diagnostics.js";
+import { createRequireBanner } from "./bundle-support.mjs";
 
 export interface EvaluateOptions {
   /**
@@ -36,6 +37,7 @@ async function evaluateModule(file: string, options?: EvaluateOptions): Promise<
     platform: "node",
     target: "node22",
     write: false,
+    banner: { js: createRequireBanner },
     sourcemap: "inline",
     logLevel: "silent",
     ...(options?.alias ? { alias: options.alias } : {}),

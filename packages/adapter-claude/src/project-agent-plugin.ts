@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { createRequireBanner, licenseNoticesPlugin } from "../../core/src/bundle-support.mjs";
 import { dirname, posix } from "node:path";
 import { build } from "esbuild";
 import {
@@ -148,6 +150,8 @@ async function bundleMcpLauncher(): Promise<string> {
   const entry = createRequire(import.meta.url).resolve("cross-spawn");
   const result = await build({
     stdin: { contents: MCP_LAUNCHER, resolveDir: dirname(entry) },
+    absWorkingDir: dirname(entry),
+    outfile: "hooknostic-mcp-launcher.mjs",
     bundle: true,
     platform: "node",
     format: "esm",
@@ -155,7 +159,9 @@ async function bundleMcpLauncher(): Promise<string> {
     // Strip host-specific module-path comments for reproducible output.
     minify: true,
     write: false,
-    banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
+    legalComments: "eof",
+    plugins: [licenseNoticesPlugin({ additionalSources: [fileURLToPath(import.meta.url)] })],
+    banner: { js: createRequireBanner },
   });
   return result.outputFiles[0]!.text;
 }

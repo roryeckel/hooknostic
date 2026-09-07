@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:759895fef14c5647a001481186bdcf042af06620430f7c0df61745a6b4d0a073",
+        "contentDigest": "sha256:383c4e880fdbb45cd0c1d0c309741951a432ee565fbffa562b0f4d65378123e0",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -104,7 +104,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:e3a70443104aff63411120737c951815a6ec2889e0b239c3e1756185a5ece9a9"
+    "contentDigest": "sha256:550613f9f56afb28bfb0e909f22cf048a773200bf12086704ed4a13fab8f9f33"
   },
   "source": "./src/hooks.ts"
 }

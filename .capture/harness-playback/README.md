@@ -31,7 +31,7 @@ For one harness at a time, CI:
 
 1. Derives the exact npm version from the adapter's
    `harness.referenceVersion` and installs that build.
-2. Bundles the SDK and CLI, then generates a production-format artifact in a
+2. Bundles agent-plugin, SDK, and CLI, then generates a production-format artifact in a
    scratch project.
 3. Replays the committed native hook fixtures through that artifact.
 4. Starts a server bound to `127.0.0.1`, removes model credentials from the
@@ -71,8 +71,7 @@ the playback responses themselves remain constructed test inputs.
 Run the same probe locally after installing the exact reference harness:
 
 ```bash
-pnpm --filter @hooknostic/sdk run bundle
-pnpm --filter hooknostic run bundle
+pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 

@@ -118,8 +118,7 @@ model spend, and it is exactly what CI runs, so there is no gap between what you
 can verify and what the pull request will be judged by.
 
 ```bash
-pnpm --filter @hooknostic/sdk run bundle
-pnpm --filter hooknostic run bundle
+pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 

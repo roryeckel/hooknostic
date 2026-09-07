@@ -189,20 +189,45 @@ describe("loadAgentPlugin", () => {
     ]);
   });
 
-  it("inventories binary bytes and modes, applies POSIX exclusions, and hashes deterministically", async () => {
+  it("inventories binary bytes and explicit modes, applies POSIX exclusions, and hashes deterministically", async () => {
     const root = await packageRoot();
     await mkdir(join(root, "bin"));
     await writeFile(join(root, "bin/tool"), Uint8Array.from([0, 255, 1, 2]));
     await chmod(join(root, "bin/tool"), 0o755);
     await writeFile(join(root, "secret.txt"), "omit");
 
-    const first = await loadAgentPlugin({ root, exclude: ["secret.txt"] });
-    const second = await loadAgentPlugin({ root, exclude: ["secret.txt"] });
+    const options = { root, exclude: ["secret.txt"], executableFiles: ["bin/tool"] };
+    const first = await loadAgentPlugin(options);
+    await chmod(join(root, "bin/tool"), 0o644);
+    const second = await loadAgentPlugin(options);
     const binary = first.package?.files.find((file) => file.path === "bin/tool");
     expect([...binary!.contents]).toEqual([0, 255, 1, 2]);
-    if (process.platform !== "win32") expect(binary!.mode & 0o111).not.toBe(0);
+    expect(binary!.mode).toBe(0o755);
+    expect(second.package?.files.find((file) => file.path === "bin/tool")?.mode).toBe(0o755);
     expect(first.package?.files.some((file) => file.path === "secret.txt")).toBe(false);
     expect(second.package?.contentDigest).toBe(first.package?.contentDigest);
+  });
+
+  it("ignores host permissions unless an included file is explicitly executable", async () => {
+    const root = await packageRoot();
+    const file = join(root, "data.txt");
+    await writeFile(file, "data");
+    await chmod(file, 0o777);
+    const first = await loadAgentPlugin({ root });
+    expect(first.package?.files.find((entry) => entry.path === "data.txt")?.mode).toBe(0o644);
+    await chmod(file, 0o600);
+    expect((await loadAgentPlugin({ root })).package?.contentDigest).toBe(first.package?.contentDigest);
+  });
+
+  it("rejects invalid, missing, excluded, directory, and incorrectly cased executable paths", async () => {
+    const root = await packageRoot();
+    await writeFile(join(root, "data.txt"), "data");
+    for (const path of ["", "/data.txt", "../data.txt", "./data.txt", "a/../data.txt", "a//b", "a\\b", "C:/data.txt", "missing", "DATA.txt", "skills", "data.txt"]) {
+      const options = { root, executableFiles: [path], ...(path === "data.txt" ? { exclude: [path] } : {}) };
+      const result = await loadAgentPlugin(options);
+      expect(result.package, path).toBeUndefined();
+      expect(result.issues, path).toContainEqual(expect.objectContaining({ severity: "error", scope: "file" }));
+    }
   });
 
   it("dereferences safe links and rejects links that escape the package", async () => {

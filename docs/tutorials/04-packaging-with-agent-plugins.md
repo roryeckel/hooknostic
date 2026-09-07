@@ -87,6 +87,13 @@ component to degrade.
 
 ## What ships
 
+Copied files use portable permissions: 0644 by default. Set
+`agentPlugin.executableFiles: ["bin/tool"]` for files that must be 0755.
+These are exact, case-sensitive POSIX paths relative to `agentPlugin.root`,
+not globs; each must name an included file. Host `chmod` bits are ignored.
+When migrating, declare files that previously relied on `chmod +x` and rebuild
+both artifacts and reports. See [ADR-0013](../decisions/0013-portable-file-permissions.md).
+
 Everything under `root` ships unless it is excluded, npm-style. Built-in exclusions
 cover what is never package content: `.git`, `node_modules`, `.env`, `.env.*`, and
 `.npmrc` at any depth, plus `hooknostic.config.ts`, the hook `entry` (its compiled

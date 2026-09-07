@@ -124,11 +124,8 @@ jobs:
       - name: Install captured harness version
         run: npm install --global '${{ matrix.package }}@${{ steps.harness.outputs.version }}'
 
-      - name: Bundle SDK
-        run: pnpm --filter @hooknostic/sdk run bundle
-
-      - name: Bundle CLI
-        run: pnpm --filter hooknostic run bundle
+      - name: Bundle compiler and dependencies
+        run: pnpm run bundle
 
       - name: Run model-free playback
         run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts

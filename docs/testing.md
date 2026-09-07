@@ -138,12 +138,11 @@ run to validation evidence are recorded in
 
 ## Local execution
 
-Install the exact reference build of one harness, bundle the SDK and CLI, and
+Install the exact reference build of one harness, bundle the compiler and its dependencies, and
 run:
 
 ```bash
-pnpm --filter @hooknostic/sdk run bundle
-pnpm --filter hooknostic run bundle
+pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 

@@ -13,14 +13,15 @@ artifacts per harness (Claude Code, OpenAI Codex CLI, OpenCode). pnpm
 workspace: library packages in `packages/`, runnable examples in `examples/`,
 captured harness payloads in `fixtures/`, capture projects in `.capture/`.
 
-- **Never run `npm publish` or `pnpm publish`** — not locally, not from an
-  agent session. Publication happens only through
-  `.github/workflows/release-publish.yml`, triggered by a human publishing a
-  draft GitHub Release (`docs/releases.md`). Local distribution is
-  `pnpm pack` tarballs only — `npm pack` does not rewrite `workspace:*`
-  dependencies and ships broken tarballs.
+- **Agents never run `npm publish` or `pnpm publish`.** Routine publication is
+  workflow-only through `.github/workflows/release-publish.yml`, triggered by
+  a human publishing a draft GitHub Release. The sole local exception is the
+  owner performing the first-package 2FA bootstrap from verified CI-built
+  tarballs (`docs/releases.md`); this is not permission for an agent to publish.
+  Local distribution is `pnpm pack` only — `npm pack` does not rewrite
+  `workspace:*` dependencies and ships broken tarballs.
 - Push freely to a fork; never push to the upstream repository unless the
-  owner asks. Publication is workflow-only either way.
+  owner asks.
 - Downstream consumers are never named in this repository — not in code,
   docs, ADRs, commit messages, or capture records. Write "the pilot
   consumer" or "a consumer". The reason is load-bearing, not cosmetic:
@@ -41,10 +42,8 @@ captured harness payloads in `fixtures/`, capture projects in `.capture/`.
   documented signal to fall back to the raw form.
 - Verification per commit: `pnpm lint`, `pnpm build`, `pnpm test`, capturing
   each exit code explicitly — never trust a piped or chained exit code.
-  `pretest` bundles the SDK and CLI, so running `vitest` directly on a file
-  tests a **stale bundle**; when targeting single files, first run
-  `pnpm --filter @hooknostic/sdk run bundle` (and the CLI's bundle step, if
-  the change touches `packages/cli`).
+  `pretest` bundles agent-plugin, SDK, and CLI; direct `vitest` can test a
+  **stale bundle**. Before targeting single files, run `pnpm run bundle`.
 - A new test must be shown to fail against the defect it pins — revert the
   fix or apply a mutant, watch it fail, restore. This repository's history
   includes five tests that passed against the exact bugs they were written
