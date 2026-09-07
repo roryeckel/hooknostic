@@ -124,10 +124,16 @@ function partialProjectorAdapter() {
         },
       ],
       async project(source, context) {
-        const skipped = (component: "agent-plugin.skills" | "agent-plugin.mcp.stdio", count: number) =>
-          [component, { discovered: count, emitted: 0, skipped: count }] as const;
+        const skipped = (
+          component:
+            | "agent-plugin.skills"
+            | "agent-plugin.mcp.stdio"
+            | "agent-plugin.client-extension.files",
+          count: number,
+        ) => [component, { discovered: count, emitted: 0, skipped: count }] as const;
         const skills = source.skills.length;
         const servers = Object.keys(source.mcp?.mcpServers ?? {}).length;
+        const manifestExtension = source.manifest.extensions?.["example.partial"] === undefined ? 0 : 1;
         return {
           files: [
             { path: "manifest.json", contents: JSON.stringify({ name: source.manifest.name }) },
@@ -139,10 +145,16 @@ function partialProjectorAdapter() {
               ["agent-plugin.manifest", { discovered: 1, emitted: 1, skipped: 0 }],
               skipped("agent-plugin.skills", skills),
               skipped("agent-plugin.mcp.stdio", servers),
+              ...(manifestExtension === 0
+                ? []
+                : [skipped("agent-plugin.client-extension.files", manifestExtension)]),
             ]),
             omissions: [
               { component: "agent-plugin.skills", reason: "unsupported" },
               { component: "agent-plugin.mcp.stdio", reason: "unsupported" },
+              ...(manifestExtension === 0
+                ? []
+                : [{ component: "agent-plugin.client-extension.files" as const, reason: "unsupported" }]),
             ],
             copiedFileCount: 0,
           },
@@ -313,7 +325,12 @@ ${run.stderr}`).toBe(0);
     cleanupDirs.push(dir);
     await mkdir(join(dir, "skills/review"), { recursive: true });
     const manifest = JSON.stringify(
-      { $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "hookless-tools", version: "1.0.0" },
+      {
+        $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+        name: "hookless-tools",
+        version: "1.0.0",
+        extensions: { "com.anthropic.claude-code": { manifestOnly: true } },
+      },
       null,
       2,
     );
@@ -354,6 +371,12 @@ ${run.stderr}`).toBe(0);
       discovered: 1,
       emitted: 1,
     });
+    expect(report.targets.claude.projection.components["agent-plugin.client-extension.files"]).toMatchObject({
+      support: "exact",
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
     expect(existsSync(join(dir, "dist/claude/runtime/hooknostic.mjs"))).toBe(false);
     expect(
       existsSync(
@@ -372,6 +395,7 @@ ${run.stderr}`).toBe(0);
       JSON.stringify({
         $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
         name: "omission-test",
+        extensions: { "example.partial": { manifestOnly: true } },
       }),
     );
     await writeFile(join(dir, "README.md"), "portable");
@@ -423,14 +447,19 @@ ${run.stderr}`).toBe(0);
     expect(report.diagnostics).toContainEqual(
       expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.mcp.stdio" }),
     );
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.client-extension.files" }),
+    );
     expect(report.targets.partial.projection.omissions).toEqual([
       expect.objectContaining({ component: "agent-plugin.skills" }),
       expect.objectContaining({ component: "agent-plugin.mcp.stdio" }),
+      expect.objectContaining({ component: "agent-plugin.client-extension.files" }),
     ]);
     expect(report.targets.partial.projection.components).toMatchObject({
       "agent-plugin.manifest": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.skills": { support: "unsupported", discovered: 2, emitted: 0, skipped: 2 },
       "agent-plugin.mcp.stdio": { support: "unsupported", discovered: 2, emitted: 0, skipped: 2 },
+      "agent-plugin.client-extension.files": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
     });
     expect(existsSync(join(dir, "dist/partial/fake-plugin.json"))).toBe(true);
     expect(existsSync(join(dir, "dist/partial/manifest.json"))).toBe(true);

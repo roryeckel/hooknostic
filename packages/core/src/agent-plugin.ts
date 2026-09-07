@@ -98,7 +98,9 @@ function discoveredComponents(
     ids.add(`agent-plugin.mcp.${server.type}` as AgentPluginComponentId);
   }
   if (
-    source.files.some((file) => file.path.startsWith(`${namespace}/`))
+    namespace !== "" &&
+    (source.files.some((file) => file.path.startsWith(`${namespace}/`)) ||
+      source.manifest.extensions?.[namespace] !== undefined)
   ) {
     ids.add("agent-plugin.client-extension.files");
   }

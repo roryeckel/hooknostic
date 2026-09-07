@@ -239,8 +239,10 @@ function analyzedProjectionReport(
     if (count > 0) discovered.set(`agent-plugin.mcp.${type}`, count);
   }
   if (namespace !== undefined) {
-    const files = source.files.filter((file) => file.path.startsWith(`${namespace}/`)).length;
-    if (files > 0) discovered.set("agent-plugin.client-extension.files", files);
+    const extensionFiles = source.files.filter((file) => file.path.startsWith(`${namespace}/`)).length;
+    const manifestExtension = source.manifest.extensions?.[namespace] === undefined ? 0 : 1;
+    const extensions = extensionFiles + manifestExtension;
+    if (extensions > 0) discovered.set("agent-plugin.client-extension.files", extensions);
   }
   if (hasRuntimePackage) discovered.set("agent-plugin.runtime-package", 1);
   const unsupported = new Set(

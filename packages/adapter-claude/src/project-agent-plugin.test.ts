@@ -102,6 +102,22 @@ describe("Agent Plugin to Claude projection", () => {
     expect(plan.summary.copiedFileCount).toBe(2);
   });
 
+  it("counts a manifest-only Claude extension as one emitted client extension", async () => {
+    const namespace = "com.anthropic.claude-code";
+    const portable = source();
+    portable.manifest.extensions = { [namespace]: { manifestOnly: true } };
+    const plan = await projectAgentPluginToClaude(
+      portable,
+      { target, hookArtifacts: [], onUnsupported: "error" },
+    );
+    expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({ manifestOnly: true });
+    expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
+  });
+
   it("does not project the source development manifest without an explicit runtime package", async () => {
     const plan = await projectAgentPluginToClaude(
       source([

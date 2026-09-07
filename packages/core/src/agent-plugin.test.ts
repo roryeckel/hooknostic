@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AgentPluginProjector } from "@hooknostic/agent-plugin";
-import { resolveAgentPluginProjection } from "./agent-plugin.js";
-import type { TargetSpec } from "./adapter.js";
+import {
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  type AgentPluginPackage,
+  type AgentPluginProjector,
+} from "@hooknostic/agent-plugin";
+import { analyzeAgentPluginProjection, resolveAgentPluginProjection } from "./agent-plugin.js";
+import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 
 const target: TargetSpec = { id: "test", version: ">=2.1 <3", mode: "plugin", output: "dist" };
 const projector: AgentPluginProjector<TargetSpec> = {
@@ -29,6 +33,21 @@ const projector: AgentPluginProjector<TargetSpec> = {
   },
 };
 
+const manifestOnlyExtensionSource: AgentPluginPackage = {
+  specVersion: "1.0.0",
+  root: "/portable",
+  manifest: {
+    $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+    name: "manifest-only-extension",
+    extensions: { "example.test": { enabled: true } },
+  },
+  skills: [],
+  files: [],
+  contentDigest: "sha256:test",
+};
+
+const adapterWithProjector = { id: "test", agentPluginProjector: projector } as HarnessAdapter;
+
 describe("resolveAgentPluginProjection", () => {
   it("takes the least capable support across every intersected profile", () => {
     const result = resolveAgentPluginProjection(target, projector);
@@ -40,5 +59,21 @@ describe("resolveAgentPluginProjection", () => {
     const result = resolveAgentPluginProjection({ ...target, version: ">=2 <4" }, projector);
     expect(result.matrix).toBeUndefined();
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "HN203", severity: "error" }));
+  });
+
+  it("reports HN205 for a manifest-only client extension without projector support", () => {
+    const result = analyzeAgentPluginProjection(
+      manifestOnlyExtensionSource,
+      adapterWithProjector,
+      target,
+      "error",
+    );
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN205",
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+      }),
+    );
   });
 });

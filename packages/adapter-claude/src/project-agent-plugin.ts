@@ -162,11 +162,14 @@ function componentCounts(source: AgentPluginPackage) {
   }
   const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
   const extensionFiles = source.files.filter((file) => file.path.startsWith(prefix));
+  const manifestExtension =
+    source.manifest.extensions?.[CLAUDE_AGENT_PLUGIN_NAMESPACE] === undefined ? 0 : 1;
   const skipped = extensionFiles.filter((file) => isRootNpmManifestPath(file.path.slice(prefix.length))).length;
-  if (extensionFiles.length > 0) {
+  const discovered = extensionFiles.length + manifestExtension;
+  if (discovered > 0) {
     counts["agent-plugin.client-extension.files"] = {
-      discovered: extensionFiles.length,
-      emitted: extensionFiles.length - skipped,
+      discovered,
+      emitted: extensionFiles.length - skipped + manifestExtension,
       skipped,
     };
   }
