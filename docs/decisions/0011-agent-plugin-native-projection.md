@@ -83,3 +83,20 @@ the boundary above; they close gaps between what the build reported and what it 
 - **`defineConfig` is generic** over the configured target names, so
   `agentPlugin.targets` and the entry-or-agentPlugin requirement are checked by the
   editor as well as by the schema.
+
+## Amendments — 2026-09-07
+
+- **A projector's own output paths are reserved against the package root.** The
+  boundary above is stated as input safety; this is its output half. The Claude
+  projector copies the portable base tree into the same keyed set it later reads
+  its native overlay from, so a package-root `.mcp.json`, `hooks/hooks.json`, or
+  `.claude-plugin/` file became that overlay — its MCP servers reaching Claude's
+  configuration without the validation `mcp.json` servers receive, its hook
+  entries running ahead of the Hooknostic dispatcher. Such a file is now a fatal
+  HN503 naming the path and the `com.anthropic.claude-code/` prefix that would
+  declare it as a client extension. Fatal rather than `onUnsupported`-governed:
+  the package is claiming the projector's output, which is not a valid component
+  the harness cannot represent, so the policy for degrading components does not
+  apply. The whole `.claude-plugin/` directory is reserved, not just
+  `plugin.json`, because Claude reads its own metadata from that directory. The
+  comparison case-folds, like the npm manifest rule it parallels.

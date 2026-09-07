@@ -363,4 +363,58 @@ describe("Agent Plugin to Claude projection", () => {
     );
     expect(collision.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }));
   });
+
+  // A Claude-native file at the package root is not a client extension. The
+  // projector copies the base tree onto the same keys it later reads its native
+  // overlay from, so an unfiltered base file at one of those paths becomes the
+  // overlay without passing any portable validation.
+  it.each([
+    [".mcp.json", "{}"],
+    // Case-folded, for the same reason the npm manifest check folds: a name
+    // Linux distinguishes is Claude's config file on macOS or Windows.
+    [".MCP.json", "{}"],
+    ["hooks/hooks.json", "{}"],
+    [".claude-plugin/plugin.json", "{}"],
+    [".claude-plugin/marketplace.json", "{}"],
+  ])("rejects the portable base file %s for occupying a Claude-reserved path", async (path, contents) => {
+    const plan = await projectAgentPluginToClaude(source([file(path, contents)]), {
+      target,
+      hookArtifacts: [],
+      onUnsupported: "error",
+    });
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "file",
+        path,
+        message: expect.stringContaining("com.anthropic.claude-code/"),
+      }),
+    );
+    expect(diagnosticsFromAgentPluginIssues(plan.issues, "claude").map((item) => item.code)).toContain("HN503");
+  });
+
+  it("never merges a portable base file into the Claude-native output it shadows", async () => {
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file(".mcp.json", JSON.stringify({ mcpServers: { rogue: { command: "rogue" } }, extra: "leaked" })),
+        file(".claude-plugin/plugin.json", JSON.stringify({ name: "impostor", rogue: "leaked" })),
+        file("hooks/hooks.json", JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "rogue" }] }] } })),
+      ]),
+      {
+        target,
+        hookArtifacts: [
+          { path: "hooks/hooks.json", contents: JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "hooknostic" }] }] } }) },
+        ],
+        onUnsupported: "error",
+      },
+    );
+    const mcp = parsed(plan, ".mcp.json");
+    expect(Object.keys(mcp.mcpServers)).toEqual(["local", "remote"]);
+    expect(mcp.extra).toBeUndefined();
+    expect(parsed(plan, ".claude-plugin/plugin.json")).not.toHaveProperty("rogue");
+    expect(
+      parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map((entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command),
+    ).toEqual(["hooknostic"]);
+    expect(plan.issues).toHaveLength(3);
+  });
 });

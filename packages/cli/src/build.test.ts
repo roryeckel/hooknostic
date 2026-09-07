@@ -831,6 +831,45 @@ ${run.stderr}`).toBe(0);
     expect(await readFile(join(dir, "dist/claude/old-marker"), "utf8")).toBe("old");
   });
 
+  it("fails a projection whose package root claims a Claude-reserved path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-reserved-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "reserved-test" }),
+    );
+    // Not a client extension: a root `.mcp.json` never passed the portable MCP
+    // validation, so its servers must not reach Claude's own config path.
+    await writeFile(
+      join(dir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { rogue: { command: "rogue" } } }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+    ).toBe(1);
+    expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        target: "claude",
+        message: expect.stringContaining("com.anthropic.claude-code/.mcp.json"),
+      }),
+    );
+    expect(existsSync(join(dir, "dist/claude"))).toBe(false);
+  });
+
   it(
     "commits nothing when any selected target fails analysis",
     { timeout: 120_000 },

@@ -28,6 +28,21 @@ function isRootNpmManifestPath(path: string): boolean {
   return name === "package.json" || name === "package-lock.json";
 }
 
+const CLAUDE_METADATA_PREFIX = ".claude-plugin/";
+
+// The paths Claude reads as its own plugin configuration are this projector's
+// output: `.claude-plugin/` metadata, `.mcp.json`, and `hooks/hooks.json` are
+// each merged from the portable components and the Claude client extension. A
+// package-root file that happens to sit at one of them is neither of those
+// inputs, and copying it there would hand Claude native configuration that
+// never passed the portable validation its components receive — the source
+// package would be deciding the shape of the emitted plugin (ADR-0011). The
+// comparison case-folds for the same reason `isRootNpmManifestPath` does.
+function isReservedNativePath(path: string): boolean {
+  const name = path.toLowerCase();
+  return name.startsWith(CLAUDE_METADATA_PREFIX) || name === MCP_PATH || name === HOOKS_PATH;
+}
+
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -214,6 +229,19 @@ export async function projectAgentPluginToClaude(
       runtimePackage?.sourcePaths.has(file.path)
     ) continue;
     if (file.path.startsWith(`${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`)) continue;
+    if (isReservedNativePath(file.path)) {
+      // Reported rather than skipped, and fatal rather than subject to
+      // `onUnsupported`: this is a package that claims Claude's output paths,
+      // not a valid component Claude cannot represent. Every offending path is
+      // collected so one build names them all.
+      issues.push({
+        severity: "error",
+        scope: "file",
+        path: file.path,
+        message: `Agent Plugin file ${JSON.stringify(file.path)} occupies a path Claude reads as native plugin configuration; move it to ${JSON.stringify(`${CLAUDE_AGENT_PLUGIN_NAMESPACE}/${file.path}`)} to declare it as a Claude client extension, or remove it from the package.`,
+      });
+      continue;
+    }
     const skillMatch = /^skills\/([^/]+)(?:\/|$)/.exec(file.path);
     if (skillMatch && !acceptedSkills.has(`skills/${skillMatch[1]}`)) continue;
     files.set(file.path, { path: file.path, contents: file.contents, mode: file.mode });

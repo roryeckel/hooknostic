@@ -429,6 +429,17 @@ The root name is matched case-insensitively, like inventory exclusions. Omitting
 a declared overlay file degrades the client-extension component, so it follows
 `onUnsupported`: an HN205 error by default, a recorded omission under `"warn"`.
 
+The same reasoning reserves the rest of Claude's native configuration against
+the package root. `.mcp.json`, `hooks/hooks.json`, and anything under
+`.claude-plugin/` are projector output, merged from the portable components and
+the Claude client extension. A package-root file at one of those paths is
+neither input, so it is a fatal HN503 rather than being copied there — it would
+otherwise become the native overlay without passing the validation the portable
+components receive. Move such a file under `com.anthropic.claude-code/` to
+declare it as a Claude client extension. Unlike an omitted overlay file this is
+not governed by `onUnsupported`: it is a package claiming the projector's own
+output paths, not a valid component Claude cannot represent.
+
 ### 8.2 CLI target narrowing
 
 Config defines the allowed target set; CLI flags only narrow it:
