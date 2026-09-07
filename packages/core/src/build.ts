@@ -220,7 +220,7 @@ function projectionReport(
   return {
     status: "success",
     contentDigest: artifactDigest(artifacts),
-    copiedFileCount: summary.copiedFileCount,
+    copiedFileCount: summary.copiedPaths.length,
     components,
     omissions: summary.omissions,
   };
@@ -474,6 +474,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         let artifacts = hookArtifacts;
+        let projectionCopiedPaths: ReadonlySet<string> | undefined;
         if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
           phase = "Agent Plugin projection";
           const projector = adapter.agentPluginProjector;
@@ -505,6 +506,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             continue;
           }
           artifacts = plan.files;
+          projectionCopiedPaths = new Set(plan.summary.copiedPaths);
           target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts);
         }
 
@@ -525,14 +527,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         const generated = new Set(hookArtifacts.map((artifact) => artifact.path));
-        if (target.projection !== undefined) {
-          generated.add(".claude-plugin/plugin.json");
-          if (artifacts.some((artifact) => artifact.path === ".mcp.json")) {
-            generated.add(".mcp.json");
-          }
-          if (config.agentPlugin!.runtimePackage !== undefined) {
-            generated.add("package.json");
-            generated.add("package-lock.json");
+        if (projectionCopiedPaths !== undefined) {
+          // The projector reports what it copied byte-for-byte; the rest of its
+          // plan it generated. Deriving the list this way keeps every harness's
+          // own path layout inside its adapter, where ADR-0011 puts it.
+          for (const artifact of artifacts) {
+            if (!projectionCopiedPaths.has(artifact.path)) generated.add(artifact.path);
           }
         }
         target.artifacts = artifacts

@@ -99,7 +99,10 @@ describe("Agent Plugin to Claude projection", () => {
       custom: true,
       manifestOnly: true,
     });
-    expect(plan.summary.copiedFileCount).toBe(2);
+    // The overlay's `.claude-plugin/plugin.json` was read, not copied: the
+    // manifest at that path is generated, and core reads exactly this list to
+    // tell copied files from generated ones.
+    expect(plan.summary.copiedPaths).toEqual(["README.md", "skills/review/SKILL.md"]);
   });
 
   it("counts a manifest-only Claude extension as one emitted client extension", async () => {

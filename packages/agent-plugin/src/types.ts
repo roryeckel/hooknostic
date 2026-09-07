@@ -173,8 +173,13 @@ export interface AgentPluginProjectionSummary {
     Record<AgentPluginComponentId, { discovered: number; emitted: number; skipped: number }>
   >;
   omissions: { component: AgentPluginComponentId; name?: string; reason: string }[];
-  /** Source-package files copied byte-for-byte after overlay resolution. */
-  copiedFileCount: number;
+  /**
+   * Plan paths copied byte-for-byte from the source package after overlay
+   * resolution, sorted. Every other plan file the projector generated, so this
+   * is also how a consumer tells the two apart without knowing the harness's
+   * own path layout.
+   */
+  copiedPaths: readonly string[];
 }
 
 export interface AgentPluginProjectionPlan {

@@ -29,7 +29,7 @@ const projector: AgentPluginProjector<TargetSpec> = {
     },
   ],
   async project() {
-    return { files: [], issues: [], summary: { components: {}, omissions: [], copiedFileCount: 0 } };
+    return { files: [], issues: [], summary: { components: {}, omissions: [], copiedPaths: [] } };
   },
 };
 

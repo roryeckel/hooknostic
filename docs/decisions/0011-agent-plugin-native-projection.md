@@ -100,3 +100,10 @@ the boundary above; they close gaps between what the build reported and what it 
   apply. The whole `.claude-plugin/` directory is reserved, not just
   `plugin.json`, because Claude reads its own metadata from that directory. The
   comparison case-folds, like the npm manifest rule it parallels.
+- **A projection plan reports which files it copied, not how many.**
+  `summary.copiedPaths` replaces `copiedFileCount`, which the build report still
+  derives from its length. Core needs the split — its report distinguishes
+  generated artifacts from copied package content — and it had been getting it
+  from a hardcoded list of Claude's own paths, the one piece of harness layout
+  knowledge left in core after this ADR moved the rest into adapters. Every
+  projector already knows the answer exactly; now it says so.

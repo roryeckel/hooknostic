@@ -218,7 +218,7 @@ export async function projectAgentPluginToClaude(
           "agent-plugin.runtime-package": { discovered: 1, emitted: 0, skipped: 1 },
         },
         omissions: [],
-        copiedFileCount: 0,
+        copiedPaths: [],
       },
     };
   }
@@ -353,7 +353,7 @@ export async function projectAgentPluginToClaude(
           : { "agent-plugin.runtime-package": { discovered: 1, emitted: 1, skipped: 0 } }),
       },
       omissions,
-      copiedFileCount: [...copiedPaths].filter((path) => files.has(path)).length,
+      copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
     },
   };
 }

@@ -156,7 +156,7 @@ function partialProjectorAdapter() {
                 ? []
                 : [{ component: "agent-plugin.client-extension.files" as const, reason: "unsupported" }]),
             ],
-            copiedFileCount: 0,
+            copiedPaths: [],
           },
         };
       },
@@ -281,6 +281,22 @@ ${run.stderr}`).toBe(0);
       const report = JSON.parse(out());
       expect(report.agentPlugin.targets).toEqual(["claude"]);
       expect(report.targets.claude.projection).toMatchObject({ status: "success" });
+
+      // `artifacts` lists what the build generated, not what it copied, and the
+      // split comes from the projector's own `copiedPaths` rather than from any
+      // path layout core knows about.
+      expect(report.targets.claude.artifacts).toEqual(
+        expect.arrayContaining([
+          ".claude-plugin/plugin.json",
+          ".mcp.json",
+          "hooks/hooks.json",
+          "package.json",
+          "package-lock.json",
+          "runtime/hooknostic.mjs",
+        ]),
+      );
+      expect(report.targets.claude.artifacts).not.toContain("skills/greet/SKILL.md");
+      expect(report.targets.claude.artifacts).not.toContain("src/greet-mcp.mjs");
 
       // The portable root remains untouched; native material exists only in output.
       expect(existsSync(join(dir, "com.anthropic.claude-code"))).toBe(false);
@@ -464,6 +480,10 @@ ${run.stderr}`).toBe(0);
     expect(existsSync(join(dir, "dist/partial/fake-plugin.json"))).toBe(true);
     expect(existsSync(join(dir, "dist/partial/manifest.json"))).toBe(true);
     expect(existsSync(join(dir, "dist/partial/README.md"))).toBe(false);
+    // This projector's generated manifest is `manifest.json`, at a path no
+    // shipped adapter uses: core reports it because the projector did not list
+    // it as copied, not because core recognizes the path.
+    expect(report.targets.partial.artifacts).toContain("manifest.json");
   });
 
   it("refuses a projection target whose adapter has no projector, even under warn policy", async () => {
