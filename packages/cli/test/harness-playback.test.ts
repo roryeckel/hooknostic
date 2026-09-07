@@ -1182,7 +1182,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       }
       const validation = await runProcess(
         "claude",
-        ["plugin", "validate", "--strict", pluginDir, "--json"],
+        ["plugin", "validate", "--strict", pluginDir],
         { cwd: dir, env: process.env, timeoutMs: 30_000 },
       );
       expect(validation.code, validation.stdout + validation.stderr).toBe(0);

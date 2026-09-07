@@ -45,6 +45,8 @@ export interface AgentPluginTargetReport {
   status: "success" | "failed" | "skipped";
   contentDigest?: string;
   copiedFileCount?: number;
+  /** Package directories explicitly retained by the projection. */
+  directories?: readonly string[];
   components: Partial<
     Record<
       AgentPluginComponentId,
@@ -190,7 +192,7 @@ async function projectionExcludes(
   return [...exclusions];
 }
 
-function artifactDigest(artifacts: readonly GeneratedArtifact[]): string {
+function artifactDigest(artifacts: readonly GeneratedArtifact[], directories: readonly string[]): string {
   const hash = createHash("sha256");
   for (const artifact of [...artifacts].sort((a, b) => a.path.localeCompare(b.path))) {
     hash.update(artifact.path);
@@ -200,6 +202,11 @@ function artifactDigest(artifacts: readonly GeneratedArtifact[]): string {
     hash.update(artifact.contents);
     hash.update("\0");
   }
+  for (const directory of [...directories].sort()) {
+    hash.update("directory\0");
+    hash.update(directory);
+    hash.update("\0");
+  }
   return `sha256:${hash.digest("hex")}`;
 }
 
@@ -207,6 +214,7 @@ function projectionReport(
   resolution: AgentPluginProjectionResolution,
   summary: AgentPluginProjectionSummary,
   artifacts: readonly GeneratedArtifact[],
+  directories: readonly string[],
 ): AgentPluginTargetReport {
   const components: AgentPluginTargetReport["components"] = {};
   for (const [id, counts] of Object.entries(summary.components)) {
@@ -220,8 +228,9 @@ function projectionReport(
   }
   return {
     status: "success",
-    contentDigest: artifactDigest(artifacts),
+    contentDigest: artifactDigest(artifacts, directories),
     copiedFileCount: summary.copiedPaths.length,
+    ...(directories.length === 0 ? {} : { directories }),
     components,
     omissions: summary.omissions,
   };
@@ -273,9 +282,16 @@ function analyzedProjectionReport(
   };
 }
 
-async function writeArtifacts(stagingRoot: string, key: string, artifacts: GeneratedArtifact[]): Promise<string> {
+async function writeArtifacts(stagingRoot: string, key: string, artifacts: GeneratedArtifact[], directories: readonly string[]): Promise<string> {
   const dir = join(stagingRoot, key);
   await mkdir(dir, { recursive: true });
+  for (const directory of directories) {
+    const path = join(dir, directory);
+    if (!isStrictDescendant(dir, path)) {
+      throw new Error(`directory path ${JSON.stringify(directory)} resolves outside its output directory`);
+    }
+    await mkdir(path, { recursive: true });
+  }
   for (const artifact of artifacts) {
     const file = join(dir, artifact.path);
     if (!isStrictDescendant(dir, file)) {
@@ -475,6 +491,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         let artifacts = hookArtifacts;
+        let directories: readonly string[] = [];
         let projectionCopiedPaths: ReadonlySet<string> | undefined;
         if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
           phase = "Agent Plugin projection";
@@ -507,12 +524,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             continue;
           }
           artifacts = plan.files;
+          directories = plan.directories ?? [];
           projectionCopiedPaths = new Set(plan.summary.copiedPaths);
-          target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts);
+          target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts, directories);
         }
 
         phase = "validation";
-        const structural = validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id });
+        const structural = validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories);
         diagnostics.push(...structural);
         if (hasFatal(structural)) {
           target.status = "failed";
@@ -543,7 +561,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         planned.push({ target: id, outputDir: outputByKey.get(id)!.outputDir });
         if (stagingRoot === undefined) continue;
         phase = "staging";
-        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts);
+        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts, directories);
         staged.push({ key: id, target: id, stagingDir, outputDir: outputByKey.get(id)!.outputDir });
       } catch (error) {
         diagnostics.push({ code: "HN301", severity: "error", target: id, message: `artifact ${phase} failed: ${errorMessage(error)}` });

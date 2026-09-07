@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { dirname, posix } from "node:path";
 import { build } from "esbuild";
 import {
   validateNpmRuntimePackage,
@@ -191,6 +191,25 @@ function translateServer(server: AgentPluginMcpServer): Record<string, unknown> 
     env,
     cwd,
   };
+}
+
+function workingDirectories(source: AgentPluginPackage): string[] {
+  const included = new Set(source.directories ?? []);
+  const required = new Set<string>();
+  for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
+    if (server.type !== "stdio" || server.cwd === undefined) continue;
+    const relative = server.cwd.startsWith("./")
+      ? server.cwd.slice(2)
+      : server.cwd.startsWith("${PLUGIN_ROOT}/")
+        ? server.cwd.slice("${PLUGIN_ROOT}/".length)
+        : undefined;
+    if (relative === undefined) continue;
+    const directory = posix.normalize(relative.replaceAll("\\", "/")).replace(/\/$/, "");
+    // Retain only existing, inventoried package directories. In particular,
+    // never create arbitrary paths or client-managed PLUGIN_DATA directories.
+    if (included.has(directory)) required.add(directory);
+  }
+  return [...required].sort();
 }
 
 function hooksFrom(value: Record<string, unknown>, label: string): Record<string, unknown[]> {
@@ -412,6 +431,7 @@ export async function projectAgentPluginToClaude(
 
   return {
     files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
+    directories: workingDirectories(source),
     issues,
     summary: {
       components: {

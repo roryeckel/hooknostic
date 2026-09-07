@@ -572,6 +572,7 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
   const skills = loadSkills(inventoried, issues);
   const mcp = loadMcp(root, manifest, inventoried, issues);
   const files = inventoried.files;
+  const directories = [...inventoried.directories].filter((path) => path !== "").sort();
   const source: AgentPluginPackage = {
     specVersion: "1.0.0",
     root,
@@ -579,6 +580,7 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
     skills,
     ...(mcp === undefined ? {} : { mcp }),
     files,
+    directories,
     contentDigest: digest(files),
   };
   return { package: source, issues };

@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { artifactPathProblem, validateGeneratedArtifacts } from "./artifacts.js";
 
 describe("generated artifact paths", () => {
+  it.each([["../escape"], ["file"], ["file/child"], ["worker", "WORKER"]])(
+    "rejects unsafe or conflicting explicit directories %j", (...directories) => {
+      expect(validateGeneratedArtifacts([{ path: "file", contents: "" }],
+        { adapterId: "fake", target: "t" }, directories)).not.toEqual([]);
+      expect(validateGeneratedArtifacts([{ path: "worker/server.js", contents: "" }],
+        { adapterId: "fake", target: "t" }, ["worker", "worker/empty"])).toEqual([]);
+    },
+  );
+
   it("accepts POSIX-style relative paths", () => {
     for (const path of ["hooks/hooks.json", ".codex/hooks.json", "runtime/hooknostic.mjs", "a"]) {
       expect(artifactPathProblem(path), path).toBeUndefined();

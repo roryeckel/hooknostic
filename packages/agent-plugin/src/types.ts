@@ -75,6 +75,9 @@ export interface AgentPluginPackage {
   skills: AgentPluginSkill[];
   mcp?: AgentPluginMcpConfig;
   files: AgentPluginFile[];
+  /** Included package-relative directories, excluding the root itself. */
+  directories?: readonly string[];
+  /** Digest of inventoried files, including their paths, bytes, and modes. */
   contentDigest: string;
 }
 
@@ -184,6 +187,8 @@ export interface AgentPluginProjectionSummary {
 
 export interface AgentPluginProjectionPlan {
   files: AgentPluginProjectionFile[];
+  /** Directories required by the projection, including those with no files. */
+  directories?: readonly string[];
   issues: AgentPluginIssue[];
   summary: AgentPluginProjectionSummary;
 }

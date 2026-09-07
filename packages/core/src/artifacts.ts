@@ -36,6 +36,7 @@ export function artifactPathProblem(path: unknown): string | undefined {
 export function validateGeneratedArtifacts(
   artifacts: readonly GeneratedArtifact[],
   context: ArtifactValidationContext,
+  explicitDirectories: readonly string[] = [],
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const seen = new Set<string>();
@@ -114,6 +115,27 @@ export function validateGeneratedArtifacts(
         severity: "error",
         target: context.target,
         message: `adapter "${context.adapterId}" emitted artifact path ${JSON.stringify(artifact.path)} that is also a directory of another artifact.`,
+        remediation: ARTIFACT_PATH_RULE,
+      });
+    }
+  }
+  const seenDirectories = new Set<string>();
+  for (const path of explicitDirectories) {
+    let problem = artifactPathProblem(path);
+    if (problem === undefined) {
+      const folded = path.toLowerCase();
+      if (seenDirectories.has(folded)) problem = "duplicate directory path";
+      else if ([...seenCaseInsensitive].some((file) => folded === file || folded.startsWith(`${file}/`))) {
+        problem = "directory occupies a file path or is nested beneath a file";
+      }
+      seenDirectories.add(folded);
+    }
+    if (problem !== undefined) {
+      diagnostics.push({
+        code: "HN301",
+        severity: "error",
+        target: context.target,
+        message: `adapter "${context.adapterId}" emitted an invalid directory path ${JSON.stringify(path)}: ${problem}.`,
         remediation: ARTIFACT_PATH_RULE,
       });
     }

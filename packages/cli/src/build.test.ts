@@ -15,6 +15,7 @@ const ROOT_VERSION = (
   }
 ).version;
 import { runBuild } from "./build.js";
+import { runCheck } from "./check.js";
 import { runDoctor } from "./doctor.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
@@ -335,6 +336,54 @@ ${run.stderr}`).toBe(0);
       });
     },
   );
+
+  it("preserves an empty package directory used as MCP cwd", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-empty-cwd-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "worker"));
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "empty-cwd",
+    }));
+    await writeFile(join(dir, "mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { worker: {
+        type: "stdio", command: "node", cwd: "./worker/",
+        args: ["-e", "console.log(process.cwd())"],
+      }, rooted: {
+        type: "stdio", command: "node", cwd: "${PLUGIN_ROOT}/worker",
+        args: ["-e", "console.log(process.cwd())"],
+      } },
+    }));
+    await writeFile(join(dir, "hooknostic.config.ts"), `export default {
+      agentPlugin: { root: ".", targets: ["claude"] },
+      targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist" } }
+    };`);
+    const capture = captureIO();
+    expect(await runBuild({ config: join(dir, "hooknostic.config.ts"), json: true,
+      registry: defaultAdapterRegistry(), io: capture.io }), capture.out()).toBe(0);
+    const output = join(dir, "dist");
+    expect(existsSync(join(output, "worker"))).toBe(true);
+    const servers = JSON.parse(await readFile(join(output, ".mcp.json"), "utf8")).mcpServers;
+    for (const name of ["worker", "rooted"]) {
+      const child = spawnSync(process.execPath,
+        servers[name].args.map((arg: string) => arg.replaceAll("${CLAUDE_PLUGIN_ROOT}", output)),
+        { encoding: "utf8", timeout: 10_000 });
+      expect(child.error).toBeUndefined();
+      expect(child.status, child.stderr).toBe(0);
+      expect(child.stdout.trim()).toBe(join(output, "worker"));
+    }
+    expect(JSON.parse(capture.out()).targets.claude.projection.directories).toEqual(["worker"]);
+
+    // An overlay file cannot replace a directory the MCP process needs.
+    await mkdir(join(dir, "com.anthropic.claude-code"));
+    await writeFile(join(dir, "com.anthropic.claude-code/worker"), "collision");
+    const check = captureIO();
+    expect(await runCheck({ config: join(dir, "hooknostic.config.ts"), json: true,
+      registry: defaultAdapterRegistry(), io: check.io })).toBe(1);
+    expect(JSON.parse(check.out()).diagnostics).toContainEqual(expect.objectContaining({
+      code: "HN301", message: expect.stringContaining("invalid directory path"),
+    }));
+  });
 
   it("builds a hookless skill package without emitting a runtime", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-hookless-"));
@@ -1073,6 +1122,25 @@ describe("hooknostic doctor", () => {
 });
 
 describe("hooknostic inspect", () => {
+  it("inspects hooks outside the projection version range", async () => {
+    const registry = defaultAdapterRegistry();
+    const adapter = registry.claude!;
+    // Deliberately narrower projection coverage than the hook profile.
+    registry.claude = { ...adapter, agentPluginProjector: {
+      ...adapter.agentPluginProjector!, profiles: [],
+    } };
+    const capture = captureIO();
+    expect(await runInspect({ target: "claude", capability: "tool.before.block",
+      json: true, registry, io: capture.io }), capture.err()).toBe(0);
+    expect(JSON.parse(capture.out()).capabilities).toEqual([
+      { capability: "tool.before.block", level: "exact" },
+    ]);
+    const component = captureIO();
+    expect(await runInspect({ target: "claude", component: "agent-plugin.manifest",
+      registry, io: component.io })).toBe(1);
+    expect(component.err()).toContain("HN203");
+  });
+
   it("renders adapter-owned capability facts with rationale", async () => {
     const { io, out } = captureIO();
     const code = await runInspect({

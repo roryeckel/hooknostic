@@ -807,7 +807,12 @@ config file, the hook `entry`, every target output, the build report, and stagin
 directories. `agentPlugin.exclude` globs add to that set and apply before component
 discovery: excluding `mcp.json`, a skill directory, or its `SKILL.md` removes that
 component, while `plugin.json` cannot be excluded. The build report lists every
-inventoried path under `agentPlugin.sourceFiles`, so what shipped is never a guess. Any
+inventoried file under `agentPlugin.sourceFiles`; the source content digest covers
+those files' paths, bytes, and modes. Claude
+projection retains existing package directories used as portable MCP working
+directories, even when they are empty; these appear in the target projection's
+`directories` list and content digest. Staging validates their paths and file
+collisions before creating them, just as it does for files. Any
 non-excluded symlink escaping the package root rejects the package before component
 contents are parsed.
 

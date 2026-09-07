@@ -83,7 +83,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       ...(entry?.rationale !== undefined ? { rationale: entry.rationale } : {}),
     };
   });
-  const projection = adapter.agentPluginProjector
+  const projection = options.capability === undefined && adapter.agentPluginProjector
     ? resolveAgentPluginProjection(
         {
           id: adapter.id,
