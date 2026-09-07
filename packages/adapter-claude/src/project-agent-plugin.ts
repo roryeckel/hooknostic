@@ -191,8 +191,12 @@ export async function projectAgentPluginToClaude(
     if (
       file.path === "plugin.json" ||
       file.path === "mcp.json" ||
-      runtimePackage?.sourcePaths.has(file.path) ||
-      (runtimePackage !== undefined && (file.path === "package.json" || file.path === "package-lock.json"))
+      // A package root commonly has the source project's development manifest
+      // and lockfile. Claude treats a root pair as install input, so only the
+      // explicitly selected and validated runtime pair may reach its root.
+      file.path === "package.json" ||
+      file.path === "package-lock.json" ||
+      runtimePackage?.sourcePaths.has(file.path)
     ) continue;
     if (file.path.startsWith(`${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`)) continue;
     const skillMatch = /^skills\/([^/]+)(?:\/|$)/.exec(file.path);

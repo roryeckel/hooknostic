@@ -99,6 +99,20 @@ describe("Agent Plugin to Claude projection", () => {
       custom: true,
       manifestOnly: true,
     });
+    expect(plan.summary.copiedFileCount).toBe(2);
+  });
+
+  it("does not project the source development manifest without an explicit runtime package", async () => {
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file("package.json", JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
+        file("package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: {} })),
+      ]),
+      { target, hookArtifacts: [], onUnsupported: "error" },
+    );
+    const paths = plan.files.map((item) => item.path);
+    expect(paths).not.toContain("package.json");
+    expect(paths).not.toContain("package-lock.json");
   });
 
   it("runs native hooks first and appends one generated dispatcher per event", async () => {
