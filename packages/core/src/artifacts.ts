@@ -53,6 +53,28 @@ export function validateGeneratedArtifacts(
       });
       continue;
     }
+    // Write-time invariants: `check` never stages, so anything writeFile would
+    // reject must be rejected here or a dry run passes what a build fails.
+    if (typeof artifact.contents !== "string" && !(artifact.contents instanceof Uint8Array)) {
+      diagnostics.push({
+        code: "HN301",
+        severity: "error",
+        target: context.target,
+        message: `adapter "${context.adapterId}" emitted artifact ${shown} with non-string, non-binary contents.`,
+        remediation: "artifact contents must be a string or a Uint8Array.",
+      });
+      continue;
+    }
+    if (artifact.mode !== undefined && (!Number.isInteger(artifact.mode) || artifact.mode < 0 || artifact.mode > 0o7777)) {
+      diagnostics.push({
+        code: "HN301",
+        severity: "error",
+        target: context.target,
+        message: `adapter "${context.adapterId}" emitted artifact ${shown} with invalid mode ${String(artifact.mode)}.`,
+        remediation: "artifact mode must be an integer of permission bits (0 to 0o7777) or omitted.",
+      });
+      continue;
+    }
     if (seen.has(artifact.path)) {
       diagnostics.push({
         code: "HN301",
@@ -76,6 +98,25 @@ export function validateGeneratedArtifacts(
     }
     seen.add(artifact.path);
     seenCaseInsensitive.add(caseFolded);
+  }
+  // A file cannot also be a directory: `a` beside `a/b` only fails once
+  // staging tries to mkdir over the file, which a dry run never reaches.
+  const directories = new Set<string>();
+  for (const path of seenCaseInsensitive) {
+    const segments = path.split("/");
+    for (let depth = 1; depth < segments.length; depth += 1) directories.add(segments.slice(0, depth).join("/"));
+  }
+  for (const artifact of artifacts) {
+    if (typeof artifact.path !== "string" || !seen.has(artifact.path)) continue;
+    if (directories.has(artifact.path.toLowerCase())) {
+      diagnostics.push({
+        code: "HN301",
+        severity: "error",
+        target: context.target,
+        message: `adapter "${context.adapterId}" emitted artifact path ${JSON.stringify(artifact.path)} that is also a directory of another artifact.`,
+        remediation: ARTIFACT_PATH_RULE,
+      });
+    }
   }
   return diagnostics;
 }

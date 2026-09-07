@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   addContext,
   block,
+  defineConfig,
   definePlugin,
   hook,
   notify,
@@ -199,5 +200,42 @@ describe("compile-time hook contracts", () => {
       ],
     });
     expect(plugin.hooks.map((h) => h.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("compile-time config contracts", () => {
+  const claude = { version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" };
+  const codex = { version: ">=0.148 <1", mode: "local" as const, output: "./dist/codex" };
+
+  it("infers projection target names from the configured targets", () => {
+    const hooked = defineConfig({ entry: "./src/hooks.ts", targets: { claude, codex } });
+    const hookless = defineConfig({
+      agentPlugin: { root: ".", targets: ["claude"] },
+      targets: { claude },
+    });
+    const both = defineConfig({
+      entry: "./src/hooks.ts",
+      agentPlugin: { root: ".", targets: ["claude", "codex"], onInvalid: "warn" },
+      targets: { claude, codex },
+    });
+    expect([hooked.entry, hookless.entry, both.agentPlugin?.targets]).toEqual([
+      "./src/hooks.ts",
+      undefined,
+      ["claude", "codex"],
+    ]);
+
+    // @ts-expect-error at least one of entry or agentPlugin is required
+    defineConfig({ targets: { claude } });
+    defineConfig({
+      // @ts-expect-error "opencode" is not a configured target
+      agentPlugin: { root: ".", targets: ["opencode"] },
+      targets: { claude },
+    });
+    defineConfig({
+      entry: "./src/hooks.ts",
+      // @ts-expect-error projection targets cannot be empty
+      agentPlugin: { root: ".", targets: [] },
+      targets: { claude },
+    });
   });
 });

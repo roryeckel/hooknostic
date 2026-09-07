@@ -25,6 +25,7 @@ import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
 } from "@hooknostic/agent-plugin";
+import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const EXAMPLES = join(REPO, "examples");
@@ -91,6 +92,64 @@ async function cleanExample(name: string) {
   await symlink(join(EXAMPLES, name, "node_modules"), join(dir, "node_modules"), "junction");
   cleanupDirs.push(dir);
   return dir;
+}
+
+/**
+ * A fake harness whose projector represents the manifest exactly and nothing
+ * else, so the warn-policy omission path has somewhere real to go: the
+ * shipped adapters either project every component (Claude) or none (Codex,
+ * OpenCode), and a target with no projector at all is a hard error.
+ */
+function partialProjectorAdapter() {
+  return makeFakeAdapter({
+    id: "partial",
+    profiles: [
+      {
+        range: ">=1.0 <2",
+        source: syntheticSource(),
+        matrix: { "session.start.observe": { level: "exact" } },
+      },
+    ],
+    shimEntry: "export {};",
+    agentPluginProjector: {
+      namespace: "example.partial",
+      profiles: [
+        {
+          range: ">=1.0 <2",
+          components: { "agent-plugin.manifest": { level: "exact" } },
+          source: {
+            date: "2026-01-01",
+            validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
+          },
+        },
+      ],
+      async project(source, context) {
+        const skipped = (component: "agent-plugin.skills" | "agent-plugin.mcp.stdio", count: number) =>
+          [component, { discovered: count, emitted: 0, skipped: count }] as const;
+        const skills = source.skills.length;
+        const servers = Object.keys(source.mcp?.mcpServers ?? {}).length;
+        return {
+          files: [
+            { path: "manifest.json", contents: JSON.stringify({ name: source.manifest.name }) },
+            ...context.hookArtifacts,
+          ],
+          issues: [],
+          summary: {
+            components: Object.fromEntries([
+              ["agent-plugin.manifest", { discovered: 1, emitted: 1, skipped: 0 }],
+              skipped("agent-plugin.skills", skills),
+              skipped("agent-plugin.mcp.stdio", servers),
+            ]),
+            omissions: [
+              { component: "agent-plugin.skills", reason: "unsupported" },
+              { component: "agent-plugin.mcp.stdio", reason: "unsupported" },
+            ],
+            copiedFileCount: 0,
+          },
+        };
+      },
+    },
+  });
 }
 
 describe("hooknostic build end-to-end", () => {
@@ -286,7 +345,10 @@ ${run.stderr}`).toBe(0);
     ).toBe(0);
     const report = JSON.parse(capture.out());
     expect(report.source).toBeUndefined();
-    expect(report.agentPlugin.sourceFileCount).toBe(3);
+    // The config file is project scaffolding, never package content.
+    expect(report.agentPlugin.sourceFiles).toEqual(["plugin.json", "skills/review/SKILL.md"]);
+    expect(report.agentPlugin.sourceFileCount).toBe(2);
+    expect(existsSync(join(dir, "dist/claude/hooknostic.config.ts"))).toBe(false);
     expect(report.targets.claude.projection.components["agent-plugin.skills"]).toMatchObject({
       support: "exact",
       discovered: 1,
@@ -339,8 +401,139 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["partial"], onUnsupported: "warn" },
+        targets: { partial: { version: ">=1.0 <2", mode: "plugin", output: "./dist/partial" } }
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: { partial: partialProjectorAdapter() },
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      capture.out(),
+    ).toBe(0);
+    const report = JSON.parse(capture.out());
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.skills" }),
+    );
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.mcp.stdio" }),
+    );
+    expect(report.targets.partial.projection.omissions).toEqual([
+      expect.objectContaining({ component: "agent-plugin.skills" }),
+      expect.objectContaining({ component: "agent-plugin.mcp.stdio" }),
+    ]);
+    expect(report.targets.partial.projection.components).toMatchObject({
+      "agent-plugin.manifest": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.skills": { support: "unsupported", discovered: 2, emitted: 0, skipped: 2 },
+      "agent-plugin.mcp.stdio": { support: "unsupported", discovered: 2, emitted: 0, skipped: 2 },
+    });
+    expect(existsSync(join(dir, "dist/partial/fake-plugin.json"))).toBe(true);
+    expect(existsSync(join(dir, "dist/partial/manifest.json"))).toBe(true);
+    expect(existsSync(join(dir, "dist/partial/README.md"))).toBe(false);
+  });
+
+  it("refuses a projection target whose adapter has no projector, even under warn policy", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-no-projector-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "no-projector" }),
+    );
+    await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    await mkdir(join(dir, "dist/codex"), { recursive: true });
+    await writeFile(join(dir, "dist/codex/previous"), "previous output");
+    // Hookless, so the only thing this target could ever receive is the package.
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
         agentPlugin: { root: ".", targets: ["codex"], onUnsupported: "warn" },
         targets: { codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" } }
+      };`,
+    );
+    const json = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: json.io,
+      }),
+    ).toBe(1);
+    const report = JSON.parse(json.out());
+    expect(report.targets.codex.status).toBe("failed");
+    expect(report.diagnostics).toEqual([
+      expect.objectContaining({ code: "HN205", severity: "error", target: "codex", message: expect.stringContaining("no Agent Plugin projector") }),
+    ]);
+    // Nothing was committed: the previous output survives untouched, and the
+    // "success" that used to accompany an empty directory is gone.
+    expect(await readFile(join(dir, "dist/codex/previous"), "utf8")).toBe("previous output");
+    expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
+
+    const human = captureIO();
+    expect(
+      await runBuild({ config: join(dir, "hooknostic.config.ts"), registry: defaultAdapterRegistry(), io: human.io }),
+    ).toBe(1);
+    expect(human.out()).toContain("FAIL   codex");
+    expect(human.out()).toContain("Agent Plugin projection failed");
+  });
+
+  it("prints the projection summary for a built target", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-projection-summary-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "summary" }),
+    );
+    await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`,
+    );
+    const human = captureIO();
+    expect(
+      await runBuild({ config: join(dir, "hooknostic.config.ts"), registry: defaultAdapterRegistry(), io: human.io }),
+      human.out(),
+    ).toBe(0);
+    expect(human.out()).toContain("BUILT  claude");
+    expect(human.out()).toMatch(/Agent Plugin projection success: 2 components emitted, 0 omitted, 1 package files copied/);
+  });
+
+  it("never ships dependencies, secrets, the config, or the hook source from a project-root package", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-inventory-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "node_modules/left-pad"), { recursive: true });
+    await mkdir(join(dir, "src/nested"), { recursive: true });
+    await writeFile(join(dir, "node_modules/left-pad/index.js"), "module.exports = 1;");
+    await writeFile(join(dir, ".env"), "SECRET=1");
+    await writeFile(join(dir, ".env.local"), "SECRET=2");
+    await writeFile(join(dir, "src/nested/.env"), "SECRET=3");
+    await writeFile(join(dir, ".npmrc"), "//registry/:_authToken=abc");
+    await writeFile(join(dir, "src/server.mjs"), "export {};");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "inventory" }),
+    );
+    await writeFile(
+      join(dir, "src/hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "inventory", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./src/hooks.ts",
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -352,36 +545,221 @@ ${run.stderr}`).toBe(0);
         io: capture.io,
         evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
       }),
+      capture.out(),
     ).toBe(0);
     const report = JSON.parse(capture.out());
-    expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.manifest" }),
+    expect(report.agentPlugin.sourceFiles).toEqual(["plugin.json", "src/server.mjs"]);
+    for (const shipped of ["src/server.mjs", "runtime/hooknostic.mjs", ".claude-plugin/plugin.json"]) {
+      expect(existsSync(join(dir, "dist/claude", shipped)), shipped).toBe(true);
+    }
+    for (const leaked of [
+      "node_modules",
+      ".env",
+      ".env.local",
+      "src/nested/.env",
+      ".npmrc",
+      "hooknostic.config.ts",
+      "src/hooks.ts",
+      "dist",
+    ]) {
+      expect(existsSync(join(dir, "dist/claude", leaked)), leaked).toBe(false);
+    }
+  });
+
+  it("builds when the output is spelled through a link inside the package", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-linked-output-"));
+    cleanupDirs.push(dir);
+    // A previous output exists. Inventory walks `link/claude` under the link's
+    // name; the exclusion must cover that spelling as well as the canonical
+    // `dist/claude`, or the loader rejects the link as resolving to an
+    // excluded path and the build fails.
+    await mkdir(join(dir, "dist/claude"), { recursive: true });
+    await writeFile(join(dir, "dist/claude/stale.json"), "{}");
+    await symlink(join(dir, "dist"), join(dir, "link"), "junction");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "linked-output" }),
     );
-    expect(report.targets.codex.projection.omissions).toContainEqual(
-      expect.objectContaining({ component: "agent-plugin.manifest" }),
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./link/claude" } }
+      };`,
     );
-    expect(report.targets.codex.projection.components).toMatchObject({
-      "agent-plugin.manifest": {
-        support: "unsupported",
-        discovered: 1,
-        emitted: 0,
-        skipped: 1,
-      },
-      "agent-plugin.skills": {
-        support: "unsupported",
-        discovered: 2,
-        emitted: 0,
-        skipped: 2,
-      },
-      "agent-plugin.mcp.stdio": {
-        support: "unsupported",
-        discovered: 2,
-        emitted: 0,
-        skipped: 2,
-      },
-    });
-    expect(existsSync(join(dir, "dist/codex/.codex/hooknostic/hooknostic.mjs"))).toBe(true);
-    expect(existsSync(join(dir, "dist/codex/README.md"))).toBe(false);
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      capture.out(),
+    ).toBe(0);
+    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(existsSync(join(dir, "dist/claude"))).toBe(true);
+  });
+
+  it("excludes the config file's link target when the config itself is a link inside the package", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-linked-config-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "config"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "linked-config" }),
+    );
+    await writeFile(
+      join(dir, "config/real.config.ts"),
+      `export default {
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`,
+    );
+    // The name is excluded by rule; the file it links to must be as well.
+    await symlink(join(dir, "config/real.config.ts"), join(dir, "hooknostic.config.ts"), "file");
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      capture.out(),
+    ).toBe(0);
+    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+  });
+
+  it("still excludes the config and entry when the package root is reached through a link", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "hooknostic-linked-root-"));
+    cleanupDirs.push(parent);
+    const real = join(parent, "real");
+    await mkdir(join(real, "src"), { recursive: true });
+    // The loader inventories the realpath; the config names the alias.
+    await symlink(real, join(parent, "alias"), "junction");
+    await writeFile(
+      join(real, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "linked-root" }),
+    );
+    await writeFile(
+      join(real, "src/hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "linked-root", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(real, "hooknostic.config.ts"),
+      `export default {
+        entry: "./src/hooks.ts",
+        agentPlugin: { root: "../alias", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(real, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      capture.out(),
+    ).toBe(0);
+    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(existsSync(join(real, "dist/claude/hooknostic.config.ts"))).toBe(false);
+    expect(existsSync(join(real, "dist/claude/src/hooks.ts"))).toBe(false);
+  });
+
+  it("still excludes a target output spelled through the package root's alias", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "hooknostic-aliased-output-"));
+    cleanupDirs.push(parent);
+    const real = join(parent, "real");
+    await mkdir(join(parent, "src"), { recursive: true });
+    // A previous build's output sits under the real root; the config reaches
+    // both the root and the output through the alias.
+    await mkdir(join(real, "dist/claude"), { recursive: true });
+    await writeFile(join(real, "dist/claude/stale.json"), "{}");
+    await symlink(real, join(parent, "alias"), "junction");
+    await writeFile(
+      join(real, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "aliased-output" }),
+    );
+    await writeFile(
+      join(parent, "src/hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "aliased-output", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(parent, "hooknostic.config.ts"),
+      `export default {
+        entry: "./src/hooks.ts",
+        agentPlugin: { root: "./alias", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./alias/dist/claude" } }
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(parent, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      capture.out(),
+    ).toBe(0);
+    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(existsSync(join(real, "dist/claude/dist/claude/stale.json"))).toBe(false);
+  });
+
+  it("fails on an invalid component by default and degrades it only under onInvalid: warn", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-invalid-component-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "invalid-component" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          good: { type: "stdio", command: "node" },
+          insecure: { type: "streamable-http", url: "http://example.com/insecure" },
+        },
+      }),
+    );
+    const config = (policy: string) =>
+      `export default {
+        agentPlugin: { root: ".", targets: ["claude"]${policy} },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+      };`;
+
+    await writeFile(join(dir, "hooknostic.config.ts"), config(""));
+    const strict = captureIO();
+    expect(
+      await runBuild({ config: join(dir, "hooknostic.config.ts"), json: true, registry: defaultAdapterRegistry(), io: strict.io }),
+    ).toBe(1);
+    expect(JSON.parse(strict.out()).diagnostics).toEqual([
+      expect.objectContaining({ code: "HN503", severity: "error", message: expect.stringContaining('"insecure"') }),
+    ]);
+    expect(existsSync(join(dir, "dist"))).toBe(false);
+
+    await writeFile(join(dir, "hooknostic.config.ts"), config(', onInvalid: "warn"'));
+    const lenient = captureIO();
+    expect(
+      await runBuild({ config: join(dir, "hooknostic.config.ts"), json: true, registry: defaultAdapterRegistry(), io: lenient.io }),
+      lenient.out(),
+    ).toBe(0);
+    const report = JSON.parse(lenient.out());
+    expect(report.diagnostics).toEqual([
+      expect.objectContaining({ code: "HN503", severity: "warn", message: expect.stringContaining('"insecure"') }),
+    ]);
+    const mcp = JSON.parse(await readFile(join(dir, "dist/claude/.mcp.json"), "utf8"));
+    expect(Object.keys(mcp.mcpServers)).toEqual(["good"]);
   });
 
   it("rolls back a projection when a native overlay collides with the Hooknostic runtime", async () => {

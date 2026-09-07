@@ -89,6 +89,39 @@ describe("loadAgentPlugin", () => {
     );
   });
 
+  it("never inventories version control, installed dependencies, or environment secrets", async () => {
+    const root = await packageRoot();
+    for (const dir of [".git/objects", "node_modules/dep", "skills/tool/node_modules/x", "lib/NODE_MODULES/y"]) {
+      await mkdir(join(root, dir), { recursive: true });
+    }
+    await writeFile(join(root, ".git/objects/abc"), "blob");
+    await writeFile(join(root, "node_modules/dep/index.js"), "module.exports = 1;");
+    // Exclusions are case-insensitive: a `.ENV` inventoried on Linux is `.env`
+    // to every Windows and macOS consumer the package is installed for.
+    await writeFile(join(root, "lib/NODE_MODULES/y/index.js"), "shouting dependency");
+    await writeFile(join(root, ".ENV.staging"), "SECRET=3");
+    await writeFile(join(root, "skills/tool/node_modules/x/index.js"), "nested dependency");
+    // A submodule-style `.git` *file* must be excluded as well as the directory form.
+    await writeFile(join(root, "skills/tool/.git"), "gitdir: ../../.git/modules/tool");
+    await writeFile(join(root, "skills/tool/SKILL.md"), "---\nname: tool\ndescription: Tool\n---\n");
+    await writeFile(join(root, "skills/tool/.env"), "NESTED=1");
+    await writeFile(join(root, ".env"), "SECRET=1");
+    await writeFile(join(root, ".env.production"), "SECRET=2");
+    await writeFile(join(root, ".npmrc"), "//registry.npmjs.org/:_authToken=token");
+    await writeFile(join(root, ".environment.md"), "documentation, not a secret");
+    await writeFile(join(root, "environment.json"), "{}");
+
+    const loaded = await loadAgentPlugin({ root });
+    expect(loaded.issues).toEqual([]);
+    expect(loaded.package?.files.map((file) => file.path)).toEqual([
+      ".environment.md",
+      "environment.json",
+      "plugin.json",
+      "skills/tool/SKILL.md",
+    ]);
+    expect(loaded.package?.skills.map((skill) => skill.name)).toEqual(["tool"]);
+  });
+
   it("applies exclusions before component discovery and rejects excluding plugin.json", async () => {
     const root = await packageRoot();
     await mkdir(join(root, "skills/kept/assets"), { recursive: true });
@@ -170,6 +203,32 @@ describe("loadAgentPlugin", () => {
     expect(escaped.issues).toContainEqual(
       expect.objectContaining({ severity: "error", scope: "file", message: expect.stringContaining("outside") }),
     );
+  });
+
+  it("rejects links whose targets are excluded, whatever the link is named", async () => {
+    for (const [link, target, kind] of [
+      ["notes.txt", ".env", "file"],
+      ["renamed.mjs", "src/server.mjs", "file"],
+      ["lib", "node_modules/dep", "junction"],
+    ] as const) {
+      const root = await packageRoot();
+      await mkdir(join(root, "node_modules/dep"), { recursive: true });
+      await mkdir(join(root, "src"));
+      await writeFile(join(root, ".env"), "SECRET=1");
+      await writeFile(join(root, "src/server.mjs"), "export {};");
+      await writeFile(join(root, "node_modules/dep/index.js"), "module.exports = 1;");
+      await symlink(join(root, target), join(root, link), kind);
+
+      const loaded = await loadAgentPlugin({ root, exclude: ["src/server.mjs"] });
+      expect(loaded.package, link).toBeUndefined();
+      expect(loaded.issues).toContainEqual(
+        expect.objectContaining({
+          severity: "error",
+          scope: "file",
+          message: expect.stringContaining(`${link} resolves to excluded path ${target}`),
+        }),
+      );
+    }
   });
 
   it("rejects an escaping skill link before parsing its contents", async () => {

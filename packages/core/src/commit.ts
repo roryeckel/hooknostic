@@ -83,24 +83,34 @@ async function exists(path: string, files: FileOperations): Promise<boolean> {
   }
 }
 
+/**
+ * Why whatever already exists at `outputDir` cannot be replaced by a `kind`
+ * output — a regular file where a directory goes, or vice versa — or
+ * `undefined` when nothing is there or it is the right kind. Read-only, so a
+ * dry run can report the same refusal the commit would make.
+ */
+export async function existingKindProblem(
+  outputDir: string,
+  kind: "directory" | "file",
+  files: Pick<FileOperations, "lstat"> = FILES,
+): Promise<string | undefined> {
+  let stats;
+  try {
+    stats = await files.lstat(outputDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+  const matches = kind === "file" ? stats.isFile() : stats.isDirectory();
+  return matches ? undefined : `existing output ${outputDir} is not a regular ${kind}`;
+}
+
 async function validateExistingKind(
   entry: StagedOutput,
   files: FileOperations,
 ): Promise<void> {
-  let stats;
-  try {
-    stats = await files.lstat(entry.outputDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  const kind = entry.kind ?? "directory";
-  const matches = kind === "file" ? stats.isFile() : stats.isDirectory();
-  if (!matches) {
-    throw new Error(
-      `existing output ${entry.outputDir} is not a regular ${kind}`,
-    );
-  }
+  const problem = await existingKindProblem(entry.outputDir, entry.kind ?? "directory", files);
+  if (problem !== undefined) throw new Error(problem);
 }
 
 interface PreparedOutput extends StagedOutput {

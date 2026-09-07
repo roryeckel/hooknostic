@@ -50,3 +50,37 @@ it required a source-side generated tree.
   core redesign.
 - Hooknostic remains a compiler. It does not install plugins, manage marketplaces, run
   MCP servers, or become an Agent Skills authoring framework.
+
+## Amendments — 2026-09-06
+
+Hardening after external review of the first projection release. None of these change
+the boundary above; they close gaps between what the build reported and what it did.
+
+- **A projection target without a projector is an error.** `onUnsupported` degrades
+  individual components. It never applied to a whole projection, and a `"warn"` policy
+  on a projector-less target used to commit an empty (or hook-only) output while
+  reporting the target built. Core also refuses any projector plan with zero files.
+- **Inventory is deny-listed by default.** The loader always omits `.git`,
+  `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core omits the config
+  file and hook `entry` alongside the outputs and transaction paths it already omitted.
+  A deny-list was chosen over an `include` allow-list because authors — human or agent —
+  forget to extend allow-lists when adding a skill or a server script, and a silently
+  incomplete package is worse than an over-inclusive one. The build report lists every
+  inventoried path (`agentPlugin.sourceFiles`).
+- **Skipped components fail the build by default.** The loader keeps the specification's
+  lenient skip-and-continue for library consumers; the build maps those skips to errors
+  unless `agentPlugin.onInvalid: "warn"`. The shipped JSON schemas are the
+  specification's own and are not tightened; the loader's stricter rules are documented
+  instead.
+- **`check` runs the whole pipeline.** Bundling, projection, overlay merging, and
+  artifact validation all run in memory under `check`; only staging and the commit are
+  skipped. Projector-time failures were previously reachable only from `build`; a write
+  the target filesystem itself refuses (path length, reserved names) still is.
+- **The runtime package pair is validated as `npm ci` would validate it** (see
+  [ADR-0012](0012-claude-plugin-runtime-dependencies.md)): npm lockfile v2/v3 only,
+  root dependencies equal to the manifest, every dependency locked at a satisfying
+  version and resolution, the transitive graph complete. The validator lives in
+  `@hooknostic/agent-plugin` so a future projector can reuse it.
+- **`defineConfig` is generic** over the configured target names, so
+  `agentPlugin.targets` and the entry-or-agentPlugin requirement are checked by the
+  editor as well as by the schema.

@@ -43,6 +43,8 @@ export interface FakeAdapterOptions {
     artifacts: GeneratedArtifact[],
     target: TargetSpec,
   ): Diagnostic[] | Promise<Diagnostic[]>;
+  /** Optional Agent Plugin projector, forwarded verbatim (omit for a projector-less fake). */
+  agentPluginProjector?: HarnessAdapter["agentPluginProjector"];
 }
 
 /**
@@ -61,6 +63,9 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
       referenceVersion: "1.0.0",
     },
     ...(options.shimExecution !== undefined ? { shimExecution: options.shimExecution } : {}),
+    ...(options.agentPluginProjector !== undefined
+      ? { agentPluginProjector: options.agentPluginProjector }
+      : {}),
 
     supportedHarnessVersions() {
       return options.profiles.map((p) => p.range);

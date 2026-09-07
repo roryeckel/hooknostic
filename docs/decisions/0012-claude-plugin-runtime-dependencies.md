@@ -30,6 +30,27 @@ install in its cache; Hooknostic neither invokes a package manager nor writes
 The runtime manifest must be separate from the source project's build manifest.
 It contains only production dependencies needed by projected Node components.
 
+Because Claude's install is locked and script-free, the pair is validated at
+build time the way that install would validate it (amended 2026-09-06), with
+the rules taken from npm's own packages rather than reimplemented —
+`npm-package-arg` and `hosted-git-info` classify every spec,
+`validate-npm-package-name` checks names, and arborist's `dep-valid` and
+lockfile validation are ported literally: the manifest declares only
+`dependencies`, under names npm accepts; the lockfile is an npm
+`package-lock.json` with `lockfileVersion` 2 or 3 (pnpm and Yarn locks are
+rejected by name rather than as generic JSON errors); its root entry declares
+exactly the manifest's dependencies; every dependency's `node_modules/<name>`
+entry satisfies its spec as npm checks it (loose semver without prereleases
+for ranges and `npm:` aliases, a registry tarball resolution for dist-tags,
+an identical `resolved` for tarball URLs, the same repository and pinned
+commit for git specs); and every locked package's own dependencies and
+required peers are locked where they resolve, so `npm ci` has nothing to
+re-resolve, with flat `overrides` applied to every edge the way arborist
+applies them (nested, selector, and `$ref` overrides are rejected as
+unmodelled). Local paths, `file:`, `link:`, and other package-manager
+protocols are rejected on any edge because the harness installs from a cached
+copy.
+
 ## Consequences
 
 - A Claude marketplace plugin can use pure-JavaScript npm dependencies without

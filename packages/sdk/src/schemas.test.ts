@@ -215,6 +215,21 @@ describe("canonical schemas", () => {
     ).toBe(true);
   });
 
+  it("accepts only error/warn for agentPlugin.onInvalid", () => {
+    const base = {
+      agentPlugin: { root: ".", targets: ["claude"] },
+      targets: { claude: { version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" } },
+    };
+    for (const onInvalid of ["error", "warn"]) {
+      expect(
+        hooknosticConfigSchema.safeParse({ ...base, agentPlugin: { ...base.agentPlugin, onInvalid } }).success,
+      ).toBe(true);
+    }
+    expect(
+      hooknosticConfigSchema.safeParse({ ...base, agentPlugin: { ...base.agentPlugin, onInvalid: "ignore" } }).success,
+    ).toBe(false);
+  });
+
   it("validates hookless Agent Plugin projection target invariants", () => {
     const target = { version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" };
     expect(

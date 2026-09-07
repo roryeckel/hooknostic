@@ -4439,7 +4439,12 @@ var hooknosticConfigSchema = external_exports.object({
     root: external_exports.string().min(1),
     targets: external_exports.array(external_exports.string().min(1)).min(1),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
-    onUnsupported: external_exports.enum(["error", "warn"]).optional()
+    runtimePackage: external_exports.object({
+      manifest: external_exports.string().min(1),
+      lockfile: external_exports.string().min(1)
+    }).strict().optional(),
+    onUnsupported: external_exports.enum(["error", "warn"]).optional(),
+    onInvalid: external_exports.enum(["error", "warn"]).optional()
   }).strict().optional()
 }).strict().superRefine((config, context) => {
   if (config.entry === void 0 && config.agentPlugin === void 0) {

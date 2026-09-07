@@ -41,6 +41,14 @@
   },
   "dependencies": {
     "minimatch": "^10.0.1",
+    "npm-package-arg": "^13.0.2",
+    "semver": "^7.6.3",
+    "validate-npm-package-name": "^7.0.2",
     "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/npm-package-arg": "^6.1.4",
+    "@types/semver": "^7.5.8",
+    "@types/validate-npm-package-name": "^4.0.2"
   }
 }

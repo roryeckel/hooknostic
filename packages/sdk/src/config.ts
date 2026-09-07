@@ -69,29 +69,67 @@ export interface AgentPluginRuntimePackageConfig {
   lockfile: string;
 }
 
-export interface AgentPluginConfig {
+export interface AgentPluginConfig<TTarget extends string = string> {
   /** Root of an Agent Plugins package to project into native target packages. */
   root: string;
-  /** Configured targets that must receive a complete native package projection. */
-  targets: string[];
-  /** POSIX-style package-relative globs omitted from projected packages. */
+  /**
+   * Configured targets that must receive a complete native package projection.
+   * Every name must be a key of `targets`, and the adapter must provide an
+   * Agent Plugin projector; a target without one is a configuration error.
+   */
+  targets: [TTarget, ...TTarget[]];
+  /**
+   * POSIX-style package-relative globs omitted from projected packages, in
+   * addition to the built-in exclusions: `.git`, `node_modules`, `.env`,
+   * `.env.*`, and `.npmrc` at any depth, plus this config file, the hook
+   * `entry`, every target output, the build report, and staging directories.
+   */
   exclude?: string[];
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
-  /** Whether a valid but unrepresentable component fails or degrades the build. */
+  /** Whether a valid but unrepresentable component fails or degrades the build. Default `"error"`. */
   onUnsupported?: "error" | "warn";
+  /**
+   * Whether an invalid component the loader would otherwise skip (a malformed
+   * skill or MCP server, an ignored `extensions` block) fails or degrades the
+   * build. Default `"error"`: a skipped component in a package you are
+   * publishing is an authoring mistake, not a portable-spec recovery.
+   */
+  onInvalid?: "error" | "warn";
 }
 
-export interface HooknosticConfig {
-  /** Optional path to the hook source entry. Agent Plugin-only builds omit it. */
-  entry?: string;
+export type TargetsConfig = Record<string, TargetConfig>;
+
+interface HooknosticConfigBase<TTargets extends TargetsConfig> {
   compatibility?: CompatibilityPolicy;
   runtime?: RuntimePolicy;
   /** The allowed target set. CLI flags may narrow, never extend, this set. */
-  targets: Record<string, TargetConfig>;
-  agentPlugin?: AgentPluginConfig;
+  targets: TTargets;
 }
 
-export function defineConfig(config: HooknosticConfig): HooknosticConfig {
+/**
+ * Hooknostic project configuration. At least one of `entry` (hook source) or
+ * `agentPlugin` (a package to project) is required; `agentPlugin.targets` may
+ * only name keys of `targets`. `defineConfig` infers the target names so both
+ * rules are checked by the editor, not only by the schema at build time.
+ */
+export type HooknosticConfig<TTargets extends TargetsConfig = TargetsConfig> =
+  HooknosticConfigBase<TTargets> &
+    (
+      | {
+          /** Path to the hook source entry. */
+          entry: string;
+          agentPlugin?: AgentPluginConfig<keyof TTargets & string>;
+        }
+      | {
+          /** Agent Plugin-only builds omit the hook entry. */
+          entry?: undefined;
+          agentPlugin: AgentPluginConfig<keyof TTargets & string>;
+        }
+    );
+
+export function defineConfig<const TTargets extends TargetsConfig>(
+  config: HooknosticConfig<TTargets>,
+): HooknosticConfig<TTargets> {
   return config;
 }

@@ -61,6 +61,44 @@ describe("generated artifact paths", () => {
     ).toEqual([]);
   });
 
+  it("rejects contents and modes writeFile would reject, so check agrees with build", () => {
+    const diagnostics = validateGeneratedArtifacts(
+      [
+        { path: "number.json", contents: 42 as unknown as string },
+        { path: "object.json", contents: { nested: true } as unknown as string },
+        { path: "mode.sh", contents: "ok", mode: 0o10000 },
+        { path: "fraction.sh", contents: "ok", mode: 1.5 },
+        { path: "binary.bin", contents: Uint8Array.from([1, 2]), mode: 0o755 },
+        { path: "text.txt", contents: "ok" },
+      ],
+      { adapterId: "fake", target: "t" },
+    );
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      expect.stringContaining('"number.json" with non-string, non-binary contents'),
+      expect.stringContaining('"object.json" with non-string, non-binary contents'),
+      expect.stringContaining('"mode.sh" with invalid mode 4096'),
+      expect.stringContaining('"fraction.sh" with invalid mode 1.5'),
+    ]);
+  });
+
+  it("rejects an artifact that is also a directory of another artifact", () => {
+    const diagnostics = validateGeneratedArtifacts(
+      [
+        { path: "hooks", contents: "file" },
+        { path: "Hooks/hooks.json", contents: "nested" },
+        { path: "runtime/index.mjs", contents: "fine" },
+      ],
+      { adapterId: "fake", target: "t" },
+    );
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: "HN301",
+        target: "t",
+        message: expect.stringContaining('"hooks" that is also a directory'),
+      }),
+    ]);
+  });
+
   it("rejects paths that collide on case-insensitive filesystems", () => {
     const diagnostics = validateGeneratedArtifacts(
       [

@@ -4440,7 +4440,8 @@ var hooknosticConfigSchema = external_exports.object({
       manifest: external_exports.string().min(1),
       lockfile: external_exports.string().min(1)
     }).strict().optional(),
-    onUnsupported: external_exports.enum(["error", "warn"]).optional()
+    onUnsupported: external_exports.enum(["error", "warn"]).optional(),
+    onInvalid: external_exports.enum(["error", "warn"]).optional()
   }).strict().optional()
 }).strict().superRefine((config, context) => {
   if (config.entry === void 0 && config.agentPlugin === void 0) {

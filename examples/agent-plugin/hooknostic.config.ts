@@ -18,7 +18,6 @@ export default defineConfig({
   agentPlugin: {
     root: ".",
     targets: ["claude"],
-    exclude: ["node_modules", "node_modules/**"],
     runtimePackage: {
       manifest: "./runtime.package.json",
       lockfile: "./runtime.package-lock.json",

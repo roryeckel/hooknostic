@@ -1,7 +1,16 @@
 import { resolve } from "node:path";
-import type { AdapterRegistry, EvaluateOptions } from "@hooknostic/core";
+import type { AdapterRegistry, AgentPluginTargetReport, EvaluateOptions } from "@hooknostic/core";
 import { buildProject, formatDiagnostics } from "@hooknostic/core";
 import type { CommandIO } from "./check.js";
+
+/** One-line Agent Plugin projection summary for human output. */
+export function describeProjection(projection: AgentPluginTargetReport): string {
+  const components = Object.values(projection.components);
+  const emitted = components.reduce((sum, component) => sum + (component?.emitted ?? 0), 0);
+  const omitted = projection.omissions.length;
+  const files = projection.copiedFileCount === undefined ? "" : `, ${projection.copiedFileCount} package files copied`;
+  return `Agent Plugin projection ${projection.status}: ${emitted} components emitted, ${omitted} omitted${files}`;
+}
 
 export interface BuildCommandOptions {
   config?: string;
@@ -35,6 +44,7 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
     options.io.stdout(
       `${target.status === "success" ? "BUILT" : "FAIL "}  ${id} → ${target.output}  (${target.adapter}, harness ${target.requestedVersion}) — ${counts.exact} exact, ${counts.emulated} emulated, ${counts.approximate} approximate, ${counts.unsupported} unsupported`,
     );
+    if (target.projection !== undefined) options.io.stdout(`         ${describeProjection(target.projection)}`);
     for (const artifact of target.artifacts ?? []) {
       options.io.stdout(`         ${artifact}`);
     }

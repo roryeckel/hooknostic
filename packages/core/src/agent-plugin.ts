@@ -20,13 +20,24 @@ export interface AgentPluginProjectionResolution {
   diagnostics: Diagnostic[];
 }
 
+export interface AgentPluginIssueDiagnosticOptions {
+  target?: string;
+  /**
+   * Severity for load-time issues the loader recovers from by skipping a
+   * component. The loader stays lenient for library consumers; a build treats
+   * a skipped component as an authoring error unless demoted to `"warn"`.
+   */
+  onInvalid?: "error" | "warn";
+}
+
 export function diagnosticsFromAgentPluginIssues(
   issues: readonly AgentPluginIssue[],
-  target?: string,
+  options: string | AgentPluginIssueDiagnosticOptions = {},
 ): Diagnostic[] {
+  const { target, onInvalid } = typeof options === "string" ? { target: options } : options;
   return issues.map((problem) => ({
     code: problem.scope === "projection" && problem.component !== undefined ? "HN205" : "HN503",
-    severity: problem.severity,
+    severity: problem.severity === "warn" && onInvalid !== undefined ? onInvalid : problem.severity,
     ...(target === undefined ? {} : { target }),
     ...(problem.component === undefined ? {} : { component: problem.component }),
     ...(problem.path === undefined ? {} : { location: { file: problem.path } }),
@@ -104,17 +115,21 @@ export function analyzeAgentPluginProjection(
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
-    const components = discoveredComponents(source, "", runtimePackage);
+    // `onUnsupported` degrades individual unrepresentable components. A target
+    // with no projector at all cannot receive the package, so listing it under
+    // agentPlugin.targets is a configuration error: a "warn" here would commit
+    // an empty (or hook-only) output while reporting the target as built.
     return {
       profilesUsed: [],
-      diagnostics: components.map((component) => ({
+      diagnostics: [
+        {
           code: "HN205",
-          severity: onUnsupported,
+          severity: "error",
           target: target.id,
-          component,
-          message: `target ${JSON.stringify(target.id)} has no projector for Agent Plugin component ${JSON.stringify(component)}.`,
+          message: `target ${JSON.stringify(target.id)} (adapter ${JSON.stringify(adapter.id)}) has no Agent Plugin projector; components ${discoveredComponents(source, "", runtimePackage).map((component) => JSON.stringify(component)).join(", ")} cannot be projected.`,
           remediation: "remove the target from agentPlugin.targets or use an adapter with package projection support.",
-        })),
+        },
+      ],
     };
   }
   const resolved = resolveAgentPluginProjection(target, projector);

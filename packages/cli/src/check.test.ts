@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import { makeFakeAdapter } from "@hooknostic/testkit";
 import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
+import { claudeHarness } from "@hooknostic/adapter-claude";
 import { codexHarness } from "@hooknostic/adapter-codex";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
 
@@ -47,10 +49,12 @@ const limitedProfile: CapabilityProfile = {
   },
 };
 
+// `check` runs the whole generation pipeline (bundling included), so even
+// analysis-focused fakes need a shim entry or they stop at HN301.
 function registry() {
   return {
-    alpha: makeFakeAdapter({ id: "alpha", profiles: [fullProfile] }),
-    beta: makeFakeAdapter({ id: "beta", profiles: [limitedProfile] }),
+    alpha: makeFakeAdapter({ id: "alpha", profiles: [fullProfile], shimEntry: "export {};" }),
+    beta: makeFakeAdapter({ id: "beta", profiles: [limitedProfile], shimEntry: "export {};" }),
   };
 }
 
@@ -196,6 +200,91 @@ describe("hooknostic check", () => {
     expect(report.diagnostics).toContainEqual(
       expect.objectContaining({ code: "HN205", target: "codex" }),
     );
+  });
+
+  it("runs projection so overlay collisions and runtime package defects fail check, not just build", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-check-preflight-"));
+    tempDirs.push(dir);
+    await mkdir(join(dir, "com.anthropic.claude-code/runtime"), { recursive: true });
+    await writeFile(join(dir, "com.anthropic.claude-code/runtime/hooknostic.mjs"), "native collision");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "preflight" }),
+    );
+    await writeFile(join(dir, "runtime.package.json"), JSON.stringify({ dependencies: { "is-number": "7.0.0" } }));
+    await writeFile(join(dir, "runtime.package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": {} } }));
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "preflight", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    const config = (runtimePackage: string) =>
+      `export default {
+        entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["claude"]${runtimePackage} },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } },
+      };`;
+
+    // Overlay collision with the generated runtime path: only the projector sees it.
+    await writeFile(join(dir, "hooknostic.config.ts"), config(""));
+    const collision = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: collision.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(1);
+    const collisionReport = JSON.parse(collision.out());
+    expect(collisionReport.targets.claude.ok).toBe(false);
+    expect(collisionReport.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN503", target: "claude", message: expect.stringContaining("collides") }),
+    );
+
+    // A manifest/lockfile pair that would fail at install time.
+    await rm(join(dir, "com.anthropic.claude-code"), { recursive: true });
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      config(', runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" }'),
+    );
+    const lockfile = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        registry: defaultAdapterRegistry(),
+        io: lockfile.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(1);
+    expect(lockfile.out()).toContain("root dependencies do not match the manifest");
+    expect(lockfile.out()).toContain("FAIL  claude");
+
+    // check writes nothing, even on the success path.
+    await rm(join(dir, "runtime.package.json"));
+    await rm(join(dir, "runtime.package-lock.json"));
+    await writeFile(join(dir, "hooknostic.config.ts"), config(""));
+    const clean = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: clean.io,
+        evaluate: EVALUATE,
+      }),
+      clean.out(),
+    ).toBe(0);
+    const cleanReport = JSON.parse(clean.out());
+    expect(cleanReport.targets.claude.ok).toBe(true);
+    expect(cleanReport.targets.claude.projection).toMatchObject({ status: "success" });
+    expect(cleanReport.targets.claude.artifacts).toEqual(
+      expect.arrayContaining([".claude-plugin/plugin.json", "hooks/hooks.json", "runtime/hooknostic.mjs"]),
+    );
+    expect(existsSync(join(dir, "dist"))).toBe(false);
+    expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
+    expect((await readdir(dir)).filter((name) => name.startsWith(".hooknostic-"))).toEqual([]);
   });
 
   it("prints FAIL when output-layout validation fails after capability analysis", async () => {

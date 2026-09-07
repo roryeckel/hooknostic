@@ -9,7 +9,7 @@
 // are present-tense claims, so they are. Illustrative examples must use fake
 // harness names (see AGENTS.md), which keeps this scan low-noise.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,6 +38,9 @@ const files = execFileSync("git", ["ls-files", "*.md", "examples/*/hooknostic.co
 })
   .split("\n")
   .filter(Boolean)
+  // ls-files reports index entries, which include files deleted in the
+  // working tree but not yet committed.
+  .filter((file) => existsSync(resolve(ROOT, file)))
   .filter((file) => !EXEMPT.some((pattern) => pattern.test(file)));
 
 const RANGE = /"(>=[^"]+)"|`(>=[^`]+)`/g;

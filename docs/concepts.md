@@ -142,8 +142,13 @@ hooknostic.config.ts + src/hooks.ts
 
 Key properties:
 
-- **`check` is `build` without the writing.** Both run the same analysis; `check` is
-  what you put in CI.
+- **`check` is `build` without the writing.** Both run the same pipeline — analysis,
+  bundling, Agent Plugin projection, artifact validation — and `check` stops just before
+  staging. Whatever `build` rejects before touching the filesystem, `check` rejects — an
+  existing output of the wrong kind (a file where a directory goes) included, since that
+  is inspected read-only; it is what you put in CI. The one class it cannot see is a
+  write the target filesystem itself refuses (a path over its length limit, a reserved
+  name), which surfaces as HN301 at `build`.
 - **Builds are atomic.** Output is staged to a temporary directory and only committed
   when every selected target passes — you never end up with half a build.
 - **Builds are reproducible.** They compile against the harness *version ranges in your

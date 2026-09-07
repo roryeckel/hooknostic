@@ -15,8 +15,8 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:f2158ba57e8775b576bd02a8ac6ce10593b198db2735f926c5c01aee0b627868",
-        "copiedFileCount": 4,
+        "contentDigest": "sha256:805242de4836d9a1bb66805425b99ab5a60a313a2513b48d667625dfb830a8cc",
+        "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
             "support": "exact",
@@ -93,8 +93,17 @@
     "targets": [
       "claude"
     ],
-    "sourceFileCount": 9,
-    "contentDigest": "sha256:2af7d1e2cad94be17d37555ec8dacc78b9c02a0d7c870760f1bb3bf9034a2520"
+    "sourceFileCount": 7,
+    "sourceFiles": [
+      "mcp.json",
+      "package.json",
+      "plugin.json",
+      "runtime.package-lock.json",
+      "runtime.package.json",
+      "skills/greet/SKILL.md",
+      "src/greet-mcp.mjs"
+    ],
+    "contentDigest": "sha256:63079ca9abe7aa978d0f8af12c52a20daac9595683b7a1444fea1d5de173522a"
   },
   "source": "./src/hooks.ts"
 }

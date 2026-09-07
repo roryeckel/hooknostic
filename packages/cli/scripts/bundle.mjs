@@ -62,7 +62,10 @@ const node = { format: "esm", platform: "node", target: "node22", logLevel: "war
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
-// 1. Programmatic entry: everything inlined except esbuild.
+// 1. Programmatic entry: everything inlined except esbuild. Inlined CommonJS
+//    dependencies (npm-package-arg and its tree) `require` Node builtins; in
+//    ESM output esbuild routes those through a `__require` shim that throws
+//    unless a top-level `require` exists, so the banner provides one.
 await build({
   ...node,
   bundle: true,
@@ -70,6 +73,9 @@ await build({
   outfile: join(dist, "index.js"),
   external: ["esbuild"],
   alias: { yaml: yamlBrowser },
+  banner: {
+    js: 'import { createRequire as __hooknosticCreateRequire } from "node:module";\nconst require = __hooknosticCreateRequire(import.meta.url);',
+  },
 });
 
 // 2. Binary: transpile only; it imports ./index.js.

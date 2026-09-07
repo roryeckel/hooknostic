@@ -124,7 +124,13 @@ describe("Agent Plugin to Claude projection", () => {
       name: "portable-runtime",
       dependencies: { "is-number": "7.0.0" },
     });
-    const runtimeLockfile = JSON.stringify({ lockfileVersion: 3, packages: { "": {} } });
+    const runtimeLockfile = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { "is-number": "7.0.0" } },
+        "node_modules/is-number": { version: "7.0.0", resolved: "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz" },
+      },
+    });
     const plan = await projectAgentPluginToClaude(
       source([
         file("package.json", JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
@@ -147,6 +153,53 @@ describe("Agent Plugin to Claude projection", () => {
       emitted: 1,
       skipped: 0,
     });
+  });
+
+  it.each([
+    {
+      label: "a lockfile that does not lock a manifest dependency",
+      lockfile: JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: { "is-number": "7.0.0" } } } }),
+      message: "does not lock dependency \"is-number\"",
+    },
+    {
+      label: "a lockfile whose root dependencies differ from the manifest",
+      lockfile: JSON.stringify({
+        lockfileVersion: 3,
+        packages: { "": {}, "node_modules/is-number": { version: "7.0.0" } },
+      }),
+      message: "root dependencies do not match",
+    },
+    {
+      label: "a lockfileVersion 1 lockfile",
+      lockfile: JSON.stringify({ lockfileVersion: 1, dependencies: { "is-number": { version: "7.0.0" } } }),
+      message: "lockfileVersion 2 or 3",
+    },
+    {
+      label: "a pnpm YAML lockfile",
+      lockfile: "lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      is-number: 7.0.0\n",
+      message: "pnpm and yarn lockfiles are not supported",
+    },
+  ])("rejects $label", async ({ lockfile, message }) => {
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file("runtime.package.json", JSON.stringify({ dependencies: { "is-number": "7.0.0" } })),
+        file("runtime.package-lock.json", lockfile),
+      ]),
+      {
+        target,
+        hookArtifacts: [],
+        runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
+        onUnsupported: "error",
+      },
+    );
+    expect(plan.files.some((item) => item.path === "package-lock.json")).toBe(false);
+    expect(plan.issues).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.runtime-package",
+        message: expect.stringContaining(message),
+      }),
+    ]);
   });
 
   it("rejects a missing or unsafe runtime package input", async () => {

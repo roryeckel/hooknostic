@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -159,11 +159,11 @@ describe("build pipeline hardening", () => {
     const result = await build(
       dir,
       fake({
-        // "a" is written as a file, so "a/b" cannot be created beneath it.
-        compile: () => [
-          { path: "a", contents: "file" },
-          { path: "a/b", contents: "nested" },
-        ],
+        // Structural validation rejects everything it can see (path
+        // conflicts, contents type, mode), so the write itself must be what
+        // fails: a single path segment beyond the filesystem's name limit is
+        // ENAMETOOLONG on every platform and is not a structural rule.
+        compile: () => [{ path: `${"n".repeat(300)}.json`, contents: "file" }],
       }),
     );
     expect(result.ok).toBe(false);
@@ -175,6 +175,54 @@ describe("build pipeline hardening", () => {
       }),
     ]);
     expect(existsSync(join(dir, "dist"))).toBe(false);
+    expect(await stagingLeftovers(dir)).toEqual([]);
+  });
+
+  it("rejects under a dry run what staging would reject, without writing", async () => {
+    const dir = await project();
+    const adapter = fake({
+      compile: () => [
+        { path: "hooks.json", contents: { hooks: [] } as unknown as string },
+        { path: "a", contents: "file" },
+        { path: "a/b", contents: "nested" },
+      ],
+    });
+    const result = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: { fake: adapter },
+      evaluate: EVALUATE,
+      dryRun: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.report.targets["fake"]?.status).toBe("failed");
+    expect(result.report.diagnostics.map((d) => d.message)).toEqual([
+      expect.stringContaining('"hooks.json" with non-string, non-binary contents'),
+      expect.stringContaining('"a" that is also a directory'),
+    ]);
+    expect(existsSync(join(dir, "dist"))).toBe(false);
+    expect(await stagingLeftovers(dir)).toEqual([]);
+  });
+
+  it("rejects under a dry run an existing output of the wrong kind, as the commit would", async () => {
+    const dir = await project();
+    // A regular file where the target directory goes, and a directory where
+    // the build report goes: the commit refuses both, so check must too.
+    await mkdir(join(dir, "dist"), { recursive: true });
+    await writeFile(join(dir, "dist/fake"), "not a directory");
+    await mkdir(join(dir, "hooknostic-build.json"), { recursive: true });
+    const result = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: { fake: fake() },
+      evaluate: EVALUATE,
+      dryRun: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.report.targets["fake"]?.status).toBe("failed");
+    expect(result.report.diagnostics.map((d) => [d.code, d.target, d.message])).toEqual([
+      ["HN302", "fake", expect.stringContaining(`existing output ${join(dir, "dist/fake")} is not a regular directory`)],
+      ["HN302", undefined, expect.stringContaining("hooknostic-build.json is not a regular file")],
+    ]);
+    expect(await readFile(join(dir, "dist/fake"), "utf8")).toBe("not a directory");
     expect(await stagingLeftovers(dir)).toEqual([]);
   });
 

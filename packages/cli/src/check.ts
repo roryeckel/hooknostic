@@ -1,10 +1,17 @@
 import { resolve } from "node:path";
-import type { AdapterRegistry, AnalysisResult, Diagnostic, EvaluateOptions } from "@hooknostic/core";
+import type {
+  AdapterRegistry,
+  AgentPluginTargetReport,
+  AnalysisResult,
+  Diagnostic,
+  EvaluateOptions,
+} from "@hooknostic/core";
 import {
   buildProject,
   formatDiagnostics,
   hasFatal,
 } from "@hooknostic/core";
+import { describeProjection } from "./build.js";
 
 export interface CommandIO {
   stdout(text: string): void;
@@ -32,7 +39,11 @@ interface CheckReport {
     Pick<
       AnalysisResult["targets"][string],
       "ok" | "adapter" | "requestedVersion" | "counts" | "resolutions"
-    >
+    > & {
+      /** Paths `build` would generate for this target (nothing is written by `check`). */
+      artifacts?: string[];
+      projection?: AgentPluginTargetReport;
+    }
   >;
   diagnostics: Diagnostic[];
 }
@@ -53,7 +64,12 @@ function emitFailure(options: CheckOptions, diagnostics: Diagnostic[]): number {
   return 1;
 }
 
-/** `hooknostic check` — semantic analysis only; no artifacts are produced. */
+/**
+ * `hooknostic check` — the full build pipeline (analysis, bundling, Agent
+ * Plugin projection, artifact validation) without writing anything. Whatever
+ * `build` would reject before touching the filesystem, `check` rejects; only
+ * a write the filesystem itself refuses is left for `build` to report.
+ */
 export async function runCheck(options: CheckOptions): Promise<number> {
   const configPath = resolve(options.config ?? "hooknostic.config.ts");
   const result = await buildProject({
@@ -72,16 +88,21 @@ export async function runCheck(options: CheckOptions): Promise<number> {
       command: "check",
       ok: result.ok,
       targets: Object.fromEntries(
-        Object.entries(analysis.targets).map(([id, t]) => [
-          id,
-          {
-            ok: result.report.targets[id]?.status === "success",
-            adapter: t.adapter,
-            requestedVersion: t.requestedVersion,
-            counts: t.counts,
-            resolutions: t.resolutions,
-          },
-        ]),
+        Object.entries(analysis.targets).map(([id, t]) => {
+          const built = result.report.targets[id];
+          return [
+            id,
+            {
+              ok: built?.status === "success",
+              adapter: t.adapter,
+              requestedVersion: t.requestedVersion,
+              counts: t.counts,
+              resolutions: t.resolutions,
+              ...(built?.artifacts === undefined ? {} : { artifacts: built.artifacts }),
+              ...(built?.projection === undefined ? {} : { projection: built.projection }),
+            },
+          ];
+        }),
       ),
       diagnostics: result.report.diagnostics,
     };
@@ -99,12 +120,14 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     options.io.stdout(
       `${ok ? "PASS" : "FAIL"}  ${id}  (${target.adapter}, harness ${target.requestedVersion}) — ${summary}`,
     );
+    const projection = result.report.targets[id]?.projection;
+    if (projection !== undefined) options.io.stdout(`      ${describeProjection(projection)}`);
   }
   const failed = hasFatal(result.report.diagnostics);
   options.io.stdout(
     failed
       ? "\ncheck failed: fix the errors above or adjust the target set."
-      : "\ncheck passed: all selected targets satisfy the declared hook semantics.",
+      : "\ncheck passed: every selected target generates cleanly; nothing was written.",
   );
   return failed ? 1 : 0;
 }

@@ -31,6 +31,8 @@ examples/agent-plugin/
 The projection is explicit:
 
 ```ts
+import { defineConfig } from "@hooknostic/sdk";
+
 export default defineConfig({
   entry: "./src/hooks.ts",
   targets: {
@@ -41,7 +43,6 @@ export default defineConfig({
   agentPlugin: {
     root: ".",
     targets: ["claude"],
-    exclude: ["node_modules", "node_modules/**"],
     runtimePackage: {
       manifest: "./runtime.package.json",
       lockfile: "./runtime.package-lock.json",
@@ -55,16 +56,40 @@ implemented with the official MCP TypeScript SDK in `src/greet-mcp.mjs` and serv
 stdio. `${PLUGIN_ROOT}` keeps the entry path portable; projection translates it to the
 native plugin-root variable.
 
+`defineConfig` infers the target names, so `agentPlugin.targets` naming a target that
+is not configured, or a config with neither `entry` nor `agentPlugin`, is an editor
+error before it is a build error.
+
 The source package's `package.json` is for building this example. `runtimePackage`
 keeps the MCP server's production dependencies separate: Claude projection writes the
 configured manifest and npm lockfile as `dist/claude/package.json` and
 `dist/claude/package-lock.json`. On marketplace installation, Claude runs the locked,
 script-free npm install in its cached plugin copy. This contract supports pure-JavaScript
-npm dependencies; packages that need lifecycle scripts are not supported.
+npm dependencies; packages that need lifecycle scripts are not supported. The pair is
+validated at build time the way `npm ci` would validate it: the manifest declares only
+`dependencies` with registry ranges, dist-tags, tarball URLs, or git specs (no `file:` or
+`workspace:`); the lockfile must be an npm `package-lock.json` (v2 or v3, not a pnpm or
+Yarn lock), its root entry must declare exactly the manifest's dependencies, every
+dependency must be locked at a version and resolution that satisfies its spec under npm's
+rules, and the locked graph must be complete down to the last transitive dependency.
+Regenerate the lockfile from the manifest whenever you change either; a hand-edited lock
+fails `check` with the same message `npm ci` would have given the user.
 
 Only `claude` receives the portable package. Codex already consumes Agent Plugins
 natively, while this config continues to emit its separate local hook artifact.
-OpenCode package projection is intentionally deferred.
+OpenCode package projection is intentionally deferred. Listing a target under
+`agentPlugin.targets` whose adapter has no projector is an error, whatever
+`onUnsupported` says: a projection that cannot happen is a configuration mistake, not a
+component to degrade.
+
+## What ships
+
+Everything under `root` ships unless it is excluded, npm-style. Built-in exclusions
+cover what is never package content: `.git`, `node_modules`, `.env`, `.env.*`, and
+`.npmrc` at any depth, plus `hooknostic.config.ts`, the hook `entry` (its compiled
+runtime ships instead), every target output, the build report, and staging directories.
+`agentPlugin.exclude` adds POSIX globs on top. The build report's
+`agentPlugin.sourceFiles` lists every inventoried path, so check it after adding files.
 
 Exclusions apply before discovery and packaging. Excluding `mcp.json`, a skill
 directory, or its required `SKILL.md` removes that component without an unsupported
@@ -76,6 +101,8 @@ that file. The mandatory `plugin.json` cannot be excluded.
 `entry` is optional. A skills-only or MCP-only package can use:
 
 ```ts
+import { defineConfig } from "@hooknostic/sdk";
+
 export default defineConfig({
   agentPlugin: { root: ".", targets: ["claude"] },
   targets: {
@@ -108,17 +135,43 @@ Claude's native `http` transport; SSE, literal URLs, and literal headers are pre
 
 ## Unsupported and invalid components
 
-Invalid package structure is always `HN503`: a bad root manifest is fatal, while an
-invalid individual skill or MCP server is reported and skipped. For filesystem safety,
-Hooknostic is deliberately stricter than the Agent Plugins component failure boundary:
-any non-excluded symlink that resolves outside the package root rejects the whole
-package before component contents are parsed. A valid component the target cannot
-represent is `HN205`. The default is an error; use `onUnsupported: "warn"` to omit only
-that component and record the omission in build-report schema v2.
+Invalid package structure is always `HN503`. A bad root manifest is fatal. An invalid
+individual skill or MCP server is skipped by the loader, and that skip fails the build by
+default: a component you wrote that will silently not ship is an authoring mistake, not
+something to recover from. Use `onInvalid: "warn"` to keep the loader's lenient
+skip-and-continue and exit 0 with the warning recorded. A valid component the target
+cannot represent is `HN205`. The default is an error; use `onUnsupported: "warn"` to omit
+only that component and record the omission in build-report schema v2.
+
+Hooknostic is deliberately stricter than the shipped Agent Plugins JSON schemas. The
+schemas are the specification's own and accept any non-empty URL or command; the loader
+additionally requires that:
+
+- a remote MCP `url` is `https:`, or `http:` to `localhost`, `127.*`, or `::1` only, with
+  no credentials or fragment;
+- a stdio `command` is a bare executable name or a `./`-relative path contained in the
+  package, and contains no `${...}` placeholder;
+- `env` does not set the reserved `PLUGIN_ROOT` or `PLUGIN_DATA` keys;
+- any non-excluded symlink that resolves outside the package root rejects the whole
+  package before component contents are parsed.
+
+A package that passes a generic schema validator can therefore still fail here. The
+rules live in `packages/agent-plugin/src/load.ts`.
+
+`hooknostic check` runs the entire pipeline — bundling, projection, overlay merging,
+runtime package validation — and stops before writing, so anything `build` would reject
+fails `check` first:
 
 ```bash
-node ../../packages/cli/bin/hooknostic.mjs build
-claude plugin validate --strict dist/claude
+cd examples/agent-plugin && node ../../packages/cli/bin/hooknostic.mjs check
+```
+
+```bash
+cd examples/agent-plugin && node ../../packages/cli/bin/hooknostic.mjs build
+```
+
+```bash
+cd examples/agent-plugin && claude plugin validate --strict dist/claude
 ```
 
 See [ADR-0011](../decisions/0011-agent-plugin-native-projection.md) for the architectural

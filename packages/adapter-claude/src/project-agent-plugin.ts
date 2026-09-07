@@ -1,10 +1,11 @@
-import type {
-  AgentPluginIssue,
-  AgentPluginMcpServer,
-  AgentPluginPackage,
-  AgentPluginProjectionFile,
-  AgentPluginProjectionPlan,
-  AgentPluginProjector,
+import {
+  validateNpmRuntimePackage,
+  type AgentPluginIssue,
+  type AgentPluginMcpServer,
+  type AgentPluginPackage,
+  type AgentPluginProjectionFile,
+  type AgentPluginProjectionPlan,
+  type AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
 
@@ -51,15 +52,12 @@ function runtimePackageFiles(
   if (manifest === undefined || lockfile === undefined) {
     throw new Error("runtimePackage.manifest and runtimePackage.lockfile must name included regular files");
   }
-  try {
-    const parsed = JSON.parse(new TextDecoder().decode(manifest.contents)) as unknown;
-    if (!object(parsed) || !object(parsed["dependencies"]) || Object.values(parsed["dependencies"]).some((value) => typeof value !== "string")) {
-      throw new Error("runtime package manifest must contain a string-valued dependencies object");
-    }
-    JSON.parse(new TextDecoder().decode(lockfile.contents));
-  } catch (error) {
-    throw new Error(`runtime package must contain valid JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  // Claude installs the pair with a locked, script-free npm install in its
+  // cached plugin copy (ADR-0012), so the manifest and lockfile must agree and
+  // every dependency must be locked, or installation fails on the consumer's
+  // machine rather than here.
+  const validation = validateNpmRuntimePackage(manifest.contents, lockfile.contents);
+  if (!validation.ok) throw new Error(validation.error);
   return {
     manifest: { path: "package.json", contents: manifest.contents, mode: manifest.mode },
     lockfile: { path: "package-lock.json", contents: lockfile.contents, mode: lockfile.mode },

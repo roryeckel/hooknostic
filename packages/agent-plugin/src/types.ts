@@ -81,9 +81,13 @@ export interface AgentPluginPackage {
 export interface LoadAgentPluginOptions {
   root: string;
   /**
-   * POSIX-style package-relative exclusion globs. `.git` is always excluded.
-   * Excluding `mcp.json`, a skill directory, or its `SKILL.md` removes that
-   * component. `plugin.json` is mandatory and cannot be excluded.
+   * POSIX-style package-relative exclusion globs, added to the built-in set
+   * (`.git`, `node_modules`, `.env`, `.env.*`, `.npmrc` at any depth; see
+   * `AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES`). Patterns match case-insensitively
+   * on every platform, since the package is installed on case-insensitive
+   * filesystems whatever built it. Excluding `mcp.json`, a skill
+   * directory, or its `SKILL.md` removes that component. `plugin.json` is
+   * mandatory and cannot be excluded.
    */
   exclude?: string[];
 }

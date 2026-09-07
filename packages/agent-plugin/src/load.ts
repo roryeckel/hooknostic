@@ -410,12 +410,14 @@ function loadSkills(inventory: InventoryResult, issues: AgentPluginIssue[]): Age
   return skills;
 }
 
+// Exclusions match case-insensitively on every platform: the package is
+// inventoried on one filesystem and installed on others, and a `.ENV` that
+// Linux distinguishes from `.env` is the same file to a Windows or macOS
+// consumer. A deny-list that over-matches fails safe.
+const MATCH = { dot: true, nocase: true } as const;
+
 function excluded(path: string, patterns: readonly string[]): boolean {
-  return patterns.some(
-    (pattern) =>
-      minimatch(path, pattern, { dot: true, nocase: false }) ||
-      minimatch(`${path}/`, pattern, { dot: true, nocase: false }),
-  );
+  return patterns.some((pattern) => minimatch(path, pattern, MATCH) || minimatch(`${path}/`, pattern, MATCH));
 }
 
 interface InventoryResult {
@@ -444,6 +446,15 @@ async function inventory(
     const resolved = await realpath(physical);
     if (!contained(canonicalRoot, resolved)) {
       throw new Error(`${logical || "."} resolves outside the Agent Plugin root`);
+    }
+    // Exclusions were matched on the logical name before descending; a link
+    // whose target is excluded (`notes.txt -> .env`, `lib -> node_modules/x`)
+    // must not smuggle that content in under another name.
+    if (logical !== "") {
+      const canonicalLogical = relative(canonicalRoot, resolved).replaceAll("\\", "/");
+      if (canonicalLogical !== logical && excluded(canonicalLogical, patterns)) {
+        throw new Error(`${logical} resolves to excluded path ${canonicalLogical}`);
+      }
     }
     const metadata = await stat(physical);
     if (metadata.isDirectory()) {
@@ -495,11 +506,31 @@ function digest(files: readonly AgentPluginFile[]): string {
   return `sha256:${hash.digest("hex")}`;
 }
 
+/**
+ * Names never inventoried, at any depth: version control, installed
+ * dependencies, and environment/registry secrets. A package that ships
+ * `node_modules` or `.env` is never what an author meant to distribute.
+ */
+export const AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES = [
+  ".git",
+  "node_modules",
+  ".env",
+  ".env.*",
+  ".npmrc",
+] as const;
+
+const DEFAULT_EXCLUDES = AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES.flatMap((name) => [
+  name,
+  `${name}/**`,
+  `**/${name}`,
+  `**/${name}/**`,
+]);
+
 /** Load an Agent Plugins 1.0 package without consulting network schemas. */
 export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<LoadAgentPluginResult> {
   const root = resolve(options.root);
   const issues: AgentPluginIssue[] = [];
-  const patterns = [".git", ".git/**", "**/.git", "**/.git/**", ...(options.exclude ?? [])];
+  const patterns = [...DEFAULT_EXCLUDES, ...(options.exclude ?? [])];
   if (excluded("plugin.json", patterns)) {
     issue(
       issues,

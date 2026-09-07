@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   loadAgentPlugin,
   type AgentPluginComponentId,
@@ -20,7 +20,7 @@ import type { AnalysisResult } from "./analysis.js";
 import { analyzeCapabilities } from "./analysis.js";
 import { validateGeneratedArtifacts } from "./artifacts.js";
 import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
-import { commitStagedOutputs } from "./commit.js";
+import { commitStagedOutputs, existingKindProblem } from "./commit.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
@@ -73,6 +73,8 @@ export interface BuildReport {
     specVersion: "1.0.0";
     targets: string[];
     sourceFileCount: number;
+    /** Every inventoried package-relative path, sorted: exactly what projection may ship. */
+    sourceFiles: string[];
     contentDigest: string;
   };
   diagnostics: Diagnostic[];
@@ -101,12 +103,52 @@ function resolveProjectSdk(configDir: string): string | undefined {
   }
 }
 
-function projectionExcludes(
-  root: string,
-  configDir: string,
+/**
+ * The realpath of `path`. A path that does not exist yet (a target output
+ * before its first build) is resolved through its deepest existing ancestor,
+ * so `alias/dist/claude` and `real/dist/claude` name the same place.
+ */
+async function canonical(path: string): Promise<string> {
+  const missing: string[] = [];
+  let current = resolve(path);
+  for (;;) {
+    try {
+      const real = await realpath(current);
+      return missing.length === 0 ? real : join(real, ...missing);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      missing.unshift(basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Hooknostic-project paths that must never ship inside a projected package:
+ * transaction directories, the build report, every target output, the config
+ * file itself, and the hook source entry (its compiled runtime ships instead).
+ * Package-level junk (`node_modules`, `.env`, …) is excluded by the loader.
+ *
+ * The loader inventories the root's realpath, so every pattern is derived from
+ * canonical paths: a root reached through a symlink or junction alias must
+ * still exclude the config and entry spelled via the real directory.
+ */
+async function projectionExcludes(
+  lexicalRoot: string,
+  lexicalConfigPath: string,
+  entry: string | undefined,
   outputs: readonly string[],
   configured: readonly string[],
-): string[] {
+): Promise<string[]> {
+  const root = await canonical(lexicalRoot);
+  const configDir = await canonical(dirname(lexicalConfigPath));
+  // A project file may itself be a link (`hooknostic.config.ts -> config/real.ts`
+  // inside the package): exclude both its name and where it resolves, or the
+  // target ships under its own name.
+  const spellings = async (path: string): Promise<string[]> => [path, await canonical(path)];
+  const configPaths = await spellings(join(configDir, basename(lexicalConfigPath)));
+  const entryPaths = entry === undefined ? [] : await spellings(resolve(configDir, entry));
   const exclusions = new Set<string>([
     ".hooknostic-*",
     ".hooknostic-*/**",
@@ -123,7 +165,18 @@ function projectionExcludes(
     exclusions.add(`${configRelative}/.hooknostic-*`);
     exclusions.add(`${configRelative}/.hooknostic-*/**`);
   }
-  for (const path of [join(configDir, "hooknostic-build.json"), ...outputs.map((p) => resolve(configDir, p))]) {
+  const projectPaths = [
+    ...configPaths,
+    ...(await spellings(join(configDir, "hooknostic-build.json"))),
+    ...entryPaths,
+    // Outputs get both spellings too: canonical, or an output spelled through
+    // the root's alias falls outside the canonical root and the next build
+    // inventories its own previous output; lexical, or an output spelled
+    // through a link inside the package (`link -> dist`) is walked under the
+    // link's name and rejected as resolving to an excluded path.
+    ...(await Promise.all(outputs.map((p) => spellings(resolve(configDir, p))))).flat(),
+  ];
+  for (const path of projectPaths) {
     const rel = relative(root, path);
     if (rel === "") continue;
     if (!isAbsolute(rel) && rel !== ".." && !rel.startsWith("..\\") && !rel.startsWith("../")) {
@@ -250,14 +303,19 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     const agentPluginRoot = resolve(configDir, config.agentPlugin.root);
     const loaded = await loadAgentPlugin({
       root: agentPluginRoot,
-      exclude: projectionExcludes(
+      exclude: await projectionExcludes(
         agentPluginRoot,
-        configDir,
+        configPath,
+        config.entry,
         Object.values(config.targets).map((target) => target.output),
         config.agentPlugin.exclude ?? [],
       ),
     });
-    diagnostics.push(...diagnosticsFromAgentPluginIssues(loaded.issues));
+    diagnostics.push(
+      ...diagnosticsFromAgentPluginIssues(loaded.issues, {
+        onInvalid: config.agentPlugin.onInvalid ?? "error",
+      }),
+    );
     if (!loaded.package || hasFatal(diagnostics)) return fail();
     agentPlugin = loaded.package;
     report.agentPlugin = {
@@ -265,6 +323,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       specVersion: agentPlugin.specVersion,
       targets: config.agentPlugin.targets,
       sourceFileCount: agentPlugin.files.length,
+      sourceFiles: agentPlugin.files.map((file) => file.path).sort(),
       contentDigest: agentPlugin.contentDigest,
     };
   }
@@ -342,13 +401,24 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (diagnostic.target && report.targets[diagnostic.target]) report.targets[diagnostic.target]!.status = "failed";
   }
   if (!analysis.ok || hasFatal(diagnostics)) return { ok: false, report, analysis };
-  if (options.dryRun) return { ok: true, report, analysis };
 
+  // A dry run (`hooknostic check`) performs every generation step — bundling,
+  // compilation, Agent Plugin projection, artifact validation — in memory so
+  // that anything `build` would reject before touching the filesystem is
+  // reported now. Only staging and the commit are skipped; nothing is written,
+  // so a write the target filesystem itself refuses (path length, reserved
+  // names) is the one failure only `build` can report.
+  const dryRun = options.dryRun === true;
   const runtimePolicy = effectiveRuntime(config);
   const projectSdk = config.entry === undefined ? undefined : resolveProjectSdk(configDir);
   const outputByKey = new Map(layout.outputs.map((entry) => [entry.key, entry]));
   const staged: { key: string; target?: string; kind?: "directory" | "file"; stagingDir: string; outputDir: string }[] = [];
+  /** Outputs a successful target will replace, whether or not this run stages. */
+  const planned: { target: string; outputDir: string }[] = [];
   const failUncommitted = (): BuildResult => {
+    // Under a dry run nothing would have been committed anyway; leave each
+    // target's own verdict intact so `check` reports per-target results.
+    if (dryRun) return { ok: false, report, analysis };
     for (const target of Object.values(report.targets)) {
       if (target.status === "success") target.status = "skipped";
       if (target.projection?.status === "success") target.projection.status = "skipped";
@@ -356,12 +426,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     return { ok: false, report, analysis };
   };
 
-  let stagingRoot: string;
-  try {
-    stagingRoot = await mkdtemp(join(configDir, ".hooknostic-staging-"));
-  } catch (error) {
-    diagnostics.push({ code: "HN301", severity: "error", message: `could not create the staging directory: ${errorMessage(error)}`, remediation: "check permissions and free space in the directory containing hooknostic.config.ts." });
-    return failUncommitted();
+  let stagingRoot: string | undefined;
+  if (!dryRun) {
+    try {
+      stagingRoot = await mkdtemp(join(configDir, ".hooknostic-staging-"));
+    } catch (error) {
+      diagnostics.push({ code: "HN301", severity: "error", message: `could not create the staging directory: ${errorMessage(error)}`, remediation: "check permissions and free space in the directory containing hooknostic.config.ts." });
+      return failUncommitted();
+    }
   }
 
   const mainGuardTargets: string[] = [];
@@ -403,30 +475,35 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
           phase = "Agent Plugin projection";
           const projector = adapter.agentPluginProjector;
-          if (projector === undefined) {
-            target.projection = {
-              ...target.projection!,
-              status: "skipped",
-            };
-          } else {
-            const plan = await projector.project(agentPlugin, {
-              target: spec,
-              hookArtifacts,
-              ...(config.agentPlugin!.runtimePackage === undefined
-                ? {}
-                : { runtimePackage: config.agentPlugin!.runtimePackage }),
-              onUnsupported: config.agentPlugin!.onUnsupported ?? "error",
-            });
-            const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);
-            diagnostics.push(...projectedDiagnostics);
-            if (hasFatal(projectedDiagnostics)) {
-              target.status = "failed";
-              target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
-              continue;
-            }
-            artifacts = plan.files;
-            target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts);
+          // Analysis already fails a projection target whose adapter has no
+          // projector, so this is unreachable; keep it a hard failure rather
+          // than a silently empty output if that invariant ever slips.
+          if (projector === undefined) throw new Error(`adapter ${JSON.stringify(adapter.id)} has no Agent Plugin projector`);
+          const plan = await projector.project(agentPlugin, {
+            target: spec,
+            hookArtifacts,
+            ...(config.agentPlugin!.runtimePackage === undefined
+              ? {}
+              : { runtimePackage: config.agentPlugin!.runtimePackage }),
+            onUnsupported: config.agentPlugin!.onUnsupported ?? "error",
+          });
+          const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);
+          diagnostics.push(...projectedDiagnostics);
+          if (hasFatal(projectedDiagnostics)) {
+            target.status = "failed";
+            target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
+            continue;
           }
+          if (plan.files.length === 0) {
+            // A projected package always carries at least its native manifest;
+            // an empty plan means the projector produced nothing to install.
+            diagnostics.push({ code: "HN301", severity: "error", target: id, message: `Agent Plugin projection for ${JSON.stringify(id)} produced no artifacts.`, remediation: "remove the target from agentPlugin.targets or report the projector defect." });
+            target.status = "failed";
+            target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
+            continue;
+          }
+          artifacts = plan.files;
+          target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts);
         }
 
         phase = "validation";
@@ -445,9 +522,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           continue;
         }
 
-        phase = "staging";
-        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts);
-        staged.push({ key: id, target: id, stagingDir, outputDir: outputByKey.get(id)!.outputDir });
         const generated = new Set(hookArtifacts.map((artifact) => artifact.path));
         if (target.projection !== undefined) {
           generated.add(".claude-plugin/plugin.json");
@@ -462,6 +536,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         target.artifacts = artifacts
           .map((artifact) => artifact.path)
           .filter((path) => generated.has(path));
+
+        planned.push({ target: id, outputDir: outputByKey.get(id)!.outputDir });
+        if (stagingRoot === undefined) continue;
+        phase = "staging";
+        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts);
+        staged.push({ key: id, target: id, stagingDir, outputDir: outputByKey.get(id)!.outputDir });
       } catch (error) {
         diagnostics.push({ code: "HN301", severity: "error", target: id, message: `artifact ${phase} failed: ${errorMessage(error)}` });
         target.status = "failed";
@@ -469,10 +549,29 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       }
     }
 
+    // The commit refuses to replace an output whose on-disk kind differs (a
+    // regular file where a directory goes). Checked read-only here so a dry
+    // run reports it too, instead of passing what `build` would refuse.
+    const reportOutput = { target: undefined, outputDir: join(configDir, "hooknostic-build.json"), kind: "file" as const };
+    for (const output of [...planned.map((p) => ({ ...p, kind: "directory" as const })), reportOutput]) {
+      const problem = await existingKindProblem(output.outputDir, output.kind);
+      if (problem === undefined) continue;
+      diagnostics.push({
+        code: "HN302",
+        severity: "error",
+        ...(output.target === undefined ? {} : { target: output.target }),
+        message: problem,
+        remediation: "move or remove the existing entry; hooknostic replaces only an output of the kind it writes.",
+      });
+      const target = output.target === undefined ? undefined : report.targets[output.target];
+      if (target) target.status = "failed";
+    }
+
     if (mainGuardTargets.length > 0) {
       diagnostics.push({ code: "HN502", severity: "warn", message: `the bundled hook source contains a CLI main-module guard (import.meta.url compared against process.argv[1]); ${mainGuardTargets.join(", ")} run the generated artifact as a command, so both sides of that comparison name the artifact and the guarded code executes on every hook dispatch.`, remediation: "move the command-line entry point into a module the hook source does not import, or gate it on an explicit environment variable instead." });
     }
     if (hasFatal(diagnostics)) return failUncommitted();
+    if (stagingRoot === undefined) return { ok: true, report, analysis };
 
     const reportPath = join(configDir, "hooknostic-build.json");
     const stagedReportPath = join(stagingRoot, "hooknostic-build.json");
@@ -504,7 +603,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     diagnostics.push({ code: "HN301", severity: "error", message: `build failed unexpectedly: ${errorMessage(error)}` });
     return failUncommitted();
   } finally {
-    await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+    if (stagingRoot !== undefined) {
+      await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   const reportPath = join(configDir, "hooknostic-build.json");

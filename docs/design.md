@@ -593,8 +593,8 @@ parser is available to the published CLI to make the check structural.
 
 | Command | Question answered |
 | --- | --- |
-| `hooknostic check` | Can the source satisfy the configured targets? (no artifacts) |
-| `hooknostic build` | Check + bundle + emit target artifacts. |
+| `hooknostic check` | Would `build` succeed? Runs analysis, bundling, projection, and artifact validation in memory; writes nothing. |
+| `hooknostic build` | Check + stage + atomically commit target artifacts. |
 | `hooknostic doctor` | Are installed harness versions detected and within validated ranges? |
 | `hooknostic inspect <target>` | Why does this adapter map a capability/event the way it does? |
 
@@ -773,9 +773,20 @@ my-plugin/
 
 `entry` is optional for package-only builds. Client-extension directories are consumed
 as overlays, never generated beside the source. Valid but unrepresentable components
-produce HN205; invalid or unsafe input and unmergeable overlays produce HN503. Exclusion
-globs apply before component discovery: excluding `mcp.json`, a skill directory, or its
-`SKILL.md` removes that component, while `plugin.json` cannot be excluded. Any
+produce HN205; invalid or unsafe input and unmergeable overlays produce HN503. A target
+listed under `agentPlugin.targets` whose adapter has no projector is an HN205 error
+regardless of `onUnsupported`: that policy degrades individual components, never a
+whole projection, so a build can never commit an empty package as a success. An invalid
+component the loader would skip (a malformed skill or MCP server) is an HN503 error by
+default; `onInvalid: "warn"` restores the loader's lenient skip-and-continue.
+
+Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
+`node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the
+config file, the hook `entry`, every target output, the build report, and staging
+directories. `agentPlugin.exclude` globs add to that set and apply before component
+discovery: excluding `mcp.json`, a skill directory, or its `SKILL.md` removes that
+component, while `plugin.json` cannot be excluded. The build report lists every
+inventoried path under `agentPlugin.sourceFiles`, so what shipped is never a guess. Any
 non-excluded symlink escaping the package root rejects the package before component
 contents are parsed.
 

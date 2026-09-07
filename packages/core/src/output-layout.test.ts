@@ -21,7 +21,10 @@ async function project(): Promise<{ dir: string; configPath: string; entryPath: 
   return { dir, configPath, entryPath };
 }
 
-function config(output: string, extra?: Partial<HooknosticConfig>): HooknosticConfig {
+function config(
+  output: string,
+  extra?: Partial<Pick<HooknosticConfig, "targets" | "compatibility" | "runtime">>,
+): HooknosticConfig {
   return {
     entry: "./src/hooks.ts",
     targets: { alpha: { version: "1", mode: "local", output } },

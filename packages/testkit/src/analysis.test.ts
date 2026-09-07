@@ -64,7 +64,9 @@ function registry(): AdapterRegistry {
   };
 }
 
-function config(overrides?: Partial<HooknosticConfig>): HooknosticConfig {
+function config(
+  overrides?: Partial<Pick<HooknosticConfig, "targets" | "compatibility" | "runtime">>,
+): HooknosticConfig {
   return {
     entry: "./src/hooks.ts",
     targets: {
