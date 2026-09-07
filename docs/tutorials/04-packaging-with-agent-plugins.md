@@ -136,6 +136,15 @@ become Claude's persistent variables: `${PLUGIN_ROOT}` → `${CLAUDE_PLUGIN_ROOT
 start with `./`; the latter becomes a Claude plugin-root command. Streamable HTTP becomes
 Claude's native `http` transport; SSE, literal URLs, and literal headers are preserved.
 
+For stdio servers, `cwd: "./"` selects the installed plugin root and
+`cwd: "./worker"` selects its `worker` subdirectory. Omitted cwd defaults to the
+plugin root. Projection emits a Node launcher to establish that directory before
+starting the server, because Claude ignores the native MCP cwd field on the
+[probed version](../../.capture/claude-mcp-cwd/README.md). Node must be available on
+PATH. The launcher preserves the server's arguments, environment, stdio, and exit
+status; its generated `runtime/mcp-launcher.mjs` path cannot collide with package
+content.
+
 ## Unsupported and invalid components
 
 Invalid package structure is always `HN503`. A bad root manifest is fatal. An invalid

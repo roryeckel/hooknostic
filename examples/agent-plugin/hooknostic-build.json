@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:c6c6126e4f2e6bdea3fbffae932c18e1b9ce0e48b1d4ad82a2875c71828fa07e",
+        "contentDigest": "sha256:2d3725dc6e443d49c94b24273b725c8804ecca387a12676a850c666dc0fdd537",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -51,7 +51,8 @@
         "hooks/hooks.json",
         "package-lock.json",
         "package.json",
-        "runtime/hooknostic.mjs"
+        "runtime/hooknostic.mjs",
+        "runtime/mcp-launcher.mjs"
       ]
     },
     "codex": {
@@ -103,7 +104,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:63079ca9abe7aa978d0f8af12c52a20daac9595683b7a1444fea1d5de173522a"
+    "contentDigest": "sha256:e3a70443104aff63411120737c951815a6ec2889e0b239c3e1756185a5ece9a9"
   },
   "source": "./src/hooks.ts"
 }

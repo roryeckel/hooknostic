@@ -13,9 +13,12 @@ dependency and has an npm lockfile, but its source directory has no
 `node_modules`. Install it with an isolated `CLAUDE_CODE_PLUGIN_CACHE_DIR`,
 then inspect the copied cache entry for the resolved dependency.
 
+Evidence class: **live-probe**. This committed directory contains probe inputs
+and the observation below, not a verbatim harness payload.
+
 ## Observation
 
-Captured on Claude Code 2.1.260 (2026-09-05) with a local marketplace and
+Probed live on Claude Code 2.1.260 (2026-09-05) with a local marketplace and
 `CLAUDE_CODE_PLUGIN_CACHE_DIR` directed at this capture directory. The source
 plugin contained `package.json` and `package-lock.json`, declared
 `is-number@7.0.0`, and had no `node_modules` directory. After

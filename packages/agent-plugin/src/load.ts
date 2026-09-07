@@ -418,7 +418,7 @@ function loadSkills(inventory: InventoryResult, issues: AgentPluginIssue[]): Age
 // inventoried on one filesystem and installed on others, and a `.ENV` that
 // Linux distinguishes from `.env` is the same file to a Windows or macOS
 // consumer. A deny-list that over-matches fails safe.
-const MATCH = { dot: true, nocase: true } as const;
+const MATCH = { dot: true, nocase: true, nonegate: true, nocomment: true } as const;
 
 function excluded(path: string, patterns: readonly string[]): boolean {
   return patterns.some((pattern) => minimatch(path, pattern, MATCH) || minimatch(`${path}/`, pattern, MATCH));

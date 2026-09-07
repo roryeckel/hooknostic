@@ -10,6 +10,7 @@ if (capture) {
   writeFileSync(
     capture,
     JSON.stringify({
+      cwd: process.cwd(),
       pluginRoot: process.env.PLUGIN_ROOT,
       pluginData: process.env.PLUGIN_DATA,
       capture,

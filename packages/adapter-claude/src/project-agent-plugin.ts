@@ -104,6 +104,27 @@ function replacePluginVariables(value: string): string {
     .replaceAll("${PLUGIN_DATA}", "${CLAUDE_PLUGIN_DATA}");
 }
 
+const MCP_LAUNCHER_PATH = "runtime/mcp-launcher.mjs";
+// Claude currently ignores stdio `cwd`. Establish the portable working
+// directory in the launcher before starting the server (live probe below).
+const MCP_LAUNCHER = `import { spawn } from "node:child_process";
+const [cwd, command, ...args] = process.argv.slice(2);
+const child = spawn(command, args, { cwd, stdio: "inherit" });
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => child.kill(signal));
+}
+child.on("error", (error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
+child.on("exit", (code, signal) => {
+  if (signal) {
+    process.removeAllListeners(signal);
+    process.kill(process.pid, signal);
+  } else process.exitCode = code ?? 1;
+});
+`;
+
 function translateServer(server: AgentPluginMcpServer): Record<string, unknown> {
   if (server.type !== "stdio") {
     return {
@@ -120,14 +141,20 @@ function translateServer(server: AgentPluginMcpServer): Record<string, unknown> 
   );
   env["PLUGIN_ROOT"] = "${CLAUDE_PLUGIN_ROOT}";
   env["PLUGIN_DATA"] = "${CLAUDE_PLUGIN_DATA}";
+  const cwd = server.cwd?.startsWith("./")
+    ? `\${CLAUDE_PLUGIN_ROOT}${server.cwd.length === 2 ? "" : `/${server.cwd.slice(2)}`}`
+    : replacePluginVariables(server.cwd ?? "${PLUGIN_ROOT}");
   return {
     type: "stdio",
-    command,
-    ...(server.args === undefined
-      ? {}
-      : { args: server.args.map((argument) => replacePluginVariables(argument)) }),
+    command: "node",
+    args: [
+      `\${CLAUDE_PLUGIN_ROOT}/${MCP_LAUNCHER_PATH}`,
+      cwd,
+      command,
+      ...(server.args ?? []).map(replacePluginVariables),
+    ],
     env,
-    cwd: replacePluginVariables(server.cwd ?? "${PLUGIN_ROOT}"),
+    cwd,
   };
 }
 
@@ -302,6 +329,12 @@ export async function projectAgentPluginToClaude(
     if (extensionServers !== undefined && !object(extensionServers)) {
       throw new Error("Claude MCP configuration mcpServers must be an object");
     }
+    if (Object.values(source.mcp?.mcpServers ?? {}).some((server) => server.type === "stdio")) {
+      if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
+        throw new Error(`generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`);
+      }
+      files.set(MCP_LAUNCHER_PATH, { path: MCP_LAUNCHER_PATH, contents: MCP_LAUNCHER });
+    }
     const translated = Object.fromEntries(
       Object.entries(source.mcp?.mcpServers ?? {}).map(([name, server]) => [name, translateServer(server)]),
     );
@@ -385,7 +418,7 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           {
             version: "2.1.260",
             date: "2026-09-05",
-            method: "captured",
+            method: "live-probe",
             artifact: ".capture/claude-marketplace-deps",
             what: "Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version.",
           },
@@ -395,6 +428,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "doc-derived",
             artifact: "docs/baseline-2026-08-20.md",
             what: "Claude documents HTTP and SSE MCP transports and plugin root/data variables.",
+          },
+          {
+            version: "2.1.260",
+            date: "2026-09-07",
+            method: "live-probe",
+            artifact: ".capture/claude-mcp-cwd",
+            what: "Cross-directory MCP probe: Claude expanded plugin-root variables but ignored both relative and plugin-root-anchored native cwd; the subprocess inherited the project directory. A generated Node launcher then established the plugin subdirectory as the MCP cwd.",
           },
         ],
         notes: ["https://code.claude.com/docs/en/plugins-reference (checked 2026-09-04)"],

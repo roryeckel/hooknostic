@@ -14,7 +14,7 @@ import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
-import { CLAUDE_NATIVE_EVENT, generateClaudeArtifacts } from "./generate.js";
+import { generateClaudeArtifacts } from "./generate.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
 import { claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
@@ -127,18 +127,15 @@ export function claudeAdapter(): HarnessAdapter {
             typeof hooksJson.contents === "string"
               ? hooksJson.contents
               : new TextDecoder().decode(hooksJson.contents),
-          ) as {
-            hooks?: Record<string, unknown>;
-          };
-          const validNames = new Set(Object.values(CLAUDE_NATIVE_EVENT));
-          for (const eventName of Object.keys(parsed.hooks ?? {})) {
-            if (!validNames.has(eventName)) {
-              diagnostics.push({
-                code: "HN301" as const,
-                severity: "error" as const,
-                target: "claude",
-                message: `generated hooks.json contains unknown native event "${eventName}".`,
-              });
+          ) as unknown;
+          const object = (value: unknown): value is Record<string, unknown> =>
+            typeof value === "object" && value !== null && !Array.isArray(value);
+          if (!object(parsed) || !object(parsed["hooks"])) {
+            throw new Error("document and hooks field must be objects");
+          }
+          for (const [eventName, entries] of Object.entries(parsed["hooks"])) {
+            if (!Array.isArray(entries)) {
+              throw new Error(`hooks.${eventName} must be an array`);
             }
           }
         } catch (error) {
@@ -146,7 +143,7 @@ export function claudeAdapter(): HarnessAdapter {
             code: "HN301" as const,
             severity: "error" as const,
             target: "claude",
-            message: `generated hooks.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+            message: `generated hooks.json is invalid: ${error instanceof Error ? error.message : String(error)}`,
           });
         }
       }

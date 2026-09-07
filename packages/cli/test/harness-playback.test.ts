@@ -4,7 +4,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import type { HookEventName } from "@hooknostic/sdk";
@@ -1115,6 +1115,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       const hookBuild = await buildPlaybackArtifact(adapter!, join(dir, "hook-build"));
       const transports = await startProjectionMcpTransports();
       const portable = join(dir, "portable");
+      const projectDir = join(dir, "project");
+      await mkdir(projectDir);
+      await mkdir(join(portable, "mcp-working-dir"), { recursive: true });
+      await writeFile(join(portable, "mcp-working-dir/README.md"), "MCP working directory fixture.\n");
       await mkdir(join(portable, "skills/projection-probe"), { recursive: true });
       await writeFile(
         join(portable, "plugin.json"),
@@ -1140,6 +1144,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
               command: "node",
               args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"],
               env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
+              cwd: "./mcp-working-dir",
             },
             projectedHttp: { type: "streamable-http", url: transports.httpUrl },
             projectedSse: { type: "sse", url: transports.sseUrl },
@@ -1201,7 +1206,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             "3",
           ],
           {
-            cwd: pluginDir,
+            cwd: projectDir,
             timeoutMs: 90_000,
             env: {
               ...withoutCredentials(),
@@ -1219,7 +1224,8 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         expect(server.errors).toEqual([]);
         expect(JSON.stringify(server.requests)).toContain("HOOKNOSTIC_SKILL_DISCOVERY_MARKER");
         const environment = JSON.parse(await readFile(join(pluginDir, "mcp-environment.json"), "utf8"));
-        expect(environment.pluginRoot.replaceAll("/", "\\")).toBe(pluginDir);
+        expect(normalize(environment.pluginRoot)).toBe(pluginDir);
+        expect(normalize(environment.cwd)).toBe(join(pluginDir, "mcp-working-dir"));
         expect(environment.pluginData).toBeTypeOf("string");
         expect(environment.argv).toEqual([environment.pluginData]);
         expect(transports.counts.http).toBeGreaterThan(0);

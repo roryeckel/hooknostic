@@ -50,7 +50,8 @@ For one harness at a time, CI:
    package, projects it together with the production hook artifact, validates
    it strictly, and loads it through `--plugin-dir`. The model request must
    contain the skill marker, the stdio process records resolved root/data
-   variables, both remote transports must complete initialization requests,
+   variables and actual cwd while Claude runs from a separate project directory;
+   the stdio launcher must anchor `./mcp-working-dir` inside the plugin. Both remote transports must complete initialization requests,
    and the hook trace must contain `prompt.before`.
 
 For OpenCode, the driver also redirects `XDG_CONFIG_HOME` into the scratch

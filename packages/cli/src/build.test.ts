@@ -311,7 +311,7 @@ ${run.stderr}`).toBe(0);
       expect(mcpJson.mcpServers.greeter).toMatchObject({
         type: "stdio",
         command: "node",
-        args: ["${CLAUDE_PLUGIN_ROOT}/src/greet-mcp.mjs"],
+        args: ["${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs", "${CLAUDE_PLUGIN_ROOT}", "node", "${CLAUDE_PLUGIN_ROOT}/src/greet-mcp.mjs"],
       });
 
       const runtimeManifest = JSON.parse(await readFile(join(dir, "dist/claude/package.json"), "utf8"));
@@ -614,6 +614,28 @@ ${run.stderr}`).toBe(0);
       expect(existsSync(join(dir, "dist/claude", leaked)), leaked).toBe(false);
     }
   });
+
+  it.each(["out[1]", "out{a,b}", "#output", "!output"])(
+    "excludes literal output %s from the next build inventory", async (output) => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-literal-output-"));
+      cleanupDirs.push(dir);
+      await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "literal-output" }));
+      await writeFile(join(dir, "hooknostic.config.ts"), `export default {
+        agentPlugin: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: ${JSON.stringify(output)} } }
+      };`);
+      for (let build = 0; build < 2; build++) {
+        const capture = captureIO();
+        expect(await runBuild({
+          config: join(dir, "hooknostic.config.ts"), json: true,
+          registry: defaultAdapterRegistry(), io: capture.io,
+        }), capture.out()).toBe(0);
+        expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+        expect(existsSync(join(dir, output, ".claude-plugin/plugin.json"))).toBe(true);
+        expect(existsSync(join(dir, output, output))).toBe(false);
+      }
+    },
+  );
 
   it("builds when the output is spelled through a link inside the package", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-linked-output-"));

@@ -4,6 +4,9 @@
       "type": "stdio",
       "command": "node",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "node",
         "${CLAUDE_PLUGIN_ROOT}/src/greet-mcp.mjs"
       ],
       "env": {

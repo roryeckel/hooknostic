@@ -40,8 +40,9 @@ Projection validation records:
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 2.1.260 | 2026-09-04 | live-probe | `.capture/harness-playback` | Claude discovered a projected skill, started projected stdio/HTTP/SSE MCP servers with root/data variables, and executed merged Hooknostic hooks. |
-| 2.1.260 | 2026-09-05 | captured | `.capture/claude-marketplace-deps` | Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version. |
+| 2.1.260 | 2026-09-05 | live-probe | `.capture/claude-marketplace-deps` | Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version. |
 | 2.1.260 | 2026-09-04 | doc-derived | `docs/baseline-2026-08-20.md` | Claude documents HTTP and SSE MCP transports and plugin root/data variables. |
+| 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-mcp-cwd` | Cross-directory MCP probe: Claude expanded plugin-root variables but ignored both relative and plugin-root-anchored native cwd; the subprocess inherited the project directory. A generated Node launcher then established the plugin subdirectory as the MCP cwd. |
 
 ### Codex CLI
 

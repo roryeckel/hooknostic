@@ -1,3 +1,4 @@
+import { minimatch } from "minimatch";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -162,8 +163,8 @@ async function projectionExcludes(
     configRelative !== ".." &&
     !configRelative.startsWith("../")
   ) {
-    exclusions.add(`${configRelative}/.hooknostic-*`);
-    exclusions.add(`${configRelative}/.hooknostic-*/**`);
+    exclusions.add(`${minimatch.escape(configRelative, { magicalBraces: true })}/.hooknostic-*`);
+    exclusions.add(`${minimatch.escape(configRelative, { magicalBraces: true })}/.hooknostic-*/**`);
   }
   const projectPaths = [
     ...configPaths,
@@ -180,7 +181,7 @@ async function projectionExcludes(
     const rel = relative(root, path);
     if (rel === "") continue;
     if (!isAbsolute(rel) && rel !== ".." && !rel.startsWith("..\\") && !rel.startsWith("../")) {
-      const portable = rel.replaceAll("\\", "/");
+      const portable = minimatch.escape(rel.replaceAll("\\", "/"), { magicalBraces: true });
       exclusions.add(portable);
       exclusions.add(`${portable}/**`);
     }
