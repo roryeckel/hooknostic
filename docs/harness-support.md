@@ -63,7 +63,7 @@ Projection validation records:
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
 | `agent-plugin.skills` | exact | — |
-| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.stdio` | emulated | The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so plugin-root anchoring is carried by an explicit plugin-root-relative cwd with command and args rewritten against it. A server using ${PLUGIN_DATA} has no representation and is omitted. |
 | `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
 | `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
 | `agent-plugin.client-extension.files` | unsupported | Codex reads no portable client-extension namespace; its native .codex-plugin/ directory is not one, and none of its bundled plugins use the extensions map. |
@@ -78,6 +78,9 @@ Projection validation records:
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Manifest precedence suppresses hooks: a package carrying both a root plugin.json and a native manifest with hooks loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. |
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Native MCP shape: url + http_headers registered as streamable_http with the Authorization header intact, where the same file in portable shape (type + headers) registered with http_headers empty and a type: sse server registered as streamable_http rather than being skipped. |
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | A plugin hook command resolves against the session cwd: of three variants on one event, only ${PLUGIN_ROOT}/... ran; a relative path and ${CODEX_PLUGIN_ROOT} did not. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | The native MCP route implements none of the Agent Plugins placeholder contract the portable route does: ${PLUGIN_ROOT} and ${PLUGIN_DATA} read back as literal text in args, env gained neither variable, and cwd was absent unless declared. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | A declared cwd is joined to the plugin root without being expanded first, so a relative one anchors correctly (`.` reached the plugin root, `worker` reached a directory inside it) while ${PLUGIN_ROOT}/worker produced a path containing the literal placeholder. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | A native manifest carrying author, license, homepage and keywords installed normally and resolved its version from the manifest, so those fields are carried through rather than dropped. |
 
 ### OpenCode
 
@@ -95,7 +98,7 @@ Projection validation records:
 | --- | --- | --- |
 | `agent-plugin.manifest` | emulated | A project plugin is resolved by path and has no manifest, so name, version and description survive only as a comment in the generated module. They cannot be a named export: every export of a plugin module is loaded as a plugin, and a non-function one fails the whole module. |
 | `agent-plugin.skills` | exact | — |
-| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.stdio` | emulated | A project plugin has no declarative config, so the servers are contributed by a generated module that resolves ${PLUGIN_ROOT} and the environment itself at load time. A server declaring cwd or ${PLUGIN_DATA} has no representation in OpenCode's argv-and-environment shape and is omitted. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
 | `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace. |
@@ -108,7 +111,7 @@ Projection validation records:
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A project plugin's config hook contributed both an mcp entry and a skills.paths entry, each visible in `opencode debug config`, and the skill at the injected path was listed by `opencode debug skill`. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | skills.paths is additive: an injected path coexisted with the project's own configured path and with the default .agents/skills discovery directory. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Interpolation runs BEFORE plugin config hooks: in one run the same {env:VAR} header expanded when it came from opencode.json and survived verbatim when a plugin injected it, so a plugin must read the environment itself rather than emit OpenCode's own syntax. |
-| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so package content nests safely below the scanned directory. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so the whole package nests safely below the scanned directory -- which is where it goes, because an MCP server's ${PLUGIN_ROOT} argv needs the implementation shipped beside it. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with "Plugin export is not a function". |
 | 1.18.29 | 2026-09-08 | type-derived | `.capture/opencode-agent-plugin` | A remote MCP server is attempted as [StreamableHTTP, SSE] in that order, with declared headers passed to both, which is why sse is emulated rather than unsupported. |
 

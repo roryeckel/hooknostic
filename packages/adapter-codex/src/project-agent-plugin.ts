@@ -1,5 +1,6 @@
 import { componentSummary } from "@hooknostic/agent-plugin";
 import type {
+  AgentPluginComponentId,
   AgentPluginIssue,
   AgentPluginPackage,
   AgentPluginProjectionFile,
@@ -33,43 +34,125 @@ interface CodexNativeManifest {
   name: string;
   version?: string;
   description?: string;
+  author?: unknown;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  keywords?: string[];
   skills?: string;
   mcpServers?: string;
   hooks?: string;
 }
 
+const PLUGIN_ROOT = "${PLUGIN_ROOT}";
+const PLUGIN_DATA = "${PLUGIN_DATA}";
+
+/**
+ * A portable plugin-root-anchored path as a path relative to the plugin root.
+ *
+ * Returns undefined for anything anchored on `${PLUGIN_DATA}`, which this route
+ * cannot express at all, and for a bare command name like `node`, which must
+ * stay a PATH lookup rather than become a relative file.
+ */
+function pluginRootRelative(value: string): string | undefined {
+  if (value === PLUGIN_ROOT) return ".";
+  if (value.startsWith(`${PLUGIN_ROOT}/`)) return value.slice(PLUGIN_ROOT.length + 1);
+  if (value === "." || value === "./") return ".";
+  if (value.startsWith("./")) return value.slice(2);
+  return undefined;
+}
+
+/** Re-anchor a plugin-root-relative path against the server's working directory. */
+function fromWorkingDirectory(cwd: string, path: string): string {
+  if (cwd === ".") return path === "" ? "." : path;
+  const up = cwd.split("/").map(() => "..");
+  return [...up, ...(path === "." ? [] : [path])].join("/");
+}
+
 /**
  * Translate portable MCP servers into Codex's native shape.
  *
- * `sse` is dropped rather than passed through. Codex's native reader selects the
- * transport from `command` vs `url` and ignores the portable `type` entirely, so
- * an sse server survives as a `streamable_http` registration against the same
- * url -- a wrong-protocol connection, which is worse than an absent component.
- * The portable `headers` key is ignored for the same reason; `http_headers` is
- * what Codex reads, and through it a literal header value is preserved.
+ * The native route does NOT implement the Agent Plugins placeholder contract,
+ * which the portable route does (`.capture/codex-agent-plugin` recorded
+ * PLUGIN_ROOT and PLUGIN_DATA bound in `env`, and `cwd` defaulted to the plugin
+ * root). Measured on 0.153.2 (`.capture/codex-native-mcp`): `${PLUGIN_ROOT}` and
+ * `${PLUGIN_DATA}` reach the server as literal text in `args`, `env` gains
+ * neither variable, and `cwd` is absent unless declared. What the route DOES
+ * give is a `cwd` resolved against the plugin root, so the contract is carried
+ * here instead: every server gets an explicit plugin-root-relative `cwd`, and
+ * `${PLUGIN_ROOT}` / `./` paths are rewritten relative to it. Without this a
+ * package referencing its own shipped code -- the ordinary case -- registers an
+ * argv that cannot resolve.
+ *
+ * Two shapes have no representation and are dropped with an omission rather
+ * than emitted broken:
+ *
+ * - `${PLUGIN_DATA}` anywhere. The route provides no writable per-plugin
+ *   directory and no way to name one, and the package loader forbids an author
+ *   from defining the variable themselves.
+ * - `sse`. Codex selects the transport from `command` vs `url` and ignores the
+ *   portable `type`, so an sse server survives as a `streamable_http`
+ *   registration against the same url -- a wrong-protocol connection, which is
+ *   worse than an absent component. The portable `headers` key is ignored for
+ *   the same reason; `http_headers` is what Codex reads, and through it a
+ *   literal header value is preserved.
  */
 function translateMcp(source: AgentPluginPackage): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
-  omitted: string[];
+  omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
 } {
-  const servers: Record<string, CodexStdioServer | CodexRemoteServer> = {};
-  const omitted: string[] = [];
+  // Null-prototype: a schema-valid server named `__proto__` assigned into `{}`
+  // invokes the inherited setter, so JSON.stringify would omit it while the
+  // summary counted it emitted.
+  const servers: Record<string, CodexStdioServer | CodexRemoteServer> = Object.create(null);
+  const omitted: { name: string; component: AgentPluginComponentId; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
-    if (server.type === "stdio") {
-      servers[name] = {
-        command: server.command,
-        ...(server.args === undefined ? {} : { args: [...server.args] }),
-        ...(server.env === undefined ? {} : { env: { ...server.env } }),
-        ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
-      };
-    } else if (server.type === "streamable-http") {
+    if (server.type !== "stdio") {
+      if (server.type === "sse") {
+        omitted.push({
+          name,
+          component: "agent-plugin.mcp.sse",
+          reason:
+            "Codex has no sse transport; emitting it would register a streamable_http connection to the same url",
+        });
+        continue;
+      }
       servers[name] = {
         url: server.url,
         ...(server.headers === undefined ? {} : { http_headers: { ...server.headers } }),
       };
-    } else {
-      omitted.push(name);
+      continue;
     }
+    const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
+    if (server.cwd !== undefined) values.push(server.cwd);
+    if (values.some((value) => value.includes(PLUGIN_DATA))) {
+      omitted.push({
+        name,
+        component: "agent-plugin.mcp.stdio",
+        reason:
+          "the native Codex MCP route provides no ${PLUGIN_DATA} directory and expands no placeholder, so the server would receive the literal text",
+      });
+      continue;
+    }
+    const cwd = server.cwd === undefined ? "." : pluginRootRelative(server.cwd);
+    if (cwd === undefined) {
+      omitted.push({
+        name,
+        component: "agent-plugin.mcp.stdio",
+        reason: `working directory ${JSON.stringify(server.cwd)} is not anchored on the plugin root`,
+      });
+      continue;
+    }
+    const reanchor = (value: string): string => {
+      const relative = pluginRootRelative(value);
+      return relative === undefined ? value : fromWorkingDirectory(cwd, relative);
+    };
+    servers[name] = {
+      command: reanchor(server.command),
+      ...(server.args === undefined ? {} : { args: server.args.map(reanchor) }),
+      ...(server.env === undefined ? {} : { env: { ...server.env } }),
+      cwd,
+    };
   }
   return { servers, omitted };
 }
@@ -111,7 +194,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             "Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks.",
         },
         "agent-plugin.skills": { level: "exact" },
-        "agent-plugin.mcp.stdio": { level: "exact" },
+        "agent-plugin.mcp.stdio": {
+          level: "emulated",
+          rationale:
+            "The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so plugin-root anchoring is carried by an explicit plugin-root-relative cwd with command and args rewritten against it. A server using ${PLUGIN_DATA} has no representation and is omitted.",
+        },
         "agent-plugin.mcp.streamable-http": {
           level: "exact",
           rationale:
@@ -171,6 +258,27 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/codex-plugin-hooks",
             what: "A plugin hook command resolves against the session cwd: of three variants on one event, only ${PLUGIN_ROOT}/... ran; a relative path and ${CODEX_PLUGIN_ROOT} did not.",
           },
+          {
+            version: "0.153.2",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/codex-native-mcp",
+            what: "The native MCP route implements none of the Agent Plugins placeholder contract the portable route does: ${PLUGIN_ROOT} and ${PLUGIN_DATA} read back as literal text in args, env gained neither variable, and cwd was absent unless declared.",
+          },
+          {
+            version: "0.153.2",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/codex-native-mcp",
+            what: "A declared cwd is joined to the plugin root without being expanded first, so a relative one anchors correctly (`.` reached the plugin root, `worker` reached a directory inside it) while ${PLUGIN_ROOT}/worker produced a path containing the literal placeholder.",
+          },
+          {
+            version: "0.153.2",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/codex-native-mcp",
+            what: "A native manifest carrying author, license, homepage and keywords installed normally and resolved its version from the manifest, so those fields are carried through rather than dropped.",
+          },
         ],
         notes: [
           "Marketplace roots expose plugins through <root>/.agents/plugins/marketplace.json.",
@@ -207,24 +315,33 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       copiedPaths.push(file.path);
     }
 
+    // Carried rather than dropped: a manifest declaring all of these installed
+    // and resolved its version normally (`.capture/codex-native-mcp`), so
+    // passing them through cannot lose information whether Codex reads them or
+    // ignores them -- whereas dropping them certainly does.
     const manifest: CodexNativeManifest = {
       name: source.manifest.name,
       ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
       ...(source.manifest.description === undefined
         ? {}
         : { description: source.manifest.description }),
+      ...(source.manifest.author === undefined ? {} : { author: source.manifest.author }),
+      ...(source.manifest.homepage === undefined ? {} : { homepage: source.manifest.homepage }),
+      ...(source.manifest.repository === undefined
+        ? {}
+        : { repository: source.manifest.repository }),
+      ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
+      ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
       ...(source.skills.length === 0 ? {} : { skills: "./skills/" }),
     };
 
     const { servers, omitted } = translateMcp(source);
-    for (const name of omitted) {
-      const reason =
-        "Codex has no sse transport; emitting it would register a streamable_http connection to the same url";
-      omissions.push({ component: "agent-plugin.mcp.sse", name, reason });
+    for (const { name, component, reason } of omitted) {
+      omissions.push({ component, name, reason });
       issues.push({
         severity: context.onUnsupported,
         scope: "mcp",
-        component: "agent-plugin.mcp.sse",
+        component,
         path: `${PORTABLE_MCP_PATH}#${name}`,
         message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
       });
@@ -239,6 +356,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     const copied = new Set(copiedPaths);
     for (const file of context.hookArtifacts) {
+      // Generation emits a hooks-only manifest so that an unprojected
+      // plugin-mode target is still installable; the fuller one written below
+      // replaces it at the same path.
+      if (file.path === NATIVE_MANIFEST_PATH) continue;
       if (copied.has(file.path)) {
         issues.push({
           severity: "error",
@@ -259,12 +380,18 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     // Codex reads no client-extension namespace, so none is declared and the
     // component is never discovered here.
+    // Per-server, not per-transport: a stdio server is dropped only when its own
+    // paths cannot be re-anchored, so the count comes from what was omitted.
+    const skippedByComponent = new Map<AgentPluginComponentId, number>();
+    for (const { component } of omitted) {
+      skippedByComponent.set(component, (skippedByComponent.get(component) ?? 0) + 1);
+    }
     const counts = componentSummary(source, {
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component === "agent-plugin.mcp.sse" || component === "agent-plugin.runtime-package"
+        component === "agent-plugin.runtime-package"
           ? discovered
-          : 0,
+          : (skippedByComponent.get(component) ?? 0),
     });
     if (context.runtimePackage !== undefined) {
       omissions.push({

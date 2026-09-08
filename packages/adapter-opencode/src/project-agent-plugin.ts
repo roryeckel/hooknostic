@@ -16,7 +16,17 @@ import type { TargetSpec } from "@hooknostic/core";
  */
 const PLUGIN_DIR = ".opencode/plugins";
 const INJECTOR_PATH = `${PLUGIN_DIR}/hooknostic-agent-plugin.js`;
-const SKILLS_DIR = `${PLUGIN_DIR}/skills`;
+/**
+ * The package itself, nested one level so the flat scan never loads its files.
+ *
+ * Everything the package ships goes here, not just its skills: an MCP server
+ * ordinarily names its implementation with `${PLUGIN_ROOT}/...`, and copying
+ * only skill trees leaves that argv pointing at a file the output does not
+ * contain -- an MCP component reported emitted and exact that cannot start.
+ */
+const PACKAGE_DIR = `${PLUGIN_DIR}/package`;
+const PORTABLE_MANIFEST_PATH = "plugin.json";
+const PORTABLE_MCP_PATH = "mcp.json";
 
 /** OpenCode's local server: one argv array, and `environment` rather than `env`. */
 interface OpenCodeLocalServer {
@@ -37,6 +47,7 @@ interface OpenCodeRemoteServer {
 type OpenCodeServer = OpenCodeLocalServer | OpenCodeRemoteServer;
 
 const PLUGIN_ROOT_PLACEHOLDER = "${PLUGIN_ROOT}";
+const PLUGIN_DATA_PLACEHOLDER = "${PLUGIN_DATA}";
 const RUNTIME_PLUGIN_ROOT = "__HOOKNOSTIC_PLUGIN_ROOT__";
 
 /**
@@ -61,10 +72,49 @@ function rewriteRecord(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, rewriteValue(value)]));
 }
 
-function translateMcp(source: AgentPluginPackage): Record<string, OpenCodeServer> {
-  const servers: Record<string, OpenCodeServer> = {};
+/**
+ * Translate portable MCP servers into OpenCode's shape.
+ *
+ * Two portable shapes have no representation and are dropped with an omission
+ * rather than emitted silently degraded:
+ *
+ * - `${PLUGIN_DATA}`. The spec's writable per-plugin directory has no OpenCode
+ *   equivalent, and the package loader forbids an author from defining the
+ *   variable themselves, so the generated module would leave the literal text
+ *   in place for the server to choke on.
+ * - `cwd`. OpenCode's local server carries an argv and an environment and
+ *   nothing else, so a declared working directory would be dropped while the
+ *   server still started -- from the project directory, where its relative
+ *   paths mean something different.
+ */
+function translateMcp(source: AgentPluginPackage): {
+  servers: Record<string, OpenCodeServer>;
+  omitted: { name: string; reason: string }[];
+} {
+  // Null-prototype: a schema-valid server named `__proto__` assigned into `{}`
+  // sets the prototype instead of an own property, and JSON.stringify would then
+  // omit it while the summary counted it emitted.
+  const servers: Record<string, OpenCodeServer> = Object.create(null);
+  const omitted: { name: string; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
     if (server.type === "stdio") {
+      const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
+      if (values.some((value) => value.includes(PLUGIN_DATA_PLACEHOLDER))) {
+        omitted.push({
+          name,
+          reason:
+            "OpenCode has no ${PLUGIN_DATA} equivalent, so the server would receive the literal placeholder text",
+        });
+        continue;
+      }
+      if (server.cwd !== undefined) {
+        omitted.push({
+          name,
+          reason:
+            "OpenCode's local server declares an argv and an environment only, so a working directory cannot be expressed",
+        });
+        continue;
+      }
       servers[name] = {
         type: "local",
         // OpenCode takes one argv array, not a command plus args.
@@ -81,7 +131,7 @@ function translateMcp(source: AgentPluginPackage): Record<string, OpenCodeServer
       };
     }
   }
-  return servers;
+  return { servers, omitted };
 }
 
 /**
@@ -125,7 +175,9 @@ function injectorSource(
     "//",
     "// The walk is structural. A JSON round-trip would corrupt a Windows plugin",
     "// root, whose backslashes are not valid JSON escapes.",
-    "const pluginRoot = dirname(fileURLToPath(import.meta.url));",
+    "// The package sits one level down, out of the flat plugin scan; that",
+    "// directory, not this module's, is what ${PLUGIN_ROOT} means.",
+    'const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");',
     `const MARKER = ${JSON.stringify(RUNTIME_PLUGIN_ROOT)};`,
     "const resolveText = (text) =>",
     "  text",
@@ -141,7 +193,9 @@ function injectorSource(
     "        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v)]))",
     "        : value;",
     "",
-    `const mcpServers = ${JSON.stringify(servers, null, 2)};`,
+    "// Parsed, not written as an object literal: a server named __proto__ is a",
+    "// literal key that sets the prototype, and the server would vanish.",
+    `const mcpServers = JSON.parse(${JSON.stringify(JSON.stringify(servers, null, 2))});`,
     "",
     "export default async () => ({",
     "  config: (config) => {",
@@ -150,7 +204,14 @@ function injectorSource(
       : [
           "    config.mcp = { ...(config.mcp ?? {}) };",
           "    for (const [name, server] of Object.entries(mcpServers)) {",
-          "      config.mcp[name] = resolve(server);",
+          "      // defineProperty, not assignment: `config.mcp.__proto__ = ...`",
+          "      // would reach the inherited setter instead of adding a server.",
+          "      Object.defineProperty(config.mcp, name, {",
+          "        value: resolve(server),",
+          "        enumerable: true,",
+          "        writable: true,",
+          "        configurable: true,",
+          "      });",
           "    }",
         ]),
     ...(hasSkills
@@ -202,7 +263,11 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             "A project plugin is resolved by path and has no manifest, so name, version and description survive only as a comment in the generated module. They cannot be a named export: every export of a plugin module is loaded as a plugin, and a non-function one fails the whole module.",
         },
         "agent-plugin.skills": { level: "exact" },
-        "agent-plugin.mcp.stdio": { level: "exact" },
+        "agent-plugin.mcp.stdio": {
+          level: "emulated",
+          rationale:
+            "A project plugin has no declarative config, so the servers are contributed by a generated module that resolves ${PLUGIN_ROOT} and the environment itself at load time. A server declaring cwd or ${PLUGIN_DATA} has no representation in OpenCode's argv-and-environment shape and is omitted.",
+        },
         "agent-plugin.mcp.streamable-http": { level: "exact" },
         "agent-plugin.mcp.sse": {
           level: "emulated",
@@ -248,7 +313,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-08",
             method: "live-probe",
             artifact: ".capture/opencode-agent-plugin",
-            what: "The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so package content nests safely below the scanned directory.",
+            what: "The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so the whole package nests safely below the scanned directory -- which is where it goes, because an MCP server's ${PLUGIN_ROOT} argv needs the implementation shipped beside it.",
           },
           {
             version: "1.18.29",
@@ -278,21 +343,28 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const files: AgentPluginProjectionFile[] = [];
     const copiedPaths: string[] = [];
 
-    const skillDirectories = new Set(source.skills.map((skill) => skill.directory));
     for (const file of source.files) {
-      // Only the skill trees have a consumer here. The portable manifest and
-      // mcp.json are replaced by the generated module, and anything else would
-      // land in a directory OpenCode scans for plugin modules.
-      const owner = [...skillDirectories].find(
-        (directory) => file.path === directory || file.path.startsWith(`${directory}/`),
-      );
-      if (owner === undefined) continue;
-      const path = `${SKILLS_DIR}/${file.path.slice("skills/".length)}`;
+      // The whole package, one level down. The two portable documents are
+      // replaced by the generated module, and everything else -- skills, MCP
+      // server implementations, their assets -- is what ${PLUGIN_ROOT} resolves
+      // against at load time.
+      if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
+      const path = `${PACKAGE_DIR}/${file.path}`;
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
     }
 
-    const servers = translateMcp(source);
+    const { servers, omitted } = translateMcp(source);
+    for (const { name, reason } of omitted) {
+      omissions.push({ component: "agent-plugin.mcp.stdio", name, reason });
+      issues.push({
+        severity: context.onUnsupported,
+        scope: "mcp",
+        component: "agent-plugin.mcp.stdio",
+        path: `${PORTABLE_MCP_PATH}#${name}`,
+        message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
+      });
+    }
     files.push({
       path: INJECTOR_PATH,
       contents: injectorSource(source.manifest, servers, source.skills.length > 0),
@@ -317,7 +389,11 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const counts = componentSummary(source, {
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component === "agent-plugin.runtime-package" ? discovered : 0,
+        component === "agent-plugin.runtime-package"
+          ? discovered
+          : component === "agent-plugin.mcp.stdio"
+            ? omitted.length
+            : 0,
     });
     if (context.runtimePackage !== undefined) {
       omissions.push({

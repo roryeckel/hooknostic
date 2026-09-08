@@ -590,8 +590,12 @@ ${run.stderr}`).toBe(0);
         hooks: "./hooks.json",
       });
       expect(existsSync(join(dir, "dist/codex/skills/greet/SKILL.md"))).toBe(true);
-      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/skills/greet/SKILL.md"))).toBe(true);
+      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/package/skills/greet/SKILL.md"))).toBe(true);
       expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
+      // The MCP server's implementation, which its argv names with
+      // ${PLUGIN_ROOT}: shipping the argv without the file is a server that
+      // cannot start, reported emitted.
+      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/package/src/greet-mcp.mjs"))).toBe(true);
 
       // `runtimePackage` is a Claude-only component, which is why the example
       // sets onUnsupported: "warn" -- the other two record the omission.
@@ -864,7 +868,7 @@ ${run.stderr}`).toBe(0);
     // The hook module and the package module are siblings; OpenCode loads every
     // module in this directory, and does not recurse into `skills/`.
     expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
-    expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/skills/review/SKILL.md"))).toBe(true);
+    expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/package/skills/review/SKILL.md"))).toBe(true);
     const injector = await readFile(
       join(dir, "dist/opencode/.opencode/plugins/hooknostic-agent-plugin.js"),
       "utf8",
@@ -876,11 +880,20 @@ ${run.stderr}`).toBe(0);
     expect(injector).toContain("${MY_TOKEN}");
     expect(injector).not.toContain("{env:MY_TOKEN}");
     expect(injector).toContain("process.env[name]");
+    // The servers are embedded as JSON text and parsed at load time, so a
+    // server named `__proto__` stays an own property instead of becoming an
+    // object literal's prototype.
+    const embedded = JSON.parse(
+      JSON.parse(injector.match(/const mcpServers = JSON\.parse\((.*)\);/)![1]!) as string,
+    ) as Record<string, Record<string, unknown>>;
     // stdio becomes one argv array under `command`, with `environment` for env.
-    expect(injector).toContain('"type": "local"');
-    expect(injector).toContain('"environment"');
+    expect(embedded["local"]).toMatchObject({
+      type: "local",
+      command: ["node", "__HOOKNOSTIC_PLUGIN_ROOT__/server.mjs"],
+      environment: { TOKEN: "${MY_TOKEN}" },
+    });
     // sse has no OpenCode discriminator; both remote transports become `remote`.
-    expect(injector).toContain('"type": "remote"');
+    expect(embedded["streamed"]).toMatchObject({ type: "remote" });
     // The install directory is only knowable at load time.
     expect(injector).toContain("__HOOKNOSTIC_PLUGIN_ROOT__");
     expect(injector).toContain("import.meta.url");
@@ -888,7 +901,7 @@ ${run.stderr}`).toBe(0);
     const report = JSON.parse(json.out());
     expect(report.targets.opencode.projection.components).toMatchObject({
       "agent-plugin.skills": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
-      "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.stdio": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.mcp.sse": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
     });
   });
@@ -1017,7 +1030,9 @@ ${run.stderr}`).toBe(0);
     // Native MCP shape: no type discriminator, and headers keep their values
     // under the key Codex actually reads.
     const mcp = JSON.parse(await readFile(join(dir, "dist/codex/.mcp.json"), "utf8"));
-    expect(mcp.mcpServers.local).toEqual({ command: "node", args: ["server.mjs"] });
+    // An explicit plugin-root-relative cwd, because the native route expands no
+    // placeholder and leaves cwd unset otherwise (.capture/codex-native-mcp).
+    expect(mcp.mcpServers.local).toEqual({ command: "node", args: ["server.mjs"], cwd: "." });
     expect(mcp.mcpServers.remote).toEqual({
       url: "https://example.invalid/mcp",
       http_headers: { Authorization: "Bearer literal" },
@@ -1035,7 +1050,7 @@ ${run.stderr}`).toBe(0);
     const report = JSON.parse(json.out());
     expect(report.targets.codex.projection.components).toMatchObject({
       "agent-plugin.skills": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
-      "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.stdio": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.mcp.streamable-http": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
     });
   });
@@ -1089,7 +1104,7 @@ ${run.stderr}`).toBe(0);
       expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.mcp.sse" }),
     );
     expect(report.targets.codex.projection.components).toMatchObject({
-      "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.stdio": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.mcp.sse": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
     });
     expect(report.targets.codex.projection.omissions).toEqual([

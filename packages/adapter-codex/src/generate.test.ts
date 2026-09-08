@@ -58,9 +58,16 @@ describe("generateCodexArtifacts", () => {
       OPTIONS,
     );
     expect(artifacts.map((a) => a.path).sort()).toEqual([
+      ".codex-plugin/plugin.json",
       "hooknostic/hooknostic.mjs",
       "hooks.json",
     ]);
+    // The manifest is what makes the tree installable at all, and ${PLUGIN_ROOT}
+    // below only resolves inside an installed plugin.
+    const manifest = JSON.parse(
+      String(artifacts.find((a) => a.path === ".codex-plugin/plugin.json")!.contents),
+    );
+    expect(manifest).toMatchObject({ hooks: "./hooks.json" });
     const hooks = JSON.parse(String(artifacts.find((a) => a.path === "hooks.json")!.contents));
     const commands = Object.values(hooks.hooks as Record<string, { hooks: { command: string }[] }[]>)
       .flatMap((groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)));

@@ -17,7 +17,9 @@ import { dirname, join } from "node:path";
 //
 // The walk is structural. A JSON round-trip would corrupt a Windows plugin
 // root, whose backslashes are not valid JSON escapes.
-const pluginRoot = dirname(fileURLToPath(import.meta.url));
+// The package sits one level down, out of the flat plugin scan; that
+// directory, not this module's, is what ${PLUGIN_ROOT} means.
+const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");
 const MARKER = "__HOOKNOSTIC_PLUGIN_ROOT__";
 const resolveText = (text) =>
   text
@@ -33,22 +35,22 @@ const resolve = (value) =>
         ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v)]))
         : value;
 
-const mcpServers = {
-  "greeter": {
-    "type": "local",
-    "command": [
-      "node",
-      "__HOOKNOSTIC_PLUGIN_ROOT__/src/greet-mcp.mjs"
-    ],
-    "enabled": true
-  }
-};
+// Parsed, not written as an object literal: a server named __proto__ is a
+// literal key that sets the prototype, and the server would vanish.
+const mcpServers = JSON.parse("{\n  \"greeter\": {\n    \"type\": \"local\",\n    \"command\": [\n      \"node\",\n      \"__HOOKNOSTIC_PLUGIN_ROOT__/src/greet-mcp.mjs\"\n    ],\n    \"enabled\": true\n  }\n}");
 
 export default async () => ({
   config: (config) => {
     config.mcp = { ...(config.mcp ?? {}) };
     for (const [name, server] of Object.entries(mcpServers)) {
-      config.mcp[name] = resolve(server);
+      // defineProperty, not assignment: `config.mcp.__proto__ = ...`
+      // would reach the inherited setter instead of adding a server.
+      Object.defineProperty(config.mcp, name, {
+        value: resolve(server),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
     const paths = config.skills?.paths ?? [];
     const own = join(pluginRoot, "skills");

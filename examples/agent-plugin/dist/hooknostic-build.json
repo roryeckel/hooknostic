@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:b92d91766da93ba498836a211049681cfe02996db2e74a213a1d2375e0e8d71d",
+        "contentDigest": "sha256:78269303d5925fd8a603dddc95896cfaeb98b5816373af1d3f8702cf3ebe8fa3",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -90,7 +90,7 @@
             "skipped": 0
           },
           "agent-plugin.mcp.stdio": {
-            "support": "exact",
+            "support": "emulated",
             "discovered": 1,
             "emitted": 1,
             "skipped": 0
@@ -129,8 +129,8 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:a089db3a88490e8f4be59b0baca91bce87c6602af70fdb9cc16aa391ee4b8fee",
-        "copiedFileCount": 1,
+        "contentDigest": "sha256:30ac664503b5180fe7d650eda7d33438a10d36c06035df8e5771b457c90ca91c",
+        "copiedFileCount": 5,
         "components": {
           "agent-plugin.manifest": {
             "support": "emulated",
@@ -145,7 +145,7 @@
             "skipped": 0
           },
           "agent-plugin.mcp.stdio": {
-            "support": "exact",
+            "support": "emulated",
             "discovered": 1,
             "emitted": 1,
             "skipped": 0

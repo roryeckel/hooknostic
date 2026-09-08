@@ -270,3 +270,44 @@ to `componentSummary`, which every shipped projector now calls.
   exported helper taking a per-harness `skipped` verdict, and it clamps that
   verdict to what was discovered — a projector's arithmetic reporting more
   skipped than found would read as a component the harness gains.
+
+## Amendments — 2026-09-08 (sixth)
+
+A `codex review` of the whole branch found seven defects in the projection paths.
+Five were one shape: a component claimed at a fidelity the projection did not
+deliver. The structural invariant — hooks must reach the harness — was enforced;
+the fidelity claims sitting beside it were not.
+
+- **Switching Codex to the native manifest silently dropped the placeholder
+  contract.** `.capture/codex-agent-plugin` recorded that on the portable route
+  "Codex implements the Agent Plugins placeholder contract itself": `PLUGIN_ROOT`
+  and `PLUGIN_DATA` bound in `env`, `cwd` defaulting to the plugin root. The
+  second amendment moved the projection to the native `.codex-plugin` route
+  because a portable manifest suppresses hooks — and did not re-check the
+  contract. It does not hold there (`.capture/codex-native-mcp`): placeholders
+  reach the server as literal text and no variable is bound. A package
+  referencing its own shipped code — the ordinary case, and what the committed
+  example does — registered an argv that cannot resolve, reported `exact`. The
+  projector now carries the contract itself, through the one anchor the route
+  does provide: a `cwd` resolved against the plugin root, with `command` and
+  `args` rewritten relative to it. `agent-plugin.mcp.stdio` becomes `emulated`.
+- **A capability recorded on one route is not evidence for another.** That is the
+  general lesson, and it is why `${PLUGIN_DATA}` is now dropped with an omission
+  on both Codex and OpenCode rather than emitted: neither route can express it,
+  and the loader forbids an author from defining the variable themselves.
+- **A projection ships the package, not the components it recognises.** The
+  OpenCode projector copied skill trees only, so an MCP server's implementation
+  never reached the output while the component was reported emitted and exact.
+  The whole package is now nested under `.opencode/plugins/package/`, below the
+  flat scan, and `${PLUGIN_ROOT}` resolves there.
+- **`mode: "plugin"` must produce a plugin on its own.** Widening Codex's
+  supported modes made an unprojected plugin-mode target reachable, and it built
+  a tree with no manifest — undiscoverable by `codex plugin add`, with a
+  `${PLUGIN_ROOT}` hook command that only resolves inside an installed plugin.
+  Generation now emits a hooks-only native manifest, which the projector replaces
+  with a fuller one, mirroring what Claude has always done.
+- **A schema-valid name can be a prototype key.** An MCP server named
+  `__proto__` assigned into `{}` reaches the inherited setter and vanishes from
+  the emitted JSON while the summary counts it emitted. Both translators build
+  null-prototype maps, and the OpenCode module embeds its servers as JSON text
+  parsed at load time rather than as an object literal.

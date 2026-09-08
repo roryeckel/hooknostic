@@ -36,6 +36,7 @@ const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
 /** Plugin-root-relative paths the native `.codex-plugin/plugin.json` points at. */
 export const CODEX_PLUGIN_HOOKS_PATH = "hooks.json";
 export const CODEX_PLUGIN_RUNTIME_PATH = "hooknostic/hooknostic.mjs";
+export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
 
 /**
  * Generate Codex hook artifacts, in one of two shapes.
@@ -107,7 +108,26 @@ export function generateCodexArtifacts(
     ),
   };
 
+  const manifest = {
+    name: plugin.name,
+    ...(plugin.version === undefined ? {} : { version: plugin.version }),
+    ...(plugin.description === undefined ? {} : { description: plugin.description }),
+    hooks: `./${CODEX_PLUGIN_HOOKS_PATH}`,
+  };
+
   return [
+    // Without a manifest the tree is not a plugin: `codex plugin add` cannot
+    // discover it, and the ${PLUGIN_ROOT} the hook command needs only resolves
+    // inside an installed one. A projected target replaces this with a fuller
+    // manifest that also carries the package's skills and MCP servers.
+    ...(bundled
+      ? [
+          {
+            path: CODEX_PLUGIN_MANIFEST_PATH,
+            contents: JSON.stringify(manifest, null, 2) + "\n",
+          },
+        ]
+      : []),
     { path: hooksPath, contents: JSON.stringify(hooksJson, null, 2) + "\n" },
     { path: runtimePath, contents: bundle.code },
   ];

@@ -180,6 +180,15 @@ entire output.
   may be rewritten — Claude merges its own hooks document into the generated one
   — but a path may not be dropped, because the result installs cleanly and runs
   nothing.
+- **Re-probe the capability, not the harness.** A fact established on one route
+  into a harness is not evidence for another. Codex implements the Agent Plugins
+  placeholder contract on the portable manifest route and none of it on the
+  native one, so moving the projection between them silently turned working
+  `${PLUGIN_ROOT}` argvs into literal text while the component still reported
+  `exact` (`.capture/codex-agent-plugin` vs `.capture/codex-native-mcp`).
+- **Ship the package, not the components you recognise.** An MCP server names its
+  implementation with `${PLUGIN_ROOT}/...`; copying only the trees you translate
+  leaves that argv pointing at a file the output does not contain.
 - **Check whatever else makes the hooks unreachable.** Path presence is all core
   can verify; the rest is yours. A Codex target in `local` mode generates
   `.codex/hooks.json` with a session-relative command, which satisfies the core
