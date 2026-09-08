@@ -28,7 +28,7 @@ import type { PluginIR } from "./ir.js";
 import { buildPluginIR } from "./ir.js";
 import type { EvaluateOptions } from "./load.js";
 import { loadConfig, loadPluginSource } from "./load.js";
-import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
+import { isStrictDescendant, packageOutputKey, validateOutputLayout } from "./output-layout.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.1.0";
@@ -494,6 +494,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         let artifacts = hookArtifacts;
         let directories: readonly string[] = [];
         let projectionCopiedPaths: ReadonlySet<string> | undefined;
+        /** Set only when the package is delivered separately from the hooks. */
+        let packageArtifacts: GeneratedArtifact[] | undefined;
+        let packageDirectories: readonly string[] = [];
         if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
           phase = "Agent Plugin projection";
           const projector = adapter.agentPluginProjector;
@@ -524,14 +527,36 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
             continue;
           }
-          artifacts = plan.files;
-          directories = plan.directories ?? [];
+          // When the package is not the hook channel, the two are separate
+          // deliverables: the package goes to `packageOutput` and `output` keeps
+          // the hook artifacts it would have held without any projection.
+          if (projector.deliversHooks) {
+            artifacts = plan.files;
+          } else {
+            packageArtifacts = plan.files;
+            packageDirectories = plan.directories ?? [];
+          }
+          directories = projector.deliversHooks ? (plan.directories ?? []) : directories;
           projectionCopiedPaths = new Set(plan.summary.copiedPaths);
-          target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts, directories);
+          target.projection = projectionReport(
+            projectionResolutions.get(id)!,
+            plan.summary,
+            packageArtifacts ?? artifacts,
+            packageArtifacts === undefined ? directories : packageDirectories,
+          );
         }
 
         phase = "validation";
-        const structural = validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories);
+        const structural = [
+          ...validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories),
+          ...(packageArtifacts === undefined
+            ? []
+            : validateGeneratedArtifacts(
+                packageArtifacts,
+                { adapterId: adapter.id, target: id },
+                packageDirectories,
+              )),
+        ];
         diagnostics.push(...structural);
         if (hasFatal(structural)) {
           target.status = "failed";
@@ -551,7 +576,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           // The projector reports what it copied byte-for-byte; the rest of its
           // plan it generated. Deriving the list this way keeps every harness's
           // own path layout inside its adapter, where ADR-0011 puts it.
-          for (const artifact of artifacts) {
+          for (const artifact of packageArtifacts ?? artifacts) {
             if (!projectionCopiedPaths.has(artifact.path)) generated.add(artifact.path);
           }
         }
@@ -560,10 +585,28 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           .filter((path) => generated.has(path));
 
         planned.push({ target: id, outputDir: outputByKey.get(id)!.outputDir });
+        if (packageArtifacts !== undefined) {
+          planned.push({ target: id, outputDir: outputByKey.get(packageOutputKey(id))!.outputDir });
+        }
         if (stagingRoot === undefined) continue;
         phase = "staging";
         const stagingDir = await writeArtifacts(stagingRoot, id, artifacts, directories);
         staged.push({ key: id, target: id, stagingDir, outputDir: outputByKey.get(id)!.outputDir });
+        if (packageArtifacts !== undefined) {
+          const packageKey = packageOutputKey(id);
+          const packageStagingDir = await writeArtifacts(
+            stagingRoot,
+            packageKey,
+            packageArtifacts,
+            packageDirectories,
+          );
+          staged.push({
+            key: packageKey,
+            target: id,
+            stagingDir: packageStagingDir,
+            outputDir: outputByKey.get(packageKey)!.outputDir,
+          });
+        }
       } catch (error) {
         diagnostics.push({ code: "HN301", severity: "error", target: id, message: `artifact ${phase} failed: ${errorMessage(error)}` });
         target.status = "failed";

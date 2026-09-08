@@ -197,6 +197,19 @@ export interface AgentPluginProjectionPlan {
 
 export interface AgentPluginProjector<TTarget = AgentPluginProjectionTarget> {
   namespace: string;
+  /**
+   * Whether the projected package is also this harness's hook delivery channel.
+   *
+   * `true` (Claude): the plan carries `context.hookArtifacts`, and package and
+   * hooks share the target's `output`. `false` (Codex): the harness installs a
+   * package but loads hooks from somewhere else, so folding them in would ship
+   * an unreadable copy inside the install cache. Core then writes the package to
+   * the target's `packageOutput` and leaves `output` to the hooks.
+   *
+   * Deciding this on the projector rather than on the target id is what keeps a
+   * new adapter from having to re-answer it in core.
+   */
+  deliversHooks: boolean;
   profiles: readonly AgentPluginProjectionProfile[];
   project(
     source: AgentPluginPackage,

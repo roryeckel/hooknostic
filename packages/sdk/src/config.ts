@@ -55,6 +55,13 @@ export interface TargetConfig {
   mode: "plugin" | "local";
   /** Output directory for this target's self-contained artifact. */
   output: string;
+  /**
+   * Output directory for the projected Agent Plugin package, when this harness
+   * installs a package but loads hooks from elsewhere (Codex). Required for such
+   * a target under `agentPlugin.targets`, and rejected for one whose package
+   * carries its own hooks (Claude), where `output` holds both.
+   */
+  packageOutput?: string;
   compatibility?: CompatibilityPolicy;
 }
 

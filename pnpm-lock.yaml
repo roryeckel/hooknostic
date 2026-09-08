@@ -157,6 +157,9 @@ importers:
 
   packages/adapter-codex:
     dependencies:
+      '@hooknostic/agent-plugin':
+        specifier: workspace:*
+        version: link:../agent-plugin
       '@hooknostic/core':
         specifier: workspace:*
         version: link:../core

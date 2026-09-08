@@ -10,6 +10,7 @@ import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 const target: TargetSpec = { id: "test", version: ">=2.1 <3", mode: "plugin", output: "dist" };
 const projector: AgentPluginProjector<TargetSpec> = {
   namespace: "example.test",
+  deliversHooks: true,
   profiles: [
     {
       range: ">=2.1 <2.5",

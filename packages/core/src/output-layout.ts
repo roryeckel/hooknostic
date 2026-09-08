@@ -64,6 +64,16 @@ function layoutError(target: string, message: string, remediation: string): Diag
 }
 
 /**
+ * Managed-output key for a target's separately delivered Agent Plugin package.
+ *
+ * Doubles as a staging directory name, so it stays path-safe: a `:` separator
+ * is a valid map key but an invalid Windows path component.
+ */
+export function packageOutputKey(target: string): string {
+  return `${target}__package`;
+}
+
+/**
  * Resolve and validate every directory the build may recursively replace.
  * Target outputs are sandboxed to the config directory. An output may be a
  * configured, inventory-excluded descendant of an Agent Plugin root, but may
@@ -100,50 +110,61 @@ export async function validateOutputLayout(options: {
   for (const target of options.selectedTargets) {
     const targetConfig = options.config.targets[target];
     if (!targetConfig) continue;
-    const outputDir = resolve(configDir, targetConfig.output);
-    const identities = await pathIdentities(outputDir);
-    const escapedPath = identities.find(
-      (path) => !isStrictDescendant(canonicalConfigDir, path),
-    );
-    if (escapedPath !== undefined) {
-      diagnostics.push(
-        layoutError(
-          target,
-          `target "${target}" output resolves outside the project output sandbox: ${escapedPath}.`,
-          "choose an output directory strictly below the directory containing hooknostic.config.ts.",
-        ),
+    // `packageOutput` is a managed output like any other: it is replaced
+    // wholesale, so it has to clear the same sandbox, protected-path and
+    // source-package checks, and join the overlap matrix below.
+    const managed: { key: string; field: string; dir: string }[] = [
+      { key: target, field: "output", dir: targetConfig.output },
+      ...(targetConfig.packageOutput === undefined
+        ? []
+        : [{ key: packageOutputKey(target), field: "packageOutput", dir: targetConfig.packageOutput }]),
+    ];
+    for (const { key, field, dir } of managed) {
+      const outputDir = resolve(configDir, dir);
+      const identities = await pathIdentities(outputDir);
+      const escapedPath = identities.find(
+        (path) => !isStrictDescendant(canonicalConfigDir, path),
       );
-      continue;
-    }
-    const protectedPath = protectedPaths.find((path) =>
-      identities.some((outputPath) => containsPath(outputPath, path)),
-    );
-    if (protectedPath !== undefined) {
-      diagnostics.push(
-        layoutError(
-          target,
-          `target "${target}" output would recursively replace a protected project path: ${protectedPath}.`,
-          "choose a dedicated output directory that does not contain the config, hook entry, or build report.",
-        ),
+      if (escapedPath !== undefined) {
+        diagnostics.push(
+          layoutError(
+            target,
+            `target "${target}" ${field} resolves outside the project output sandbox: ${escapedPath}.`,
+            "choose an output directory strictly below the directory containing hooknostic.config.ts.",
+          ),
+        );
+        continue;
+      }
+      const protectedPath = protectedPaths.find((path) =>
+        identities.some((outputPath) => containsPath(outputPath, path)),
       );
-      continue;
-    }
-    const overlappingAgentPlugin = agentPluginPaths.find((path) =>
-      identities.some((outputPath) => containsPath(outputPath, path)),
-    );
-    if (overlappingAgentPlugin !== undefined) {
-      diagnostics.push(
-        layoutError(
-          target,
-          `target "${target}" output overlaps the Agent Plugin source package: ${overlappingAgentPlugin}.`,
-          "choose a dedicated output directory outside agentPlugin.root.",
-        ),
+      if (protectedPath !== undefined) {
+        diagnostics.push(
+          layoutError(
+            target,
+            `target "${target}" ${field} would recursively replace a protected project path: ${protectedPath}.`,
+            "choose a dedicated output directory that does not contain the config, hook entry, or build report.",
+          ),
+        );
+        continue;
+      }
+      const overlappingAgentPlugin = agentPluginPaths.find((path) =>
+        identities.some((outputPath) => containsPath(outputPath, path)),
       );
-      continue;
+      if (overlappingAgentPlugin !== undefined) {
+        diagnostics.push(
+          layoutError(
+            target,
+            `target "${target}" ${field} overlaps the Agent Plugin source package: ${overlappingAgentPlugin}.`,
+            "choose a dedicated output directory outside agentPlugin.root.",
+          ),
+        );
+        continue;
+      }
+      const output = { key, target, outputDir };
+      outputs.push(output);
+      comparisonPaths.set(output, identities);
     }
-    const output = { key: target, target, outputDir };
-    outputs.push(output);
-    comparisonPaths.set(output, identities);
   }
 
   for (let left = 0; left < outputs.length; left += 1) {

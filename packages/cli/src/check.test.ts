@@ -198,7 +198,7 @@ describe("hooknostic check", () => {
     expect(report.ok).toBe(false);
     expect(report.targets.codex.ok).toBe(false);
     expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN205", target: "codex" }),
+      expect.objectContaining({ code: "HN204", target: "codex" }),
     );
   });
 

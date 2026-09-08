@@ -115,6 +115,7 @@ function partialProjectorAdapter() {
     shimEntry: "export {};",
     agentPluginProjector: {
       namespace: "example.partial",
+      deliversHooks: true,
       profiles: [
         {
           range: ">=1.0 <2",
@@ -574,14 +575,14 @@ ${run.stderr}`).toBe(0);
       JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "no-projector" }),
     );
     await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
-    await mkdir(join(dir, "dist/codex"), { recursive: true });
-    await writeFile(join(dir, "dist/codex/previous"), "previous output");
+    await mkdir(join(dir, "dist/opencode"), { recursive: true });
+    await writeFile(join(dir, "dist/opencode/previous"), "previous output");
     // Hookless, so the only thing this target could ever receive is the package.
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["codex"], onUnsupported: "warn" },
-        targets: { codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" } }
+        agentPlugin: { root: ".", targets: ["opencode"], onUnsupported: "warn" },
+        targets: { opencode: { version: "${opencodeHarness.recommendedRange}", mode: "local", output: "./dist/opencode" } }
       };`,
     );
     const json = captureIO();
@@ -594,20 +595,20 @@ ${run.stderr}`).toBe(0);
       }),
     ).toBe(1);
     const report = JSON.parse(json.out());
-    expect(report.targets.codex.status).toBe("failed");
+    expect(report.targets.opencode.status).toBe("failed");
     expect(report.diagnostics).toEqual([
-      expect.objectContaining({ code: "HN205", severity: "error", target: "codex", message: expect.stringContaining("no Agent Plugin projector") }),
+      expect.objectContaining({ code: "HN205", severity: "error", target: "opencode", message: expect.stringContaining("no Agent Plugin projector") }),
     ]);
     // Nothing was committed: the previous output survives untouched, and the
     // "success" that used to accompany an empty directory is gone.
-    expect(await readFile(join(dir, "dist/codex/previous"), "utf8")).toBe("previous output");
+    expect(await readFile(join(dir, "dist/opencode/previous"), "utf8")).toBe("previous output");
     expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
 
     const human = captureIO();
     expect(
       await runBuild({ config: join(dir, "hooknostic.config.ts"), registry: defaultAdapterRegistry(), io: human.io }),
     ).toBe(1);
-    expect(human.out()).toContain("FAIL   codex");
+    expect(human.out()).toContain("FAIL   opencode");
     expect(human.out()).toContain("Agent Plugin projection failed");
   });
 

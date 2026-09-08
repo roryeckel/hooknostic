@@ -15,6 +15,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
+import { codexAgentPluginProjector } from "./project-agent-plugin.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
 import { codexHarness } from "./harness.js";
@@ -24,6 +25,7 @@ export { applyCodex } from "./apply.js";
 export { CodexDecodeError, decodeCodex } from "./decode.js";
 export { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
 export { codexCapabilityProfiles } from "./profile.js";
+export { codexAgentPluginProjector } from "./project-agent-plugin.js";
 export { runCodexCommandShim } from "./shim.js";
 export type { CodexShimOptions } from "./shim.js";
 export { classifyCodexTool, codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
@@ -66,6 +68,7 @@ export function codexAdapter(): HarnessAdapter {
     id: "codex",
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
+    agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.
     shimExecution: "command",
     shellCodec: codexShellCodec,
