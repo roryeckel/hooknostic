@@ -20,7 +20,7 @@ import { runDoctor } from "./doctor.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 import { claudeHarness } from "@hooknostic/adapter-claude";
-import { codexHarness } from "@hooknostic/adapter-codex";
+import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
@@ -874,12 +874,13 @@ ${run.stderr}`).toBe(0);
       "utf8",
     );
 
-    // OpenCode's own {env:} interpolation runs BEFORE plugin config hooks, so
-    // an injected value is never expanded and the module resolves env itself.
-    // The secret therefore stays a reference in the committed artifact.
+    // Agent Plugins 1.0 defines two placeholders and requires unrecognized
+    // placeholder-like text to stay literal, so ${MY_TOKEN} reaches the harness
+    // as written. The module resolves the install directory and nothing else --
+    // expanding it here would put a host value in a package-chosen destination.
     expect(injector).toContain("${MY_TOKEN}");
     expect(injector).not.toContain("{env:MY_TOKEN}");
-    expect(injector).toContain("process.env[name]");
+    expect(injector).not.toContain("process.env");
     // The servers are embedded as JSON text and parsed at load time, so a
     // server named `__proto__` stays an own property instead of becoming an
     // object literal's prototype.
@@ -928,7 +929,7 @@ ${run.stderr}`).toBe(0);
         entry: "./hooks.ts",
         agentPlugin: { root: ".", targets: ["codex"] },
         targets: {
-          codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" },
+          codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", mode: "local", output: "./dist/codex" },
         },
       };`,
     );
@@ -996,7 +997,7 @@ ${run.stderr}`).toBe(0);
         entry: "./hooks.ts",
         agentPlugin: { root: ".", targets: ["codex"] },
         targets: {
-          codex: { version: "${codexHarness.recommendedRange}", mode: "plugin", output: "./dist/codex" },
+          codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", mode: "plugin", output: "./dist/codex" },
         },
       };`,
     );
@@ -1082,7 +1083,7 @@ ${run.stderr}`).toBe(0);
         agentPlugin: { root: "./pkg", targets: ["codex"], onUnsupported: "warn" },
         targets: {
           codex: {
-            version: "${codexHarness.recommendedRange}",
+            version: "${CODEX_PLUGIN_MODE_RANGE}",
             mode: "plugin",
             output: "./dist/codex",
           },

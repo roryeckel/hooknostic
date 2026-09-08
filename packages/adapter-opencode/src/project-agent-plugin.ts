@@ -1,4 +1,9 @@
-import { componentSummary } from "@hooknostic/agent-plugin";
+import {
+  componentSummary,
+  containsPluginData,
+  expandStdioServer,
+  normalizedPluginRootCwd,
+} from "@hooknostic/agent-plugin";
 import type {
   AgentPluginIssue,
   AgentPluginPackage,
@@ -28,10 +33,16 @@ const PACKAGE_DIR = `${PLUGIN_DIR}/package`;
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
 
-/** OpenCode's local server: one argv array, and `environment` rather than `env`. */
+/**
+ * OpenCode's local server, read from `McpLocalConfig` in the 1.18.29 binary: one
+ * argv array, `environment` rather than `env`, and a `cwd` whose own description
+ * says "relative paths resolve from the workspace directory" -- which is why the
+ * projection always emits an absolute one.
+ */
 interface OpenCodeLocalServer {
   type: "local";
   command: string[];
+  cwd: string;
   environment?: Record<string, string>;
   enabled: true;
 }
@@ -46,46 +57,19 @@ interface OpenCodeRemoteServer {
 
 type OpenCodeServer = OpenCodeLocalServer | OpenCodeRemoteServer;
 
-const PLUGIN_ROOT_PLACEHOLDER = "${PLUGIN_ROOT}";
-const PLUGIN_DATA_PLACEHOLDER = "${PLUGIN_DATA}";
 const RUNTIME_PLUGIN_ROOT = "__HOOKNOSTIC_PLUGIN_ROOT__";
-
-/**
- * Set the spec's `${PLUGIN_ROOT}` apart from an environment reference.
- *
- * Neither can be resolved at build time -- the install directory is not known,
- * and a secret must not be baked into a committed artifact -- so both are left
- * for the generated module. They are distinguished here because they resolve
- * from different sources at load time.
- *
- * `${VAR}` is deliberately NOT rewritten to OpenCode's `{env:VAR}` form.
- * Interpolation runs BEFORE plugin `config` hooks: in one run, the same
- * `{env:VAR}` header expanded when it came from `opencode.json` and survived
- * verbatim when a plugin injected it. A plugin therefore has to read the
- * environment itself, which is what the emitted module does.
- */
-function rewriteValue(value: string): string {
-  return value.replaceAll(PLUGIN_ROOT_PLACEHOLDER, RUNTIME_PLUGIN_ROOT);
-}
-
-function rewriteRecord(record: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, rewriteValue(value)]));
-}
 
 /**
  * Translate portable MCP servers into OpenCode's shape.
  *
- * Two portable shapes have no representation and are dropped with an omission
- * rather than emitted silently degraded:
+ * `${PLUGIN_ROOT}` becomes a marker the generated module replaces with the real
+ * directory at load time -- the install location is not knowable at build time.
+ * Nothing else is substituted: the specification defines only two placeholders,
+ * excludes `command`, `env` keys and every remote field from expansion, and
+ * requires unrecognized placeholder-like text to stay literal.
  *
- * - `${PLUGIN_DATA}`. The spec's writable per-plugin directory has no OpenCode
- *   equivalent, and the package loader forbids an author from defining the
- *   variable themselves, so the generated module would leave the literal text
- *   in place for the server to choke on.
- * - `cwd`. OpenCode's local server carries an argv and an environment and
- *   nothing else, so a declared working directory would be dropped while the
- *   server still started -- from the project directory, where its relative
- *   paths mean something different.
+ * `${PLUGIN_DATA}` is the one portable shape with no representation here, so a
+ * server using it is dropped with an omission rather than handed literal text.
  */
 function translateMcp(source: AgentPluginPackage): {
   servers: Record<string, OpenCodeServer>;
@@ -97,39 +81,47 @@ function translateMcp(source: AgentPluginPackage): {
   const servers: Record<string, OpenCodeServer> = Object.create(null);
   const omitted: { name: string; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
-    if (server.type === "stdio") {
-      const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
-      if (values.some((value) => value.includes(PLUGIN_DATA_PLACEHOLDER))) {
-        omitted.push({
-          name,
-          reason:
-            "OpenCode has no ${PLUGIN_DATA} equivalent, so the server would receive the literal placeholder text",
-        });
-        continue;
-      }
-      if (server.cwd !== undefined) {
-        omitted.push({
-          name,
-          reason:
-            "OpenCode's local server declares an argv and an environment only, so a working directory cannot be expressed",
-        });
-        continue;
-      }
-      servers[name] = {
-        type: "local",
-        // OpenCode takes one argv array, not a command plus args.
-        command: [rewriteValue(server.command), ...(server.args ?? []).map(rewriteValue)],
-        ...(server.env === undefined ? {} : { environment: rewriteRecord(server.env) }),
-        enabled: true,
-      };
-    } else {
+    if (server.type !== "stdio") {
+      // Remote fields are passed through verbatim, placeholders included.
       servers[name] = {
         type: "remote",
-        url: rewriteValue(server.url),
-        ...(server.headers === undefined ? {} : { headers: rewriteRecord(server.headers) }),
+        url: server.url,
+        ...(server.headers === undefined ? {} : { headers: { ...server.headers } }),
         enabled: true,
       };
+      continue;
     }
+    const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
+    if (server.cwd !== undefined) values.push(server.cwd);
+    if (values.some(containsPluginData)) {
+      omitted.push({
+        name,
+        reason:
+          "OpenCode has no ${PLUGIN_DATA} equivalent, so the server would receive the literal placeholder text",
+      });
+      continue;
+    }
+    const cwd = normalizedPluginRootCwd(server.cwd);
+    if (cwd === undefined) {
+      omitted.push({
+        name,
+        reason: `working directory ${JSON.stringify(server.cwd)} is not a location inside the plugin`,
+      });
+      continue;
+    }
+    // Always emitted, including for the portable default: an omitted `cwd` means
+    // the plugin root, and OpenCode resolves a relative one "from the workspace
+    // directory" -- so the default has to be stated, and stated absolutely, or a
+    // conformant `./bin/server` looks for itself in the user's project.
+    const { command, args, env } = expandStdioServer(server, RUNTIME_PLUGIN_ROOT);
+    servers[name] = {
+      type: "local",
+      // OpenCode takes one argv array, not a command plus args.
+      command: [command, ...(args ?? [])],
+      cwd: cwd === "." ? RUNTIME_PLUGIN_ROOT : `${RUNTIME_PLUGIN_ROOT}/${cwd}`,
+      ...(env === undefined ? {} : { environment: env }),
+      enabled: true,
+    };
   }
   return { servers, omitted };
 }
@@ -168,25 +160,23 @@ function injectorSource(
     'import { fileURLToPath } from "node:url";',
     'import { dirname, join } from "node:path";',
     "",
-    "// Both substitutions happen here rather than at build time: the install",
-    "// directory is not known then, and a secret must not be committed. OpenCode's",
-    "// own {env:} interpolation is no help -- it runs BEFORE plugin config hooks,",
-    "// so a value a plugin injects is never expanded.",
+    "// Only the install directory is substituted, and only here: it is not known",
+    "// at build time. Nothing else is expanded. Agent Plugins 1.0 defines exactly",
+    "// two placeholders and requires unrecognized placeholder-like text to stay",
+    "// literal, so a ${TOKEN} in a header is a literal value the package chose --",
+    "// resolving it from the environment would send a host secret to a",
+    "// package-chosen endpoint.",
     "//",
     "// The walk is structural. A JSON round-trip would corrupt a Windows plugin",
     "// root, whose backslashes are not valid JSON escapes.",
+    "//",
     "// The package sits one level down, out of the flat plugin scan; that",
     "// directory, not this module's, is what ${PLUGIN_ROOT} means.",
     'const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");',
     `const MARKER = ${JSON.stringify(RUNTIME_PLUGIN_ROOT)};`,
-    "const resolveText = (text) =>",
-    "  text",
-    "    .split(MARKER)",
-    "    .join(pluginRoot)",
-    "    .replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}/g, (match, name) => process.env[name] ?? match);",
     "const resolve = (value) =>",
     '  typeof value === "string"',
-    "    ? resolveText(value)",
+    "    ? value.split(MARKER).join(pluginRoot)",
     "    : Array.isArray(value)",
     "      ? value.map(resolve)",
     '      : value !== null && typeof value === "object"',
@@ -266,7 +256,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.mcp.stdio": {
           level: "emulated",
           rationale:
-            "A project plugin has no declarative config, so the servers are contributed by a generated module that resolves ${PLUGIN_ROOT} and the environment itself at load time. A server declaring cwd or ${PLUGIN_DATA} has no representation in OpenCode's argv-and-environment shape and is omitted.",
+            "A project plugin has no declarative config, so the servers are contributed by a generated module that resolves ${PLUGIN_ROOT} to the install directory at load time; nothing else is substituted. cwd is always emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. A server using ${PLUGIN_DATA} has no representation and is omitted.",
         },
         "agent-plugin.mcp.streamable-http": { level: "exact" },
         "agent-plugin.mcp.sse": {
@@ -306,7 +296,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-08",
             method: "live-probe",
             artifact: ".capture/opencode-agent-plugin",
-            what: "Interpolation runs BEFORE plugin config hooks: in one run the same {env:VAR} header expanded when it came from opencode.json and survived verbatim when a plugin injected it, so a plugin must read the environment itself rather than emit OpenCode's own syntax.",
+            what: "Interpolation runs BEFORE plugin config hooks: in one run the same {env:VAR} header expanded when it came from opencode.json and survived verbatim when a plugin injected it. A plugin therefore cannot emit OpenCode's own syntax -- and per Agent Plugins 1.0 it must not expand the value itself either, so such text stays literal.",
           },
           {
             version: "1.18.29",
@@ -314,6 +304,13 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "live-probe",
             artifact: ".capture/opencode-agent-plugin",
             what: "The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so the whole package nests safely below the scanned directory -- which is where it goes, because an MCP server's ${PLUGIN_ROOT} argv needs the implementation shipped beside it.",
+          },
+          {
+            version: "1.18.29",
+            date: "2026-09-08",
+            method: "type-derived",
+            artifact: ".capture/opencode-agent-plugin",
+            what: "McpLocalConfig declares an optional cwd whose own description reads \"Working directory for the MCP server process. Relative paths resolve from the workspace directory\", so a working directory IS expressible and must be absolute; an injected cwd also survived config resolution unchanged.",
           },
           {
             version: "1.18.29",

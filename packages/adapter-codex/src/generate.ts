@@ -3,6 +3,7 @@ import {
   assertNativeTimeoutFits,
   hooksByNativeEvent,
   nativeTimeoutSeconds,
+  rangeWithin,
 } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
@@ -37,6 +38,8 @@ const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
 export const CODEX_PLUGIN_HOOKS_PATH = "hooks.json";
 export const CODEX_PLUGIN_RUNTIME_PATH = "hooknostic/hooknostic.mjs";
 export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
+/** Versions where an installed plugin is known to run its hooks. */
+export const CODEX_PLUGIN_MODE_RANGE = ">=0.153 <1";
 
 /**
  * Generate Codex hook artifacts, in one of two shapes.
@@ -76,6 +79,15 @@ export function generateCodexArtifacts(
   options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
   const bundled = target.mode === "plugin";
+  // Plugin hook delivery is established on 0.153.2 only. It was read as REMOVED
+  // from the 0.148.0 binary, and that reading is not re-testable
+  // (.capture/codex-plugin-hooks), so the versions between are a channel nobody
+  // has watched work -- declined rather than guessed.
+  if (bundled && !rangeWithin(target.version, CODEX_PLUGIN_MODE_RANGE)) {
+    throw new Error(
+      `codex target mode "plugin" requires harness ${CODEX_PLUGIN_MODE_RANGE}; hook delivery from an installed plugin is only established on 0.153.2, and the 0.148.0 binary was read as having removed it.`,
+    );
+  }
   const hooksPath = bundled ? CODEX_PLUGIN_HOOKS_PATH : ".codex/hooks.json";
   const runtimePath = bundled ? CODEX_PLUGIN_RUNTIME_PATH : RUNTIME_PATH;
   const command = bundled

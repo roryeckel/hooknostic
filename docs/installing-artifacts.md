@@ -371,6 +371,10 @@ Install from a marketplace whose `.agents/plugins/marketplace.json` points at th
 output, then `codex plugin add`. Remember that this is a **user-level** install:
 the plugin's skills and servers are then offered in every session on the machine.
 
-OpenCode package projection is not yet implemented; its Hooknostic output contains only
-the local hook integration. See
+OpenCode needs no install at all. `.opencode/plugins/` is read from the project
+directory, so copying the target output into the repository is the whole
+procedure: the compiled hook module and the generated package module sit side by
+side there, and the package itself is nested one level down under
+`package/`, out of OpenCode's flat plugin scan. It is the only harness of the
+three whose projection is project-scoped rather than user-level. See
 [ADR-0011](decisions/0011-agent-plugin-native-projection.md).

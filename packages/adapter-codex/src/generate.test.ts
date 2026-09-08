@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { block, definePlugin, hook } from "@hooknostic/sdk";
 import { buildPluginIR } from "@hooknostic/core";
 import { codexAdapter } from "./index.js";
-import { generateCodexArtifacts } from "./generate.js";
+import { CODEX_PLUGIN_MODE_RANGE, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
 
 const TARGET = { id: "codex", version: codexHarness.recommendedRange, mode: "local" as const, output: "./dist/codex" };
@@ -53,7 +53,7 @@ describe("generateCodexArtifacts", () => {
   it("anchors the plugin-mode command to the plugin root", () => {
     const artifacts = generateCodexArtifacts(
       exampleIR(),
-      { ...TARGET, mode: "plugin" },
+      { ...TARGET, mode: "plugin", version: CODEX_PLUGIN_MODE_RANGE },
       BUNDLE,
       OPTIONS,
     );
@@ -75,6 +75,19 @@ describe("generateCodexArtifacts", () => {
     for (const command of commands) {
       expect(command).toBe("node ${PLUGIN_ROOT}/hooknostic/hooknostic.mjs");
     }
+  });
+
+  // Hook delivery from an installed plugin is established on 0.153.2 only; the
+  // 0.148.0 binary was read as having removed it and is not re-testable.
+  it("declines plugin mode on a range wider than the captured one", () => {
+    expect(() =>
+      generateCodexArtifacts(
+        exampleIR(),
+        { ...TARGET, mode: "plugin", version: ">=0.148 <1" },
+        BUNDLE,
+        OPTIONS,
+      ),
+    ).toThrow(/requires harness >=0\.153 <1/);
   });
 
   it("keeps the local-mode command relative to the project root", () => {

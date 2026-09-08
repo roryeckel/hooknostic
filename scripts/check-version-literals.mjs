@@ -22,7 +22,15 @@ const registry = defaultAdapterRegistry();
 const allowed = new Map(
   Object.values(registry).map((adapter) => [
     adapter.id,
-    new Set([adapter.harness.recommendedRange, ...adapter.supportedHarnessVersions()]),
+    new Set([
+      adapter.harness.recommendedRange,
+      ...adapter.supportedHarnessVersions(),
+      // Projector profiles are validated ranges too, and they can be narrower
+      // than the hook profile: Codex delivers plugin hooks only from 0.153,
+      // while its wire fixtures are 0.148. An example exercising projection has
+      // to name the narrower range, and that is accuracy rather than drift.
+      ...(adapter.agentPluginProjector?.profiles ?? []).map((profile) => profile.range),
+    ]),
   ]),
 );
 

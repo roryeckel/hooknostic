@@ -16,8 +16,10 @@ export default defineConfig({
   targets: {
     claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
     // Projected Codex targets are mode "plugin": "local" emits repository-level
-    // hooks the native manifest cannot reference.
-    codex: { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+    // hooks the native manifest cannot reference. The range is narrower than the
+    // adapter's overall support because plugin hook delivery is only established
+    // on 0.153.
+    codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
     // OpenCode's project plugin IS local — `.opencode/plugins/` is read from the
     // project directory, so there is nothing to install.
     opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },

@@ -10,25 +10,23 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// Both substitutions happen here rather than at build time: the install
-// directory is not known then, and a secret must not be committed. OpenCode's
-// own {env:} interpolation is no help -- it runs BEFORE plugin config hooks,
-// so a value a plugin injects is never expanded.
+// Only the install directory is substituted, and only here: it is not known
+// at build time. Nothing else is expanded. Agent Plugins 1.0 defines exactly
+// two placeholders and requires unrecognized placeholder-like text to stay
+// literal, so a ${TOKEN} in a header is a literal value the package chose --
+// resolving it from the environment would send a host secret to a
+// package-chosen endpoint.
 //
 // The walk is structural. A JSON round-trip would corrupt a Windows plugin
 // root, whose backslashes are not valid JSON escapes.
+//
 // The package sits one level down, out of the flat plugin scan; that
 // directory, not this module's, is what ${PLUGIN_ROOT} means.
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");
 const MARKER = "__HOOKNOSTIC_PLUGIN_ROOT__";
-const resolveText = (text) =>
-  text
-    .split(MARKER)
-    .join(pluginRoot)
-    .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => process.env[name] ?? match);
 const resolve = (value) =>
   typeof value === "string"
-    ? resolveText(value)
+    ? value.split(MARKER).join(pluginRoot)
     : Array.isArray(value)
       ? value.map(resolve)
       : value !== null && typeof value === "object"
@@ -37,7 +35,7 @@ const resolve = (value) =>
 
 // Parsed, not written as an object literal: a server named __proto__ is a
 // literal key that sets the prototype, and the server would vanish.
-const mcpServers = JSON.parse("{\n  \"greeter\": {\n    \"type\": \"local\",\n    \"command\": [\n      \"node\",\n      \"__HOOKNOSTIC_PLUGIN_ROOT__/src/greet-mcp.mjs\"\n    ],\n    \"enabled\": true\n  }\n}");
+const mcpServers = JSON.parse("{\n  \"greeter\": {\n    \"type\": \"local\",\n    \"command\": [\n      \"node\",\n      \"__HOOKNOSTIC_PLUGIN_ROOT__/src/greet-mcp.mjs\"\n    ],\n    \"cwd\": \"__HOOKNOSTIC_PLUGIN_ROOT__\",\n    \"enabled\": true\n  }\n}");
 
 export default async () => ({
   config: (config) => {

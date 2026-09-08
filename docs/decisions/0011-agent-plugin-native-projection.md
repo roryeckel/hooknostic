@@ -311,3 +311,44 @@ the fidelity claims sitting beside it were not.
   the emitted JSON while the summary counts it emitted. Both translators build
   null-prototype maps, and the OpenCode module embeds its servers as JSON text
   parsed at load time rather than as an object literal.
+
+## Amendments — 2026-09-08 (seventh)
+
+A second review round found six more, five of them in the previous round's
+fixes. The cluster is one under-designed primitive: round six answered "how do I
+anchor `${PLUGIN_ROOT}`?" with an ad-hoc string-prefix rewriter, and there were
+three separate ways it was wrong. The rewriter is replaced by the specification's
+own rules, shared by both projectors in `@hooknostic/agent-plugin`.
+
+- **The placeholder rules are narrower than being helpful suggests.** Agent
+  Plugins 1.0 defines exactly two placeholders and expands them in stdio `args`,
+  `env` VALUES and `cwd` only -- "it does not apply to `env` keys, `command`, or
+  fixed component locations" -- while for remote servers a client "MUST NOT
+  perform placeholder or environment-variable expansion in `url`, header names,
+  or header values", and "unrecognized placeholder-like text MUST remain
+  literal". The OpenCode module resolved every `${VAR}` from the host
+  environment, in remote headers included, and a probe had recorded that as a
+  success. A package could therefore name any host variable and any URL and have
+  the value sent there. It now substitutes the install directory and nothing
+  else. `docs/baseline-2026-08-20.md` had recorded half this rule since August;
+  it was not consulted.
+- **An omitted `cwd` is a value, not an absence.** The specification says a
+  client "MUST use the plugin root" when `cwd` is missing. OpenCode's
+  `McpLocalConfig` has a `cwd` whose own description says a relative one
+  "resolves from the workspace directory" -- so the projection emits it
+  absolutely, always, including for the default. The previous amendment claimed
+  OpenCode "declares an argv and an environment and nothing else" and omitted
+  servers on that basis: a limitation inferred from a probe that had not tested
+  it, which is the same error as assuming a capability.
+- **Rewriting only the leading placeholder is not rewriting.**
+  `--config=${PLUGIN_ROOT}/c.json` and every `env` value were passed through
+  literally onto a route that expands nothing. And the depth used for relative
+  paths counted raw path segments, so a valid `./worker/` produced one `..` too
+  many. Both are gone with the shared helper, which normalizes before counting.
+- **A capability is claimed for the range it was captured on.** The Codex
+  projector advertised `>=0.148 <1` while its own capture says only 0.153.2 was
+  established and the 0.148.0 binary was read as having REMOVED plugin hooks.
+  Plugin mode is now refused below 0.153, and the versions beneath it carry a
+  profile that declines every component with that reason attached, so `inspect`
+  answers for them rather than failing and a range spanning the boundary
+  resolves to the declining side.

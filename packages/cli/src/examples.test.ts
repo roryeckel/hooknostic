@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "@hooknostic/core";
+import { loadConfig, rangeWithin } from "@hooknostic/core";
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -25,10 +25,15 @@ describe("example configs", () => {
       for (const [id, target] of Object.entries(loaded.config?.targets ?? {})) {
         const adapter = registry[id];
         expect(adapter, `${dir}: unknown target ${id}`).toBeDefined();
+        // Subset rather than equality: a capability can be established on a
+        // narrower range than the harness reference (Codex delivers plugin hooks
+        // only from 0.153, while the wire fixtures are 0.148), and an example
+        // exercising it must say so. Being narrower is not drift; being wider,
+        // or unrelated, is.
         expect(
-          target.version,
-          `${dir}: ${id} target should use the recommended range`,
-        ).toBe(adapter!.harness.recommendedRange);
+          rangeWithin(target.version, adapter!.harness.recommendedRange),
+          `${dir}: ${id} target range ${target.version} is not within the recommended ${adapter!.harness.recommendedRange}`,
+        ).toBe(true);
       }
     }
   });

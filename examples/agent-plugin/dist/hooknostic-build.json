@@ -58,7 +58,7 @@
     "codex": {
       "status": "success",
       "adapter": "codex@0.1.0",
-      "requestedVersion": ">=0.148 <1",
+      "requestedVersion": ">=0.153 <1",
       "output": "./dist/codex",
       "capabilities": {
         "exact": 2,
@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:78269303d5925fd8a603dddc95896cfaeb98b5816373af1d3f8702cf3ebe8fa3",
+        "contentDigest": "sha256:ade8bdd018a37a20383b0d5eed8f22ab2fc4481af4e20d5557f6ac0e06b0e08e",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -129,7 +129,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:30ac664503b5180fe7d650eda7d33438a10d36c06035df8e5771b457c90ca91c",
+        "contentDigest": "sha256:f26405a5e62b5c0a8d2405f035b753a583acfb55570d83182ad5c49947e496e4",
         "copiedFileCount": 5,
         "components": {
           "agent-plugin.manifest": {

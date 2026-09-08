@@ -1,4 +1,10 @@
-import { componentSummary } from "@hooknostic/agent-plugin";
+import {
+  AGENT_PLUGIN_COMPONENT_IDS,
+  componentSummary,
+  containsPluginData,
+  expandStdioServer,
+  normalizedPluginRootCwd,
+} from "@hooknostic/agent-plugin";
 import type {
   AgentPluginComponentId,
   AgentPluginIssue,
@@ -8,7 +14,7 @@ import type {
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
-import { CODEX_PLUGIN_HOOKS_PATH } from "./generate.js";
+import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js";
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
 const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
@@ -44,29 +50,13 @@ interface CodexNativeManifest {
   hooks?: string;
 }
 
-const PLUGIN_ROOT = "${PLUGIN_ROOT}";
-const PLUGIN_DATA = "${PLUGIN_DATA}";
-
-/**
- * A portable plugin-root-anchored path as a path relative to the plugin root.
- *
- * Returns undefined for anything anchored on `${PLUGIN_DATA}`, which this route
- * cannot express at all, and for a bare command name like `node`, which must
- * stay a PATH lookup rather than become a relative file.
- */
-function pluginRootRelative(value: string): string | undefined {
-  if (value === PLUGIN_ROOT) return ".";
-  if (value.startsWith(`${PLUGIN_ROOT}/`)) return value.slice(PLUGIN_ROOT.length + 1);
-  if (value === "." || value === "./") return ".";
-  if (value.startsWith("./")) return value.slice(2);
-  return undefined;
-}
-
-/** Re-anchor a plugin-root-relative path against the server's working directory. */
-function fromWorkingDirectory(cwd: string, path: string): string {
-  if (cwd === ".") return path === "" ? "." : path;
-  const up = cwd.split("/").map(() => "..");
-  return [...up, ...(path === "." ? [] : [path])].join("/");
+/** How many levels the server's working directory sits below the plugin root. */
+function fromWorkingDirectory(cwd: string): string {
+  if (cwd === ".") return ".";
+  return cwd
+    .split("/")
+    .map(() => "..")
+    .join("/");
 }
 
 /**
@@ -125,7 +115,7 @@ function translateMcp(source: AgentPluginPackage): {
     }
     const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
     if (server.cwd !== undefined) values.push(server.cwd);
-    if (values.some((value) => value.includes(PLUGIN_DATA))) {
+    if (values.some(containsPluginData)) {
       omitted.push({
         name,
         component: "agent-plugin.mcp.stdio",
@@ -134,23 +124,20 @@ function translateMcp(source: AgentPluginPackage): {
       });
       continue;
     }
-    const cwd = server.cwd === undefined ? "." : pluginRootRelative(server.cwd);
+    const cwd = normalizedPluginRootCwd(server.cwd);
     if (cwd === undefined) {
       omitted.push({
         name,
         component: "agent-plugin.mcp.stdio",
-        reason: `working directory ${JSON.stringify(server.cwd)} is not anchored on the plugin root`,
+        reason: `working directory ${JSON.stringify(server.cwd)} is not a location inside the plugin`,
       });
       continue;
     }
-    const reanchor = (value: string): string => {
-      const relative = pluginRootRelative(value);
-      return relative === undefined ? value : fromWorkingDirectory(cwd, relative);
-    };
+    // Expansion is relative rather than absolute because the install path is
+    // unknown at build time: Codex resolves `cwd` against the plugin root, so a
+    // path relative to `cwd` reaches the same file an absolute one would.
     servers[name] = {
-      command: reanchor(server.command),
-      ...(server.args === undefined ? {} : { args: server.args.map(reanchor) }),
-      ...(server.env === undefined ? {} : { env: { ...server.env } }),
+      ...expandStdioServer(server, fromWorkingDirectory(cwd)),
       cwd,
     };
   }
@@ -186,7 +173,38 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: "",
   profiles: [
     {
-      range: ">=0.148 <1",
+      // Below the range where plugin hook delivery was captured there is no
+      // projection at all: a package can only reach Codex as an installed
+      // plugin, and an installed plugin is not known to run hooks here. Stated
+      // as a profile rather than left absent so `inspect` answers for these
+      // versions instead of failing, and so a range spanning the boundary
+      // resolves to the least capable level -- which is this one.
+      range: ">=0.140 <0.153",
+      components: Object.fromEntries(
+        AGENT_PLUGIN_COMPONENT_IDS.map((component) => [
+          component,
+          {
+            level: "unsupported" as const,
+            rationale:
+              "Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run.",
+          },
+        ]),
+      ),
+      source: {
+        date: "2026-09-08",
+        validatedOn: [
+          {
+            version: "0.148.0",
+            date: "2026-08-20",
+            method: "doc-derived",
+            artifact: ".capture/codex-plugin-hooks",
+            what: "Recorded as having removed the plugin_hooks feature; not re-testable on this machine, so the versions between it and 0.153.2 are declined rather than assumed.",
+          },
+        ],
+      },
+    },
+    {
+      range: CODEX_PLUGIN_MODE_RANGE,
       components: {
         "agent-plugin.manifest": {
           level: "exact",

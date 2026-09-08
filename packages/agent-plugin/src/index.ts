@@ -1,4 +1,5 @@
 export * from "./component-counts.js";
 export * from "./load.js";
+export * from "./placeholders.js";
 export * from "./runtime-package.js";
 export * from "./types.js";

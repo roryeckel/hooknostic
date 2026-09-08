@@ -3,7 +3,7 @@
     "greeter": {
       "command": "node",
       "args": [
-        "src/greet-mcp.mjs"
+        "./src/greet-mcp.mjs"
       ],
       "cwd": "."
     }

@@ -26,6 +26,8 @@ export { CodexDecodeError, decodeCodex } from "./decode.js";
 export {
   CODEX_NATIVE_EVENT,
   CODEX_PLUGIN_HOOKS_PATH,
+  CODEX_PLUGIN_MANIFEST_PATH,
+  CODEX_PLUGIN_MODE_RANGE,
   CODEX_PLUGIN_RUNTIME_PATH,
   generateCodexArtifacts,
 } from "./generate.js";

@@ -1,3 +1,4 @@
+import semver from "semver";
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 import type { RuntimePolicy } from "@hooknostic/sdk";
 import type { HookIR } from "./ir.js";
@@ -94,4 +95,16 @@ export function assertNativeTimeoutFits(
       `Lower the hooks' timeoutMs (or runtime.timeoutMs) so the total fits, or move the work ` +
       `to an event without that cap.`,
   );
+}
+
+/**
+ * Whether every version a target could resolve to is inside `supported`.
+ *
+ * `semver.intersects` is the wrong test for declining an unestablished shape: a
+ * target range that merely OVERLAPS the supported one still admits versions
+ * outside it, and the build would then emit an artifact for a version nobody has
+ * watched work. Subset is the honest question.
+ */
+export function rangeWithin(target: string, supported: string): boolean {
+  return semver.validRange(target) !== null && semver.subset(target, supported);
 }

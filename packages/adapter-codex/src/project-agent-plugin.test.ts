@@ -39,7 +39,7 @@ function source(
   };
 }
 
-const target = { id: "codex", version: ">=0.148 <1", mode: "plugin" as const, output: "dist" };
+const target = { id: "codex", version: ">=0.153 <1", mode: "plugin" as const, output: "dist" };
 // Resolved from the projector's own profiles rather than restated, so these
 // tests cannot disagree with the matrix the build reports.
 const support = resolveAgentPluginProjection(target, codexAgentPluginProjector).matrix!;
@@ -87,7 +87,7 @@ describe("Agent Plugin to Codex projection", () => {
     );
     expect(nativeMcp(plan)["srv"]).toEqual({
       command: "node",
-      args: ["src/server.mjs", "--flag"],
+      args: ["./src/server.mjs", "--flag"],
       cwd: ".",
     });
   });
@@ -104,10 +104,62 @@ describe("Agent Plugin to Codex projection", () => {
       }),
     );
     expect(nativeMcp(plan)["srv"]).toEqual({
-      command: "../bin/serve",
+      // `command` is left alone: the specification excludes it from expansion,
+      // so `./bin/serve` means "relative to cwd" both portably and here.
+      command: "./bin/serve",
       args: ["../src/server.mjs"],
       cwd: "worker",
     });
+  });
+
+  it("expands every occurrence, in arguments and environment values alike", async () => {
+    const plan = await project(
+      source({
+        srv: {
+          type: "stdio",
+          command: "node",
+          args: ["--config=${PLUGIN_ROOT}/c.json", "${PLUGIN_ROOT}/s.mjs"],
+          env: { CONFIG: "${PLUGIN_ROOT}/c.json", PLAIN: "literal" },
+        },
+      }),
+    );
+    // An embedded placeholder is as valid as a leading one, and `env` values
+    // are expanded while `env` keys and unrecognized text are not.
+    expect(nativeMcp(plan)["srv"]).toEqual({
+      command: "node",
+      args: ["--config=./c.json", "./s.mjs"],
+      env: { CONFIG: "./c.json", PLAIN: "literal" },
+      cwd: ".",
+    });
+  });
+
+  it("normalizes a working directory before deriving its depth", async () => {
+    const plan = await project(
+      source({
+        srv: {
+          type: "stdio",
+          command: "node",
+          args: ["${PLUGIN_ROOT}/src/s.mjs"],
+          // Trailing slash and a dot segment: valid, and both mean `worker`.
+          cwd: "./worker/./",
+        },
+      }),
+    );
+    expect(nativeMcp(plan)["srv"]).toMatchObject({
+      args: ["../src/s.mjs"],
+      cwd: "worker",
+    });
+  });
+
+  it("omits a working directory that climbs out of the plugin", async () => {
+    const plan = await project(
+      source({ srv: { type: "stdio", command: "node", cwd: "${PLUGIN_ROOT}/../escape" } }),
+    );
+    // No servers survive, so no native MCP document is written at all.
+    expect(plan.files.some((candidate) => candidate.path === ".mcp.json")).toBe(false);
+    expect(plan.summary.omissions).toContainEqual(
+      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "srv" }),
+    );
   });
 
   it("omits a server whose paths need ${PLUGIN_DATA}", async () => {

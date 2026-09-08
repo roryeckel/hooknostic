@@ -104,22 +104,53 @@ describe("Agent Plugin to OpenCode projection", () => {
     );
   });
 
-  it("omits a server declaring a working directory OpenCode cannot express", async () => {
+  // McpLocalConfig has a cwd, and its own description says a relative one
+  // "resolves from the workspace directory" -- so an absolute one is required,
+  // and the portable default of the plugin root has to be stated rather than
+  // left off, or a conformant `./bin/server` looks for itself in the user's
+  // project.
+  it("states the working directory absolutely, including the portable default", async () => {
     const plan = await project(
       source({
-        worker: { type: "stdio", command: "node", args: ["s.mjs"], cwd: "${PLUGIN_ROOT}/worker" },
-        plain: { type: "stdio", command: "node" },
+        worker: { type: "stdio", command: "./bin/serve", cwd: "${PLUGIN_ROOT}/worker" },
+        plain: { type: "stdio", command: "node", args: ["server.mjs"] },
       }),
     );
-    expect(Object.keys(embeddedServers(plan))).toEqual(["plain"]);
+    const servers = embeddedServers(plan);
+    expect(servers["worker"]).toMatchObject({
+      command: ["./bin/serve"],
+      cwd: "__HOOKNOSTIC_PLUGIN_ROOT__/worker",
+    });
+    expect(servers["plain"]).toMatchObject({
+      command: ["node", "server.mjs"],
+      cwd: "__HOOKNOSTIC_PLUGIN_ROOT__",
+    });
     expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({
       discovered: 2,
-      emitted: 1,
-      skipped: 1,
+      emitted: 2,
+      skipped: 0,
     });
-    expect(plan.issues).toContainEqual(
-      expect.objectContaining({ severity: "error", component: "agent-plugin.mcp.stdio" }),
+  });
+
+  it("leaves remote fields and unrecognized placeholders literal", async () => {
+    const plan = await project(
+      source({
+        api: {
+          type: "streamable-http",
+          url: "https://example.invalid/${TENANT}/mcp",
+          headers: { Authorization: "Bearer ${TOKEN}" },
+        },
+      }),
     );
+    // Agent Plugins 1.0: clients MUST NOT expand in url or headers, and
+    // unrecognized placeholder-like text MUST stay literal. Resolving ${TOKEN}
+    // from the environment would send a host secret to a package-chosen host.
+    expect(embeddedServers(plan)["api"]).toMatchObject({
+      type: "remote",
+      url: "https://example.invalid/${TENANT}/mcp",
+      headers: { Authorization: "Bearer ${TOKEN}" },
+    });
+    expect(injector(plan)).not.toContain("process.env");
   });
 
   it("omits a server whose paths need ${PLUGIN_DATA}", async () => {

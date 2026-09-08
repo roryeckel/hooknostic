@@ -62,8 +62,17 @@ the design. In a single run, with `OCVAL_SECRET` set:
 | a plugin's `config` hook | `Bearer {env:OCVAL_SECRET}` |
 
 Emitting OpenCode's own syntax from a plugin is therefore useless — the literal
-text reaches the server. A plugin must read `process.env` itself, which is what
-the projection's generated module does.
+text reaches the server.
+
+**Superseded 2026-09-08.** The conclusion drawn at the time — "a plugin must read
+`process.env` itself" — was wrong, and the end-to-end run below recorded the
+resulting expansion as a success. Agent Plugins 1.0 defines exactly two
+placeholders, states that a client "MUST NOT perform placeholder or
+environment-variable expansion in `url`, header names, or header values", and
+requires unrecognized placeholder-like text to remain literal. The generated
+module now substitutes only the install directory. What this probe actually
+establishes is narrower and still true: OpenCode's own `{env:}` interpolation
+cannot be reached from a plugin, so that syntax must not be emitted either.
 
 **Remote transport is negotiated.** The binary constructs
 `[{name:"StreamableHTTP",…},{name:"SSE",…}]` and passes declared headers to
@@ -81,6 +90,11 @@ stdio cmd  : ["node", "…\\.opencode\\plugins/server.mjs"]
 remote hdr : {"Authorization": "Bearer LIVE_SECRET"}
 skills     : ["…\\.opencode\\plugins\\skills"]
 ```
+
+The first and third lines are the superseded behaviour, kept as the record of
+what the run showed. A current build leaves both values as the literal
+`${MY_TOKEN}` the package wrote, and the paths now resolve through the nested
+`package/` directory rather than the plugin directory itself.
 
 `${PLUGIN_ROOT}` resolved to the real install directory, `${VAR}` resolved from
 the environment, the skill was discovered, and no plugin load or config-hook
