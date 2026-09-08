@@ -1,5 +1,5 @@
+import { componentSummary } from "@hooknostic/agent-plugin";
 import type {
-  AgentPluginComponentId,
   AgentPluginIssue,
   AgentPluginPackage,
   AgentPluginProjectionFile,
@@ -312,30 +312,14 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       files.push({ ...file });
     }
 
-    const counts: AgentPluginProjectionPlan["summary"]["components"] = {
-      "agent-plugin.manifest": { discovered: 1, emitted: 1, skipped: 0 },
-    };
-    if (source.skills.length > 0) {
-      counts["agent-plugin.skills"] = {
-        discovered: source.skills.length,
-        emitted: source.skills.length,
-        skipped: 0,
-      };
-    }
-    for (const type of ["stdio", "streamable-http", "sse"] as const) {
-      const discovered = Object.values(source.mcp?.mcpServers ?? {}).filter(
-        (server) => server.type === type,
-      ).length;
-      if (discovered > 0) {
-        counts[`agent-plugin.mcp.${type}` as AgentPluginComponentId] = {
-          discovered,
-          emitted: discovered,
-          skipped: 0,
-        };
-      }
-    }
+    // OpenCode reads no client-extension namespace, so none is declared and the
+    // component is never discovered here.
+    const counts = componentSummary(source, {
+      hasRuntimePackage: context.runtimePackage !== undefined,
+      skipped: (component, discovered) =>
+        component === "agent-plugin.runtime-package" ? discovered : 0,
+    });
     if (context.runtimePackage !== undefined) {
-      counts["agent-plugin.runtime-package"] = { discovered: 1, emitted: 0, skipped: 1 };
       omissions.push({
         component: "agent-plugin.runtime-package",
         reason: "a project plugin is loaded from disk, so nothing installs its npm dependencies",

@@ -205,6 +205,11 @@ entire output.
 - **`summary.copiedPaths` lists byte-for-byte copies only.** Everything else in
   the plan is treated as generated — that is how core separates the two without
   knowing your path layout, and it drives `artifacts` in the build report.
+- **Build `summary.components` with `componentSummary`.** It mirrors core's own
+  discovery, so a component the analysis phase counted cannot vanish from the
+  report that replaces those counts. Pass your `namespace`, whether a
+  `runtimePackage` is configured, and a `skipped(component, discovered)` verdict
+  for whatever this harness will not consume; presence is decided for you.
 
 Profiles are versioned data with rationale, exactly like the capability matrix,
 and `scripts/generate-harness-support.mjs` renders them into

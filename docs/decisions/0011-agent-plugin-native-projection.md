@@ -242,3 +242,31 @@ adapter that was ever believed to hold it.
   field and nothing publishes from this repository yet, so the option value of
   keeping an untested branch against a hypothetical harness was smaller than the
   cost of carrying it.
+
+## Amendments — 2026-09-08 (fifth)
+
+`createNativeAgentPluginProjector` is removed, and its discovery logic promoted
+to `componentSummary`, which every shipped projector now calls.
+
+- **Identity projection contradicted the rule the second amendment set.** It
+  held that an unsupported component is *reported, not filtered*, on the
+  forward-compatibility grounds that the harness ignores it today and would
+  start honouring it on an upgrade. The `sse` probe refuted the premise: an
+  unsupported component is not necessarily ignored, and Codex misreads that one
+  as a `streamable_http` connection to the same url. Since the projector could
+  not filter without re-serializing — forfeiting the byte-identity its value
+  rested on — its usable domain was "a harness probed and found to safely ignore
+  everything it does not support", which cannot be known before writing it.
+- **It stopped being an identity projection when hooks became mandatory.** Once
+  the package is always the hook channel (fourth amendment), the projector
+  appends generated hook artifacts to a tree it documented as byte-identical to
+  the filtered source, at paths the harness must independently know to read.
+  That is translation with the translation hardcoded, not the absence of one.
+- **The counting was the reusable part, and it was quadrupled.** Discovery
+  mirrors core's `discoveredComponents` so that a component the analysis phase
+  counted cannot vanish from the build report, which replaces the analyzed
+  counts with the projector's. All four projectors had written it out
+  separately, so the mirror had four independent chances to drift. It is now one
+  exported helper taking a per-harness `skipped` verdict, and it clamps that
+  verdict to what was discovered — a projector's arithmetic reporting more
+  skipped than found would read as a component the harness gains.

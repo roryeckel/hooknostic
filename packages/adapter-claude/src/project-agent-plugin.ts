@@ -4,6 +4,7 @@ import { createRequireBanner, licenseNoticesPlugin } from "../../core/src/bundle
 import { dirname, posix } from "node:path";
 import { build } from "esbuild";
 import {
+  componentSummary,
   validateNpmRuntimePackage,
   type AgentPluginIssue,
   type AgentPluginMcpServer,
@@ -249,37 +250,25 @@ function mergeHooks(
   };
 }
 
-function componentCounts(source: AgentPluginPackage) {
-  const counts: AgentPluginProjectionPlan["summary"]["components"] = {
-    "agent-plugin.manifest": { discovered: 1, emitted: 1, skipped: 0 },
-  };
-  if (source.skills.length > 0) {
-    counts["agent-plugin.skills"] = {
-      discovered: source.skills.length,
-      emitted: source.skills.length,
-      skipped: 0,
-    };
-  }
-  for (const type of ["stdio", "streamable-http", "sse"] as const) {
-    const count = Object.values(source.mcp?.mcpServers ?? {}).filter((server) => server.type === type).length;
-    if (count > 0) {
-      counts[`agent-plugin.mcp.${type}`] = { discovered: count, emitted: count, skipped: 0 };
-    }
-  }
+function componentCounts(
+  source: AgentPluginPackage,
+  runtimePackage: "absent" | "emitted" | "skipped",
+) {
   const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
-  const extensionFiles = source.files.filter((file) => file.path.startsWith(prefix));
-  const manifestExtension =
-    source.manifest.extensions?.[CLAUDE_AGENT_PLUGIN_NAMESPACE] === undefined ? 0 : 1;
-  const skipped = extensionFiles.filter((file) => isRootNpmManifestPath(file.path.slice(prefix.length))).length;
-  const discovered = extensionFiles.length + manifestExtension;
-  if (discovered > 0) {
-    counts["agent-plugin.client-extension.files"] = {
-      discovered,
-      emitted: extensionFiles.length - skipped + manifestExtension,
-      skipped,
-    };
-  }
-  return counts;
+  return componentSummary(source, {
+    namespace: CLAUDE_AGENT_PLUGIN_NAMESPACE,
+    hasRuntimePackage: runtimePackage !== "absent",
+    skipped: (component) => {
+      if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
+      if (component !== "agent-plugin.client-extension.files") return 0;
+      // Only the overlay files npm would read as install input are withheld;
+      // the manifest extension and every other overlay file are emitted.
+      return source.files.filter(
+        (file) =>
+          file.path.startsWith(prefix) && isRootNpmManifestPath(file.path.slice(prefix.length)),
+      ).length;
+    },
+  });
 }
 
 export async function projectAgentPluginToClaude(
@@ -300,10 +289,7 @@ export async function projectAgentPluginToClaude(
       files: [],
       issues: [{ severity: "error", scope: "file", component: "agent-plugin.runtime-package", message: error instanceof Error ? error.message : String(error) }],
       summary: {
-        components: {
-          ...componentCounts(source),
-          "agent-plugin.runtime-package": { discovered: 1, emitted: 0, skipped: 1 },
-        },
+        components: componentCounts(source, "skipped"),
         omissions: [],
         copiedPaths: [],
       },
@@ -456,12 +442,7 @@ export async function projectAgentPluginToClaude(
     directories: workingDirectories(source),
     issues,
     summary: {
-      components: {
-        ...componentCounts(source),
-        ...(runtimePackage === undefined
-          ? {}
-          : { "agent-plugin.runtime-package": { discovered: 1, emitted: 1, skipped: 0 } }),
-      },
+      components: componentCounts(source, runtimePackage === undefined ? "absent" : "emitted"),
       omissions,
       copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
     },
