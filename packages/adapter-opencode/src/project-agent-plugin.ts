@@ -359,7 +359,12 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       omissions.push({ component: "agent-plugin.mcp.stdio", name, reason });
       issues.push({
         severity: context.onUnsupported,
-        scope: "mcp",
+        // "projection", not "mcp": this reports a component the TARGET cannot
+        // represent, which core codes HN205. Under "mcp" it reads as HN503
+        // "invalid Agent Plugin package", blaming a package that is valid --
+        // and for a component whose level is not `unsupported`, that misfiled
+        // code is the only diagnostic the omission produces.
+        scope: "projection",
         component: "agent-plugin.mcp.stdio",
         path: `${PORTABLE_MCP_PATH}#${name}`,
         message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,

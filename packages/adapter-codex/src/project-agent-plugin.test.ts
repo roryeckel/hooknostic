@@ -7,7 +7,7 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
 } from "@hooknostic/agent-plugin";
-import { resolveAgentPluginProjection } from "@hooknostic/core";
+import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
@@ -130,6 +130,13 @@ describe("Agent Plugin to Codex projection", () => {
     // than shipping a plugin quietly missing one.
     expect(plan.issues).toContainEqual(
       expect.objectContaining({ severity: "error", component: "agent-plugin.mcp.stdio" }),
+    );
+    // HN205 "valid component unsupported", not HN503 "invalid package": the
+    // package is fine, this target cannot represent one of its servers. The
+    // component's level is `emulated`, so analysis raises nothing of its own
+    // and this is the only diagnostic the omission produces.
+    expect(diagnosticsFromAgentPluginIssues(plan.issues, "codex")).toContainEqual(
+      expect.objectContaining({ code: "HN205", component: "agent-plugin.mcp.stdio" }),
     );
   });
 

@@ -279,6 +279,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/codex-native-mcp",
             what: "A native manifest carrying author, license, homepage and keywords installed normally and resolved its version from the manifest, so those fields are carried through rather than dropped.",
           },
+          {
+            version: "0.153.2",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/codex-native-mcp",
+            what: "The declared cwd is honoured at spawn, not merely recorded: in a session a server declaring cwd \".\" started with process.cwd() equal to the installed plugin root and resolved its relative argument against it, while an identical server declaring no cwd never started. PLUGIN_ROOT and PLUGIN_DATA were unset in the spawned process.",
+          },
         ],
         notes: [
           "Marketplace roots expose plugins through <root>/.agents/plugins/marketplace.json.",
@@ -340,7 +347,12 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       omissions.push({ component, name, reason });
       issues.push({
         severity: context.onUnsupported,
-        scope: "mcp",
+        // "projection", not "mcp": this reports a component the TARGET cannot
+        // represent, which core codes HN205. Under "mcp" it reads as HN503
+        // "invalid Agent Plugin package", blaming a package that is valid --
+        // and for a component whose level is not `unsupported`, that misfiled
+        // code is the only diagnostic the omission produces.
+        scope: "projection",
         component,
         path: `${PORTABLE_MCP_PATH}#${name}`,
         message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,

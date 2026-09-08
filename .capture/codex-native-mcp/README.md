@@ -2,7 +2,8 @@
 
 Evidence class: **live-probe**. Tested `codex-cli` **0.153.2** on **2026-09-08**,
 on native Windows. Observations are `codex mcp list` / `codex mcp get` against an
-installed plugin. No session is started, so nothing here costs a model call.
+installed plugin, plus one session in the final round — the only part that costs
+a model call, and the only way to observe a server actually spawning.
 
 ## Question
 
@@ -64,6 +65,32 @@ version from the manifest (the install root's final segment moved from `1.0.0` t
 `1.0.1` when the version changed), so carrying those fields through cannot lose
 information whether Codex reads them or ignores them.
 
+## Follow-up: the working directory is honoured at spawn
+
+A third round, this time with a session, because "read back by `codex mcp get`"
+is not "used when the process starts". Two servers differing only in `cwd`, both
+running the same stub that writes `process.cwd()` to a marker file and then holds
+stdin open. The session is `codex exec --skip-git-repo-check` with
+`gpt-5.3-codex-spark` at low effort, run in an empty scratch directory so the
+session cwd cannot be mistaken for the plugin root.
+
+| Server | Declared | Marker |
+|---|---|---|
+| `withcwd` | `args: ["server.mjs"], cwd: "."` | written; `cwd` = the installed plugin root |
+| `nocwd` | `args: ["server.mjs"]`, no `cwd` | **absent** |
+
+So `cwd` is honoured, and a relative argument resolves against it: the stub's
+`process.argv[1]` came back as the plugin root's own `server.mjs`.
+
+The control is the more useful half. Without `cwd`, node ran from the session
+directory, failed to find `server.mjs`, and exited before writing anything --
+which is exactly what every projected stdio server did before the projector
+started emitting an explicit `cwd`.
+
+The marker also confirms at spawn time, not merely in the CLI's display, that the
+placeholder contract is absent: `process.env.PLUGIN_ROOT` and
+`process.env.PLUGIN_DATA` were both null.
+
 ## Consequences
 
 - The Codex projector carries the placeholder contract itself: every stdio server
@@ -82,8 +109,5 @@ information whether Codex reads them or ignores them.
 
 ## Not established
 
-- Whether the recorded `cwd` is honoured at spawn. It is read and stored, and it
-  is the same field the portable route populated, but no server was started —
-  that needs a session.
 - Whether Codex reads the metadata fields it accepts.
 - Linux and macOS behaviour. Windows only.
