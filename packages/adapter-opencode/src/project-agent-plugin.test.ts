@@ -90,6 +90,50 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(paths).toContain(".opencode/plugins/package/mcp.json");
   });
 
+  // Under `onInvalid: "warn"` the loader reports an invalid skill and carries
+  // on: the skill leaves `skills` while its files stay in `files`. Copying its
+  // SKILL.md into the tree `skills.paths` names would hand OpenCode the skill
+  // the loader said it skipped.
+  it("drops a rejected skill's subtree while keeping a directory that is not a skill", async () => {
+    const rejected = source({}, [
+      "skills/broken/SKILL.md",
+      "skills/broken/bin/serve.mjs",
+      "skills/shared/logo.png",
+      "skills/review-notes/SKILL.md",
+    ]);
+    const plan = await project({
+      ...rejected,
+      skills: [
+        ...rejected.skills,
+        {
+          name: "review-notes",
+          description: "Keep review notes",
+          directory: "skills/review-notes",
+          manifestPath: "skills/review-notes/SKILL.md",
+        },
+      ],
+    });
+    const paths = plan.files.map((candidate) => candidate.path);
+    const nested = (path: string) => `.opencode/plugins/package/${path}`;
+    // The whole rejected subtree goes, matching Claude and Codex.
+    expect(paths).not.toContain(nested("skills/broken/SKILL.md"));
+    expect(paths).not.toContain(nested("skills/broken/bin/serve.mjs"));
+    expect(plan.summary.copiedPaths).not.toContain(nested("skills/broken/SKILL.md"));
+    // `skills/shared` declares no SKILL.md, so it is not a skill and nothing is
+    // wrong with this package -- dropping it would be a bug in a valid build.
+    expect(paths).toContain(nested("skills/shared/logo.png"));
+    // `skills/review-notes` is not inside `skills/review`, so a prefix test
+    // would drop a declared skill.
+    expect(paths).toContain(nested("skills/review-notes/SKILL.md"));
+    expect(paths).toContain(nested("skills/review/SKILL.md"));
+    expect(injector(plan)).toContain('const own = join(pluginRoot, "skills");');
+    expect(plan.summary.components["agent-plugin.skills"]).toEqual({
+      discovered: 2,
+      emitted: 2,
+      skipped: 0,
+    });
+  });
+
   it("nests package content below the flat plugin scan", async () => {
     const plan = await project(source({}, ["helper.js", "index.ts"]));
     // OpenCode loads EVERY module directly in .opencode/plugins/ and a

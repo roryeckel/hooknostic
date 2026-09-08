@@ -1,6 +1,7 @@
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   componentSummary,
+  isRejectedSkillPath,
   containsPluginData,
   expandStdioServer,
   normalizedPluginRootCwd,
@@ -14,6 +15,7 @@ import type {
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
+import { rangeWithin } from "@hooknostic/core";
 import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js";
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
@@ -339,10 +341,29 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       });
     }
 
+    // Generation refuses an out-of-range plugin target, but a package with no
+    // `entry` never reaches generation, so the refusal has to be repeated here
+    // or a package-only build ships a native plugin for versions this adapter
+    // declines -- under onUnsupported: "warn" the declining profile only warns.
+    if (!rangeWithin(context.target.version, CODEX_PLUGIN_MODE_RANGE)) {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        message: `codex target ${JSON.stringify(context.target.id)} is projected into an Agent Plugin, which requires harness ${CODEX_PLUGIN_MODE_RANGE}; version ${JSON.stringify(context.target.version)} admits releases where hook delivery from an installed plugin is not established.`,
+      });
+    }
+
+    // A skill the loader rejected leaves `source.skills` but keeps its files,
+    // and the native manifest points Codex at the whole `skills/` tree, so
+    // copying that tree verbatim has Codex discover a skill reported as
+    // skipped.
+    const insideRejectedSkill = isRejectedSkillPath(source);
+
     for (const file of source.files) {
       // Both portable documents are replaced by native ones at other paths.
       // Shipping either beside its replacement is what suppresses hooks.
       if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
+      if (insideRejectedSkill(file.path)) continue;
       files.push({ path: file.path, contents: file.contents, mode: file.mode });
       copiedPaths.push(file.path);
     }
@@ -439,7 +460,15 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     return {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
-      ...(source.directories === undefined ? {} : { directories: source.directories }),
+      // Filtered too, or a rejected skill still materializes as an empty
+      // directory bearing its name.
+      ...(source.directories === undefined
+        ? {}
+        : {
+            directories: source.directories.filter(
+              (directory) => !insideRejectedSkill(`${directory}/`),
+            ),
+          }),
       issues,
       summary: {
         components: counts,

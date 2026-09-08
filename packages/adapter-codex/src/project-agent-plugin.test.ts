@@ -234,4 +234,93 @@ describe("Agent Plugin to Codex projection", () => {
       keywords: ["one", "two"],
     });
   });
+
+  // The same refusal generation makes, repeated here because a package with no
+  // `entry` never reaches generation: without it a native plugin lands on disk
+  // for versions where plugin hook delivery is unestablished.
+  it("refuses a target admitting versions outside the plugin-hooks range", async () => {
+    const outOfRange = { ...target, version: ">=0.148 <1" };
+    const plan = await codexAgentPluginProjector.project(source(), {
+      target: outOfRange,
+      hookArtifacts: [],
+      support: resolveAgentPluginProjection(outOfRange, codexAgentPluginProjector).matrix!,
+      // The declining profile marks every component unsupported, which this
+      // policy reduces to a warning -- so the refusal cannot ride on it.
+      onUnsupported: "warn",
+    });
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "projection",
+        message: expect.stringContaining(">=0.153 <1"),
+      }),
+    );
+    // A fatal projection diagnostic is what fails the target in core, so the
+    // plan's files never reach staging however complete they look.
+    expect(diagnosticsFromAgentPluginIssues(plan.issues, "codex")).toContainEqual(
+      expect.objectContaining({ code: "HN503", severity: "error" }),
+    );
+  });
+
+  // Under onInvalid: "warn" the loader reports an invalid skill and continues,
+  // leaving it out of `skills` while its files stay in `files` -- and the
+  // native manifest points Codex at the whole `skills/` tree.
+  it("drops a skill the loader rejected instead of shipping it for discovery", async () => {
+    const base = source();
+    const plan = await project({
+      ...base,
+      // `review` and `audit-draft` were rejected, and each shares a prefix with
+      // an accepted directory -- in both directions, since prefix matching gets
+      // one of them wrong whichever way it is written.
+      skills: [
+        {
+          name: "review-notes",
+          description: "kept",
+          directory: "skills/review-notes",
+          manifestPath: "skills/review-notes/SKILL.md",
+        },
+        {
+          name: "audit",
+          description: "kept",
+          directory: "skills/audit",
+          manifestPath: "skills/audit/SKILL.md",
+        },
+      ],
+      files: [
+        ...base.files,
+        file("skills/README.md"),
+        file("skills/review/SKILL.md"),
+        file("skills/review/reference.md"),
+        file("skills/review-notes/SKILL.md"),
+        file("skills/audit/SKILL.md"),
+        file("skills/audit-draft/SKILL.md"),
+      ],
+      directories: [
+        "skills",
+        "skills/review",
+        "skills/review-notes",
+        "skills/audit",
+        "skills/audit-draft",
+      ],
+    });
+    const paths = plan.files.map((artifact) => artifact.path);
+    expect(paths).not.toContain("skills/review/SKILL.md");
+    expect(paths).not.toContain("skills/review/reference.md");
+    expect(paths).not.toContain("skills/audit-draft/SKILL.md");
+    expect(plan.summary.copiedPaths).not.toContain("skills/review/SKILL.md");
+    expect(paths).toContain("skills/review-notes/SKILL.md");
+    expect(paths).toContain("skills/audit/SKILL.md");
+    // Neither file is inside a skill directory, so neither is affected.
+    expect(paths).toContain("skills/README.md");
+    expect(paths).toContain("src/server.mjs");
+    // Otherwise a rejected skill survives as an empty directory of its name.
+    expect(plan.directories).toEqual(["skills", "skills/review-notes", "skills/audit"]);
+    // Already counted from `source.skills`, so the summary was never wrong.
+    expect(plan.summary.components["agent-plugin.skills"]).toEqual({
+      discovered: 2,
+      emitted: 2,
+      skipped: 0,
+    });
+    expect(manifestOf(plan)["skills"]).toBe("./skills/");
+  });
 });

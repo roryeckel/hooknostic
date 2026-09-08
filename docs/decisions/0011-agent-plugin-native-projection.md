@@ -384,3 +384,27 @@ runtime-shape rather than contract-shape.
   package whose own text contained the marker would have been rewritten.
   Substitution is now confined to a local server's argv, cwd and environment,
   and a package already containing the marker is declined rather than altered.
+
+## Amendments — 2026-09-08 (ninth)
+
+The mechanical half of a fourth review round. The substantive half -- that
+Agent Plugins 1.0 requires an absolute `PLUGIN_ROOT` and `PLUGIN_DATA` in every
+stdio subprocess environment, which no projection here provides -- is a separate
+decision and is NOT addressed by this change.
+
+- **A guard belongs on the path every build takes.** Codex plugin mode is
+  refused below 0.153, but that check sat in artifact generation, which a
+  package-only config (no `entry`) never reaches. Under `onUnsupported: "warn"`
+  such a target projected a native package for a range the projector's own
+  profile declines. The refusal now also sits in `project()`.
+- **"Not an accepted skill" is not the same as "a rejected skill".** Under
+  `onInvalid: "warn"` a rejected skill leaves `source.skills` and stays in
+  `source.files`, so a projection that copies the package and points the harness
+  at its `skills/` tree ships what the loader said it skipped. The fix is to drop
+  the rejected subtree -- but the obvious predicate, "a `skills/<name>/` prefix
+  not in `source.skills`", also deletes a directory that never declared a skill.
+  A package with shared assets under `skills/shared/` and nothing wrong with it
+  loses them. `isRejectedSkillPath` therefore requires the directory to contain a
+  `SKILL.md` before treating its absence from `source.skills` as rejection, and
+  all three projectors now share it. Claude carried the imprecise version from
+  the beginning; this corrects it too.

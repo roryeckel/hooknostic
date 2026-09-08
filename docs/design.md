@@ -400,7 +400,7 @@ export default defineConfig({
 
   targets: {
     claude:   { version: ">=2.1 <3",  mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+    codex:    { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
     opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
   },
 
@@ -416,7 +416,9 @@ export default defineConfig({
 ```
 
 Version ranges are examples; adapters derive and document tested ranges from real
-fixtures and releases.
+fixtures and releases. A mode can narrow one: Codex `mode: "plugin"` requires
+`>=0.153 <1`, where its local hooks build from `>=0.148 <1`, because hook delivery
+from an installed plugin is only established from 0.153.
 
 `runtimePackage` is an optional projection input for an agent-plugin component
 whose runtime imports npm dependencies. Each projector defines how, or whether,

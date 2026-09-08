@@ -1,6 +1,7 @@
 import {
   componentSummary,
   containsPluginData,
+  isRejectedSkillPath,
   expandStdioServer,
   normalizedPluginRootCwd,
 } from "@hooknostic/agent-plugin";
@@ -359,9 +360,16 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const copiedPaths: string[] = [];
 
     // The whole package, one level down: everything ${PLUGIN_ROOT} could name
-    // has to be there, and unlike Codex there is nothing to exclude -- a nested
-    // plugin.json outranks nothing, because OpenCode reads no manifest here.
+    // has to be there, and unlike Codex there is no native manifest to outrank
+    // -- OpenCode reads none here.
+    //
+    // The single exception is the SKILL.md of a skill the loader rejected and
+    // continued past under `onInvalid: "warn"`: its files stay in `files` while
+    // it leaves `skills`, and `skills.paths` names the copied tree wholesale,
+    // so shipping it hands OpenCode the very skill the loader said it skipped.
+    const insideRejectedSkill = isRejectedSkillPath(source);
     for (const file of source.files) {
+      if (insideRejectedSkill(file.path)) continue;
       const path = `${PACKAGE_DIR}/${file.path}`;
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);

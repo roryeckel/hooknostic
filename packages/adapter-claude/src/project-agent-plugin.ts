@@ -5,6 +5,7 @@ import { dirname, posix } from "node:path";
 import { build } from "esbuild";
 import {
   componentSummary,
+  isRejectedSkillPath,
   validateNpmRuntimePackage,
   type AgentPluginIssue,
   type AgentPluginMcpServer,
@@ -279,7 +280,7 @@ export async function projectAgentPluginToClaude(
   const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
   const files = new Map<string, AgentPluginProjectionFile>();
   const copiedPaths = new Set<string>();
-  const acceptedSkills = new Set(source.skills.map((skill) => skill.directory));
+  const insideRejectedSkill = isRejectedSkillPath(source);
   let runtimePackage: ReturnType<typeof runtimePackageFiles>;
 
   try {
@@ -319,8 +320,7 @@ export async function projectAgentPluginToClaude(
       });
       continue;
     }
-    const skillMatch = /^skills\/([^/]+)(?:\/|$)/.exec(file.path);
-    if (skillMatch && !acceptedSkills.has(`skills/${skillMatch[1]}`)) continue;
+    if (insideRejectedSkill(file.path)) continue;
     files.set(file.path, { path: file.path, contents: file.contents, mode: file.mode });
     copiedPaths.add(file.path);
   }

@@ -90,13 +90,15 @@ compiled hooks alongside them. Add it with:
 ```ts
 agentPlugin: { root: ".", targets: ["claude", "codex"], onUnsupported: "warn" },
 targets: {
-  codex: { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+  codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
 },
 ```
 
-`onUnsupported: "warn"` is what this example would additionally need, because its
-`runtimePackage` has no Codex equivalent — see [harness support](../harness-support.md)
-for the per-component table.
+The version narrows too: hook delivery from an installed plugin is only established
+from 0.153, so `mode: "plugin"` is rejected below it, while the local artifact above
+still builds from 0.148. `onUnsupported: "warn"` is what this example would
+additionally need, because its `runtimePackage` has no Codex equivalent — see
+[harness support](../harness-support.md) for the per-component table.
 
 Claude's projection is a different translation of the same package: `.claude-plugin/`,
 a rewritten `.mcp.json`, a generated cwd launcher. Neither output is portable, and that

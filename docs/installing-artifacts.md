@@ -351,8 +351,12 @@ dist/codex/
 One installed plugin then carries all three components. Use `mode: "plugin"`:
 
 ```ts
-codex: { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
+codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
 ```
+
+That range is narrower than the `>=0.148 <1` the local example above uses, and the
+build rejects `mode: "plugin"` outside it: hook delivery from an installed plugin
+is only established from 0.153.
 
 `mode: "local"` still emits the repo-level `.codex/` tree instead, which is the
 right choice for a repository consuming its own hooks — it needs no install and
