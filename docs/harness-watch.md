@@ -146,7 +146,7 @@ job's steps:
    inputs.force_llm == 'true'`).
 2. Bundle the workspace on the runner, install the pinned LiteLLM dependency
    before injecting its upstream key, then start the installed harness inside
-   `node:22.13.1-bookworm`: the third-party harness package is installed there
+   `node:<playback version>-bookworm` (from `.github/node/playback/.node-version`): the third-party harness package is installed there
    with `--ignore-scripts`, the repository is mounted read-only, only the
    throwaway capture directory is writable, and no Docker socket is mounted.
    Claude and OpenCode then run their package-owned bootstrap explicitly.

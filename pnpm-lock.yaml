@@ -4,30 +4,100 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@eslint/js':
+      specifier: ^9.17.0
+      version: 9.39.5
+    '@modelcontextprotocol/server':
+      specifier: ^2.0.0
+      version: 2.0.0
+    '@types/node':
+      specifier: ^22.10.0
+      version: 22.20.1
+    '@types/npm-package-arg':
+      specifier: ^6.1.4
+      version: 6.1.4
+    '@types/semver':
+      specifier: ^7.5.8
+      version: 7.8.0
+    '@types/validate-npm-package-name':
+      specifier: ^4.0.2
+      version: 4.0.2
+    cross-spawn:
+      specifier: ^7.0.6
+      version: 7.0.6
+    esbuild:
+      specifier: ^0.24.2
+      version: 0.24.2
+    eslint:
+      specifier: ^9.17.0
+      version: 9.39.5
+    minimatch:
+      specifier: ^10.0.1
+      version: 10.2.6
+    node-pty:
+      specifier: ^1.1.0
+      version: 1.1.0
+    npm-package-arg:
+      specifier: ^13.0.2
+      version: 13.0.2
+    typescript:
+      specifier: ^5.7.2
+      version: 5.9.3
+    typescript-eslint:
+      specifier: ^8.19.0
+      version: 8.67.0
+    validate-npm-package-name:
+      specifier: ^7.0.2
+      version: 7.0.2
+    vitest:
+      specifier: ^2.1.8
+      version: 2.1.9
+    yaml:
+      specifier: ^2.7.0
+      version: 2.9.0
+  semver-runtime:
+    semver:
+      specifier: ^7.6.3
+      version: 7.8.5
+  semver-tooling:
+    semver:
+      specifier: ^7.8.5
+      version: 7.8.5
+  zod3:
+    zod:
+      specifier: ^3.24.1
+      version: 3.25.76
+  zod4:
+    zod:
+      specifier: ^4.5.4
+      version: 4.5.4
+
 importers:
 
   .:
     devDependencies:
       '@eslint/js':
-        specifier: ^9.17.0
+        specifier: 'catalog:'
         version: 9.39.5
       '@types/node':
-        specifier: ^22.10.0
+        specifier: 'catalog:'
         version: 22.20.1
       eslint:
-        specifier: ^9.17.0
+        specifier: 'catalog:'
         version: 9.39.5(supports-color@7.2.0)
       semver:
-        specifier: ^7.8.5
+        specifier: catalog:semver-tooling
         version: 7.8.5
       typescript:
-        specifier: ^5.7.2
+        specifier: 'catalog:'
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.19.0
+        specifier: 'catalog:'
         version: 8.67.0(eslint@9.39.5(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
       vitest:
-        specifier: ^2.1.8
+        specifier: 'catalog:'
         version: 2.1.9(@types/node@22.20.1)(supports-color@7.2.0)
 
   examples/agent-plugin:
@@ -36,10 +106,10 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
       '@modelcontextprotocol/server':
-        specifier: ^2.0.0
+        specifier: 'catalog:'
         version: 2.0.0
       zod:
-        specifier: ^4.5.4
+        specifier: catalog:zod4
         version: 4.5.4
 
   examples/basic:
@@ -75,10 +145,10 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       cross-spawn:
-        specifier: ^7.0.6
+        specifier: 'catalog:'
         version: 7.0.6
       esbuild:
-        specifier: ^0.24.2
+        specifier: 'catalog:'
         version: 0.24.2
     devDependencies:
       '@hooknostic/testkit':
@@ -120,29 +190,29 @@ importers:
   packages/agent-plugin:
     dependencies:
       minimatch:
-        specifier: ^10.0.1
+        specifier: 'catalog:'
         version: 10.2.6
       npm-package-arg:
-        specifier: ^13.0.2
+        specifier: 'catalog:'
         version: 13.0.2
       semver:
-        specifier: ^7.6.3
+        specifier: catalog:semver-runtime
         version: 7.8.5
       validate-npm-package-name:
-        specifier: ^7.0.2
+        specifier: 'catalog:'
         version: 7.0.2
       yaml:
-        specifier: ^2.7.0
+        specifier: 'catalog:'
         version: 2.9.0
     devDependencies:
       '@types/npm-package-arg':
-        specifier: ^6.1.4
+        specifier: 'catalog:'
         version: 6.1.4
       '@types/semver':
-        specifier: ^7.5.8
+        specifier: 'catalog:'
         version: 7.8.0
       '@types/validate-npm-package-name':
-        specifier: ^4.0.2
+        specifier: 'catalog:'
         version: 4.0.2
 
   packages/cli:
@@ -151,10 +221,10 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       cross-spawn:
-        specifier: ^7.0.6
+        specifier: 'catalog:'
         version: 7.0.6
       esbuild:
-        specifier: ^0.24.2
+        specifier: 'catalog:'
         version: 0.24.2
     devDependencies:
       '@hooknostic/adapter-claude':
@@ -179,13 +249,13 @@ importers:
         specifier: workspace:*
         version: link:../testkit
       '@types/semver':
-        specifier: ^7.5.8
+        specifier: 'catalog:'
         version: 7.8.0
       node-pty:
-        specifier: ^1.1.0
+        specifier: 'catalog:'
         version: 1.1.0
       semver:
-        specifier: ^7.6.3
+        specifier: catalog:semver-runtime
         version: 7.8.5
 
   packages/core:
@@ -197,20 +267,20 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       esbuild:
-        specifier: ^0.24.2
+        specifier: 'catalog:'
         version: 0.24.2
       minimatch:
-        specifier: ^10.0.1
+        specifier: 'catalog:'
         version: 10.2.6
       semver:
-        specifier: ^7.6.3
+        specifier: catalog:semver-runtime
         version: 7.8.5
       zod:
-        specifier: ^3.24.1
+        specifier: catalog:zod3
         version: 3.25.76
     devDependencies:
       '@types/semver':
-        specifier: ^7.5.8
+        specifier: 'catalog:'
         version: 7.8.0
 
   packages/runtime:
@@ -222,7 +292,7 @@ importers:
   packages/sdk:
     dependencies:
       zod:
-        specifier: ^3.24.1
+        specifier: catalog:zod3
         version: 3.25.76
 
   packages/testkit:
@@ -238,7 +308,7 @@ importers:
         version: link:../sdk
     devDependencies:
       vitest:
-        specifier: ^2.1.8
+        specifier: 'catalog:'
         version: 2.1.9(@types/node@22.20.1)(supports-color@7.2.0)
 
 packages:

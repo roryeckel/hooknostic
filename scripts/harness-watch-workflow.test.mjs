@@ -142,7 +142,8 @@ describe("harness-watch workflow structure", () => {
     expect(drive).toContain("docker run --rm --network bridge");
     expect(drive).toContain("dst=/workspace,readonly");
     expect(drive).toContain("--security-opt no-new-privileges");
-    expect(drive).toContain("node:22.13.1-bookworm");
+    expect(drive).toContain('PLAYBACK_NODE="$(cat .github/node/playback/.node-version)"');
+    expect(drive).toContain('"node:${PLAYBACK_NODE}-bookworm"');
     expect(drive).toContain('opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs"');
     expect(drive.indexOf("npm install --global --ignore-scripts")).toBeLessThan(
       drive.indexOf("opencode-ai/postinstall.mjs"),

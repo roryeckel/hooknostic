@@ -15,8 +15,9 @@ harness's native plugin layout. The portable package stays unchanged.
 examples/agent-plugin/
 ├── plugin.json
 ├── mcp.json
-├── runtime.package.json
-├── runtime.package-lock.json
+├── runtime/
+│   ├── package.json
+│   └── package-lock.json
 ├── skills/greet/SKILL.md
 ├── hooknostic.config.ts
 ├── src/
@@ -44,8 +45,8 @@ export default defineConfig({
     root: ".",
     targets: ["claude"],
     runtimePackage: {
-      manifest: "./runtime.package.json",
-      lockfile: "./runtime.package-lock.json",
+      manifest: "./runtime/package.json",
+      lockfile: "./runtime/package-lock.json",
     },
   },
 });

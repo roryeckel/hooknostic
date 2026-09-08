@@ -19,8 +19,8 @@ export default defineConfig({
     root: ".",
     targets: ["claude"],
     runtimePackage: {
-      manifest: "./runtime.package.json",
-      lockfile: "./runtime.package-lock.json",
+      manifest: "./runtime/package.json",
+      lockfile: "./runtime/package-lock.json",
     },
   },
 });

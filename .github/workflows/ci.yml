@@ -10,6 +10,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-policy:
+    name: dependency policy and Renovate extraction
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # The hosted app maintains its runtime. This image supplies the matching
+    # validator CLI without adding Renovate's Node floor to workspace engines.
+    container:
+      image: ghcr.io/renovatebot/renovate:44.69.6
+      options: --user 0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: renovate-config-validator --strict renovate.json
+      - name: Extract maintained dependencies without lookups or writes
+        env:
+          LOG_LEVEL: warn
+          LOG_FILE_LEVEL: debug
+          LOG_FILE: ${{ runner.temp }}/renovate-extraction.ndjson
+          RENOVATE_BASE_DIR: ${{ runner.temp }}/renovate
+        run: renovate --platform=local --dry-run=extract --require-config=required --onboarding=false
+      - name: Compare discovery with the authoritative inventory
+        run: node scripts/check-dependencies.mjs "$RUNNER_TEMP/renovate-extraction.ndjson"
+
   test:
     name: lint + typecheck + test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -24,7 +51,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .github/node/ci/.node-version
           cache: pnpm
 
       - name: Install dependencies
@@ -32,6 +59,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Dependency ownership and engine consistency
+        run: pnpm check:dependencies
 
       - name: Build (typecheck + bundle)
         run: pnpm build
@@ -80,8 +110,7 @@ jobs:
         # only example using `agentPlugin`, whose build report is where an
         # absolute machine path can leak.
         run: |
-          node packages/cli/bin/hooknostic.mjs build --config examples/rewrite-shell/hooknostic.config.ts
-          node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hooknostic.config.ts
+          pnpm build:examples
           if [ -n "$(git status --porcelain -- examples/rewrite-shell examples/agent-plugin)" ]; then
             git status --porcelain -- examples/rewrite-shell examples/agent-plugin
             git diff -- examples/rewrite-shell examples/agent-plugin
@@ -108,7 +137,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22.13.1
+          node-version-file: .github/node/playback/.node-version
           cache: pnpm
 
       - name: Install repository dependencies

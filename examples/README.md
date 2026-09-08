@@ -29,7 +29,7 @@ node ../../packages/cli/bin/hooknostic.mjs build
 ```
 
 `rewrite-shell/` and `agent-plugin/` commit their built output (`dist/` and
-`hooknostic-build.json`), so you can inspect what a
+`dist/hooknostic-build.json`), so you can inspect what a
 build produces without running one — and so this
 repository practises the committed-artifact model that
 [ADR-0006](../docs/decisions/0006-artifact-distribution.md) recommends to

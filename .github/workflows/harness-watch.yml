@@ -89,7 +89,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .github/node/ci/.node-version
           cache: pnpm
 
       - name: Install dependencies
@@ -137,7 +137,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22.13.1
+          node-version-file: .github/node/playback/.node-version
           cache: pnpm
 
       - name: Install repository dependencies
@@ -288,7 +288,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.gate.outputs.skip == 'false'
         with:
-          node-version: 22
+          node-version-file: .github/node/ci/.node-version
           cache: pnpm
 
       - name: Install dependencies
@@ -550,7 +550,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.gate.outputs.run == 'true'
         with:
-          node-version: 22.13.1
+          node-version-file: .github/node/playback/.node-version
           cache: pnpm
 
       - name: Install repository dependencies
@@ -565,7 +565,7 @@ jobs:
         if: steps.gate.outputs.run == 'true' && inputs.force_llm == 'true'
         # Keep the upstream secret out of dependency installation too. The
         # following step is the first process that receives it.
-        run: pipx install "litellm[proxy]==1.80.5"
+        run: pipx install "$(cat .github/requirements/litellm.txt)"
 
       - name: Start LiteLLM sidecar (llm transport only)
         if: steps.gate.outputs.run == 'true' && inputs.force_llm == 'true'
@@ -644,11 +644,13 @@ jobs:
             CONTAINER_ENVS+=(-e "HARNESS_LLM_PROXY_URL=$HARNESS_LLM_PROXY_URL")
             CONTAINER_ENVS+=(-e "HARNESS_LLM_PROXY_KEY=$HARNESS_LLM_PROXY_KEY")
           fi
+          PLAYBACK_NODE="$(cat .github/node/playback/.node-version)"
+          [[ "$PLAYBACK_NODE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           docker run --rm --network bridge --add-host host.docker.internal:host-gateway \
             --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
             --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" \
             --mount "type=bind,src=$SCRATCH_ROOT,dst=/drift" \
-            "${CONTAINER_ENVS[@]}" --workdir /workspace node:22.13.1-bookworm \
+            "${CONTAINER_ENVS[@]}" --workdir /workspace "node:${PLAYBACK_NODE}-bookworm" \
             sh -ec '
               npm install --global --ignore-scripts --no-fund --no-audit "$1@$2" \
                 || npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"

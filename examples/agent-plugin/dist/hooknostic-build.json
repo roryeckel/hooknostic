@@ -99,12 +99,12 @@
       "mcp.json",
       "package.json",
       "plugin.json",
-      "runtime.package-lock.json",
-      "runtime.package.json",
+      "runtime/package-lock.json",
+      "runtime/package.json",
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:550613f9f56afb28bfb0e909f22cf048a773200bf12086704ed4a13fab8f9f33"
+    "contentDigest": "sha256:01ed03fcaf9b5cc804535a5aaf753bfe45a903fc6db35056937fed4a8e31edcf"
   },
   "source": "./src/hooks.ts"
 }

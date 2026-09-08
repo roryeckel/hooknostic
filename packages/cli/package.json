@@ -46,8 +46,8 @@
   },
   "dependencies": {
     "@hooknostic/sdk": "workspace:*",
-    "cross-spawn": "^7.0.6",
-    "esbuild": "^0.24.2"
+    "cross-spawn": "catalog:",
+    "esbuild": "catalog:"
   },
   "devDependencies": {
     "@hooknostic/agent-plugin": "workspace:*",
@@ -57,8 +57,8 @@
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/testkit": "workspace:*",
-    "@types/semver": "^7.5.8",
-    "node-pty": "^1.1.0",
-    "semver": "^7.6.3"
+    "@types/semver": "catalog:",
+    "node-pty": "catalog:",
+    "semver": "catalog:semver-runtime"
   }
 }

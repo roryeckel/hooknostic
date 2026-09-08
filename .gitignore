@@ -9,12 +9,12 @@ hooknostic-build.json
 # nowhere. Re-including a path under an ignored directory needs the directory
 # itself un-ignored first, hence both lines.
 !examples/rewrite-shell/dist/
-!examples/rewrite-shell/hooknostic-build.json
+!examples/rewrite-shell/dist/hooknostic-build.json
 # agent-plugin too, because it is the only example exercising `agentPlugin` --
 # the config shape whose build report used to embed an absolute machine path,
 # which the rewrite-shell gate structurally could not see.
 !examples/agent-plugin/dist/
-!examples/agent-plugin/hooknostic-build.json
+!examples/agent-plugin/dist/hooknostic-build.json
 .hooknostic-staging-*/
 examples/*/com.anthropic.claude-code/
 !examples/agent-plugin/com.anthropic.claude-code/

@@ -1,0 +1,39 @@
+name: Apply Renovate artifacts
+
+on:
+  workflow_run:
+    workflows: [Renovate artifacts]
+    types: [completed]
+
+# This workflow and its scripts come from the default branch. Never check out
+# the triggering PR or install its dependencies in this credentialed job.
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: renovate-artifacts-apply-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/ci/.node-version
+          package-manager-cache: false
+      - name: Verify provenance and apply permitted byte changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RENOVATE_ARTIFACTS_TOKEN: ${{ secrets.RENOVATE_ARTIFACTS_TOKEN }}
+        run: node scripts/apply-renovate-artifacts.mjs

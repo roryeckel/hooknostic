@@ -1,0 +1,91 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "timezone": "America/Chicago",
+  "schedule": ["* 6-11 * * 1"],
+  "automerge": false,
+  "dependencyDashboard": true,
+  "branchPrefix": "renovate/",
+  "gitIgnoredAuthors": [],
+  "rangeStrategy": "bump",
+  "enabledManagers": ["npm", "nodenv", "github-actions", "pip_requirements"],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    ".capture/**",
+    "fixtures/**",
+    "docs/**",
+    "examples/*/com.*/**"
+  ],
+  "pip_requirements": {
+    "managerFilePatterns": ["/^\\.github/requirements/[^/]+\\.txt$/"]
+  },
+  "packageRules": [
+    {
+      "description": "One reviewed PR for non-major workspace dependencies",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "npm dependencies (non-major)"
+    },
+    {
+      "description": "CI runtimes, actions, and sidecar tooling share a weekly PR",
+      "matchManagers": ["nodenv", "github-actions", "pip_requirements"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "CI and tooling (non-major)"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["packageManager"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "CI and tooling (non-major)"
+    },
+    {
+      "description": "Major migrations require dashboard approval and individual PRs",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "groupName": null
+    },
+    {
+      "description": "The supported Node floor is a manual compatibility decision",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "matchPackageNames": ["node"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["pnpm.catalog.zod3"],
+      "matchPackageNames": ["zod"],
+      "allowedVersions": ">=3 <4"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["pnpm.catalog.zod4"],
+      "matchPackageNames": ["zod"],
+      "allowedVersions": ">=4 <5"
+    },
+    {
+      "description": "The standalone npm runtime shares the example's Zod major line",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["examples/agent-plugin/runtime/package.json"],
+      "matchPackageNames": ["zod"],
+      "allowedVersions": ">=4 <5"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["pnpm.catalog.semver-runtime", "pnpm.catalog.semver-tooling"],
+      "matchPackageNames": ["semver"],
+      "allowedVersions": ">=7 <8"
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* 6-11 1 * *"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "dependencyDashboardApproval": false,
+    "automerge": false,
+    "groupName": null
+  }
+}

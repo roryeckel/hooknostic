@@ -40,15 +40,15 @@
     "bundle": "node --input-type=commonjs -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "minimatch": "^10.0.1",
-    "npm-package-arg": "^13.0.2",
-    "semver": "^7.6.3",
-    "validate-npm-package-name": "^7.0.2",
-    "yaml": "^2.7.0"
+    "minimatch": "catalog:",
+    "npm-package-arg": "catalog:",
+    "semver": "catalog:semver-runtime",
+    "validate-npm-package-name": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
-    "@types/npm-package-arg": "^6.1.4",
-    "@types/semver": "^7.5.8",
-    "@types/validate-npm-package-name": "^4.0.2"
+    "@types/npm-package-arg": "catalog:",
+    "@types/semver": "catalog:",
+    "@types/validate-npm-package-name": "catalog:"
   }
 }

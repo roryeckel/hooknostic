@@ -14,12 +14,12 @@
   "dependencies": {
     "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/sdk": "workspace:*",
-    "esbuild": "^0.24.2",
-    "minimatch": "^10.0.1",
-    "semver": "^7.6.3",
-    "zod": "^3.24.1"
+    "esbuild": "catalog:",
+    "minimatch": "catalog:",
+    "semver": "catalog:semver-runtime",
+    "zod": "catalog:zod3"
   },
   "devDependencies": {
-    "@types/semver": "^7.5.8"
+    "@types/semver": "catalog:"
   }
 }

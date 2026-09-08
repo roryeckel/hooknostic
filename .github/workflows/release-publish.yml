@@ -42,7 +42,7 @@ jobs:
       # generated .npmrc carries no dead token for the OIDC flow to trip over.
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .github/node/publishing/.node-version
           registry-url: https://registry.npmjs.org
           cache: pnpm
 

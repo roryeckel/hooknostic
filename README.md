@@ -97,6 +97,7 @@ tutorials built on the [examples](examples/).
 - [Native surface baseline](docs/baseline-2026-08-20.md) — the verified,
   primary-source snapshot of each harness the adapters are built against
 - [Adding an adapter](docs/adding-an-adapter.md) — how to support a new harness
+- [Dependency inventory](docs/dependencies.md) — authoritative versions, reviewed updates, and artifact refresh
 - [Design decisions](docs/decisions/) — why capabilities are separate from events, why
   hooks are stateless, why one dispatcher, how Agent Plugins fits in, and which
   effects end a dispatch

@@ -112,6 +112,10 @@ pnpm test
 
 Check each exit code on its own — never trust a piped or chained one.
 
+For version ownership, dependency updates, and committed example regeneration,
+see the [dependency inventory](docs/dependencies.md). Dependency upgrades use
+reviewed Renovate PRs; Node support-floor changes remain manual decisions.
+
 If your change touches an adapter, also run the **playback lane**. It drives the
 real harness binary against a loopback scripted model server: no API key, no
 model spend, and it is exactly what CI runs, so there is no gap between what you
