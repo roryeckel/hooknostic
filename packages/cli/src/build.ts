@@ -44,6 +44,10 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
     options.io.stdout(
       `${target.status === "success" ? "BUILT" : "FAIL "}  ${id} → ${target.output}  (${target.adapter}, harness ${target.requestedVersion}) — ${counts.exact} exact, ${counts.emulated} emulated, ${counts.approximate} approximate, ${counts.unsupported} unsupported`,
     );
+    // The package has its own destination when the harness does not load hooks
+    // from it, so naming only `output` would omit the directory just produced.
+    if (target.packageOutput !== undefined)
+      options.io.stdout(`         package → ${target.packageOutput}`);
     if (target.projection !== undefined) options.io.stdout(`         ${describeProjection(target.projection)}`);
     for (const artifact of target.artifacts ?? []) {
       options.io.stdout(`         ${artifact}`);

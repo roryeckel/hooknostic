@@ -3,8 +3,12 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { HooknosticConfig } from "@hooknostic/sdk";
 import type { Diagnostic } from "./diagnostics.js";
 
+export type ManagedOutputKind = "hooks" | "package";
+
 export interface ManagedOutput {
+  /** Display label only -- never an identity. Use `kind` + `target` to look one up. */
   key: string;
+  kind: ManagedOutputKind;
   target: string;
   outputDir: string;
 }
@@ -64,12 +68,14 @@ function layoutError(target: string, message: string, remediation: string): Diag
 }
 
 /**
- * Managed-output key for a target's separately delivered Agent Plugin package.
+ * Human-readable label for a target's separately delivered package output.
  *
- * Doubles as a staging directory name, so it stays path-safe: a `:` separator
- * is a valid map key but an invalid Windows path component.
+ * Deliberately NOT an identity: target ids are arbitrary non-empty strings, so a
+ * target literally named `x__package` would collide with the package output of
+ * target `x` and one could be staged over the other. Look outputs up by
+ * (`kind`, `target`) instead -- `kind` is a closed set, so the pair cannot collide.
  */
-export function packageOutputKey(target: string): string {
+export function packageOutputLabel(target: string): string {
   return `${target}__package`;
 }
 
@@ -113,13 +119,18 @@ export async function validateOutputLayout(options: {
     // `packageOutput` is a managed output like any other: it is replaced
     // wholesale, so it has to clear the same sandbox, protected-path and
     // source-package checks, and join the overlap matrix below.
-    const managed: { key: string; field: string; dir: string }[] = [
-      { key: target, field: "output", dir: targetConfig.output },
+    const managed: { key: string; kind: ManagedOutputKind; field: string; dir: string }[] = [
+      { key: target, kind: "hooks", field: "output", dir: targetConfig.output },
       ...(targetConfig.packageOutput === undefined
         ? []
-        : [{ key: packageOutputKey(target), field: "packageOutput", dir: targetConfig.packageOutput }]),
+        : [{
+            key: packageOutputLabel(target),
+            kind: "package" as const,
+            field: "packageOutput",
+            dir: targetConfig.packageOutput,
+          }]),
     ];
-    for (const { key, field, dir } of managed) {
+    for (const { key, kind, field, dir } of managed) {
       const outputDir = resolve(configDir, dir);
       const identities = await pathIdentities(outputDir);
       const escapedPath = identities.find(
@@ -161,7 +172,7 @@ export async function validateOutputLayout(options: {
         );
         continue;
       }
-      const output = { key, target, outputDir };
+      const output = { key, kind, target, outputDir };
       outputs.push(output);
       comparisonPaths.set(output, identities);
     }

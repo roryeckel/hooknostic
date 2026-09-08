@@ -295,6 +295,61 @@ ${run.stderr}`).toBe(0);
   );
 
   it(
+    "does not inventory a previous package output as source on the next build",
+    { timeout: 120_000 },
+    async () => {
+      // With `root: "."` the package destination sits inside the inventory root.
+      // If it is not excluded, build N+1 copies build N's package into the new
+      // one and the tree nests a level deeper every run.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-repackage-"));
+      cleanupDirs.push(dir);
+      await mkdir(join(dir, "skills/probe"), { recursive: true });
+      await writeFile(
+        join(dir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "repack", version: "1.0.0" }),
+      );
+      await writeFile(join(dir, "skills/probe/SKILL.md"), "---\nname: probe\ndescription: Probe\n---\n");
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default {
+          agentPlugin: { root: ".", targets: ["codex"] },
+          targets: {
+            codex: {
+              version: "${codexHarness.recommendedRange}",
+              mode: "local",
+              output: "./dist/codex",
+              packageOutput: "./dist/codex-package",
+            },
+          },
+        };`,
+      );
+
+      const copiedCounts: number[] = [];
+      for (let run = 0; run < 3; run += 1) {
+        const json = captureIO();
+        expect(
+          await runBuild({
+            config: join(dir, "hooknostic.config.ts"),
+            json: true,
+            registry: defaultAdapterRegistry(),
+            io: json.io,
+          }),
+        ).toBe(0);
+        copiedCounts.push(JSON.parse(json.out()).targets.codex.projection.copiedFileCount);
+      }
+
+      // Two files, unchanged across runs: the count grew 2 -> 4 -> 6 before the fix.
+      expect(copiedCounts).toEqual([2, 2, 2]);
+      // The manifest is what a nested copy would duplicate first.
+      expect(existsSync(join(dir, "dist/codex-package/dist/codex-package/plugin.json"))).toBe(false);
+      // `dist/` itself survives as an EMPTY directory: only its contents are
+      // excluded, and the loader preserves empty package directories on purpose
+      // (an MCP `cwd` may be one). Nothing from a previous build is inside it.
+      expect(existsSync(join(dir, "dist/codex-package/dist/codex-package"))).toBe(false);
+    },
+  );
+
+  it(
     "projects an Agent Plugin into Claude without modifying the source package",
     { timeout: 120_000 },
     async () => {

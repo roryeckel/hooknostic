@@ -28,7 +28,7 @@ import type { PluginIR } from "./ir.js";
 import { buildPluginIR } from "./ir.js";
 import type { EvaluateOptions } from "./load.js";
 import { loadConfig, loadPluginSource } from "./load.js";
-import { isStrictDescendant, packageOutputKey, validateOutputLayout } from "./output-layout.js";
+import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.1.0";
@@ -61,6 +61,8 @@ export interface BuildTargetReport {
   adapter: string;
   requestedVersion: string;
   output: string;
+  /** Where the projected package went, when it is not delivered in `output`. */
+  packageOutput?: string;
   capabilities: Record<SupportLevel, number>;
   artifacts?: string[];
   projection?: AgentPluginTargetReport;
@@ -327,7 +329,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         agentPluginRoot,
         configPath,
         config.entry,
-        Object.values(config.targets).map((target) => target.output),
+        // Both destinations, or a build inventories the previous package as source:
+        // with `root: "."` the identity projector then copies it into the next one,
+        // nesting a level deeper every run until path validation fails.
+        Object.values(config.targets).flatMap((target) =>
+          target.packageOutput === undefined ? [target.output] : [target.output, target.packageOutput],
+        ),
         config.agentPlugin.exclude ?? [],
       ),
     });
@@ -387,6 +394,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       adapter: target.adapter,
       requestedVersion: target.requestedVersion,
       output: config.targets[id]?.output ?? "",
+      ...(config.targets[id]?.packageOutput === undefined
+        ? {}
+        : { packageOutput: config.targets[id]!.packageOutput! }),
       capabilities: target.counts,
     };
     if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
@@ -431,7 +441,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const dryRun = options.dryRun === true;
   const runtimePolicy = effectiveRuntime(config);
   const projectSdk = config.entry === undefined ? undefined : resolveProjectSdk(configDir);
-  const outputByKey = new Map(layout.outputs.map((entry) => [entry.key, entry]));
+  const outputFor = (kind: "hooks" | "package", target: string) =>
+    layout.outputs.find((entry) => entry.kind === kind && entry.target === target);
   const staged: { key: string; target?: string; kind?: "directory" | "file"; stagingDir: string; outputDir: string }[] = [];
   /** Outputs a successful target will replace, whether or not this run stages. */
   const planned: { target: string; outputDir: string }[] = [];
@@ -584,27 +595,27 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           .map((artifact) => artifact.path)
           .filter((path) => generated.has(path));
 
-        planned.push({ target: id, outputDir: outputByKey.get(id)!.outputDir });
+        planned.push({ target: id, outputDir: outputFor("hooks", id)!.outputDir });
         if (packageArtifacts !== undefined) {
-          planned.push({ target: id, outputDir: outputByKey.get(packageOutputKey(id))!.outputDir });
+          planned.push({ target: id, outputDir: outputFor("package", id)!.outputDir });
         }
         if (stagingRoot === undefined) continue;
         phase = "staging";
-        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts, directories);
-        staged.push({ key: id, target: id, stagingDir, outputDir: outputByKey.get(id)!.outputDir });
+        const stagingDir = await writeArtifacts(stagingRoot, join("hooks", id), artifacts, directories);
+        staged.push({ key: id, target: id, stagingDir, outputDir: outputFor("hooks", id)!.outputDir });
         if (packageArtifacts !== undefined) {
-          const packageKey = packageOutputKey(id);
+          const packageOutput = outputFor("package", id)!;
           const packageStagingDir = await writeArtifacts(
             stagingRoot,
-            packageKey,
+            join("package", id),
             packageArtifacts,
             packageDirectories,
           );
           staged.push({
-            key: packageKey,
+            key: packageOutput.key,
             target: id,
             stagingDir: packageStagingDir,
-            outputDir: outputByKey.get(packageKey)!.outputDir,
+            outputDir: packageOutput.outputDir,
           });
         }
       } catch (error) {
