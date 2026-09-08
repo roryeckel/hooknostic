@@ -28,6 +28,17 @@ import type { TargetSpec } from "@hooknostic/core";
  *   install here -- it carries Claude-specific MCP rewrites and must not be
  *   reused for Codex.)
  *
+ * **Hooks cannot ride along, and not because Codex lacks the feature.** An
+ * installed plugin's hook does run on 0.153.2, but only from a native
+ * `.codex-plugin/plugin.json` `hooks` key -- and a valid root `plugin.json`
+ * outranks that manifest, so declaring both loads the package and silently
+ * ignores its hooks. There is no convention fall-back either: a portable
+ * package with a hooks document at `hooks.json` or `hooks/hooks.json` fires
+ * nothing (`.capture/codex-plugin-hooks`). Hence `deliversHooks: false` --
+ * a package is a package or a hook carrier, never both. A globally installed
+ * package therefore has no hooks at all, since `.codex/hooks.json` resolves
+ * against the session's project directory.
+ *
  * No client-extension namespace is declared. Agent Plugins 1.0 registers none,
  * and Codex consumes none: all 62 plugins in its bundled marketplace express
  * Codex-specific data as top-level fields of a native `.codex-plugin/plugin.json`
@@ -112,6 +123,13 @@ export const codexAgentPluginProjector = createNativeAgentPluginProjector<Target
             method: "live-probe",
             artifact: ".capture/codex-agent-plugin",
             what: "`codex plugin add` copies the plugin source directory wholesale: a junk directory and a stray README both landed in the install cache, which is why the filtered package is the value this projector adds.",
+          },
+          {
+            version: "0.153.2",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/codex-plugin-hooks",
+            what: "Plugin hooks run, but only from a native .codex-plugin/ manifest: a package declaring both manifests loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. Installation is user-level -- marketplace and plugin entries land in ~/.codex/config.toml and the skill is visible from unrelated directories.",
           },
         ],
         notes: [

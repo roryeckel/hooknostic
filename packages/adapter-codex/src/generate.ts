@@ -35,9 +35,13 @@ const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
 
 /**
  * Generate the Codex repo-level artifact ("local" mode): a `.codex/`
- * directory that is copied into the target repository root. Plugin-bundled
- * hooks (`mode: "plugin"`) are not generated because the `plugin_hooks`
- * feature is removed in the validated 0.148 range.
+ * directory that is copied into the target repository root.
+ *
+ * Plugin-bundled hooks are unimplemented, not impossible: an installed plugin's
+ * hook does run on 0.153.2, but only from a native `.codex-plugin/plugin.json`
+ * `hooks` key, which a portable Agent Plugins manifest displaces
+ * (`.capture/codex-plugin-hooks`). Emitting one would forfeit the portable
+ * manifest, so it is a separate artifact shape rather than a flag.
  *
  * Note: repo-level hooks only run for trusted projects, and Codex prompts
  * once per hook for hook trust — generation never touches trust state.
@@ -65,8 +69,9 @@ export function generateCodexArtifacts(
 ): GeneratedArtifact[] {
   if (target.mode === "plugin") {
     throw new Error(
-      `codex target mode "plugin" is unavailable for the validated range (${target.version}): ` +
-        `the plugin_hooks feature is removed in codex-cli 0.148; use mode: "local" (repo .codex directory).`,
+      `codex target mode "plugin" is not implemented for the validated range (${target.version}): ` +
+        `Codex loads plugin hooks only from a native .codex-plugin/plugin.json, which a portable ` +
+        `Agent Plugins manifest displaces; use mode: "local" (repo .codex directory).`,
     );
   }
 

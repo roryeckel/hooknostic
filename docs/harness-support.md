@@ -79,6 +79,7 @@ Projection validation records:
 | 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | $schema is required on both files: without it on plugin.json the install fails with `missing plugin.json`; without it on mcp.json the servers are silently not registered. |
 | 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | Manifest precedence: a valid root plugin.json was used over both .codex-plugin/plugin.json and .claude-plugin/plugin.json; a .claude-plugin/-only package still installs. |
 | 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | `codex plugin add` copies the plugin source directory wholesale: a junk directory and a stray README both landed in the install cache, which is why the filtered package is the value this projector adds. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Plugin hooks run, but only from a native .codex-plugin/ manifest: a package declaring both manifests loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. Installation is user-level -- marketplace and plugin entries land in ~/.codex/config.toml and the skill is visible from unrelated directories. |
 
 ### OpenCode
 

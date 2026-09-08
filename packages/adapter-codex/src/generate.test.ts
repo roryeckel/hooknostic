@@ -47,10 +47,14 @@ describe("generateCodexArtifacts", () => {
     });
   });
 
-  it("refuses plugin mode for the validated range (plugin_hooks removed)", () => {
+  // Codex does run an installed plugin's hooks, but only from a native
+  // .codex-plugin/ manifest that a portable one displaces
+  // (.capture/codex-plugin-hooks), so the refusal must not claim the feature
+  // is missing -- it is this adapter that does not emit that manifest.
+  it("refuses plugin mode as unimplemented, not as unsupported by the harness", () => {
     expect(() =>
       generateCodexArtifacts(exampleIR(), { ...TARGET, mode: "plugin" }, BUNDLE, OPTIONS),
-    ).toThrow(/plugin_hooks/);
+    ).toThrow(/not implemented.*\.codex-plugin\/plugin\.json/s);
   });
 
   it("passes its own artifact validation", async () => {

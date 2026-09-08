@@ -31,6 +31,33 @@ Only the Claude output is a *packaged* artifact. The Codex and OpenCode outputs
 are directory trees meant to be copied to a project root — their generated
 commands and loader paths are relative to the session's project directory.
 
+### Scope: packages are user-level, trees are per-project
+
+This is the first thing to settle when choosing between them, and it is a
+property of the harnesses, not of Hooknostic.
+
+**No harness installs a plugin per project.** `codex plugin add` writes
+`[marketplaces.*]` and `[plugins."<name>@<marketplace>"]` into
+`~/.codex/config.toml` and caches the package under `~/.codex/plugins/cache/`;
+its binary carries the string `repository-scoped plugin migration is not
+allowed`. Claude keeps plugin content in a user-level marketplace cache, where
+only *enablement* is settable per project. So anything a package ships — every
+skill, every MCP server — is offered in **every** session on that machine, and
+an installed skill is observable from an unrelated directory
+(`.capture/codex-plugin-hooks`).
+
+The repo-level trees are the opposite: `.codex/hooks.json` and
+`.opencode/plugins/` are read relative to the session's project directory and
+apply nowhere else.
+
+**A package may also be unnecessary for skills.** Codex discovers
+`.agents/skills/` and OpenCode discovers `.agents/skills/`, `.claude/skills/`,
+`.opencode/skill/` and `.opencode/skills/`, each project-scoped and with no
+install step. A project that already keeps skills in one of those directories
+gets them in those harnesses for free, and packaging buys distribution to other
+machines rather than local capability. Weigh that before adding a projection
+target — the package is for *shipping* a plugin, not for wiring up a repository.
+
 ## Claude Code
 
 `dist/claude` is a valid plugin directory (`claude plugin validate dist/claude`
@@ -304,8 +331,8 @@ and emitted byte-for-byte. That filtering is the whole point -- `codex plugin ad
 copies the plugin source directory wholesale, with no exclusion mechanism of its own,
 so pointing it at a working tree ships whatever else is in there.
 
-Codex loads hooks from the repository `.codex/` directory rather than from an installed
-plugin, so the two deliverables are separate and the target needs both directories:
+Codex loads hooks from the repository `.codex/` directory rather than from the installed
+package, so the two deliverables are separate and the target needs both directories:
 
 ```ts
 codex: {
@@ -331,6 +358,17 @@ the first, and silently registers no servers without the second), and a valid ro
 `plugin.json` outranks both `.codex-plugin/` and `.claude-plugin/`. Codex does read a
 `.claude-plugin/`-only package, so a Claude-projected output *appears* installable --
 do not do that; it carries Claude's MCP rewrites.
+
+**The package carries no hooks, and a global install therefore has none.** Codex
+does run an installed plugin's hooks, but only from a native
+`.codex-plugin/plugin.json` `hooks` key — which a valid root `plugin.json`
+outranks, so a package declaring both loads its skills and silently ignores its
+hooks, and there is no `hooks.json` convention fall-back
+(`.capture/codex-plugin-hooks`). A package is a package or a hook carrier, never
+both. Since `.codex/hooks.json` resolves against the session's project
+directory, hooks reach Codex only in a repository you control — shipping them to
+another machine would mean emitting a native manifest instead of a portable one,
+which is a different artifact, not a flag.
 
 Two components do not survive: an `sse` server does not register at all, and a
 `streamable-http` server registers with its declared headers dropped, because Codex

@@ -9,9 +9,13 @@ const NOTIFY_ACCEPTED_AND_DISCARDED =
 
 /**
  * Codex CLI capability data. Where docs and the binary disagreed, the binary
- * won (e.g. `plugin_hooks` is removed, and `permissionDecision` uses "ask",
- * not an escalate variant). Version facts live in `source.validatedOn`, not
- * prose.
+ * won (e.g. `permissionDecision` uses "ask", not an escalate variant). Version
+ * facts live in `source.validatedOn`, not prose.
+ *
+ * `plugin_hooks` was read as removed from the 0.148.0 binary. It is not gone on
+ * 0.153.2 -- an installed plugin's hook runs (`.capture/codex-plugin-hooks`) --
+ * so do not restate that; the reason hooks still cannot ship in a projected
+ * package is manifest precedence, recorded on the projector.
  */
 export const codexCapabilityProfiles: CapabilityProfile[] = [
   {
