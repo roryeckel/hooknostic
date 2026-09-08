@@ -14,9 +14,12 @@ Do not implement from vendor docs alone. All three existing adapters found
 doc drift only fixture capture (or binary/type inspection) revealed:
 
 - Claude Code docs said `user_prompt`; the wire field is `prompt`.
-- Codex docs describe plugin-bundled hooks; the installed CLI has
-  `plugin_hooks` **removed**, and the working repo-level config differs from
-  the documented one (PascalCase events, project trust, per-hook trust hashes).
+- Codex's working repo-level config differs from the documented one
+  (PascalCase events, project trust, per-hook trust hashes). Its plugin hooks
+  are the sharper lesson: read as **removed** from the 0.148.0 binary, they
+  demonstrably fire on 0.153.2 (`.capture/codex-plugin-hooks`), and a projector
+  was built on the wrong reading in between. A captured fact carries the version
+  it was captured at, and re-probing on a harness bump is part of the job.
 - OpenCode loads only `*.ts`/`*.js` plugins (a `.mjs` module is silently
   ignored) and honors **in-place** args mutation, not reassignment.
 
@@ -151,6 +154,65 @@ the command line, not escaped), so the naive fix prints a security deprecation
 over `doctor`'s output on every run. The helper takes the shell path with the
 whole line as the command and no args, and refuses any probe part that would
 need quoting.
+
+## 5c. Agent Plugin projector (optional)
+
+Only if the harness has a plugin format that can carry skills and MCP servers.
+Without one, omit `agentPluginProjector` — a target listed under
+`agentPlugin.targets` whose adapter has no projector is an HN205 error, so the
+capability is never silently assumed.
+
+A projector is `AgentPluginProjector` from `@hooknostic/agent-plugin`:
+`namespace`, `profiles`, and `project(source, context)` returning
+`{ files, directories?, issues, summary }`. Core stages `files` as the target's
+entire output.
+
+- **Emit the harness's format, not the portable one.** A harness that appears to
+  read Agent Plugins directly is the trap, not the shortcut: Codex installs a
+  root `plugin.json` and discovers its skills, but that manifest *outranks* the
+  native one, and Agent Plugins 1.0 defines no hook component — so a package
+  carrying both loads its skills and silently ignores every hook. Replace the
+  portable documents; never ship one beside its replacement
+  ([Decision 0011](decisions/0011-agent-plugin-native-projection.md)).
+- **Carry every hook artifact through.** The projection replaces the output, so
+  the projected package is also the hook channel. Core fails the target with
+  HN301 if any `context.hookArtifacts` path is missing from the plan. Contents
+  may be rewritten — Claude merges its own hooks document into the generated one
+  — but a path may not be dropped, because the result installs cleanly and runs
+  nothing.
+- **Check whatever else makes the hooks unreachable.** Path presence is all core
+  can verify; the rest is yours. A Codex target in `local` mode generates
+  `.codex/hooks.json` with a session-relative command, which satisfies the core
+  check and which the native manifest has no key for, so the projector rejects
+  that combination itself. Anchor generated commands the way an install cache
+  requires (`${PLUGIN_ROOT}` for Codex; a relative path resolves against the
+  session cwd and finds nothing).
+- **`namespace` only if the harness reads one.** Set it to the reverse-DNS
+  client-extension namespace the harness actually consumes, and to `""`
+  otherwise. Inventing one makes `agent-plugin.client-extension.files`
+  discoverable against something nothing reads, and the build then reports the
+  component as projected.
+- **`unsupported` means the component must not reach the harness**, not merely
+  that it will be ignored. Codex picks an MCP transport from `command` vs `url`
+  and ignores the portable `type`, so a passed-through `sse` server becomes a
+  `streamable_http` connection to the same url — a wrong-protocol connection is
+  worse than an absent component. Drop it, record an omission, and raise an
+  issue at `context.onUnsupported` so `warn` policy still builds.
+- **Read support from `context.support`, never re-derive it.** Core resolves
+  your own `profiles` against the target range and hands them back, so a
+  projector cannot disagree with the matrix the build reports and
+  `onUnsupported` acts on.
+- **`summary.copiedPaths` lists byte-for-byte copies only.** Everything else in
+  the plan is treated as generated — that is how core separates the two without
+  knowing your path layout, and it drives `artifacts` in the build report.
+
+Profiles are versioned data with rationale, exactly like the capability matrix,
+and `scripts/generate-harness-support.mjs` renders them into
+`docs/harness-support.md`; regenerate it when they change. Probe the package
+format the way §1 says to probe the hook wire — the shipped projectors' levels
+come from real installs (`.capture/claude-marketplace-deps`,
+`.capture/codex-plugin-hooks`, `.capture/opencode-agent-plugin`), and the one
+that does not says so in its rationale rather than guessing a level.
 
 ## 6. Tests
 

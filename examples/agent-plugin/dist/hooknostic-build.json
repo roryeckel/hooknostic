@@ -66,9 +66,54 @@
         "approximate": 0,
         "unsupported": 0
       },
+      "projection": {
+        "status": "success",
+        "contentDigest": "sha256:b92d91766da93ba498836a211049681cfe02996db2e74a213a1d2375e0e8d71d",
+        "copiedFileCount": 5,
+        "directories": [
+          "runtime",
+          "skills",
+          "skills/greet",
+          "src"
+        ],
+        "components": {
+          "agent-plugin.manifest": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.skills": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.mcp.stdio": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.runtime-package": {
+            "support": "unsupported",
+            "discovered": 1,
+            "emitted": 0,
+            "skipped": 1
+          }
+        },
+        "omissions": [
+          {
+            "component": "agent-plugin.runtime-package",
+            "reason": "Codex is not known to install a plugin's npm dependencies"
+          }
+        ]
+      },
       "artifacts": [
-        ".codex/hooks.json",
-        ".codex/hooknostic/hooknostic.mjs"
+        ".codex-plugin/plugin.json",
+        ".mcp.json",
+        "hooknostic/hooknostic.mjs",
+        "hooks.json"
       ]
     },
     "opencode": {
@@ -82,17 +127,76 @@
         "approximate": 0,
         "unsupported": 0
       },
+      "projection": {
+        "status": "success",
+        "contentDigest": "sha256:a089db3a88490e8f4be59b0baca91bce87c6602af70fdb9cc16aa391ee4b8fee",
+        "copiedFileCount": 1,
+        "components": {
+          "agent-plugin.manifest": {
+            "support": "emulated",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.skills": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.mcp.stdio": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.runtime-package": {
+            "support": "unsupported",
+            "discovered": 1,
+            "emitted": 0,
+            "skipped": 1
+          }
+        },
+        "omissions": [
+          {
+            "component": "agent-plugin.runtime-package",
+            "reason": "a project plugin is loaded from disk, so nothing installs its npm dependencies"
+          }
+        ]
+      },
       "artifacts": [
+        ".opencode/plugins/hooknostic-agent-plugin.js",
         ".opencode/plugins/hooknostic.js"
       ]
     }
   },
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "code": "HN205",
+      "severity": "warn",
+      "target": "codex",
+      "component": "agent-plugin.runtime-package",
+      "support": "unsupported",
+      "rationale": "Not probed. Codex's installer was only observed copying package content; whether it runs a locked npm install like Claude's marketplace is unestablished.",
+      "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"codex\"."
+    },
+    {
+      "code": "HN205",
+      "severity": "warn",
+      "target": "opencode",
+      "component": "agent-plugin.runtime-package",
+      "support": "unsupported",
+      "rationale": "A project plugin is loaded from disk with no install step, so a declared npm manifest and lockfile have nothing to install them.",
+      "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"opencode\"."
+    }
+  ],
   "agentPlugin": {
     "root": ".",
     "specVersion": "1.0.0",
     "targets": [
-      "claude"
+      "claude",
+      "codex",
+      "opencode"
     ],
     "sourceFileCount": 7,
     "sourceFiles": [

@@ -1,0 +1,8 @@
+{
+  "name": "combined-example",
+  "version": "1.0.0",
+  "description": "Agent Plugins package with a skill, MCP server, and hooknostic-compiled lifecycle hooks",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks.json"
+}

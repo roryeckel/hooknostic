@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .codex/hooknostic/hooknostic.mjs",
+            "command": "node ${PLUGIN_ROOT}/hooknostic/hooknostic.mjs",
             "timeout": 6
           }
         ]

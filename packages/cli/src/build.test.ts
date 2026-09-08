@@ -505,7 +505,7 @@ ${run.stderr}`).toBe(0);
   );
 
   it(
-    "projects an Agent Plugin into Claude without modifying the source package",
+    "projects one Agent Plugin into three native plugins without modifying the source",
     { timeout: 120_000 },
     async () => {
       const dir = await cleanExample("agent-plugin");
@@ -521,8 +521,10 @@ ${run.stderr}`).toBe(0);
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.agentPlugin.targets).toEqual(["claude"]);
-      expect(report.targets.claude.projection).toMatchObject({ status: "success" });
+      expect(report.agentPlugin.targets).toEqual(["claude", "codex", "opencode"]);
+      for (const id of ["claude", "codex", "opencode"]) {
+        expect(report.targets[id].projection, id).toMatchObject({ status: "success" });
+      }
 
       // `artifacts` lists what the build generated, not what it copied, and the
       // split comes from the projector's own `copiedPaths` rather than from any
@@ -575,6 +577,29 @@ ${run.stderr}`).toBe(0);
           "Agent Plugins package with a skill, MCP server, and hooknostic-compiled lifecycle hooks",
         license: "MIT",
       });
+
+      // Every harness gets all three components in one installable unit; the
+      // Codex manifest naming its hooks is what a local-mode target would
+      // silently omit.
+      const codexManifest = JSON.parse(
+        await readFile(join(dir, "dist/codex/.codex-plugin/plugin.json"), "utf8"),
+      );
+      expect(codexManifest).toMatchObject({
+        skills: "./skills/",
+        mcpServers: "./.mcp.json",
+        hooks: "./hooks.json",
+      });
+      expect(existsSync(join(dir, "dist/codex/skills/greet/SKILL.md"))).toBe(true);
+      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/skills/greet/SKILL.md"))).toBe(true);
+      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
+
+      // `runtimePackage` is a Claude-only component, which is why the example
+      // sets onUnsupported: "warn" -- the other two record the omission.
+      for (const id of ["codex", "opencode"]) {
+        expect(report.targets[id].projection.omissions, id).toContainEqual(
+          expect.objectContaining({ component: "agent-plugin.runtime-package" }),
+        );
+      }
     },
   );
 
@@ -866,6 +891,54 @@ ${run.stderr}`).toBe(0);
       "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.mcp.sse": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
     });
+  });
+
+  it("refuses to project a Codex plugin from a local-mode target", async () => {
+    // `local` mode emits .codex/hooks.json with a session-relative command. The
+    // native manifest has no key for it, so the projection would install skills
+    // and MCP that work beside hooks that silently never run -- and every other
+    // check passes, because the artifacts are present and valid, just unread.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-localmode-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "codex-local", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "codex-local", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["codex"] },
+        targets: {
+          codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" },
+        },
+      };`,
+    );
+    const json = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: json.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      json.out(),
+    ).toBe(1);
+    const report = JSON.parse(json.out());
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        target: "codex",
+        message: expect.stringContaining('requires mode: "plugin"'),
+      }),
+    );
+    expect(existsSync(join(dir, "dist/codex"))).toBe(false);
   });
 
   it("projects a Codex plugin carrying skills, MCP and hooks in one output", async () => {

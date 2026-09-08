@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "greeter": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/src/greet-mcp.mjs"
+      ]
+    }
+  }
+}

@@ -185,6 +185,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const files: AgentPluginProjectionFile[] = [];
     const copiedPaths: string[] = [];
 
+    // A projection replaces `output` wholesale, so `local` mode cannot also be
+    // served from it -- and the hooks that mode generates land at
+    // .codex/hooks.json with a session-relative command, which the native
+    // manifest has no key for and an installed plugin would never run. Without
+    // this the build reports success and ships a plugin whose skills and MCP
+    // work and whose hooks silently do not.
+    if (context.target.mode !== "plugin") {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        message: `codex target ${JSON.stringify(context.target.id)} is projected into an Agent Plugin, which requires mode: "plugin"; mode ${JSON.stringify(context.target.mode)} generates repository-level hooks the plugin manifest cannot reference.`,
+      });
+    }
+
     for (const file of source.files) {
       // Both portable documents are replaced by native ones at other paths.
       // Shipping either beside its replacement is what suppresses hooks.
