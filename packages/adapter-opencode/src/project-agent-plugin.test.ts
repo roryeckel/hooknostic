@@ -20,6 +20,7 @@ const file = (path: string): AgentPluginFile => ({
 function source(
   servers: Record<string, AgentPluginMcpServer> = {},
   files: string[] = [],
+  directories?: string[],
 ): AgentPluginPackage {
   return {
     specVersion: "1.0.0",
@@ -42,6 +43,7 @@ function source(
       file("skills/review/SKILL.md"),
       ...files.map(file),
     ],
+    ...(directories === undefined ? {} : { directories }),
     contentDigest: "sha256:source",
   };
 }
@@ -81,9 +83,11 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(paths).toContain(".opencode/plugins/package/src/server.mjs");
     expect(paths).toContain(".opencode/plugins/package/assets/data.json");
     expect(paths).toContain(".opencode/plugins/package/skills/review/SKILL.md");
-    // Replaced by the generated module, so shipping them would be dead weight.
-    expect(paths).not.toContain(".opencode/plugins/package/plugin.json");
-    expect(paths).not.toContain(".opencode/plugins/package/mcp.json");
+    // The portable documents ship too. Codex drops them because a root
+    // plugin.json outranks its native manifest; nested here they outrank
+    // nothing, and a server may name one with ${PLUGIN_ROOT}.
+    expect(paths).toContain(".opencode/plugins/package/plugin.json");
+    expect(paths).toContain(".opencode/plugins/package/mcp.json");
   });
 
   it("nests package content below the flat plugin scan", async () => {
@@ -132,6 +136,34 @@ describe("Agent Plugin to OpenCode projection", () => {
     });
   });
 
+  // Staging creates parents for emitted files only, so a directory carrying no
+  // files -- a server's cwd, typically -- has to be named in the plan or it
+  // never reaches the output and the server cannot start.
+  it("carries an empty package directory into the nested package", async () => {
+    const plan = await project(
+      source(
+        { worker: { type: "stdio", command: "node", cwd: "./worker" } },
+        [],
+        ["worker"],
+      ),
+    );
+    expect(plan.directories).toContain(".opencode/plugins/package/worker");
+  });
+
+  it("refuses a package that already contains the substitution marker", async () => {
+    const plan = await project(
+      source({
+        odd: { type: "stdio", command: "node", args: ["__HOOKNOSTIC_PLUGIN_ROOT__/x"] },
+      }),
+    );
+    // Substitution is textual, so this value would be rewritten into an install
+    // path the package never asked for.
+    expect(Object.keys(embeddedServers(plan))).toEqual([]);
+    expect(plan.summary.omissions).toContainEqual(
+      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "odd" }),
+    );
+  });
+
   it("leaves remote fields and unrecognized placeholders literal", async () => {
     const plan = await project(
       source({
@@ -151,6 +183,9 @@ describe("Agent Plugin to OpenCode projection", () => {
       headers: { Authorization: "Bearer ${TOKEN}" },
     });
     expect(injector(plan)).not.toContain("process.env");
+    // Substitution is confined to a local server's argv, cwd and environment;
+    // a remote server is returned untouched rather than walked.
+    expect(injector(plan)).toContain('server.type !== "local"');
   });
 
   it("omits a server whose paths need ${PLUGIN_DATA}", async () => {

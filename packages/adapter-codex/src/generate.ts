@@ -90,8 +90,14 @@ export function generateCodexArtifacts(
   }
   const hooksPath = bundled ? CODEX_PLUGIN_HOOKS_PATH : ".codex/hooks.json";
   const runtimePath = bundled ? CODEX_PLUGIN_RUNTIME_PATH : RUNTIME_PATH;
+  // Quoted because ${PLUGIN_ROOT} expands to an absolute install path, and a
+  // Windows home directory routinely contains a space -- unquoted, the command
+  // splits and every hook fails to start. Codex parses this string with quoting
+  // honoured, and does NOT accept Claude's exec form: of three spellings on one
+  // event, `command` + `args` was the one that failed, while the quoted and bare
+  // strings both ran (.capture/codex-hook-command).
   const command = bundled
-    ? `node \${PLUGIN_ROOT}/${runtimePath}`
+    ? `node "\${PLUGIN_ROOT}/${runtimePath}"`
     : `node ${runtimePath}`;
 
   const byNativeEvent = hooksByNativeEvent(

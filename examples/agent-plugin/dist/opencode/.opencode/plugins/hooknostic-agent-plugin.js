@@ -10,12 +10,12 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// Only the install directory is substituted, and only here: it is not known
-// at build time. Nothing else is expanded. Agent Plugins 1.0 defines exactly
-// two placeholders and requires unrecognized placeholder-like text to stay
-// literal, so a ${TOKEN} in a header is a literal value the package chose --
-// resolving it from the environment would send a host secret to a
-// package-chosen endpoint.
+// Only the install directory is substituted, and only in the fields the
+// specification expands: a local server's argv, cwd and environment values.
+// A remote server is passed through untouched, because a client MUST NOT
+// expand in url or headers, and unrecognized placeholder-like text MUST stay
+// literal -- resolving a ${TOKEN} here would put a host value in a
+// package-chosen destination.
 //
 // The walk is structural. A JSON round-trip would corrupt a Windows plugin
 // root, whose backslashes are not valid JSON escapes.
@@ -24,14 +24,22 @@ import { dirname, join } from "node:path";
 // directory, not this module's, is what ${PLUGIN_ROOT} means.
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");
 const MARKER = "__HOOKNOSTIC_PLUGIN_ROOT__";
-const resolve = (value) =>
-  typeof value === "string"
-    ? value.split(MARKER).join(pluginRoot)
-    : Array.isArray(value)
-      ? value.map(resolve)
-      : value !== null && typeof value === "object"
-        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v)]))
-        : value;
+const resolveText = (text) => text.split(MARKER).join(pluginRoot);
+const resolve = (server) =>
+  server.type !== "local"
+    ? server
+    : {
+        ...server,
+        command: server.command.map(resolveText),
+        cwd: resolveText(server.cwd),
+        ...(server.environment === undefined
+          ? {}
+          : {
+              environment: Object.fromEntries(
+                Object.entries(server.environment).map(([k, v]) => [k, resolveText(v)]),
+              ),
+            }),
+      };
 
 // Parsed, not written as an object literal: a server named __proto__ is a
 // literal key that sets the prototype, and the server would vanish.

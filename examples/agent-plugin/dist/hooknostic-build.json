@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:ade8bdd018a37a20383b0d5eed8f22ab2fc4481af4e20d5557f6ac0e06b0e08e",
+        "contentDigest": "sha256:a74f63fa661ae149d188f16e6f3366775c663c7804323bd78c8499ef6f4dc832",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -129,8 +129,14 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:f26405a5e62b5c0a8d2405f035b753a583acfb55570d83182ad5c49947e496e4",
-        "copiedFileCount": 5,
+        "contentDigest": "sha256:88923c5106a6458cb6952694d53bd408f5889d958df7e3bca17b7f58b8194f57",
+        "copiedFileCount": 7,
+        "directories": [
+          ".opencode/plugins/package/runtime",
+          ".opencode/plugins/package/skills",
+          ".opencode/plugins/package/skills/greet",
+          ".opencode/plugins/package/src"
+        ],
         "components": {
           "agent-plugin.manifest": {
             "support": "emulated",

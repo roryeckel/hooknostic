@@ -83,6 +83,7 @@ Projection validation records:
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | A declared cwd is joined to the plugin root without being expanded first, so a relative one anchors correctly (`.` reached the plugin root, `worker` reached a directory inside it) while ${PLUGIN_ROOT}/worker produced a path containing the literal placeholder. |
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | A native manifest carrying author, license, homepage and keywords installed normally and resolved its version from the manifest, so those fields are carried through rather than dropped. |
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | The declared cwd is honoured at spawn, not merely recorded: in a session a server declaring cwd "." started with process.cwd() equal to the installed plugin root and resolved its relative argument against it, while an identical server declaring no cwd never started. PLUGIN_ROOT and PLUGIN_DATA were unset in the spawned process. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-hook-command` | A hook command is parsed with quoting honoured and does NOT accept Claude's exec form: of three spellings on one event, command + args failed while the quoted and bare strings both ran, so the substituted plugin-root path is quoted. |
 
 ### OpenCode
 

@@ -1045,7 +1045,7 @@ ${run.stderr}`).toBe(0);
     const commands = Object.values(
       hooks.hooks as Record<string, { hooks: { command: string }[] }[]>,
     ).flatMap((groups) => groups.flatMap((group) => group.hooks.map((entry) => entry.command)));
-    expect(commands).toEqual(["node ${PLUGIN_ROOT}/hooknostic/hooknostic.mjs"]);
+    expect(commands).toEqual(['node "${PLUGIN_ROOT}/hooknostic/hooknostic.mjs"']);
     expect(existsSync(join(dir, "dist/codex/hooknostic/hooknostic.mjs"))).toBe(true);
 
     const report = JSON.parse(json.out());

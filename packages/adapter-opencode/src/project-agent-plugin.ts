@@ -30,7 +30,6 @@ const INJECTOR_PATH = `${PLUGIN_DIR}/hooknostic-agent-plugin.js`;
  * contain -- an MCP component reported emitted and exact that cannot start.
  */
 const PACKAGE_DIR = `${PLUGIN_DIR}/package`;
-const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
 
 /**
@@ -93,6 +92,17 @@ function translateMcp(source: AgentPluginPackage): {
     }
     const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
     if (server.cwd !== undefined) values.push(server.cwd);
+    if (values.some((value) => value.includes(RUNTIME_PLUGIN_ROOT))) {
+      // The marker is substituted textually at load time, so a package that
+      // already contains it would have its own literal text rewritten into an
+      // install path. Refusing is better than silently altering a value the
+      // package meant literally.
+      omitted.push({
+        name,
+        reason: `a value contains the reserved marker ${RUNTIME_PLUGIN_ROOT}, which the generated module substitutes`,
+      });
+      continue;
+    }
     if (values.some(containsPluginData)) {
       omitted.push({
         name,
@@ -160,12 +170,12 @@ function injectorSource(
     'import { fileURLToPath } from "node:url";',
     'import { dirname, join } from "node:path";',
     "",
-    "// Only the install directory is substituted, and only here: it is not known",
-    "// at build time. Nothing else is expanded. Agent Plugins 1.0 defines exactly",
-    "// two placeholders and requires unrecognized placeholder-like text to stay",
-    "// literal, so a ${TOKEN} in a header is a literal value the package chose --",
-    "// resolving it from the environment would send a host secret to a",
-    "// package-chosen endpoint.",
+    "// Only the install directory is substituted, and only in the fields the",
+    "// specification expands: a local server's argv, cwd and environment values.",
+    "// A remote server is passed through untouched, because a client MUST NOT",
+    "// expand in url or headers, and unrecognized placeholder-like text MUST stay",
+    "// literal -- resolving a ${TOKEN} here would put a host value in a",
+    "// package-chosen destination.",
     "//",
     "// The walk is structural. A JSON round-trip would corrupt a Windows plugin",
     "// root, whose backslashes are not valid JSON escapes.",
@@ -174,14 +184,22 @@ function injectorSource(
     "// directory, not this module's, is what ${PLUGIN_ROOT} means.",
     'const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");',
     `const MARKER = ${JSON.stringify(RUNTIME_PLUGIN_ROOT)};`,
-    "const resolve = (value) =>",
-    '  typeof value === "string"',
-    "    ? value.split(MARKER).join(pluginRoot)",
-    "    : Array.isArray(value)",
-    "      ? value.map(resolve)",
-    '      : value !== null && typeof value === "object"',
-    "        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v)]))",
-    "        : value;",
+    "const resolveText = (text) => text.split(MARKER).join(pluginRoot);",
+    "const resolve = (server) =>",
+    '  server.type !== "local"',
+    "    ? server",
+    "    : {",
+    "        ...server,",
+    "        command: server.command.map(resolveText),",
+    "        cwd: resolveText(server.cwd),",
+    "        ...(server.environment === undefined",
+    "          ? {}",
+    "          : {",
+    "              environment: Object.fromEntries(",
+    "                Object.entries(server.environment).map(([k, v]) => [k, resolveText(v)]),",
+    "              ),",
+    "            }),",
+    "      };",
     "",
     "// Parsed, not written as an object literal: a server named __proto__ is a",
     "// literal key that sets the prototype, and the server would vanish.",
@@ -340,16 +358,20 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const files: AgentPluginProjectionFile[] = [];
     const copiedPaths: string[] = [];
 
+    // The whole package, one level down: everything ${PLUGIN_ROOT} could name
+    // has to be there, and unlike Codex there is nothing to exclude -- a nested
+    // plugin.json outranks nothing, because OpenCode reads no manifest here.
     for (const file of source.files) {
-      // The whole package, one level down. The two portable documents are
-      // replaced by the generated module, and everything else -- skills, MCP
-      // server implementations, their assets -- is what ${PLUGIN_ROOT} resolves
-      // against at load time.
-      if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
       const path = `${PACKAGE_DIR}/${file.path}`;
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
     }
+    // Staging creates parents for emitted files only, so a directory with no
+    // files in it -- a server's `cwd`, say -- exists in the package and not in
+    // the output unless it is named here.
+    const directories = (source.directories ?? []).map(
+      (directory) => `${PACKAGE_DIR}/${directory}`,
+    );
 
     const { servers, omitted } = translateMcp(source);
     for (const { name, reason } of omitted) {
@@ -406,6 +428,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     return {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
+      ...(directories.length === 0 ? {} : { directories }),
       issues,
       summary: {
         components: counts,

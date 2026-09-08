@@ -352,3 +352,35 @@ own rules, shared by both projectors in `@hooknostic/agent-plugin`.
   profile that declines every component with that reason attached, so `inspect`
   answers for them rather than failing and a range spanning the boundary
   resolves to the declining side.
+
+## Amendments — 2026-09-08 (eighth)
+
+A third review round: four findings, one of them inside the previous round's
+work. The count is falling (seven, six, four) and the remaining defects are
+runtime-shape rather than contract-shape.
+
+- **A substituted absolute path needs quoting, and the sibling harness's answer
+  does not transfer.** `${PLUGIN_ROOT}` expands into a path under the user's home
+  directory, which on Windows routinely contains a space, so the unquoted command
+  splits and no hook starts. Claude sidesteps this with the exec form
+  (`command` + `args`), and the August baseline recommends that form -- but that
+  entry is in the Claude section. Probing three spellings on one event
+  (`.capture/codex-hook-command`) showed Codex FAILS the exec form and honours
+  quoting, so the command is quoted instead. Recording which harness a baseline
+  fact belongs to is the recurring lesson of this ADR.
+- **A projection ships directories, not only files.** Staging creates parents for
+  emitted files, so a package directory carrying none -- a server's `cwd`, the
+  case the Claude projection already had a test for -- existed in the package and
+  not in the output. The OpenCode plan now carries `directories` as Codex's
+  already did.
+- **An exclusion is only justified by the harness that needs it.** OpenCode
+  dropped `plugin.json` and `mcp.json` from the copied package, a rule inherited
+  from Codex, where a root manifest outranks the native one. Nested under
+  `package/` they outrank nothing, and a server may name one with
+  `${PLUGIN_ROOT}`, so they ship.
+- **Textual substitution has to be scoped and guarded.** The generated module
+  walked every field of every server, so the marker was replaced in remote urls
+  and headers too -- fields the specification requires to stay literal -- and a
+  package whose own text contained the marker would have been rewritten.
+  Substitution is now confined to a local server's argv, cwd and environment,
+  and a package already containing the marker is declined rather than altered.

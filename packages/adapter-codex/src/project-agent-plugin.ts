@@ -304,6 +304,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/codex-native-mcp",
             what: "The declared cwd is honoured at spawn, not merely recorded: in a session a server declaring cwd \".\" started with process.cwd() equal to the installed plugin root and resolved its relative argument against it, while an identical server declaring no cwd never started. PLUGIN_ROOT and PLUGIN_DATA were unset in the spawned process.",
           },
+          {
+            version: "0.153.2",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/codex-hook-command",
+            what: "A hook command is parsed with quoting honoured and does NOT accept Claude's exec form: of three spellings on one event, command + args failed while the quoted and bare strings both ran, so the substituted plugin-root path is quoted.",
+          },
         ],
         notes: [
           "Marketplace roots expose plugins through <root>/.agents/plugins/marketplace.json.",

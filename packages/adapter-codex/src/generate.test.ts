@@ -73,7 +73,9 @@ describe("generateCodexArtifacts", () => {
       .flatMap((groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)));
     expect(commands.length).toBeGreaterThan(0);
     for (const command of commands) {
-      expect(command).toBe("node ${PLUGIN_ROOT}/hooknostic/hooknostic.mjs");
+      // Quoted: ${PLUGIN_ROOT} expands to an absolute install path, and a
+      // Windows home directory routinely contains a space.
+      expect(command).toBe('node "${PLUGIN_ROOT}/hooknostic/hooknostic.mjs"');
     }
   });
 
