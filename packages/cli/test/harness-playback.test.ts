@@ -1199,6 +1199,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           output: ".",
         },
         hookArtifacts,
+        support: claudeAgentPluginProjector.profiles[0]!.components,
         onUnsupported: "error",
       });
       expect(plan.issues).toEqual([]);

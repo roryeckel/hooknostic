@@ -298,6 +298,48 @@ translated `.mcp.json`, any Claude-specific overlay, and optional Hooknostic hoo
 Install or reference that output exactly like any other Claude plugin. No generated
 files are written beside the portable source components.
 
-Codex and OpenCode package projection are not yet implemented. Their Hooknostic outputs
-contain only their local hook integrations. See
+Codex reads Agent Plugins 1.0 directly, so its projection translates nothing: the
+configured `packageOutput` is the portable package, filtered by `agentPlugin.exclude`
+and emitted byte-for-byte. That filtering is the whole point -- `codex plugin add`
+copies the plugin source directory wholesale, with no exclusion mechanism of its own,
+so pointing it at a working tree ships whatever else is in there.
+
+Codex loads hooks from the repository `.codex/` directory rather than from an installed
+plugin, so the two deliverables are separate and the target needs both directories:
+
+```ts
+codex: {
+  version: ">=0.148 <1",
+  mode: "local",
+  output: "./dist/codex",              // .codex/hooks.json + the runtime
+  packageOutput: "./dist/codex-package", // the installable Agent Plugin
+},
+```
+
+The pairing is required, not defaulted: a target that installs a package but does not
+load hooks from it must set `packageOutput`, and a target that does load hooks from its
+package (Claude) must not. Getting it wrong is an HN204 error naming which way to fix
+it. Without the split, the generated hook artifact would ship *inside* the installed
+package -- unreadable there, and out of reach of `agentPlugin.exclude`, which filters
+source files rather than generated ones.
+
+Install the package from a marketplace whose `.agents/plugins/marketplace.json` points
+at `packageOutput`, then `codex plugin add`. Two Codex-specific rules the loader already
+satisfies but a hand-edited package can break: `$schema` is required on both
+`plugin.json` and `mcp.json` (Codex fails the install with `missing plugin.json` without
+the first, and silently registers no servers without the second), and a valid root
+`plugin.json` outranks both `.codex-plugin/` and `.claude-plugin/`. Codex does read a
+`.claude-plugin/`-only package, so a Claude-projected output *appears* installable --
+do not do that; it carries Claude's MCP rewrites.
+
+Two components do not survive: an `sse` server does not register at all, and a
+`streamable-http` server registers with its declared headers dropped, because Codex
+models remote auth as `bearer_token_env_var`. Both are reported per component in
+`hooknostic-build.json`; the unsupported one is also a build failure unless
+`agentPlugin.onUnsupported` is `"warn"`. The bytes still ship either way -- the package
+is a verbatim copy -- so the server starts working if Codex gains support, without a
+rebuild.
+
+OpenCode package projection is not yet implemented; its Hooknostic output contains only
+the local hook integration. See
 [ADR-0011](decisions/0011-agent-plugin-native-projection.md).

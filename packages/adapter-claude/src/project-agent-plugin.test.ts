@@ -9,9 +9,9 @@ import {
   type AgentPluginFile,
   type AgentPluginPackage,
 } from "@hooknostic/agent-plugin";
-import { diagnosticsFromAgentPluginIssues } from "@hooknostic/core";
+import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
 import { claudeAdapter } from "./index.js";
-import { projectAgentPluginToClaude } from "./project-agent-plugin.js";
+import { claudeAgentPluginProjector, projectAgentPluginToClaude } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
 const file = (path: string, contents: string | Uint8Array, mode = 0o644): AgentPluginFile => ({
@@ -45,6 +45,9 @@ function source(files: AgentPluginFile[] = []): AgentPluginPackage {
 }
 
 const target = { id: "claude", version: ">=2.1 <3", mode: "plugin" as const, output: "dist" };
+// Resolved from the projector's own profiles rather than restated, so a
+// component these tests treat as projectable cannot drift from the matrix.
+const support = resolveAgentPluginProjection(target, claudeAgentPluginProjector).matrix!;
 
 function parsed(plan: Awaited<ReturnType<typeof projectAgentPluginToClaude>>, path: string) {
   const artifact = plan.files.find((candidate) => candidate.path === path)!;
@@ -58,7 +61,7 @@ describe("Agent Plugin to Claude projection", () => {
     const plan = await projectAgentPluginToClaude(source([
       file("com.anthropic.claude-code/hooks/hooks.json", JSON.stringify({ hooks: { Notification: notification } })),
     ]), {
-      target, onUnsupported: "error",
+      target, support, onUnsupported: "error",
       hookArtifacts: [file("hooks/hooks.json", JSON.stringify({ hooks: { PreToolUse: generated } }))],
     });
     expect(plan.issues).toEqual([]);
@@ -84,7 +87,7 @@ describe("Agent Plugin to Claude projection", () => {
   ])("anchors portable MCP cwd %s", async (cwd, expected) => {
     const portable = source();
     portable.mcp!.mcpServers = { worker: { type: "stdio", command: "node", ...(cwd === undefined ? {} : { cwd }) } };
-    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported: "error" });
+    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, ".mcp.json").mcpServers.worker).toMatchObject({
       command: "node", cwd: expected,
@@ -105,7 +108,7 @@ describe("Agent Plugin to Claude projection", () => {
         args: ["-e", "console.log(JSON.stringify({cwd:process.cwd(),arg:process.argv[1],env:process.env.PROBE}));process.exit(7)", "literal $value with spaces"],
         env: { PROBE: "preserved" },
       } };
-      const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported: "error" });
+      const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
       expect(plan.issues).toEqual([]);
       for (const artifact of plan.files) {
         await mkdir(join(pluginDir, artifact.path, ".."), { recursive: true });
@@ -125,7 +128,7 @@ describe("Agent Plugin to Claude projection", () => {
 
   it("rejects package content at the generated MCP launcher path", async () => {
     const plan = await projectAgentPluginToClaude(source([file("runtime/mcp-launcher.mjs", "untrusted")]), {
-      target, hookArtifacts: [], onUnsupported: "error",
+      target, hookArtifacts: [], support, onUnsupported: "error",
     });
     expect(plan.issues).toEqual([expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") })]);
   });
@@ -144,7 +147,7 @@ describe("Agent Plugin to Claude projection", () => {
         const args = ["", "with spaces", 'a"quote', "trailing\\", "%PATH%", "!literal!", "a&b|c<d>e^f(g)"];
         const portable = source();
         portable.mcp!.mcpServers = { worker: { type: "stdio", command, args } };
-        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported: "error" });
+        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
         expect(plan.issues).toEqual([]);
         const launcher = plan.files.find((item) => item.path === "runtime/mcp-launcher.mjs")!;
         const launcherPath = join(dir, "launcher.mjs");
@@ -168,7 +171,7 @@ describe("Agent Plugin to Claude projection", () => {
     const plan = await projectAgentPluginToClaude(source([file("bin/server", Uint8Array.from([0, 255]), 0o755)]), {
       target,
       hookArtifacts: [],
-      onUnsupported: "error",
+      support, onUnsupported: "error",
     });
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({
@@ -208,7 +211,7 @@ describe("Agent Plugin to Claude projection", () => {
     portable.manifest.extensions = { [namespace]: { name: "also-wrong", manifestOnly: true } };
     const plan = await projectAgentPluginToClaude(
       portable,
-      { target, hookArtifacts: [], onUnsupported: "error" },
+      { target, hookArtifacts: [], support, onUnsupported: "error" },
     );
     expect(new TextDecoder().decode(plan.files.find((item) => item.path === "README.md")!.contents as Uint8Array)).toBe("overlay");
     expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({
@@ -228,7 +231,7 @@ describe("Agent Plugin to Claude projection", () => {
     portable.manifest.extensions = { [namespace]: { manifestOnly: true } };
     const plan = await projectAgentPluginToClaude(
       portable,
-      { target, hookArtifacts: [], onUnsupported: "error" },
+      { target, hookArtifacts: [], support, onUnsupported: "error" },
     );
     expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({ manifestOnly: true });
     expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
@@ -246,7 +249,7 @@ describe("Agent Plugin to Claude projection", () => {
       // Portable identity wins even when the native overlay supplies a name.
       portable.manifest.extensions = { "com.anthropic.claude-code": { author: { name: "Overlay" } } };
       for (const onUnsupported of ["error", "warn"] as const) {
-        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported });
+        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported });
         expect(plan.issues).toEqual([expect.objectContaining({
           severity: onUnsupported,
           component: "agent-plugin.manifest",
@@ -266,7 +269,7 @@ describe("Agent Plugin to Claude projection", () => {
     delete portable.mcp;
     // The native validator accepts whitespace; the requirement is length, not trimming.
     portable.manifest.author = { name: " ", email: "maintainer@example.com" };
-    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], onUnsupported: "error" });
+    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, ".claude-plugin/plugin.json").author).toEqual(portable.manifest.author);
     expect(plan.summary.omissions).toEqual([]);
@@ -278,7 +281,7 @@ describe("Agent Plugin to Claude projection", () => {
         file("package.json", JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
         file("package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: {} })),
       ]),
-      { target, hookArtifacts: [], onUnsupported: "error" },
+      { target, hookArtifacts: [], support, onUnsupported: "error" },
     );
     const paths = plan.files.map((item) => item.path);
     expect(paths).not.toContain("package.json");
@@ -295,7 +298,7 @@ describe("Agent Plugin to Claude projection", () => {
             file("runtime.package.json", JSON.stringify({ dependencies: {} })),
             file("runtime.package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: {} } } })),
           ]), {
-            target, hookArtifacts: [], onUnsupported,
+            target, hookArtifacts: [], support, onUnsupported,
             runtimePackage: { manifest: "runtime.package.json", lockfile: "runtime.package-lock.json" },
           });
           expect(plan.files.map((item) => item.path)).not.toContain(name);
@@ -319,7 +322,7 @@ describe("Agent Plugin to Claude projection", () => {
         file(`${namespace}/package-lock.json`, "lockfileVersion: '9.0'\nimporters:\n  .: {}\n"),
         file(`${namespace}/README.md`, "overlay"),
       ]),
-      { target, hookArtifacts: [], onUnsupported: "warn" },
+      { target, hookArtifacts: [], support, onUnsupported: "warn" },
     );
     const paths = plan.files.map((item) => item.path);
     expect(paths).not.toContain("package.json");
@@ -354,7 +357,7 @@ describe("Agent Plugin to Claude projection", () => {
         file(`${namespace}/${manifest}`, JSON.stringify({ dependencies: { "@hooknostic/sdk": "workspace:*" } })),
         file(`${namespace}/${lockfile}`, "lockfileVersion: '9.0'\n"),
       ]),
-      { target, hookArtifacts: [], onUnsupported: "error" },
+      { target, hookArtifacts: [], support, onUnsupported: "error" },
     );
     expect(plan.files.map((item) => item.path)).not.toContain(manifest);
     expect(plan.issues).toEqual([
@@ -391,7 +394,7 @@ describe("Agent Plugin to Claude projection", () => {
         target,
         hookArtifacts: [],
         runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
-        onUnsupported: "warn",
+        support, onUnsupported: "warn",
       },
     );
     expect(plan.issues).toEqual([expect.objectContaining({ severity: "warn", path: `${namespace}/package.json` })]);
@@ -411,7 +414,7 @@ describe("Agent Plugin to Claude projection", () => {
           { path: "hooks/hooks.json", contents: JSON.stringify(generated) },
           { path: "runtime/hooknostic.mjs", contents: "runtime" },
         ],
-        onUnsupported: "error",
+        support, onUnsupported: "error",
       },
     );
     expect(parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map((entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command)).toEqual(["native", "hooknostic"]);
@@ -439,7 +442,7 @@ describe("Agent Plugin to Claude projection", () => {
         target,
         hookArtifacts: [],
         runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
-        onUnsupported: "error",
+        support, onUnsupported: "error",
       },
     );
     expect(plan.issues).toEqual([]);
@@ -487,7 +490,7 @@ describe("Agent Plugin to Claude projection", () => {
         target,
         hookArtifacts: [],
         runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
-        onUnsupported: "error",
+        support, onUnsupported: "error",
       },
     );
     expect(plan.files.some((item) => item.path === "package-lock.json")).toBe(false);
@@ -505,7 +508,7 @@ describe("Agent Plugin to Claude projection", () => {
       target,
       hookArtifacts: [],
       runtimePackage: { manifest: "../package.json", lockfile: "runtime.package-lock.json" },
-      onUnsupported: "error",
+      support, onUnsupported: "error",
     });
     expect(plan.issues).toContainEqual(
       expect.objectContaining({
@@ -533,13 +536,13 @@ describe("Agent Plugin to Claude projection", () => {
     const namespace = "com.anthropic.claude-code";
     const duplicate = await projectAgentPluginToClaude(
       source([file(`${namespace}/.mcp.json`, JSON.stringify({ mcpServers: { local: { command: "other" } } }))]),
-      { target, hookArtifacts: [], onUnsupported: "error" },
+      { target, hookArtifacts: [], support, onUnsupported: "error" },
     );
     expect(duplicate.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("both") }));
 
     const collision = await projectAgentPluginToClaude(
       source([file(`${namespace}/runtime/hooknostic.mjs`, "native")]),
-      { target, hookArtifacts: [{ path: "runtime/hooknostic.mjs", contents: "generated" }], onUnsupported: "error" },
+      { target, hookArtifacts: [{ path: "runtime/hooknostic.mjs", contents: "generated" }], support, onUnsupported: "error" },
     );
     expect(collision.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }));
   });
@@ -560,7 +563,7 @@ describe("Agent Plugin to Claude projection", () => {
     const plan = await projectAgentPluginToClaude(source([file(path, contents)]), {
       target,
       hookArtifacts: [],
-      onUnsupported: "error",
+      support, onUnsupported: "error",
     });
     expect(plan.issues).toContainEqual(
       expect.objectContaining({
@@ -585,7 +588,7 @@ describe("Agent Plugin to Claude projection", () => {
         hookArtifacts: [
           { path: "hooks/hooks.json", contents: JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "hooknostic" }] }] } }) },
         ],
-        onUnsupported: "error",
+        support, onUnsupported: "error",
       },
     );
     const mcp = parsed(plan, ".mcp.json");

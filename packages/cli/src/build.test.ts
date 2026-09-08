@@ -621,6 +621,68 @@ ${run.stderr}`).toBe(0);
     expect(report.targets.partial.artifacts).toContain("manifest.json");
   });
 
+  it("reports a natively projected component the harness cannot consume as an omission", async () => {
+    // Codex installs the portable package unmodified, so an sse server ships
+    // in mcp.json but never registers. The build used to overwrite the analyzed
+    // omission with the projector's own summary and report it emitted.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-native-omission-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "pkg"), { recursive: true });
+    await writeFile(
+      join(dir, "pkg/plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "native-omission", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(dir, "pkg/mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          stdio: { type: "stdio", command: "node" },
+          streamed: { type: "sse", url: "https://example.invalid/sse" },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        agentPlugin: { root: "./pkg", targets: ["codex"], onUnsupported: "warn" },
+        targets: {
+          codex: {
+            version: "${codexHarness.recommendedRange}",
+            mode: "local",
+            output: "./dist/codex",
+            packageOutput: "./dist/codex-package",
+          },
+        },
+      };`,
+    );
+    const json = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: json.io,
+      }),
+      json.out(),
+    ).toBe(0);
+    const report = JSON.parse(json.out());
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "warn", component: "agent-plugin.mcp.sse" }),
+    );
+    expect(report.targets.codex.projection.components).toMatchObject({
+      "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.sse": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+    });
+    expect(report.targets.codex.projection.omissions).toEqual([
+      expect.objectContaining({ component: "agent-plugin.mcp.sse" }),
+    ]);
+    // Reported as skipped, still shipped: filtering it would rewrite mcp.json,
+    // and the server would not reappear when Codex gains sse support.
+    const shipped = JSON.parse(await readFile(join(dir, "dist/codex-package/mcp.json"), "utf8"));
+    expect(Object.keys(shipped.mcpServers).sort()).toEqual(["stdio", "streamed"]);
+  });
+
   it("refuses a projection target whose adapter has no projector, even under warn policy", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-no-projector-"));
     cleanupDirs.push(dir);

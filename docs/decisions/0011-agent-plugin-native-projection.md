@@ -39,6 +39,7 @@ it required a source-side generated tree.
   component failure boundary so projection never reads outside its declared input root.
 - Claude Code is the first projector. Codex and OpenCode projection are deferred
   until their plugin APIs have their own capture and adapter work.
+  (Codex landed in the 2026-09-08 amendment; OpenCode is still deferred.)
 
 ## Consequences
 
@@ -107,3 +108,42 @@ the boundary above; they close gaps between what the build reported and what it 
   from a hardcoded list of Claude's own paths, the one piece of harness layout
   knowledge left in core after this ADR moved the rest into adapters. Every
   projector already knows the answer exactly; now it says so.
+
+## Amendments — 2026-09-08
+
+Codex becomes the second projection target, and it is the first that consumes the
+specification directly.
+
+- **A harness may need no projection at all.** Probing `codex-cli` 0.153.2
+  (`.capture/codex-agent-plugin`) established that a package whose only manifest is a
+  root `plugin.json` installs through `codex plugin add`, its `skills/` tree is
+  discovered, and its `mcp.json` servers register with `PLUGIN_ROOT`/`PLUGIN_DATA`
+  bound. None of the translation the Claude projector performs has a counterpart.
+  Rather than making native conformance an untracked special case outside the projector
+  slot, `@hooknostic/agent-plugin` gained `createNativeAgentPluginProjector`: an
+  identity projection whose value is the *filtered* package, since Codex's installer
+  copies the plugin source directory wholesale and has no exclusion mechanism. The
+  capability table, the build report and `inspect` then cover this target like any other.
+- **Hook delivery is a property of the projector, not the target id.** A projector
+  declares `deliversHooks`. When it is true the plan carries the compiled hook
+  artifacts and the package shares the target's `output` (Claude). When false the
+  harness installs a package but loads hooks from elsewhere (Codex reads the repository
+  `.codex/` directory), so the package is written to a separate `packageOutput` and
+  `output` keeps the hook artifacts. Folding them together would ship the hook artifact
+  inside the install cache: unreadable there, and beyond `agentPlugin.exclude`, which
+  filters source files rather than generated ones. The pairing is required rather than
+  defaulted — HN204 both ways — so the split is visible in the config instead of
+  inferred from an adapter's internals. `packageOutput` is a managed output like
+  `output`: sandboxed, overlap-checked, and excluded from the package inventory (a
+  `root: "."` package whose destination is not excluded copies the previous build into
+  the next one and nests a level deeper every run).
+- **An unsupported component is reported, not filtered.** Codex ignores an `sse`
+  server and drops a `streamable-http` server's literal headers. Filtering either out
+  would mean re-serializing `mcp.json`, forfeiting both the byte-identical guarantee a
+  native projection rests on and forward compatibility — the component would fail to
+  reappear when the harness gains support, absent a rebuild. The summary counts it as
+  `skipped` with an omission instead, because the report answers what the harness will
+  act on rather than which bytes are on disk. Making that possible, the projection
+  context now carries `support`: this projector's own profiles, already resolved
+  against the target range by core. Supplied rather than re-derived, so a projector
+  cannot disagree with the matrix the build reports and `onUnsupported` acts on.

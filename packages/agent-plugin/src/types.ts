@@ -170,6 +170,16 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
   target: TTarget;
   hookArtifacts: readonly AgentPluginProjectionFile[];
   runtimePackage?: AgentPluginRuntimePackage;
+  /**
+   * This projector's own `profiles`, resolved against the target's version
+   * range. Supplied rather than re-derived so a projector cannot disagree with
+   * the matrix the build reports and `onUnsupported` acts on: a range spanning
+   * several profiles resolves to the least capable level per component, and a
+   * projector reimplementing that resolution would drift from it silently.
+   *
+   * A component absent from the map is `unsupported`.
+   */
+  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
   onUnsupported: "error" | "warn";
 }
 

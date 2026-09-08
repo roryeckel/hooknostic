@@ -521,6 +521,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(config.agentPlugin!.runtimePackage === undefined
               ? {}
               : { runtimePackage: config.agentPlugin!.runtimePackage }),
+            support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.agentPlugin!.onUnsupported ?? "error",
           });
           const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);

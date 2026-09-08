@@ -400,13 +400,18 @@ export default defineConfig({
 
   targets: {
     claude:   { version: ">=2.1 <3",  mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148 <1", mode: "local",  output: "./dist/codex" },
+    codex:    {
+      version: ">=0.148 <1", mode: "local", output: "./dist/codex",
+      // Required for a projection target that installs a package but loads its
+      // hooks from elsewhere; see 8.4.
+      packageOutput: "./dist/codex-package",
+    },
     opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
   },
 
   agentPlugin: {
     root: ".",
-    targets: ["claude"],
+    targets: ["claude", "codex"],
     runtimePackage: {
       manifest: "./runtime.package.json",
       lockfile: "./runtime.package-lock.json",
@@ -491,18 +496,34 @@ duplicated per target.
 
 ```
 dist/
-├── claude/
+├── claude/                          ← package and hooks in one plugin
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/hooks.json
 │   └── runtime/hooknostic.mjs
-├── codex/
-│   ├── .codex-plugin/plugin.json
-│   ├── hooks/hooks.json
-│   └── runtime/hooknostic.mjs
+├── codex/                           ← hooks only
+│   └── .codex/
+│       ├── hooks.json
+│       └── hooknostic/hooknostic.mjs
+├── codex-package/                   ← the package, when `packageOutput` is set
+│   ├── plugin.json
+│   ├── mcp.json
+│   └── skills/…
 ├── opencode/
-│   └── .opencode/plugins/hooknostic.mjs
+│   └── .opencode/plugins/hooknostic.js
 └── hooknostic-build.json
 ```
+
+A target's package and its hooks share `output` only when the harness loads hooks
+out of the installed package, which the projector declares through
+`deliversHooks`. Claude does; Codex installs a package but reads
+`.codex/hooks.json` from the repository, so its package goes to a separate
+`packageOutput` and folding the two together would ship the hook artifact inside
+the install cache — unreadable there, and beyond the reach of
+`agentPlugin.exclude`, which filters source files rather than generated ones. The
+pairing is checked rather than inferred: `packageOutput` is an HN204 error when
+missing on a target that needs it, and when present on one that does not.
+`packageOutput` is a managed output like `output` — replaced wholesale, sandboxed
+below the config directory, and excluded from the package inventory.
 
 OpenCode ships local-file mode first; npm-package mode can follow.
 
