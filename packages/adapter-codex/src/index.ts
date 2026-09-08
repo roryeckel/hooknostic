@@ -23,7 +23,12 @@ export { codexHarness } from "./harness.js";
 
 export { applyCodex } from "./apply.js";
 export { CodexDecodeError, decodeCodex } from "./decode.js";
-export { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
+export {
+  CODEX_NATIVE_EVENT,
+  CODEX_PLUGIN_HOOKS_PATH,
+  CODEX_PLUGIN_RUNTIME_PATH,
+  generateCodexArtifacts,
+} from "./generate.js";
 export { codexCapabilityProfiles } from "./profile.js";
 export { codexAgentPluginProjector } from "./project-agent-plugin.js";
 export { runCodexCommandShim } from "./shim.js";
@@ -79,7 +84,7 @@ export function codexAdapter(): HarnessAdapter {
     },
 
     supportedModes() {
-      return ["local"] as const;
+      return ["local", "plugin"] as const;
     },
 
     shimEntry(options) {

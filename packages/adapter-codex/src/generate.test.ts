@@ -47,14 +47,38 @@ describe("generateCodexArtifacts", () => {
     });
   });
 
-  // Codex does run an installed plugin's hooks, but only from a native
-  // .codex-plugin/ manifest that a portable one displaces
-  // (.capture/codex-plugin-hooks), so the refusal must not claim the feature
-  // is missing -- it is this adapter that does not emit that manifest.
-  it("refuses plugin mode as unimplemented, not as unsupported by the harness", () => {
-    expect(() =>
-      generateCodexArtifacts(exampleIR(), { ...TARGET, mode: "plugin" }, BUNDLE, OPTIONS),
-    ).toThrow(/not implemented.*\.codex-plugin\/plugin\.json/s);
+  // A plugin hook command resolves against the session cwd, not the install
+  // cache (.capture/codex-plugin-hooks), so the relative form the local artifact
+  // uses would silently find nothing here.
+  it("anchors the plugin-mode command to the plugin root", () => {
+    const artifacts = generateCodexArtifacts(
+      exampleIR(),
+      { ...TARGET, mode: "plugin" },
+      BUNDLE,
+      OPTIONS,
+    );
+    expect(artifacts.map((a) => a.path).sort()).toEqual([
+      "hooknostic/hooknostic.mjs",
+      "hooks.json",
+    ]);
+    const hooks = JSON.parse(String(artifacts.find((a) => a.path === "hooks.json")!.contents));
+    const commands = Object.values(hooks.hooks as Record<string, { hooks: { command: string }[] }[]>)
+      .flatMap((groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)));
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) {
+      expect(command).toBe("node ${PLUGIN_ROOT}/hooknostic/hooknostic.mjs");
+    }
+  });
+
+  it("keeps the local-mode command relative to the project root", () => {
+    const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
+    expect(artifacts.map((a) => a.path).sort()).toEqual([
+      ".codex/hooknostic/hooknostic.mjs",
+      ".codex/hooks.json",
+    ]);
+    expect(String(artifacts.find((a) => a.path === ".codex/hooks.json")!.contents)).toContain(
+      "node .codex/hooknostic/hooknostic.mjs",
+    );
   });
 
   it("passes its own artifact validation", async () => {

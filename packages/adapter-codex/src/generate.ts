@@ -33,15 +33,22 @@ export const CODEX_NATIVE_EVENT: Partial<Record<HookEventName, string>> = {
 
 const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
 
+/** Plugin-root-relative paths the native `.codex-plugin/plugin.json` points at. */
+export const CODEX_PLUGIN_HOOKS_PATH = "hooks.json";
+export const CODEX_PLUGIN_RUNTIME_PATH = "hooknostic/hooknostic.mjs";
+
 /**
- * Generate the Codex repo-level artifact ("local" mode): a `.codex/`
- * directory that is copied into the target repository root.
+ * Generate Codex hook artifacts, in one of two shapes.
  *
- * Plugin-bundled hooks are unimplemented, not impossible: an installed plugin's
- * hook does run on 0.153.2, but only from a native `.codex-plugin/plugin.json`
- * `hooks` key, which a portable Agent Plugins manifest displaces
- * (`.capture/codex-plugin-hooks`). Emitting one would forfeit the portable
- * manifest, so it is a separate artifact shape rather than a flag.
+ * - `local`: a `.codex/` directory copied to a repository root, whose command
+ *   is relative to the session cwd — that root.
+ * - `plugin`: `hooks.json` and the runtime at the plugin root, reached through
+ *   the native `.codex-plugin/plugin.json` `hooks` key the projector writes.
+ *
+ * The commands differ because a relative one does NOT work inside a plugin: it
+ * resolves against the session cwd rather than the install cache and silently
+ * finds nothing. `${PLUGIN_ROOT}` is the only anchor observed to resolve there
+ * (`.capture/codex-plugin-hooks`).
  *
  * Note: repo-level hooks only run for trusted projects, and Codex prompts
  * once per hook for hook trust — generation never touches trust state.
@@ -67,13 +74,12 @@ export function generateCodexArtifacts(
   bundle: RuntimeBundle,
   options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
-  if (target.mode === "plugin") {
-    throw new Error(
-      `codex target mode "plugin" is not implemented for the validated range (${target.version}): ` +
-        `Codex loads plugin hooks only from a native .codex-plugin/plugin.json, which a portable ` +
-        `Agent Plugins manifest displaces; use mode: "local" (repo .codex directory).`,
-    );
-  }
+  const bundled = target.mode === "plugin";
+  const hooksPath = bundled ? CODEX_PLUGIN_HOOKS_PATH : ".codex/hooks.json";
+  const runtimePath = bundled ? CODEX_PLUGIN_RUNTIME_PATH : RUNTIME_PATH;
+  const command = bundled
+    ? `node \${PLUGIN_ROOT}/${runtimePath}`
+    : `node ${runtimePath}`;
 
   const byNativeEvent = hooksByNativeEvent(
     plugin.hooks,
@@ -91,9 +97,7 @@ export function generateCodexArtifacts(
             hooks: [
               {
                 type: "command",
-                // Relative to the session cwd (the trusted project root the
-                // .codex directory is copied into).
-                command: `node ${RUNTIME_PATH}`,
+                command,
                 timeout: codexNativeTimeout(nativeEvent, reaching, options.runtime),
               },
             ],
@@ -104,7 +108,7 @@ export function generateCodexArtifacts(
   };
 
   return [
-    { path: ".codex/hooks.json", contents: JSON.stringify(hooksJson, null, 2) + "\n" },
-    { path: RUNTIME_PATH, contents: bundle.code },
+    { path: hooksPath, contents: JSON.stringify(hooksJson, null, 2) + "\n" },
+    { path: runtimePath, contents: bundle.code },
   ];
 }

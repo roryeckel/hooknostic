@@ -61,11 +61,11 @@ Projection validation records:
 
 | Component | Support | Rationale |
 | --- | --- | --- |
-| `agent-plugin.manifest` | exact | The portable root plugin.json is read unmodified, and outranks .codex-plugin/ and .claude-plugin/ when present. |
+| `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
 | `agent-plugin.skills` | exact | — |
 | `agent-plugin.mcp.stdio` | exact | — |
-| `agent-plugin.mcp.streamable-http` | approximate | The server registers and its url is preserved, but declared headers are dropped: Codex models remote auth as bearer_token_env_var, not as literal headers, so a server authenticated by an Authorization header registers unauthenticated. |
-| `agent-plugin.mcp.sse` | unsupported | An sse server in a projected mcp.json did not register at all, while a streamable-http server in the same file did. |
+| `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
+| `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
 | `agent-plugin.client-extension.files` | unsupported | Codex reads no portable client-extension namespace; its native .codex-plugin/ directory is not one, and none of its bundled plugins use the extensions map. |
 | `agent-plugin.runtime-package` | unsupported | Not probed. Codex's installer was only observed copying package content; whether it runs a locked npm install like Claude's marketplace is unestablished. |
 
@@ -73,13 +73,11 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | A package with a root plugin.json, a skills/ tree and no .codex-plugin/ installed through `codex plugin add`; the version came from the portable manifest and the skill was cached intact. |
-| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | A portable mcp.json registered its stdio server, with PLUGIN_ROOT and PLUGIN_DATA bound and cwd set to the installed plugin root. |
-| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | Transport coverage from one mcp.json declaring both: the streamable-http server registered as transport streamable_http with its url, its Authorization header dropped (http_headers empty, and the header text survived only in the copied mcp.json); the sse server did not register. |
-| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | $schema is required on both files: without it on plugin.json the install fails with `missing plugin.json`; without it on mcp.json the servers are silently not registered. |
-| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | Manifest precedence: a valid root plugin.json was used over both .codex-plugin/plugin.json and .claude-plugin/plugin.json; a .claude-plugin/-only package still installs. |
-| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | `codex plugin add` copies the plugin source directory wholesale: a junk directory and a stray README both landed in the install cache, which is why the filtered package is the value this projector adds. |
-| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Plugin hooks run, but only from a native .codex-plugin/ manifest: a package declaring both manifests loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. Installation is user-level -- marketplace and plugin entries land in ~/.codex/config.toml and the skill is visible from unrelated directories. |
+| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | `codex plugin add` copies the plugin source directory wholesale -- a junk directory and a stray README both landed in the install cache -- so the filtered package is what a build adds. Installation is user-level: marketplace and plugin entries land in ~/.codex/config.toml. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | One native .codex-plugin/plugin.json declaring skills, mcpServers and hooks had all three active at once: the skill was discovered, both servers registered, and the UserPromptSubmit hook ran. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Manifest precedence suppresses hooks: a package carrying both a root plugin.json and a native manifest with hooks loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Native MCP shape: url + http_headers registered as streamable_http with the Authorization header intact, where the same file in portable shape (type + headers) registered with http_headers empty and a type: sse server registered as streamable_http rather than being skipped. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | A plugin hook command resolves against the session cwd: of three variants on one event, only ${PLUGIN_ROOT}/... ran; a relative path and ${CODEX_PLUGIN_ROOT} did not. |
 
 ### OpenCode
 

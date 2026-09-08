@@ -10,7 +10,7 @@ import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
 import { claudeHarness } from "@hooknostic/adapter-claude";
-import { codexHarness } from "@hooknostic/adapter-codex";
+import { opencodeHarness } from "@hooknostic/adapter-opencode";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
 
 // Synthetic profiles need a syntactically valid source; provenance is
@@ -178,9 +178,9 @@ describe("hooknostic check", () => {
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["codex"] },
+        agentPlugin: { root: ".", targets: ["opencode"] },
         targets: {
-          codex: { version: "${codexHarness.recommendedRange}", mode: "local", output: "./dist/codex" },
+          opencode: { version: "${opencodeHarness.recommendedRange}", mode: "local", output: "./dist/opencode" },
         },
       };`,
     );
@@ -196,9 +196,9 @@ describe("hooknostic check", () => {
     ).toBe(1);
     const report = JSON.parse(capture.out());
     expect(report.ok).toBe(false);
-    expect(report.targets.codex.ok).toBe(false);
+    expect(report.targets.opencode.ok).toBe(false);
     expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN204", target: "codex" }),
+      expect.objectContaining({ code: "HN205", target: "opencode" }),
     );
   });
 
@@ -399,7 +399,7 @@ describe("hooknostic check", () => {
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        targets: { codex: { version: "${codexHarness.recommendedRange}", mode: "plugin", output: "./dist" } },
+        targets: { opencode: { version: "${opencodeHarness.recommendedRange}", mode: "plugin", output: "./dist" } },
       };`,
       "utf8",
     );
@@ -419,9 +419,13 @@ describe("hooknostic check", () => {
         evaluate: EVALUATE,
       }),
     ).toBe(1);
-    expect(JSON.parse(capture.out()).diagnostics).toEqual([
-      expect.objectContaining({ code: "HN204", target: "codex" }),
-    ]);
+    const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string }[];
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN204", target: "opencode" }),
+    );
+    // "before generation": the mode is rejected during analysis, so no
+    // generation- or commit-phase diagnostic can appear alongside it.
+    expect(diagnostics.filter((d) => d.code.startsWith("HN3"))).toEqual([]);
   });
 });
 

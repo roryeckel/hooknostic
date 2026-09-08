@@ -400,12 +400,7 @@ export default defineConfig({
 
   targets: {
     claude:   { version: ">=2.1 <3",  mode: "plugin", output: "./dist/claude" },
-    codex:    {
-      version: ">=0.148 <1", mode: "local", output: "./dist/codex",
-      // Required for a projection target that installs a package but loads its
-      // hooks from elsewhere; see 8.4.
-      packageOutput: "./dist/codex-package",
-    },
+    codex:    { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
     opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
   },
 
@@ -500,30 +495,29 @@ dist/
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/hooks.json
 │   └── runtime/hooknostic.mjs
-├── codex/                           ← hooks only
-│   └── .codex/
-│       ├── hooks.json
-│       └── hooknostic/hooknostic.mjs
-├── codex-package/                   ← the package, when `packageOutput` is set
-│   ├── plugin.json
-│   ├── mcp.json
-│   └── skills/…
+├── codex/                           ← package and hooks in one plugin
+│   ├── .codex-plugin/plugin.json
+│   ├── .mcp.json
+│   ├── skills/…
+│   ├── hooks.json
+│   └── hooknostic/hooknostic.mjs
 ├── opencode/
 │   └── .opencode/plugins/hooknostic.js
 └── hooknostic-build.json
 ```
 
-A target's package and its hooks share `output` only when the harness loads hooks
-out of the installed package, which the projector declares through
-`deliversHooks`. Claude does; Codex installs a package but reads
-`.codex/hooks.json` from the repository, so its package goes to a separate
-`packageOutput` and folding the two together would ship the hook artifact inside
-the install cache — unreadable there, and beyond the reach of
+A target's package and its hooks share `output` when the harness loads hooks out
+of the installed package, which the projector declares through `deliversHooks`.
+Both shipped projectors do: Claude through `hooks/hooks.json`, Codex through its
+native manifest's `hooks` key. A projector that declares `false` installs a
+package but reads hooks from somewhere else, and must then pair its target with
+`packageOutput` — folding the two together would ship the hook artifact inside
+the install cache, unreadable there and beyond the reach of
 `agentPlugin.exclude`, which filters source files rather than generated ones. The
 pairing is checked rather than inferred: `packageOutput` is an HN204 error when
-missing on a target that needs it, and when present on one that does not.
-`packageOutput` is a managed output like `output` — replaced wholesale, sandboxed
-below the config directory, and excluded from the package inventory.
+missing on a target that needs it, and when present on one that does not. It is a
+managed output like `output` — replaced wholesale, sandboxed below the config
+directory, and excluded from the package inventory.
 
 OpenCode ships local-file mode first; npm-package mode can follow.
 

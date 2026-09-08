@@ -102,6 +102,53 @@ async function cleanExample(name: string) {
  * shipped adapters either project every component (Claude) or none (Codex,
  * OpenCode), and a target with no projector at all is a hard error.
  */
+function separatePackageAdapter() {
+  return makeFakeAdapter({
+    id: "separate",
+    profiles: [
+      {
+        range: ">=1.0 <2",
+        source: syntheticSource(),
+        matrix: { "session.start.observe": { level: "exact" } },
+      },
+    ],
+    shimEntry: "export {};",
+    agentPluginProjector: {
+      namespace: "",
+      // The point of the double: package and hooks are different deliverables,
+      // so core must write the package to `packageOutput` and exclude it from
+      // the next build's inventory.
+      deliversHooks: false,
+      profiles: [
+        {
+          range: ">=1.0 <2",
+          components: { "agent-plugin.manifest": { level: "exact" }, "agent-plugin.skills": { level: "exact" } },
+          source: {
+            date: "2026-01-01",
+            validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
+          },
+        },
+      ],
+      async project(source) {
+        return {
+          files: source.files.map((file) => ({ path: file.path, contents: file.contents, mode: file.mode })),
+          issues: [],
+          summary: {
+            components: {
+              "agent-plugin.manifest": { discovered: 1, emitted: 1, skipped: 0 },
+              ...(source.skills.length === 0
+                ? {}
+                : { "agent-plugin.skills": { discovered: source.skills.length, emitted: source.skills.length, skipped: 0 } }),
+            },
+            omissions: [],
+            copiedPaths: source.files.map((file) => file.path).sort((a, b) => a.localeCompare(b)),
+          },
+        };
+      },
+    },
+  });
+}
+
 function partialProjectorAdapter() {
   return makeFakeAdapter({
     id: "partial",
@@ -312,13 +359,13 @@ ${run.stderr}`).toBe(0);
       await writeFile(
         join(dir, "hooknostic.config.ts"),
         `export default {
-          agentPlugin: { root: ".", targets: ["codex"] },
+          agentPlugin: { root: ".", targets: ["separate"] },
           targets: {
-            codex: {
-              version: "${codexHarness.recommendedRange}",
+            separate: {
+              version: ">=1.0 <2",
               mode: "local",
-              output: "./dist/codex",
-              packageOutput: "./dist/codex-package",
+              output: "./dist/separate",
+              packageOutput: "./dist/separate-package",
             },
           },
         };`,
@@ -331,21 +378,23 @@ ${run.stderr}`).toBe(0);
           await runBuild({
             config: join(dir, "hooknostic.config.ts"),
             json: true,
-            registry: defaultAdapterRegistry(),
+            registry: { separate: separatePackageAdapter() },
             io: json.io,
+            evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
           }),
+          json.out(),
         ).toBe(0);
-        copiedCounts.push(JSON.parse(json.out()).targets.codex.projection.copiedFileCount);
+        copiedCounts.push(JSON.parse(json.out()).targets.separate.projection.copiedFileCount);
       }
 
       // Two files, unchanged across runs: the count grew 2 -> 4 -> 6 before the fix.
       expect(copiedCounts).toEqual([2, 2, 2]);
       // The manifest is what a nested copy would duplicate first.
-      expect(existsSync(join(dir, "dist/codex-package/dist/codex-package/plugin.json"))).toBe(false);
+      expect(existsSync(join(dir, "dist/separate-package/dist/separate-package/plugin.json"))).toBe(false);
       // `dist/` itself survives as an EMPTY directory: only its contents are
       // excluded, and the loader preserves empty package directories on purpose
       // (an MCP `cwd` may be one). Nothing from a previous build is inside it.
-      expect(existsSync(join(dir, "dist/codex-package/dist/codex-package"))).toBe(false);
+      expect(existsSync(join(dir, "dist/separate-package/dist/separate-package"))).toBe(false);
     },
   );
 
@@ -621,10 +670,109 @@ ${run.stderr}`).toBe(0);
     expect(report.targets.partial.artifacts).toContain("manifest.json");
   });
 
+  it("projects a Codex plugin carrying skills, MCP and hooks in one output", async () => {
+    // The three components share one native manifest, and the portable one must
+    // NOT survive beside it: Codex prefers a root plugin.json and would then
+    // ignore the hooks key entirely (.capture/codex-plugin-hooks).
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-plugin-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+        name: "codex-trio",
+        version: "2.1.0",
+        description: "carries all three",
+      }),
+    );
+    await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          local: { type: "stdio", command: "node", args: ["server.mjs"] },
+          remote: {
+            type: "streamable-http",
+            url: "https://example.invalid/mcp",
+            headers: { Authorization: "Bearer literal" },
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "codex-trio", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["codex"] },
+        targets: {
+          codex: { version: "${codexHarness.recommendedRange}", mode: "plugin", output: "./dist/codex" },
+        },
+      };`,
+    );
+    const json = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: json.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      json.out(),
+    ).toBe(0);
+
+    const manifest = JSON.parse(
+      await readFile(join(dir, "dist/codex/.codex-plugin/plugin.json"), "utf8"),
+    );
+    expect(manifest).toMatchObject({
+      name: "codex-trio",
+      version: "2.1.0",
+      skills: "./skills/",
+      mcpServers: "./.mcp.json",
+      hooks: "./hooks.json",
+    });
+    // A root plugin.json would outrank the native one and suppress the hooks.
+    expect(existsSync(join(dir, "dist/codex/plugin.json"))).toBe(false);
+    expect(existsSync(join(dir, "dist/codex/mcp.json"))).toBe(false);
+    expect(existsSync(join(dir, "dist/codex/skills/review/SKILL.md"))).toBe(true);
+
+    // Native MCP shape: no type discriminator, and headers keep their values
+    // under the key Codex actually reads.
+    const mcp = JSON.parse(await readFile(join(dir, "dist/codex/.mcp.json"), "utf8"));
+    expect(mcp.mcpServers.local).toEqual({ command: "node", args: ["server.mjs"] });
+    expect(mcp.mcpServers.remote).toEqual({
+      url: "https://example.invalid/mcp",
+      http_headers: { Authorization: "Bearer literal" },
+    });
+    expect(mcp).not.toHaveProperty("$schema");
+
+    // A relative command would resolve against the session cwd, not the cache.
+    const hooks = JSON.parse(await readFile(join(dir, "dist/codex/hooks.json"), "utf8"));
+    const commands = Object.values(
+      hooks.hooks as Record<string, { hooks: { command: string }[] }[]>,
+    ).flatMap((groups) => groups.flatMap((group) => group.hooks.map((entry) => entry.command)));
+    expect(commands).toEqual(["node ${PLUGIN_ROOT}/hooknostic/hooknostic.mjs"]);
+    expect(existsSync(join(dir, "dist/codex/hooknostic/hooknostic.mjs"))).toBe(true);
+
+    const report = JSON.parse(json.out());
+    expect(report.targets.codex.projection.components).toMatchObject({
+      "agent-plugin.skills": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.streamable-http": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+    });
+  });
+
   it("reports a natively projected component the harness cannot consume as an omission", async () => {
-    // Codex installs the portable package unmodified, so an sse server ships
-    // in mcp.json but never registers. The build used to overwrite the analyzed
-    // omission with the projector's own summary and report it emitted.
+    // Codex has no sse transport, and its native reader would register an sse
+    // server as a streamable_http connection to the same url, so the projector
+    // drops it. The build must report that as skipped, not emitted.
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-native-omission-"));
     cleanupDirs.push(dir);
     await mkdir(join(dir, "pkg"), { recursive: true });
@@ -649,9 +797,8 @@ ${run.stderr}`).toBe(0);
         targets: {
           codex: {
             version: "${codexHarness.recommendedRange}",
-            mode: "local",
+            mode: "plugin",
             output: "./dist/codex",
-            packageOutput: "./dist/codex-package",
           },
         },
       };`,
@@ -677,10 +824,15 @@ ${run.stderr}`).toBe(0);
     expect(report.targets.codex.projection.omissions).toEqual([
       expect.objectContaining({ component: "agent-plugin.mcp.sse" }),
     ]);
-    // Reported as skipped, still shipped: filtering it would rewrite mcp.json,
-    // and the server would not reappear when Codex gains sse support.
-    const shipped = JSON.parse(await readFile(join(dir, "dist/codex-package/mcp.json"), "utf8"));
-    expect(Object.keys(shipped.mcpServers).sort()).toEqual(["stdio", "streamed"]);
+    // The emitted MCP file is native-shaped and carries only what Codex can
+    // actually speak; the portable one is gone because it would outrank the
+    // native manifest and suppress hooks.
+    const shipped = JSON.parse(await readFile(join(dir, "dist/codex/.mcp.json"), "utf8"));
+    expect(Object.keys(shipped.mcpServers)).toEqual(["stdio"]);
+    expect(shipped.mcpServers.stdio).not.toHaveProperty("type");
+    expect(existsSync(join(dir, "dist/codex/mcp.json"))).toBe(false);
+    expect(existsSync(join(dir, "dist/codex/plugin.json"))).toBe(false);
+    expect(existsSync(join(dir, "dist/codex/.codex-plugin/plugin.json"))).toBe(true);
   });
 
   it("refuses a projection target whose adapter has no projector, even under warn policy", async () => {

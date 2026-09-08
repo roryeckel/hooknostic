@@ -80,34 +80,27 @@ Regenerate the lockfile from the manifest whenever you change either; a hand-edi
 fails `check` with the same message `npm ci` would have given the user.
 
 This example projects into `claude` only, so `codex` and `opencode` receive just their
-local hook artifacts. Codex can also receive a package, and it is a different operation
-from Claude's: Claude gets a *translated* plugin -- relocated manifest, rewritten MCP
-transports, a generated cwd launcher -- and merges its hooks into that same output,
-while Codex reads Agent Plugins 1.0 natively and gets the portable package emitted
-verbatim. The value there is the filtering, not the translation: `codex plugin add`
-copies the plugin source directory wholesale with no exclusion mechanism of its own.
-
-Because Codex loads hooks from the repo `.codex/` directory rather than from the
-installed package, adding it takes a second output directory:
+local hook artifacts. Codex can also receive a package, and what it gets is a *native*
+plugin rather than the portable one: it does read a portable package, but a portable
+manifest cannot carry hooks and outranks the `.codex-plugin/plugin.json` that can, so a
+package declaring both loads its skills and silently ignores every hook. The projection
+therefore replaces `plugin.json` and `mcp.json` with native equivalents and emits the
+compiled hooks alongside them. Add it with:
 
 ```ts
 agentPlugin: { root: ".", targets: ["claude", "codex"], onUnsupported: "warn" },
 targets: {
-  codex: {
-    version: ">=0.148 <1",
-    mode: "local",
-    output: "./dist/codex",              // .codex/hooks.json + the runtime
-    packageOutput: "./dist/codex-package", // the installable Agent Plugin
-  },
+  codex: { version: ">=0.148 <1", mode: "plugin", output: "./dist/codex" },
 },
 ```
 
-`packageOutput` is required exactly when the harness installs a package it does not read
-hooks from, and rejected when it does; either mistake is an HN204 error naming the fix.
-Without it the generated hook artifact would ship inside the installed package, where
-nothing reads it and `agentPlugin.exclude` cannot reach it. `onUnsupported: "warn"` is
-what this example would additionally need, because its `runtimePackage` has no Codex
-equivalent -- see [harness support](../harness-support.md) for the per-component table.
+`onUnsupported: "warn"` is what this example would additionally need, because its
+`runtimePackage` has no Codex equivalent — see [harness support](../harness-support.md)
+for the per-component table.
+
+Claude's projection is a different translation of the same package: `.claude-plugin/`,
+a rewritten `.mcp.json`, a generated cwd launcher. Neither output is portable, and that
+is the point — the *source* is the portable artifact.
 
 Listing a target under `agentPlugin.targets` whose adapter has no projector at all is a
 different error, and not one `onUnsupported` degrades: a projection that cannot happen

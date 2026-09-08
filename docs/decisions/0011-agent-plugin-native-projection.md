@@ -147,3 +147,38 @@ specification directly.
   context now carries `support`: this projector's own profiles, already resolved
   against the target range by core. Supplied rather than re-derived, so a projector
   cannot disagree with the matrix the build reports and `onUnsupported` acts on.
+
+## Amendments — 2026-09-08 (second)
+
+The Codex projection is rewritten as a translation. The previous amendment
+described it as an identity pass-through on the grounds that Codex consumes the
+specification directly; that is true for skills and MCP and false once hooks are
+a requirement.
+
+- **A projector emits the harness's plugin format, not the portable one.** Codex
+  does run an installed plugin's hooks — the earlier "the `plugin_hooks` feature
+  is removed" reading of the 0.148.0 binary does not hold on 0.153.2 — but only
+  from a native `.codex-plugin/plugin.json` `hooks` key, and a valid root
+  `plugin.json` outranks that manifest. A package carrying both loads its skills
+  and silently ignores every hook, and there is no convention fall-back. So the
+  projection now removes the portable manifest and `mcp.json` and writes native
+  replacements, exactly as the Claude projection has always done. Neither output
+  is a portable package; the *source* is the portable artifact
+  (`.capture/codex-plugin-hooks`).
+- **`deliversHooks` is `true` for Codex, and `mode: "plugin"` is supported.**
+  One installed plugin now carries skills, MCP and hooks together, which is the
+  requirement a projection exists to meet. The generated hook command is anchored
+  with `${PLUGIN_ROOT}`: inside an install cache a relative command resolves
+  against the session cwd and silently finds nothing.
+- **A component that would be misread is dropped, not translated.** Codex selects
+  an MCP transport from `command` vs `url` and ignores the portable `type`, so an
+  `sse` server passed through registers as a `streamable_http` connection to the
+  same url. Filtering it is not a loss of fidelity but the avoidance of a
+  wrong-protocol connection, and it is the general rule: `unsupported` means the
+  component must not reach the harness, not merely that it will be ignored.
+  Conversely `streamable-http` improves to `exact` here, because the native
+  `http_headers` key preserves a literal header the portable route drops.
+- **`createNativeAgentPluginProjector` keeps no shipped user.** It remains
+  correct for a harness that consumes the specification and needs no hook
+  channel, but no adapter is in that position today, and the belief that Codex
+  was is what this amendment corrects.

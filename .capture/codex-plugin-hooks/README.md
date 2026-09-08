@@ -6,15 +6,16 @@ marker file a hook writes when it runs.
 
 ## Question
 
-`generateCodexArtifacts` refuses `mode: "plugin"` on the grounds that "the
+`generateCodexArtifacts` refused `mode: "plugin"` on the grounds that "the
 `plugin_hooks` feature is removed in codex-cli 0.148", and the Agent Plugin
-projector sets `deliversHooks: false` on the same basis. Both were established
-against 0.148.0. Does an installed Codex plugin deliver hooks on 0.153.2, and if
-so can a *portable* Agent Plugins package use that channel?
+projector set `deliversHooks: false` on the same basis. Both were established
+against 0.148.0. Does an installed Codex plugin deliver hooks on 0.153.2; can a
+*portable* Agent Plugins package use that channel; and if not, can one native
+manifest carry skills, MCP and hooks together instead?
 
 ## Method
 
-Three packages, each installed from a temporary local marketplace registered with
+Six packages, each installed from a temporary local marketplace registered with
 `codex plugin marketplace add` and removed afterwards. Each declares one
 `UserPromptSubmit` hook whose command runs a Node script that writes a marker
 file. The session is `codex exec --skip-git-repo-check
@@ -28,6 +29,9 @@ independently of whether its hook ran.
 | `hookprobe` | `.codex-plugin/plugin.json` with `"hooks": "./hooks.json"` | package root |
 | `bothman` | root `plugin.json` (`$schema`) **and** `.codex-plugin/plugin.json` with `"hooks"` | package root |
 | `porthook` | root `plugin.json` (`$schema`) only | both `hooks.json` and `hooks/hooks.json` |
+| `natall` v1 | native, declaring `skills` + `mcpServers` + `hooks` | package root |
+| `natall` v2 | same manifest, `.mcp.json` swapped to the **portable** MCP shape | — |
+| `natall` v3 | same manifest, three command spellings on one event | package root |
 
 ## Observations
 
@@ -59,22 +63,58 @@ is present.
 scratch directory. The binary also carries the string
 `repository-scoped plugin migration is not allowed`.
 
+## Follow-up: what the native manifest can carry
+
+Three further packages, same method, once the question became "can one native
+manifest replace the portable one entirely".
+
+**All three components coexist.** `natall` declared `skills`, `mcpServers` and
+`hooks` in one `.codex-plugin/plugin.json`. Its skill was discovered, both of its
+servers registered, and its `UserPromptSubmit` hook ran -- in one install.
+
+**The native MCP shape is not the portable one, and is more capable.** Under
+`mcpServers: "./.mcp.json"`:
+
+| Declared | Registered as | Headers |
+|---|---|---|
+| `{command, args, startup_timeout_sec}` | `stdio` | — |
+| `{url, http_headers}` | `streamable_http` | **`Authorization=*****` preserved** |
+| `{type: "stdio", command}` (portable) | `stdio` | — |
+| `{type: "streamable-http", url, headers}` (portable) | `streamable_http` | **`http_headers: -` dropped** |
+| `{type: "sse", url}` (portable) | **`streamable_http`** | — |
+
+So Codex ignores the portable `type` and `headers` keys entirely: the transport
+comes from `command` vs `url`, and headers are read from `http_headers`. Two
+consequences. A literal header survives on the native route where the portable
+route drops it, which is why `streamable-http` is `exact` here and `approximate`
+through a root manifest. And an `sse` server does not fail closed -- it becomes a
+`streamable_http` connection to the same url, so it must be dropped rather than
+translated.
+
+**Hook commands resolve against the session cwd.** One event carried three
+commands at once: `node hooknostic/runtime.mjs` (relative),
+`node ${PLUGIN_ROOT}/hooknostic/runtime.mjs`, and
+`node ${CODEX_PLUGIN_ROOT}/...`. Only the `${PLUGIN_ROOT}` variant wrote its
+marker, so a generated command must be anchored with it; the relative form the
+repo-level artifact uses would silently find nothing inside an install cache.
+
 ## Consequences
 
-- The `deliversHooks: false` on the Codex Agent Plugin projector is right, but
-  not for the recorded reason. It holds because the portable manifest displaces
-  the only manifest Codex reads hooks from, not because the feature is gone.
-- `mode: "plugin"` remains unavailable for Codex hooks, now as an unimplemented
-  case rather than an impossible one: it would require emitting a native
-  `.codex-plugin/plugin.json`, which forfeits the portable manifest and therefore
-  is not a projection of an Agent Plugins package.
-- A globally installed portable package has no hook channel at all, because
-  `.codex/hooks.json` is resolved relative to the session's project directory.
+- The Codex projector emits a **native** plugin, not a filtered portable one.
+  Passing the portable manifest through is the single arrangement that looks
+  correct and silently loses every hook, so it is removed from the projection
+  along with `mcp.json`, whose native replacement is written instead.
+- `deliversHooks` becomes `true` for Codex and `mode: "plugin"` is supported,
+  which is what lets one installed plugin carry skills, MCP and hooks together.
+- `agent-plugin.mcp.streamable-http` is `exact` on this route rather than
+  `approximate`; `agent-plugin.mcp.sse` stays `unsupported` and is now actively
+  filtered instead of copied through.
 
 ## Not established
 
 - What 0.148.0 actually did. The "removed" finding was recorded against that
   build and is not re-testable here; this probe only establishes 0.153.2.
-- Whether a native `.codex-plugin/` manifest can also carry `mcp.json`-equivalent
-  servers, which a hooks-capable native package would need.
+- Whether a native stdio server's `cwd` is honoured, and what a relative `args`
+  path resolves against. `codex mcp get` reported `cwd: -` for a server that
+  declared none.
 - Linux and macOS behaviour. Windows only.
