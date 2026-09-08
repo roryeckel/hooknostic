@@ -176,6 +176,9 @@ importers:
 
   packages/adapter-opencode:
     dependencies:
+      '@hooknostic/agent-plugin':
+        specifier: workspace:*
+        version: link:../agent-plugin
       '@hooknostic/core':
         specifier: workspace:*
         version: link:../core

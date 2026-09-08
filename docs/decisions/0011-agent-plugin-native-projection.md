@@ -182,3 +182,36 @@ a requirement.
   correct for a harness that consumes the specification and needs no hook
   channel, but no adapter is in that position today, and the belief that Codex
   was is what this amendment corrects.
+
+## Amendments — 2026-09-08 (third)
+
+OpenCode gains a projector, completing the set. A plugin on every harness can now
+carry skills, MCP and hooks together, which was the point of projecting a package
+at all.
+
+- **A projection is not always an installable unit.** OpenCode reads
+  `.opencode/plugins/` from the project directory, so its projection is
+  project-scoped by construction and needs no install. It is the only harness
+  where that is true: Claude and Codex both install into a user-level cache, and
+  Codex's binary carries `repository-scoped plugin migration is not allowed`.
+  This is worth stating because the earlier amendments generalised from those two.
+- **A projector may have to generate executable glue.** OpenCode has no manifest
+  for a project plugin, so the components are contributed by a generated module
+  through the `config` hook rather than declared in a file the harness reads.
+  Consequences the projection is shaped by, each measured
+  (`.capture/opencode-agent-plugin`): every export of a plugin module is loaded as
+  a plugin, so package identity survives only as a comment; the module scan is
+  flat, so copied content nests safely one level down; and `skills.paths` is
+  additive, so an injected path displaces nothing.
+- **Deferred substitution is part of the contract.** `${PLUGIN_ROOT}` cannot be
+  resolved at build time because the directory is unknown, and `${VAR}` must not
+  be, because a committed artifact would then hold a secret. Both are resolved by
+  the generated module at load time. Emitting OpenCode's own `{env:VAR}` syntax
+  would not work: interpolation runs BEFORE plugin config hooks, so a value a
+  plugin injects reaches the server as literal text. The same probe found that a
+  `JSON.stringify`/`JSON.parse` round trip corrupts a Windows plugin root, whose
+  backslashes are not valid JSON escapes; substitution walks the value instead.
+- **`unsupported` still means "must not reach the harness", but the levels differ
+  per harness for real reasons.** `sse` is `unsupported` on Codex, which would
+  mis-register it as streamable-http, and `emulated` on OpenCode, whose client
+  negotiates `[StreamableHTTP, SSE]` and simply connects.

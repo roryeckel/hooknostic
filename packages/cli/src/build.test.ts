@@ -102,6 +102,16 @@ async function cleanExample(name: string) {
  * shipped adapters either project every component (Claude) or none (Codex,
  * OpenCode), and a target with no projector at all is a hard error.
  */
+function noProjectorAdapter() {
+  return makeFakeAdapter({
+    id: "noproj",
+    profiles: [
+      { range: ">=1.0 <2", source: syntheticSource(), matrix: { "session.start.observe": { level: "exact" } } },
+    ],
+    shimEntry: "export {};",
+  });
+}
+
 function separatePackageAdapter() {
   return makeFakeAdapter({
     id: "separate",
@@ -670,6 +680,98 @@ ${run.stderr}`).toBe(0);
     expect(report.targets.partial.artifacts).toContain("manifest.json");
   });
 
+  it("projects an OpenCode project plugin carrying skills, MCP and hooks", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-plugin-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "oc-trio", version: "1.4.0" }),
+    );
+    await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          local: {
+            type: "stdio",
+            command: "node",
+            args: ["${PLUGIN_ROOT}/server.mjs"],
+            env: { TOKEN: "${MY_TOKEN}" },
+          },
+          streamed: {
+            type: "sse",
+            url: "https://example.invalid/sse",
+            headers: { Authorization: "Bearer ${MY_TOKEN}" },
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "oc-trio", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        agentPlugin: { root: ".", targets: ["opencode"] },
+        targets: {
+          opencode: {
+            version: "${opencodeHarness.recommendedRange}",
+            mode: "local",
+            output: "./dist/opencode",
+            compatibility: { minimum: "approximate" },
+          },
+        },
+      };`,
+    );
+    const json = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: json.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+      json.out(),
+    ).toBe(0);
+
+    // The hook module and the package module are siblings; OpenCode loads every
+    // module in this directory, and does not recurse into `skills/`.
+    expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
+    expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/skills/review/SKILL.md"))).toBe(true);
+    const injector = await readFile(
+      join(dir, "dist/opencode/.opencode/plugins/hooknostic-agent-plugin.js"),
+      "utf8",
+    );
+
+    // OpenCode's own {env:} interpolation runs BEFORE plugin config hooks, so
+    // an injected value is never expanded and the module resolves env itself.
+    // The secret therefore stays a reference in the committed artifact.
+    expect(injector).toContain("${MY_TOKEN}");
+    expect(injector).not.toContain("{env:MY_TOKEN}");
+    expect(injector).toContain("process.env[name]");
+    // stdio becomes one argv array under `command`, with `environment` for env.
+    expect(injector).toContain('"type": "local"');
+    expect(injector).toContain('"environment"');
+    // sse has no OpenCode discriminator; both remote transports become `remote`.
+    expect(injector).toContain('"type": "remote"');
+    // The install directory is only knowable at load time.
+    expect(injector).toContain("__HOOKNOSTIC_PLUGIN_ROOT__");
+    expect(injector).toContain("import.meta.url");
+
+    const report = JSON.parse(json.out());
+    expect(report.targets.opencode.projection.components).toMatchObject({
+      "agent-plugin.skills": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.stdio": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.mcp.sse": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
+    });
+  });
+
   it("projects a Codex plugin carrying skills, MCP and hooks in one output", async () => {
     // The three components share one native manifest, and the portable one must
     // NOT survive beside it: Codex prefers a root plugin.json and would then
@@ -844,14 +946,14 @@ ${run.stderr}`).toBe(0);
       JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "no-projector" }),
     );
     await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
-    await mkdir(join(dir, "dist/opencode"), { recursive: true });
-    await writeFile(join(dir, "dist/opencode/previous"), "previous output");
+    await mkdir(join(dir, "dist/noproj"), { recursive: true });
+    await writeFile(join(dir, "dist/noproj/previous"), "previous output");
     // Hookless, so the only thing this target could ever receive is the package.
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["opencode"], onUnsupported: "warn" },
-        targets: { opencode: { version: "${opencodeHarness.recommendedRange}", mode: "local", output: "./dist/opencode" } }
+        agentPlugin: { root: ".", targets: ["noproj"], onUnsupported: "warn" },
+        targets: { noproj: { version: ">=1.0 <2", mode: "local", output: "./dist/noproj" } }
       };`,
     );
     const json = captureIO();
@@ -859,25 +961,27 @@ ${run.stderr}`).toBe(0);
       await runBuild({
         config: join(dir, "hooknostic.config.ts"),
         json: true,
-        registry: defaultAdapterRegistry(),
+        // Every shipped adapter now has a projector, so the projector-less
+        // case only exists as a double.
+        registry: { noproj: noProjectorAdapter() },
         io: json.io,
       }),
     ).toBe(1);
     const report = JSON.parse(json.out());
-    expect(report.targets.opencode.status).toBe("failed");
+    expect(report.targets.noproj.status).toBe("failed");
     expect(report.diagnostics).toEqual([
-      expect.objectContaining({ code: "HN205", severity: "error", target: "opencode", message: expect.stringContaining("no Agent Plugin projector") }),
+      expect.objectContaining({ code: "HN205", severity: "error", target: "noproj", message: expect.stringContaining("no Agent Plugin projector") }),
     ]);
     // Nothing was committed: the previous output survives untouched, and the
     // "success" that used to accompany an empty directory is gone.
-    expect(await readFile(join(dir, "dist/opencode/previous"), "utf8")).toBe("previous output");
+    expect(await readFile(join(dir, "dist/noproj/previous"), "utf8")).toBe("previous output");
     expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
 
     const human = captureIO();
     expect(
-      await runBuild({ config: join(dir, "hooknostic.config.ts"), registry: defaultAdapterRegistry(), io: human.io }),
+      await runBuild({ config: join(dir, "hooknostic.config.ts"), registry: { noproj: noProjectorAdapter() }, io: human.io }),
     ).toBe(1);
-    expect(human.out()).toContain("FAIL   opencode");
+    expect(human.out()).toContain("FAIL   noproj");
     expect(human.out()).toContain("Agent Plugin projection failed");
   });
 

@@ -21,22 +21,29 @@ targets: {
 
 ## What gets emitted
 
-| Target | Artifact | Shape |
-| --- | --- | --- |
-| `claude` | `dist/claude/` | A complete Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
-| `codex` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
-| `opencode` | `dist/opencode/.opencode/` | A project plugin module: `plugins/hooknostic.js` |
+| Target | Mode | Artifact | Shape |
+| --- | --- | --- | --- |
+| `claude` | `plugin` | `dist/claude/` | A Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
+| `codex` | `local` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
+| `codex` | `plugin` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
+| `opencode` | `local` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 
-Only the Claude output is a *packaged* artifact. The Codex and OpenCode outputs
-are directory trees meant to be copied to a project root — their generated
-commands and loader paths are relative to the session's project directory.
+The `local` outputs are directory trees copied to a project root — their generated
+commands and loader paths resolve against the session's project directory. The
+`plugin` outputs are installed instead, and their paths resolve against the
+install cache.
 
 ### Scope: packages are user-level, trees are per-project
 
 This is the first thing to settle when choosing between them, and it is a
 property of the harnesses, not of Hooknostic.
 
-**No harness installs a plugin per project.** `codex plugin add` writes
+**OpenCode is the exception, and it is the whole exception.** Its project plugins
+live in `.opencode/plugins/`, read from the project directory with no install
+step, and even `opencode plugin <module>` takes `--global` with `default: false`.
+The rest of this section is about the other two.
+
+**Neither Claude nor Codex installs a plugin per project.** `codex plugin add` writes
 `[marketplaces.*]` and `[plugins."<name>@<marketplace>"]` into
 `~/.codex/config.toml` and caches the package under `~/.codex/plugins/cache/`;
 its binary carries the string `repository-scoped plugin migration is not

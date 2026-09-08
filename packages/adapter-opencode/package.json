@@ -4,7 +4,9 @@
   "private": true,
   "description": "Hooknostic adapter for OpenCode",
   "type": "module",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -16,6 +18,7 @@
     }
   },
   "dependencies": {
+    "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/sdk": "workspace:*"

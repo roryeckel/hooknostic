@@ -178,9 +178,9 @@ describe("hooknostic check", () => {
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["opencode"] },
+        agentPlugin: { root: ".", targets: ["noproj"] },
         targets: {
-          opencode: { version: "${opencodeHarness.recommendedRange}", mode: "local", output: "./dist/opencode" },
+          noproj: { version: ">=1.0 <2", mode: "local", output: "./dist/noproj" },
         },
       };`,
     );
@@ -190,15 +190,19 @@ describe("hooknostic check", () => {
       await runCheck({
         config: join(dir, "hooknostic.config.ts"),
         json: true,
-        registry: defaultAdapterRegistry(),
+        registry: {
+          // Every shipped adapter now has a projector, so the projector-less
+          // case only exists as a double.
+          noproj: makeFakeAdapter({ id: "noproj", profiles: [fullProfile], shimEntry: "export {};" }),
+        },
         io: capture.io,
       }),
     ).toBe(1);
     const report = JSON.parse(capture.out());
     expect(report.ok).toBe(false);
-    expect(report.targets.opencode.ok).toBe(false);
+    expect(report.targets.noproj.ok).toBe(false);
     expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN205", target: "opencode" }),
+      expect.objectContaining({ code: "HN205", target: "noproj" }),
     );
   });
 

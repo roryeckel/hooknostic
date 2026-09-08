@@ -15,6 +15,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import { applyOpenCode } from "./apply.js";
 import { decodeOpenCode } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
+import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { opencodeShellCodec, OPENCODE_SHELL_SHAPES } from "./toolmap.js";
 import { opencodeHarness } from "./harness.js";
@@ -29,6 +30,7 @@ export type { OpenCodeApplication } from "./apply.js";
 export { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 export type { OpenCodeNativeEvent } from "./decode.js";
 export { generateOpenCodeArtifacts } from "./generate.js";
+export { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
 export { createHooknosticHooks } from "./shim.js";
 export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
@@ -77,6 +79,7 @@ export function opencodeAdapter(): HarnessAdapter {
     id: "opencode",
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
     harness: opencodeHarness,
+    agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.
     shimExecution: "module",
     shellCodec: opencodeShellCodec,

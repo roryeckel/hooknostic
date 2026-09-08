@@ -89,3 +89,26 @@ Projection validation records:
 | 1.18.25 | 2026-08-30 | live-probe | — | PWD env precedence: opencode trusts an inherited PWD over the process cwd and runs the session in PWD's project -- where plugins may not exist. Spawners must set PWD to agree with cwd (see the smoke's runCommand). |
 | 1.18.25 | 2026-09-01 | captured | `.capture/opencode-permission` | permission.ask plugin hook NEVER fires (upstream anomalyco/opencode #9229): observe arrives via the permission.asked bus event on the generic event callback, and denial works via client.postSessionIdPermissionsPermissionId response "reject" (API true, command not executed, turn halts). The 1.18 permission fixtures' callback-envelope shape is type-derived, not captured. |
 
+#### Agent Plugin projection
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | emulated | A project plugin is resolved by path and has no manifest, so name, version and description survive only as a comment in the generated module. They cannot be a named export: every export of a plugin module is loaded as a plugin, and a non-function one fails the whole module. |
+| `agent-plugin.skills` | exact | — |
+| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
+| `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace. |
+| `agent-plugin.runtime-package` | unsupported | A project plugin is loaded from disk with no install step, so a declared npm manifest and lockfile have nothing to install them. |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A project plugin's config hook contributed both an mcp entry and a skills.paths entry, each visible in `opencode debug config`, and the skill at the injected path was listed by `opencode debug skill`. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | skills.paths is additive: an injected path coexisted with the project's own configured path and with the default .agents/skills discovery directory. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Interpolation runs BEFORE plugin config hooks: in one run the same {env:VAR} header expanded when it came from opencode.json and survived verbatim when a plugin injected it, so a plugin must read the environment itself rather than emit OpenCode's own syntax. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so package content nests safely below the scanned directory. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with "Plugin export is not a function". |
+| 1.18.29 | 2026-09-08 | type-derived | `.capture/opencode-agent-plugin` | A remote MCP server is attempted as [StreamableHTTP, SSE] in that order, with declared headers passed to both, which is why sse is emulated rather than unsupported. |
+
