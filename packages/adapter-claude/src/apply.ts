@@ -98,7 +98,8 @@ export function applyClaude(
       return Promise.resolve({ exitCode: 2, stderr: terminal.reason });
     }
     case "requestApproval": {
-      hookSpecificOutput["permissionDecision"] = "escalate";
+      // Verified by the Windows PTY probe in .capture/harness-playback.
+      hookSpecificOutput["permissionDecision"] = "ask";
       if (terminal.reason !== undefined) {
         hookSpecificOutput["permissionDecisionReason"] = terminal.reason;
       }

@@ -89,7 +89,7 @@ describe("applyClaude", () => {
     expect(native).toEqual(loadFixture("claude", "2.1", "pre-tool-context.output.json"));
   });
 
-  it("encodes requestApproval as permissionDecision escalate", async () => {
+  it("encodes requestApproval as permissionDecision ask", async () => {
     const native = await applyClaude(
       result({
         event: "tool.before",

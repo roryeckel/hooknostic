@@ -4890,7 +4890,7 @@ function applyClaude(result, _nativeEvent, _invocation) {
       return Promise.resolve({ exitCode: 2, stderr: terminal.reason });
     }
     case "requestApproval": {
-      hookSpecificOutput["permissionDecision"] = "escalate";
+      hookSpecificOutput["permissionDecision"] = "ask";
       if (terminal.reason !== void 0) {
         hookSpecificOutput["permissionDecisionReason"] = terminal.reason;
       }

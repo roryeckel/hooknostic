@@ -14,7 +14,7 @@ import {
   loadAgentPlugin,
 } from "@hooknostic/agent-plugin";
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
-import type { IPty } from "node-pty";
+import type { IPty, spawn as ptySpawn } from "node-pty";
 import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
@@ -943,7 +943,7 @@ function claudeBinaryPath(): string {
     const resolved = execSync(probe, { encoding: "utf8" })
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .find((line) => line !== "");
+      .find((line) => process.platform === "win32" ? /\.(?:exe|cmd|bat)$/i.test(line) : line !== "");
     if (resolved !== undefined) return resolved;
   } catch {
     // fall through to the error below
@@ -951,6 +951,26 @@ function claudeBinaryPath(): string {
   throw new Error(
     "claude binary not found: set HOOKNOSTIC_CLAUDE_BIN or add claude to PATH",
   );
+}
+
+function spawnClaudePty(args: string[], options: Parameters<typeof ptySpawn>[2]): IPty {
+  const binary = claudeBinaryPath();
+  // A Windows npm shim is a batch file, which ConPTY cannot execute directly.
+  // Let cmd interpret the shim; native executables still run directly.
+  return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(binary)
+    ? ptyModule!.spawn(process.env["ComSpec"] ?? "cmd.exe", ["/d", "/c", binary, ...args], options)
+    : ptyModule!.spawn(binary, args, options);
+}
+
+// Constructed playback-only state. See .capture/harness-playback/README.md.
+async function prepareClaudePtyConfig(dir: string): Promise<string> {
+  const configDir = join(dir, "claude-config");
+  await mkdir(configDir);
+  await writeFile(join(configDir, ".claude.json"), JSON.stringify({
+    hasCompletedOnboarding: true,
+    customApiKeyResponses: { approved: ["hooknostic-playback"], rejected: [] },
+  }));
+  return configDir;
 }
 
 // --- first-run dialog walk (pty drives) ------------------------------------
@@ -971,7 +991,7 @@ function dialogScreen(plainScreen: () => string): string {
 
 function mainPromptVisible(plainScreen: () => string): boolean {
   const current = dialogScreen(plainScreen).slice(-2500);
-  const marker = current.lastIndexOf("\u276f");
+  const marker = Math.max(current.lastIndexOf("\u276f"), current.lastIndexOf(">"));
   if (marker === -1) return false;
   // List dialogs leave their selected option immediately after the cursor;
   // the main input line is followed by status text instead. This survives
@@ -980,6 +1000,14 @@ function mainPromptVisible(plainScreen: () => string): boolean {
     current.slice(marker + 1),
   );
 }
+
+describe("Claude PTY prompt recognition", () => {
+  it("recognizes the Windows ASCII prompt cursor", () => {
+    expect(mainPromptVisible(() => ">  ? for shortcuts")).toBe(true);
+    expect(mainPromptVisible(() => "> No, exit")).toBe(false);
+    expect(mainPromptVisible(() => "> Yes, I trust this folder")).toBe(false);
+  });
+});
 
 async function waitForMainPrompt(
   plainScreen: () => string,
@@ -1011,7 +1039,7 @@ async function confirmDialogSelection(
 ): Promise<void> {
   const selected = (): boolean => {
     const stripped = screen().slice(-2500);
-    const marker = stripped.lastIndexOf("\u276f");
+    const marker = Math.max(stripped.lastIndexOf("\u276f"), stripped.lastIndexOf(">"));
     if (marker === -1) return false;
     return stripped
       .slice(marker + 1)
@@ -1022,6 +1050,10 @@ async function confirmDialogSelection(
     if (selected()) break;
     pty.write("\u001b[A");
     await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+  }
+  if (!selected()) {
+    pty.kill();
+    throw new Error(`Claude playback could not select ${wantedPrefix}`);
   }
   pty.write("\r");
   await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
@@ -1048,13 +1080,9 @@ async function walkFirstRunDialogs(
       // accepted or the harness discards the env key entirely and falls into
       // the OAuth login flow, which cannot complete in playback.
       await confirmDialogSelection(pty, screen, "Yes");
-    } else if (!handled.has("login-method") && current.includes("Selectloginmethod:")) {
-      handled.add("login-method");
-      // After accepting the API key, fresh state asks which account type owns
-      // it. Select the Console account rather than the preselected subscription
-      // account; otherwise Claude ignores the loopback API endpoint.
-      pty.write("\u001b[B\r");
-      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
+    } else if (current.includes("Selectloginmethod:")) {
+      pty.kill();
+      throw new Error("Claude playback reached login onboarding instead of using the loopback API key");
     } else if (!handled.has("security") && current.includes("PressEnte")) {
       handled.add("security");
       pty.write("\r");
@@ -1813,8 +1841,8 @@ scenarioDrive(
       // The TUI drive: first-run dialogs (trust + API key), then the prompt,
       // then leave the denial to the hook. Terminal state matters only for
       // diagnostics; the trace is the assertion surface.
-      const pty = ptyModule!.spawn(
-        claudeBinaryPath(),
+      const configDir = await prepareClaudePtyConfig(dir);
+      const pty = spawnClaudePty(
         ["--plugin-dir", build.artifactDir],
         {
           name: "xterm-256color",
@@ -1823,6 +1851,7 @@ scenarioDrive(
           cwd: dir,
           env: {
             ...withoutCredentials(),
+            CLAUDE_CONFIG_DIR: configDir,
             ANTHROPIC_API_KEY: "hooknostic-playback",
             ANTHROPIC_BASE_URL: server.baseUrl,
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -1872,7 +1901,7 @@ scenarioDrive(
       expect(
         events,
         `permission.request never fired; requests: ${server.requests.length}; screen: ${JSON.stringify(
-          plainScreen().slice(0, 2600),
+          plainScreen().slice(-6000),
         )}`,
       ).toContain("permission.request");
       // The denial must be honored natively: the turn completed after the
@@ -1881,7 +1910,7 @@ scenarioDrive(
       expect(
         turnCompleted,
         `turn never completed after the denial; model turns: ${server.turnCount}; screen: ${JSON.stringify(
-          plainScreen().slice(0, 2600),
+          plainScreen().slice(-6000),
         )}`,
       ).toBe(true);
       expect(
@@ -1951,9 +1980,9 @@ scenarioDrive(
     );
     try {
       await runProcess("git", ["init"], { cwd: dir, env: process.env, timeoutMs: 30_000 });
-      const pty = ptyModule!.spawn(
-        claudeBinaryPath(),
-        ["--plugin-dir", build.artifactDir],
+      const configDir = await prepareClaudePtyConfig(dir);
+      const pty = spawnClaudePty(
+        ["--plugin-dir", build.artifactDir, "--allowedTools", "Bash"],
         {
           name: "xterm-256color",
           cols: 110,
@@ -1961,6 +1990,7 @@ scenarioDrive(
           cwd: dir,
           env: {
             ...withoutCredentials(),
+            CLAUDE_CONFIG_DIR: configDir,
             ANTHROPIC_API_KEY: "hooknostic-playback",
             ANTHROPIC_BASE_URL: server.baseUrl,
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -2004,13 +2034,16 @@ scenarioDrive(
       expect(
         events,
         `tool.before never fired; requests: ${server.requests.length}; screen: ${JSON.stringify(
-          plainScreen().slice(0, 2600),
+          plainScreen().slice(-6000),
         )}`,
       ).toContain("tool.before");
+      expect(plainScreen()).not.toContain("Hook JSON output validation failed");
+      expect(dialogScreen(plainScreen)).toContain("approvalrequestedbyharnessplayback");
+      // Bash is preallowed: only the hook's ask can cause this prompt.
       // The native prompt must have surfaced (the effect's whole point).
       expect(
         prompted,
-        `native approval prompt never appeared; screen: ${JSON.stringify(plainScreen().slice(0, 2600))}`,
+        `native approval prompt never appeared; screen: ${JSON.stringify(plainScreen().slice(-6000))}`,
       ).toBe(true);
       // Approving must let the command run: the marker appears.
       expect(

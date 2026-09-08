@@ -3,7 +3,7 @@
   "body": {
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
-      "permissionDecision": "escalate",
+      "permissionDecision": "ask",
       "permissionDecisionReason": "Database mutation requires explicit approval"
     }
   }

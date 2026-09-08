@@ -21,6 +21,7 @@ Provenance notes:
 | --- | --- |
 | session-start, session-end, prompt-submit, pre-tool-bash, pre-tool-read, post-tool-bash, post-tool-failure, subagent-start, subagent-stop, stop | **captured** 2.1.238 |
 | pre-tool-powershell | **captured** 2.1.250 (2026-08-30) -- pins that `PowerShell` shares `Bash`'s `command` key, which until then rested on inference |
+| pre-tool-approval.output.json | constructed expected output; `ask` schema-derived from the 2.1.263 binary and verified in the Windows PTY live probe (2026-09-07), see `.capture/harness-playback/README.md` |
 | permission-request | doc-derived (R2, fetched 2026-08-20) — PermissionRequest hooks do not fire in headless `-p` capture |
 | pre-compact, post-compact | doc-derived (R2) — compaction is impractical to trigger in a short headless session |
 

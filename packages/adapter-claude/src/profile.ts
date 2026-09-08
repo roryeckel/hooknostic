@@ -41,6 +41,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           what:
             "PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298)",
         },
+        {
+          version: "2.1.263",
+          date: "2026-09-07",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "Windows PTY approval probe: PreToolUse permissionDecision ask overrides preallowed Bash and requires confirmation; escalate is rejected as invalid",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

@@ -147,3 +147,43 @@ claim consumers need is "newest build that passed scheduled playback". Only
 that script writes the region; human captures stay append-only, and the
 record's `what` string is the marker the release checker keys the playback
 baseline on.
+
+## Windows interactive approval correction (2026-09-07)
+
+Claude Code 2.1.263 was installed in an isolated Windows temporary directory
+and driven through `node-pty` against the loopback model. The paired terminal
+frames in `claude-windows-approval.json` are captured output: `rejected` shows
+Claude rejecting `permissionDecision: "escalate"`; `approval` shows the
+replacement `"ask"` causing a native prompt with the hook's reason. These are
+terminal frames, not hook-input fixtures. Account path segments, if present,
+are redacted to `user`.
+
+The request-approval scenario preallows Bash with `--allowedTools Bash`.
+Without that control the harness's default permission prompt can make the test
+pass even when the hook output is rejected. With `ask`, the prompt explicitly
+attributes the request to the PreToolUse hook; accepting it produces the
+`hooknostic-original` marker. The old `escalate` output fails the strengthened
+test and the corrected apply fixture.
+
+The installed binary's PreToolUse schema enumerates `allow`, `deny`, `ask`,
+and `defer`; this is **schema-derived** evidence, corroborated for `ask` by
+this live probe. The output fixture remains a constructed expected result.
+No hook-input fixture provenance or capability rating changes.
+
+The same run established three driver requirements:
+
+- Windows npm batch shims need `cmd.exe` when launched by ConPTY; direct
+  execution failed with error 193.
+- The Windows TUI used ASCII `>` for both selection and prompt cursors.
+  Matching only `❯` left the driver cycling through the trust choices.
+- Selecting an account type on fresh-state login onboarding opened OAuth in
+  the desktop browser. The driver now stops if that screen appears.
+
+Each PTY scenario now gets a private `CLAUDE_CONFIG_DIR`. Its `.claude.json`
+sets `hasCompletedOnboarding: true` and preapproves only the disposable
+`hooknostic-playback` key in `customApiKeyResponses.approved`. Those field
+names and the key-suffix rule (last 20 trimmed characters) were extracted from
+the installed binary, then verified by this session reaching the generated
+hook and native approval prompt. This seed is **constructed test bootstrap**,
+not captured user configuration; personal credentials and preferences are
+not copied into it.
