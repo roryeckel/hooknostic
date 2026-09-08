@@ -3,12 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { HooknosticConfig } from "@hooknostic/sdk";
 import type { Diagnostic } from "./diagnostics.js";
 
-export type ManagedOutputKind = "hooks" | "package";
-
 export interface ManagedOutput {
-  /** Display label only -- never an identity. Use `kind` + `target` to look one up. */
-  key: string;
-  kind: ManagedOutputKind;
   target: string;
   outputDir: string;
 }
@@ -68,18 +63,6 @@ function layoutError(target: string, message: string, remediation: string): Diag
 }
 
 /**
- * Human-readable label for a target's separately delivered package output.
- *
- * Deliberately NOT an identity: target ids are arbitrary non-empty strings, so a
- * target literally named `x__package` would collide with the package output of
- * target `x` and one could be staged over the other. Look outputs up by
- * (`kind`, `target`) instead -- `kind` is a closed set, so the pair cannot collide.
- */
-export function packageOutputLabel(target: string): string {
-  return `${target}__package`;
-}
-
-/**
  * Resolve and validate every directory the build may recursively replace.
  * Target outputs are sandboxed to the config directory. An output may be a
  * configured, inventory-excluded descendant of an Agent Plugin root, but may
@@ -116,66 +99,50 @@ export async function validateOutputLayout(options: {
   for (const target of options.selectedTargets) {
     const targetConfig = options.config.targets[target];
     if (!targetConfig) continue;
-    // `packageOutput` is a managed output like any other: it is replaced
-    // wholesale, so it has to clear the same sandbox, protected-path and
-    // source-package checks, and join the overlap matrix below.
-    const managed: { key: string; kind: ManagedOutputKind; field: string; dir: string }[] = [
-      { key: target, kind: "hooks", field: "output", dir: targetConfig.output },
-      ...(targetConfig.packageOutput === undefined
-        ? []
-        : [{
-            key: packageOutputLabel(target),
-            kind: "package" as const,
-            field: "packageOutput",
-            dir: targetConfig.packageOutput,
-          }]),
-    ];
-    for (const { key, kind, field, dir } of managed) {
-      const outputDir = resolve(configDir, dir);
-      const identities = await pathIdentities(outputDir);
-      const escapedPath = identities.find(
-        (path) => !isStrictDescendant(canonicalConfigDir, path),
+    const outputDir = resolve(configDir, targetConfig.output);
+    const identities = await pathIdentities(outputDir);
+    const escapedPath = identities.find(
+      (path) => !isStrictDescendant(canonicalConfigDir, path),
+    );
+    if (escapedPath !== undefined) {
+      diagnostics.push(
+        layoutError(
+          target,
+          `target "${target}" output resolves outside the project output sandbox: ${escapedPath}.`,
+          "choose an output directory strictly below the directory containing hooknostic.config.ts.",
+        ),
       );
-      if (escapedPath !== undefined) {
-        diagnostics.push(
-          layoutError(
-            target,
-            `target "${target}" ${field} resolves outside the project output sandbox: ${escapedPath}.`,
-            "choose an output directory strictly below the directory containing hooknostic.config.ts.",
-          ),
-        );
-        continue;
-      }
-      const protectedPath = protectedPaths.find((path) =>
-        identities.some((outputPath) => containsPath(outputPath, path)),
-      );
-      if (protectedPath !== undefined) {
-        diagnostics.push(
-          layoutError(
-            target,
-            `target "${target}" ${field} would recursively replace a protected project path: ${protectedPath}.`,
-            "choose a dedicated output directory that does not contain the config, hook entry, or build report.",
-          ),
-        );
-        continue;
-      }
-      const overlappingAgentPlugin = agentPluginPaths.find((path) =>
-        identities.some((outputPath) => containsPath(outputPath, path)),
-      );
-      if (overlappingAgentPlugin !== undefined) {
-        diagnostics.push(
-          layoutError(
-            target,
-            `target "${target}" ${field} overlaps the Agent Plugin source package: ${overlappingAgentPlugin}.`,
-            "choose a dedicated output directory outside agentPlugin.root.",
-          ),
-        );
-        continue;
-      }
-      const output = { key, kind, target, outputDir };
-      outputs.push(output);
-      comparisonPaths.set(output, identities);
+      continue;
     }
+    const protectedPath = protectedPaths.find((path) =>
+      identities.some((outputPath) => containsPath(outputPath, path)),
+    );
+    if (protectedPath !== undefined) {
+      diagnostics.push(
+        layoutError(
+          target,
+          `target "${target}" output would recursively replace a protected project path: ${protectedPath}.`,
+          "choose a dedicated output directory that does not contain the config, hook entry, or build report.",
+        ),
+      );
+      continue;
+    }
+    const overlappingAgentPlugin = agentPluginPaths.find((path) =>
+      identities.some((outputPath) => containsPath(outputPath, path)),
+    );
+    if (overlappingAgentPlugin !== undefined) {
+      diagnostics.push(
+        layoutError(
+          target,
+          `target "${target}" output overlaps the Agent Plugin source package: ${overlappingAgentPlugin}.`,
+          "choose a dedicated output directory outside agentPlugin.root.",
+        ),
+      );
+      continue;
+    }
+    const output = { target, outputDir };
+    outputs.push(output);
+    comparisonPaths.set(output, identities);
   }
 
   for (let left = 0; left < outputs.length; left += 1) {
@@ -192,7 +159,7 @@ export async function validateOutputLayout(options: {
       if (!overlaps) {
         continue;
       }
-      const message = `managed outputs "${a.key}" and "${b.key}" overlap (${a.outputDir} and ${b.outputDir}).`;
+      const message = `managed outputs "${a.target}" and "${b.target}" overlap (${a.outputDir} and ${b.outputDir}).`;
       for (const target of new Set([a.target, b.target])) {
         diagnostics.push(
           layoutError(

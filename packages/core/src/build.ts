@@ -61,8 +61,6 @@ export interface BuildTargetReport {
   adapter: string;
   requestedVersion: string;
   output: string;
-  /** Where the projected package went, when it is not delivered in `output`. */
-  packageOutput?: string;
   capabilities: Record<SupportLevel, number>;
   artifacts?: string[];
   projection?: AgentPluginTargetReport;
@@ -329,12 +327,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         agentPluginRoot,
         configPath,
         config.entry,
-        // Both destinations, or a build inventories the previous package as source:
-        // with `root: "."` the identity projector then copies it into the next one,
-        // nesting a level deeper every run until path validation fails.
-        Object.values(config.targets).flatMap((target) =>
-          target.packageOutput === undefined ? [target.output] : [target.output, target.packageOutput],
-        ),
+        // Or a build inventories the previous package as source: with
+        // `root: "."` a projector then copies it into the next one, nesting a
+        // level deeper every run until path validation fails.
+        Object.values(config.targets).map((target) => target.output),
         config.agentPlugin.exclude ?? [],
       ),
     });
@@ -394,9 +390,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       adapter: target.adapter,
       requestedVersion: target.requestedVersion,
       output: config.targets[id]?.output ?? "",
-      ...(config.targets[id]?.packageOutput === undefined
-        ? {}
-        : { packageOutput: config.targets[id]!.packageOutput! }),
       capabilities: target.counts,
     };
     if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
@@ -441,8 +434,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const dryRun = options.dryRun === true;
   const runtimePolicy = effectiveRuntime(config);
   const projectSdk = config.entry === undefined ? undefined : resolveProjectSdk(configDir);
-  const outputFor = (kind: "hooks" | "package", target: string) =>
-    layout.outputs.find((entry) => entry.kind === kind && entry.target === target);
+  const outputFor = (target: string) =>
+    layout.outputs.find((entry) => entry.target === target);
   const staged: { key: string; target?: string; kind?: "directory" | "file"; stagingDir: string; outputDir: string }[] = [];
   /** Outputs a successful target will replace, whether or not this run stages. */
   const planned: { target: string; outputDir: string }[] = [];
@@ -505,9 +498,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         let artifacts = hookArtifacts;
         let directories: readonly string[] = [];
         let projectionCopiedPaths: ReadonlySet<string> | undefined;
-        /** Set only when the package is delivered separately from the hooks. */
-        let packageArtifacts: GeneratedArtifact[] | undefined;
-        let packageDirectories: readonly string[] = [];
         if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
           phase = "Agent Plugin projection";
           const projector = adapter.agentPluginProjector;
@@ -539,36 +529,44 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
             continue;
           }
-          // When the package is not the hook channel, the two are separate
-          // deliverables: the package goes to `packageOutput` and `output` keeps
-          // the hook artifacts it would have held without any projection.
-          if (projector.deliversHooks) {
-            artifacts = plan.files;
-          } else {
-            packageArtifacts = plan.files;
-            packageDirectories = plan.directories ?? [];
+          // The projected package replaces the compiled artifacts wholesale, so
+          // it is also the harness's hook channel and has to carry every hook
+          // artifact through. Verified rather than trusted: a projector that
+          // dropped one would install a package that looks complete and runs no
+          // hooks, with nothing else in the build to notice.
+          const projected = new Set(plan.files.map((file) => file.path));
+          const dropped = hookArtifacts
+            .map((artifact) => artifact.path)
+            .filter((path) => !projected.has(path));
+          if (dropped.length > 0) {
+            diagnostics.push({
+              code: "HN301",
+              severity: "error",
+              target: id,
+              message: `Agent Plugin projection for ${JSON.stringify(id)} dropped compiled hook artifacts: ${dropped.map((path) => JSON.stringify(path)).join(", ")}.`,
+              remediation: "report the projector defect; a projected package must carry context.hookArtifacts.",
+            });
+            target.status = "failed";
+            target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
+            continue;
           }
-          directories = projector.deliversHooks ? (plan.directories ?? []) : directories;
+          artifacts = plan.files;
+          directories = plan.directories ?? [];
           projectionCopiedPaths = new Set(plan.summary.copiedPaths);
           target.projection = projectionReport(
             projectionResolutions.get(id)!,
             plan.summary,
-            packageArtifacts ?? artifacts,
-            packageArtifacts === undefined ? directories : packageDirectories,
+            artifacts,
+            directories,
           );
         }
 
         phase = "validation";
-        const structural = [
-          ...validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories),
-          ...(packageArtifacts === undefined
-            ? []
-            : validateGeneratedArtifacts(
-                packageArtifacts,
-                { adapterId: adapter.id, target: id },
-                packageDirectories,
-              )),
-        ];
+        const structural = validateGeneratedArtifacts(
+          artifacts,
+          { adapterId: adapter.id, target: id },
+          directories,
+        );
         diagnostics.push(...structural);
         if (hasFatal(structural)) {
           target.status = "failed";
@@ -588,7 +586,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           // The projector reports what it copied byte-for-byte; the rest of its
           // plan it generated. Deriving the list this way keeps every harness's
           // own path layout inside its adapter, where ADR-0011 puts it.
-          for (const artifact of packageArtifacts ?? artifacts) {
+          for (const artifact of artifacts) {
             if (!projectionCopiedPaths.has(artifact.path)) generated.add(artifact.path);
           }
         }
@@ -596,29 +594,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           .map((artifact) => artifact.path)
           .filter((path) => generated.has(path));
 
-        planned.push({ target: id, outputDir: outputFor("hooks", id)!.outputDir });
-        if (packageArtifacts !== undefined) {
-          planned.push({ target: id, outputDir: outputFor("package", id)!.outputDir });
-        }
+        planned.push({ target: id, outputDir: outputFor(id)!.outputDir });
         if (stagingRoot === undefined) continue;
         phase = "staging";
-        const stagingDir = await writeArtifacts(stagingRoot, join("hooks", id), artifacts, directories);
-        staged.push({ key: id, target: id, stagingDir, outputDir: outputFor("hooks", id)!.outputDir });
-        if (packageArtifacts !== undefined) {
-          const packageOutput = outputFor("package", id)!;
-          const packageStagingDir = await writeArtifacts(
-            stagingRoot,
-            join("package", id),
-            packageArtifacts,
-            packageDirectories,
-          );
-          staged.push({
-            key: packageOutput.key,
-            target: id,
-            stagingDir: packageStagingDir,
-            outputDir: packageOutput.outputDir,
-          });
-        }
+        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts, directories);
+        staged.push({ key: id, target: id, stagingDir, outputDir: outputFor(id)!.outputDir });
       } catch (error) {
         diagnostics.push({ code: "HN301", severity: "error", target: id, message: `artifact ${phase} failed: ${errorMessage(error)}` });
         target.status = "failed";

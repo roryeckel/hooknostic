@@ -4429,7 +4429,6 @@ var targetConfigSchema = external_exports.object({
   version: external_exports.string().min(1),
   mode: external_exports.enum(["plugin", "local"]),
   output: external_exports.string().min(1),
-  packageOutput: external_exports.string().min(1).optional(),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var hooknosticConfigSchema = external_exports.object({

@@ -112,9 +112,9 @@ function noProjectorAdapter() {
   });
 }
 
-function separatePackageAdapter() {
+function copyThroughAdapter() {
   return makeFakeAdapter({
-    id: "separate",
+    id: "copy",
     profiles: [
       {
         range: ">=1.0 <2",
@@ -125,14 +125,66 @@ function separatePackageAdapter() {
     shimEntry: "export {};",
     agentPluginProjector: {
       namespace: "",
-      // The point of the double: package and hooks are different deliverables,
-      // so core must write the package to `packageOutput` and exclude it from
-      // the next build's inventory.
-      deliversHooks: false,
       profiles: [
         {
           range: ">=1.0 <2",
           components: { "agent-plugin.manifest": { level: "exact" }, "agent-plugin.skills": { level: "exact" } },
+          source: {
+            date: "2026-01-01",
+            validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
+          },
+        },
+      ],
+      // Copies the package verbatim, so `copiedPaths` covers the whole output
+      // and a previous build reappearing as source is directly countable.
+      async project(source, context) {
+        return {
+          files: [
+            ...source.files.map((file) => ({ path: file.path, contents: file.contents, mode: file.mode })),
+            ...context.hookArtifacts,
+          ],
+          issues: [],
+          summary: {
+            components: {
+              "agent-plugin.manifest": { discovered: 1, emitted: 1, skipped: 0 },
+              ...(source.skills.length === 0
+                ? {}
+                : { "agent-plugin.skills": { discovered: source.skills.length, emitted: source.skills.length, skipped: 0 } }),
+            },
+            omissions: [],
+            copiedPaths: source.files.map((file) => file.path).sort((a, b) => a.localeCompare(b)),
+          },
+        };
+      },
+    },
+  });
+}
+
+/**
+ * A projector that returns the package without the compiled hook artifacts.
+ *
+ * A projection replaces the target output wholesale, so this installs a package
+ * that looks complete and runs nothing. Nothing else in the build notices: the
+ * plan is non-empty, every path validates, and the summary counts the components
+ * it did emit.
+ */
+function dropsHookArtifactsAdapter() {
+  return makeFakeAdapter({
+    id: "drops",
+    profiles: [
+      {
+        range: ">=1.0 <2",
+        source: syntheticSource(),
+        matrix: { "session.start.observe": { level: "exact" } },
+      },
+    ],
+    shimEntry: "export {};",
+    agentPluginProjector: {
+      namespace: "",
+      profiles: [
+        {
+          range: ">=1.0 <2",
+          components: { "agent-plugin.manifest": { level: "exact" } },
           source: {
             date: "2026-01-01",
             validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
@@ -144,12 +196,7 @@ function separatePackageAdapter() {
           files: source.files.map((file) => ({ path: file.path, contents: file.contents, mode: file.mode })),
           issues: [],
           summary: {
-            components: {
-              "agent-plugin.manifest": { discovered: 1, emitted: 1, skipped: 0 },
-              ...(source.skills.length === 0
-                ? {}
-                : { "agent-plugin.skills": { discovered: source.skills.length, emitted: source.skills.length, skipped: 0 } }),
-            },
+            components: { "agent-plugin.manifest": { discovered: 1, emitted: 1, skipped: 0 } },
             omissions: [],
             copiedPaths: source.files.map((file) => file.path).sort((a, b) => a.localeCompare(b)),
           },
@@ -172,7 +219,6 @@ function partialProjectorAdapter() {
     shimEntry: "export {};",
     agentPluginProjector: {
       namespace: "example.partial",
-      deliversHooks: true,
       profiles: [
         {
           range: ">=1.0 <2",
@@ -355,7 +401,7 @@ ${run.stderr}`).toBe(0);
     "does not inventory a previous package output as source on the next build",
     { timeout: 120_000 },
     async () => {
-      // With `root: "."` the package destination sits inside the inventory root.
+      // With `root: "."` the output sits inside the inventory root.
       // If it is not excluded, build N+1 copies build N's package into the new
       // one and the tree nests a level deeper every run.
       const dir = await mkdtemp(join(tmpdir(), "hooknostic-repackage-"));
@@ -369,13 +415,12 @@ ${run.stderr}`).toBe(0);
       await writeFile(
         join(dir, "hooknostic.config.ts"),
         `export default {
-          agentPlugin: { root: ".", targets: ["separate"] },
+          agentPlugin: { root: ".", targets: ["copy"] },
           targets: {
-            separate: {
+            copy: {
               version: ">=1.0 <2",
               mode: "local",
-              output: "./dist/separate",
-              packageOutput: "./dist/separate-package",
+              output: "./dist/copy",
             },
           },
         };`,
@@ -388,23 +433,74 @@ ${run.stderr}`).toBe(0);
           await runBuild({
             config: join(dir, "hooknostic.config.ts"),
             json: true,
-            registry: { separate: separatePackageAdapter() },
+            registry: { copy: copyThroughAdapter() },
             io: json.io,
             evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
           }),
           json.out(),
         ).toBe(0);
-        copiedCounts.push(JSON.parse(json.out()).targets.separate.projection.copiedFileCount);
+        copiedCounts.push(JSON.parse(json.out()).targets.copy.projection.copiedFileCount);
       }
 
       // Two files, unchanged across runs: the count grew 2 -> 4 -> 6 before the fix.
       expect(copiedCounts).toEqual([2, 2, 2]);
       // The manifest is what a nested copy would duplicate first.
-      expect(existsSync(join(dir, "dist/separate-package/dist/separate-package/plugin.json"))).toBe(false);
+      expect(existsSync(join(dir, "dist/copy/dist/copy/plugin.json"))).toBe(false);
       // `dist/` itself survives as an EMPTY directory: only its contents are
       // excluded, and the loader preserves empty package directories on purpose
       // (an MCP `cwd` may be one). Nothing from a previous build is inside it.
-      expect(existsSync(join(dir, "dist/separate-package/dist/separate-package"))).toBe(false);
+      expect(existsSync(join(dir, "dist/copy/dist/copy"))).toBe(false);
+    },
+  );
+
+  it(
+    "fails a target whose projection drops the compiled hook artifacts",
+    { timeout: 120_000 },
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-drophooks-"));
+      cleanupDirs.push(dir);
+      await writeFile(
+        join(dir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "drops", version: "1.0.0" }),
+      );
+      await writeFile(
+        join(dir, "hooks.ts"),
+        `import { definePlugin, hook } from "@hooknostic/sdk";
+         export default definePlugin({ name: "drops", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      );
+      await writeFile(
+        join(dir, "hooknostic.config.ts"),
+        `export default {
+          entry: "./hooks.ts",
+          agentPlugin: { root: ".", targets: ["drops"] },
+          targets: { drops: { version: ">=1.0 <2", mode: "plugin", output: "./dist/drops" } },
+        };`,
+      );
+
+      const capture = captureIO();
+      expect(
+        await runBuild({
+          config: join(dir, "hooknostic.config.ts"),
+          json: true,
+          registry: { drops: dropsHookArtifactsAdapter() },
+          io: capture.io,
+          evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+        }),
+        capture.out(),
+      ).toBe(1);
+      const report = JSON.parse(capture.out());
+      expect(report.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "HN301",
+          severity: "error",
+          target: "drops",
+          message: expect.stringContaining("fake-plugin.json"),
+        }),
+      );
+      expect(report.targets.drops.status).toBe("failed");
+      // The package the projector did produce must not reach disk: it would be
+      // an installable plugin with no hooks in it.
+      expect(existsSync(join(dir, "dist/drops"))).toBe(false);
     },
   );
 

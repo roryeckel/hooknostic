@@ -506,18 +506,15 @@ dist/
 └── hooknostic-build.json
 ```
 
-A target's package and its hooks share `output` when the harness loads hooks out
-of the installed package, which the projector declares through `deliversHooks`.
-Both shipped projectors do: Claude through `hooks/hooks.json`, Codex through its
-native manifest's `hooks` key. A projector that declares `false` installs a
-package but reads hooks from somewhere else, and must then pair its target with
-`packageOutput` — folding the two together would ship the hook artifact inside
-the install cache, unreadable there and beyond the reach of
-`agentPlugin.exclude`, which filters source files rather than generated ones. The
-pairing is checked rather than inferred: `packageOutput` is an HN204 error when
-missing on a target that needs it, and when present on one that does not. It is a
-managed output like `output` — replaced wholesale, sandboxed below the config
-directory, and excluded from the package inventory.
+A target's package and its hooks share one `output`. A projection replaces that
+output wholesale, so the projected package is necessarily the harness's hook
+channel: Claude reads `hooks/hooks.json`, Codex its native manifest's `hooks`
+key, OpenCode the generated module in `.opencode/plugins/`. Core verifies this
+rather than trusting it — every compiled hook artifact path must appear in the
+returned plan, and a projection that drops one fails the target with HN301. A
+projector may rewrite an artifact's contents (Claude merges its own hooks
+document into the generated one); dropping the path would install a package that
+looks complete and runs nothing, which nothing else in the build would notice.
 
 OpenCode ships local-file mode first; npm-package mode can follow.
 

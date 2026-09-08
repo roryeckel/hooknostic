@@ -36,12 +36,6 @@ export interface NativeAgentPluginProjectorOptions {
    * as projected while the harness ignored it.
    */
   namespace?: string;
-  /**
-   * Set only if this harness loads hooks out of the installed package. Defaults
-   * to `false`: Agent Plugins 1.0 defines no hook component, so a package is not
-   * a hook channel unless the harness has its own convention on top.
-   */
-  deliversHooks?: boolean;
 }
 
 /**
@@ -96,11 +90,9 @@ function discoveredComponentCounts(
 export function createNativeAgentPluginProjector<TTarget>(
   options: NativeAgentPluginProjectorOptions,
 ): AgentPluginProjector<TTarget> {
-  const deliversHooks = options.deliversHooks ?? false;
   const namespace = options.namespace ?? "";
   return {
     namespace,
-    deliversHooks,
     profiles: options.profiles,
     project: async (
       source: AgentPluginPackage,
@@ -112,9 +104,8 @@ export function createNativeAgentPluginProjector<TTarget>(
         mode: file.mode,
       }));
       // Generated beside the package, not copied from it, so they stay out of
-      // `copiedPaths`. Only appended when this harness reads hooks from the
-      // installed package; otherwise core writes them to the target's own output.
-      if (deliversHooks) files.push(...context.hookArtifacts.map((file) => ({ ...file })));
+      // `copiedPaths`.
+      files.push(...context.hookArtifacts.map((file) => ({ ...file })));
 
       const components: AgentPluginProjectionPlan["summary"]["components"] = {};
       const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];

@@ -125,7 +125,6 @@ export const targetConfigSchema = z
     version: z.string().min(1),
     mode: z.enum(["plugin", "local"]),
     output: z.string().min(1),
-    packageOutput: z.string().min(1).optional(),
     compatibility: compatibilityPolicySchema.optional(),
   })
   .strict();

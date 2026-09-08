@@ -472,7 +472,6 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: CLAUDE_AGENT_PLUGIN_NAMESPACE,
   // A Claude plugin loads hooks/hooks.json from its own installed root, so the
   // package IS the hook channel here and both share the target's output.
-  deliversHooks: true,
   profiles: [
     {
       range: ">=2.1 <3",

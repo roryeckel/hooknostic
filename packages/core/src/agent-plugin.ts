@@ -134,40 +134,6 @@ export function analyzeAgentPluginProjection(
       ],
     };
   }
-  // Package and hooks share `output` only when the package is the harness's own
-  // hook channel. Where it is not, writing both to one directory would ship the
-  // hook artifact inside the installed package -- unreadable there, and beyond
-  // the reach of `agentPlugin.exclude` because it is generated, not source. The
-  // pairing is required rather than defaulted so the split is visible in the
-  // config instead of inferred from an adapter's internals.
-  if (!projector.deliversHooks && target.packageOutput === undefined) {
-    return {
-      profilesUsed: [],
-      diagnostics: [
-        {
-          code: "HN204",
-          severity: "error",
-          target: target.id,
-          message: `target ${JSON.stringify(target.id)} installs an Agent Plugin package but does not load hooks from it, so the package needs its own output directory.`,
-          remediation: `set packageOutput on the ${JSON.stringify(target.id)} target; output stays the hook artifact directory.`,
-        },
-      ],
-    };
-  }
-  if (projector.deliversHooks && target.packageOutput !== undefined) {
-    return {
-      profilesUsed: [],
-      diagnostics: [
-        {
-          code: "HN204",
-          severity: "error",
-          target: target.id,
-          message: `target ${JSON.stringify(target.id)} loads its hooks from the projected package, so the package cannot be written somewhere else.`,
-          remediation: `remove packageOutput from the ${JSON.stringify(target.id)} target; output holds the package and its hooks.`,
-        },
-      ],
-    };
-  }
   const resolved = resolveAgentPluginProjection(target, projector);
   if (!resolved.matrix) return resolved;
   for (const component of discoveredComponents(source, projector.namespace, runtimePackage)) {

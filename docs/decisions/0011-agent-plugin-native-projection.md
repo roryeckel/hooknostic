@@ -215,3 +215,30 @@ at all.
   per harness for real reasons.** `sse` is `unsupported` on Codex, which would
   mis-register it as streamable-http, and `emulated` on OpenCode, whose client
   negotiates `[StreamableHTTP, SSE]` and simply connects.
+
+## Amendments — 2026-09-08 (fourth)
+
+`deliversHooks` and `packageOutput` are removed. They were the two halves of one
+premise — that a harness might install an Agent Plugins package and load its
+hooks from elsewhere — and the second amendment above falsified it for the only
+adapter that was ever believed to hold it.
+
+- **A projected package is always the hook channel.** All three shipped
+  projectors deliver their own hooks, so the `false` branch had no user, and its
+  two HN204 pairing errors had no test. Keeping the option would also not have
+  bought back the case it was written for: `deliversHooks` was flat on the
+  projector while `profiles` carries the version ranges, so an adapter could not
+  have said "false below 0.149, true above it" — the shape a Codex that really
+  had lost `plugin_hooks` would need.
+- **The declaration is replaced by a check, which is strictly stronger.** Core
+  never verified that a `deliversHooks: true` projector actually emitted
+  `context.hookArtifacts`; it assigned the plan wholesale. A projector that
+  dropped one shipped an installable package that runs no hooks, with a
+  non-empty plan, valid paths and an accurate component summary — nothing in the
+  build could see it. Core now fails the target with HN301 naming the dropped
+  paths. Contents may still be rewritten, which is what lets Claude merge its own
+  hooks document into the generated one.
+- **Re-adding it later is additive.** `packageOutput` was an optional config
+  field and nothing publishes from this repository yet, so the option value of
+  keeping an untested branch against a hypothetical harness was smaller than the
+  cost of carrying it.

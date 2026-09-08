@@ -101,9 +101,6 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // the extensions map. Declaring an invented namespace would make the
   // component discoverable against something nothing reads.
   namespace: "",
-  // The native manifest's `hooks` key is this target's hook channel, so the
-  // package and the hooks are one deliverable.
-  deliversHooks: true,
   profiles: [
     {
       range: ">=0.148 <1",

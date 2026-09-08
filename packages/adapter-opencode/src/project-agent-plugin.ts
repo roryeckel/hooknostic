@@ -192,7 +192,6 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // OpenCode reads no reverse-DNS client-extension namespace.
   namespace: "",
   // The hook module and the package share `.opencode/plugins/`.
-  deliversHooks: true,
   profiles: [
     {
       range: ">=1.10 <2",

@@ -19,8 +19,6 @@ export interface TargetSpec {
   version: string;
   mode: "plugin" | "local";
   output: string;
-  /** Where the projected Agent Plugin package goes when it is not `output`. */
-  packageOutput?: string;
 }
 
 export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSpec {
@@ -29,7 +27,6 @@ export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSp
     version: target.version,
     mode: target.mode,
     output: target.output,
-    ...(target.packageOutput === undefined ? {} : { packageOutput: target.packageOutput }),
   };
 }
 
