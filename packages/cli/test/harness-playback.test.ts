@@ -1397,6 +1397,13 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         "plugins/cache/hooknostic-projection-playback/projection-playback/1.0.0",
       );
 
+      // The launcher derives PLUGIN_DATA from the home directory, so the lane
+      // stubs one: otherwise every run leaves a directory in the contributor's
+      // real home, and the assertion below could only check "non-empty".
+      const homeDir = join(dir, "home");
+      await mkdir(homeDir, { recursive: true });
+      const pluginData = join(homeDir, ".hooknostic", "plugin-data", "projection-playback");
+
       const server = await startModelPlayback("openai-responses", "rewrite");
       try {
         await runProcess("git", ["init"], { cwd: projectDir, env: process.env, timeoutMs: 30_000 });
@@ -1431,7 +1438,11 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             "-c",
             `projects={${tomlLiteral(projectDir)}={trust_level=${tomlLiteral("trusted")}}}`,
           ],
-          { cwd: projectDir, env: codexEnv, timeoutMs: 120_000 },
+          {
+            cwd: projectDir,
+            timeoutMs: 120_000,
+            env: { ...codexEnv, USERPROFILE: homeDir, HOME: homeDir },
+          },
         );
         expect(result.code, result.stdout + result.stderr).toBe(0);
       } finally {
@@ -1444,8 +1455,9 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       // Both variables arrive, absolute, in a subprocess the harness binds
       // neither for.
       expect(normalize(environment.pluginRoot)).toBe(normalize(installRoot));
-      expect(environment.pluginData).toBeTypeOf("string");
-      expect(environment.pluginData).not.toBe("");
+      // Outside the version-scoped install root, so an upgrade cannot discard it.
+      expect(normalize(environment.pluginData)).toBe(normalize(pluginData));
+      expect(environment.pluginData.startsWith(installRoot)).toBe(false);
       // ${PLUGIN_DATA} in argv reached the server expanded, not literal.
       expect(environment.argv).toEqual([environment.pluginData]);
       // The declared cwd is honoured through the launcher, not lost to it.
@@ -1524,6 +1536,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         await writeFile(join(projectDir, artifact.path), artifact.contents);
       }
 
+      const homeDir = join(dir, "home");
+      await mkdir(homeDir, { recursive: true });
+      const pluginData = join(homeDir, ".hooknostic", "plugin-data", "projection-playback");
+
       const server = await startModelPlayback("openai-chat", "rewrite");
       try {
         await runProcess("git", ["init"], { cwd: projectDir, env: process.env, timeoutMs: 30_000 });
@@ -1538,6 +1554,9 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           {
             cwd: projectDir,
             timeoutMs: 180_000,
+            // Home is stubbed for the same reason as the Codex lane: the
+            // launcher derives PLUGIN_DATA from it, and a test must not leave a
+            // directory in the contributor's real home.
             // The isolation every other OpenCode drive uses: real credentials
             // stripped, and an XDG config home inside the project. Without it
             // the run links to whatever OpenCode launched the test.
@@ -1545,6 +1564,8 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
               ...withoutCredentials(),
               PWD: projectDir,
               XDG_CONFIG_HOME: openCodePlaybackConfigHome(projectDir),
+              USERPROFILE: homeDir,
+              HOME: homeDir,
             },
           },
         );
@@ -1560,8 +1581,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       );
       // The nested package, not the module's own directory, is ${PLUGIN_ROOT}.
       expect(normalize(environment.pluginRoot)).toBe(normalize(packageRoot));
-      expect(environment.pluginData).toBeTypeOf("string");
-      expect(environment.pluginData).not.toBe("");
+      // A user-level directory, so rebuilding the project output is not an
+      // "update" that resets a server's state.
+      expect(normalize(environment.pluginData)).toBe(normalize(pluginData));
+      expect(environment.pluginData.startsWith(projectDir)).toBe(false);
       expect(environment.argv).toEqual([environment.pluginData]);
       expect(normalize(environment.cwd)).toBe(normalize(join(packageRoot, "mcp-working-dir")));
     },
