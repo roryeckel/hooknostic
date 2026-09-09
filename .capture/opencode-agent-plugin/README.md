@@ -116,3 +116,56 @@ text alone:
 - Whether an unset `${VAR}` should resolve to empty or stay literal. The
   generated module leaves it literal.
 - Linux and macOS behaviour. Windows only.
+
+## Round 4 — the generated MCP launcher (2026-09-08)
+
+Evidence class: **live-probe**, through the offline playback lane rather than a
+one-off capture. `opencode` **1.18.29**, Windows, no model call. Re-run with:
+
+```
+HOOKNOSTIC_PLAYBACK=opencode pnpm exec vitest run \
+  packages/cli/test/harness-playback.test.ts -t "generated launcher"
+```
+
+### Question
+
+OpenCode binds neither `PLUGIN_ROOT` nor `PLUGIN_DATA`, and the round-1
+observation that a declared `environment` survives configuration resolution says
+nothing about the *spawned child's* environment. Does a projected server started
+through the generated launcher receive both variables, and does the declared
+`cwd` survive?
+
+### Observations
+
+A projection is written into a project directory and one `opencode run` turn is
+driven against a loopback model server. The stdio server's marker file records:
+
+| Field | Result |
+|---|---|
+| `PLUGIN_ROOT` | the absolute nested package directory, `.opencode/plugins/package` |
+| `PLUGIN_DATA` | a non-empty absolute path |
+| `argv` | the expanded `PLUGIN_DATA`, not the literal `${PLUGIN_DATA}` |
+| `cwd` | `<package>/mcp-working-dir`, the declared subdirectory |
+
+`${PLUGIN_ROOT}` resolves to the **nested package**, not to the module's own
+directory — which is the distinction the flat-scan layout exists to preserve.
+
+**A gate, not a snapshot.** Removing the launcher's `PLUGIN_DATA` binding and
+re-running fails the lane.
+
+### Consequences
+
+- `agent-plugin.mcp.stdio` is honestly `emulated`: the contract is delivered, by
+  generated code, into a directory Hooknostic chose.
+- A server naming `${PLUGIN_DATA}` is no longer dropped.
+- The projection no longer emits OpenCode's `environment` key at all, so the
+  round-1 unknown about whether it merges with or replaces the parent
+  environment is now moot for projected servers.
+
+### Not established
+
+- Whether `environment` merges or replaces. Still unknown, and now unreached —
+  it would have to be settled before any future projection used that key.
+- Whether a `tools/call` completes through such a server; the lane proves the
+  spawn and the `initialize`/`tools/list` answer only.
+- Linux and macOS behaviour. Windows only.

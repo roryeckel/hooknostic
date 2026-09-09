@@ -15,6 +15,7 @@ import {
 } from "@hooknostic/agent-plugin";
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
 import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
+import { opencodeAgentPluginProjector } from "@hooknostic/adapter-opencode";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { IPty, spawn as ptySpawn } from "node-pty";
 import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
@@ -1451,6 +1452,120 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       expect(normalize(environment.cwd)).toBe(normalize(join(installRoot, "mcp-working-dir")));
     },
     240_000,
+  );
+
+  // The OpenCode half of the same claim. Unlike Codex there is no install step:
+  // `.opencode/plugins/` is read from the project directory, so the projection
+  // is written straight into one.
+  it.skipIf(adapter?.id !== "opencode")(
+    "starts a projected MCP server through the generated launcher",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-projection-"));
+      tempDirs.push(dir);
+      const portable = join(dir, "portable");
+      const projectDir = join(dir, "project");
+      await mkdir(projectDir, { recursive: true });
+      await mkdir(join(portable, "mcp-working-dir"), { recursive: true });
+      await writeFile(join(portable, "mcp-working-dir/README.md"), "MCP working directory fixture.\n");
+      await mkdir(join(portable, "skills/projection-probe"), { recursive: true });
+      await writeFile(
+        join(portable, "plugin.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+          name: "projection-playback",
+          version: "1.0.0",
+          description: "No-spend Agent Plugin projection playback fixture.",
+        }),
+      );
+      await writeFile(
+        join(portable, "skills/projection-probe/SKILL.md"),
+        "---\nname: projection-probe\ndescription: Exercise projected plugin discovery.\n---\nHOOKNOSTIC_SKILL_DISCOVERY_MARKER\n",
+      );
+      await writeFile(
+        join(portable, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            projection: {
+              type: "stdio",
+              command: "node",
+              args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"],
+              env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
+              cwd: "./mcp-working-dir",
+            },
+          },
+        }),
+      );
+      await writeFile(
+        join(portable, "plugin-mcp-env-fixture.mjs"),
+        await readFile(PluginMcpEnvFixturePath),
+      );
+      const loaded = await loadAgentPlugin({ root: portable });
+      expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+
+      const target = {
+        id: "opencode",
+        version: process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
+        mode: "local" as const,
+        output: ".",
+      };
+      const plan = await opencodeAgentPluginProjector.project(loaded.package!, {
+        target,
+        hookArtifacts: [],
+        support: resolveAgentPluginProjection(target, opencodeAgentPluginProjector).matrix!,
+        onUnsupported: "error",
+      });
+      expect(plan.issues).toEqual([]);
+      for (const directory of plan.directories ?? []) {
+        await mkdir(join(projectDir, directory), { recursive: true });
+      }
+      for (const artifact of plan.files) {
+        await mkdir(join(projectDir, artifact.path, ".."), { recursive: true });
+        await writeFile(join(projectDir, artifact.path), artifact.contents);
+      }
+
+      const server = await startModelPlayback("openai-chat", "rewrite");
+      try {
+        await runProcess("git", ["init"], { cwd: projectDir, env: process.env, timeoutMs: 30_000 });
+        await prepareOpenCodePluginDependency(
+          projectDir,
+          process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
+        );
+        await writeOpenCodeProviderConfig(projectDir, server.baseUrl);
+        const result = await runProcess(
+          "opencode",
+          ["run", "hello", "--model", "playback/hooknostic-playback"],
+          {
+            cwd: projectDir,
+            timeoutMs: 180_000,
+            // The isolation every other OpenCode drive uses: real credentials
+            // stripped, and an XDG config home inside the project. Without it
+            // the run links to whatever OpenCode launched the test.
+            env: {
+              ...withoutCredentials(),
+              PWD: projectDir,
+              XDG_CONFIG_HOME: openCodePlaybackConfigHome(projectDir),
+            },
+          },
+        );
+        expect(result.code, result.stdout + result.stderr).toBe(0);
+        expect(server.errors).toEqual([]);
+      } finally {
+        await server.close();
+      }
+
+      const packageRoot = join(projectDir, ".opencode/plugins/package");
+      const environment = JSON.parse(
+        await readFile(join(packageRoot, "mcp-environment.json"), "utf8"),
+      );
+      // The nested package, not the module's own directory, is ${PLUGIN_ROOT}.
+      expect(normalize(environment.pluginRoot)).toBe(normalize(packageRoot));
+      expect(environment.pluginData).toBeTypeOf("string");
+      expect(environment.pluginData).not.toBe("");
+      expect(environment.argv).toEqual([environment.pluginData]);
+      expect(normalize(environment.cwd)).toBe(normalize(join(packageRoot, "mcp-working-dir")));
+    },
+    300_000,
   );
 
   it("drives the fixture MCP tool through the generated production artifact", async () => {

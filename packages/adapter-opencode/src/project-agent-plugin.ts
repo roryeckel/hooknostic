@@ -336,6 +336,13 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/opencode-agent-plugin",
             what: "A remote MCP server is attempted as [StreamableHTTP, SSE] in that order, with declared headers passed to both, which is why sse is emulated rather than unsupported.",
           },
+          {
+            version: "1.18.29",
+            date: "2026-09-08",
+            method: "live-probe",
+            artifact: ".capture/opencode-agent-plugin",
+            what: "A projected server started through the generated launcher received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and its declared working directory; PLUGIN_ROOT resolved to the nested package rather than to the generated module's own directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI.",
+          },
         ],
         notes: [
           "Project plugins need no install: `.opencode/plugins/` is read from the project directory.",
