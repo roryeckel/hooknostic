@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:88923c5106a6458cb6952694d53bd408f5889d958df7e3bca17b7f58b8194f57",
+        "contentDigest": "sha256:079dcbd31b6d3521e69fb39328fed1fa8d73d16be2e6d81d0b3b5d6b83451013",
         "copiedFileCount": 7,
         "directories": [
           ".opencode/plugins/package/runtime",
@@ -174,6 +174,8 @@
       },
       "artifacts": [
         ".opencode/plugins/hooknostic-agent-plugin.js",
+        ".opencode/plugins/hooknostic-runtime/mcp-launcher.mjs",
+        ".opencode/plugins/hooknostic-runtime/mcp-servers.json",
         ".opencode/plugins/hooknostic.js"
       ]
     }

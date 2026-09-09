@@ -10,40 +10,36 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// Only the install directory is substituted, and only in the fields the
-// specification expands: a local server's argv, cwd and environment values.
-// A remote server is passed through untouched, because a client MUST NOT
-// expand in url or headers, and unrecognized placeholder-like text MUST stay
-// literal -- resolving a ${TOKEN} here would put a host value in a
-// package-chosen destination.
+// Two install-time paths are substituted, and nothing else: this module
+// cannot know them at build time. Both are Hooknostic's own -- the package's
+// declaration lives in the servers document the launcher reads, so no
+// package-controlled text passes through here at all.
+//
+// A remote server is returned untouched, because a client MUST NOT expand in
+// url or headers and unrecognized placeholder-like text MUST stay literal --
+// resolving a ${TOKEN} here would put a host value in a package-chosen
+// destination.
 //
 // The walk is structural. A JSON round-trip would corrupt a Windows plugin
 // root, whose backslashes are not valid JSON escapes.
 //
 // The package sits one level down, out of the flat plugin scan; that
 // directory, not this module's, is what ${PLUGIN_ROOT} means.
-const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");
-const MARKER = "__HOOKNOSTIC_PLUGIN_ROOT__";
-const resolveText = (text) => text.split(MARKER).join(pluginRoot);
+const here = dirname(fileURLToPath(import.meta.url));
+const pluginRoot = join(here, "package");
+const launcher = join(here, "hooknostic-runtime", "mcp-launcher.mjs");
+const ROOT_MARKER = "__HOOKNOSTIC_PLUGIN_ROOT__";
+const LAUNCHER_MARKER = "__HOOKNOSTIC_LAUNCHER__";
+const resolveText = (text) =>
+  text.split(LAUNCHER_MARKER).join(launcher).split(ROOT_MARKER).join(pluginRoot);
 const resolve = (server) =>
   server.type !== "local"
     ? server
-    : {
-        ...server,
-        command: server.command.map(resolveText),
-        cwd: resolveText(server.cwd),
-        ...(server.environment === undefined
-          ? {}
-          : {
-              environment: Object.fromEntries(
-                Object.entries(server.environment).map(([k, v]) => [k, resolveText(v)]),
-              ),
-            }),
-      };
+    : { ...server, command: server.command.map(resolveText), cwd: resolveText(server.cwd) };
 
 // Parsed, not written as an object literal: a server named __proto__ is a
 // literal key that sets the prototype, and the server would vanish.
-const mcpServers = JSON.parse("{\n  \"greeter\": {\n    \"type\": \"local\",\n    \"command\": [\n      \"node\",\n      \"__HOOKNOSTIC_PLUGIN_ROOT__/src/greet-mcp.mjs\"\n    ],\n    \"cwd\": \"__HOOKNOSTIC_PLUGIN_ROOT__\",\n    \"enabled\": true\n  }\n}");
+const mcpServers = JSON.parse("{\n  \"greeter\": {\n    \"type\": \"local\",\n    \"command\": [\n      \"node\",\n      \"__HOOKNOSTIC_LAUNCHER__\",\n      \"0\"\n    ],\n    \"cwd\": \"__HOOKNOSTIC_PLUGIN_ROOT__\",\n    \"enabled\": true\n  }\n}");
 
 export default async () => ({
   config: (config) => {

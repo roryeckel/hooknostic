@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
@@ -8,6 +12,7 @@ import {
   type AgentPluginProjectionPlan,
 } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
+import type { McpLauncherDocument } from "@hooknostic/core";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
@@ -66,6 +71,17 @@ function injector(plan: AgentPluginProjectionPlan): string {
   return typeof artifact.contents === "string"
     ? artifact.contents
     : new TextDecoder().decode(artifact.contents);
+}
+
+function launcherDocument(plan: AgentPluginProjectionPlan): McpLauncherDocument {
+  const artifact = plan.files.find(
+    (candidate) => candidate.path === ".opencode/plugins/hooknostic-runtime/mcp-servers.json",
+  )!;
+  const text =
+    typeof artifact.contents === "string"
+      ? artifact.contents
+      : new TextDecoder().decode(artifact.contents);
+  return JSON.parse(text) as McpLauncherDocument;
 }
 
 function embeddedServers(plan: AgentPluginProjectionPlan): Record<string, Record<string, unknown>> {
@@ -148,36 +164,105 @@ describe("Agent Plugin to OpenCode projection", () => {
   it("points ${PLUGIN_ROOT} at the nested package, not at the module", async () => {
     const plan = await project(source({}, ["src/server.mjs"]));
     expect(injector(plan)).toContain(
-      'const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");',
+      "const here = dirname(fileURLToPath(import.meta.url));",
+    );
+    expect(injector(plan)).toContain('const pluginRoot = join(here, "package");');
+    // A sibling of the package, so it is neither inside the author's namespace
+    // nor at the level OpenCode's flat scan loads.
+    expect(injector(plan)).toContain(
+      'const launcher = join(here, "hooknostic-runtime", "mcp-launcher.mjs");',
     );
   });
 
-  // McpLocalConfig has a cwd, and its own description says a relative one
-  // "resolves from the workspace directory" -- so an absolute one is required,
-  // and the portable default of the plugin root has to be stated rather than
-  // left off, or a conformant `./bin/server` looks for itself in the user's
-  // project.
-  it("states the working directory absolutely, including the portable default", async () => {
+  // OpenCode binds neither variable, so every stdio server runs through the
+  // launcher. McpLocalConfig's own cwd description says a relative one "resolves
+  // from the workspace directory", so the launcher is anchored absolutely; it
+  // then chdirs the server itself.
+  it("launches every stdio server through the generated launcher", async () => {
     const plan = await project(
       source({
-        worker: { type: "stdio", command: "./bin/serve", cwd: "${PLUGIN_ROOT}/worker" },
+        worker: {
+          type: "stdio",
+          command: "./bin/serve",
+          cwd: "${PLUGIN_ROOT}/worker",
+          // Declared, so the "no environment key" assertion below has something
+          // to bite on: without it the emitted server has none either way.
+          env: { TOKEN: "literal", CONFIG: "${PLUGIN_ROOT}/c.json" },
+        },
         plain: { type: "stdio", command: "node", args: ["server.mjs"] },
       }),
     );
     const servers = embeddedServers(plan);
-    expect(servers["worker"]).toMatchObject({
-      command: ["./bin/serve"],
-      cwd: "__HOOKNOSTIC_PLUGIN_ROOT__/worker",
+    expect(servers["worker"]).toEqual({
+      type: "local",
+      command: ["node", "__HOOKNOSTIC_LAUNCHER__", "0"],
+      cwd: "__HOOKNOSTIC_PLUGIN_ROOT__",
+      enabled: true,
     });
     expect(servers["plain"]).toMatchObject({
-      command: ["node", "server.mjs"],
-      cwd: "__HOOKNOSTIC_PLUGIN_ROOT__",
+      command: ["node", "__HOOKNOSTIC_LAUNCHER__", "1"],
     });
+    // Never emitted: whether OpenCode merges `environment` with the parent or
+    // replaces it is uncaptured, and replacing would strip the PATH that
+    // command[0] resolves through. The launcher applies it instead.
+    for (const server of Object.values(servers)) expect(server).not.toHaveProperty("environment");
+    expect(launcherDocument(plan).servers.map((entry) => entry.name)).toEqual(["worker", "plain"]);
     expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({
       discovered: 2,
       emitted: 2,
       skipped: 0,
     });
+  });
+
+  // The module is what OpenCode actually runs, so the markers have to become
+  // real absolute paths at load time -- on Windows too, where a JSON round-trip
+  // of a plugin root would corrupt its backslashes.
+  it("resolves both markers to real paths when the module is loaded", async () => {
+    const plan = await project(
+      source({
+        srv: { type: "stdio", command: "node" },
+        api: {
+          type: "streamable-http",
+          // Carries the marker AND an unrecognized placeholder: a client MUST
+          // NOT expand in url or headers, so neither may be rewritten at load.
+          url: "https://example.invalid/__HOOKNOSTIC_PLUGIN_ROOT__/${TENANT}/mcp",
+        },
+      }),
+    );
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-injector-"));
+    try {
+      const modulePath = join(dir, "hooknostic-agent-plugin.mjs");
+      await writeFile(modulePath, injector(plan));
+      const config: { mcp?: Record<string, Record<string, unknown>> } = {};
+      const plugin = await (await import(pathToFileURL(modulePath).href)).default();
+      plugin.config(config);
+      expect(config.mcp!["srv"]!["command"]).toEqual([
+        "node",
+        join(dir, "hooknostic-runtime", "mcp-launcher.mjs"),
+        "0",
+      ]);
+      expect(config.mcp!["srv"]!["cwd"]).toBe(join(dir, "package"));
+      // A remote server is returned untouched: neither the marker nor the
+      // unrecognized placeholder is rewritten.
+      expect(config.mcp!["api"]!["url"]).toBe(
+        "https://example.invalid/__HOOKNOSTIC_PLUGIN_ROOT__/${TENANT}/mcp",
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps both generated files below the flat plugin scan", async () => {
+    const plan = await project(source({ srv: { type: "stdio", command: "node" } }));
+    const paths = plan.files.map((candidate) => candidate.path);
+    expect(paths).toContain(".opencode/plugins/hooknostic-runtime/mcp-launcher.mjs");
+    expect(paths).toContain(".opencode/plugins/hooknostic-runtime/mcp-servers.json");
+    // OpenCode loads every module directly in .opencode/plugins/ and a
+    // non-function export fails the whole module, so the launcher must not sit
+    // at that level.
+    expect(
+      paths.filter((path) => /^\.opencode\/plugins\/[^/]+$/.test(path)),
+    ).toEqual([".opencode/plugins/hooknostic-agent-plugin.js"]);
   });
 
   // Staging creates parents for emitted files only, so a directory carrying no
@@ -194,18 +279,35 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(plan.directories).toContain(".opencode/plugins/package/worker");
   });
 
-  it("refuses a package that already contains the substitution marker", async () => {
+  // Inverted: the refusal existed because package text used to flow through the
+  // module's textual substitution. It no longer does -- the declaration goes to
+  // the servers document, which the module never reads -- so refusing would
+  // drop a harmless package.
+  it("keeps a package containing the substitution marker", async () => {
     const plan = await project(
       source({
         odd: { type: "stdio", command: "node", args: ["__HOOKNOSTIC_PLUGIN_ROOT__/x"] },
+        api: {
+          type: "streamable-http",
+          url: "https://example.invalid/__HOOKNOSTIC_PLUGIN_ROOT__/mcp",
+          headers: { Authorization: "Bearer ${TOKEN}" },
+        },
       }),
     );
-    // Substitution is textual, so this value would be rewritten into an install
-    // path the package never asked for.
-    expect(Object.keys(embeddedServers(plan))).toEqual([]);
-    expect(plan.summary.omissions).toContainEqual(
-      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "odd" }),
-    );
+    expect(plan.summary.omissions).toEqual([]);
+    const servers = embeddedServers(plan);
+    // The emitted local server carries only Hooknostic's own markers, so the
+    // package's literal text cannot be rewritten...
+    expect(servers["odd"]).toMatchObject({
+      command: ["node", "__HOOKNOSTIC_LAUNCHER__", "0"],
+    });
+    // ...and it survives verbatim where the launcher reads it.
+    expect(launcherDocument(plan).servers[0]!.args).toEqual(["__HOOKNOSTIC_PLUGIN_ROOT__/x"]);
+    // A remote server is never walked, so its marker-bearing url is untouched.
+    expect(servers["api"]).toMatchObject({
+      url: "https://example.invalid/__HOOKNOSTIC_PLUGIN_ROOT__/mcp",
+      headers: { Authorization: "Bearer ${TOKEN}" },
+    });
   });
 
   it("leaves remote fields and unrecognized placeholders literal", async () => {
@@ -232,14 +334,25 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(injector(plan)).toContain('server.type !== "local"');
   });
 
-  it("omits a server whose paths need ${PLUGIN_DATA}", async () => {
+  it("emits a server whose paths need ${PLUGIN_DATA}", async () => {
     const plan = await project(
       source({ stateful: { type: "stdio", command: "node", args: ["${PLUGIN_DATA}/state"] } }),
     );
-    expect(Object.keys(embeddedServers(plan))).toEqual([]);
-    expect(plan.summary.omissions).toContainEqual(
-      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "stateful" }),
-    );
+    // The launcher creates and binds the directory, so this is no longer a
+    // portable shape with no representation here.
+    expect(Object.keys(embeddedServers(plan))).toEqual(["stateful"]);
+    expect(plan.summary.omissions).toEqual([]);
+    expect(launcherDocument(plan).servers[0]!.args).toEqual(["${PLUGIN_DATA}/state"]);
+  });
+
+  it("omits a working directory that climbs out of the directory it is anchored on", async () => {
+    for (const cwd of ["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape"]) {
+      const plan = await project(source({ srv: { type: "stdio", command: "node", cwd } }));
+      expect(Object.keys(embeddedServers(plan))).toEqual([]);
+      expect(plan.summary.omissions).toContainEqual(
+        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "srv" }),
+      );
+    }
   });
 
   it("keeps a server whose name would collide with Object.prototype", async () => {

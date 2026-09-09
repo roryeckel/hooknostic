@@ -1,10 +1,4 @@
-import {
-  componentSummary,
-  containsPluginData,
-  isRejectedSkillPath,
-  expandStdioServer,
-  normalizedPluginRootCwd,
-} from "@hooknostic/agent-plugin";
+import { classifyStdioCwd, componentSummary, isRejectedSkillPath } from "@hooknostic/agent-plugin";
 import type {
   AgentPluginIssue,
   AgentPluginPackage,
@@ -12,7 +6,8 @@ import type {
   AgentPluginProjectionPlan,
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
-import type { TargetSpec } from "@hooknostic/core";
+import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
+import { MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, bundleMcpLauncher } from "@hooknostic/core";
 
 /**
  * OpenCode scans `.opencode/plugins/` for `*.ts` / `*.js` and does NOT recurse,
@@ -31,6 +26,14 @@ const INJECTOR_PATH = `${PLUGIN_DIR}/hooknostic-agent-plugin.js`;
  * contain -- an MCP component reported emitted and exact that cannot start.
  */
 const PACKAGE_DIR = `${PLUGIN_DIR}/package`;
+/**
+ * The launcher and its servers document, a sibling of the package rather than
+ * inside it: everything under `package/` is the author's namespace, and the
+ * example already ships a root `runtime/` directory.
+ */
+const LAUNCHER_DIR = `${PLUGIN_DIR}/hooknostic-runtime`;
+const LAUNCHER_PATH = `${LAUNCHER_DIR}/${MCP_LAUNCHER_FILE}`;
+const LAUNCHER_SERVERS_PATH = `${LAUNCHER_DIR}/${MCP_SERVERS_FILE}`;
 const PORTABLE_MCP_PATH = "mcp.json";
 
 /**
@@ -58,27 +61,34 @@ interface OpenCodeRemoteServer {
 type OpenCodeServer = OpenCodeLocalServer | OpenCodeRemoteServer;
 
 const RUNTIME_PLUGIN_ROOT = "__HOOKNOSTIC_PLUGIN_ROOT__";
+const RUNTIME_LAUNCHER = "__HOOKNOSTIC_LAUNCHER__";
 
 /**
  * Translate portable MCP servers into OpenCode's shape.
  *
- * `${PLUGIN_ROOT}` becomes a marker the generated module replaces with the real
- * directory at load time -- the install location is not knowable at build time.
- * Nothing else is substituted: the specification defines only two placeholders,
- * excludes `command`, `env` keys and every remote field from expansion, and
- * requires unrecognized placeholder-like text to stay literal.
+ * OpenCode binds neither PLUGIN_ROOT nor PLUGIN_DATA, so every stdio server
+ * runs through the generated launcher, which supplies both. Only two markers
+ * appear in the emitted argv -- the install directory and the launcher's own
+ * path -- and the module replaces them at load time, because neither is
+ * knowable at build time. No package-controlled text passes through that
+ * substitution: the portable declaration goes into the servers document
+ * instead, which the module never reads.
  *
- * `${PLUGIN_DATA}` is the one portable shape with no representation here, so a
- * server using it is dropped with an omission rather than handed literal text.
+ * `environment` is deliberately not emitted. Whether OpenCode merges it with
+ * the parent environment or replaces it is uncaptured, and a replacement would
+ * strip PATH -- which is how `command[0]` resolves. The launcher applies the
+ * declared environment itself, on top of its own.
  */
 function translateMcp(source: AgentPluginPackage): {
   servers: Record<string, OpenCodeServer>;
+  launcherServers: McpLauncherServer[];
   omitted: { name: string; reason: string }[];
 } {
   // Null-prototype: a schema-valid server named `__proto__` assigned into `{}`
   // sets the prototype instead of an own property, and JSON.stringify would then
   // omit it while the summary counted it emitted.
   const servers: Record<string, OpenCodeServer> = Object.create(null);
+  const launcherServers: McpLauncherServer[] = [];
   const omitted: { name: string; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
     if (server.type !== "stdio") {
@@ -91,50 +101,35 @@ function translateMcp(source: AgentPluginPackage): {
       };
       continue;
     }
-    const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
-    if (server.cwd !== undefined) values.push(server.cwd);
-    if (values.some((value) => value.includes(RUNTIME_PLUGIN_ROOT))) {
-      // The marker is substituted textually at load time, so a package that
-      // already contains it would have its own literal text rewritten into an
-      // install path. Refusing is better than silently altering a value the
-      // package meant literally.
+    if (classifyStdioCwd(server.cwd) === undefined) {
       omitted.push({
         name,
-        reason: `a value contains the reserved marker ${RUNTIME_PLUGIN_ROOT}, which the generated module substitutes`,
+        reason: `working directory ${JSON.stringify(server.cwd)} escapes the directory it is anchored on`,
       });
       continue;
     }
-    if (values.some(containsPluginData)) {
-      omitted.push({
-        name,
-        reason:
-          "OpenCode has no ${PLUGIN_DATA} equivalent, so the server would receive the literal placeholder text",
-      });
-      continue;
-    }
-    const cwd = normalizedPluginRootCwd(server.cwd);
-    if (cwd === undefined) {
-      omitted.push({
-        name,
-        reason: `working directory ${JSON.stringify(server.cwd)} is not a location inside the plugin`,
-      });
-      continue;
-    }
-    // Always emitted, including for the portable default: an omitted `cwd` means
-    // the plugin root, and OpenCode resolves a relative one "from the workspace
-    // directory" -- so the default has to be stated, and stated absolutely, or a
-    // conformant `./bin/server` looks for itself in the user's project.
-    const { command, args, env } = expandStdioServer(server, RUNTIME_PLUGIN_ROOT);
     servers[name] = {
       type: "local",
       // OpenCode takes one argv array, not a command plus args.
-      command: [command, ...(args ?? [])],
-      cwd: cwd === "." ? RUNTIME_PLUGIN_ROOT : `${RUNTIME_PLUGIN_ROOT}/${cwd}`,
-      ...(env === undefined ? {} : { environment: env }),
+      command: ["node", RUNTIME_LAUNCHER, String(launcherServers.length)],
+      // Stated absolutely even for the portable default of the plugin root,
+      // because OpenCode resolves a relative one "from the workspace
+      // directory". It anchors the launcher; the launcher chdirs the server.
+      cwd: RUNTIME_PLUGIN_ROOT,
       enabled: true,
     };
+    // The index is this entry's position in the document written below, taken
+    // before the push. Any second enumeration would disagree with it: the
+    // loader drops invalid servers before a projector sees them.
+    launcherServers.push({
+      name,
+      command: server.command,
+      ...(server.args === undefined ? {} : { args: [...server.args] }),
+      ...(server.env === undefined ? {} : { env: { ...server.env } }),
+      ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
+    });
   }
-  return { servers, omitted };
+  return { servers, launcherServers, omitted };
 }
 
 /**
@@ -171,36 +166,32 @@ function injectorSource(
     'import { fileURLToPath } from "node:url";',
     'import { dirname, join } from "node:path";',
     "",
-    "// Only the install directory is substituted, and only in the fields the",
-    "// specification expands: a local server's argv, cwd and environment values.",
-    "// A remote server is passed through untouched, because a client MUST NOT",
-    "// expand in url or headers, and unrecognized placeholder-like text MUST stay",
-    "// literal -- resolving a ${TOKEN} here would put a host value in a",
-    "// package-chosen destination.",
+    "// Two install-time paths are substituted, and nothing else: this module",
+    "// cannot know them at build time. Both are Hooknostic's own -- the package's",
+    "// declaration lives in the servers document the launcher reads, so no",
+    "// package-controlled text passes through here at all.",
+    "//",
+    "// A remote server is returned untouched, because a client MUST NOT expand in",
+    "// url or headers and unrecognized placeholder-like text MUST stay literal --",
+    "// resolving a ${TOKEN} here would put a host value in a package-chosen",
+    "// destination.",
     "//",
     "// The walk is structural. A JSON round-trip would corrupt a Windows plugin",
     "// root, whose backslashes are not valid JSON escapes.",
     "//",
     "// The package sits one level down, out of the flat plugin scan; that",
     "// directory, not this module's, is what ${PLUGIN_ROOT} means.",
-    'const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "package");',
-    `const MARKER = ${JSON.stringify(RUNTIME_PLUGIN_ROOT)};`,
-    "const resolveText = (text) => text.split(MARKER).join(pluginRoot);",
+    "const here = dirname(fileURLToPath(import.meta.url));",
+    'const pluginRoot = join(here, "package");',
+    `const launcher = join(here, "hooknostic-runtime", ${JSON.stringify(MCP_LAUNCHER_FILE)});`,
+    `const ROOT_MARKER = ${JSON.stringify(RUNTIME_PLUGIN_ROOT)};`,
+    `const LAUNCHER_MARKER = ${JSON.stringify(RUNTIME_LAUNCHER)};`,
+    "const resolveText = (text) =>",
+    "  text.split(LAUNCHER_MARKER).join(launcher).split(ROOT_MARKER).join(pluginRoot);",
     "const resolve = (server) =>",
     '  server.type !== "local"',
     "    ? server",
-    "    : {",
-    "        ...server,",
-    "        command: server.command.map(resolveText),",
-    "        cwd: resolveText(server.cwd),",
-    "        ...(server.environment === undefined",
-    "          ? {}",
-    "          : {",
-    "              environment: Object.fromEntries(",
-    "                Object.entries(server.environment).map(([k, v]) => [k, resolveText(v)]),",
-    "              ),",
-    "            }),",
-    "      };",
+    "    : { ...server, command: server.command.map(resolveText), cwd: resolveText(server.cwd) };",
     "",
     "// Parsed, not written as an object literal: a server named __proto__ is a",
     "// literal key that sets the prototype, and the server would vanish.",
@@ -275,7 +266,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.mcp.stdio": {
           level: "emulated",
           rationale:
-            "A project plugin has no declarative config, so the servers are contributed by a generated module that resolves ${PLUGIN_ROOT} to the install directory at load time; nothing else is substituted. cwd is always emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. A server using ${PLUGIN_DATA} has no representation and is omitted.",
+            "A project plugin has no declarative config, so the servers are contributed by a generated module that resolves the install directory at load time and launches each one through a generated Node launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and expands args, env values and cwd. cwd is emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. The declared environment is applied by the launcher rather than through OpenCode's environment key, whose merge-or-replace behaviour is uncaptured, and the data directory is chosen by Hooknostic rather than by OpenCode, so the contract is emulated. Node must be on PATH, because the launcher is a Node program.",
         },
         "agent-plugin.mcp.streamable-http": { level: "exact" },
         "agent-plugin.mcp.sse": {
@@ -381,7 +372,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       (directory) => `${PACKAGE_DIR}/${directory}`,
     );
 
-    const { servers, omitted } = translateMcp(source);
+    const { servers, launcherServers, omitted } = translateMcp(source);
     for (const { name, reason } of omitted) {
       omissions.push({ component: "agent-plugin.mcp.stdio", name, reason });
       issues.push({
@@ -401,10 +392,30 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       path: INJECTOR_PATH,
       contents: injectorSource(source.manifest, servers, source.skills.length > 0),
     });
+    if (launcherServers.length > 0) {
+      const document: McpLauncherDocument = {
+        plugin: source.manifest.name,
+        servers: launcherServers,
+      };
+      files.push({
+        path: LAUNCHER_SERVERS_PATH,
+        contents: `${JSON.stringify(document, null, 2)}\n`,
+      });
+      files.push({
+        path: LAUNCHER_PATH,
+        contents: await bundleMcpLauncher({
+          frontEnd: "self-resolving",
+          // The launcher is a sibling of the copied package, not inside it.
+          rootOffset: "../package",
+          pluginName: source.manifest.name,
+        }),
+      });
+    }
 
     const copied = new Set(copiedPaths);
+    const generated = new Set([INJECTOR_PATH, LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]);
     for (const file of context.hookArtifacts) {
-      if (copied.has(file.path) || file.path === INJECTOR_PATH) {
+      if (copied.has(file.path) || generated.has(file.path)) {
         issues.push({
           severity: "error",
           scope: "projection",

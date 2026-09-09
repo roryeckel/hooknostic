@@ -878,21 +878,34 @@ ${run.stderr}`).toBe(0);
     // placeholder-like text to stay literal, so ${MY_TOKEN} reaches the harness
     // as written. The module resolves the install directory and nothing else --
     // expanding it here would put a host value in a package-chosen destination.
-    expect(injector).toContain("${MY_TOKEN}");
     expect(injector).not.toContain("{env:MY_TOKEN}");
     expect(injector).not.toContain("process.env");
+    // The declared environment reaches the launcher through the servers
+    // document, not through OpenCode's `environment` key, and its unrecognized
+    // placeholder-like text stays literal on the way.
+    const servers = JSON.parse(
+      await readFile(
+        join(dir, "dist/opencode/.opencode/plugins/hooknostic-runtime/mcp-servers.json"),
+        "utf8",
+      ),
+    );
+    expect(servers.servers[0]).toMatchObject({
+      name: "local",
+      env: { TOKEN: "${MY_TOKEN}" },
+    });
     // The servers are embedded as JSON text and parsed at load time, so a
     // server named `__proto__` stays an own property instead of becoming an
     // object literal's prototype.
     const embedded = JSON.parse(
       JSON.parse(injector.match(/const mcpServers = JSON\.parse\((.*)\);/)![1]!) as string,
     ) as Record<string, Record<string, unknown>>;
-    // stdio becomes one argv array under `command`, with `environment` for env.
+    // Every stdio server registers the same way: the launcher supplies the
+    // contract OpenCode binds none of.
     expect(embedded["local"]).toMatchObject({
       type: "local",
-      command: ["node", "__HOOKNOSTIC_PLUGIN_ROOT__/server.mjs"],
-      environment: { TOKEN: "${MY_TOKEN}" },
+      command: ["node", "__HOOKNOSTIC_LAUNCHER__", "0"],
     });
+    expect(embedded["local"]).not.toHaveProperty("environment");
     // sse has no OpenCode discriminator; both remote transports become `remote`.
     expect(embedded["streamed"]).toMatchObject({ type: "remote" });
     // The install directory is only knowable at load time.
