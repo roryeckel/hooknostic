@@ -84,6 +84,11 @@ describe("Agent Plugin to Claude projection", () => {
     ["${PLUGIN_ROOT}/worker", "${CLAUDE_PLUGIN_ROOT}/worker"],
     ["${PLUGIN_DATA}/state", "${CLAUDE_PLUGIN_DATA}/state"],
     [undefined, "${CLAUDE_PLUGIN_ROOT}"],
+    // Normalization is intended, not incidental: a trailing slash and a dot
+    // segment are both valid and both mean `worker`. The prefix replacement
+    // this replaced emitted them verbatim.
+    ["./worker/./", "${CLAUDE_PLUGIN_ROOT}/worker"],
+    ["${PLUGIN_DATA}/state/../state", "${CLAUDE_PLUGIN_DATA}/state"],
   ])("anchors portable MCP cwd %s", async (cwd, expected) => {
     const portable = source();
     portable.mcp!.mcpServers = { worker: { type: "stdio", command: "node", ...(cwd === undefined ? {} : { cwd }) } };
@@ -94,6 +99,26 @@ describe("Agent Plugin to Claude projection", () => {
       args: ["${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs", expected, "node"],
     });
   });
+
+  // The prefix replacement this replaced emitted ${CLAUDE_PLUGIN_DATA}/../x
+  // unchecked, pointing the server at a sibling of the directory Claude manages.
+  it.each(["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape"])(
+    "omits a server whose cwd %s escapes its base",
+    async (cwd) => {
+      const portable = source();
+      portable.mcp!.mcpServers = { worker: { type: "stdio", command: "node", cwd } };
+      const plan = await projectAgentPluginToClaude(portable, {
+        target,
+        hookArtifacts: [],
+        support,
+        onUnsupported: "warn",
+      });
+      expect(plan.files.some((item) => item.path === ".mcp.json")).toBe(false);
+      expect(plan.summary.omissions).toContainEqual(
+        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "worker" }),
+      );
+    },
+  );
 
   it("launches MCP in the plugin directory and preserves arguments, environment, and exit status", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-mcp-launcher-"));

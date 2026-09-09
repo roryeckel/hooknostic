@@ -1,5 +1,5 @@
-import { posix } from "node:path";
 import {
+  classifyStdioCwd,
   componentSummary,
   isRejectedSkillPath,
   validateNpmRuntimePackage,
@@ -114,7 +114,8 @@ function replacePluginVariables(value: string): string {
 // directory before starting the server (`.capture/claude-mcp-cwd`).
 const MCP_LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
 
-function translateServer(server: AgentPluginMcpServer): Record<string, unknown> {
+/** `undefined` when the server's working directory escapes the base it names. */
+function translateServer(server: AgentPluginMcpServer): Record<string, unknown> | undefined {
   if (server.type !== "stdio") {
     return {
       type: server.type === "streamable-http" ? "http" : server.type,
@@ -122,6 +123,8 @@ function translateServer(server: AgentPluginMcpServer): Record<string, unknown> 
       ...(server.headers === undefined ? {} : { headers: server.headers }),
     };
   }
+  const classified = classifyStdioCwd(server.cwd);
+  if (classified === undefined) return undefined;
   const command = server.command.startsWith("./")
     ? `\${CLAUDE_PLUGIN_ROOT}/${server.command.slice(2)}`
     : replacePluginVariables(server.command);
@@ -130,9 +133,14 @@ function translateServer(server: AgentPluginMcpServer): Record<string, unknown> 
   );
   env["PLUGIN_ROOT"] = "${CLAUDE_PLUGIN_ROOT}";
   env["PLUGIN_DATA"] = "${CLAUDE_PLUGIN_DATA}";
-  const cwd = server.cwd?.startsWith("./")
-    ? `\${CLAUDE_PLUGIN_ROOT}${server.cwd.length === 2 ? "" : `/${server.cwd.slice(2)}`}`
-    : replacePluginVariables(server.cwd ?? "${PLUGIN_ROOT}");
+  // Through the shared classifier rather than a prefix replacement, which
+  // passed `${PLUGIN_DATA}/../x` through unchecked and left `./worker/./`
+  // unnormalized.
+  const base = classified.base === "root" ? "CLAUDE_PLUGIN_ROOT" : "CLAUDE_PLUGIN_DATA";
+  const cwd =
+    classified.relative === "."
+      ? `\${${base}}`
+      : `\${${base}}/${classified.relative}`;
   return {
     type: "stdio",
     command: "node",
@@ -152,16 +160,11 @@ function workingDirectories(source: AgentPluginPackage): string[] {
   const required = new Set<string>();
   for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
     if (server.type !== "stdio" || server.cwd === undefined) continue;
-    const relative = server.cwd.startsWith("./")
-      ? server.cwd.slice(2)
-      : server.cwd.startsWith("${PLUGIN_ROOT}/")
-        ? server.cwd.slice("${PLUGIN_ROOT}/".length)
-        : undefined;
-    if (relative === undefined) continue;
-    const directory = posix.normalize(relative.replaceAll("\\", "/")).replace(/\/$/, "");
+    const classified = classifyStdioCwd(server.cwd);
     // Retain only existing, inventoried package directories. In particular,
     // never create arbitrary paths or client-managed PLUGIN_DATA directories.
-    if (included.has(directory)) required.add(directory);
+    if (classified === undefined || classified.base !== "root") continue;
+    if (included.has(classified.relative)) required.add(classified.relative);
   }
   return [...required].sort();
 }
@@ -346,9 +349,28 @@ export async function projectAgentPluginToClaude(
         contents: await bundleMcpLauncher({ frontEnd: "client-expanded" }),
       });
     }
-    const translated = Object.fromEntries(
-      Object.entries(source.mcp?.mcpServers ?? {}).map(([name, server]) => [name, translateServer(server)]),
-    );
+    const translated: Record<string, Record<string, unknown>> = Object.create(null);
+    for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
+      const entry = translateServer(server);
+      if (entry === undefined) {
+        const reason = `working directory ${JSON.stringify((server as { cwd?: string }).cwd)} escapes the directory it is anchored on`;
+        omissions.push({ component: "agent-plugin.mcp.stdio", name, reason });
+        issues.push({
+          severity: context.onUnsupported,
+          scope: "projection",
+          component: "agent-plugin.mcp.stdio",
+          path: `mcp.json#${name}`,
+          message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
+        });
+        continue;
+      }
+      Object.defineProperty(translated, name, {
+        value: entry,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
     for (const name of Object.keys(translated)) {
       if (object(extensionServers) && Object.hasOwn(extensionServers, name)) {
         throw new Error(`MCP server ${JSON.stringify(name)} exists in both mcp.json and the Claude client extension`);
