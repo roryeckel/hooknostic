@@ -408,3 +408,68 @@ decision and is NOT addressed by this change.
   `SKILL.md` before treating its absence from `source.skills` as rejection, and
   all three projectors now share it. Claude carried the imprecise version from
   the beginning; this corrects it too.
+
+## Amendments — 2026-09-08 (tenth)
+
+This discharges the ninth amendment's own note: the substantive half it deferred
+-- that Agent Plugins 1.0 requires an absolute `PLUGIN_ROOT` and `PLUGIN_DATA` in
+every stdio subprocess environment, which no projection here provided -- is
+decided here.
+
+- **A client obligation a harness does not meet is met by generated code, not by
+  this compiler's own process.** Claude expands both placeholders, binds both
+  variables and owns the data directory. Codex and OpenCode do none of it: the
+  native Codex MCP route reads placeholders as literal text and binds neither
+  variable, and OpenCode passes through only what the package itself declared.
+  Both nonetheless advertised `agent-plugin.mcp.stdio` as `emulated` while
+  dropping every server that named `${PLUGIN_DATA}`. The projection now emits a
+  Node launcher per output; the harness runs it, and it supplies the contract
+  before spawning the real server. Hooknostic's own process still creates
+  nothing and spawns nothing -- the launcher has the same standing as the
+  generated hook dispatcher, and the "remains a compiler" boundary holds.
+- **The data directory is chosen by Hooknostic, which is what keeps the level at
+  `emulated`.** `PLUGIN_DATA` must "preserve its contents across updates", and
+  Codex installs into a version-scoped directory, so a conformant location
+  cannot live inside the install root: it is `~/.hooknostic/plugin-data/<name>/`.
+  That is a real semantic gap, not a formality -- a different client, including
+  a future Codex that implements the contract natively, chooses a different
+  directory and does not see the data. The stated criterion is therefore
+  `exact` when the *harness* implements the contract and the projection merely
+  arranges the declaration, `emulated` when *Hooknostic* implements it on the
+  harness's behalf. The launcher defers when the client already sets a matching
+  `PLUGIN_ROOT` and an absolute `PLUGIN_DATA`, so a harness that later
+  implements the contract keeps ownership rather than being silently overridden.
+- **One shared spawn core, two front ends; Claude is not migrated.**
+  `${CLAUDE_PLUGIN_DATA}` is genuinely client-managed and survives plugin
+  updates, so replacing it with one this compiler invents would trade the real
+  thing for an emulation and strand data users already have. Claude keeps its
+  own convention and its `exact` level; only the spawn machinery is shared.
+- **The launcher selects its server by position in a document the projector
+  writes, and that document has exactly one enumeration.** `load.ts` drops
+  invalid servers before a projector sees them, so a package that built with a
+  warning has positions its own `mcp.json` does not share. Relocating the
+  portable document and indexing it would launch one server under another's
+  declaration -- silently, and indistinguishably in `codex mcp get`. The
+  generated array removes the class by construction rather than adding a mapping
+  layer to survive it, and it dissolves the `__proto__`/integer-like-name
+  ordering question too: an array has no keys for two sides to order.
+- **A `./` command resolves against the plugin root, not against `cwd`.** The
+  specification says plugin-relative paths resolve "against the plugin root",
+  and Claude already did this; Codex and OpenCode did not, and a comment in
+  `placeholders.ts` asserted the wrong reading, which is why the bug existed.
+  Corrected in the same change.
+- **Node on PATH is now required for every projected stdio server on Codex and
+  OpenCode.** The launcher is a Node program, so a package whose server is
+  `python`, `deno` or a native binary previously worked on Codex and now needs
+  Node as well. Unavoidable under this design and already true on Claude, but it
+  is a genuine narrowing and is documented for all three harnesses rather than
+  Claude alone.
+- **A guard is only worth keeping where it guards something.** OpenCode's
+  reserved-marker refusal existed because package-controlled text flowed through
+  the generated module's textual substitution. It no longer does -- the portable
+  declaration goes to the servers document, which the module never reads -- so
+  the refusal is deleted rather than extended to the second marker; keeping it
+  would newly reject packages with nothing wrong in them. The equivalent guard
+  on Claude's launcher path is *not* redundant and stays: that projector
+  accumulates into a `Map`, so a collision there is a silent overwrite rather
+  than a duplicate-path failure core would catch.

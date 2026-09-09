@@ -178,14 +178,46 @@ Claude's native `http` transport; SSE, literal URLs, and literal headers are pre
 
 For stdio servers, `cwd: "./"` selects the installed plugin root and
 `cwd: "./worker"` selects its `worker` subdirectory. Omitted cwd defaults to the
-plugin root. Projection emits a Node launcher to establish that directory before
-starting the server, because Claude ignores the native MCP cwd field on the
-[probed version](../../.capture/claude-mcp-cwd/README.md). Node must be available on
-PATH. The launcher preserves the server's arguments, environment, stdio, and exit
-status; its generated `runtime/mcp-launcher.mjs` path cannot collide with package
-content. Windows npm command shims such as `npx.cmd` are supported; command
-resolution and argument escaping are bundled into the launcher, so the installed
-plugin does not need a separate launcher dependency.
+plugin root. A `cwd` that climbs out of the directory it is anchored on is
+omitted with `HN205` rather than emitted. A `./`-relative command resolves
+against the plugin root, not against `cwd`.
+
+**Every target emits a Node launcher, and Node must be on PATH** — including for
+a server whose own command is `python`, `deno`, or a native binary. The launcher
+preserves the server's arguments, environment, stdio, and exit status; Windows
+npm command shims such as `npx.cmd` are supported, with command resolution and
+argument escaping bundled in, so the installed plugin needs no separate
+dependency. Its generated paths cannot collide with package content.
+
+The reason differs by harness:
+
+- **Claude** ignores the native MCP cwd field on the
+  [probed version](../../.capture/claude-mcp-cwd/README.md), so the launcher
+  establishes the working directory. Claude itself expands both placeholders and
+  binds `PLUGIN_ROOT` and `PLUGIN_DATA`, the latter to its own
+  `${CLAUDE_PLUGIN_DATA}` — a directory Claude manages and preserves across
+  plugin updates.
+- **Codex and OpenCode** implement none of the placeholder contract and bind
+  neither variable, so the launcher supplies all of it: it resolves the plugin
+  root from its own location, expands `args`, `env` values and `cwd`, and binds
+  both variables before spawning. Each stdio server registers as
+  `node <launcher> <index>`, indexing a generated `mcp-servers.json` that carries
+  the portable declaration verbatim.
+
+Because neither harness offers a data directory, Hooknostic supplies one at
+`~/.hooknostic/plugin-data/<plugin-name>/`. It sits outside the install root
+deliberately — Codex installs into a version-scoped directory, so anything
+within it would be discarded on upgrade. Two consequences worth knowing:
+
+- **Plugins are keyed by name alone.** Agent Plugins 1.0 defines no publisher or
+  marketplace field, so two same-named plugins from different marketplaces share
+  one data directory.
+- **This is why the level is `emulated` rather than `exact`.** The directory is
+  chosen by Hooknostic, not by the harness, so a different client — including a
+  future Codex that implements the contract natively — will not find the data.
+  The launcher defers when the client already sets a matching `PLUGIN_ROOT` and
+  an absolute `PLUGIN_DATA`, so such a harness keeps ownership of its own
+  directory rather than being silently overridden.
 
 ## Unsupported and invalid components
 

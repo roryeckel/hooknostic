@@ -207,6 +207,20 @@ entire output.
   `streamable_http` connection to the same url — a wrong-protocol connection is
   worse than an absent component. Drop it, record an omission, and raise an
   issue at `context.onUnsupported` so `warn` policy still builds.
+- **`exact` when the harness implements the contract, `emulated` when you
+  implement it for the harness.** An interposed process is not the
+  discriminator — Claude's stdio projection is `exact` and has shipped a
+  launcher for a while, because Claude itself expands the placeholders, binds
+  `PLUGIN_ROOT` and `PLUGIN_DATA`, and owns the data directory. Codex and
+  OpenCode are `emulated` for the mirror-image reason: generated code supplies
+  all of that, and the data directory is one Hooknostic chose, so a different
+  client will not find what a server wrote there.
+- **State whether the harness supplies `PLUGIN_ROOT` and `PLUGIN_DATA`, or your
+  projection does.** Agent Plugins 1.0 requires both, absolute, in *every* stdio
+  subprocess environment — not only when a placeholder appears. If the harness
+  binds neither, a launcher is the only mechanism left, and `PLUGIN_DATA` must
+  live somewhere an upgrade will not delete: check whether the harness installs
+  into a version-scoped directory before choosing a location inside it.
 - **Read support from `context.support`, never re-derive it.** Core resolves
   your own `profiles` against the target range and hands them back, so a
   projector cannot disagree with the matrix the build reports and
