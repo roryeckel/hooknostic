@@ -1,4 +1,9 @@
-import { classifyStdioCwd, componentSummary, isRejectedSkillPath } from "@hooknostic/agent-plugin";
+import {
+  classifyStdioCwd,
+  componentSummary,
+  hasUnportableCommandPath,
+  isRejectedSkillPath,
+} from "@hooknostic/agent-plugin";
 import type {
   AgentPluginIssue,
   AgentPluginPackage,
@@ -101,6 +106,13 @@ function translateMcp(source: AgentPluginPackage): {
       };
       continue;
     }
+    if (hasUnportableCommandPath(server.command)) {
+      omitted.push({
+        name,
+        reason: `command ${JSON.stringify(server.command)} contains a backslash, which is a path separator only on the consumer's platform`,
+      });
+      continue;
+    }
     if (classifyStdioCwd(server.cwd) === undefined) {
       omitted.push({
         name,
@@ -160,7 +172,13 @@ function injectorSource(
     "//",
     "// Agent Plugins package identity, which OpenCode's project-plugin model has",
     "// nowhere to put:",
+    // U+2028 and U+2029 are JavaScript line terminators that JSON.stringify
+    // leaves literal, and `description` and `version` are unconstrained strings
+    // -- so without escaping them a package's metadata ends the `//` comment and
+    // the rest of it becomes executable code in a module OpenCode auto-loads.
     ...JSON.stringify(identity, null, 2)
+      .replaceAll("\u2028", "\\u2028")
+      .replaceAll("\u2029", "\\u2029")
       .split("\n")
       .map((line) => `//   ${line}`),
     'import { fileURLToPath } from "node:url";',

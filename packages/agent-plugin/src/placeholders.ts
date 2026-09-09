@@ -54,6 +54,30 @@ export function expandStdioServer(
   };
 }
 
+/**
+ * Whether a portable path means different things on POSIX and on Windows.
+ *
+ * `./..\..\Windows` is ONE ordinary filename component on POSIX -- so it passes
+ * the loader's containment check on a Linux build -- and three components on
+ * Windows, where it climbs out of the plugin root. A package is validated where
+ * it is built and resolved where it is consumed, so a value whose meaning
+ * depends on which of those it is refused rather than shipped.
+ */
+export function hasAmbiguousSeparator(value: string): boolean {
+  return value.includes("\\");
+}
+
+/**
+ * The same hazard for a `command`, which only `./` forms carry.
+ *
+ * A bare executable name has no path semantics -- the loader already forbids a
+ * separator in one -- and an absolute command is the caller's own, not a
+ * package-relative path this projection has to keep contained.
+ */
+export function hasUnportableCommandPath(command: string): boolean {
+  return command.startsWith("./") && hasAmbiguousSeparator(command);
+}
+
 /** Which directory a `cwd` is anchored on, and where inside it the value points. */
 export interface StdioCwd {
   base: "root" | "data";
@@ -72,6 +96,9 @@ export interface StdioCwd {
  */
 export function classifyStdioCwd(cwd: string | undefined): StdioCwd | undefined {
   if (cwd === undefined) return { base: "root", relative: "." };
+  // Before splitting: segments are separated by "/" here, so a backslash would
+  // survive inside one and only become a separator on the consumer's Windows.
+  if (hasAmbiguousSeparator(cwd)) return undefined;
   let base: StdioCwd["base"];
   let rest: string;
   if (cwd === PLUGIN_ROOT_PLACEHOLDER || cwd === `${PLUGIN_ROOT_PLACEHOLDER}/`) {

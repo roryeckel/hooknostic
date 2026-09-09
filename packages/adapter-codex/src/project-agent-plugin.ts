@@ -2,6 +2,7 @@ import {
   AGENT_PLUGIN_COMPONENT_IDS,
   classifyStdioCwd,
   componentSummary,
+  hasUnportableCommandPath,
   isRejectedSkillPath,
 } from "@hooknostic/agent-plugin";
 import type {
@@ -112,6 +113,14 @@ function translateMcp(source: AgentPluginPackage): {
         url: server.url,
         ...(server.headers === undefined ? {} : { http_headers: { ...server.headers } }),
       };
+      continue;
+    }
+    if (hasUnportableCommandPath(server.command)) {
+      omitted.push({
+        name,
+        component: "agent-plugin.mcp.stdio",
+        reason: `command ${JSON.stringify(server.command)} contains a backslash, which is a path separator only on the consumer's platform`,
+      });
       continue;
     }
     if (classifyStdioCwd(server.cwd) === undefined) {

@@ -252,6 +252,49 @@ describe("Agent Plugin to OpenCode projection", () => {
     }
   });
 
+  // U+2028 and U+2029 are JavaScript line terminators that JSON.stringify leaves
+  // literal, and `description` and `version` are unconstrained strings in the
+  // schema. Unescaped, a package's own metadata ends the generated `//` comment
+  // and the rest of it RUNS -- confirmed by loading the module before the fix.
+  it("neutralizes line terminators in the metadata comment", async () => {
+    const pkg = source();
+    pkg.manifest = {
+      ...pkg.manifest,
+      description: "harmless globalThis.HOOKNOSTIC_PWNED = 'yes'; //",
+      version: "1.0.0 globalThis.HOOKNOSTIC_PWNED_TOO = 'yes'; //",
+    };
+    const plan = await project(pkg);
+    const text = injector(plan);
+    expect(text).not.toContain(" ");
+    expect(text).not.toContain(" ");
+
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-metadata-"));
+    try {
+      const modulePath = join(dir, "injector.mjs");
+      await writeFile(modulePath, text);
+      await import(pathToFileURL(modulePath).href);
+      const scope = globalThis as Record<string, unknown>;
+      expect(scope["HOOKNOSTIC_PWNED"]).toBeUndefined();
+      expect(scope["HOOKNOSTIC_PWNED_TOO"]).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // A backslash is an ordinary filename character on POSIX and a separator on
+  // Windows, so a package built on one and consumed on the other resolves
+  // outside the plugin root.
+  it.each([
+    ["command", { type: "stdio" as const, command: "./..\\..\\tool.exe" }],
+    ["cwd", { type: "stdio" as const, command: "node", cwd: "./..\\..\\Windows" }],
+  ])("omits a server whose %s would resolve differently on the consumer", async (_label, server) => {
+    const plan = await project(source({ srv: server }));
+    expect(Object.keys(embeddedServers(plan))).toEqual([]);
+    expect(plan.summary.omissions).toContainEqual(
+      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "srv" }),
+    );
+  });
+
   it("keeps both generated files below the flat plugin scan", async () => {
     const plan = await project(source({ srv: { type: "stdio", command: "node" } }));
     const paths = plan.files.map((candidate) => candidate.path);

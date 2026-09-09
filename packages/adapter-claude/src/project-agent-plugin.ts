@@ -1,6 +1,7 @@
 import {
   classifyStdioCwd,
   componentSummary,
+  hasUnportableCommandPath,
   isRejectedSkillPath,
   validateNpmRuntimePackage,
   type AgentPluginIssue,
@@ -124,7 +125,7 @@ function translateServer(server: AgentPluginMcpServer): Record<string, unknown> 
     };
   }
   const classified = classifyStdioCwd(server.cwd);
-  if (classified === undefined) return undefined;
+  if (classified === undefined || hasUnportableCommandPath(server.command)) return undefined;
   const command = server.command.startsWith("./")
     ? `\${CLAUDE_PLUGIN_ROOT}/${server.command.slice(2)}`
     : replacePluginVariables(server.command);
