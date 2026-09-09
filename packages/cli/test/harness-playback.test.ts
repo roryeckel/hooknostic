@@ -14,6 +14,8 @@ import {
   loadAgentPlugin,
 } from "@hooknostic/agent-plugin";
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
+import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
+import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { IPty, spawn as ptySpawn } from "node-pty";
 import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 import { defaultAdapterRegistry } from "../src/registry.js";
@@ -1266,6 +1268,189 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       }
     },
     120_000,
+  );
+
+  // The Codex half of the same claim the Claude lane above establishes, and the
+  // reason no paid probe is needed for it: `.capture/codex-native-mcp` already
+  // recorded that the native route binds neither variable and that a declared
+  // `cwd: "."` reaches the plugin root, so what is left to show is that a real
+  // installed plugin starts its server THROUGH the generated launcher and that
+  // both variables arrive. CODEX_HOME keeps the install off the contributor's
+  // own configuration (.capture/codex-isolated-home).
+  it.skipIf(adapter?.id !== "codex")(
+    "starts a projected MCP server through the generated launcher",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-projection-"));
+      tempDirs.push(dir);
+      const portable = join(dir, "portable");
+      const marketplace = join(dir, "marketplace");
+      const pluginSource = join(marketplace, "plugins", "projection-playback");
+      const codexHome = join(dir, "codex-home");
+      const projectDir = join(dir, "project");
+      await mkdir(projectDir, { recursive: true });
+      await mkdir(codexHome, { recursive: true });
+      await mkdir(join(portable, "mcp-working-dir"), { recursive: true });
+      await writeFile(join(portable, "mcp-working-dir/README.md"), "MCP working directory fixture.\n");
+      await mkdir(join(portable, "skills/projection-probe"), { recursive: true });
+      await writeFile(
+        join(portable, "plugin.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+          name: "projection-playback",
+          version: "1.0.0",
+          description: "No-spend Agent Plugin projection playback fixture.",
+        }),
+      );
+      await writeFile(
+        join(portable, "skills/projection-probe/SKILL.md"),
+        "---\nname: projection-probe\ndescription: Exercise projected plugin discovery.\n---\nHOOKNOSTIC_SKILL_DISCOVERY_MARKER\n",
+      );
+      await writeFile(
+        join(portable, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            projection: {
+              type: "stdio",
+              command: "node",
+              // ${PLUGIN_DATA} in argv is the shape this route used to drop
+              // outright; the launcher expands it and creates the directory.
+              args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"],
+              env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
+              cwd: "./mcp-working-dir",
+            },
+          },
+        }),
+      );
+      await writeFile(
+        join(portable, "plugin-mcp-env-fixture.mjs"),
+        await readFile(PluginMcpEnvFixturePath),
+      );
+      const loaded = await loadAgentPlugin({ root: portable });
+      expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+
+      // From the binary under test, not from `referenceVersion`: plugin mode is
+      // established only from 0.153.2 and the reference version predates it, so
+      // this lane has to say what it actually ran against. Reading it also
+      // keeps a version literal out of the test.
+      const reported = await runProcess("codex", ["--version"], {
+        cwd: dir,
+        env: process.env,
+        timeoutMs: 30_000,
+      });
+      const installedVersion = /(\d+\.\d+\.\d+)/.exec(reported.stdout)?.[1];
+      expect(installedVersion, reported.stdout + reported.stderr).toBeTypeOf("string");
+      const target = {
+        id: "codex",
+        version: installedVersion!,
+        mode: "plugin" as const,
+        output: ".",
+      };
+      const resolved = resolveAgentPluginProjection(target, codexAgentPluginProjector);
+      // Below the plugin-hooks range this adapter declines every component, so
+      // there is no projection to install and nothing this lane can establish.
+      if (resolved.matrix?.["agent-plugin.mcp.stdio"]?.level === "unsupported") return;
+      const plan = await codexAgentPluginProjector.project(loaded.package!, {
+        target,
+        // Hooks are not what this lane establishes, and an empty set keeps it
+        // independent of a plugin-mode artifact build.
+        hookArtifacts: [],
+        support: resolved.matrix!,
+        onUnsupported: "error",
+      });
+      expect(plan.issues).toEqual([]);
+      for (const artifact of plan.files) {
+        await mkdir(join(pluginSource, artifact.path, ".."), { recursive: true });
+        await writeFile(join(pluginSource, artifact.path), artifact.contents);
+      }
+      // A marketplace.json at the marketplace ROOT is rejected; it is read from
+      // .agents/plugins/ (.capture/codex-agent-plugin).
+      await mkdir(join(marketplace, ".agents", "plugins"), { recursive: true });
+      await writeFile(
+        join(marketplace, ".agents", "plugins", "marketplace.json"),
+        JSON.stringify({
+          name: "hooknostic-projection-playback",
+          owner: { name: "Hooknostic contributors" },
+          plugins: [
+            { name: "projection-playback", version: "1.0.0", source: "./plugins/projection-playback" },
+          ],
+        }),
+      );
+
+      const codexEnv = { ...process.env, CODEX_HOME: codexHome };
+      const added = await runProcess("codex", ["plugin", "marketplace", "add", marketplace], {
+        cwd: dir,
+        env: codexEnv,
+        timeoutMs: 60_000,
+      });
+      expect(added.code, added.stdout + added.stderr).toBe(0);
+      // The qualified form is mandatory: a bare name is rejected.
+      const installed = await runProcess(
+        "codex",
+        ["plugin", "add", "projection-playback@hooknostic-projection-playback"],
+        { cwd: dir, env: codexEnv, timeoutMs: 60_000 },
+      );
+      expect(installed.code, installed.stdout + installed.stderr).toBe(0);
+      const installRoot = join(
+        codexHome,
+        "plugins/cache/hooknostic-projection-playback/projection-playback/1.0.0",
+      );
+
+      const server = await startModelPlayback("openai-responses", "rewrite");
+      try {
+        await runProcess("git", ["init"], { cwd: projectDir, env: process.env, timeoutMs: 30_000 });
+        const result = await runProcess(
+          "codex",
+          [
+            "exec",
+            "hello",
+            "--skip-git-repo-check",
+            "--color",
+            "never",
+            "-c",
+            'model="hooknostic-playback"',
+            "-c",
+            'model_provider="hooknostic_playback"',
+            "-c",
+            'approval_policy="never"',
+            "-c",
+            'sandbox_mode="danger-full-access"',
+            "-c",
+            'model_providers.hooknostic_playback.name="Hooknostic Playback"',
+            "-c",
+            `model_providers.hooknostic_playback.base_url=${tomlLiteral(`${server.baseUrl}/v1`)}`,
+            "-c",
+            'model_providers.hooknostic_playback.wire_api="responses"',
+            "-c",
+            "model_providers.hooknostic_playback.requires_openai_auth=false",
+            "-c",
+            "model_providers.hooknostic_playback.request_max_retries=0",
+            "-c",
+            "model_providers.hooknostic_playback.stream_max_retries=0",
+            "-c",
+            `projects={${tomlLiteral(projectDir)}={trust_level=${tomlLiteral("trusted")}}}`,
+          ],
+          { cwd: projectDir, env: codexEnv, timeoutMs: 120_000 },
+        );
+        expect(result.code, result.stdout + result.stderr).toBe(0);
+      } finally {
+        await server.close();
+      }
+
+      const environment = JSON.parse(
+        await readFile(join(installRoot, "mcp-environment.json"), "utf8"),
+      );
+      // Both variables arrive, absolute, in a subprocess the harness binds
+      // neither for.
+      expect(normalize(environment.pluginRoot)).toBe(normalize(installRoot));
+      expect(environment.pluginData).toBeTypeOf("string");
+      expect(environment.pluginData).not.toBe("");
+      // ${PLUGIN_DATA} in argv reached the server expanded, not literal.
+      expect(environment.argv).toEqual([environment.pluginData]);
+      // The declared cwd is honoured through the launcher, not lost to it.
+      expect(normalize(environment.cwd)).toBe(normalize(join(installRoot, "mcp-working-dir")));
+    },
+    240_000,
   );
 
   it("drives the fixture MCP tool through the generated production artifact", async () => {
