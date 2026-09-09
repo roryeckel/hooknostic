@@ -115,17 +115,32 @@ function replacePluginVariables(value: string): string {
 // directory before starting the server (`.capture/claude-mcp-cwd`).
 const MCP_LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
 
-/** `undefined` when the server's working directory escapes the base it names. */
-function translateServer(server: AgentPluginMcpServer): Record<string, unknown> | undefined {
+/** A translated server, or the reason this one cannot be represented. */
+type TranslatedServer =
+  | { entry: Record<string, unknown>; reason?: undefined }
+  | { entry?: undefined; reason: string };
+
+function translateServer(server: AgentPluginMcpServer): TranslatedServer {
   if (server.type !== "stdio") {
     return {
-      type: server.type === "streamable-http" ? "http" : server.type,
-      url: server.url,
-      ...(server.headers === undefined ? {} : { headers: server.headers }),
+      entry: {
+        type: server.type === "streamable-http" ? "http" : server.type,
+        url: server.url,
+        ...(server.headers === undefined ? {} : { headers: server.headers }),
+      },
+    };
+  }
+  if (hasUnportableCommandPath(server.command)) {
+    return {
+      reason: `command ${JSON.stringify(server.command)} contains a backslash, which is a path separator only on the consumer's platform`,
     };
   }
   const classified = classifyStdioCwd(server.cwd);
-  if (classified === undefined || hasUnportableCommandPath(server.command)) return undefined;
+  if (classified === undefined) {
+    return {
+      reason: `working directory ${JSON.stringify(server.cwd)} escapes the directory it is anchored on`,
+    };
+  }
   const command = server.command.startsWith("./")
     ? `\${CLAUDE_PLUGIN_ROOT}/${server.command.slice(2)}`
     : replacePluginVariables(server.command);
@@ -143,16 +158,18 @@ function translateServer(server: AgentPluginMcpServer): Record<string, unknown> 
       ? `\${${base}}`
       : `\${${base}}/${classified.relative}`;
   return {
-    type: "stdio",
-    command: "node",
-    args: [
-      `\${CLAUDE_PLUGIN_ROOT}/${MCP_LAUNCHER_PATH}`,
+    entry: {
+      type: "stdio",
+      command: "node",
+      args: [
+        `\${CLAUDE_PLUGIN_ROOT}/${MCP_LAUNCHER_PATH}`,
+        cwd,
+        command,
+        ...(server.args ?? []).map(replacePluginVariables),
+      ],
+      env,
       cwd,
-      command,
-      ...(server.args ?? []).map(replacePluginVariables),
-    ],
-    env,
-    cwd,
+    },
   };
 }
 
@@ -204,6 +221,7 @@ function mergeHooks(
 function componentCounts(
   source: AgentPluginPackage,
   runtimePackage: "absent" | "emitted" | "skipped",
+  omittedStdio = 0,
 ) {
   const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
   return componentSummary(source, {
@@ -211,6 +229,9 @@ function componentCounts(
     hasRuntimePackage: runtimePackage !== "absent",
     skipped: (component) => {
       if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
+      // A refused stdio server is discovered but not emitted; without this the
+      // report contradicts summary.omissions and .mcp.json alike.
+      if (component === "agent-plugin.mcp.stdio") return omittedStdio;
       if (component !== "agent-plugin.client-extension.files") return 0;
       // Only the overlay files npm would read as install input are withheld;
       // the manifest extension and every other overlay file are emitted.
@@ -341,20 +362,11 @@ export async function projectAgentPluginToClaude(
     if (extensionServers !== undefined && !object(extensionServers)) {
       throw new Error("Claude MCP configuration mcpServers must be an object");
     }
-    if (Object.values(source.mcp?.mcpServers ?? {}).some((server) => server.type === "stdio")) {
-      if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
-        throw new Error(`generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`);
-      }
-      files.set(MCP_LAUNCHER_PATH, {
-        path: MCP_LAUNCHER_PATH,
-        contents: await bundleMcpLauncher({ frontEnd: "client-expanded" }),
-      });
-    }
     const translated: Record<string, Record<string, unknown>> = Object.create(null);
+    let emittedStdio = 0;
     for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
-      const entry = translateServer(server);
+      const { entry, reason } = translateServer(server);
       if (entry === undefined) {
-        const reason = `working directory ${JSON.stringify((server as { cwd?: string }).cwd)} escapes the directory it is anchored on`;
         omissions.push({ component: "agent-plugin.mcp.stdio", name, reason });
         issues.push({
           severity: context.onUnsupported,
@@ -365,11 +377,24 @@ export async function projectAgentPluginToClaude(
         });
         continue;
       }
+      if (entry["type"] === "stdio") emittedStdio += 1;
       Object.defineProperty(translated, name, {
         value: entry,
         enumerable: true,
         writable: true,
         configurable: true,
+      });
+    }
+    // Gated on what survived translation, not on what the package declared: an
+    // unused launcher would still take the generated path, and its collision
+    // check would then fail a build that onUnsupported: "warn" should pass.
+    if (emittedStdio > 0) {
+      if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
+        throw new Error(`generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`);
+      }
+      files.set(MCP_LAUNCHER_PATH, {
+        path: MCP_LAUNCHER_PATH,
+        contents: await bundleMcpLauncher({ frontEnd: "client-expanded" }),
       });
     }
     for (const name of Object.keys(translated)) {
@@ -414,7 +439,13 @@ export async function projectAgentPluginToClaude(
     directories: workingDirectories(source),
     issues,
     summary: {
-      components: componentCounts(source, runtimePackage === undefined ? "absent" : "emitted"),
+      components: componentCounts(
+        source,
+        runtimePackage === undefined ? "absent" : "emitted",
+        // Derived from what was reported, so the count and summary.omissions
+        // cannot disagree.
+        omissions.filter((item) => item.component === "agent-plugin.mcp.stdio").length,
+      ),
       omissions,
       copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
     },

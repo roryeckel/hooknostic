@@ -100,6 +100,41 @@ describe("Agent Plugin to Claude projection", () => {
     });
   });
 
+  // Everything an omission has to stay consistent with: the count the report
+  // publishes, the file that would otherwise be generated for nobody, and the
+  // field the diagnostic names.
+  it("keeps an omitted server out of the counts, the launcher, and the wrong diagnostic", async () => {
+    const portable = source([file("runtime/mcp-launcher.mjs", "package content")]);
+    portable.mcp!.mcpServers = {
+      // Refused for its command, with no cwd at all -- so a diagnostic that
+      // always blames cwd prints "working directory undefined".
+      unportable: { type: "stdio", command: "./..\\..\\tool.exe" },
+    };
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+    });
+    // No stdio server survives, so the launcher is never generated -- and the
+    // package's own file at that path is therefore not a collision.
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(plan.files.some((item) => item.path === "runtime/mcp-launcher.mjs")).toBe(true);
+    expect(plan.summary.copiedPaths).toContain("runtime/mcp-launcher.mjs");
+    // The report must not call a server emitted that .mcp.json does not contain.
+    expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({
+      discovered: 1,
+      emitted: 0,
+      skipped: 1,
+    });
+    expect(plan.summary.omissions).toContainEqual(
+      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "unportable" }),
+    );
+    const reason = plan.summary.omissions.find((item) => item.name === "unportable")!.reason;
+    expect(reason).toContain("command");
+    expect(reason).not.toContain("working directory");
+  });
+
   // The prefix replacement this replaced emitted ${CLAUDE_PLUGIN_DATA}/../x
   // unchecked, pointing the server at a sibling of the directory Claude manages.
   it.each(["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape"])(
