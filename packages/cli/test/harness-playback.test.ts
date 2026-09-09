@@ -1591,6 +1591,147 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     300_000,
   );
 
+  // Codex's capability matrix resolves by version and ignores mode, so a
+  // plugin-mode build advertises the deny and rewrite channels that every other
+  // effect drive verifies through `.codex/hooks.json` instead. ADR-0011's sixth
+  // amendment forbids treating one route's evidence as another's, and the only
+  // plugin-boundary evidence was that a marker command ran -- not that its
+  // response was honoured. This drives the same two effects through an
+  // INSTALLED plugin.
+  it.skipIf(adapter?.id !== "codex").each([
+    [
+      "denies a tool call",
+      "block" as const,
+      async (projectDir: string) => {
+        await expect(access(join(projectDir, "hooknostic-blocked.txt"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      },
+    ],
+    [
+      "rewrites a tool input",
+      "rewrite" as const,
+      async (projectDir: string) => {
+        expect(await readFile(join(projectDir, "hooknostic-tool.txt"), "utf8")).toBe(
+          "hooknostic-rewritten",
+        );
+      },
+    ],
+  ])(
+    "%s through an installed plugin",
+    async (_label, scenario, verifyEffect) => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-plugin-effect-"));
+      tempDirs.push(dir);
+      const marketplace = join(dir, "marketplace");
+      const pluginSource = join(marketplace, "plugins", "harness-playback");
+      const codexHome = join(dir, "codex-home");
+      const projectDir = join(dir, "project");
+      await mkdir(projectDir, { recursive: true });
+      await mkdir(codexHome, { recursive: true });
+
+      // Plugin mode is established only from 0.153.2 and `referenceVersion`
+      // predates it, so the build is targeted at the binary actually under test.
+      const reported = await runProcess("codex", ["--version"], {
+        cwd: dir,
+        env: process.env,
+        timeoutMs: 30_000,
+      });
+      const installedVersion = /(\d+\.\d+\.\d+)/.exec(reported.stdout)?.[1];
+      expect(installedVersion, reported.stdout + reported.stderr).toBeTypeOf("string");
+      let build: Awaited<ReturnType<typeof buildPlaybackArtifact>>;
+      try {
+        build = await buildPlaybackArtifact(adapter!, pluginSource, {
+          mode: "plugin",
+          version: installedVersion!,
+        });
+      } catch (error) {
+        // Below the plugin-hooks range the adapter refuses to generate at all,
+        // which is the honest outcome on an older binary rather than a failure.
+        expect((error as Error).message).toContain("requires harness");
+        return;
+      }
+
+      await mkdir(join(marketplace, ".agents", "plugins"), { recursive: true });
+      await writeFile(
+        join(marketplace, ".agents", "plugins", "marketplace.json"),
+        JSON.stringify({
+          name: "hooknostic-effect-playback",
+          owner: { name: "Hooknostic contributors" },
+          plugins: [
+            { name: "harness-playback", version: "1.0.0", source: "./plugins/harness-playback" },
+          ],
+        }),
+      );
+      const codexEnv = { ...process.env, CODEX_HOME: codexHome };
+      const added = await runProcess("codex", ["plugin", "marketplace", "add", marketplace], {
+        cwd: dir,
+        env: codexEnv,
+        timeoutMs: 60_000,
+      });
+      expect(added.code, added.stdout + added.stderr).toBe(0);
+      const installed = await runProcess(
+        "codex",
+        ["plugin", "add", "harness-playback@hooknostic-effect-playback"],
+        { cwd: dir, env: codexEnv, timeoutMs: 60_000 },
+      );
+      expect(installed.code, installed.stdout + installed.stderr).toBe(0);
+
+      const server = await startModelPlayback("openai-responses", scenario);
+      try {
+        await runProcess("git", ["init"], { cwd: projectDir, env: process.env, timeoutMs: 30_000 });
+        const result = await runProcess(
+          "codex",
+          [
+            "exec",
+            "-",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-hook-trust",
+            "--color",
+            "never",
+            "-c",
+            'model="hooknostic-playback"',
+            "-c",
+            'model_provider="hooknostic_playback"',
+            "-c",
+            'approval_policy="never"',
+            "-c",
+            'sandbox_mode="danger-full-access"',
+            "-c",
+            'model_providers.hooknostic_playback.name="Hooknostic Playback"',
+            "-c",
+            `model_providers.hooknostic_playback.base_url=${tomlLiteral(`${server.baseUrl}/v1`)}`,
+            "-c",
+            'model_providers.hooknostic_playback.wire_api="responses"',
+            "-c",
+            "model_providers.hooknostic_playback.requires_openai_auth=false",
+            "-c",
+            "model_providers.hooknostic_playback.request_max_retries=0",
+            "-c",
+            "model_providers.hooknostic_playback.stream_max_retries=0",
+            "-c",
+            `projects={${tomlLiteral(projectDir)}={trust_level=${tomlLiteral("trusted")}}}`,
+          ],
+          {
+            cwd: projectDir,
+            input: playbackPrompt(scenario),
+            timeoutMs: 120_000,
+            env: { ...codexEnv, HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath },
+          },
+        );
+        expect(result.code, result.stdout + result.stderr).toBe(0);
+        expect(server.errors).toEqual([]);
+      } finally {
+        await server.close();
+      }
+
+      // The effect, not merely the invocation: the hook fired through the
+      // plugin boundary AND its write channel was honoured.
+      expect(await traceEvents(build.tracePath)).toContain("tool.before");
+      await verifyEffect(projectDir);
+    },
+    300_000,
+  );
+
   it("drives the fixture MCP tool through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcp-${adapter!.id}-`));
     tempDirs.push(dir);

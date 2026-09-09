@@ -6,7 +6,7 @@ import { chmod, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { HarnessAdapter } from "@hooknostic/core";
+import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
@@ -46,11 +46,24 @@ export interface ModelPlayback {
   close(): Promise<void>;
 }
 
-function targetFor(adapter: HarnessAdapter, output: string) {
+/**
+ * Overrides for a lane exercising something other than the default boundary.
+ *
+ * A mode other than the adapter's first is a different delivery path, whose
+ * effect channels the default does not evidence (ADR-0011, sixth amendment);
+ * such a mode may also be established only above `referenceVersion`, which is
+ * why the version travels with it.
+ */
+export interface PlaybackTargetOverride {
+  mode?: TargetSpec["mode"];
+  version?: string;
+}
+
+function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
   return {
     id: adapter.id,
-    version: adapter.harness.referenceVersion,
-    mode: adapter.supportedModes()[0]!,
+    version: override.version ?? adapter.harness.referenceVersion,
+    mode: override.mode ?? adapter.supportedModes()[0]!,
     output,
   };
 }
@@ -250,6 +263,7 @@ export default definePlugin({
 export async function buildPlaybackArtifact(
   adapter: HarnessAdapter,
   artifactDir: string,
+  override: PlaybackTargetOverride = {},
 ): Promise<PlaybackBuild> {
   if (adapter.shimEntry === undefined || adapter.shimAliases === undefined) {
     throw new Error(`${adapter.id}: playback requires a generated shim entry and aliases`);
@@ -315,7 +329,7 @@ export async function buildPlaybackArtifact(
     );
   }
 
-  const target = targetFor(adapter, artifactDir);
+  const target = targetFor(adapter, artifactDir, override);
   const resolution = adapter.capabilities(target);
   const capabilities = Object.fromEntries(
     Object.entries(resolution.matrix ?? {}).map(([id, entry]) => [id, entry.level]),
@@ -326,7 +340,7 @@ export async function buildPlaybackArtifact(
       capabilities,
       minimumCapabilityLevel: "approximate",
       policy: RUNTIME_POLICY,
-      harnessVersion: adapter.harness.referenceVersion,
+      harnessVersion: override.version ?? adapter.harness.referenceVersion,
     }),
     resolveDir: artifactDir,
     alias: {

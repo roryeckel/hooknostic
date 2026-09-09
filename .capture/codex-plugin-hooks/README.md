@@ -118,3 +118,57 @@ repo-level artifact uses would silently find nothing inside an install cache.
   path resolves against. `codex mcp get` reported `cwd: -` for a server that
   declared none.
 - Linux and macOS behaviour. Windows only.
+
+## Round 2 — hook EFFECTS through the plugin boundary (2026-09-08)
+
+Evidence class: **live-probe**, through the offline playback lane. `codex-cli`
+**0.153.2**, Windows, no model call. Re-run with:
+
+```
+HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run \
+  packages/cli/test/harness-playback.test.ts -t "installed plugin"
+```
+
+### Question
+
+Round 1 established that a hook declared by an installed plugin **runs**. It did
+not establish that the hook's *response* is honoured — every effect drive in
+this repository (deny, input rewrite, context) reaches Codex through the local
+`.codex/hooks.json` route instead, because `buildPlaybackArtifact` targeted
+`supportedModes()[0]`, which is `local`.
+
+That gap mattered because `codexAdapter().capabilities()` resolves the matrix
+from the **version alone and ignores `target.mode`**, so a `mode: "plugin"`
+build advertised write channels nobody had watched work through that boundary.
+ADR-0011's sixth amendment forbids treating one route's evidence as another's.
+
+### Method
+
+A plugin-mode artifact is built, installed from a local marketplace into an
+isolated `CODEX_HOME` (`.capture/codex-isolated-home`), and driven with one
+`codex exec` turn against a loopback model server, in a project directory that
+is not the plugin's. The hooks are reached only through the installed plugin.
+
+### Observations
+
+| Channel | Scenario | Result |
+|---|---|---|
+| `tool.before` deny | model asks the shell tool to create `hooknostic-blocked.txt` | the file is absent; `tool.before` is in the hook trace |
+| `tool.before` input rewrite | model asks the shell tool to write `hooknostic-original` | the file contains `hooknostic-rewritten` |
+
+Both are **gates, not snapshots**, and each is discriminating on its own: making
+the hook stop denying fails the deny case alone and leaves the rewrite case
+passing, and vice versa.
+
+### Consequences
+
+- `mode: "plugin"` advertising the same write channels as `local` now rests on
+  evidence from the plugin boundary itself.
+- `buildPlaybackArtifact` takes a target override, because plugin mode is
+  established only from 0.153.2 and the adapter's `referenceVersion` predates it.
+
+### Not established
+
+- `context.add`, `permission.request.block`, and the stop-prevention channels
+  through this boundary. Only the two write channels above were driven.
+- Linux and macOS behaviour. Windows only.

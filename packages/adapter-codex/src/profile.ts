@@ -24,6 +24,13 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       date: "2026-08-29",
       validatedOn: [
         {
+          version: "0.153.2",
+          date: "2026-09-08",
+          method: "live-probe",
+          artifact: ".capture/codex-plugin-hooks",
+          what: "Hook EFFECTS survive the installed-plugin delivery boundary, not just hook invocation: driven through the offline playback lane, a tool.before deny stopped the tool running and a tool.before input rewrite reached the spawned command. The capability matrix resolves by version and ignores mode, so this is what lets mode: \"plugin\" advertise the same write channels the local .codex/hooks.json route evidences.",
+        },
+        {
           version: "0.148.0",
           date: "2026-08-20",
           method: "captured",

@@ -50,6 +50,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Hook EFFECTS survive the installed-plugin delivery boundary, not just hook invocation: driven through the offline playback lane, a tool.before deny stopped the tool running and a tool.before input rewrite reached the spawned command. The capability matrix resolves by version and ignores mode, so this is what lets mode: "plugin" advertise the same write channels the local .codex/hooks.json route evidences. |
 | 0.148.0 | 2026-08-20 | captured | `fixtures/codex/0.148` | hook payload fixtures via a trusted teeing project, captured on Windows |
 | 0.148.0 | 2026-08-20 | schema-derived | `fixtures/codex/0.148` | wire JSON Schemas embedded in the binary (*.command.input/output) |
 | 0.148.0 | 2026-08-29 | live-probe | `.capture/codex-output` | Stop output semantics: systemMessage accepted-and-discarded, never rendered |
