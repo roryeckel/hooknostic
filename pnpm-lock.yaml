@@ -144,12 +144,6 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
-      cross-spawn:
-        specifier: 'catalog:'
-        version: 7.0.6
-      esbuild:
-        specifier: 'catalog:'
-        version: 0.24.2
     devDependencies:
       '@hooknostic/testkit':
         specifier: workspace:*
@@ -272,6 +266,9 @@ importers:
       '@hooknostic/sdk':
         specifier: workspace:*
         version: link:../sdk
+      cross-spawn:
+        specifier: 'catalog:'
+        version: 7.0.6
       esbuild:
         specifier: 'catalog:'
         version: 0.24.2

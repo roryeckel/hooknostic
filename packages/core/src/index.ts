@@ -8,6 +8,7 @@ export * from "./bundle.js";
 export * from "./detect.js";
 export * from "./diagnostics.js";
 export * from "./matrix.js";
+export * from "./mcp-launcher.js";
 export * from "./native-timeout.js";
 export * from "./ir.js";
 export * from "./load.js";

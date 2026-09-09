@@ -1,8 +1,4 @@
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-import { createRequireBanner, licenseNoticesPlugin } from "../../core/src/bundle-support.mjs";
-import { dirname, posix } from "node:path";
-import { build } from "esbuild";
+import { posix } from "node:path";
 import {
   componentSummary,
   isRejectedSkillPath,
@@ -14,6 +10,7 @@ import {
   type AgentPluginProjectionPlan,
   type AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
+import { MCP_LAUNCHER_FILE, bundleMcpLauncher } from "@hooknostic/core";
 import type { TargetSpec } from "@hooknostic/core";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
@@ -113,60 +110,9 @@ function replacePluginVariables(value: string): string {
     .replaceAll("${PLUGIN_DATA}", "${CLAUDE_PLUGIN_DATA}");
 }
 
-const MCP_LAUNCHER_PATH = "runtime/mcp-launcher.mjs";
-// Claude currently ignores stdio `cwd`. Establish the portable working
-// directory in the launcher before starting the server (live probe below).
-const MCP_LAUNCHER = `import spawn from "cross-spawn";
-import { spawn as nativeSpawn } from "node:child_process";
-import { normalize } from "node:path";
-import escape from "cross-spawn/lib/util/escape.js";
-const [cwd, command, ...args] = process.argv.slice(2);
-const options = { cwd, stdio: "inherit" };
-const parsed = spawn._parse(command, args, options);
-// npm's global shims also forward %*. cross-spawn only double-escapes shims
-// under node_modules/.bin; apply that protection to other batch files too.
-if (process.platform === "win32" && /\\.(cmd|bat)$/i.test(parsed.file ?? "")) {
-  const line = [escape.command(normalize(parsed.file)), ...args.map(arg => escape.argument(arg, true))].join(" ");
-  parsed.args = ["/d", "/s", "/c", '"' + line + '"'];
-}
-const child = nativeSpawn(parsed.command, parsed.args, parsed.options);
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => child.kill(signal));
-}
-child.on("error", (error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
-child.on("exit", (code, signal) => {
-  if (signal) {
-    process.removeAllListeners(signal);
-    process.kill(process.pid, signal);
-  } else process.exitCode = code ?? 1;
-});
-`;
-
-async function bundleMcpLauncher(): Promise<string> {
-  // Resolve from this adapter (or the installed CLI), never from the plugin
-  // author's dependencies. OS selection stays in the generated runtime so a
-  // package built on Linux also handles Windows PATH/PATHEXT and .cmd shims.
-  const entry = createRequire(import.meta.url).resolve("cross-spawn");
-  const result = await build({
-    stdin: { contents: MCP_LAUNCHER, resolveDir: dirname(entry) },
-    absWorkingDir: dirname(entry),
-    outfile: "hooknostic-mcp-launcher.mjs",
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    target: "node22",
-    // Strip host-specific module-path comments for reproducible output.
-    minify: true,
-    write: false,
-    legalComments: "eof",
-    plugins: [licenseNoticesPlugin({ additionalSources: [fileURLToPath(import.meta.url)] })],
-    banner: { js: createRequireBanner },
-  });
-  return result.outputFiles[0]!.text;
-}
+// Claude ignores stdio `cwd`, so the launcher establishes the portable working
+// directory before starting the server (`.capture/claude-mcp-cwd`).
+const MCP_LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
 
 function translateServer(server: AgentPluginMcpServer): Record<string, unknown> {
   if (server.type !== "stdio") {
@@ -395,7 +341,10 @@ export async function projectAgentPluginToClaude(
       if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
         throw new Error(`generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`);
       }
-      files.set(MCP_LAUNCHER_PATH, { path: MCP_LAUNCHER_PATH, contents: await bundleMcpLauncher() });
+      files.set(MCP_LAUNCHER_PATH, {
+        path: MCP_LAUNCHER_PATH,
+        contents: await bundleMcpLauncher({ frontEnd: "client-expanded" }),
+      });
     }
     const translated = Object.fromEntries(
       Object.entries(source.mcp?.mcpServers ?? {}).map(([name, server]) => [name, translateServer(server)]),

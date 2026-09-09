@@ -14,6 +14,7 @@
   "dependencies": {
     "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/sdk": "workspace:*",
+    "cross-spawn": "catalog:",
     "esbuild": "catalog:",
     "minimatch": "catalog:",
     "semver": "catalog:semver-runtime",
