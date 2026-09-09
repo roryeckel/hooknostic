@@ -25,8 +25,8 @@ examples/agent-plugin/
 │   └── hooks.ts
 └── dist/
     ├── claude/                 ← complete Claude plugin: package + native hooks
-    ├── codex/                  ← Hooknostic local-hook artifact only
-    └── opencode/               ← Hooknostic local-hook artifact only
+    ├── codex/                  ← native Codex plugin: package + hooks, installable
+    └── opencode/               ← project plugin: package + hooks under .opencode/
 ```
 
 The projection is explicit:
@@ -38,12 +38,13 @@ export default defineConfig({
   entry: "./src/hooks.ts",
   targets: {
     claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
-    codex: { version: ">=0.148 <1", mode: "local", output: "./dist/codex" },
+    codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
     opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },
   },
   agentPlugin: {
     root: ".",
-    targets: ["claude"],
+    targets: ["claude", "codex", "opencode"],
+    onUnsupported: "warn",
     runtimePackage: {
       manifest: "./runtime/package.json",
       lockfile: "./runtime/package-lock.json",
@@ -79,30 +80,25 @@ rules, and the locked graph must be complete down to the last transitive depende
 Regenerate the lockfile from the manifest whenever you change either; a hand-edited lock
 fails `check` with the same message `npm ci` would have given the user.
 
-This example projects into `claude` only, so `codex` and `opencode` receive just their
-local hook artifacts. Codex can also receive a package, and what it gets is a *native*
-plugin rather than the portable one: it does read a portable package, but a portable
-manifest cannot carry hooks and outranks the `.codex-plugin/plugin.json` that can, so a
-package declaring both loads its skills and silently ignores every hook. The projection
-therefore replaces `plugin.json` and `mcp.json` with native equivalents and emits the
-compiled hooks alongside them. Add it with:
+This example projects into all three targets, and each gets a different translation of
+the same package. Codex receives a *native* plugin rather than the portable one: it does
+read a portable package, but a portable manifest cannot carry hooks and outranks the
+`.codex-plugin/plugin.json` that can, so a package declaring both loads its skills and
+silently ignores every hook. The projection therefore replaces `plugin.json` and
+`mcp.json` with native equivalents and emits the compiled hooks alongside them, and why its
+target is `mode: "plugin"`.
 
-```ts
-agentPlugin: { root: ".", targets: ["claude", "codex"], onUnsupported: "warn" },
-targets: {
-  codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
-},
-```
-
-The version narrows too: hook delivery from an installed plugin is only established
-from 0.153, so `mode: "plugin"` is rejected below it, while the local artifact above
-still builds from 0.148. `onUnsupported: "warn"` is what this example would
-additionally need, because its `runtimePackage` has no Codex equivalent — see
+Its version range narrows too: hook delivery from an installed plugin is only established
+from 0.153, so `mode: "plugin"` is rejected below it, while a local Codex artifact
+still builds from 0.148. `onUnsupported: "warn"` is what this example needs, because
+its `runtimePackage` has no Codex or OpenCode equivalent — see
 [harness support](../harness-support.md) for the per-component table.
 
-Claude's projection is a different translation of the same package: `.claude-plugin/`,
-a rewritten `.mcp.json`, a generated cwd launcher. Neither output is portable, and that
-is the point — the *source* is the portable artifact.
+Claude's projection is a third translation: `.claude-plugin/`, a rewritten `.mcp.json`,
+and a generated launcher. OpenCode's is `mode: "local"`, because its project plugin
+already IS local — `.opencode/plugins/` is read from the project directory, so there is
+nothing to install. None of the outputs is portable, and that is the point — the
+*source* is the portable artifact.
 
 Listing a target under `agentPlugin.targets` whose adapter has no projector at all is a
 different error, and not one `onUnsupported` degrades: a projection that cannot happen

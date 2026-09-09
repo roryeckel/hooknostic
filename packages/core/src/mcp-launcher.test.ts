@@ -27,6 +27,9 @@ const PROBE = [
   "  pluginRoot: process.env.PLUGIN_ROOT,",
   "  pluginData: process.env.PLUGIN_DATA,",
   "  declared: process.env.DECLARED,",
+  // Read through the descriptor: `process.env.__proto__` on an ordinary
+  // object would answer with the prototype rather than the variable.
+  "  proto: (Object.getOwnPropertyDescriptor(process.env, '__proto__') || {}).value ?? null,",
   // With -e there is no script path, so the first declared argument is argv[1].
   "  args: process.argv.slice(1),",
   "  wrote,",
@@ -234,6 +237,24 @@ describe("generated MCP launcher", () => {
         classified.relative === "." ? tree.root : join(tree.root, classified.relative),
       );
     }
+  });
+
+  // The schema puts no pattern on an env key, and JSON.parse gives `__proto__`
+  // as an own property -- but assigning it into an ordinary object reaches the
+  // inherited setter, and the variable would vanish with no diagnostic.
+  it("passes through an environment variable named __proto__", async () => {
+    // Built by JSON.parse, because an object literal's `__proto__:` sets the
+    // prototype and never creates the key -- the same trap on the way in.
+    const env = JSON.parse('{"__proto__":"survived","DECLARED":"also-survived"}') as Record<
+      string,
+      string
+    >;
+    const tree = await layout([probeServer({ env })]);
+    const result = launch(tree, 0);
+    expect(result.status, result.stderr).toBe(0);
+    const observed = JSON.parse(result.stdout);
+    expect(observed.proto).toBe("survived");
+    expect(observed.declared).toBe("also-survived");
   });
 
   it("defers to a client that already implements the contract", async () => {

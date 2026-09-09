@@ -90,6 +90,20 @@ function embeddedServers(plan: AgentPluginProjectionPlan): Record<string, Record
 }
 
 describe("Agent Plugin to OpenCode projection", () => {
+  // Every validatedOn record for this projection is 1.18.29. A profile reaching
+  // below that would let a build claim exact/emulated support for a config hook,
+  // a skills.paths merge and an MCP shape nothing has watched on those releases.
+  it("declines versions below the ones its evidence covers", () => {
+    const evidenced = opencodeAgentPluginProjector.profiles.flatMap((profile) =>
+      (profile.source?.validatedOn ?? []).map((record) => record.version),
+    );
+    expect(evidenced.length).toBeGreaterThan(0);
+    expect(evidenced.every((version) => version.startsWith("1.18."))).toBe(true);
+
+    const older = { id: "opencode", version: ">=1.10 <1.18", mode: "local" as const, output: "d" };
+    expect(resolveAgentPluginProjection(older, opencodeAgentPluginProjector).matrix).toBeUndefined();
+  });
+
   // An MCP server names its implementation with ${PLUGIN_ROOT}/..., so copying
   // only the skill trees leaves that argv pointing at a file the output does not
   // contain -- a server reported emitted that cannot start.

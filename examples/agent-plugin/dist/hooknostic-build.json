@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:6e3d44fcc0771c7b54a0e6497a581f127d3d4f0f15b0082b3abbee1e101fe9cc",
+        "contentDigest": "sha256:dda191a81fab54fed4c10271db3fd0449e93affff1534fc9138077fc588b05a5",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:079dcbd31b6d3521e69fb39328fed1fa8d73d16be2e6d81d0b3b5d6b83451013",
+        "contentDigest": "sha256:84a5e0b2eb88e0189b2f657e4690c65c9e4e65c016e093f19f410ba4343c16de",
         "copiedFileCount": 7,
         "directories": [
           ".opencode/plugins/package/runtime",

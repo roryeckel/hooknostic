@@ -176,7 +176,10 @@ const cwd =
 const command = entry.command.startsWith("./") ? resolve(pluginRoot, entry.command) : entry.command;
 const args = (entry.args ?? []).map(expand);
 // Values only: expansion "does not apply to env keys".
-const env = { ...process.env };
+// Null-prototype: a declared key named __proto__ survives JSON.parse as an
+// own property, but assigning it into an ordinary object reaches the
+// inherited setter, and the variable would vanish from the spawned server.
+const env = Object.assign(Object.create(null), process.env);
 for (const [key, value] of Object.entries(entry.env ?? {})) env[key] = expand(value);
 env.PLUGIN_ROOT = pluginRoot;
 env.PLUGIN_DATA = pluginData;

@@ -273,7 +273,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // The hook module and the package share `.opencode/plugins/`.
   profiles: [
     {
-      range: ">=1.10 <2",
+      range: ">=1.18 <2",
       components: {
         "agent-plugin.manifest": {
           level: "emulated",
