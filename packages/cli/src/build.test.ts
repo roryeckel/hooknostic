@@ -1031,9 +1031,20 @@ ${run.stderr}`).toBe(0);
     // Native MCP shape: no type discriminator, and headers keep their values
     // under the key Codex actually reads.
     const mcp = JSON.parse(await readFile(join(dir, "dist/codex/.mcp.json"), "utf8"));
-    // An explicit plugin-root-relative cwd, because the native route expands no
-    // placeholder and leaves cwd unset otherwise (.capture/codex-native-mcp).
-    expect(mcp.mcpServers.local).toEqual({ command: "node", args: ["server.mjs"], cwd: "." });
+    // Every stdio server registers through the launcher, which supplies the
+    // contract the native route implements none of. `cwd: "."` is what makes
+    // the relative argv resolve: the route joins a declared cwd to the plugin
+    // root, and a server declaring none never starts
+    // (.capture/codex-native-mcp).
+    expect(mcp.mcpServers.local).toEqual({
+      command: "node",
+      args: ["./runtime/mcp-launcher.mjs", "0"],
+      cwd: ".",
+    });
+    const servers = JSON.parse(
+      await readFile(join(dir, "dist/codex/runtime/mcp-servers.json"), "utf8"),
+    );
+    expect(servers.servers[0]).toMatchObject({ name: "local", command: "node" });
     expect(mcp.mcpServers.remote).toEqual({
       url: "https://example.invalid/mcp",
       http_headers: { Authorization: "Bearer literal" },

@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:a74f63fa661ae149d188f16e6f3366775c663c7804323bd78c8499ef6f4dc832",
+        "contentDigest": "sha256:6e3d44fcc0771c7b54a0e6497a581f127d3d4f0f15b0082b3abbee1e101fe9cc",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -113,7 +113,9 @@
         ".codex-plugin/plugin.json",
         ".mcp.json",
         "hooknostic/hooknostic.mjs",
-        "hooks.json"
+        "hooks.json",
+        "runtime/mcp-launcher.mjs",
+        "runtime/mcp-servers.json"
       ]
     },
     "opencode": {

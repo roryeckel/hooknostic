@@ -1,10 +1,8 @@
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
+  classifyStdioCwd,
   componentSummary,
   isRejectedSkillPath,
-  containsPluginData,
-  expandStdioServer,
-  normalizedPluginRootCwd,
 } from "@hooknostic/agent-plugin";
 import type {
   AgentPluginComponentId,
@@ -14,8 +12,13 @@ import type {
   AgentPluginProjectionPlan,
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
-import type { TargetSpec } from "@hooknostic/core";
-import { rangeWithin } from "@hooknostic/core";
+import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
+import {
+  MCP_LAUNCHER_FILE,
+  MCP_SERVERS_FILE,
+  bundleMcpLauncher,
+  rangeWithin,
+} from "@hooknostic/core";
 import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js";
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
@@ -23,6 +26,8 @@ const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
+const LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
+const LAUNCHER_SERVERS_PATH = `runtime/${MCP_SERVERS_FILE}`;
 
 /** Native stdio server. `type` is absent: `command` is what selects the transport. */
 interface CodexStdioServer {
@@ -52,15 +57,6 @@ interface CodexNativeManifest {
   hooks?: string;
 }
 
-/** How many levels the server's working directory sits below the plugin root. */
-function fromWorkingDirectory(cwd: string): string {
-  if (cwd === ".") return ".";
-  return cwd
-    .split("/")
-    .map(() => "..")
-    .join("/");
-}
-
 /**
  * Translate portable MCP servers into Codex's native shape.
  *
@@ -69,34 +65,37 @@ function fromWorkingDirectory(cwd: string): string {
  * PLUGIN_ROOT and PLUGIN_DATA bound in `env`, and `cwd` defaulted to the plugin
  * root). Measured on 0.153.2 (`.capture/codex-native-mcp`): `${PLUGIN_ROOT}` and
  * `${PLUGIN_DATA}` reach the server as literal text in `args`, `env` gains
- * neither variable, and `cwd` is absent unless declared. What the route DOES
- * give is a `cwd` resolved against the plugin root, so the contract is carried
- * here instead: every server gets an explicit plugin-root-relative `cwd`, and
- * `${PLUGIN_ROOT}` / `./` paths are rewritten relative to it. Without this a
- * package referencing its own shipped code -- the ordinary case -- registers an
- * argv that cannot resolve.
+ * neither variable, and `cwd` is absent unless declared.
  *
- * Two shapes have no representation and are dropped with an omission rather
- * than emitted broken:
+ * So every stdio server registers the same way -- `node ./runtime/mcp-launcher.mjs
+ * <index>` with `cwd: "."` -- and the launcher supplies the contract at spawn
+ * time. `cwd: "."` is what makes the relative argv resolve: the route joins a
+ * declared `cwd` to the plugin root without expanding it first, and a server
+ * declaring none never started at all.
  *
- * - `${PLUGIN_DATA}` anywhere. The route provides no writable per-plugin
- *   directory and no way to name one, and the package loader forbids an author
- *   from defining the variable themselves.
- * - `sse`. Codex selects the transport from `command` vs `url` and ignores the
- *   portable `type`, so an sse server survives as a `streamable_http`
- *   registration against the same url -- a wrong-protocol connection, which is
- *   worse than an absent component. The portable `headers` key is ignored for
- *   the same reason; `http_headers` is what Codex reads, and through it a
- *   literal header value is preserved.
+ * The index is a position in the generated servers document, assigned in this
+ * loop as each entry is appended, so the emitted argv and the document cannot
+ * disagree. Deriving it from any second enumeration would: `load.ts` drops
+ * invalid servers before a projector sees them, so positions in the package's
+ * own `mcp.json` are not these positions.
+ *
+ * `sse` is still dropped with an omission: Codex selects the transport from
+ * `command` vs `url` and ignores the portable `type`, so an sse server would
+ * survive as a `streamable_http` registration against the same url -- a
+ * wrong-protocol connection, which is worse than an absent component. The
+ * portable `headers` key is ignored for the same reason; `http_headers` is what
+ * Codex reads, and through it a literal header value is preserved.
  */
 function translateMcp(source: AgentPluginPackage): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
+  launcherServers: McpLauncherServer[];
   omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
 } {
   // Null-prototype: a schema-valid server named `__proto__` assigned into `{}`
   // invokes the inherited setter, so JSON.stringify would omit it while the
   // summary counted it emitted.
   const servers: Record<string, CodexStdioServer | CodexRemoteServer> = Object.create(null);
+  const launcherServers: McpLauncherServer[] = [];
   const omitted: { name: string; component: AgentPluginComponentId; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
     if (server.type !== "stdio") {
@@ -115,35 +114,30 @@ function translateMcp(source: AgentPluginPackage): {
       };
       continue;
     }
-    const values = [server.command, ...(server.args ?? []), ...Object.values(server.env ?? {})];
-    if (server.cwd !== undefined) values.push(server.cwd);
-    if (values.some(containsPluginData)) {
+    if (classifyStdioCwd(server.cwd) === undefined) {
       omitted.push({
         name,
         component: "agent-plugin.mcp.stdio",
-        reason:
-          "the native Codex MCP route provides no ${PLUGIN_DATA} directory and expands no placeholder, so the server would receive the literal text",
+        reason: `working directory ${JSON.stringify(server.cwd)} escapes the directory it is anchored on`,
       });
       continue;
     }
-    const cwd = normalizedPluginRootCwd(server.cwd);
-    if (cwd === undefined) {
-      omitted.push({
-        name,
-        component: "agent-plugin.mcp.stdio",
-        reason: `working directory ${JSON.stringify(server.cwd)} is not a location inside the plugin`,
-      });
-      continue;
-    }
-    // Expansion is relative rather than absolute because the install path is
-    // unknown at build time: Codex resolves `cwd` against the plugin root, so a
-    // path relative to `cwd` reaches the same file an absolute one would.
     servers[name] = {
-      ...expandStdioServer(server, fromWorkingDirectory(cwd)),
-      cwd,
+      command: "node",
+      args: [`./${LAUNCHER_PATH}`, String(launcherServers.length)],
+      cwd: ".",
     };
+    // Portable text verbatim: the launcher expands it against paths only it
+    // knows, and rewriting here would expand twice.
+    launcherServers.push({
+      name,
+      command: server.command,
+      ...(server.args === undefined ? {} : { args: [...server.args] }),
+      ...(server.env === undefined ? {} : { env: { ...server.env } }),
+      ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
+    });
   }
-  return { servers, omitted };
+  return { servers, launcherServers, omitted };
 }
 
 /**
@@ -217,7 +211,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.mcp.stdio": {
           level: "emulated",
           rationale:
-            "The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so plugin-root anchoring is carried by an explicit plugin-root-relative cwd with command and args rewritten against it. A server using ${PLUGIN_DATA} has no representation and is omitted.",
+            "The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so the projection emits a Node launcher that resolves the plugin root from its own location, creates and binds a Hooknostic-managed PLUGIN_DATA directory outside the version-scoped install root, and expands args, env values and cwd before spawning the server. The directory is chosen by Hooknostic rather than by Codex, and the server runs one process below the harness, so the contract is emulated rather than native. Node must be on PATH, because the launcher is a Node program.",
         },
         "agent-plugin.mcp.streamable-http": {
           level: "exact",
@@ -360,8 +354,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const insideRejectedSkill = isRejectedSkillPath(source);
 
     for (const file of source.files) {
-      // Both portable documents are replaced by native ones at other paths.
-      // Shipping either beside its replacement is what suppresses hooks.
+      // The root manifest is what suppresses hooks: a package carrying it and a
+      // native one loaded its skill and ignored its hook. `mcp.json` is dropped
+      // for a weaker reason -- no capture record says what a root one does
+      // beside a native manifest, and an uncaptured shape is declined rather
+      // than defaulted, since the plausible reading is a double registration.
       if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
       if (insideRejectedSkill(file.path)) continue;
       files.push({ path: file.path, contents: file.contents, mode: file.mode });
@@ -388,7 +385,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(source.skills.length === 0 ? {} : { skills: "./skills/" }),
     };
 
-    const { servers, omitted } = translateMcp(source);
+    const { servers, launcherServers, omitted } = translateMcp(source);
     for (const { name, component, reason } of omitted) {
       omissions.push({ component, name, reason });
       issues.push({
@@ -409,6 +406,35 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       files.push({
         path: NATIVE_MCP_PATH,
         contents: `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`,
+      });
+    }
+    if (launcherServers.length > 0) {
+      // A better diagnostic than the duplicate-path failure core would raise
+      // anyway (`artifacts.ts`), naming the colliding path and why it is taken.
+      for (const path of [LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]) {
+        if (!copiedPaths.includes(path)) continue;
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          path,
+          message: `generated Hooknostic path ${JSON.stringify(path)} collides with package content`,
+        });
+      }
+      const document: McpLauncherDocument = {
+        plugin: source.manifest.name,
+        servers: launcherServers,
+      };
+      files.push({
+        path: LAUNCHER_SERVERS_PATH,
+        contents: `${JSON.stringify(document, null, 2)}\n`,
+      });
+      files.push({
+        path: LAUNCHER_PATH,
+        contents: await bundleMcpLauncher({
+          frontEnd: "self-resolving",
+          rootOffset: "..",
+          pluginName: source.manifest.name,
+        }),
       });
     }
 

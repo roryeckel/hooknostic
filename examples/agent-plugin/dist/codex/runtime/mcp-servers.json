@@ -1,0 +1,12 @@
+{
+  "plugin": "combined-example",
+  "servers": [
+    {
+      "name": "greeter",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/src/greet-mcp.mjs"
+      ]
+    }
+  ]
+}

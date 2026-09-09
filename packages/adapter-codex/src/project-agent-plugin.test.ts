@@ -1,13 +1,18 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
+  loadAgentPlugin,
   type AgentPluginFile,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
 } from "@hooknostic/agent-plugin";
 import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
+import type { McpLauncherDocument } from "@hooknostic/core";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
@@ -61,6 +66,15 @@ function nativeMcp(plan: AgentPluginProjectionPlan): Record<string, Record<strin
   return (JSON.parse(text) as { mcpServers: Record<string, Record<string, unknown>> }).mcpServers;
 }
 
+function launcherDocument(plan: AgentPluginProjectionPlan): McpLauncherDocument {
+  const artifact = plan.files.find((candidate) => candidate.path === "runtime/mcp-servers.json")!;
+  const text =
+    typeof artifact.contents === "string"
+      ? artifact.contents
+      : new TextDecoder().decode(artifact.contents);
+  return JSON.parse(text) as McpLauncherDocument;
+}
+
 function manifestOf(plan: AgentPluginProjectionPlan): Record<string, unknown> {
   const artifact = plan.files.find((candidate) => candidate.path === ".codex-plugin/plugin.json")!;
   const text =
@@ -71,125 +85,158 @@ function manifestOf(plan: AgentPluginProjectionPlan): Record<string, unknown> {
 }
 
 describe("Agent Plugin to Codex projection", () => {
-  // The native route expands no Agent Plugins placeholder and binds no
-  // PLUGIN_ROOT env, unlike the portable route it replaces, but it does resolve
-  // `cwd` against the plugin root (.capture/codex-native-mcp). Passing the
-  // placeholder through would hand the server literal text.
-  it("re-anchors plugin-root paths against an explicit working directory", async () => {
-    const plan = await project(
-      source({
-        srv: {
-          type: "stdio",
-          command: "node",
-          args: ["${PLUGIN_ROOT}/src/server.mjs", "--flag"],
-        },
-      }),
-    );
-    expect(nativeMcp(plan)["srv"]).toEqual({
-      command: "node",
-      args: ["./src/server.mjs", "--flag"],
-      cwd: ".",
-    });
-  });
-
-  it("re-anchors against a declared working directory rather than the plugin root", async () => {
+  // The native route expands no Agent Plugins placeholder and binds neither
+  // variable, but it does join a declared `cwd` to the plugin root and honour it
+  // at spawn (.capture/codex-native-mcp). So every server registers the same way
+  // and the launcher supplies the contract; the portable text moves into the
+  // generated document unexpanded, for the launcher to resolve at spawn time.
+  it("registers every stdio server through the launcher, portable text intact", async () => {
     const plan = await project(
       source({
         srv: {
           type: "stdio",
           command: "./bin/serve",
-          args: ["${PLUGIN_ROOT}/src/server.mjs"],
+          args: ["${PLUGIN_ROOT}/src/server.mjs", "${PLUGIN_DATA}/state", "--flag"],
+          env: { CONFIG: "${PLUGIN_ROOT}/c.json", PLAIN: "literal" },
           cwd: "${PLUGIN_ROOT}/worker",
         },
       }),
     );
     expect(nativeMcp(plan)["srv"]).toEqual({
-      // `command` is left alone: the specification excludes it from expansion,
-      // so `./bin/serve` means "relative to cwd" both portably and here.
-      command: "./bin/serve",
-      args: ["../src/server.mjs"],
-      cwd: "worker",
-    });
-  });
-
-  it("expands every occurrence, in arguments and environment values alike", async () => {
-    const plan = await project(
-      source({
-        srv: {
-          type: "stdio",
-          command: "node",
-          args: ["--config=${PLUGIN_ROOT}/c.json", "${PLUGIN_ROOT}/s.mjs"],
-          env: { CONFIG: "${PLUGIN_ROOT}/c.json", PLAIN: "literal" },
-        },
-      }),
-    );
-    // An embedded placeholder is as valid as a leading one, and `env` values
-    // are expanded while `env` keys and unrecognized text are not.
-    expect(nativeMcp(plan)["srv"]).toEqual({
       command: "node",
-      args: ["--config=./c.json", "./s.mjs"],
-      env: { CONFIG: "./c.json", PLAIN: "literal" },
+      args: ["./runtime/mcp-launcher.mjs", "0"],
       cwd: ".",
     });
-  });
-
-  it("normalizes a working directory before deriving its depth", async () => {
-    const plan = await project(
-      source({
-        srv: {
-          type: "stdio",
-          command: "node",
-          args: ["${PLUGIN_ROOT}/src/s.mjs"],
-          // Trailing slash and a dot segment: valid, and both mean `worker`.
-          cwd: "./worker/./",
+    expect(launcherDocument(plan)).toEqual({
+      plugin: "portable-tools",
+      servers: [
+        {
+          name: "srv",
+          command: "./bin/serve",
+          args: ["${PLUGIN_ROOT}/src/server.mjs", "${PLUGIN_DATA}/state", "--flag"],
+          env: { CONFIG: "${PLUGIN_ROOT}/c.json", PLAIN: "literal" },
+          cwd: "${PLUGIN_ROOT}/worker",
         },
-      }),
-    );
-    expect(nativeMcp(plan)["srv"]).toMatchObject({
-      args: ["../src/s.mjs"],
-      cwd: "worker",
+      ],
     });
+    expect(plan.files.some((candidate) => candidate.path === "runtime/mcp-launcher.mjs")).toBe(true);
   });
 
-  it("omits a working directory that climbs out of the plugin", async () => {
-    const plan = await project(
-      source({ srv: { type: "stdio", command: "node", cwd: "${PLUGIN_ROOT}/../escape" } }),
-    );
-    // No servers survive, so no native MCP document is written at all.
-    expect(plan.files.some((candidate) => candidate.path === ".mcp.json")).toBe(false);
-    expect(plan.summary.omissions).toContainEqual(
-      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "srv" }),
-    );
+  it("omits a working directory that climbs out of the directory it is anchored on", async () => {
+    for (const cwd of ["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape"]) {
+      const plan = await project(source({ srv: { type: "stdio", command: "node", cwd } }));
+      // No server survives, so neither the native document nor the launcher is
+      // written at all.
+      expect(plan.files.some((candidate) => candidate.path === ".mcp.json")).toBe(false);
+      expect(plan.files.some((candidate) => candidate.path === "runtime/mcp-launcher.mjs")).toBe(
+        false,
+      );
+      expect(plan.summary.omissions).toContainEqual(
+        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "srv" }),
+      );
+      expect(diagnosticsFromAgentPluginIssues(plan.issues, "codex")).toContainEqual(
+        expect.objectContaining({ code: "HN205", component: "agent-plugin.mcp.stdio" }),
+      );
+    }
   });
 
-  it("omits a server whose paths need ${PLUGIN_DATA}", async () => {
+  it("emits a server whose paths need ${PLUGIN_DATA}", async () => {
     const plan = await project(
       source({
         stateful: { type: "stdio", command: "node", args: ["${PLUGIN_DATA}/state.json"] },
         plain: { type: "stdio", command: "node" },
       }),
     );
-    expect(Object.keys(nativeMcp(plan))).toEqual(["plain"]);
+    // The launcher creates and binds the directory, so this is no longer a
+    // portable shape with no representation here.
+    expect(Object.keys(nativeMcp(plan))).toEqual(["stateful", "plain"]);
     expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({
       discovered: 2,
-      emitted: 1,
-      skipped: 1,
+      emitted: 2,
+      skipped: 0,
     });
-    expect(plan.summary.omissions).toContainEqual(
-      expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "stateful" }),
+    expect(plan.summary.omissions).toEqual([]);
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("rejects package content at either generated launcher path", async () => {
+    for (const path of ["runtime/mcp-launcher.mjs", "runtime/mcp-servers.json"]) {
+      const pkg = source({ srv: { type: "stdio", command: "node" } });
+      pkg.files = [...pkg.files, file(path)];
+      const plan = await project(pkg);
+      expect(plan.issues).toContainEqual(
+        expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }),
+      );
+    }
+  });
+
+  // The failure this pins is silent and cross-wired: the loader drops invalid
+  // servers before a projector sees them, so a package that built with a
+  // warning has positions its own mcp.json does not share. Indexing through any
+  // second enumeration launches one server under another's declaration, and
+  // `codex mcp get` shows the two as identical.
+  it("indexes past a server the loader rejected", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-load-"));
+    try {
+      await writeFile(
+        join(dir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "loaded", version: "1.0.0" }),
+      );
+      await writeFile(
+        join(dir, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            alpha: { type: "stdio", command: "node", args: ["alpha"] },
+            // Rejected by the loader: a plugin-relative command written without
+            // its "./" prefix. An ordinary mistake, and only a warning -- so
+            // the build ships with a gap in the servers the projector sees.
+            broken: { type: "stdio", command: "bin/serve" },
+            gamma: { type: "stdio", command: "node", args: ["gamma"] },
+          },
+        }),
+      );
+      const loaded = await loadAgentPlugin({ root: dir });
+      expect(loaded.issues.some((issue) => issue.severity === "warn")).toBe(true);
+      expect(Object.keys(loaded.package!.mcp!.mcpServers)).toEqual(["alpha", "gamma"]);
+
+      const plan = await project(loaded.package!);
+      const document = launcherDocument(plan);
+      expect(document.servers.map((entry) => entry.name)).toEqual(["alpha", "gamma"]);
+      // 1, not 2: the rejected server occupies a position in mcp.json and none
+      // in the generated document.
+      expect(nativeMcp(plan)["gamma"]!["args"]).toEqual(["./runtime/mcp-launcher.mjs", "1"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("indexes the generated document, not the source document", async () => {
+    const plan = await project(
+      source({
+        first: { type: "stdio", command: "node", args: ["one"] },
+        streamed: { type: "streamable-http", url: "https://example.invalid/mcp" },
+        dropped: { type: "sse", url: "https://example.invalid/sse" },
+        escaping: { type: "stdio", command: "node", cwd: "${PLUGIN_ROOT}/../out" },
+        "2": { type: "stdio", command: "node", args: ["integer-like"] },
+        ["__proto__"]: { type: "stdio", command: "node", args: ["proto"] },
+      } as Record<string, AgentPluginMcpServer>),
     );
-    // onUnsupported is "error" here, so a dropped server fails the build rather
-    // than shipping a plugin quietly missing one.
-    expect(plan.issues).toContainEqual(
-      expect.objectContaining({ severity: "error", component: "agent-plugin.mcp.stdio" }),
-    );
-    // HN205 "valid component unsupported", not HN503 "invalid package": the
-    // package is fine, this target cannot represent one of its servers. The
-    // component's level is `emulated`, so analysis raises nothing of its own
-    // and this is the only diagnostic the omission produces.
-    expect(diagnosticsFromAgentPluginIssues(plan.issues, "codex")).toContainEqual(
-      expect.objectContaining({ code: "HN205", component: "agent-plugin.mcp.stdio" }),
-    );
+    const document = launcherDocument(plan);
+    // Survivors only, contiguous, in emission order. An integer-like key sorts
+    // first in JavaScript object order, which is exactly why a position in the
+    // source document is not a position here.
+    expect(document.servers.map((entry) => entry.name)).toEqual([
+      "2",
+      "first",
+      "__proto__",
+    ]);
+    for (const [index, entry] of document.servers.entries()) {
+      expect(nativeMcp(plan)[entry.name]!["args"]).toEqual([
+        "./runtime/mcp-launcher.mjs",
+        String(index),
+      ]);
+    }
   });
 
   it("keeps a server whose name would collide with Object.prototype", async () => {
