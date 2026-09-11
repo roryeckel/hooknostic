@@ -9,9 +9,9 @@ for its own sake — they are what keeps the project's central promise affordabl
 
 ## What Hooknostic is
 
-A compiler. Portable Hooknostic hooks, an Agent Plugins package, or both go in;
+A compiler with optional project reconciliation. Portable hooks, direct skills/MCP, or an Agent Plugins package go in;
 native per-harness artifacts come out. Projection is a packaging transform, not an
-installer, marketplace, or runtime service.
+dependency installer, marketplace, or runtime service. Explicit `sync` reconciles project files; it never changes harness trust or installs dependencies. See [repository-local integration](docs/project-integration.md) and [ADR-0015](docs/decisions/0015-project-integration.md).
 
 Its actual product is **honest capability information**. Coding agents differ in
 what a hook is allowed to *do* — block a call, rewrite tool input, add
@@ -225,3 +225,16 @@ Please do not open a public issue for a vulnerability. See
 
 Contributions are accepted under the [Apache License 2.0](LICENSE), the same
 licence the project ships under.
+
+## Repository-local contributor workflow
+
+1. Install the repository's locked dependencies with `pnpm install --frozen-lockfile`.
+2. Edit portable hooks, skills, or MCP declarations.
+3. Run `pnpm exec hooknostic sync --config hooknostic.config.ts`.
+4. Review the generated files and `.hooknostic/integration.json` together.
+5. Run `pnpm exec hooknostic verify --config hooknostic.config.ts` before committing.
+
+Commit generated integration artifacts and ownership state. Dependency installation,
+server approvals, project trust, and harness restarts remain explicit human steps.
+The synthetic [local project example](examples/local-project/README.md) demonstrates
+this workflow without downstream policies or a package manifest.

@@ -295,8 +295,8 @@ describe("simulated registry install", () => {
       }));
       const config = join(project, "projection.config.ts");
       await writeFile(config, `export default ${JSON.stringify({
-        agentPlugin: { root: "portable", targets: ["claude"] },
-        targets: { claude: { version: report.targets["claude"]!.requestedVersion, mode: "plugin", output: "projected" } },
+        components: { root: "portable", targets: ["claude"] },
+        targets: { claude: { version: report.targets["claude"]!.requestedVersion, delivery: "package", output: "projected" } },
       })};`);
       const projection = spawnSync(process.execPath, [
         join(cliRoot, "node_modules/hooknostic/bin/hooknostic.mjs"), "build", "--config", config,

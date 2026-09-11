@@ -272,7 +272,7 @@ export function assessScenarioCoverage(
   const resolved = adapter.capabilities({
     id: adapter.id,
     version: adapter.harness.referenceVersion,
-    mode: "local",
+    delivery: "project",
     output: ".",
   });
   if (resolved.matrix === undefined) {

@@ -4426,19 +4426,23 @@ var runtimePolicySchema = external_exports.object({
   notifyCharLimit: external_exports.number().int().positive().optional()
 }).strict();
 var targetConfigSchema = external_exports.object({
+  adapter: external_exports.string().min(1).optional(),
   version: external_exports.string().min(1),
-  mode: external_exports.enum(["plugin", "local"]),
+  delivery: external_exports.enum(["package", "project"]),
   output: external_exports.string().min(1),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var hooknosticConfigSchema = external_exports.object({
+  project: external_exports.object({ root: external_exports.string().min(1) }).strict().optional(),
   entry: external_exports.string().min(1).optional(),
   compatibility: compatibilityPolicySchema.optional(),
   runtime: runtimePolicySchema.optional(),
   targets: external_exports.record(external_exports.string().min(1), targetConfigSchema),
-  agentPlugin: external_exports.object({
-    root: external_exports.string().min(1),
-    targets: external_exports.array(external_exports.string().min(1)).min(1),
+  components: external_exports.object({
+    root: external_exports.string().min(1).optional(),
+    skills: external_exports.array(external_exports.string().min(1)).optional(),
+    mcp: external_exports.string().min(1).optional(),
+    targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
     executableFiles: external_exports.array(external_exports.string().min(1)).optional(),
     runtimePackage: external_exports.object({
@@ -4450,20 +4454,38 @@ var hooknosticConfigSchema = external_exports.object({
     onInvalid: external_exports.enum(["error", "warn"]).optional()
   }).strict().optional()
 }).strict().superRefine((config, context) => {
-  if (config.entry === void 0 && config.agentPlugin === void 0) {
+  if (config.entry === void 0 && config.components === void 0) {
     context.addIssue({
       code: external_exports.ZodIssueCode.custom,
-      message: "at least one of entry or agentPlugin is required"
+      message: "at least one of entry or components is required"
     });
   }
-  if (config.agentPlugin) {
+  const projectAdapters = /* @__PURE__ */ new Set();
+  for (const [name, target] of Object.entries(config.targets)) {
+    if (target.delivery !== "project")
+      continue;
+    const adapter = target.adapter ?? name;
+    if (projectAdapters.has(adapter))
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
+    projectAdapters.add(adapter);
+  }
+  if (config.components && !config.project && Object.values(config.targets).some((target) => target.delivery === "project")) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "project component delivery requires project.root" });
+  }
+  if (config.components) {
+    if (config.components.root !== void 0 && (config.components.skills !== void 0 || config.components.mcp !== void 0)) {
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.root is mutually exclusive with direct skills/mcp sources" });
+    }
+    if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+    }
     const configured = new Set(Object.keys(config.targets));
     const seen = /* @__PURE__ */ new Set();
-    for (const target of config.agentPlugin.targets) {
+    for (const target of config.components.targets ?? Object.keys(config.targets)) {
       if (seen.has(target)) {
         context.addIssue({
           code: external_exports.ZodIssueCode.custom,
-          path: ["agentPlugin", "targets"],
+          path: ["components", "targets"],
           message: `duplicate Agent Plugin projection target ${JSON.stringify(target)}`
         });
       }
@@ -4471,18 +4493,18 @@ var hooknosticConfigSchema = external_exports.object({
       if (!configured.has(target)) {
         context.addIssue({
           code: external_exports.ZodIssueCode.custom,
-          path: ["agentPlugin", "targets"],
+          path: ["components", "targets"],
           message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`
         });
       }
     }
     if (config.entry === void 0) {
-      const projected = new Set(config.agentPlugin.targets);
+      const projected = new Set(config.components.targets ?? Object.keys(config.targets));
       for (const target of configured) {
         if (!projected.has(target)) {
           context.addIssue({
             code: external_exports.ZodIssueCode.custom,
-            path: ["agentPlugin", "targets"],
+            path: ["components", "targets"],
             message: `hookless builds must project configured target ${JSON.stringify(target)}`
           });
         }
@@ -5079,7 +5101,7 @@ async function runCodexCommandShim(plugin, options) {
     };
     const event = decodeCodex(nativeEvent, invocation);
     const result = await dispatch(plugin.hooks, event, {
-      targetId: "codex",
+      targetId: options.targetId ?? "codex",
       harness: event.harness,
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
@@ -5110,6 +5132,7 @@ async function runCodexCommandShim(plugin, options) {
 
 // hooknostic-shim-entry.ts
 await runCodexCommandShim(hooks_default, {
+  targetId: "codex",
   capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported", "agent.stop.notify": "unsupported" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }

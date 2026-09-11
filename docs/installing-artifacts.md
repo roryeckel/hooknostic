@@ -13,9 +13,9 @@ Paths below assume the example configuration:
 
 ```ts
 targets: {
-  claude:   { version: ">=2.1 <3",   mode: "plugin", output: "./dist/claude" },
-  codex:    { version: ">=0.148 <1", mode: "local",  output: "./dist/codex" },
-  opencode: { version: ">=1.18 <2",  mode: "local",  output: "./dist/opencode" },
+  claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
+  codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
+  opencode: { version: ">=1.18 <2",  delivery: "project",  output: "./dist/opencode" },
 }
 ```
 
@@ -121,7 +121,7 @@ copied plugin cannot reach files outside its own directory.
 ### MCP runtime dependencies
 
 Hooknostic bundles hook runtimes, but an MCP server can have ordinary Node.js
-dependencies. Configure `agentPlugin.runtimePackage` with a dedicated runtime
+dependencies. Configure `components.runtimePackage` with a dedicated runtime
 manifest and npm lockfile. Claude projection emits those files as
 `dist/claude/package.json` and `dist/claude/package-lock.json`; when it creates
 the marketplace cache entry, Claude runs its own locked `npm ci --ignore-scripts`.
@@ -134,7 +134,7 @@ pnpm and Yarn lockfiles. A dependency whose lockfile entry declares
 `hasInstallScript` fails `check`: Claude's install skips lifecycle scripts
 rather than refusing them, so the package would install unbuilt and fail when
 the plugin imports it. If you have verified a package works without its script,
-name it in `agentPlugin.runtimePackage.allowInstallScripts` — that records your
+name it in `components.runtimePackage.allowInstallScripts` — that records your
 judgement, it does not make the script run. The behavior is captured for Claude Code 2.1.260 in
 [`.capture/claude-marketplace-deps`](../.capture/claude-marketplace-deps/README.md)
 and defined in [ADR-0012](decisions/0012-claude-plugin-runtime-dependencies.md).
@@ -155,7 +155,7 @@ and then a Claude Code restart, which is when an update actually takes effect.
 
 **Give the plugin a version and bump it.** Hooknostic writes
 `.claude-plugin/plugin.json` from your `definePlugin({ name, version })` (or,
-with `agentPlugin` configured, from the Agent Plugin manifest it reads). A
+with `components` configured, from the Agent Plugin manifest it reads). A
 plugin with a pinned `version` is only updated when that field changes, and the
 cache path is keyed on it — so a rebuild published under an unchanged version
 leaves collaborators on the old hooks with no error to notice. Treat the version
@@ -326,7 +326,7 @@ version bump and update flow above. This is worth a `postbuild` script or a
 
 ## Agent Plugins layout
 
-With `agentPlugin: { root: ".", targets: ["claude"] }`, the configured Claude
+With `project: { root: "." }` and `components: { root: ".", targets: ["claude"] }`, the configured Claude
 output is a complete native plugin: `.claude-plugin/plugin.json`, copied skills,
 translated `.mcp.json`, any Claude-specific overlay, and optional Hooknostic hooks.
 Install or reference that output exactly like any other Claude plugin. No generated
@@ -348,17 +348,17 @@ dist/codex/
 └── hooknostic/hooknostic.mjs   ← the runtime
 ```
 
-One installed plugin then carries all three components. Use `mode: "plugin"`:
+One installed plugin then carries all three components. Use `delivery: "package"`:
 
 ```ts
-codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
+codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
 ```
 
 That range is narrower than the `>=0.148 <1` the local example above uses, and the
-build rejects `mode: "plugin"` outside it: hook delivery from an installed plugin
+build rejects `delivery: "package"` outside it: hook delivery from an installed plugin
 is only established from 0.153.
 
-`mode: "local"` still emits the repo-level `.codex/` tree instead, which is the
+`delivery: "project"` still emits the repo-level `.codex/` tree instead, which is the
 right choice for a repository consuming its own hooks — it needs no install and
 stays project-scoped.
 
@@ -368,7 +368,7 @@ by an `Authorization` header works here and does not through a root manifest.
 And an `sse` server is **dropped** rather than translated: Codex selects the
 transport from `command` vs `url` and ignores the portable `type`, so an
 untranslated sse server would register as a `streamable_http` connection to the
-same url. It follows `agentPlugin.onUnsupported` — an error by default, a
+same url. It follows `components.onUnsupported` — an error by default, a
 recorded omission under `"warn"`.
 
 Install from a marketplace whose `.agents/plugins/marketplace.json` points at the

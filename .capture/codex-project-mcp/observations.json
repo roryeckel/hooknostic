@@ -1,0 +1,298 @@
+{
+  "version": {
+    "code": 0,
+    "output": "codex-cli 0.153.2",
+    "temporaryHomeWarning": true
+  },
+  "cases": {
+    "missing": {
+      "code": 0,
+      "output": [
+        {
+          "name": "shared",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "home-command",
+            "args": [
+              "home-argument"
+            ],
+            "env": {
+              "HOME_ONLY": "home-marker"
+            },
+            "env_vars": [],
+            "cwd": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        }
+      ],
+      "temporaryHomeWarning": true
+    },
+    "untrusted": {
+      "code": 0,
+      "output": [
+        {
+          "name": "shared",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "home-command",
+            "args": [
+              "home-argument"
+            ],
+            "env": {
+              "HOME_ONLY": "home-marker"
+            },
+            "env_vars": [],
+            "cwd": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        }
+      ],
+      "temporaryHomeWarning": true
+    },
+    "trusted": {
+      "code": 0,
+      "output": [
+        {
+          "name": "http_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "streamable_http",
+            "url": "http://127.0.0.1:1/mcp",
+            "bearer_token_env_var": null,
+            "http_headers": null,
+            "env_http_headers": {
+              "Authorization": "SYNTHETIC_TOKEN"
+            },
+            "http_headers_helper": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unknown"
+        },
+        {
+          "name": "local_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "node",
+            "args": [
+              "./server.mjs",
+              "${UNCHANGED}"
+            ],
+            "env": {
+              "REF": "${UNCHANGED}"
+            },
+            "env_vars": [],
+            "cwd": "."
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        },
+        {
+          "name": "shared",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "project-command",
+            "args": [
+              "home-argument"
+            ],
+            "env": {
+              "HOME_ONLY": "home-marker"
+            },
+            "env_vars": [],
+            "cwd": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        }
+      ],
+      "temporaryHomeWarning": true
+    },
+    "nested": {
+      "code": 0,
+      "output": [
+        {
+          "name": "http_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "streamable_http",
+            "url": "http://127.0.0.1:1/mcp",
+            "bearer_token_env_var": null,
+            "http_headers": null,
+            "env_http_headers": {
+              "Authorization": "SYNTHETIC_TOKEN"
+            },
+            "http_headers_helper": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unknown"
+        },
+        {
+          "name": "local_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "node",
+            "args": [
+              "./server.mjs",
+              "${UNCHANGED}"
+            ],
+            "env": {
+              "REF": "${UNCHANGED}"
+            },
+            "env_vars": [],
+            "cwd": "."
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        },
+        {
+          "name": "shared",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "project-command",
+            "args": [
+              "home-argument"
+            ],
+            "env": {
+              "HOME_ONLY": "home-marker"
+            },
+            "env_vars": [],
+            "cwd": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        }
+      ],
+      "temporaryHomeWarning": true
+    },
+    "nestedOverride": {
+      "code": 0,
+      "output": [
+        {
+          "name": "http_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "streamable_http",
+            "url": "http://127.0.0.1:1/mcp",
+            "bearer_token_env_var": null,
+            "http_headers": null,
+            "env_http_headers": {
+              "Authorization": "SYNTHETIC_TOKEN"
+            },
+            "http_headers_helper": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unknown"
+        },
+        {
+          "name": "local_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "node",
+            "args": [
+              "./server.mjs",
+              "${UNCHANGED}"
+            ],
+            "env": {
+              "REF": "${UNCHANGED}"
+            },
+            "env_vars": [],
+            "cwd": "."
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        },
+        {
+          "name": "shared",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "nested-command",
+            "args": [
+              "home-argument"
+            ],
+            "env": {
+              "HOME_ONLY": "home-marker"
+            },
+            "env_vars": [],
+            "cwd": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        }
+      ],
+      "temporaryHomeWarning": true
+    },
+    "explicitSse": {
+      "code": 0,
+      "output": [
+        {
+          "name": "shared",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "stdio",
+            "command": "home-command",
+            "args": [
+              "home-argument"
+            ],
+            "env": {
+              "HOME_ONLY": "home-marker"
+            },
+            "env_vars": [],
+            "cwd": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unsupported"
+        },
+        {
+          "name": "sse_probe",
+          "enabled": true,
+          "disabled_reason": null,
+          "transport": {
+            "type": "streamable_http",
+            "url": "http://127.0.0.1:1/sse",
+            "bearer_token_env_var": null,
+            "http_headers": null,
+            "env_http_headers": null,
+            "http_headers_helper": null
+          },
+          "startup_timeout_sec": null,
+          "tool_timeout_sec": null,
+          "auth_status": "unknown"
+        }
+      ],
+      "temporaryHomeWarning": true
+    }
+  }
+}

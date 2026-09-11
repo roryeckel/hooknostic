@@ -304,7 +304,7 @@ export async function projectAgentPluginToClaude(
       // Dropping a declared overlay file degrades the client-extension
       // component, so it obeys the same policy as any other unrepresentable
       // component: fatal by default, silent only under `onUnsupported: "warn"`.
-      const reason = `Claude would install a plugin-root ${path} without the validation agentPlugin.runtimePackage inputs receive; declare npm dependencies with runtimePackage instead`;
+      const reason = `Claude would install a plugin-root ${path} without the validation components.runtimePackage inputs receive; declare npm dependencies with runtimePackage instead`;
       omissions.push({ component: "agent-plugin.client-extension.files", name: file.path, reason });
       issues.push({
         severity: context.onUnsupported,

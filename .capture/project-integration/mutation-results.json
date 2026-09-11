@@ -1,0 +1,211 @@
+[
+  {
+    "mutant": "always rewrite ownership manifest",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation plans without writing and becomes byte-idempotent",
+      "project reconciliation preserves unrelated JSONC bytes and array ordering"
+    ]
+  },
+  {
+    "mutant": "discard shared JSONC formatting",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation preserves unrelated JSONC bytes and array ordering"
+    ]
+  },
+  {
+    "mutant": "drop array context matching",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation repairs a missing registration alongside recorded unrelated entries"
+    ]
+  },
+  {
+    "mutant": "skip owned registration updates",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation updates derived registration values without duplicate dispatch"
+    ]
+  },
+  {
+    "mutant": "retain obsolete generated files",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation removes unchanged owned content and keeps shared files",
+      "complete project integration removes a configured project target without disturbing the others"
+    ]
+  },
+  {
+    "mutant": "do not repair missing generated files",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation repairs a missing generated file"
+    ]
+  },
+  {
+    "mutant": "disable content ownership guards",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation refuses unowned generated files even when their bytes match",
+      "project reconciliation refuses edited owned files and array entries",
+      "project reconciliation refuses duplicate owned entry matches",
+      "project reconciliation refuses taking over an equivalent unowned registration",
+      "complete project integration rejects mutated native timeout values and runtimes during verification"
+    ]
+  },
+  {
+    "mutant": "skip commit planning preconditions",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation detects edits between planning and commit without overwriting them"
+    ]
+  },
+  {
+    "mutant": "ignore path and owner validation",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation rejects another owner and unsafe paths"
+    ]
+  },
+  {
+    "mutant": "ignore symlink ancestors",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation rejects symlinked destination ancestors"
+    ]
+  },
+  {
+    "mutant": "overwrite active synchronization lock",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation rejects a concurrent synchronization"
+    ]
+  },
+  {
+    "mutant": "skip recovery restoration",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "project reconciliation recovers interrupted replacements from preimages",
+      "project reconciliation keeps recovery records when an external edit conflicts",
+      "rolls back an ordinary replacement failure",
+      "retains a recoverable journal when rollback itself fails",
+      "rechecks external edits immediately before a replacement"
+    ]
+  },
+  {
+    "mutant": "skip automatic rollback",
+    "file": "packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "rolls back an ordinary replacement failure",
+      "retains a recoverable journal when rollback itself fails",
+      "rechecks external edits immediately before a replacement"
+    ]
+  },
+  {
+    "mutant": "use a constant compiled timeout",
+    "file": "packages/adapter-codex/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration wires all three harnesses, verifies cleanly, and detects stale source",
+      "complete project integration rejects mutated native timeout values and runtimes during verification"
+    ]
+  },
+  {
+    "mutant": "omit copied skills",
+    "file": "packages/core/src/project-components.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration copies direct skills and resources without requiring package metadata"
+    ]
+  },
+  {
+    "mutant": "drop direct MCP environment references",
+    "file": "packages/core/src/project-components.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration projects MCP declarations without expanding environment values"
+    ]
+  },
+  {
+    "mutant": "silence unsupported component errors",
+    "file": "packages/core/src/build.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration reports every explicitly degraded project MCP omission"
+    ]
+  },
+  {
+    "mutant": "anchor outputs to config rather than project",
+    "file": "packages/core/src/output-layout.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration resolves a nested configuration relative to its declared project root"
+    ]
+  },
+  {
+    "mutant": "activate native files during build",
+    "file": "packages/core/src/build.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration wires all three harnesses, verifies cleanly, and detects stale source",
+      "complete project integration projects MCP declarations without expanding environment values",
+      "complete project integration removes a configured project target without disturbing the others",
+      "complete project integration rejects mutated native timeout values and runtimes during verification",
+      "complete project integration build generates artifacts without changing project discovery files"
+    ]
+  },
+  {
+    "mutant": "overwrite initialization sources",
+    "file": "packages/cli/src/init.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "initializes only missing source scaffolding without overwriting or activating"
+    ]
+  },
+  {
+    "mutant": "ignore configured runtime target name",
+    "file": "packages/adapter-claude/src/index.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration honors a named target at runtime"
+    ]
+  },
+  {
+    "mutant": "remove duplicate project adapter restriction",
+    "file": "packages/sdk/src/schemas.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration rejects duplicate project adapters and partial synchronization"
+    ]
+  },
+  {
+    "mutant": "omit project support declaration",
+    "file": "packages/adapter-claude/src/index.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "adapter contract: claude declares project integration and independently evidenced component support"
+    ]
+  },
+  {
+    "mutant": "omit native skill directory references",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "offline harness playback: opencode runs repository-local integration without installing a plugin"
+    ]
+  }
+]

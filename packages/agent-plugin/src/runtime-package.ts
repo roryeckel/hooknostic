@@ -340,7 +340,7 @@ function installScriptProblem(
     if (location === "" || !object(entry) || entry["hasInstallScript"] !== true) continue;
     const name = lockedName(location);
     if (allowed.has(name)) continue;
-    return `lockfile entry ${JSON.stringify(location)} needs an npm lifecycle install script, which the harness install does not run (\`npm ci --ignore-scripts\`); the package would be installed unbuilt and fail when the plugin imports it. Use a dependency that ships ready-to-run JavaScript, or add ${JSON.stringify(name)} to agentPlugin.runtimePackage.allowInstallScripts once you have verified it works without its script`;
+    return `lockfile entry ${JSON.stringify(location)} needs an npm lifecycle install script, which the harness install does not run (\`npm ci --ignore-scripts\`); the package would be installed unbuilt and fail when the plugin imports it. Use a dependency that ships ready-to-run JavaScript, or add ${JSON.stringify(name)} to components.runtimePackage.allowInstallScripts once you have verified it works without its script`;
   }
   return undefined;
 }

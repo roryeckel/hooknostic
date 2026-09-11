@@ -4,7 +4,9 @@
   "private": true,
   "description": "Hooknostic compiler: config loading, Plugin IR, capability analysis, diagnostics, build orchestration",
   "type": "module",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -16,8 +18,10 @@
     "@hooknostic/sdk": "workspace:*",
     "cross-spawn": "catalog:",
     "esbuild": "catalog:",
+    "jsonc-parser": "catalog:",
     "minimatch": "catalog:",
     "semver": "catalog:semver-runtime",
+    "toml-eslint-parser": "catalog:",
     "zod": "catalog:zod3"
   },
   "devDependencies": {

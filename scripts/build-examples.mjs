@@ -21,6 +21,8 @@ export function buildExamples(cwd = fileURLToPath(new URL("../", import.meta.url
     // CLI's public/default report location remains unchanged.
     renameSync(resolve(cwd, example, "hooknostic-build.json"), resolve(cwd, root, "hooknostic-build.json"));
   }
+  run(process.execPath, ["packages/cli/bin/hooknostic.mjs", "sync", "--config", "examples/local-project/hooknostic.config.ts"], { cwd, stdio: "inherit" });
+  run(process.execPath, ["packages/cli/bin/hooknostic.mjs", "verify", "--config", "examples/local-project/hooknostic.config.ts"], { cwd, stdio: "inherit" });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) buildExamples();

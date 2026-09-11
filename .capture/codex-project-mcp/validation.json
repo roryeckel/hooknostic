@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-11",
+  "platform": "win32",
+  "parserVersion": "1.0.3",
+  "checks": [
+    {
+      "command": "pnpm lint",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm build",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm test",
+      "exitCode": 0,
+      "passed": 805,
+      "skipped": 34
+    },
+    {
+      "command": "node scripts/build-examples.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/generate-harness-support.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "HOOKNOSTIC_PLAYBACK=codex HOOKNOSTIC_PLAYBACK_VERSION=0.153.2 pnpm exec vitest run packages/cli/test/harness-playback.test.ts",
+      "exitCode": 0,
+      "passed": 27,
+      "skipped": 7
+    },
+    {
+      "command": "HOOKNOSTIC_PLAYBACK=claude pnpm exec vitest run packages/cli/test/harness-playback.test.ts -t repository-local",
+      "exitCode": 0
+    },
+    {
+      "command": "HOOKNOSTIC_PLAYBACK=opencode pnpm exec vitest run packages/cli/test/harness-playback.test.ts -t repository-local",
+      "exitCode": 0
+    }
+  ]
+}

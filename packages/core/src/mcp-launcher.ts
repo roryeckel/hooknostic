@@ -38,6 +38,7 @@ export interface McpLauncherOptions {
   frontEnd: McpLauncherFrontEnd;
   /** Path from the launcher's own directory to the plugin root. Self-resolving only. */
   rootOffset?: string;
+  dataOffset?: string;
   /** Names the data directory, so it survives a version-scoped reinstall. Self-resolving only. */
   pluginName?: string;
 }
@@ -91,7 +92,7 @@ run({ cwd, command, args });
  * end implements it for them: it resolves the plugin root from its own
  * location, supplies a data directory, and expands before spawning.
  */
-function selfResolvingFrontEnd(rootOffset: string, pluginName: string): string {
+function selfResolvingFrontEnd(rootOffset: string, pluginName: string, dataOffset?: string): string {
   return `import { mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -134,7 +135,7 @@ function inheritedPluginData() {
 }
 
 const inherited = inheritedPluginData();
-const pluginData = inherited ?? join(homedir(), ".hooknostic", "plugin-data", PLUGIN_NAME);
+const pluginData = ${dataOffset === undefined ? 'inherited ?? join(homedir(), ".hooknostic", "plugin-data", PLUGIN_NAME)' : `resolve(here, ${JSON.stringify(dataOffset)})`};
 if (inherited === undefined) {
   try {
     mkdirSync(pluginData, { recursive: true });
@@ -213,7 +214,7 @@ export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<st
     LAUNCHER_CORE +
     (options.frontEnd === "client-expanded"
       ? CLIENT_EXPANDED_FRONT_END
-      : selfResolvingFrontEnd(options.rootOffset ?? "..", options.pluginName ?? ""));
+      : selfResolvingFrontEnd(options.rootOffset ?? "..", options.pluginName ?? "", options.dataOffset));
   const entry = createRequire(import.meta.url).resolve("cross-spawn");
   const result = await build({
     stdin: { contents, resolveDir: dirname(entry) },

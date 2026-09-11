@@ -6,6 +6,7 @@ import { CodexDecodeError, decodeCodex } from "./decode.js";
 import { codexShellCodec } from "./toolmap.js";
 
 export interface CodexShimOptions {
+  targetId?: string;
   capabilities: CapabilityLevels;
   minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
@@ -48,7 +49,7 @@ export async function runCodexCommandShim(
     };
     const event = decodeCodex(nativeEvent, invocation);
     const result = await dispatch(plugin.hooks, event, {
-      targetId: "codex",
+      targetId: options.targetId ?? "codex",
       harness: event.harness,
       capabilities: options.capabilities,
       ...(options.minimumCapabilityLevel !== undefined

@@ -223,7 +223,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
       );
       const artifacts = generateOpenCodeArtifacts(
         ir!,
-        { id: "opencode", version: opencodeHarness.recommendedRange, mode: "local", output: SMOKE_DIR },
+        { id: "opencode", version: opencodeHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
         bundle,
       );
       for (const artifact of artifacts) {
@@ -293,7 +293,7 @@ describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
       );
       for (const artifact of generateOpenCodeArtifacts(
         ir!,
-        { id: "opencode", version: opencodeHarness.recommendedRange, mode: "local", output: dir },
+        { id: "opencode", version: opencodeHarness.recommendedRange, delivery: "project", output: dir },
         bundle,
       )) {
         const target = join(dir, artifact.path);

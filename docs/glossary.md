@@ -43,7 +43,7 @@ capability matrix, decoding native events, applying effects natively, and genera
 that harness's output files.
 
 **Target** — one configured build destination: a harness plus a validated version
-range, an output mode, and an output directory.
+range, an delivery scope, and an output directory.
 
 **Dispatcher** — the small Hooknostic runtime that receives a decoded event and runs
 all matching hooks in declaration order, applying the composition rules (immediate

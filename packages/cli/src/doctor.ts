@@ -1,8 +1,12 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { buildProject, loadConfig, runProject, type ProjectCommandResult } from "@hooknostic/core";
 import semver from "semver";
 import type { AdapterRegistry } from "@hooknostic/core";
 import type { CommandIO } from "./check.js";
 
 export interface DoctorCommandOptions {
+  config?: string;
   json?: boolean;
   registry: AdapterRegistry;
   io: CommandIO;
@@ -34,9 +38,18 @@ interface DoctorEntry {
  * (reproducibility, design §16.2).
  */
 export async function runDoctor(options: DoctorCommandOptions): Promise<number> {
+  if (options.config === undefined && existsSync(resolve("hooknostic.config.ts"))) options = { ...options, config: "hooknostic.config.ts" };
   const entries: DoctorEntry[] = [];
 
-  for (const adapter of Object.values(options.registry)) {
+  let adapters = Object.values(options.registry);
+  const loaded = options.config ? await loadConfig(resolve(options.config)) : undefined;
+  if (loaded) {
+    if (loaded.config) {
+      const selected = new Set(Object.entries(loaded.config.targets).map(([name, target]) => target.adapter ?? name));
+      adapters = adapters.filter(adapter => selected.has(adapter.id));
+    }
+  }
+  for (const adapter of adapters) {
     const ranges = adapter.supportedHarnessVersions();
     // Newest validation event across the recommended range's profiles: this is
     // what lets doctor report staleness of OUR validation, not just novelty of
@@ -44,7 +57,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     const resolution = adapter.capabilities({
       id: adapter.id,
       version: adapter.harness.recommendedRange,
-      mode: "local",
+      delivery: "project",
       output: ".",
     });
     const newestValidated = resolution.profilesUsed
@@ -106,13 +119,22 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     });
   }
 
-  const ok = entries.every((e) => e.status === "ok");
+  let project: ProjectCommandResult | undefined;
+  let configurationErrors: string[] = [];
+  if (options.config) {
+    if (loaded?.config?.project) project = await runProject({ command: "verify", configPath: resolve(options.config), registry: options.registry, ...(loaded === undefined ? {} : { configResult: loaded }) });
+    else {
+      const checked = await buildProject({ configPath: resolve(options.config), registry: options.registry, dryRun: true, ...(loaded === undefined ? {} : { configResult: loaded }) });
+      configurationErrors = checked.report.diagnostics.filter(d => d.severity === "error").map(d => d.message);
+    }
+  }
+  const ok = configurationErrors.length === 0 && entries.every((e) => e.status === "ok") && (project === undefined || project.ok);
 
   if (options.json) {
     options.io.stdout(
-      JSON.stringify({ schemaVersion: 2, command: "doctor", ok, harnesses: entries }, null, 2),
+      JSON.stringify({ schemaVersion: 2, command: "doctor", ok, harnesses: entries, configurationErrors, runtime: { node: process.version }, ...(project === undefined ? {} : { project: { ...project, execution: "not-observed", trust: "not-inspected" } }) }, null, 2),
     );
-    return ok ? 0 : 1;
+    return ok ? 0 : 2;
   }
 
   for (const entry of entries) {
@@ -141,5 +163,10 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         }`,
     );
   }
-  return ok ? 0 : 1;
+  for (const message of configurationErrors) options.io.stderr(message);
+  if (project) {
+    options.io.stdout(`Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`);
+    for (const message of [...project.guidance, ...project.errors]) options.io.stdout(message);
+  }
+  return ok ? 0 : 2;
 }

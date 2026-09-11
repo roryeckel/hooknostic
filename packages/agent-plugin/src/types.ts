@@ -150,7 +150,7 @@ export interface AgentPluginProjectionFile {
 export interface AgentPluginProjectionTarget {
   id: string;
   version: string;
-  mode: "plugin" | "local";
+  delivery: "package" | "project";
 }
 
 export interface AgentPluginRuntimePackage {

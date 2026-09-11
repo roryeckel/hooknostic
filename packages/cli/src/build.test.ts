@@ -280,13 +280,13 @@ describe("hooknostic build end-to-end", () => {
       $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "author-probe", author: { email: "maintainer@example.com" },
     }));
     const writeConfig = async (onUnsupported?: "warn") => writeFile(config, `export default ${JSON.stringify({
-      agentPlugin: { root: ".", targets: ["claude"], ...(onUnsupported === undefined ? {} : { onUnsupported }) },
-      targets: { claude: { version: claudeHarness.recommendedRange, mode: "plugin", output: "dist/claude" } },
+      components: { root: ".", targets: ["claude"], ...(onUnsupported === undefined ? {} : { onUnsupported }) },
+      targets: { claude: { version: claudeHarness.recommendedRange, delivery: "package", output: "dist/claude" } },
     })};`);
     await writeConfig();
     for (const run of [runCheck, runBuild]) {
       const capture = captureIO();
-      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io })).toBe(1);
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io })).toBe(2);
       expect(JSON.parse(capture.out()).diagnostics).toContainEqual(expect.objectContaining({
         code: "HN205", severity: "error", component: "agent-plugin.manifest",
       }));
@@ -415,11 +415,11 @@ ${run.stderr}`).toBe(0);
       await writeFile(
         join(dir, "hooknostic.config.ts"),
         `export default {
-          agentPlugin: { root: ".", targets: ["copy"] },
+          components: { root: ".", targets: ["copy"] },
           targets: {
             copy: {
               version: ">=1.0 <2",
-              mode: "local",
+              delivery: "package",
               output: "./dist/copy",
             },
           },
@@ -472,8 +472,8 @@ ${run.stderr}`).toBe(0);
         join(dir, "hooknostic.config.ts"),
         `export default {
           entry: "./hooks.ts",
-          agentPlugin: { root: ".", targets: ["drops"] },
-          targets: { drops: { version: ">=1.0 <2", mode: "plugin", output: "./dist/drops" } },
+          components: { root: ".", targets: ["drops"] },
+          targets: { drops: { version: ">=1.0 <2", delivery: "package", output: "./dist/drops" } },
         };`,
       );
 
@@ -487,7 +487,7 @@ ${run.stderr}`).toBe(0);
           evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
         }),
         capture.out(),
-      ).toBe(1);
+      ).toBe(2);
       const report = JSON.parse(capture.out());
       expect(report.diagnostics).toContainEqual(
         expect.objectContaining({
@@ -521,7 +521,7 @@ ${run.stderr}`).toBe(0);
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.agentPlugin.targets).toEqual(["claude", "codex", "opencode"]);
+      expect(report.components.targets).toEqual(["claude", "codex", "opencode"]);
       for (const id of ["claude", "codex", "opencode"]) {
         expect(report.targets[id].projection, id).toMatchObject({ status: "success" });
       }
@@ -625,8 +625,8 @@ ${run.stderr}`).toBe(0);
       } },
     }));
     await writeFile(join(dir, "hooknostic.config.ts"), `export default {
-      agentPlugin: { root: ".", targets: ["claude"] },
-      targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist" } }
+      components: { root: ".", targets: ["claude"] },
+      targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist" } }
     };`);
     const capture = captureIO();
     expect(await runBuild({ config: join(dir, "hooknostic.config.ts"), json: true,
@@ -649,7 +649,7 @@ ${run.stderr}`).toBe(0);
     await writeFile(join(dir, "com.anthropic.claude-code/worker"), "collision");
     const check = captureIO();
     expect(await runCheck({ config: join(dir, "hooknostic.config.ts"), json: true,
-      registry: defaultAdapterRegistry(), io: check.io })).toBe(1);
+      registry: defaultAdapterRegistry(), io: check.io })).toBe(2);
     expect(JSON.parse(check.out()).diagnostics).toContainEqual(expect.objectContaining({
       code: "HN301", message: expect.stringContaining("invalid directory path"),
     }));
@@ -680,8 +680,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
 
@@ -698,8 +698,8 @@ ${run.stderr}`).toBe(0);
     const report = JSON.parse(capture.out());
     expect(report.source).toBeUndefined();
     // The config file is project scaffolding, never package content.
-    expect(report.agentPlugin.sourceFiles).toEqual(["plugin.json", "skills/review/SKILL.md"]);
-    expect(report.agentPlugin.sourceFileCount).toBe(2);
+    expect(report.components.sourceFiles).toEqual(["plugin.json", "skills/review/SKILL.md"]);
+    expect(report.components.sourceFileCount).toBe(2);
     expect(existsSync(join(dir, "dist/claude/hooknostic.config.ts"))).toBe(false);
     expect(report.targets.claude.projection.components["agent-plugin.skills"]).toMatchObject({
       support: "exact",
@@ -760,8 +760,8 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["partial"], onUnsupported: "warn" },
-        targets: { partial: { version: ">=1.0 <2", mode: "plugin", output: "./dist/partial" } }
+        components: { root: ".", targets: ["partial"], onUnsupported: "warn" },
+        targets: { partial: { version: ">=1.0 <2", delivery: "package", output: "./dist/partial" } }
       };`,
     );
     const capture = captureIO();
@@ -842,11 +842,11 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["opencode"] },
+        components: { root: ".", targets: ["opencode"] },
         targets: {
           opencode: {
             version: "${opencodeHarness.recommendedRange}",
-            mode: "local",
+            delivery: "package",
             output: "./dist/opencode",
             compatibility: { minimum: "approximate" },
           },
@@ -920,7 +920,7 @@ ${run.stderr}`).toBe(0);
     });
   });
 
-  it("refuses to project a Codex plugin from a local-mode target", async () => {
+  it("requires an explicit project root for project component delivery", async () => {
     // `local` mode emits .codex/hooks.json with a session-relative command. The
     // native manifest has no key for it, so the projection would install skills
     // and MCP that work beside hooks that silently never run -- and every other
@@ -940,9 +940,9 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["codex"] },
+        components: { root: ".", targets: ["codex"] },
         targets: {
-          codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", mode: "local", output: "./dist/codex" },
+          codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", delivery: "project", output: "./dist/codex" },
         },
       };`,
     );
@@ -956,13 +956,12 @@ ${run.stderr}`).toBe(0);
         evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
       }),
       json.out(),
-    ).toBe(1);
+    ).toBe(2);
     const report = JSON.parse(json.out());
     expect(report.diagnostics).toContainEqual(
       expect.objectContaining({
         severity: "error",
-        target: "codex",
-        message: expect.stringContaining('requires mode: "plugin"'),
+        message: expect.stringContaining('project component delivery requires project.root'),
       }),
     );
     expect(existsSync(join(dir, "dist/codex"))).toBe(false);
@@ -1008,9 +1007,9 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["codex"] },
+        components: { root: ".", targets: ["codex"] },
         targets: {
-          codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", mode: "plugin", output: "./dist/codex" },
+          codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", delivery: "package", output: "./dist/codex" },
         },
       };`,
     );
@@ -1104,11 +1103,11 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: "./pkg", targets: ["codex"], onUnsupported: "warn" },
+        components: { root: "./pkg", targets: ["codex"], onUnsupported: "warn" },
         targets: {
           codex: {
             version: "${CODEX_PLUGIN_MODE_RANGE}",
-            mode: "plugin",
+            delivery: "package",
             output: "./dist/codex",
           },
         },
@@ -1161,8 +1160,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["noproj"], onUnsupported: "warn" },
-        targets: { noproj: { version: ">=1.0 <2", mode: "local", output: "./dist/noproj" } }
+        components: { root: ".", targets: ["noproj"], onUnsupported: "warn" },
+        targets: { noproj: { version: ">=1.0 <2", delivery: "package", output: "./dist/noproj" } }
       };`,
     );
     const json = captureIO();
@@ -1175,7 +1174,7 @@ ${run.stderr}`).toBe(0);
         registry: { noproj: noProjectorAdapter() },
         io: json.io,
       }),
-    ).toBe(1);
+    ).toBe(2);
     const report = JSON.parse(json.out());
     expect(report.targets.noproj.status).toBe("failed");
     expect(report.diagnostics).toEqual([
@@ -1189,7 +1188,7 @@ ${run.stderr}`).toBe(0);
     const human = captureIO();
     expect(
       await runBuild({ config: join(dir, "hooknostic.config.ts"), registry: { noproj: noProjectorAdapter() }, io: human.io }),
-    ).toBe(1);
+    ).toBe(2);
     expect(human.out()).toContain("FAIL   noproj");
     expect(human.out()).toContain("Agent Plugin projection failed");
   });
@@ -1206,8 +1205,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
     const human = captureIO();
@@ -1229,8 +1228,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(join(dir, "source", script), "#!/bin/sh\necho portable\n");
     const config = join(dir, "hooknostic.config.ts");
     await writeFile(config, `export default {
-      agentPlugin: { root: "source", targets: ["claude"], executableFiles: [${JSON.stringify(script)}] },
-      targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "dist" } }
+      components: { root: "source", targets: ["claude"], executableFiles: [${JSON.stringify(script)}] },
+      targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "dist" } }
     };`);
     const build = async () => {
       const io = captureIO();
@@ -1240,7 +1239,7 @@ ${run.stderr}`).toBe(0);
     await chmod(join(dir, "source", script), 0o600);
     const first = await build();
     const source = await loadAgentPlugin({ root: join(dir, "source"), executableFiles: [script] });
-    expect(first.agentPlugin.contentDigest).toBe(source.package?.contentDigest);
+    expect(first.components.contentDigest).toBe(source.package?.contentDigest);
     if (process.platform !== "win32") expect((await stat(join(dir, "dist", script))).mode & 0o777).toBe(0o755);
     await chmod(join(dir, "source", script), 0o777);
     expect(await build()).toEqual(first);
@@ -1270,8 +1269,8 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./src/hooks.ts",
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -1286,7 +1285,7 @@ ${run.stderr}`).toBe(0);
       capture.out(),
     ).toBe(0);
     const report = JSON.parse(capture.out());
-    expect(report.agentPlugin.sourceFiles).toEqual(["plugin.json", "src/server.mjs"]);
+    expect(report.components.sourceFiles).toEqual(["plugin.json", "src/server.mjs"]);
     for (const shipped of ["src/server.mjs", "runtime/hooknostic.mjs", ".claude-plugin/plugin.json"]) {
       expect(existsSync(join(dir, "dist/claude", shipped)), shipped).toBe(true);
     }
@@ -1310,8 +1309,8 @@ ${run.stderr}`).toBe(0);
       cleanupDirs.push(dir);
       await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "literal-output" }));
       await writeFile(join(dir, "hooknostic.config.ts"), `export default {
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: ${JSON.stringify(output)} } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: ${JSON.stringify(output)} } }
       };`);
       for (let build = 0; build < 2; build++) {
         const capture = captureIO();
@@ -1319,7 +1318,7 @@ ${run.stderr}`).toBe(0);
           config: join(dir, "hooknostic.config.ts"), json: true,
           registry: defaultAdapterRegistry(), io: capture.io,
         }), capture.out()).toBe(0);
-        expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+        expect(JSON.parse(capture.out()).components.sourceFiles).toEqual(["plugin.json"]);
         expect(existsSync(join(dir, output, ".claude-plugin/plugin.json"))).toBe(true);
         expect(existsSync(join(dir, output, output))).toBe(false);
       }
@@ -1343,8 +1342,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./link/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./link/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -1358,7 +1357,7 @@ ${run.stderr}`).toBe(0);
       }),
       capture.out(),
     ).toBe(0);
-    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(JSON.parse(capture.out()).components.sourceFiles).toEqual(["plugin.json"]);
     expect(existsSync(join(dir, "dist/claude"))).toBe(true);
   });
 
@@ -1373,8 +1372,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "config/real.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
     // The name is excluded by rule; the file it links to must be as well.
@@ -1390,7 +1389,7 @@ ${run.stderr}`).toBe(0);
       }),
       capture.out(),
     ).toBe(0);
-    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(JSON.parse(capture.out()).components.sourceFiles).toEqual(["plugin.json"]);
   });
 
   it("still excludes the config and entry when the package root is reached through a link", async () => {
@@ -1413,8 +1412,8 @@ ${run.stderr}`).toBe(0);
       join(real, "hooknostic.config.ts"),
       `export default {
         entry: "./src/hooks.ts",
-        agentPlugin: { root: "../alias", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: "../alias", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -1428,7 +1427,7 @@ ${run.stderr}`).toBe(0);
       }),
       capture.out(),
     ).toBe(0);
-    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(JSON.parse(capture.out()).components.sourceFiles).toEqual(["plugin.json"]);
     expect(existsSync(join(real, "dist/claude/hooknostic.config.ts"))).toBe(false);
     expect(existsSync(join(real, "dist/claude/src/hooks.ts"))).toBe(false);
   });
@@ -1456,8 +1455,8 @@ ${run.stderr}`).toBe(0);
       join(parent, "hooknostic.config.ts"),
       `export default {
         entry: "./src/hooks.ts",
-        agentPlugin: { root: "./alias", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./alias/dist/claude" } }
+        components: { root: "./alias", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./alias/dist/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -1471,7 +1470,7 @@ ${run.stderr}`).toBe(0);
       }),
       capture.out(),
     ).toBe(0);
-    expect(JSON.parse(capture.out()).agentPlugin.sourceFiles).toEqual(["plugin.json"]);
+    expect(JSON.parse(capture.out()).components.sourceFiles).toEqual(["plugin.json"]);
     expect(existsSync(join(real, "dist/claude/dist/claude/stale.json"))).toBe(false);
   });
 
@@ -1494,15 +1493,15 @@ ${run.stderr}`).toBe(0);
     );
     const config = (policy: string) =>
       `export default {
-        agentPlugin: { root: ".", targets: ["claude"]${policy} },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"]${policy} },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`;
 
     await writeFile(join(dir, "hooknostic.config.ts"), config(""));
     const strict = captureIO();
     expect(
       await runBuild({ config: join(dir, "hooknostic.config.ts"), json: true, registry: defaultAdapterRegistry(), io: strict.io }),
-    ).toBe(1);
+    ).toBe(2);
     expect(JSON.parse(strict.out()).diagnostics).toEqual([
       expect.objectContaining({ code: "HN503", severity: "error", message: expect.stringContaining('"insecure"') }),
     ]);
@@ -1542,8 +1541,8 @@ ${run.stderr}`).toBe(0);
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -1555,7 +1554,7 @@ ${run.stderr}`).toBe(0);
         io: capture.io,
         evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
       expect.objectContaining({ code: "HN503", target: "claude" }),
     );
@@ -1578,8 +1577,8 @@ ${run.stderr}`).toBe(0);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } }
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } }
       };`,
     );
     const capture = captureIO();
@@ -1590,7 +1589,7 @@ ${run.stderr}`).toBe(0);
         registry: defaultAdapterRegistry(),
         io: capture.io,
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
       expect.objectContaining({
         code: "HN503",
@@ -1612,8 +1611,8 @@ ${run.stderr}`).toBe(0);
         `export default {
           entry: "./hooks.ts",
           targets: {
-            claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" },
-            opencode: { version: "${opencodeHarness.recommendedRange}", mode: "local", output: "./dist/opencode" },
+            claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" },
+            opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "./dist/opencode" },
           },
         };`,
         "utf8",
@@ -1643,7 +1642,7 @@ ${run.stderr}`).toBe(0);
         io,
         evaluate: { alias: { "@hooknostic/sdk": SDK } },
       });
-      expect(code).toBe(1);
+      expect(code).toBe(2);
 
       const report = JSON.parse(out());
       // turn.stop.prevent is exact on claude; on opencode the implicit turn.stop.observe is approximate, which is below the default floor.
@@ -1670,7 +1669,7 @@ ${run.stderr}`).toBe(0);
       configPath,
       `export default {
         entry: "./hooks.ts",
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "." } },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "." } },
       };`,
       "utf8",
     );
@@ -1689,7 +1688,7 @@ ${run.stderr}`).toBe(0);
         io: capture.io,
         evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(JSON.parse(capture.out()).diagnostics).toEqual([
       expect.objectContaining({ code: "HN501", target: "claude" }),
     ]);
@@ -1705,7 +1704,7 @@ ${run.stderr}`).toBe(0);
       configPath,
       `export default {
         entry: "./hooks.ts",
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } },
       };`,
       "utf8",
     );
@@ -1729,7 +1728,7 @@ ${run.stderr}`).toBe(0);
         io: capture.io,
         evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(JSON.parse(capture.out()).diagnostics).toEqual([
       expect.objectContaining({ code: "HN302" }),
     ]);
@@ -1777,7 +1776,7 @@ describe("hooknostic inspect", () => {
     ]);
     const component = captureIO();
     expect(await runInspect({ target: "claude", component: "agent-plugin.manifest",
-      registry, io: component.io })).toBe(1);
+      registry, io: component.io })).toBe(2);
     expect(component.err()).toContain("HN203");
   });
 
@@ -1866,7 +1865,9 @@ describe("hooknostic inspect", () => {
         io: invalidCapability.io,
       }),
     ).toBe(2);
-    expect(invalidCapability.err()).toContain("unknown capability");
-    expect(invalidCapability.err()).toContain("without --capability");
+    const failure = JSON.parse(invalidCapability.out());
+    expect(failure.ok).toBe(false);
+    expect(failure.errors.join("\n")).toContain("unknown capability");
+    expect(failure.errors.join("\n")).toContain("without --capability");
   });
 });

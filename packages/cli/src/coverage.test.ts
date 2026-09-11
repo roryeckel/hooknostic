@@ -51,7 +51,7 @@ describe("validation evidence", () => {
       const resolution = adapter.capabilities({
         id: adapter.id,
         version: adapter.harness.recommendedRange,
-        mode: "local",
+        delivery: "project",
         output: ".",
       });
       for (const profile of resolution.profilesUsed) {

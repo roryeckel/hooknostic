@@ -1,0 +1,17 @@
+[
+  {
+    "mutation": "TOML edit bypass",
+    "command": "pnpm exec vitest run packages/core/src/project-toml.test.ts",
+    "exitCode": 1
+  },
+  {
+    "mutation": "Omitted Codex MCP entries",
+    "command": "pnpm exec vitest run packages/core/src/project.test.ts -t launches Codex",
+    "exitCode": 1
+  },
+  {
+    "mutation": "Missing generated line-ending protection",
+    "command": "pnpm exec vitest run packages/core/src/project.test.ts -t launches Codex",
+    "exitCode": 1
+  }
+]

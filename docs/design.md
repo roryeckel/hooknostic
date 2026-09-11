@@ -390,6 +390,7 @@ Intentional scoping is not a portability failure and emits no warnings.
 import { defineConfig } from "@hooknostic/sdk";
 
 export default defineConfig({
+  project: { root: "." },
   entry: "./src/hooks.ts",
 
   compatibility: {
@@ -399,12 +400,12 @@ export default defineConfig({
   },
 
   targets: {
-    claude:   { version: ">=2.1 <3",  mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
-    opencode: { version: ">=1.18 <2", mode: "local",  output: "./dist/opencode" },
+    claude:   { version: ">=2.1 <3",  delivery: "package", output: "./dist/claude" },
+    codex:    { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
+    opencode: { version: ">=1.18 <2", delivery: "package",  output: "./dist/opencode" },
   },
 
-  agentPlugin: {
+  components: {
     root: ".",
     targets: ["claude", "codex"],
     runtimePackage: {
@@ -416,7 +417,7 @@ export default defineConfig({
 ```
 
 Version ranges are examples; adapters derive and document tested ranges from real
-fixtures and releases. A mode can narrow one: Codex `mode: "plugin"` requires
+fixtures and releases. A mode can narrow one: Codex `delivery: "package"` requires
 `>=0.153 <1`, where its local hooks build from `>=0.148 <1`, because hook delivery
 from an installed plugin is only established from 0.153.
 
@@ -809,7 +810,7 @@ my-plugin/
 `entry` is optional for package-only builds. Client-extension directories are consumed
 as overlays, never generated beside the source. Valid but unrepresentable components
 produce HN205; invalid or unsafe input and unmergeable overlays produce HN503. A target
-listed under `agentPlugin.targets` whose adapter has no projector is an HN205 error
+listed under `components.targets` whose adapter has no projector is an HN205 error
 regardless of `onUnsupported`: that policy degrades individual components, never a
 whole projection, so a build can never commit an empty package as a success. An invalid
 component the loader would skip (a malformed skill or MCP server) is an HN503 error by
@@ -818,10 +819,10 @@ default; `onInvalid: "warn"` restores the loader's lenient skip-and-continue.
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
 `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the
 config file, the hook `entry`, every target output, the build report, and staging
-directories. `agentPlugin.exclude` globs add to that set and apply before component
+directories. `components.exclude` globs add to that set and apply before component
 discovery: excluding `mcp.json`, a skill directory, or its `SKILL.md` removes that
 component, while `plugin.json` cannot be excluded. The build report lists every
-inventoried file under `agentPlugin.sourceFiles`; the source content digest covers
+inventoried file under `components.sourceFiles`; the source content digest covers
 those files' paths, bytes, and modes. Claude
 projection retains existing package directories used as portable MCP working
 directories, even when they are empty; these appear in the target projection's
@@ -957,7 +958,7 @@ in reproducible configs.
 ## 20. Deferred work
 
 Persistent storage API; fallback graphs (`requestApproval → block`); third-party adapter
-SDK; OpenCode npm output mode; more adapters (Cursor, Gemini CLI, Copilot CLI, Goose,
+SDK; OpenCode npm delivery scope; more adapters (Cursor, Gemini CLI, Copilot CLI, Goose,
 Qwen Code); fixture recording command; persistent-runtime performance mode; additional
 normalized events; formal Agent Plugins proposal.
 
@@ -1040,18 +1041,19 @@ export default definePlugin({
 import { defineConfig } from "@hooknostic/sdk";
 
 export default defineConfig({
+  project: { root: "." },
   entry: "./src/hooks.ts",
   compatibility: { minimum: "emulated", onBelowMinimum: "error", optionalUnavailable: "info" },
   runtime: { onHookError: "continue", timeoutMs: 5_000 },
   targets: {
-    claude:   { version: ">=2.1 <3",   mode: "plugin", output: "./dist/claude" },
-    codex:    { version: ">=0.148 <1", mode: "local",  output: "./dist/codex" },
+    claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
+    codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
     opencode: {
-      version: ">=1.18 <2", mode: "local", output: "./dist/opencode",
+      version: ">=1.18 <2", delivery: "project", output: "./dist/opencode",
       compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
     },
   },
-  agentPlugin: {
+  components: {
     root: ".",
     targets: ["claude"],
     runtimePackage: {

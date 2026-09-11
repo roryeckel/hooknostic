@@ -213,7 +213,7 @@ describe("generateOpenCodeArtifacts", () => {
   const TARGET = {
     id: "opencode",
     version: opencodeHarness.recommendedRange,
-    mode: "local" as const,
+    delivery: "project" as const,
     output: "./dist/opencode",
   };
 
@@ -234,10 +234,9 @@ describe("generateOpenCodeArtifacts", () => {
     expect(artifacts.map((a) => a.path)).toEqual([".opencode/plugins/hooknostic.js"]);
   });
 
-  it("refuses npm-package mode (deferred past v0.1)", () => {
-    expect(() =>
-      generateOpenCodeArtifacts(exampleIR(), { ...TARGET, mode: "plugin" }, { code: "" }),
-    ).toThrow(/deferred/);
+  it("emits a directory package using the project module format", () => {
+    expect(generateOpenCodeArtifacts(exampleIR(), { ...TARGET, delivery: "package" }, { code: "export default 1;" }))
+      .toEqual([{ path: ".opencode/plugins/hooknostic.js", contents: "export default 1;" }]);
   });
 });
 
@@ -323,7 +322,7 @@ describe("opencodeAdapter capability data", () => {
     const resolved = opencodeAdapter().capabilities({
       id: "opencode",
       version: opencodeHarness.recommendedRange,
-      mode: "local",
+      delivery: "project",
       output: "./d",
     });
     expect(resolved.diagnostics).toEqual([]);
@@ -363,7 +362,7 @@ describe("opencodeAdapter capability data", () => {
     const adapter = opencodeAdapter();
     const target = {
       version: opencodeHarness.recommendedRange,
-      mode: "local" as const,
+      delivery: "project" as const,
       output: "./dist/opencode",
     };
     const strict = analyzeCapabilities(

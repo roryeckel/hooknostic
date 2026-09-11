@@ -82,8 +82,8 @@ async function fixtureProject(): Promise<string> {
     export default {
       entry: "./hooks.ts",
       targets: {
-        alpha: { version: ">=1.0 <2", mode: "plugin", output: "./dist/alpha" },
-        beta: { version: ">=1.0 <2", mode: "plugin", output: "./dist/beta" },
+        alpha: { version: ">=1.0 <2", delivery: "package", output: "./dist/alpha" },
+        beta: { version: ">=1.0 <2", delivery: "package", output: "./dist/beta" },
       },
     };
     `,
@@ -121,7 +121,7 @@ describe("hooknostic check", () => {
       io: full.io,
       evaluate: EVALUATE,
     });
-    expect(fullCode).toBe(1);
+    expect(fullCode).toBe(2);
     expect(full.out()).toContain("HN201");
     expect(full.out()).toContain("PASS  alpha");
     expect(full.out()).toContain("FAIL  beta");
@@ -148,7 +148,7 @@ describe("hooknostic check", () => {
       io,
       evaluate: EVALUATE,
     });
-    expect(code).toBe(1);
+    expect(code).toBe(2);
     const report = JSON.parse(out());
     expect(report).toMatchObject({ schemaVersion: 1, command: "check", ok: false });
     expect(report.targets.alpha.ok).toBe(true);
@@ -178,9 +178,9 @@ describe("hooknostic check", () => {
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
-        agentPlugin: { root: ".", targets: ["noproj"] },
+        components: { root: ".", targets: ["noproj"] },
         targets: {
-          noproj: { version: ">=1.0 <2", mode: "local", output: "./dist/noproj" },
+          noproj: { version: ">=1.0 <2", delivery: "package", output: "./dist/noproj" },
         },
       };`,
     );
@@ -197,7 +197,7 @@ describe("hooknostic check", () => {
         },
         io: capture.io,
       }),
-    ).toBe(1);
+    ).toBe(2);
     const report = JSON.parse(capture.out());
     expect(report.ok).toBe(false);
     expect(report.targets.noproj.ok).toBe(false);
@@ -225,8 +225,8 @@ describe("hooknostic check", () => {
     const config = (runtimePackage: string) =>
       `export default {
         entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["claude"]${runtimePackage} },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } },
+        components: { root: ".", targets: ["claude"]${runtimePackage} },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } },
       };`;
 
     // Overlay collision with the generated runtime path: only the projector sees it.
@@ -240,7 +240,7 @@ describe("hooknostic check", () => {
         io: collision.io,
         evaluate: EVALUATE,
       }),
-    ).toBe(1);
+    ).toBe(2);
     const collisionReport = JSON.parse(collision.out());
     expect(collisionReport.targets.claude.ok).toBe(false);
     expect(collisionReport.diagnostics).toContainEqual(
@@ -261,7 +261,7 @@ describe("hooknostic check", () => {
         io: lockfile.io,
         evaluate: EVALUATE,
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(lockfile.out()).toContain("root dependencies do not match the manifest");
     expect(lockfile.out()).toContain("FAIL  claude");
 
@@ -311,12 +311,12 @@ describe("hooknostic check", () => {
     );
     const config = (allow: string) =>
       `export default {
-        agentPlugin: {
+        components: {
           root: ".",
           targets: ["claude"],
           runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json"${allow} },
         },
-        targets: { claude: { version: "${claudeHarness.recommendedRange}", mode: "plugin", output: "./dist/claude" } },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "package", output: "./dist/claude" } },
       };`;
 
     await writeFile(join(dir, "hooknostic.config.ts"), config(""));
@@ -328,7 +328,7 @@ describe("hooknostic check", () => {
         registry: defaultAdapterRegistry(),
         io: rejected.io,
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(JSON.parse(rejected.out()).diagnostics).toContainEqual(
       expect.objectContaining({
         code: "HN503",
@@ -359,7 +359,7 @@ describe("hooknostic check", () => {
       `export default {
         entry: "./hooks.ts",
         targets: {
-          alpha: { version: ">=1.0 <2", mode: "plugin", output: "." },
+          alpha: { version: ">=1.0 <2", delivery: "package", output: "." },
         },
       };`,
     );
@@ -372,7 +372,7 @@ describe("hooknostic check", () => {
         io: capture.io,
         evaluate: EVALUATE,
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(capture.out()).toContain("HN501");
     expect(capture.out()).toContain("FAIL  alpha");
     expect(capture.out()).not.toContain("PASS  alpha");
@@ -390,7 +390,7 @@ describe("hooknostic check", () => {
       io,
       evaluate: EVALUATE,
     });
-    expect(code).toBe(1);
+    expect(code).toBe(2);
     const report = JSON.parse(out());
     expect(report.ok).toBe(false);
     expect(report.diagnostics[0].code).toBe("HN501");
@@ -403,7 +403,7 @@ describe("hooknostic check", () => {
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        targets: { opencode: { version: "${opencodeHarness.recommendedRange}", mode: "plugin", output: "./dist" } },
+        targets: { opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "./dist" } },
       };`,
       "utf8",
     );
@@ -418,11 +418,11 @@ describe("hooknostic check", () => {
       await runCheck({
         config: join(dir, "hooknostic.config.ts"),
         json: true,
-        registry: defaultAdapterRegistry(),
+        registry: { ...defaultAdapterRegistry(), opencode: { ...defaultAdapterRegistry().opencode!, supportedDeliveries: () => ["project"] } },
         io: capture.io,
         evaluate: EVALUATE,
       }),
-    ).toBe(1);
+    ).toBe(2);
     const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string }[];
     expect(diagnostics).toContainEqual(
       expect.objectContaining({ code: "HN204", target: "opencode" }),

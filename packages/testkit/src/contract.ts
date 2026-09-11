@@ -17,7 +17,7 @@ export interface AdapterContractOptions {
   /** Version range to resolve capabilities at. Defaults to the adapter's
    * `harness.recommendedRange`; pass explicitly to audit another range. */
   version?: string;
-  mode?: "plugin" | "local";
+  delivery?: "package" | "project";
 }
 
 /**
@@ -46,7 +46,7 @@ export function describeAdapterContract(
     const resolved = adapter.capabilities({
       id: adapter.id,
       version: options.version ?? adapter.harness.recommendedRange,
-      mode: options.mode ?? "local",
+      delivery: options.delivery ?? "project",
       output: ".",
     });
     const matrix = resolved.matrix ?? {};
@@ -63,6 +63,21 @@ export function describeAdapterContract(
           loadFixtureFrom<{ event: HookEventName }>(join(options.fixturesDir, name)).event,
       ),
     );
+
+    it("declares project integration and independently evidenced component support", () => {
+      if (!adapter.supportedDeliveries().includes("project")) return;
+      expect(adapter.projectIntegration).toBeTypeOf("function");
+      expect(adapter.projectPaths?.length).toBeGreaterThan(0);
+      expect(adapter.projectComponents).toBeTypeOf("function");
+      expect(adapter.projectComponentProfiles?.length).toBeGreaterThan(0);
+      for (const profile of adapter.projectComponentProfiles ?? []) {
+        expect(profile.source.validatedOn.length).toBeGreaterThan(0);
+        for (const record of profile.source.validatedOn) expect(record.artifact).toBeTruthy();
+        for (const cell of Object.values(profile.components)) {
+          if (cell.level !== "exact") expect(cell.rationale).toBeTruthy();
+        }
+      }
+    });
 
     it("has a native input fixture for every advertised observable event", () => {
       const missing = observedEvents.filter((event) => !coveredEvents.has(event));
@@ -178,7 +193,7 @@ export function describeAdapterContract(
       const atRecommended = adapter.capabilities({
         id: adapter.id,
         version: meta.recommendedRange,
-        mode: options.mode ?? "local",
+        delivery: options.delivery ?? "project",
         output: ".",
       });
       expect(
@@ -213,7 +228,7 @@ export function describeAdapterContract(
       // shimExecution decides whether a bundled CLI main guard is a hazard
       // (HN502) and whether process.execPath is the host rather than Node.
       expect(["command", "module"]).toContain(adapter.shimExecution);
-      expect(adapter.supportedModes().length).toBeGreaterThan(0);
+      expect(adapter.supportedDeliveries().length).toBeGreaterThan(0);
     });
   });
 }

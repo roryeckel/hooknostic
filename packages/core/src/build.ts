@@ -1,3 +1,5 @@
+import { projectPath } from "./project-files.js";
+import type { ProjectIntegration } from "./project-files.js";
 import { minimatch } from "minimatch";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -5,15 +7,21 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   loadAgentPlugin,
+  classifyStdioCwd,
+  hasUnportableCommandPath,
+  loadProjectComponents,
+  packageComponents,
+  type ProjectComponents,
   type AgentPluginComponentId,
   type AgentPluginPackage,
   type AgentPluginProjectionSummary,
 } from "@hooknostic/agent-plugin";
-import type { SupportLevel } from "@hooknostic/sdk";
+import { meetsMinimum, type SupportLevel } from "@hooknostic/sdk";
 import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, TargetSpec } from "./adapter.js";
 import { targetSpecFromConfig } from "./adapter.js";
 import {
   analyzeAgentPluginProjection,
+  resolveAgentPluginProjection,
   diagnosticsFromAgentPluginIssues,
   type AgentPluginProjectionResolution,
 } from "./agent-plugin.js";
@@ -39,6 +47,8 @@ export interface BuildOptions {
   targets?: string[];
   evaluate?: EvaluateOptions;
   dryRun?: boolean;
+  /** Reuse the already evaluated configuration inside a project command. */
+  configResult?: Awaited<ReturnType<typeof loadConfig>>;
 }
 
 export interface AgentPluginTargetReport {
@@ -64,6 +74,7 @@ export interface BuildTargetReport {
   capabilities: Record<SupportLevel, number>;
   artifacts?: string[];
   projection?: AgentPluginTargetReport;
+  project?: { components: AgentPluginTargetReport["components"]; omissions: AgentPluginTargetReport["omissions"]; guidance: string[] };
 }
 
 export interface BuildReport {
@@ -71,7 +82,7 @@ export interface BuildReport {
   hooknosticVersion: string;
   source?: string;
   targets: Record<string, BuildTargetReport>;
-  agentPlugin?: {
+  components?: {
     root: string;
     specVersion: "1.0.0";
     targets: string[];
@@ -88,6 +99,8 @@ export interface BuildResult {
   report: BuildReport;
   analysis?: AnalysisResult;
   reportPath?: string;
+  componentSource?: ProjectComponents;
+  plan?: { target: string; outputDir: string; artifacts: GeneratedArtifact[]; directories: readonly string[]; integration?: ProjectIntegration }[];
 }
 
 function levelsFromMatrix(matrix: CapabilityMatrix): Partial<Record<string, SupportLevel>> {
@@ -312,17 +325,17 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const report: BuildReport = { schemaVersion: 2, hooknosticVersion: HOOKNOSTIC_VERSION, targets: {}, diagnostics };
   const fail = (): BuildResult => ({ ok: false, report });
 
-  const configResult = await loadConfig(configPath, options.evaluate);
+  const configResult = options.configResult ?? await loadConfig(configPath, options.evaluate);
   diagnostics.push(...configResult.diagnostics);
   if (!configResult.config) return fail();
   const config = configResult.config;
 
-  let agentPlugin: AgentPluginPackage | undefined;
-  if (config.agentPlugin !== undefined) {
-    const agentPluginRoot = resolve(configDir, config.agentPlugin.root);
+  let components: AgentPluginPackage | undefined;
+  if (config.components?.root !== undefined) {
+    const agentPluginRoot = resolve(configDir, config.components.root);
     const loaded = await loadAgentPlugin({
       root: agentPluginRoot,
-      ...(config.agentPlugin.executableFiles === undefined ? {} : { executableFiles: config.agentPlugin.executableFiles }),
+      ...(config.components.executableFiles === undefined ? {} : { executableFiles: config.components.executableFiles }),
       exclude: await projectionExcludes(
         agentPluginRoot,
         configPath,
@@ -331,24 +344,40 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         // `root: "."` a projector then copies it into the next one, nesting a
         // level deeper every run until path validation fails.
         Object.values(config.targets).map((target) => target.output),
-        config.agentPlugin.exclude ?? [],
+        config.components.exclude ?? [],
       ),
     });
     diagnostics.push(
       ...diagnosticsFromAgentPluginIssues(loaded.issues, {
-        onInvalid: config.agentPlugin.onInvalid ?? "error",
+        onInvalid: config.components.onInvalid ?? "error",
       }),
     );
     if (!loaded.package || hasFatal(diagnostics)) return fail();
-    agentPlugin = loaded.package;
-    report.agentPlugin = {
+    components = loaded.package;
+    report.components = {
       root: relative(configDir, agentPluginRoot).replaceAll("\\", "/") || ".",
-      specVersion: agentPlugin.specVersion,
-      targets: config.agentPlugin.targets,
-      sourceFileCount: agentPlugin.files.length,
-      sourceFiles: agentPlugin.files.map((file) => file.path).sort(),
-      contentDigest: agentPlugin.contentDigest,
+      specVersion: components.specVersion,
+      targets: (config.components.targets ?? Object.keys(config.targets)),
+      sourceFileCount: components.files.length,
+      sourceFiles: components.files.map((file) => file.path).sort(),
+      contentDigest: components.contentDigest,
     };
+  }
+
+  let componentSource: ProjectComponents | undefined;
+  if (components) componentSource = packageComponents(components);
+  else if (config.components) {
+    const loaded = await loadProjectComponents({
+      ...(config.components.skills === undefined ? {} : { skills: config.components.skills.map(p => resolve(configDir, p)) }),
+      ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
+    });
+    diagnostics.push(...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }));
+    if (hasFatal(diagnostics)) return fail();
+    componentSource = loaded.source;
+  }
+  if (config.components?.root === undefined && componentSource && Object.values(config.targets).some(t => t.delivery === "package")) {
+    diagnostics.push({ code: "HN501", severity: "error", message: "package delivery requires components.root with an Agent Plugins manifest" });
+    return fail();
   }
 
   let entryPath: string | undefined;
@@ -363,20 +392,20 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     diagnostics.push(...irResult.diagnostics.filter((item) => !diagnostics.includes(item)));
     if (!irResult.ir) return fail();
     ir = irResult.ir;
-    if (agentPlugin !== undefined) {
-      if (ir.version === undefined && agentPlugin.manifest.version !== undefined) {
-        ir.version = agentPlugin.manifest.version;
+    if (components !== undefined) {
+      if (ir.version === undefined && components.manifest.version !== undefined) {
+        ir.version = components.manifest.version;
       }
-      if (ir.description === undefined && agentPlugin.manifest.description !== undefined) {
-        ir.description = agentPlugin.manifest.description;
+      if (ir.description === undefined && components.manifest.description !== undefined) {
+        ir.description = components.manifest.description;
       }
     }
   } else {
-    if (agentPlugin === undefined) return fail();
+    if (components === undefined && componentSource === undefined) return fail();
     ir = {
-      name: agentPlugin.manifest.name,
-      ...(agentPlugin.manifest.version === undefined ? {} : { version: agentPlugin.manifest.version }),
-      ...(agentPlugin.manifest.description === undefined ? {} : { description: agentPlugin.manifest.description }),
+      name: components?.manifest.name ?? "project-components",
+      ...(components?.manifest.version === undefined ? {} : { version: components.manifest.version }),
+      ...(components?.manifest.description === undefined ? {} : { description: components.manifest.description }),
       hooks: [],
     };
   }
@@ -392,22 +421,22 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       output: config.targets[id]?.output ?? "",
       capabilities: target.counts,
     };
-    if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
+    if (components !== undefined && config.targets[id]!.delivery === "package" && (config.components!.targets ?? Object.keys(config.targets)).includes(id)) {
       const spec = targetSpecFromConfig(id, config.targets[id]!);
       const resolution = analyzeAgentPluginProjection(
-        agentPlugin,
-        options.registry[id]!,
+        components,
+        options.registry[config.targets[id]!.adapter ?? id]!,
         spec,
-        config.agentPlugin!.onUnsupported ?? "error",
-        config.agentPlugin!.runtimePackage,
+        config.components!.onUnsupported ?? "error",
+        config.components!.runtimePackage,
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
       report.targets[id]!.projection = analyzedProjectionReport(
-        agentPlugin,
+        components,
         resolution,
-        options.registry[id]!.agentPluginProjector?.namespace,
-        config.agentPlugin!.runtimePackage !== undefined,
+        options.registry[config.targets[id]!.adapter ?? id]!.agentPluginProjector?.namespace,
+        config.components!.runtimePackage !== undefined,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
@@ -418,6 +447,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     ...(entryPath === undefined ? {} : { entryPath }),
     config,
     selectedTargets: Object.keys(analysis.targets),
+    protectedPaths: [
+      ...(config.components?.skills ?? []).map(path => resolve(configDir, path)),
+      ...(config.components?.mcp ? [resolve(configDir, config.components.mcp)] : []),
+      ...(config.project ? [
+        ...["integration.json", "transaction.json", "sync.lock", "recovery.lock", "staging", "data"].map(path => resolve(configDir, config.project!.root, ".hooknostic", path)),
+        ...Object.entries(config.targets).flatMap(([name, target]) => (options.registry[target.adapter ?? name]?.projectPaths ?? []).map(path => resolve(configDir, config.project!.root, path))),
+      ] : []),
+    ],
   });
   diagnostics.push(...layout.diagnostics);
   for (const diagnostic of layout.diagnostics) {
@@ -438,7 +475,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     layout.outputs.find((entry) => entry.target === target);
   const staged: { key: string; target?: string; kind?: "directory" | "file"; stagingDir: string; outputDir: string }[] = [];
   /** Outputs a successful target will replace, whether or not this run stages. */
-  const planned: { target: string; outputDir: string }[] = [];
+  const planned: NonNullable<BuildResult["plan"]> = [];
   const failUncommitted = (): BuildResult => {
     // Under a dry run nothing would have been committed anyway; leave each
     // target's own verdict intact so `check` reports per-target results.
@@ -463,7 +500,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const mainGuardTargets: string[] = [];
   try {
     for (const id of Object.keys(analysis.targets)) {
-      const adapter = options.registry[id]!;
+      const adapter = options.registry[config.targets[id]!.adapter ?? id]!;
       const targetConfig = config.targets[id]!;
       const spec: TargetSpec = targetSpecFromConfig(id, targetConfig);
       const target = report.targets[id]!;
@@ -482,6 +519,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           };
           const bundle = await bundleRuntime({
             source: adapter.shimEntry({
+              targetId: id,
               entryImportPath: entryPath.replaceAll("\\", "/"),
               capabilities: levelsFromMatrix(resolved.matrix ?? {}),
               minimumCapabilityLevel: compatibility.minimum,
@@ -498,21 +536,21 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         let artifacts = hookArtifacts;
         let directories: readonly string[] = [];
         let projectionCopiedPaths: ReadonlySet<string> | undefined;
-        if (agentPlugin !== undefined && config.agentPlugin!.targets.includes(id)) {
+        if (components !== undefined && config.targets[id]!.delivery === "package" && (config.components!.targets ?? Object.keys(config.targets)).includes(id)) {
           phase = "Agent Plugin projection";
           const projector = adapter.agentPluginProjector;
           // Analysis already fails a projection target whose adapter has no
           // projector, so this is unreachable; keep it a hard failure rather
           // than a silently empty output if that invariant ever slips.
           if (projector === undefined) throw new Error(`adapter ${JSON.stringify(adapter.id)} has no Agent Plugin projector`);
-          const plan = await projector.project(agentPlugin, {
+          const plan = await projector.project(components, {
             target: spec,
             hookArtifacts,
-            ...(config.agentPlugin!.runtimePackage === undefined
+            ...(config.components!.runtimePackage === undefined
               ? {}
-              : { runtimePackage: config.agentPlugin!.runtimePackage }),
+              : { runtimePackage: config.components!.runtimePackage }),
             support: projectionResolutions.get(id)?.matrix ?? {},
-            onUnsupported: config.agentPlugin!.onUnsupported ?? "error",
+            onUnsupported: config.components!.onUnsupported ?? "error",
           });
           const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);
           diagnostics.push(...projectedDiagnostics);
@@ -524,7 +562,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           if (plan.files.length === 0) {
             // A projected package always carries at least its native manifest;
             // an empty plan means the projector produced nothing to install.
-            diagnostics.push({ code: "HN301", severity: "error", target: id, message: `Agent Plugin projection for ${JSON.stringify(id)} produced no artifacts.`, remediation: "remove the target from agentPlugin.targets or report the projector defect." });
+            diagnostics.push({ code: "HN301", severity: "error", target: id, message: `Agent Plugin projection for ${JSON.stringify(id)} produced no artifacts.`, remediation: "remove the target from components.targets or report the projector defect." });
             target.status = "failed";
             target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
             continue;
@@ -561,6 +599,70 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           );
         }
 
+        let integration: ProjectIntegration | undefined;
+        if (targetConfig.delivery === "project" && config.project) {
+          if (!adapter.projectIntegration) throw new Error(`adapter ${adapter.id} has no project integrator`);
+          const root = resolve(configDir, config.project.root);
+          const output = relative(root, outputFor(id)!.outputDir).replaceAll("\\", "/");
+          await projectPath(root, relative(root, configPath).replaceAll("\\", "/"));
+          await projectPath(root, output);
+          integration = adapter.projectIntegration(artifacts, output);
+          if (componentSource && (config.components?.targets ?? Object.keys(config.targets)).includes(id)) {
+            if (!adapter.projectComponents) throw new Error(`adapter ${adapter.id} has no project component integrator`);
+            const support = resolveAgentPluginProjection(spec, { profiles: adapter.projectComponentProfiles ?? [] });
+            diagnostics.push(...support.diagnostics);
+            if (!support.matrix) throw new Error("project component support is unavailable for the configured version range");
+            const selectedSource: ProjectComponents = { skills: [...componentSource.skills], ...(componentSource.mcp === undefined ? {} : { mcp: { ...componentSource.mcp, config: { ...componentSource.mcp.config, mcpServers: { ...componentSource.mcp.config.mcpServers } } } }) };
+            const counts: AgentPluginTargetReport["components"] = {};
+            const omissions: AgentPluginTargetReport["omissions"] = [];
+            const count = (component: AgentPluginComponentId, discovered: number): boolean => {
+              if (!discovered) return true;
+              const cell = support.matrix![component];
+              const supported = cell !== undefined && cell.level !== "unsupported";
+              counts[component] = { support: cell?.level ?? "unsupported", discovered, emitted: supported ? discovered : 0, skipped: supported ? 0 : discovered };
+              if (!supported) {
+                const reason = cell?.rationale ?? "component has no project delivery representation";
+                omissions.push({ component, reason });
+                diagnostics.push({ code: "HN205", severity: config.components?.onUnsupported ?? "error", target: id, component, message: reason });
+              }
+              if (supported) {
+                const policy = effectiveCompatibility(config, id);
+                if (!meetsMinimum(cell.level, policy.minimum)) diagnostics.push({ code: "HN205", severity: policy.onBelowMinimum, target: id, component, message: `${component} project support ${cell.level} is below ${policy.minimum}` });
+              }
+              return supported;
+            };
+            if (!count("agent-plugin.skills", selectedSource.skills.length)) selectedSource.skills = [];
+            for (const type of ["stdio", "streamable-http", "sse"] as const) {
+              const servers = Object.entries(selectedSource.mcp?.config.mcpServers ?? {}).filter(([, server]) => server.type === type);
+              if (!count(`agent-plugin.mcp.${type}`, servers.length)) for (const [name] of servers) delete selectedSource.mcp!.config.mcpServers[name];
+            }
+            for (const [name, server] of Object.entries(selectedSource.mcp?.config.mcpServers ?? {})) {
+              if (server.type !== "stdio" || (!hasUnportableCommandPath(server.command) && classifyStdioCwd(server.cwd) !== undefined)) continue;
+              const reason = `MCP server ${name} has unsupported portable command or working-directory semantics`;
+              diagnostics.push({ code: "HN205", severity: config.components?.onUnsupported ?? "error", target: id, component: "agent-plugin.mcp.stdio", message: reason });
+              omissions.push({ component: "agent-plugin.mcp.stdio", reason });
+              delete selectedSource.mcp!.config.mcpServers[name];
+              const counted = counts["agent-plugin.mcp.stdio"]!; counted.emitted--; counted.skipped++;
+            }
+            count("agent-plugin.runtime-package", config.components?.runtimePackage === undefined ? 0 : 1);
+            const namespace = adapter.agentPluginProjector?.namespace;
+            count("agent-plugin.client-extension.files", components && namespace ? components.files.filter(file => file.path.startsWith(namespace + "/")).length + (components.manifest.extensions?.[namespace] ? 1 : 0) : 0);
+            target.project = { components: counts, omissions, guidance: [] };
+            if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
+            const projected = await adapter.projectComponents(selectedSource, root, output, relative(root, configPath).replaceAll("\\", "/"));
+            target.project = { components: counts, omissions, guidance: projected.guidance };
+            integration.files.push(...projected.files);
+            integration.entries.push(...projected.entries);
+            integration.guidance.push(...projected.guidance);
+            integration.absent = [...integration.absent ?? [], ...projected.absent ?? []];
+          }
+          for (const destination of [...integration.files, ...integration.entries]) await projectPath(root, destination.path);
+          for (const file of integration.files) {
+            if (file.path.startsWith(output + "/")) artifacts.push({ path: file.path.slice(output.length + 1), contents: file.contents, ...(file.mode === undefined ? {} : { mode: file.mode }) });
+          }
+          integration.files = integration.files.filter(file => !file.path.startsWith(output + "/"));
+        }
+
         phase = "validation";
         const structural = validateGeneratedArtifacts(
           artifacts,
@@ -594,7 +696,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           .map((artifact) => artifact.path)
           .filter((path) => generated.has(path));
 
-        planned.push({ target: id, outputDir: outputFor(id)!.outputDir });
+        planned.push({ target: id, outputDir: outputFor(id)!.outputDir, artifacts, directories, ...(integration === undefined ? {} : { integration }) });
         if (stagingRoot === undefined) continue;
         phase = "staging";
         const stagingDir = await writeArtifacts(stagingRoot, id, artifacts, directories);
@@ -628,7 +730,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       diagnostics.push({ code: "HN502", severity: "warn", message: `the bundled hook source contains a CLI main-module guard (import.meta.url compared against process.argv[1]); ${mainGuardTargets.join(", ")} run the generated artifact as a command, so both sides of that comparison name the artifact and the guarded code executes on every hook dispatch.`, remediation: "move the command-line entry point into a module the hook source does not import, or gate it on an explicit environment variable instead." });
     }
     if (hasFatal(diagnostics)) return failUncommitted();
-    if (stagingRoot === undefined) return { ok: true, report, analysis };
+    if (stagingRoot === undefined) return { ok: true, report, analysis, plan: planned, ...(componentSource === undefined ? {} : { componentSource }) };
 
     const reportPath = join(configDir, "hooknostic-build.json");
     const stagedReportPath = join(stagingRoot, "hooknostic-build.json");

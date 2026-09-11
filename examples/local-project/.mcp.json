@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sample": {
+      "command": "node",
+      "args": [
+        "./.hooknostic/artifacts/claude/mcp-launcher.mjs",
+        "0"
+      ]
+    }
+  }
+}

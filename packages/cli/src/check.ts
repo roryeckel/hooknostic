@@ -61,7 +61,7 @@ function emitFailure(options: CheckOptions, diagnostics: Diagnostic[]): number {
   } else {
     options.io.stderr(formatDiagnostics(diagnostics));
   }
-  return 1;
+  return 2;
 }
 
 /**
@@ -107,7 +107,7 @@ export async function runCheck(options: CheckOptions): Promise<number> {
       diagnostics: result.report.diagnostics,
     };
     options.io.stdout(JSON.stringify(report, null, 2));
-    return result.ok ? 0 : 1;
+    return result.ok ? 0 : 2;
   }
 
   if (result.report.diagnostics.length > 0) {
@@ -129,5 +129,5 @@ export async function runCheck(options: CheckOptions): Promise<number> {
       ? "\ncheck failed: fix the errors above or adjust the target set."
       : "\ncheck passed: every selected target generates cleanly; nothing was written.",
   );
-  return failed ? 1 : 0;
+  return failed ? 2 : 0;
 }

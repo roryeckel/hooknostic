@@ -7,6 +7,7 @@ import type { CommandIO } from "./check.js";
 
 export interface InspectCommandOptions {
   target: string;
+  delivery?: "project" | "package";
   capability?: string;
   component?: string;
   /** Harness version range to resolve; defaults to the adapter's first validated range. */
@@ -22,33 +23,39 @@ export interface InspectCommandOptions {
  * rationale and provenance-bearing version ranges.
  */
 export async function runInspect(options: InspectCommandOptions): Promise<number> {
+  const errors: string[] = [];
+  const failure = (): number => {
+    if (options.json) options.io.stdout(JSON.stringify({ schemaVersion: 1, command: "inspect", ok: false, errors }, null, 2));
+    else for (const message of errors) options.io.stderr(message);
+    return 2;
+  };
   const adapter = Object.hasOwn(options.registry, options.target)
     ? options.registry[options.target]
     : undefined;
   if (!adapter) {
-    options.io.stderr(
+    errors.push(
       `unknown target "${options.target}"; available: ${Object.keys(options.registry).join(", ")}`,
     );
-    return 2;
+    return failure();
   }
   if (options.capability !== undefined && !isCapabilityId(options.capability)) {
-    options.io.stderr(
+    errors.push(
       `unknown capability "${options.capability}"; run \`hooknostic inspect ${options.target}\` without --capability to list valid capability IDs.`,
     );
-    return 2;
+    return failure();
   }
   if (
     options.component !== undefined &&
     !AGENT_PLUGIN_COMPONENT_IDS.includes(options.component as AgentPluginComponentId)
   ) {
-    options.io.stderr(
+    errors.push(
       `unknown component "${options.component}"; valid Agent Plugin component IDs: ${AGENT_PLUGIN_COMPONENT_IDS.join(", ")}.`,
     );
-    return 2;
+    return failure();
   }
   if (options.capability !== undefined && options.component !== undefined) {
-    options.io.stderr("--capability and --component are mutually exclusive.");
-    return 2;
+    errors.push("--capability and --component are mutually exclusive.");
+    return failure();
   }
 
   // Default to the RECOMMENDED range, not the widest validated one: without
@@ -58,14 +65,14 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   const resolved = adapter.capabilities({
     id: adapter.id,
     version,
-    mode: "local",
+    delivery: "project",
     output: ".",
   });
   if (!resolved.matrix) {
     for (const diagnostic of resolved.diagnostics) {
-      options.io.stderr(`${diagnostic.code}: ${diagnostic.message}`);
+      errors.push(`${diagnostic.code}: ${diagnostic.message}`);
     }
-    return 1;
+    return failure();
   }
 
   const ids: CapabilityId[] =
@@ -83,22 +90,23 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       ...(entry?.rationale !== undefined ? { rationale: entry.rationale } : {}),
     };
   });
-  const projection = options.capability === undefined && adapter.agentPluginProjector
+  const projector = options.delivery === "project" ? (adapter.projectComponentProfiles ? { profiles: adapter.projectComponentProfiles } : undefined) : adapter.agentPluginProjector;
+  const projection = options.capability === undefined && projector
     ? resolveAgentPluginProjection(
         {
           id: adapter.id,
           version,
-          mode: adapter.supportedModes()[0] ?? "local",
+          delivery: adapter.supportedDeliveries()[0] ?? "project",
           output: ".",
         },
-        adapter.agentPluginProjector,
+        projector,
       )
     : undefined;
   if (projection && !projection.matrix) {
     for (const diagnostic of projection.diagnostics) {
-      options.io.stderr(`${diagnostic.code}: ${diagnostic.message}`);
+      errors.push(`${diagnostic.code}: ${diagnostic.message}`);
     }
-    return 1;
+    return failure();
   }
   const componentIds: AgentPluginComponentId[] =
     options.component === undefined
@@ -122,6 +130,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
           schemaVersion: 2,
           command: "inspect",
           target: adapter.id,
+          delivery: options.delivery ?? "package",
           adapterVersion: adapter.adapterVersion,
           harness: adapter.harness,
           version,

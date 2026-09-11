@@ -38,7 +38,7 @@ honest: an unreproducible build is caught here rather than in someone else's
 repository.
 
 `agent-plugin/` is committed specifically because it is the only example using
-`agentPlugin`, and that config shape is where a machine-specific path can reach
+`components`, and that config shape is where a machine-specific path can reach
 the build report — a gate that rebuilds only `rewrite-shell` cannot see it.
 
 The other two examples are built on demand and their output is gitignored.

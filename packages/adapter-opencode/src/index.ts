@@ -1,3 +1,4 @@
+import { projectIntegration, projectComponents, projectComponentProfiles } from "./project.js";
 
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -49,6 +50,7 @@ function resolveShimPath(): string {
  * The module's exported Plugin function is what OpenCode loads in-process.
  */
 export function opencodeShimEntrySource(options: {
+  targetId?: string;
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
@@ -60,6 +62,7 @@ export function opencodeShimEntrySource(options: {
     `import { createHooknosticHooks } from "@hooknostic/adapter-opencode/shim";`,
     `export const HooknosticPlugin = async (input) =>`,
     `  createHooknosticHooks(plugin, {`,
+    `    targetId: ${JSON.stringify(options.targetId ?? "opencode")},`,
     `    capabilities: ${JSON.stringify(options.capabilities)},`,
     ...(options.minimumCapabilityLevel !== undefined
       ? [`    minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
@@ -79,6 +82,10 @@ export function opencodeAdapter(): HarnessAdapter {
     id: "opencode",
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
     harness: opencodeHarness,
+    projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
+    projectIntegration,
+    projectComponents,
+    projectComponentProfiles,
     agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.
     shimExecution: "module",
@@ -89,8 +96,8 @@ export function opencodeAdapter(): HarnessAdapter {
       return opencodeCapabilityProfiles.map((p) => p.range);
     },
 
-    supportedModes() {
-      return ["local"] as const;
+    supportedDeliveries() {
+      return ["project", "package"] as const;
     },
 
     shimEntry(options) {

@@ -47,7 +47,7 @@ export function diagnosticsFromAgentPluginIssues(
 
 export function resolveAgentPluginProjection(
   target: TargetSpec,
-  projector: AgentPluginProjector<TargetSpec>,
+  projector: Pick<AgentPluginProjector<TargetSpec>, "profiles">,
 ): AgentPluginProjectionResolution {
   const diagnostics: Diagnostic[] = [];
   if (!semver.validRange(target.version)) {
@@ -119,7 +119,7 @@ export function analyzeAgentPluginProjection(
   if (projector === undefined) {
     // `onUnsupported` degrades individual unrepresentable components. A target
     // with no projector at all cannot receive the package, so listing it under
-    // agentPlugin.targets is a configuration error: a "warn" here would commit
+    // components.targets is a configuration error: a "warn" here would commit
     // an empty (or hook-only) output while reporting the target as built.
     return {
       profilesUsed: [],
@@ -129,7 +129,7 @@ export function analyzeAgentPluginProjection(
           severity: "error",
           target: target.id,
           message: `target ${JSON.stringify(target.id)} (adapter ${JSON.stringify(adapter.id)}) has no Agent Plugin projector; components ${discoveredComponents(source, "", runtimePackage).map((component) => JSON.stringify(component)).join(", ")} cannot be projected.`,
-          remediation: "remove the target from agentPlugin.targets or use an adapter with package projection support.",
+          remediation: "remove the target from components.targets or use an adapter with package projection support.",
         },
       ],
     };

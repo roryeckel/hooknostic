@@ -53,7 +53,7 @@ function source(
   };
 }
 
-const target = { id: "opencode", version: ">=1.18 <2", mode: "local" as const, output: "dist" };
+const target = { id: "opencode", version: ">=1.18 <2", delivery: "project" as const, output: "dist" };
 const support = resolveAgentPluginProjection(target, opencodeAgentPluginProjector).matrix!;
 
 const project = (pkg: AgentPluginPackage) =>
@@ -100,7 +100,7 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(evidenced.length).toBeGreaterThan(0);
     expect(evidenced.every((version) => version.startsWith("1.18."))).toBe(true);
 
-    const older = { id: "opencode", version: ">=1.10 <1.18", mode: "local" as const, output: "d" };
+    const older = { id: "opencode", version: ">=1.10 <1.18", delivery: "project" as const, output: "d" };
     expect(resolveAgentPluginProjection(older, opencodeAgentPluginProjector).matrix).toBeUndefined();
   });
 

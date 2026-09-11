@@ -1,3 +1,4 @@
+import type { ProjectIntegration } from "./project-files.js";
 import type {
   CapabilityId,
   HookEvent,
@@ -8,7 +9,7 @@ import type {
   TargetConfig,
   RuntimePolicy,
 } from "@hooknostic/sdk";
-import type { AgentPluginProjector } from "@hooknostic/agent-plugin";
+import type { AgentPluginProjector, ProjectComponents, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { Diagnostic } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
 
@@ -17,7 +18,7 @@ export interface TargetSpec {
   id: string;
   /** Requested harness version range (never the locally installed version). */
   version: string;
-  mode: "plugin" | "local";
+  delivery: "package" | "project";
   output: string;
 }
 
@@ -25,7 +26,7 @@ export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSp
   return {
     id,
     version: target.version,
-    mode: target.mode,
+    delivery: target.delivery,
     output: target.output,
   };
 }
@@ -178,6 +179,7 @@ export interface RuntimeAdapter {
 
 /** Build-time inputs for generating a target's shim entry module source. */
 export interface ShimEntryOptions {
+  targetId?: string;
   /** Import path of the user's plugin entry module (POSIX separators). */
   entryImportPath: string;
   /** Resolved capability levels for the target range. */
@@ -197,6 +199,10 @@ export interface ShimEntryOptions {
 export interface HarnessAdapter {
   readonly id: string;
   readonly adapterVersion: string;
+  projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
+  projectPaths?: readonly string[];
+  projectComponents?(source: ProjectComponents, root: string, output: string, config: string): Promise<ProjectIntegration>;
+  projectIntegration?(artifacts: readonly GeneratedArtifact[], outputFromRoot: string): ProjectIntegration;
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;
@@ -205,7 +211,7 @@ export interface HarnessAdapter {
   supportedHarnessVersions(): string[];
 
   /** Artifact modes this adapter can emit for its validated implementation. */
-  supportedModes(): readonly TargetSpec["mode"][];
+  supportedDeliveries(): readonly TargetSpec["delivery"][];
 
   /**
    * Source of the per-target shim entry module that the build pipeline

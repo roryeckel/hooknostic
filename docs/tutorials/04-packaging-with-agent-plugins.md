@@ -37,11 +37,11 @@ import { defineConfig } from "@hooknostic/sdk";
 export default defineConfig({
   entry: "./src/hooks.ts",
   targets: {
-    claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
-    codex: { version: ">=0.153 <1", mode: "plugin", output: "./dist/codex" },
-    opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },
+    claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
+    codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
+    opencode: { version: ">=1.18 <2", delivery: "package", output: "./dist/opencode" },
   },
-  agentPlugin: {
+  components: {
     root: ".",
     targets: ["claude", "codex", "opencode"],
     onUnsupported: "warn",
@@ -58,8 +58,8 @@ implemented with the official MCP TypeScript SDK in `src/greet-mcp.mjs` and serv
 stdio. `${PLUGIN_ROOT}` keeps the entry path portable; projection translates it to the
 native plugin-root variable.
 
-`defineConfig` infers the target names, so `agentPlugin.targets` naming a target that
-is not configured, or a config with neither `entry` nor `agentPlugin`, is an editor
+`defineConfig` infers the target names, so `components.targets` naming a target that
+is not configured, or a config with neither `entry` nor `components`, is an editor
 error before it is a build error.
 
 The source package's `package.json` is for building this example. `runtimePackage`
@@ -86,29 +86,29 @@ read a portable package, but a portable manifest cannot carry hooks and outranks
 `.codex-plugin/plugin.json` that can, so a package declaring both loads its skills and
 silently ignores every hook. The projection therefore replaces `plugin.json` and
 `mcp.json` with native equivalents and emits the compiled hooks alongside them, and why its
-target is `mode: "plugin"`.
+target is `delivery: "package"`.
 
 Its version range narrows too: hook delivery from an installed plugin is only established
-from 0.153, so `mode: "plugin"` is rejected below it, while a local Codex artifact
+from 0.153, so `delivery: "package"` is rejected below it, while a local Codex artifact
 still builds from 0.148. `onUnsupported: "warn"` is what this example needs, because
 its `runtimePackage` has no Codex or OpenCode equivalent — see
 [harness support](../harness-support.md) for the per-component table.
 
 Claude's projection is a third translation: `.claude-plugin/`, a rewritten `.mcp.json`,
-and a generated launcher. OpenCode's is `mode: "local"`, because its project plugin
+and a generated launcher. OpenCode's is `delivery: "package"`, with an adapter-owned project-module layout: its project plugin
 already IS local — `.opencode/plugins/` is read from the project directory, so there is
 nothing to install. None of the outputs is portable, and that is the point — the
 *source* is the portable artifact.
 
-Listing a target under `agentPlugin.targets` whose adapter has no projector at all is a
+Listing a target under `components.targets` whose adapter has no projector at all is a
 different error, and not one `onUnsupported` degrades: a projection that cannot happen
 is a configuration mistake, not a component to degrade.
 
 ## What ships
 
 Copied files use portable permissions: 0644 by default. Set
-`agentPlugin.executableFiles: ["bin/tool"]` for files that must be 0755.
-These are exact, case-sensitive POSIX paths relative to `agentPlugin.root`,
+`components.executableFiles: ["bin/tool"]` for files that must be 0755.
+These are exact, case-sensitive POSIX paths relative to `components.root`,
 not globs; each must name an included file. Host `chmod` bits are ignored.
 When migrating, declare files that previously relied on `chmod +x` and rebuild
 both artifacts and reports. See [ADR-0013](../decisions/0013-portable-file-permissions.md).
@@ -117,8 +117,8 @@ Everything under `root` ships unless it is excluded, npm-style. Built-in exclusi
 cover what is never package content: `.git`, `node_modules`, `.env`, `.env.*`, and
 `.npmrc` at any depth, plus `hooknostic.config.ts`, the hook `entry` (its compiled
 runtime ships instead), every target output, the build report, and staging directories.
-`agentPlugin.exclude` adds POSIX globs on top. The build report's
-`agentPlugin.sourceFiles` lists every inventoried path, so check it after adding files.
+`components.exclude` adds POSIX globs on top. The build report's
+`components.sourceFiles` lists every inventoried path, so check it after adding files.
 
 Claude projection omits root `package.json`, `package-lock.json`, and
 `npm-shrinkwrap.json` files; only the validated `runtimePackage` pair becomes
@@ -138,9 +138,9 @@ that file. The mandatory `plugin.json` cannot be excluded.
 import { defineConfig } from "@hooknostic/sdk";
 
 export default defineConfig({
-  agentPlugin: { root: ".", targets: ["claude"] },
+  components: { root: ".", targets: ["claude"] },
   targets: {
-    claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
+    claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
   },
 });
 ```

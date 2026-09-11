@@ -5,7 +5,7 @@ import { codexAdapter } from "./index.js";
 import { CODEX_PLUGIN_MODE_RANGE, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
 
-const TARGET = { id: "codex", version: codexHarness.recommendedRange, mode: "local" as const, output: "./dist/codex" };
+const TARGET = { id: "codex", version: codexHarness.recommendedRange, delivery: "project" as const, output: "./dist/codex" };
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
   runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
@@ -53,7 +53,7 @@ describe("generateCodexArtifacts", () => {
   it("anchors the plugin-mode command to the plugin root", () => {
     const artifacts = generateCodexArtifacts(
       exampleIR(),
-      { ...TARGET, mode: "plugin", version: CODEX_PLUGIN_MODE_RANGE },
+      { ...TARGET, delivery: "package", version: CODEX_PLUGIN_MODE_RANGE },
       BUNDLE,
       OPTIONS,
     );
@@ -85,7 +85,7 @@ describe("generateCodexArtifacts", () => {
     expect(() =>
       generateCodexArtifacts(
         exampleIR(),
-        { ...TARGET, mode: "plugin", version: ">=0.148 <1" },
+        { ...TARGET, delivery: "package", version: ">=0.148 <1" },
         BUNDLE,
         OPTIONS,
       ),

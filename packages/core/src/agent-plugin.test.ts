@@ -7,7 +7,7 @@ import {
 import { analyzeAgentPluginProjection, resolveAgentPluginProjection } from "./agent-plugin.js";
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 
-const target: TargetSpec = { id: "test", version: ">=2.1 <3", mode: "plugin", output: "dist" };
+const target: TargetSpec = { id: "test", version: ">=2.1 <3", delivery: "package", output: "dist" };
 const projector: AgentPluginProjector<TargetSpec> = {
   namespace: "example.test",
   profiles: [

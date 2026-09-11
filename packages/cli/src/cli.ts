@@ -1,3 +1,6 @@
+import { loadConfig, runProject } from "@hooknostic/core";
+import { resolve } from "node:path";
+import { runInit } from "./init.js";
 import { parseArgs } from "node:util";
 import type { AdapterRegistry } from "@hooknostic/core";
 import { runBuild } from "./build.js";
@@ -12,8 +15,12 @@ export const CLI_USAGE = `hooknostic — portable lifecycle hooks for coding-age
 Usage:
   hooknostic check   [--config <path>] [--target <a,b>] [--json]
   hooknostic build   [--config <path>] [--target <a,b>] [--json]
-  hooknostic doctor  [--json]
-  hooknostic inspect <target> [--capability <id> | --component <id>] [--version <range>] [--json]
+  hooknostic init --local [--config <path>] [--json]
+  hooknostic sync [--config <path>] [--dry-run] [--json]
+  hooknostic verify [--config <path>] [--json]
+  hooknostic recover [--config <path>] [--json]
+  hooknostic doctor  [--config <path>] [--json]
+  hooknostic inspect <target> [--capability <id> | --component <id>] [--version <range>] [--delivery <project|package>] [--config <path>] [--json]
 
 Options:
   --config <path>     Path to hooknostic.config.ts (default ./hooknostic.config.ts)
@@ -21,6 +28,7 @@ Options:
   --capability <id>   Inspect a single capability
   --component <id>    Inspect a single Agent Plugin component
   --version <range>   Harness version range for inspect
+  --delivery <scope>  Project or package component support for inspect
   --json              Machine-readable output
   -h, --help          Show this help
 `;
@@ -51,9 +59,12 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
       allowPositionals: true,
       options: {
         config: { type: "string" },
+        "dry-run": { type: "boolean" },
+        local: { type: "boolean" },
         target: { type: "string" },
         capability: { type: "string" },
         component: { type: "string" },
+        delivery: { type: "string" },
         version: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -86,7 +97,28 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
   }
 
   try {
+    if (parsed.values["dry-run"] && command !== "sync") throw new Error("--dry-run is only supported by sync");
     switch (command) {
+      case "init":
+        if (!parsed.values["local"]) throw new Error("init requires --local");
+        return await runInit(typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts", registry, io, parsed.values["json"] === true);
+      case "sync":
+      case "verify":
+      case "recover": {
+        const result = await runProject({
+          command, configPath: resolve(typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts"),
+          registry, ...(targets === undefined ? {} : { targets }), dryRun: parsed.values["dry-run"] === true,
+        });
+        if (parsed.values["json"]) io.stdout(JSON.stringify({ schemaVersion: 1, command, ...result }, null, 2));
+        else {
+          for (const diagnostic of result.diagnostics) io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+          for (const path of result.changes) io.stdout(`${command === "verify" ? "DRIFT" : "UPDATE"} ${path}`);
+          for (const message of result.guidance) io.stdout(message);
+          for (const message of result.errors) io.stderr(message);
+          if (result.ok) io.stdout(`${command} succeeded${parsed.values["dry-run"] ? "; nothing written" : ""}.`);
+        }
+        return result.errors.length ? 2 : result.ok ? 0 : 1;
+      }
       case "check":
         return await runCheck({
           ...(typeof parsed.values["config"] === "string"
@@ -109,17 +141,29 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         });
       case "doctor":
         return await runDoctor({
+          ...(typeof parsed.values["config"] === "string" ? { config: parsed.values["config"] } : {}),
           ...(parsed.values["json"] ? { json: true } : {}),
           registry,
           io,
         });
       case "inspect": {
-        const target = parsed.positionals[0];
+        let target = parsed.positionals[0];
         if (target === undefined) {
           io.stderr("inspect requires a target, e.g. `hooknostic inspect claude`.");
           return 2;
         }
+        if (typeof parsed.values["config"] === "string") {
+          const loaded = await loadConfig(resolve(parsed.values["config"]));
+          if (!loaded.config) throw new Error(loaded.diagnostics.map(d => d.message).join("\n"));
+          const configured = loaded.config.targets[target];
+          if (!configured) throw new Error(`target ${target} is not configured`);
+          parsed.values["version"] ??= configured.version;
+          parsed.values["delivery"] ??= configured.delivery;
+          target = configured.adapter ?? target;
+        }
+        if (parsed.values["delivery"] !== undefined && !["project", "package"].includes(String(parsed.values["delivery"]))) throw new Error("--delivery must be project or package");
         return await runInspect({
+          ...(parsed.values["delivery"] === undefined ? {} : { delivery: parsed.values["delivery"] as "project" | "package" }),
           target,
           ...(typeof parsed.values["capability"] === "string"
             ? { capability: parsed.values["capability"] }
@@ -143,9 +187,10 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
   } catch (error) {
     // Commands report expected failures as diagnostics; anything else must
     // still yield an exit code and a message rather than an uncaught exception.
+    if (parsed.values["json"]) { io.stdout(JSON.stringify({ schemaVersion: 1, command, ok: false, errors: [error instanceof Error ? error.message : String(error)] })); return 2; }
     io.stderr(
       `hooknostic: unexpected error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
     );
-    return 1;
+    return 2;
   }
 }

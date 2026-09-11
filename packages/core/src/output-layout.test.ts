@@ -27,7 +27,7 @@ function config(
 ): HooknosticConfig {
   return {
     entry: "./src/hooks.ts",
-    targets: { alpha: { version: "1", mode: "local", output } },
+    targets: { alpha: { version: "1", delivery: "project", output } },
     ...extra,
   };
 }
@@ -90,7 +90,7 @@ describe("validateOutputLayout", () => {
       config: {
         entry: "./hooks.ts",
         targets: {
-          alpha: { version: "1", mode: "local", output: "./dist" },
+          alpha: { version: "1", delivery: "project", output: "./dist" },
         },
       },
       selectedTargets: ["alpha"],
@@ -114,7 +114,7 @@ describe("validateOutputLayout", () => {
       entryPath: linkedEntry,
       config: {
         entry: "./dist/hooks.ts",
-        targets: { alpha: { version: "1", mode: "local", output: "./dist" } },
+        targets: { alpha: { version: "1", delivery: "project", output: "./dist" } },
       },
       selectedTargets: ["alpha"],
     });
@@ -128,15 +128,15 @@ describe("validateOutputLayout", () => {
       entryPath: fixture.entryPath,
       config: {
         entry: "./src/hooks.ts",
-        agentPlugin: { root: "./plugin", targets: ["claude"] },
+        components: { root: "./plugin", targets: ["claude"] },
         targets: {
           claude: {
             version: "1",
-            mode: "plugin",
+            delivery: "package",
             output: "./plugin",
           },
-          beta: { version: "1", mode: "local", output: "./dist" },
-          gamma: { version: "1", mode: "local", output: "./dist/gamma" },
+          beta: { version: "1", delivery: "project", output: "./dist" },
+          gamma: { version: "1", delivery: "project", output: "./dist/gamma" },
         },
       },
       selectedTargets: ["claude", "beta", "gamma"],

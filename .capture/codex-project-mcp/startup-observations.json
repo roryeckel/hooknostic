@@ -1,0 +1,106 @@
+{
+  "cases": {
+    "omittedCwd": {
+      "execution": {
+        "code": 1,
+        "loopbackModelFailure": true
+      },
+      "observed": {
+        "cwd": "<scratch>\\project\\nested",
+        "ref": "${SYNTHETIC_VALUE}",
+        "forwarded": "synthetic-value",
+        "capture": "<scratch>\\marker.json",
+        "argv": [
+          "${SYNTHETIC_VALUE}"
+        ]
+      },
+      "listRequests": [
+        {
+          "path": "/mcp",
+          "method": "GET",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/.well-known/oauth-protected-resource/mcp",
+          "method": "GET",
+          "header": "synthetic-header"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/mcp",
+          "method": "POST",
+          "rpc": "initialize",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/mcp",
+          "method": "POST",
+          "rpc": "notifications/initialized",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/mcp",
+          "method": "POST",
+          "rpc": "tools/list",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/v1/responses",
+          "method": "POST"
+        }
+      ]
+    },
+    "dotCwd": {
+      "execution": {
+        "code": 1,
+        "loopbackModelFailure": true
+      },
+      "observed": {
+        "cwd": "<scratch>\\project\\nested",
+        "ref": "${SYNTHETIC_VALUE}",
+        "forwarded": "synthetic-value",
+        "capture": "<scratch>\\marker.json",
+        "argv": [
+          "${SYNTHETIC_VALUE}"
+        ]
+      },
+      "listRequests": [
+        {
+          "path": "/mcp",
+          "method": "GET",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/.well-known/oauth-protected-resource/mcp",
+          "method": "GET",
+          "header": "synthetic-header"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/mcp",
+          "method": "POST",
+          "rpc": "initialize",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/mcp",
+          "method": "POST",
+          "rpc": "notifications/initialized",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/mcp",
+          "method": "POST",
+          "rpc": "tools/list",
+          "header": "synthetic-header"
+        },
+        {
+          "path": "/v1/responses",
+          "method": "POST"
+        }
+      ]
+    }
+  }
+}

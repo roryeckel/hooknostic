@@ -33,6 +33,9 @@ catalogs:
     eslint:
       specifier: ^9.17.0
       version: 9.39.5
+    jsonc-parser:
+      specifier: ^3.3.1
+      version: 3.3.1
     minimatch:
       specifier: ^10.0.1
       version: 10.2.6
@@ -42,6 +45,9 @@ catalogs:
     npm-package-arg:
       specifier: ^13.0.2
       version: 13.0.2
+    toml-eslint-parser:
+      specifier: ^1.0.3
+      version: 1.0.3
     typescript:
       specifier: ^5.7.2
       version: 5.9.3
@@ -119,6 +125,12 @@ importers:
         version: link:../../packages/sdk
 
   examples/context-injection:
+    dependencies:
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+
+  examples/local-project:
     dependencies:
       '@hooknostic/sdk':
         specifier: workspace:*
@@ -272,12 +284,18 @@ importers:
       esbuild:
         specifier: 'catalog:'
         version: 0.24.2
+      jsonc-parser:
+        specifier: 'catalog:'
+        version: 3.3.1
       minimatch:
         specifier: 'catalog:'
         version: 10.2.6
       semver:
         specifier: catalog:semver-runtime
         version: 7.8.5
+      toml-eslint-parser:
+        specifier: 'catalog:'
+        version: 1.0.3
       zod:
         specifier: catalog:zod3
         version: 3.25.76
@@ -1177,6 +1195,9 @@ packages:
   json-stable-stringify-without-jsonify@1.0.1:
     resolution: {integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==}
 
+  jsonc-parser@3.3.1:
+    resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
+
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
 
@@ -1347,6 +1368,10 @@ packages:
   tinyspy@3.0.2:
     resolution: {integrity: sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q==}
     engines: {node: '>=14.0.0'}
+
+  toml-eslint-parser@1.0.3:
+    resolution: {integrity: sha512-A5F0cM6+mDleacLIEUkmfpkBbnHJFV1d2rprHU2MXNk7mlxHq2zGojA+SRvQD1RoMo9gqjZPWEaKG4v1BQ48lw==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
@@ -2191,6 +2216,8 @@ snapshots:
 
   json-stable-stringify-without-jsonify@1.0.1: {}
 
+  jsonc-parser@3.3.1: {}
+
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
@@ -2356,6 +2383,10 @@ snapshots:
   tinyrainbow@1.2.0: {}
 
   tinyspy@3.0.2: {}
+
+  toml-eslint-parser@1.0.3:
+    dependencies:
+      eslint-visitor-keys: 5.0.1
 
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:

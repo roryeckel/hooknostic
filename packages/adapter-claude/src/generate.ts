@@ -78,7 +78,7 @@ export function generateClaudeArtifacts(
               {
                 type: "command",
                 command: "node",
-                args: [`\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`],
+                args: [target.delivery === "package" ? `\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}` : `\${CLAUDE_PROJECT_DIR}/${RUNTIME_PATH}`],
                 timeout: claudeNativeTimeout(nativeEvent, reaching, options.runtime),
               },
             ],
@@ -95,7 +95,7 @@ export function generateClaudeArtifacts(
   };
 
   return [
-    { path: ".claude-plugin/plugin.json", contents: JSON.stringify(pluginJson, null, 2) + "\n" },
+    ...(target.delivery === "package" ? [{ path: ".claude-plugin/plugin.json", contents: JSON.stringify(pluginJson, null, 2) + "\n" }] : []),
     { path: "hooks/hooks.json", contents: JSON.stringify(hooksJson, null, 2) + "\n" },
     { path: RUNTIME_PATH, contents: bundle.code },
   ];

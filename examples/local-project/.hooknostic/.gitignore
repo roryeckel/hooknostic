@@ -1,0 +1,5 @@
+/data/
+/sync.lock
+/recovery.lock
+/transaction.json
+/staging/

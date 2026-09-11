@@ -56,7 +56,7 @@ async function project(): Promise<string> {
     join(dir, "hooknostic.config.ts"),
     `export default {
       entry: "./hooks.ts",
-      targets: { fake: { version: ">=1.0 <2", mode: "plugin", output: "./dist/fake" } },
+      targets: { fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" } },
     };`,
     "utf8",
   );
@@ -140,7 +140,7 @@ describe("build pipeline hardening", () => {
       io,
       evaluate: EVALUATE,
     });
-    expect(code).toBe(1);
+    expect(code).toBe(2);
     const report = JSON.parse(out());
     expect(report.targets.fake.status).toBe("failed");
     expect(report.diagnostics).toEqual([
@@ -233,8 +233,8 @@ describe("build pipeline hardening", () => {
       `export default {
         entry: "./hooks.ts",
         targets: {
-          fake: { version: ">=1.0 <2", mode: "plugin", output: "./dist/fake" },
-          other: { version: ">=1.0 <2", mode: "plugin", output: "./dist/other" },
+          fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" },
+          other: { version: ">=1.0 <2", delivery: "package", output: "./dist/other" },
         },
       };`,
       "utf8",
@@ -294,8 +294,8 @@ describe("build pipeline hardening", () => {
       `export default {
         entry: "./hooks.ts",
         targets: {
-          fake: { version: ">=1.0 <2", mode: "plugin", output: "./dist/fake" },
-          other: { version: ">=1.0 <2", mode: "plugin", output: "./dist/other" },
+          fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" },
+          other: { version: ">=1.0 <2", delivery: "package", output: "./dist/other" },
         },
       };`,
       "utf8",
@@ -334,14 +334,14 @@ describe("build pipeline hardening", () => {
 });
 
 describe("CLI last-resort error handling", () => {
-  it("reports unexpected adapter exceptions on stderr with exit 1 instead of crashing", async () => {
+  it("reports unexpected adapter exceptions on stderr with exit 2 instead of crashing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-crash-"));
     temp.push(dir);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
-        targets: { fake: { version: ">=1.0 <2", mode: "plugin", output: "./dist/fake" } },
+        targets: { fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" } },
       };`,
       "utf8",
     );
@@ -362,7 +362,7 @@ describe("CLI last-resort error handling", () => {
       registry: { fake: exploding },
       io,
     });
-    expect(code).toBe(1);
+    expect(code).toBe(2);
     expect(err()).toContain("hooknostic: unexpected error");
     expect(err()).toContain("capabilities exploded");
   });

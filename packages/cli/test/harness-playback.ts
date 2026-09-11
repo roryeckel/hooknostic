@@ -1,3 +1,5 @@
+import type { ProjectComponents } from "@hooknostic/agent-plugin";
+import { applyProject, reconcileProject } from "@hooknostic/core";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import type { ServerResponse } from "node:http";
@@ -24,6 +26,7 @@ const RUNTIME_POLICY = {
 const require = createRequire(import.meta.url);
 
 export interface PlaybackBuild {
+  project?: boolean;
   artifactDir: string;
   runtimePath: string;
   tracePath: string;
@@ -55,7 +58,9 @@ export interface ModelPlayback {
  * why the version travels with it.
  */
 export interface PlaybackTargetOverride {
-  mode?: TargetSpec["mode"];
+  components?: ProjectComponents;
+  project?: boolean;
+  delivery?: TargetSpec["delivery"];
   version?: string;
 }
 
@@ -63,7 +68,7 @@ function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTa
   return {
     id: adapter.id,
     version: override.version ?? adapter.harness.referenceVersion,
-    mode: override.mode ?? adapter.supportedModes()[0]!,
+    delivery: override.delivery ?? adapter.supportedDeliveries()[0]!,
     output,
   };
 }
@@ -352,7 +357,22 @@ export async function buildPlaybackArtifact(
     },
   });
   const artifacts = await adapter.compile(ir, target, bundle, { runtime: RUNTIME_POLICY });
-  for (const artifact of artifacts) {
+  const prefix = override.project ? `.hooknostic/artifacts/${adapter.id}` : "";
+  if (override.project) {
+    if (!adapter.projectIntegration) throw new Error("missing project integrator");
+    const integration = adapter.projectIntegration(artifacts, prefix);
+    if (override.components) {
+      if (!adapter.projectComponents) throw new Error("missing project component integrator");
+      const components = await adapter.projectComponents(override.components, artifactDir, prefix, "hooknostic.config.ts");
+      integration.files.push(...components.files);
+      integration.entries.push(...components.entries);
+      if (components.absent) integration.absent = components.absent;
+    }
+    integration.files.push(...artifacts.map(file => ({ ...file, path: `${prefix}/${file.path}` })));
+    const plan = await reconcileProject(artifactDir, "hooknostic.config.ts", integration);
+    await applyProject(artifactDir, "hooknostic.config.ts", plan);
+  }
+  for (const artifact of override.project ? [] : artifacts) {
     const path = join(artifactDir, artifact.path);
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, artifact.contents, "utf8");
@@ -365,7 +385,7 @@ export async function buildPlaybackArtifact(
       : artifact.path.endsWith("hooknostic.js"),
   );
   if (runtime === undefined) throw new Error(`${adapter.id}: generated runtime artifact not found`);
-  return { artifactDir, runtimePath: join(artifactDir, runtime.path), tracePath, events };
+  return { artifactDir, runtimePath: join(artifactDir, prefix, runtime.path), tracePath, events, ...(override.project ? { project: true } : {}) };
 }
 
 function runNode(

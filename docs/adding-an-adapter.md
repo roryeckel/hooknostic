@@ -159,7 +159,7 @@ need quoting.
 
 Only if the harness has a plugin format that can carry skills and MCP servers.
 Without one, omit `agentPluginProjector` — a target listed under
-`agentPlugin.targets` whose adapter has no projector is an HN205 error, so the
+`components.targets` whose adapter has no projector is an HN205 error, so the
 capability is never silently assumed.
 
 A projector is `AgentPluginProjector` from `@hooknostic/agent-plugin`:
@@ -190,7 +190,7 @@ entire output.
   implementation with `${PLUGIN_ROOT}/...`; copying only the trees you translate
   leaves that argv pointing at a file the output does not contain.
 - **Check whatever else makes the hooks unreachable.** Path presence is all core
-  can verify; the rest is yours. A Codex target in `local` mode generates
+  can verify; the rest is yours. A Codex target in `project` delivery generates
   `.codex/hooks.json` with a session-relative command, which satisfies the core
   check and which the native manifest has no key for, so the projector rejects
   that combination itself. Anchor generated commands the way an install cache

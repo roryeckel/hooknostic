@@ -166,7 +166,7 @@ export function analyzeCapabilities(
       : undefined;
     if (!targetConfig) continue;
 
-    const adapter = Object.hasOwn(adapters, targetId) ? adapters[targetId] : undefined;
+    const adapter = Object.hasOwn(adapters, targetConfig.adapter ?? targetId) ? adapters[targetConfig.adapter ?? targetId] : undefined;
     if (!adapter) {
       diagnostics.push({
         code: "HN501",
@@ -189,13 +189,13 @@ export function analyzeCapabilities(
 
     const policy = effectiveCompatibility(config, targetId);
     const spec = targetSpecFromConfig(targetId, targetConfig);
-    if (!adapter.supportedModes().includes(spec.mode)) {
+    if (!adapter.supportedDeliveries().includes(spec.delivery)) {
       targetDiagnostics.push({
         code: "HN204",
         severity: "error",
         target: targetId,
-        message: `target "${targetId}" mode "${spec.mode}" is unsupported by adapter "${adapter.id}".`,
-        remediation: `use one of the supported modes: ${adapter.supportedModes().join(", ")}.`,
+        message: `target "${targetId}" mode "${spec.delivery}" is unsupported by adapter "${adapter.id}".`,
+        remediation: `use one of the supported modes: ${adapter.supportedDeliveries().join(", ")}.`,
       });
     }
     const resolved = adapter.capabilities(spec);

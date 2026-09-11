@@ -44,7 +44,7 @@ function source(
   };
 }
 
-const target = { id: "codex", version: ">=0.153 <1", mode: "plugin" as const, output: "dist" };
+const target = { id: "codex", version: ">=0.153 <1", delivery: "package" as const, output: "dist" };
 // Resolved from the projector's own profiles rather than restated, so these
 // tests cannot disagree with the matrix the build reports.
 const support = resolveAgentPluginProjection(target, codexAgentPluginProjector).matrix!;

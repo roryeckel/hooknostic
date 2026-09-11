@@ -10,13 +10,8 @@ const PLUGIN_PATH = ".opencode/plugins/hooknostic.js";
  */
 export function generateOpenCodeArtifacts(
   _plugin: PluginIR,
-  target: TargetSpec,
+  _target: TargetSpec,
   bundle: RuntimeBundle,
 ): GeneratedArtifact[] {
-  if (target.mode === "plugin") {
-    throw new Error(
-      'opencode target mode "plugin" (npm package) is deferred past v0.1; use mode: "local".',
-    );
-  }
   return [{ path: PLUGIN_PATH, contents: bundle.code }];
 }

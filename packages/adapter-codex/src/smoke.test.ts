@@ -154,7 +154,7 @@ describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
       );
       const artifacts = generateCodexArtifacts(
         ir!,
-        { id: "codex", version: codexHarness.recommendedRange, mode: "local", output: SMOKE_DIR },
+        { id: "codex", version: codexHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
         bundle,
         {
           runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },

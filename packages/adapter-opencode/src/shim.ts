@@ -16,6 +16,7 @@ import { opencodeShellCodec } from "./toolmap.js";
 import { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 
 export interface OpenCodeShimOptions {
+  targetId?: string;
   capabilities: CapabilityLevels;
   minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
@@ -121,7 +122,7 @@ export function createHooknosticHooks(
       throw error;
     }
     const result = await dispatch(plugin.hooks, event, {
-      targetId: "opencode",
+      targetId: options.targetId ?? "opencode",
       harness: event.harness,
       capabilities: options.capabilities,
       ...(options.minimumCapabilityLevel !== undefined

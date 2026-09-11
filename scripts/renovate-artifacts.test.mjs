@@ -189,7 +189,8 @@ it("regenerates from the root, removes stale output, and includes reports in the
     writeFileSync(join(root, example, "hooknostic-build.json"), '{"digest":"new"}');
   });
   buildExamples(root, run);
-  expect(run).toHaveBeenCalledTimes(3);
+  expect(run).toHaveBeenCalledTimes(5);
+  expect(run.mock.calls.slice(-2).map(call => call[1][1])).toEqual(["sync", "verify"]);
   const snapshot = collectManifest(root, sha, 17);
   for (const path of outputRoots) {
     expect(snapshot.files).toContainEqual(file(`${path}/hooknostic-build.json`, '{"digest":"new"}'));

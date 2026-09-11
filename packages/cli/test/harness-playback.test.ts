@@ -328,6 +328,7 @@ async function runClaudePlayback(
   scenario: PlaybackScenario,
   options: DriveOptions = {},
 ): Promise<void> {
+  const isolatedConfig = await prepareClaudePtyConfig(build.artifactDir);
   const server = await startModelPlayback("anthropic-messages", scenario, options.script);
   try {
     const mcpConfigPath = join(build.artifactDir, "mcp-playback.json");
@@ -353,8 +354,7 @@ async function runClaudePlayback(
         options.prompt ?? playbackPrompt(scenario),
         "--model",
         "hooknostic-playback",
-        "--plugin-dir",
-        build.artifactDir,
+        ...(build.project ? [] : ["--plugin-dir", build.artifactDir]),
         "--dangerously-skip-permissions",
         "--max-turns",
         "6",
@@ -368,6 +368,7 @@ async function runClaudePlayback(
         timeoutMs: 90_000,
         env: {
           ...withoutCredentials(),
+          CLAUDE_CONFIG_DIR: isolatedConfig,
           ANTHROPIC_API_KEY: "hooknostic-playback",
           ANTHROPIC_BASE_URL: server.baseUrl,
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -885,7 +886,7 @@ function cellLevel(id: string): string | undefined {
   const resolution = adapter.capabilities({
     id: adapter!.id,
     version: adapter!.harness.referenceVersion,
-    mode: "local",
+    delivery: "project",
     output: ".",
   });
   return resolution.matrix?.[id as keyof NonNullable<typeof resolution.matrix>]?.level;
@@ -1126,6 +1127,48 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     expect(detection.version).toBe(expectedVersion);
   });
 
+  it("runs repository-local integration without installing a plugin", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-local-playback-"));
+    tempDirs.push(dir);
+    const transports = await startProjectionMcpTransports();
+    const source = join(dir, "portable");
+    await mkdir(join(source, "mcp-working-dir"), { recursive: true });
+    await writeFile(join(source, "plugin-mcp-env-fixture.mjs"), await readFile(PluginMcpEnvFixturePath));
+    const skillSource = join(dir, "portable-skills/local-sample");
+    await mkdir(skillSource, { recursive: true });
+    await writeFile(join(skillSource, "SKILL.md"), "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n");
+    const build = await buildPlaybackArtifact(adapter!, dir, { delivery: "project", project: true, components: {
+      skills: [{ name: "local-sample", source: skillSource, files: [{ path: "SKILL.md", mode: 0o644, contents: new TextEncoder().encode("---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n") }] }],
+      mcp: { root: source, config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: {
+        localProbe: { type: "stdio" as const, command: "node", args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"], env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" }, cwd: "./mcp-working-dir" },
+        localHttp: { type: "streamable-http" as const, url: transports.httpUrl },
+        ...(adapter!.id === "codex" ? {} : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
+      } } },
+    } });
+    try {
+      await runInstalledHarness(build, "rewrite", {
+        ...(adapter!.id === "claude" ? { extraArgs: ["--strict-mcp-config", "--mcp-config", join(dir, ".mcp.json")] } : {}),
+        verify: async ({ server }) => {
+          expect(requestContents(server.requests).join("\n")).toContain("local-skill-marker");
+          {
+            const environment = JSON.parse(await readFile(join(source, "mcp-environment.json"), "utf8"));
+            expect(normalize(environment.pluginRoot)).toBe(normalize(source));
+            expect(normalize(environment.cwd)).toBe(normalize(join(source, "mcp-working-dir")));
+            expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
+            expect(environment.argv).toEqual([environment.pluginData]);
+            expect(transports.counts.http).toBeGreaterThan(0);
+            if (adapter!.id !== "codex") {
+              expect(transports.counts.sseGet).toBeGreaterThan(0);
+              expect(transports.counts.ssePost).toBeGreaterThan(0);
+            }
+          }
+        },
+      });
+    } finally { await transports.close(); }
+    const events = await traceEvents(build.tracePath);
+    expect(events).toContain("tool.before");
+  }, 180_000);
+
   it("replays every captured hook payload through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-playback-${adapter!.id}-`));
     tempDirs.push(dir);
@@ -1198,7 +1241,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         target: {
           id: "claude",
           version: adapter!.harness.referenceVersion,
-          mode: "plugin",
+          delivery: "package",
           output: ".",
         },
         hookArtifacts,
@@ -1344,7 +1387,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       const target = {
         id: "codex",
         version: installedVersion!,
-        mode: "plugin" as const,
+        delivery: "package" as const,
         output: ".",
       };
       const resolved = resolveAgentPluginProjection(target, codexAgentPluginProjector);
@@ -1518,7 +1561,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       const target = {
         id: "opencode",
         version: process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
-        mode: "local" as const,
+        delivery: "project" as const,
         output: ".",
       };
       const plan = await opencodeAgentPluginProjector.project(loaded.package!, {
@@ -1641,7 +1684,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       let build: Awaited<ReturnType<typeof buildPlaybackArtifact>>;
       try {
         build = await buildPlaybackArtifact(adapter!, pluginSource, {
-          mode: "plugin",
+          delivery: "package",
           version: installedVersion!,
         });
       } catch (error) {

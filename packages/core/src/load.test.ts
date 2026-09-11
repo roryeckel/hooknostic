@@ -31,13 +31,13 @@ describe("loadConfig", () => {
     const dir = await fixtureDir();
     await writeFile(join(dir, "helper.cjs"), 'const path = require("node:path"); module.exports = path.basename("/project/hooks.ts");');
     const file = join(dir, "config.ts");
-    await writeFile(file, 'import entry from "./helper.cjs"; export default { entry, targets: { fake: { version: "1", mode: "local", output: "dist" } } };');
+    await writeFile(file, 'import entry from "./helper.cjs"; export default { entry, targets: { fake: { version: "1", delivery: "project", output: "dist" } } };');
     const result = await loadConfig(file);
     expect(result.diagnostics).toEqual([]);
     expect(result.config?.entry).toBe("hooks.ts");
     // Vitest can supply a require shim; only a native subprocess pins ESM evaluation.
     await writeFile(join(dir, "hooks.ts"), 'export default { name: "cjs", hooks: [] };');
-    await writeFile(file, `import entry from "./helper.cjs"; export default { entry, targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, mode: "plugin", output: "dist" } } };`);
+    await writeFile(file, `import entry from "./helper.cjs"; export default { entry, targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist" } } };`);
     const child = spawnSync(process.execPath, [resolve(import.meta.dirname, "../../cli/bin/hooknostic.mjs"), "check", "--config", file, "--json"], { encoding: "utf8" });
     expect(child.status, child.stdout + child.stderr).toBe(0);
   });
@@ -52,10 +52,10 @@ describe("loadConfig", () => {
         entry: "./src/hooks.ts",
         compatibility: { minimum: "emulated", onBelowMinimum: "error" },
         targets: {
-          claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
+          claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
           opencode: {
             version: ">=1.18 <2",
-            mode: "local",
+            delivery: "project",
             output: "./dist/opencode",
             compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
           },
@@ -135,7 +135,7 @@ describe("loadConfig", () => {
     const file = join(tilded, "hooknostic.config.ts");
     await writeFile(
       file,
-      `export default { entry: "./src/hooks.ts", targets: { claude: { version: ">=2.1 <3", mode: "plugin", output: "./x" } } };`,
+      `export default { entry: "./src/hooks.ts", targets: { claude: { version: ">=2.1 <3", delivery: "package", output: "./x" } } };`,
       "utf8",
     );
     const result = await loadConfig(file, OPTIONS);

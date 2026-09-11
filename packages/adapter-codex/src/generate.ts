@@ -78,7 +78,7 @@ export function generateCodexArtifacts(
   bundle: RuntimeBundle,
   options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
-  const bundled = target.mode === "plugin";
+  const bundled = target.delivery === "package";
   // Plugin hook delivery is established on 0.153.2 only. It was read as REMOVED
   // from the 0.148.0 binary, and that reading is not re-testable
   // (.capture/codex-plugin-hooks), so the versions between are a channel nobody

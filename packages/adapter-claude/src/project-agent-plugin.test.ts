@@ -44,7 +44,7 @@ function source(files: AgentPluginFile[] = []): AgentPluginPackage {
   };
 }
 
-const target = { id: "claude", version: ">=2.1 <3", mode: "plugin" as const, output: "dist" };
+const target = { id: "claude", version: ">=2.1 <3", delivery: "package" as const, output: "dist" };
 // Resolved from the projector's own profiles rather than restated, so a
 // component these tests treat as projectable cannot drift from the matrix.
 const support = resolveAgentPluginProjection(target, claudeAgentPluginProjector).matrix!;

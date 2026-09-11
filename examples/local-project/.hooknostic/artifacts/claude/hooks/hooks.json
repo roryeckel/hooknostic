@@ -1,0 +1,19 @@
+{
+  "description": "Hooknostic-generated hooks for sample-project",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/runtime/hooknostic.mjs"
+            ],
+            "timeout": 6
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ import { ClaudeDecodeError, decodeClaude } from "./decode.js";
 import { claudeShellCodec } from "./toolmap.js";
 
 export interface ClaudeShimOptions {
+  targetId?: string;
   /** Build-time-resolved capability levels for the executing target range. */
   capabilities: CapabilityLevels;
   minimumCapabilityLevel?: SupportLevel;
@@ -50,7 +51,7 @@ export async function runClaudeCommandShim(
     };
     const event = decodeClaude(nativeEvent, invocation);
     const result = await dispatch(plugin.hooks, event, {
-      targetId: "claude",
+      targetId: options.targetId ?? "claude",
       harness: event.harness,
       capabilities: options.capabilities,
       ...(options.minimumCapabilityLevel !== undefined

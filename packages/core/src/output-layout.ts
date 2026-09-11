@@ -73,14 +73,16 @@ export async function validateOutputLayout(options: {
   entryPath?: string;
   config: HooknosticConfig;
   selectedTargets: readonly string[];
+  protectedPaths?: string[];
 }): Promise<OutputLayoutResult> {
   const configPath = resolve(options.configPath);
   const configDir = dirname(configPath);
-  const canonicalConfigDir = await canonicalCandidate(configDir);
+  const canonicalConfigDir = await canonicalCandidate(options.config.project ? resolve(configDir, options.config.project.root) : configDir);
   const protectedPaths = (
     await Promise.all(
       [
         configPath,
+        ...(options.protectedPaths ?? []),
         ...(options.entryPath === undefined ? [] : [resolve(options.entryPath)]),
         join(configDir, "hooknostic-build.json"),
       ].map(
@@ -89,9 +91,9 @@ export async function validateOutputLayout(options: {
     )
   ).flat();
   const agentPluginPaths =
-    options.config.agentPlugin === undefined
+    options.config.components?.root === undefined
       ? []
-      : await pathIdentities(resolve(configDir, options.config.agentPlugin.root));
+      : await pathIdentities(resolve(configDir, options.config.components.root));
   const diagnostics: Diagnostic[] = [];
   const outputs: ManagedOutput[] = [];
   const comparisonPaths = new Map<ManagedOutput, string[]>();
@@ -109,13 +111,13 @@ export async function validateOutputLayout(options: {
         layoutError(
           target,
           `target "${target}" output resolves outside the project output sandbox: ${escapedPath}.`,
-          "choose an output directory strictly below the directory containing hooknostic.config.ts.",
+          "choose an output directory strictly below project.root (or the configuration directory when project.root is absent).",
         ),
       );
       continue;
     }
     const protectedPath = protectedPaths.find((path) =>
-      identities.some((outputPath) => containsPath(outputPath, path)),
+      identities.some((outputPath) => containsPath(outputPath, path) || containsPath(path, outputPath)),
     );
     if (protectedPath !== undefined) {
       diagnostics.push(
@@ -135,7 +137,7 @@ export async function validateOutputLayout(options: {
         layoutError(
           target,
           `target "${target}" output overlaps the Agent Plugin source package: ${overlappingAgentPlugin}.`,
-          "choose a dedicated output directory outside agentPlugin.root.",
+          "choose a dedicated output directory outside components.root.",
         ),
       );
       continue;

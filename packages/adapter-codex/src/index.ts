@@ -1,3 +1,4 @@
+import { projectIntegration, projectComponents, projectComponentProfiles } from "./project.js";
 
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -47,6 +48,7 @@ function resolveShimPath(): string {
 
 /** Shim entry source for the generated per-target runtime bundle. */
 export function codexShimEntrySource(options: {
+  targetId?: string;
   entryImportPath: string;
   capabilities: CapabilityLevels;
   policy: RuntimePolicy;
@@ -57,6 +59,7 @@ export function codexShimEntrySource(options: {
     `import plugin from ${JSON.stringify(options.entryImportPath)};`,
     `import { runCodexCommandShim } from "@hooknostic/adapter-codex/shim";`,
     `await runCodexCommandShim(plugin, {`,
+    `  targetId: ${JSON.stringify(options.targetId ?? "codex")},`,
     `  capabilities: ${JSON.stringify(options.capabilities)},`,
     ...(options.minimumCapabilityLevel !== undefined
       ? [`  minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
@@ -75,6 +78,10 @@ export function codexAdapter(): HarnessAdapter {
     id: "codex",
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
+    projectPaths: [".codex/hooks.json", ".codex/config.toml", ".agents/skills"],
+    projectIntegration,
+    projectComponents,
+    projectComponentProfiles,
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.
     shimExecution: "command",
@@ -85,8 +92,8 @@ export function codexAdapter(): HarnessAdapter {
       return codexCapabilityProfiles.map((p) => p.range);
     },
 
-    supportedModes() {
-      return ["local", "plugin"] as const;
+    supportedDeliveries() {
+      return ["project", "package"] as const;
     },
 
     shimEntry(options) {

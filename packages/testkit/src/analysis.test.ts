@@ -70,8 +70,8 @@ function config(
   return {
     entry: "./src/hooks.ts",
     targets: {
-      rich: { version: ">=1.0 <2", mode: "plugin", output: "./dist/rich" },
-      poor: { version: ">=1.0 <2", mode: "plugin", output: "./dist/poor" },
+      rich: { version: ">=1.0 <2", delivery: "package", output: "./dist/rich" },
+      poor: { version: ">=1.0 <2", delivery: "package", output: "./dist/poor" },
     },
     ...overrides,
   };
@@ -95,7 +95,7 @@ describe("analyzeCapabilities", () => {
           },
         }),
       ]),
-      config({ targets: { rich: { version: ">=1.0 <2", mode: "plugin", output: "./d" } } }),
+      config({ targets: { rich: { version: ">=1.0 <2", delivery: "package", output: "./d" } } }),
       registry(),
     );
     expect(analysis.ok).toBe(true);
@@ -166,7 +166,7 @@ describe("analyzeCapabilities", () => {
 
     const strict = analyzeCapabilities(
       ir(hooks()),
-      config({ targets: { poor: { version: ">=1.0 <2", mode: "plugin", output: "./d" } } }),
+      config({ targets: { poor: { version: ">=1.0 <2", delivery: "package", output: "./d" } } }),
       registry(),
     );
     expect(strict.ok).toBe(false);
@@ -182,7 +182,7 @@ describe("analyzeCapabilities", () => {
         targets: {
           poor: {
             version: ">=1.0 <2",
-            mode: "plugin",
+            delivery: "package",
             output: "./d",
             compatibility: { minimum: "approximate", onBelowMinimum: "warn" },
           },
@@ -225,7 +225,7 @@ describe("analyzeCapabilities", () => {
         },
       }),
     ];
-    const hazyTarget = { hazy: { version: ">=1.0 <2", mode: "plugin" as const, output: "./d" } };
+    const hazyTarget = { hazy: { version: ">=1.0 <2", delivery: "package" as const, output: "./d" } };
 
     const strict = analyzeCapabilities(ir(stopHook()), config({ targets: hazyTarget }), registry());
     expect(strict.ok).toBe(false);
@@ -251,7 +251,7 @@ describe("analyzeCapabilities", () => {
         targets: {
           hazy: {
             version: ">=1.0 <2",
-            mode: "plugin",
+            delivery: "package",
             output: "./d",
             compatibility: { minimum: "approximate" },
           },
@@ -295,7 +295,7 @@ describe("analyzeCapabilities", () => {
           async run() {},
         }),
       ]),
-      config({ targets: { rich: { version: ">=1.0 <2", mode: "plugin", output: "./d" } } }),
+      config({ targets: { rich: { version: ">=1.0 <2", delivery: "package", output: "./d" } } }),
       registry(),
     );
     expect(analysis.ok).toBe(true);
@@ -330,7 +330,7 @@ describe("analyzeCapabilities", () => {
   it("reports HN203 through analysis when the version range is outside adapter data", () => {
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),
-      config({ targets: { rich: { version: ">=9.0", mode: "plugin", output: "./d" } } }),
+      config({ targets: { rich: { version: ">=9.0", delivery: "package", output: "./d" } } }),
       registry(),
     );
     expect(analysis.ok).toBe(false);
@@ -353,7 +353,7 @@ describe("analyzeCapabilities", () => {
   it("reports HN501 when a configured target has no registered adapter", () => {
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),
-      config({ targets: { mystery: { version: "1", mode: "plugin", output: "./d" } } }),
+      config({ targets: { mystery: { version: "1", delivery: "package", output: "./d" } } }),
       registry(),
     );
     expect(analysis.ok).toBe(false);
@@ -362,7 +362,7 @@ describe("analyzeCapabilities", () => {
 
   it("does not treat inherited registry properties as adapters", () => {
     const targets = Object.fromEntries([
-      ["toString", { version: "1", mode: "plugin", output: "./d" }],
+      ["toString", { version: "1", delivery: "package", output: "./d" }],
     ]) as HooknosticConfig["targets"];
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),
@@ -378,14 +378,14 @@ describe("analyzeCapabilities", () => {
       localOnly: makeFakeAdapter({
         id: "localOnly",
         profiles: [richProfile],
-        supportedModes: ["local"],
+        supportedDeliveries: ["project"],
       }),
     };
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),
       config({
         targets: {
-          localOnly: { version: ">=1.0 <2", mode: "plugin", output: "./dist" },
+          localOnly: { version: ">=1.0 <2", delivery: "package", output: "./dist" },
         },
       }),
       adapters,

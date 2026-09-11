@@ -59,3 +59,5 @@ your TypeScript hooks  ──▶  hooknostic check   "will this work on every ta
 Each output directory is self-contained and independently distributable. Installing
 them into a harness is a deliberate manual step ([why?](installing-artifacts.md)) —
 Hooknostic never touches an agent's trust or configuration state.
+
+[Repository-local integration](project-integration.md) — source configuration, sync, ownership, verification, and recovery.

@@ -32,7 +32,7 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
 
   if (options.json) {
     options.io.stdout(JSON.stringify(result.report, null, 2));
-    return result.ok ? 0 : 1;
+    return result.ok ? 0 : 2;
   }
 
   if (result.report.diagnostics.length > 0) {
@@ -49,9 +49,9 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
       options.io.stdout(`         ${artifact}`);
     }
   }
-  if (result.report.agentPlugin) {
+  if (result.report.components) {
     options.io.stdout(
-      `\nAgent Plugin ${result.report.agentPlugin.root} → ${result.report.agentPlugin.targets.join(", ")}`,
+      `\nAgent Plugin ${result.report.components.root} → ${result.report.components.targets.join(", ")}`,
     );
   }
   options.io.stdout(
@@ -59,5 +59,5 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
       ? `\nbuild succeeded${result.reportPath ? `; report written to ${result.reportPath}` : ""}`
       : "\nbuild failed: no artifacts were committed.",
   );
-  return result.ok ? 0 : 1;
+  return result.ok ? 0 : 2;
 }

@@ -1,0 +1,6 @@
+{
+  "mutation": "Bypass repository discovery, ownership validation, and selected-server forwarding",
+  "command": "pnpm exec vitest run packages/core/src/project-mcp-bootstrap.test.ts",
+  "exitCode": 1,
+  "failedTests": 6
+}

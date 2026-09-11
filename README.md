@@ -168,3 +168,11 @@ vulnerabilities privately rather than in a public issue —
 ## License
 
 [Apache License 2.0](LICENSE).
+
+## Repository-local integration
+
+Use `hooknostic init --local`, author your portable sources, then run
+`hooknostic sync` and `hooknostic verify`. `build` still writes only artifacts;
+`sync` also maintains project discovery files and deterministic ownership records.
+See the [local integration guide](docs/project-integration.md) and
+[synthetic example](examples/local-project/README.md).

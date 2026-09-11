@@ -87,7 +87,7 @@ interface CodexNativeManifest {
  * portable `headers` key is ignored for the same reason; `http_headers` is what
  * Codex reads, and through it a literal header value is preserved.
  */
-function translateMcp(source: AgentPluginPackage): {
+export function translateMcp(source: Pick<AgentPluginPackage, "mcp">): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
   launcherServers: McpLauncherServer[];
   omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
@@ -350,11 +350,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // manifest has no key for and an installed plugin would never run. Without
     // this the build reports success and ships a plugin whose skills and MCP
     // work and whose hooks silently do not.
-    if (context.target.mode !== "plugin") {
+    if (context.target.delivery !== "package") {
       issues.push({
         severity: "error",
         scope: "projection",
-        message: `codex target ${JSON.stringify(context.target.id)} is projected into an Agent Plugin, which requires mode: "plugin"; mode ${JSON.stringify(context.target.mode)} generates repository-level hooks the plugin manifest cannot reference.`,
+        message: `codex target ${JSON.stringify(context.target.id)} is projected into an Agent Plugin, which requires delivery: "package"; mode ${JSON.stringify(context.target.delivery)} generates repository-level hooks the plugin manifest cannot reference.`,
       });
     }
 

@@ -65,8 +65,8 @@ interface OpenCodeRemoteServer {
 
 type OpenCodeServer = OpenCodeLocalServer | OpenCodeRemoteServer;
 
-const RUNTIME_PLUGIN_ROOT = "__HOOKNOSTIC_PLUGIN_ROOT__";
-const RUNTIME_LAUNCHER = "__HOOKNOSTIC_LAUNCHER__";
+export const RUNTIME_PLUGIN_ROOT = "__HOOKNOSTIC_PLUGIN_ROOT__";
+export const RUNTIME_LAUNCHER = "__HOOKNOSTIC_LAUNCHER__";
 
 /**
  * Translate portable MCP servers into OpenCode's shape.
@@ -84,7 +84,7 @@ const RUNTIME_LAUNCHER = "__HOOKNOSTIC_LAUNCHER__";
  * strip PATH -- which is how `command[0]` resolves. The launcher applies the
  * declared environment itself, on top of its own.
  */
-function translateMcp(source: AgentPluginPackage): {
+export function translateMcp(source: Pick<AgentPluginPackage, "mcp">): {
   servers: Record<string, OpenCodeServer>;
   launcherServers: McpLauncherServer[];
   omitted: { name: string; reason: string }[];

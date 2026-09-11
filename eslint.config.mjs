@@ -5,6 +5,7 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "examples/local-project/.hooknostic/artifacts/**",
       "**/node_modules/**",
       "**/*.snap.*",
       "fixtures/**",

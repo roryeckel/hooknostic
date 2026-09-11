@@ -49,10 +49,12 @@ export const DEFAULT_RUNTIME: Required<RuntimePolicy> = {
 };
 
 export interface TargetConfig {
+  /** Adapter id; defaults to the target name. */
+  adapter?: string;
   /** Requested harness version range (semver range). Builds use this, never the locally installed version. */
   version: string;
-  /** Artifact mode; adapters define which modes they support. */
-  mode: "plugin" | "local";
+  /** Delivery scope; native formats are adapter-owned. */
+  delivery: "package" | "project";
   /** Output directory for this target's self-contained artifact. */
   output: string;
   compatibility?: CompatibilityPolicy;
@@ -80,15 +82,13 @@ export interface AgentPluginRuntimePackageConfig {
   allowInstallScripts?: string[];
 }
 
-export interface AgentPluginConfig<TTarget extends string = string> {
-  /** Root of an Agent Plugins package to project into native target packages. */
-  root: string;
+interface ComponentPolicy<TTarget extends string> {
   /**
    * Configured targets that must receive a complete native package projection.
    * Every name must be a key of `targets`, and the adapter must provide an
    * Agent Plugin projector; a target without one is a configuration error.
    */
-  targets: [TTarget, ...TTarget[]];
+  targets?: [TTarget, ...TTarget[]];
   /**
    * POSIX-style package-relative globs omitted from projected packages, in
    * addition to the built-in exclusions: `.git`, `node_modules`, `.env`,
@@ -111,9 +111,16 @@ export interface AgentPluginConfig<TTarget extends string = string> {
   onInvalid?: "error" | "warn";
 }
 
+export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<TTarget> & (
+  | { root: string; skills?: never; mcp?: never }
+  | { root?: never; skills: string[]; mcp?: string }
+  | { root?: never; skills?: string[]; mcp: string }
+);
+
 export type TargetsConfig = Record<string, TargetConfig>;
 
 interface HooknosticConfigBase<TTargets extends TargetsConfig> {
+  project?: { root: string };
   compatibility?: CompatibilityPolicy;
   runtime?: RuntimePolicy;
   /** The allowed target set. CLI flags may narrow, never extend, this set. */
@@ -122,7 +129,7 @@ interface HooknosticConfigBase<TTargets extends TargetsConfig> {
 
 /**
  * Hooknostic project configuration. At least one of `entry` (hook source) or
- * `agentPlugin` (a package to project) is required; `agentPlugin.targets` may
+ * `components` (a package to project) is required; `components.targets` may
  * only name keys of `targets`. `defineConfig` infers the target names so both
  * rules are checked by the editor, not only by the schema at build time.
  */
@@ -132,12 +139,12 @@ export type HooknosticConfig<TTargets extends TargetsConfig = TargetsConfig> =
       | {
           /** Path to the hook source entry. */
           entry: string;
-          agentPlugin?: AgentPluginConfig<keyof TTargets & string>;
+          components?: ComponentConfig<keyof TTargets & string>;
         }
       | {
           /** Agent Plugin-only builds omit the hook entry. */
           entry?: undefined;
-          agentPlugin: AgentPluginConfig<keyof TTargets & string>;
+          components: ComponentConfig<keyof TTargets & string>;
         }
     );
 

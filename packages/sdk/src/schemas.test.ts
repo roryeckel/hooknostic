@@ -182,7 +182,7 @@ describe("canonical schemas", () => {
       entry: "./src/hooks.ts",
       compatibility: { minimum: "emulated", onBelowMinimum: "error" },
       targets: {
-        claude: { version: ">=2.1 <3", mode: "plugin", output: "./dist/claude" },
+        claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
       },
     };
     expect(hooknosticConfigSchema.parse(config).entry).toBe("./src/hooks.ts");
@@ -202,7 +202,7 @@ describe("canonical schemas", () => {
       entry: "./src/hooks.ts",
       runtime: { timeoutMs: 2_147_483_648 },
       targets: {
-        opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" },
+        opencode: { version: ">=1.18 <2", delivery: "project", output: "./dist/opencode" },
       },
     };
 
@@ -215,40 +215,40 @@ describe("canonical schemas", () => {
     ).toBe(true);
   });
 
-  it("accepts only error/warn for agentPlugin.onInvalid", () => {
+  it("accepts only error/warn for components.onInvalid", () => {
     const base = {
-      agentPlugin: { root: ".", targets: ["claude"] },
-      targets: { claude: { version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" } },
+      components: { root: ".", targets: ["claude"] },
+      targets: { claude: { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/claude" } },
     };
     for (const onInvalid of ["error", "warn"]) {
       expect(
-        hooknosticConfigSchema.safeParse({ ...base, agentPlugin: { ...base.agentPlugin, onInvalid } }).success,
+        hooknosticConfigSchema.safeParse({ ...base, components: { ...base.components, onInvalid } }).success,
       ).toBe(true);
     }
     expect(
-      hooknosticConfigSchema.safeParse({ ...base, agentPlugin: { ...base.agentPlugin, onInvalid: "ignore" } }).success,
+      hooknosticConfigSchema.safeParse({ ...base, components: { ...base.components, onInvalid: "ignore" } }).success,
     ).toBe(false);
   });
 
   it("validates hookless Agent Plugin projection target invariants", () => {
-    const target = { version: ">=2.1 <3", mode: "plugin" as const, output: "./dist/claude" };
+    const target = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/claude" };
     expect(
       hooknosticConfigSchema.safeParse({
-        agentPlugin: { root: ".", targets: ["claude"] },
+        components: { root: ".", targets: ["claude"] },
         targets: { claude: target },
       }).success,
     ).toBe(true);
     expect(hooknosticConfigSchema.safeParse({ targets: { claude: target } }).success).toBe(false);
     expect(
       hooknosticConfigSchema.safeParse({
-        agentPlugin: { root: ".", targets: ["missing"] },
+        components: { root: ".", targets: ["missing"] },
         targets: { claude: target },
       }).success,
     ).toBe(false);
     expect(
       hooknosticConfigSchema.safeParse({
-        agentPlugin: { root: ".", targets: ["claude"] },
-        targets: { claude: target, codex: { ...target, mode: "local" as const } },
+        components: { root: ".", targets: ["claude"] },
+        targets: { claude: target, codex: { ...target, delivery: "project" as const } },
       }).success,
     ).toBe(false);
   });

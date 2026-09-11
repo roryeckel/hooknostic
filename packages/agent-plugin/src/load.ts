@@ -286,7 +286,6 @@ function validateServer(
 
 function loadMcp(
   root: string,
-  manifest: AgentPluginManifest,
   inventory: InventoryResult,
   issues: AgentPluginIssue[],
 ): AgentPluginMcpConfig | undefined {
@@ -314,7 +313,6 @@ function loadMcp(
     !object(value) ||
     Object.keys(value).some((key) => key !== "$schema" && key !== "mcpServers") ||
     value["$schema"] !== AGENT_PLUGIN_MCP_SCHEMA ||
-    manifest.$schema !== AGENT_PLUGIN_MANIFEST_SCHEMA ||
     !object(value["mcpServers"])
   ) {
     issue(issues, "warn", "mcp", "mcp.json has an invalid top-level document and MCP was disabled.", "mcp.json");
@@ -517,6 +515,7 @@ function digest(files: readonly AgentPluginFile[]): string {
  */
 export const AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES = [
   ".git",
+  ".hooknostic",
   "node_modules",
   ".env",
   ".env.*",
@@ -582,7 +581,7 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
   if (manifest === undefined) return { issues };
 
   const skills = loadSkills(inventoried, issues);
-  const mcp = loadMcp(root, manifest, inventoried, issues);
+  const mcp = loadMcp(root, inventoried, issues);
   const files = inventoried.files;
   const directories = [...inventoried.directories].filter((path) => path !== "").sort();
   const source: AgentPluginPackage = {
@@ -596,4 +595,48 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
     contentDigest: digest(files),
   };
   return { package: source, issues };
+}
+
+
+export interface ProjectSkill {
+  name: string;
+  source: string;
+  files: AgentPluginFile[];
+}
+export interface ProjectComponents {
+  skills: ProjectSkill[];
+  mcp?: { root: string; config: AgentPluginMcpConfig };
+}
+export function packageComponents(source: AgentPluginPackage): ProjectComponents {
+  return {
+    skills: source.skills.map(skill => ({ name: skill.name, source: resolve(source.root, skill.directory), files: source.files.filter(f => f.path.startsWith(skill.directory + "/")).map(f => ({ ...f, path: f.path.slice(skill.directory.length + 1) })) })),
+    ...(source.mcp === undefined ? {} : { mcp: { root: source.root, config: source.mcp } }),
+  };
+}
+export async function loadProjectComponents(options: { skills?: string[]; mcp?: string }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
+  const issues: AgentPluginIssue[] = [];
+  const source: ProjectComponents = { skills: [] };
+  const names = new Set<string>();
+  for (const directory of options.skills ?? []) {
+    const data = await inventory(resolve(directory), DEFAULT_EXCLUDES, issues);
+    if (!data) continue;
+    const nested: InventoryResult = {
+      files: data.files.map(file => ({ ...file, path: "skills/" + file.path })),
+      directories: new Set(["skills", ...[...data.directories].filter(Boolean).map(path => "skills/" + path)]),
+    };
+    for (const skill of loadSkills(nested, issues)) {
+      if (names.has(skill.name)) { issue(issues, "error", "skill", `duplicate skill name ${skill.name}`); continue; }
+      names.add(skill.name);
+      source.skills.push({ name: skill.name, source: resolve(directory, skill.directory.slice(7)), files: nested.files.filter(f => f.path.startsWith(skill.directory + "/")).map(f => ({ ...f, path: f.path.slice(skill.directory.length + 1) })) });
+    }
+  }
+  if (options.mcp) {
+    const path = await realpath(resolve(options.mcp));
+    if (DEFAULT_EXCLUDES.some(pattern => minimatch(path.replaceAll("\\", "/"), pattern, MATCH))) throw new Error("MCP source is an excluded secret/configuration file");
+    const file = { path: "mcp.json", contents: await readFile(path), mode: 0o644 };
+    const root = resolve(path, "..");
+    const config = loadMcp(root, { files: [file], directories: new Set() }, issues);
+    if (config) source.mcp = { root, config };
+  }
+  return { source, issues };
 }

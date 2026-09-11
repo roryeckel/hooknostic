@@ -122,8 +122,9 @@ export const runtimePolicySchema = z
 
 export const targetConfigSchema = z
   .object({
+    adapter: z.string().min(1).optional(),
     version: z.string().min(1),
-    mode: z.enum(["plugin", "local"]),
+    delivery: z.enum(["package", "project"]),
     output: z.string().min(1),
     compatibility: compatibilityPolicySchema.optional(),
   })
@@ -131,14 +132,17 @@ export const targetConfigSchema = z
 
 export const hooknosticConfigSchema = z
   .object({
+    project: z.object({ root: z.string().min(1) }).strict().optional(),
     entry: z.string().min(1).optional(),
     compatibility: compatibilityPolicySchema.optional(),
     runtime: runtimePolicySchema.optional(),
     targets: z.record(z.string().min(1), targetConfigSchema),
-    agentPlugin: z
+    components: z
       .object({
-        root: z.string().min(1),
-        targets: z.array(z.string().min(1)).min(1),
+        root: z.string().min(1).optional(),
+        skills: z.array(z.string().min(1)).optional(),
+        mcp: z.string().min(1).optional(),
+        targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
         executableFiles: z.array(z.string().min(1)).optional(),
         runtimePackage: z
@@ -157,20 +161,36 @@ export const hooknosticConfigSchema = z
   })
   .strict()
   .superRefine((config, context) => {
-    if (config.entry === undefined && config.agentPlugin === undefined) {
+    if (config.entry === undefined && config.components === undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "at least one of entry or agentPlugin is required",
+        message: "at least one of entry or components is required",
       });
     }
-    if (config.agentPlugin) {
+    const projectAdapters = new Set<string>();
+    for (const [name, target] of Object.entries(config.targets)) {
+      if (target.delivery !== "project") continue;
+      const adapter = target.adapter ?? name;
+      if (projectAdapters.has(adapter)) context.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
+      projectAdapters.add(adapter);
+    }
+    if (config.components && !config.project && Object.values(config.targets).some(target => target.delivery === "project")) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "project component delivery requires project.root" });
+    }
+    if (config.components) {
+      if (config.components.root !== undefined && (config.components.skills !== undefined || config.components.mcp !== undefined)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "components.root is mutually exclusive with direct skills/mcp sources" });
+      }
+      if (config.components.root === undefined && config.components.skills === undefined && config.components.mcp === undefined) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+      }
       const configured = new Set(Object.keys(config.targets));
       const seen = new Set<string>();
-      for (const target of config.agentPlugin.targets) {
+      for (const target of config.components.targets ?? Object.keys(config.targets)) {
         if (seen.has(target)) {
           context.addIssue({
             code: z.ZodIssueCode.custom,
-            path: ["agentPlugin", "targets"],
+            path: ["components", "targets"],
             message: `duplicate Agent Plugin projection target ${JSON.stringify(target)}`,
           });
         }
@@ -178,18 +198,18 @@ export const hooknosticConfigSchema = z
         if (!configured.has(target)) {
           context.addIssue({
             code: z.ZodIssueCode.custom,
-            path: ["agentPlugin", "targets"],
+            path: ["components", "targets"],
             message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`,
           });
         }
       }
       if (config.entry === undefined) {
-        const projected = new Set(config.agentPlugin.targets);
+        const projected = new Set(config.components.targets ?? Object.keys(config.targets));
         for (const target of configured) {
           if (!projected.has(target)) {
             context.addIssue({
               code: z.ZodIssueCode.custom,
-              path: ["agentPlugin", "targets"],
+              path: ["components", "targets"],
               message: `hookless builds must project configured target ${JSON.stringify(target)}`,
             });
           }

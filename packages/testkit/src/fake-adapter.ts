@@ -18,7 +18,7 @@ export interface FakeAdapterOptions {
   id: string;
   adapterVersion?: string;
   profiles: CapabilityProfile[];
-  supportedModes?: readonly TargetSpec["mode"][];
+  supportedDeliveries?: readonly TargetSpec["delivery"][];
   /** Override native decode for runtime tests; defaults to identity-ish. */
   decode?(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
   /**
@@ -71,8 +71,8 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
       return options.profiles.map((p) => p.range);
     },
 
-    supportedModes() {
-      return options.supportedModes ?? (["plugin", "local"] as const);
+    supportedDeliveries() {
+      return options.supportedDeliveries ?? (["package", "project"] as const);
     },
 
     capabilities(target: TargetSpec) {

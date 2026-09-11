@@ -11,3 +11,6 @@ export type { InspectCommandOptions } from "./inspect.js";
 export { defaultAdapterRegistry } from "./registry.js";
 /** Used by generated support documentation and programmatic inspection clients. */
 export { resolveAgentPluginProjection } from "@hooknostic/core";
+
+export { buildProject, runProject } from "@hooknostic/core";
+export type { BuildOptions, BuildResult, ProjectCommandResult } from "@hooknostic/core";

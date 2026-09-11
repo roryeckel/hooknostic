@@ -7,6 +7,8 @@ allowBuilds:
 
 # Shared external requirements. Intentional differences have named catalogs.
 catalog:
+  "toml-eslint-parser": "^1.0.3"
+  "jsonc-parser": "^3.3.1"
   "@eslint/js": "^9.17.0"
   "@modelcontextprotocol/server": "^2.0.0"
   "@types/node": "^22.10.0"
