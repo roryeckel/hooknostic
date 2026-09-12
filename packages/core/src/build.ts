@@ -597,6 +597,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       const target = report.targets[id]!;
       const hookArtifacts: GeneratedArtifact[] = [];
       let phase = "generation";
+      const targetDiagnosticStart = diagnostics.length;
+      const hasTargetFatal = () => hasFatal(diagnostics.slice(targetDiagnosticStart));
       try {
         if (entryPath !== undefined) {
           if (!adapter.shimEntry) throw new Error(`adapter ${JSON.stringify(adapter.id)} does not provide a shim entry`);
@@ -722,7 +724,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 message: `adapter ${JSON.stringify(adapter.id)} cannot represent project MCP startup timeouts`,
               });
             }
-            if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
+            if (hasTargetFatal()) { target.status = "failed"; continue; }
             const selectedSource = selected.source;
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [];
@@ -764,7 +766,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             const namespace = adapter.agentPluginProjector?.namespace;
             count("agent-plugin.client-extension.files", components && namespace ? components.files.filter(file => file.path.startsWith(namespace + "/")).length + (components.manifest.extensions?.[namespace] ? 1 : 0) : 0);
             target.project = { components: counts, omissions, guidance: [] };
-            if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
+            if (hasTargetFatal()) { target.status = "failed"; continue; }
             const projectCwdServers = [...new Set([
               ...selected.projectCwdServers,
               ...Object.entries(selectedSource.mcp?.config.mcpServers ?? {}).flatMap(([name, server]) =>
@@ -794,7 +796,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               }
             }
             target.project = { components: counts, omissions, guidance: projected.guidance };
-            if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
+            if (hasTargetFatal()) { target.status = "failed"; continue; }
             integration.files.push(...projected.files);
             integration.entries.push(...projected.entries);
             integration.guidance.push(...projected.guidance);

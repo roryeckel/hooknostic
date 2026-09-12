@@ -89,7 +89,7 @@ export async function loadConfig(
     const raw = evaluated as Record<string, unknown>;
     const oldTargets = raw["targets"] && typeof raw["targets"] === "object" ? Object.values(raw["targets"]) : [];
     if (Object.hasOwn(raw, "agentPlugin") || oldTargets.some(t => t && typeof t === "object" && Object.hasOwn(t, "mode"))) {
-      return { diagnostics: [{ code: "HN501", severity: "error", message: "obsolete configuration: rename agentPlugin to components and replace target mode with delivery (local → project, plugin → package)", location: { file: configPath } }] };
+      return { diagnostics: [{ code: "HN501", severity: "error", message: 'obsolete configuration: rename agentPlugin to components and replace target mode with delivery; targets listed in agentPlugin.targets should use delivery: "package" (including OpenCode local-layout projections), while other targets map local to "project" and plugin to "package"', location: { file: configPath } }] };
     }
   }
   const parsed = hooknosticConfigSchema.safeParse(evaluated);

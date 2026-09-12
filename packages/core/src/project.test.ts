@@ -253,6 +253,31 @@ describe("complete project integration", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ target: "codex", component: "agent-plugin.mcp.sse", severity: "warn" }));
     expect(await readFile(join(root, ".opencode/plugins/hooknostic-components.js"), "utf8")).toContain("127.0.0.1:1/sse");
   });
+  it("keeps later project target verdicts independent after an earlier target fails", async () => {
+    const codex = registry.codex!;
+    const opencode = registry.opencode!;
+    const { root, options } = await fixture({
+      components: { mcp: "./mcp.json" },
+      targets: {
+        codex: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/codex" },
+        opencode: { adapter: "opencode", version: opencode.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/opencode" },
+      },
+    });
+    await writeFile(join(root, "mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { sample: { type: "sse", url: "http://127.0.0.1:1/sse" } },
+    }));
+
+    const result = await buildProject({ ...options, dryRun: true });
+
+    expect(result.ok).toBe(false);
+    expect(result.report.targets.codex?.status).toBe("failed");
+    expect(result.report.targets.opencode?.status).toBe("success");
+    expect(result.report.targets.opencode?.project?.components["agent-plugin.mcp.sse"]).toEqual({
+      support: "exact", discovered: 1, emitted: 1, skipped: 0,
+    });
+    await expect(readFile(join(root, ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic-components.js"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("resolves a nested configuration relative to its declared project root", async () => {
     const { root, config, options } = await fixture();
     await mkdir(join(root, "configuration"));
