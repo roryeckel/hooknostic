@@ -28,6 +28,10 @@ describe("project reconciliation", () => {
     expect(text.indexOf('"custom"')).toBeLessThan(text.indexOf('"command"'));
     expect((await reconcileProject(root, config, integration())).changes).toEqual([]);
   });
+  it("rejects duplicate JSONC properties before editing", async () => {
+    await writeFile(join(root, "settings.json"), '{"hooks":{"Stop":[]},"hooks":{}}');
+    await expect(reconcileProject(root, config, integration())).rejects.toThrow("duplicate JSONC property");
+  });
   it("repairs a missing registration alongside recorded unrelated entries", async () => {
     await writeFile(join(root, "settings.json"), '{"hooks":{"Stop":[{"custom":true}]}}');
     await sync();

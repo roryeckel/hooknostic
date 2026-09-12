@@ -97,6 +97,7 @@ Project delivery validation records:
 | --- | --- | --- | --- | --- |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/codex-project-mcp` | Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
+| 0.153.2 | 2026-09-12 | doc-derived | `.capture/codex-project-mcp` | Official Codex MCP documentation defines bearer_token_env_var as the environment variable whose token is sent in the Authorization header; project startup behavior for this field was not live-probed. |
 
 Project support is independent of package projection.
 

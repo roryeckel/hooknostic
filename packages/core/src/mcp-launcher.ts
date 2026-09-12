@@ -139,7 +139,7 @@ function inheritedPluginData() {
 
 const inherited = inheritedPluginData();
 const pluginData = ${dataOffset === undefined ? 'inherited ?? join(homedir(), ".hooknostic", "plugin-data", PLUGIN_NAME)' : `resolve(here, ${JSON.stringify(dataOffset)})`};
-if (inherited === undefined) {
+if (${dataOffset === undefined ? "inherited === undefined" : "true"}) {
   try {
     mkdirSync(pluginData, { recursive: true });
   } catch (error) {

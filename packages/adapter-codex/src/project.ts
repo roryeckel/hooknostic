@@ -78,6 +78,10 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
   },
   source: {
     date: "2026-09-11",
-    validatedOn: [{ version: "0.153.2", date: "2026-09-11", method: "live-probe", artifact: ".capture/codex-project-mcp", what: "Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded." }, { version: "0.153.2", date: "2026-09-11", method: "live-probe", artifact: ".capture/project-integration", what: "Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout." }],
+    validatedOn: [
+      { version: "0.153.2", date: "2026-09-11", method: "live-probe", artifact: ".capture/codex-project-mcp", what: "Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded." },
+      { version: "0.153.2", date: "2026-09-11", method: "live-probe", artifact: ".capture/project-integration", what: "Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout." },
+      { version: "0.153.2", date: "2026-09-12", method: "doc-derived", artifact: ".capture/codex-project-mcp", what: "Official Codex MCP documentation defines bearer_token_env_var as the environment variable whose token is sent in the Authorization header; project startup behavior for this field was not live-probed." },
+    ],
   },
 }];

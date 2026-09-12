@@ -61,10 +61,14 @@ function jsonNodeValue(node: JsonNode): unknown {
   if (node.type === "array") return (node.children ?? []).map(jsonNodeValue);
   if (node.type === "object") {
     const value = dataObject();
+    const seen = new Set<string>();
     for (const property of node.children ?? []) {
       const [key, child] = property.children ?? [];
       if (key?.type !== "string" || child === undefined) throw new Error("invalid JSONC property node");
-      define(value, String(key.value), jsonNodeValue(child));
+      const name = String(key.value);
+      if (seen.has(name)) throw new Error(`duplicate JSONC property ${JSON.stringify(name)}`);
+      seen.add(name);
+      define(value, name, jsonNodeValue(child));
     }
     return value;
   }

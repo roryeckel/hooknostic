@@ -53,7 +53,7 @@ interface Layout {
  */
 async function layout(
   servers: McpLauncherServer[],
-  options: { pluginName?: string; version?: string; document?: string; environmentReferences?: boolean } = {},
+  options: { pluginName?: string; version?: string; document?: string; environmentReferences?: boolean; dataOffset?: string } = {},
 ): Promise<Layout> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-launcher-"));
   dirs.push(dir);
@@ -68,6 +68,7 @@ async function layout(
     await bundleMcpLauncher({
       frontEnd: "self-resolving",
       rootOffset: "..",
+      ...(options.dataOffset === undefined ? {} : { dataOffset: options.dataOffset }),
       pluginName: options.pluginName ?? "portable-tools",
       ...(options.environmentReferences === undefined ? {} : { environmentReferences: options.environmentReferences }),
     }),
@@ -119,6 +120,17 @@ describe("generated MCP launcher", () => {
     const result = launch(tree, 0);
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout).wrote).toBe("ok");
+  });
+
+  it("creates explicit project PLUGIN_DATA when matching plugin variables are inherited", async () => {
+    const tree = await layout([probeServer()], { dataOffset: "../project-data" });
+    const inheritedData = join(tree.homeDir, "inherited-data");
+    await mkdir(inheritedData);
+    const result = launch(tree, 0, { PLUGIN_ROOT: tree.root, PLUGIN_DATA: inheritedData });
+    expect(result.status, result.stderr).toBe(0);
+    const observed = JSON.parse(result.stdout);
+    expect(observed.pluginData).toBe(join(tree.root, "project-data"));
+    expect(observed.wrote).toBe("ok");
   });
 
   it("keeps PLUGIN_DATA stable across a version-scoped reinstall", async () => {

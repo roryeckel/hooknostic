@@ -114,6 +114,10 @@ same-name cross-layer merging remains an activation prerequisite to review;
 Hooknostic owns project entries and does not edit personal configuration.
 Streamable HTTP header text is preserved through the existing native translator;
 the portable schema does not add a new environment-header declaration syntax.
+The `bearer_token_env_var` mapping is **doc-derived**, not live-probed: the
+official documentation defines it as the environment variable whose token is
+sent in the `Authorization` header. This capture did not configure a nonempty
+bearer variable or observe that header.
 
 Official documentation independently describes trusted project MCP configuration:
 [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) and
