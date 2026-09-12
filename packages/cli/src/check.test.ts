@@ -112,6 +112,32 @@ async function fixtureProject(): Promise<string> {
 }
 
 describe("hooknostic check", () => {
+  it("reports an excluded direct MCP source as HN503", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-excluded-mcp-"));
+    tempDirs.push(dir);
+    await writeFile(join(dir, ".env"), "{}");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        project: { root: "." },
+        components: { mcp: "./.env" },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "project", output: ".hooknostic/artifacts/claude" } },
+      };`,
+    );
+    const capture = captureIO();
+
+    expect(await runCheck({
+      config: join(dir, "hooknostic.config.ts"),
+      json: true,
+      registry: defaultAdapterRegistry(),
+      io: capture.io,
+    })).toBe(2);
+
+    expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN503", severity: "error" }),
+    );
+  });
+
   it("fails overall when one target lacks a required capability, passes when narrowed", async () => {
     const dir = await fixtureProject();
 

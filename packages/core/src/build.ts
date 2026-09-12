@@ -828,6 +828,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             integration.guidance.push(...projected.guidance);
             integration.absent = [...integration.absent ?? [], ...projected.absent ?? []];
             integration.relinquishFiles = [...integration.relinquishFiles ?? [], ...projected.relinquishFiles ?? []];
+            integration.relinquishPrefixes = [...integration.relinquishPrefixes ?? [], ...projected.relinquishPrefixes ?? []];
           }
           for (const destination of [...integration.files, ...integration.entries]) await projectPath(root, destination.path);
           for (const file of integration.files) {

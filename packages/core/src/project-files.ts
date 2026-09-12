@@ -16,6 +16,8 @@ export interface ProjectIntegration {
   omissions?: ProjectComponentOmission[];
   /** Preserve these files while removing any prior whole-file ownership. */
   relinquishFiles?: string[];
+  /** Preserve every previously owned whole file below these directories while removing ownership. */
+  relinquishPrefixes?: string[];
 }
 interface Owned { format?: "jsonc" | "toml"; path: string; hash: string; key?: string[]; kind?: "array" | "property"; context?: string[]; mode?: number }
 interface Manifest { schemaVersion: 1; config: string; owned: Owned[] }
@@ -36,6 +38,15 @@ const valueHash = (value: unknown): string => fileHash(canonical(value));
 const identity = (entry: Pick<Owned, "path" | "key">): string => JSON.stringify([entry.path, entry.key ?? null]);
 function validatePath(path: string): void {
   if (typeof path !== "string" || isAbsolute(path) || (/[:"<>|?*]/.test(path) || [...path].some(character => character.charCodeAt(0) < 32)) || path.includes("\\") || path.split("/").some(p => !p || p === "." || p === ".." || p.toLowerCase() === ".git" || /[. ]$/.test(p) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(p) || /^\.env(?:\.|$)/i.test(p))) throw new Error(`unsafe project path: ${path}`);
+}
+function validateDestination(path: string): void {
+  validatePath(path);
+  if ([STATE, JOURNAL, LOCK, RECOVERY_LOCK].includes(path.toLowerCase()) || /^\.hooknostic\/(?:data|staging)(?:\/|$)/i.test(path)) throw new Error(`reserved integration destination: ${path}`);
+}
+function pathAtOrBelow(path: string, prefix: string): boolean {
+  const candidate = path.toLowerCase();
+  const directory = prefix.toLowerCase();
+  return candidate === directory || candidate.startsWith(`${directory}/`);
 }
 export async function projectPath(root: string, path: string): Promise<string> {
   validatePath(path);
@@ -153,13 +164,18 @@ export async function reconcileProject(root: string, config: string, integration
   const previous = new Map(prior.owned.map(entry => [identity(entry), entry]));
   const desired = new Map<string, ProjectFile | ProjectEntry>();
   const relinquished = new Set(integration.relinquishFiles ?? []);
-  for (const path of relinquished) {
-    validatePath(path);
-    if ([STATE, JOURNAL, LOCK, RECOVERY_LOCK].includes(path.toLowerCase()) || /^\.hooknostic\/(?:data|staging)(?:\/|$)/i.test(path)) throw new Error(`reserved integration destination: ${path}`);
+  const relinquishPrefixes = [...new Set(integration.relinquishPrefixes ?? [])];
+  for (const path of relinquished) validateDestination(path);
+  for (const prefix of relinquishPrefixes) {
+    validateDestination(prefix);
+    for (const entry of prior.owned) {
+      if (!pathAtOrBelow(entry.path, prefix)) continue;
+      if (entry.key !== undefined) throw new Error(`cannot relinquish structural ownership below prefix: ${prefix}`);
+      relinquished.add(entry.path);
+    }
   }
   for (const entry of [...integration.files, ...integration.entries]) {
-    validatePath(entry.path);
-    if ([STATE, JOURNAL, LOCK, RECOVERY_LOCK].includes(entry.path.toLowerCase()) || /^\.hooknostic\/(?:data|staging)(?:\/|$)/i.test(entry.path)) throw new Error(`reserved integration destination: ${entry.path}`);
+    validateDestination(entry.path);
     if ("key" in entry && (!entry.key.length || entry.key.some(k => typeof k !== "string"))) throw new Error("unsafe structural key");
     const id = identity(entry);
     const sameDestination = desired.get(id);
@@ -170,7 +186,10 @@ export async function reconcileProject(root: string, config: string, integration
     desired.set(id, entry);
   }
   for (const path of relinquished) {
-    if ([...desired.values()].some(entry => entry.path === path)) throw new Error(`cannot generate and relinquish the same project path: ${path}`);
+    if ([...desired.values()].some(entry => entry.path.toLowerCase() === path.toLowerCase())) throw new Error(`cannot generate and relinquish the same project path: ${path}`);
+  }
+  for (const prefix of relinquishPrefixes) {
+    if ([...desired.values()].some(entry => pathAtOrBelow(entry.path, prefix))) throw new Error(`cannot generate below relinquished project prefix: ${prefix}`);
   }
   const paths = new Set([...prior.owned.map(e => e.path), ...[...desired.values()].map(e => e.path), ...relinquished]);
   const pathNames = [...paths];

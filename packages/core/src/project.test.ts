@@ -89,21 +89,25 @@ describe("complete project integration", () => {
     });
     await mkdir(join(root, "skills/sample"), { recursive: true });
     await writeFile(join(root, "skills/sample/SKILL.md"), "---\nname: sample\ndescription: Synthetic skill\n---\nOriginal\n");
+    await writeFile(join(root, "skills/sample/local.txt"), "native resource\n");
     expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
     const native = join(root, ".agents/skills/sample/SKILL.md");
+    const resource = join(root, ".agents/skills/sample/local.txt");
     const attributes = join(root, ".agents/skills/.gitattributes");
     await writeFile(native, "---\nname: sample\ndescription: Native source\n---\nAuthored\n");
     await writeFile(attributes, "# Native policy\n** -text\n");
     await writeFile(options.configPath, `export default ${JSON.stringify({
       ...config,
-      components: { skills: ["./.agents/skills"] },
+      components: { skills: ["./.agents/skills"], exclude: ["sample/local.txt"] },
     })};`);
 
     expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
     expect(await readFile(native, "utf8")).toContain("Authored");
+    expect(await readFile(resource, "utf8")).toBe("native resource\n");
     expect(await readFile(attributes, "utf8")).toBe("# Native policy\n** -text\n");
     const manifest = await readFile(join(root, ".hooknostic/integration.json"), "utf8");
     expect(manifest).not.toContain(".agents/skills/sample/SKILL.md");
+    expect(manifest).not.toContain(".agents/skills/sample/local.txt");
     expect(manifest).not.toContain(".agents/skills/.gitattributes");
     await writeFile(native, "---\nname: sample\ndescription: Native source\n---\nEdited\n");
     await writeFile(attributes, "# Edited native policy\n** -text\n");

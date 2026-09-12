@@ -40,6 +40,7 @@ export async function runProject(options: BuildOptions & { command: "sync" | "ve
       const native = target.integration ?? adapter.projectIntegration(target.artifacts, output, owner);
       (integration.absent ??= []).push(...native.absent ?? []);
       (integration.relinquishFiles ??= []).push(...native.relinquishFiles ?? []);
+      (integration.relinquishPrefixes ??= []).push(...native.relinquishPrefixes ?? []);
       integration.files.push(...native.files);
       integration.entries.push(...native.entries);
       integration.guidance.push(...native.guidance);

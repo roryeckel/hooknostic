@@ -34,6 +34,28 @@ describe("loadProjectComponents", () => {
     ]);
   });
 
+  it("reports an excluded direct MCP source instead of rejecting", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-excluded-"));
+    roots.push(root);
+    const path = join(root, ".env");
+    await writeFile(path, JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {},
+    }));
+
+    const loaded = await loadProjectComponents({ mcp: path, projectRoot: root });
+
+    expect(loaded.source.mcp).toBeUndefined();
+    expect(loaded.issues).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        scope: "mcp",
+        path,
+        message: expect.stringContaining("excluded secret/configuration file"),
+      }),
+    ]);
+  });
+
   it("preserves target-native frontmatter while validating portable skill fields", async () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skills-"));
     roots.push(root);

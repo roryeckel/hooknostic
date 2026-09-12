@@ -699,12 +699,13 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     let direct: { path: string; contents: Buffer } | undefined;
     try {
       const path = await realpath(requested);
-      direct = { path, contents: await readFile(path) };
+      if (DEFAULT_EXCLUDES.some(pattern => minimatch(path.replaceAll("\\", "/"), pattern, MATCH))) {
+        issue(issues, "error", "mcp", "MCP source is an excluded secret/configuration file", requested);
+      } else direct = { path, contents: await readFile(path) };
     } catch (error) {
       issue(issues, "error", "mcp", `could not load direct MCP source ${JSON.stringify(requested)}: ${error instanceof Error ? error.message : String(error)}`, requested);
     }
     if (direct) {
-      if (DEFAULT_EXCLUDES.some(pattern => minimatch(direct.path.replaceAll("\\", "/"), pattern, MATCH))) throw new Error("MCP source is an excluded secret/configuration file");
       const file = { path: "mcp.json", contents: direct.contents, mode: 0o644 };
       const root = resolve(direct.path, "..");
       const config = loadMcp(root, { files: [file], directories: new Set() }, issues, options.projectRoot);

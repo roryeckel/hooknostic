@@ -72,12 +72,36 @@ describe("project reconciliation", () => {
     await writeFile(join(root, path), "edited after relinquishment\n");
     expect((await reconcileProject(root, config, relinquished)).changes).toEqual([]);
   });
+  it("relinquishes every previously owned file below a prefix", async () => {
+    const files = [
+      { path: "skills/sample/SKILL.md", contents: "generated skill\n" },
+      { path: "skills/sample/local.txt", contents: "generated resource\n" },
+    ];
+    await sync({ files, entries: [], guidance: [] });
+    await writeFile(join(root, "skills/sample/local.txt"), "authored resource\n");
+    const relinquished = {
+      files: [], entries: [], guidance: [], relinquishPrefixes: ["skills/sample"],
+    } satisfies ProjectIntegration;
+
+    await sync(relinquished);
+
+    expect(await readFile(join(root, "skills/sample/SKILL.md"), "utf8")).toBe("generated skill\n");
+    expect(await readFile(join(root, "skills/sample/local.txt"), "utf8")).toBe("authored resource\n");
+    const manifest = await readFile(join(root, ".hooknostic/integration.json"), "utf8");
+    expect(manifest).not.toContain("skills/sample/");
+  });
   it("rejects generating and relinquishing the same path", async () => {
     await expect(reconcileProject(root, config, {
       files: [{ path: "generated/runtime.mjs", contents: "generated\n" }],
       entries: [],
       guidance: [],
       relinquishFiles: ["generated/runtime.mjs"],
+    })).rejects.toThrow("relinquish");
+    await expect(reconcileProject(root, config, {
+      files: [{ path: "skills/sample/SKILL.md", contents: "generated\n" }],
+      entries: [],
+      guidance: [],
+      relinquishPrefixes: ["skills/sample"],
     })).rejects.toThrow("relinquish");
   });
   it("refuses unowned generated files even when their bytes match", async () => {
