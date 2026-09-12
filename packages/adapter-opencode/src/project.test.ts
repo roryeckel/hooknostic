@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENT_PLUGIN_MCP_SCHEMA, type ProjectComponents } from "@hooknostic/agent-plugin";
 import { projectComponents, projectIntegration } from "./project.js";
@@ -54,6 +55,24 @@ async function moduleFor(
 }
 
 describe("OpenCode project components", () => {
+  it("imports generated project modules from URL-significant output paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-opencode-import-"));
+    roots.push(root);
+    const output = ".hooknostic/artifacts/space # percent % unicode ü";
+    const artifact = ".opencode/plugins/hooknostic.js";
+    const integration = projectIntegration([{ path: artifact, contents: "export default 1;\n" }], output);
+    const wrapper = integration.files.find(file => file.path === artifact)!;
+    const generated = join(root, output, artifact);
+    const wrapperPath = join(root, artifact);
+    await mkdir(join(generated, ".."), { recursive: true });
+    await mkdir(join(wrapperPath, ".."), { recursive: true });
+    await writeFile(generated, "export default 1;\n");
+    await writeFile(wrapperPath, wrapper.contents);
+
+    const run = spawnSync(process.execPath, [wrapperPath], { encoding: "utf8" });
+    expect(run.status, run.stderr).toBe(0);
+  });
+
   it("pins generated project modules against Git line-ending conversion", () => {
     expect(projectIntegration([], "out").files).toContainEqual({
       path: ".opencode/plugins/.gitattributes",

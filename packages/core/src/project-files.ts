@@ -3,10 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser/lib/esm/main.js";
+import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
 
 export interface ProjectFile { path: string; contents: string | Uint8Array; mode?: number }
 export interface ProjectEntry { format?: "jsonc" | "toml"; path: string; key: string[]; kind: "array" | "property"; value: unknown }
-export interface ProjectIntegration { files: ProjectFile[]; entries: ProjectEntry[]; guidance: string[]; absent?: { path: string; key: string[] }[] }
+export interface ProjectComponentOmission { component: AgentPluginComponentId; name: string; reason: string }
+export interface ProjectIntegration { files: ProjectFile[]; entries: ProjectEntry[]; guidance: string[]; absent?: { path: string; key: string[] }[]; omissions?: ProjectComponentOmission[] }
 interface Owned { format?: "jsonc" | "toml"; path: string; hash: string; key?: string[]; kind?: "array" | "property"; context?: string[]; mode?: number }
 interface Manifest { schemaVersion: 1; config: string; owned: Owned[] }
 export interface FileChange { path: string; before: Buffer | null; after: Buffer | null; mode: number; beforeMode?: number }

@@ -263,5 +263,14 @@ describe("compile-time config contracts", () => {
       },
       targets: { claude },
     });
+    defineConfig({
+      project: { root: "." },
+      components: {
+        skills: ["./skills"],
+        // @ts-expect-error executable paths are relative only to a package root
+        executableFiles: ["bin/tool"],
+      },
+      targets: { codex },
+    });
   });
 });

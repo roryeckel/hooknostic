@@ -279,5 +279,64 @@
     "failedTests": [
       "loadProjectComponents allows a direct MCP cwd to leave its source directory only within the project"
     ]
+  },
+  {
+    "mutant": "validate component delivery against every configured target",
+    "file": "packages/sdk/src/schemas.ts and packages/core/src/build.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "canonical schemas scopes component delivery invariants to selected targets",
+      "complete project integration ignores unselected package targets when loading direct components"
+    ]
+  },
+  {
+    "mutant": "allow executableFiles on direct component sources",
+    "file": "packages/sdk/src/config.ts and packages/sdk/src/schemas.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "canonical schemas rejects executable file policy for direct component sources",
+      "TypeScript reports the direct-source @ts-expect-error as unused"
+    ]
+  },
+  {
+    "mutant": "trust lexical direct MCP path containment",
+    "file": "packages/agent-plugin/src/load.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "loadProjectComponents rejects direct MCP paths that escape through a symlink or junction"
+    ]
+  },
+  {
+    "mutant": "emit raw URL-significant OpenCode import paths",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "OpenCode project components imports generated project modules from URL-significant output paths"
+    ]
+  },
+  {
+    "mutant": "emit a Claude package remote after reporting its literal-reference omission",
+    "file": "packages/adapter-claude/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "Claude project components omits package remote declarations whose references Claude would expand",
+      "complete project integration reports and omits Claude package remotes whose references cannot remain literal"
+    ]
+  },
+  {
+    "mutant": "rewrite a direct Claude remote reference during serialization",
+    "file": "packages/adapter-claude/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "offline harness playback: claude runs repository-local integration without installing a plugin"
+    ]
+  },
+  {
+    "mutant": "leave omitted Claude remotes counted as emitted",
+    "file": "packages/core/src/build.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration reports and omits Claude package remotes whose references cannot remain literal"
+    ]
   }
 ]

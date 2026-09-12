@@ -8,7 +8,7 @@ import { readProjectToml } from "./project-toml.js";
 import { runProject } from "./project.js";
 import { buildProject } from "./build.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
-import { AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 const dirs: string[] = [];
 const registry = defaultAdapterRegistry();
 const evaluate = { alias: { "@hooknostic/sdk": fileURLToPath(new URL("../../sdk/src/index.ts", import.meta.url)) } };
@@ -79,6 +79,23 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".claude/skills/.gitattributes"), "utf8")).toBe("** -text\n");
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
+  it("ignores unselected package targets when loading direct components", async () => {
+    const claude = registry.claude!;
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: { skills: ["./skills"], targets: ["local"] },
+      targets: {
+        local: { adapter: "claude", version: claude.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/local" },
+        unrelated: { adapter: "codex", version: codex.agentPluginProjector!.profiles.at(-1)!.range, delivery: "package", output: "dist/unrelated" },
+      },
+    });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(join(root, "skills/sample/SKILL.md"), "---\nname: sample\ndescription: Synthetic skill\n---\n");
+
+    const result = await runProject({ ...options, command: "sync" });
+    expect(result.errors).toEqual([]);
+    expect(await readFile(join(root, ".claude/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
+  });
   it("rejects duplicate project adapters and partial synchronization", async () => {
     const adapter = registry.claude!;
     const target = { adapter: "claude", version: adapter.harness.recommendedRange, delivery: "project", output: "dist/a" };
@@ -93,6 +110,35 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".hooknostic/artifacts/claude/mcp-servers.json"), "utf8")).toContain("${UNRESOLVED_TOKEN}");
     expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain("TOKEN");
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
+  it("reports and omits Claude package remotes whose references cannot remain literal", async () => {
+    const claude = registry.claude!;
+    const { root, options } = await fixture({
+      components: { root: "./portable", targets: ["claude"], onUnsupported: "warn" },
+      targets: { claude: { adapter: "claude", version: claude.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/claude" } },
+    });
+    await mkdir(join(root, "portable"));
+    await writeFile(join(root, "portable/plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable" }));
+    await writeFile(join(root, "portable/mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        referenced: { type: "streamable-http", url: "https://example.invalid/${RUNTIME_TOKEN}/mcp", headers: { Authorization: "Bearer ${RUNTIME_TOKEN}" } },
+        literal: { type: "streamable-http", url: "https://example.invalid/mcp" },
+      },
+    }));
+
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.report.targets.claude?.project?.components["agent-plugin.mcp.streamable-http"]).toEqual({
+      support: "exact", discovered: 2, emitted: 1, skipped: 1,
+    });
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    expect(synced.diagnostics).toContainEqual(expect.objectContaining({
+      code: "HN205", severity: "warn", component: "agent-plugin.mcp.streamable-http",
+      message: expect.stringContaining("literal environment references"),
+    }));
+    const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+    expect(Object.keys(mcp.mcpServers)).toEqual(["literal"]);
   });
   it("applies independent target MCP arguments, cwd, and timeout translations", async () => {
     const { root, options } = await fixture({ components: {

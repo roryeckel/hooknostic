@@ -36,7 +36,14 @@ contract suite in `@hooknostic/testkit` audits every row.
 | `agent-plugin.client-extension.files` | unsupported | — |
 | `agent-plugin.runtime-package` | unsupported | — |
 
-Evidence: `.capture/project-integration/README.md`. Project support is independent of package projection.
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.1.268 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
+| 2.1.268 | 2026-09-12 | live-probe | `.capture/claude-project-mcp-environment` | Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields. |
+
+Project support is independent of package projection.
 
 #### Agent Plugin projection
 
@@ -84,7 +91,14 @@ Projection validation records:
 | `agent-plugin.client-extension.files` | unsupported | — |
 | `agent-plugin.runtime-package` | unsupported | — |
 
-Evidence: `.capture/project-integration/README.md`. Project support is independent of package projection.
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 0.153.2 | 2026-09-11 | live-probe | `.capture/codex-project-mcp` | Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded. |
+| 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
+
+Project support is independent of package projection.
 
 #### Agent Plugin projection
 
@@ -138,7 +152,14 @@ Projection validation records:
 | `agent-plugin.client-extension.files` | unsupported | — |
 | `agent-plugin.runtime-package` | unsupported | — |
 
-Evidence: `.capture/project-integration/README.md`. Project support is independent of package projection.
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.18.29 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
+| 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
+
+Project support is independent of package projection.
 
 #### Agent Plugin projection
 

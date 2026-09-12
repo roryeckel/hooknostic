@@ -27,6 +27,16 @@ export async function projectComponents(source: ProjectComponents, root: string,
     result.files.push(...launcher.files);
     let index = 0;
     for (const [name, server] of Object.entries(source.mcp.config.mcpServers)) {
+      const component = `agent-plugin.mcp.${server.type}` as const;
+      const hasEnvironmentReference = server.type !== "stdio" && (
+        /\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(server.url) ||
+        Object.values(server.headers ?? {}).some(value => /\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(value))
+      );
+      if (source.origin === "package" && hasEnvironmentReference) {
+        const reason = `MCP server ${name} requires literal environment references, but Claude project MCP expands set references`;
+        (result.omissions ??= []).push({ component, name, reason });
+        continue;
+      }
       const value = server.type === "stdio"
         ? { command: "node", args: [`./${output}/mcp-launcher.mjs`, String(index++)] }
         : { type: server.type === "streamable-http" ? "http" : "sse", url: server.url, ...(server.headers === undefined ? {} : { headers: server.headers }) };
@@ -46,7 +56,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     "agent-plugin.mcp.sse": { level: "exact" },
   },
   source: {
-    date: "2026-09-11",
-    validatedOn: [{ version: "2.1.268", date: "2026-09-11", method: "live-probe", artifact: ".capture/project-integration", what: "Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes." }],
+    date: "2026-09-12",
+    validatedOn: [{ version: "2.1.268", date: "2026-09-11", method: "live-probe", artifact: ".capture/project-integration", what: "Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes." }, { version: "2.1.268", date: "2026-09-12", method: "live-probe", artifact: ".capture/claude-project-mcp-environment", what: "Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields." }],
   },
 }];

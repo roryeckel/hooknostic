@@ -67,6 +67,11 @@ because the Agent Plugins standard prohibits environment expansion there. OpenCo
 native interpolation before project plugin hooks, so its generated direct-source
 module resolves remote URL and header references itself. Project declarations
 replace same-named inherited OpenCode servers and preserve unrelated entries.
+Claude project MCP expands set references in both remote URLs and headers. No
+lossless literal-preserving spelling across both fields was found in the live
+probe, so a package-origin remote declaration containing such a reference is
+omitted with HN205 rather than exposed to ambient environment values. Direct
+Claude declarations continue to use the native runtime expansion.
 Codex maps exact header
 references to `env_http_headers` and bearer authorization to
 `bearer_token_env_var`; references in URLs or mixed header values are rejected

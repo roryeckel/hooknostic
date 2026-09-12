@@ -1,0 +1,28 @@
+{
+  "version": "2.1.268",
+  "date": "2026-09-12",
+  "platform": "windows",
+  "method": "live-probe",
+  "observations": {
+    "set": {
+      "url": "/raw-set/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    "unset": {
+      "url": "/raw-unset/$%7BHOOKNOSTIC_CAPTURE_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_CAPTURE_UNSET}"
+    },
+    "percentEncoded": {
+      "url": "/percent/%24%7BHOOKNOSTIC_CAPTURE_PATH%7D",
+      "authorization": "Bearer %24%7BHOOKNOSTIC_CAPTURE_HEADER%7D"
+    },
+    "backslash": {
+      "url": "/backslash//expanded-path",
+      "authorization": "Bearer \\expanded-header"
+    },
+    "doubledDollar": {
+      "url": "/doubled-dollar/$expanded-path",
+      "authorization": "Bearer $expanded-header"
+    }
+  }
+}

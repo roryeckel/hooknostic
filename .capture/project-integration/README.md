@@ -45,6 +45,9 @@ after each run. Mutants cover ownership, missing output, formatting, derived
 timeouts, source-relative paths, runtime target identity, component omissions,
 initialization overwrite, lock exclusivity, rollback, recovery, nested hook
 bootstrap, direct exclusions/cwd containment, per-target MCP cloning/override translation, and OpenCode
-collision/missing-variable isolation. The reusable
+collision/missing-variable isolation. Follow-up mutants cover selected-target
+validation, direct executable-file rejection, canonical symlink containment,
+URL-safe OpenCode wrapper imports, and Claude remote-reference omission and
+runtime expansion. The reusable
 adapter contract also rejects a missing project support declaration. These are
 focused falsification checks; they do not assert exhaustive mutation coverage.

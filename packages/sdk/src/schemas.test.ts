@@ -230,6 +230,36 @@ describe("canonical schemas", () => {
     ).toBe(false);
   });
 
+  it("scopes component delivery invariants to selected targets", () => {
+    const entry = "./src/hooks.ts";
+    const packageTarget = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/package" };
+    const projectTarget = { version: ">=0.148 <1", delivery: "project" as const, output: "./dist/project" };
+    expect(hooknosticConfigSchema.safeParse({
+      entry,
+      components: { root: ".", targets: ["packaged"] },
+      targets: { packaged: packageTarget, unrelated: projectTarget },
+    }).success).toBe(true);
+    expect(hooknosticConfigSchema.safeParse({
+      project: { root: "." },
+      entry,
+      components: { skills: ["./skills"], targets: ["local"] },
+      targets: { local: projectTarget, unrelated: packageTarget },
+    }).success).toBe(true);
+  });
+
+  it("rejects executable file policy for direct component sources", () => {
+    const result = hooknosticConfigSchema.safeParse({
+      project: { root: "." },
+      entry: "./src/hooks.ts",
+      components: { skills: ["./skills"], executableFiles: ["bin/tool"], targets: ["local"] },
+      targets: { local: { version: ">=1 <2", delivery: "project", output: "./dist/local" } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.map(issue => issue.message)).toContain(
+      "components.executableFiles requires components.root",
+    );
+  });
+
   it("validates direct project MCP overrides", () => {
     const target = { version: ">=1 <2", delivery: "project" as const, output: "./dist/client" };
     const base = {

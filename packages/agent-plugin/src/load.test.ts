@@ -83,6 +83,29 @@ describe("loadProjectComponents", () => {
     const escaping = await loadProjectComponents({ mcp: path, projectRoot: root });
     expect(escaping.source.mcp?.config.mcpServers).toEqual({});
   });
+
+  it("rejects direct MCP paths that escape through a symlink or junction", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-canonical-"));
+    const outside = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-outside-"));
+    roots.push(root, outside);
+    const source = join(root, ".agents");
+    await mkdir(source);
+    await writeFile(join(outside, "tool.mjs"), "export {};\n");
+    await symlink(outside, join(source, "linked"), process.platform === "win32" ? "junction" : "dir");
+    const path = join(source, "mcp.json");
+    await writeFile(path, JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        cwdEscape: { type: "stdio", command: "node", cwd: "./linked" },
+        commandEscape: { type: "stdio", command: "./linked/tool.mjs" },
+        containedMissing: { type: "stdio", command: "node", cwd: "./missing/child" },
+      },
+    }));
+
+    const loaded = await loadProjectComponents({ mcp: path, projectRoot: root });
+    expect(Object.keys(loaded.source.mcp!.config.mcpServers)).toEqual(["containedMissing"]);
+    expect(loaded.issues.filter(issue => issue.message.includes("invalid and was skipped"))).toHaveLength(2);
+  });
 });
 
 async function packageRoot(manifest: Record<string, unknown> = {}): Promise<string> {

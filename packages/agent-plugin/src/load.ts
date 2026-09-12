@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { minimatch } from "minimatch";
 import { parseDocument } from "yaml";
 import {
@@ -168,6 +168,48 @@ function contained(root: string, path: string): boolean {
 function containedPortablePath(root: string, value: string, prefix: "./" | "${PLUGIN_ROOT}"): boolean {
   const suffix = prefix === "./" ? value.slice(2) : value.slice(prefix.length).replace(/^\//, "");
   return contained(root, resolve(root, suffix));
+}
+
+async function canonicalCandidate(path: string): Promise<string> {
+  let cursor = resolve(path);
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      return resolve(await realpath(cursor), ...missing.reverse());
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const parent = dirname(cursor);
+      if (parent === cursor) throw error;
+      missing.push(basename(cursor));
+      cursor = parent;
+    }
+  }
+}
+
+async function validateDirectMcpPaths(
+  config: AgentPluginMcpConfig,
+  root: string,
+  issues: AgentPluginIssue[],
+  projectRoot?: string,
+): Promise<void> {
+  const canonicalSource = await canonicalCandidate(root);
+  const canonicalAllowed = projectRoot === undefined ? canonicalSource : await canonicalCandidate(projectRoot);
+  for (const [name, server] of Object.entries(config.mcpServers)) {
+    if (server.type !== "stdio") continue;
+    let valid = contained(canonicalAllowed, canonicalSource);
+    if (valid && server.command.startsWith("./")) {
+      valid = contained(canonicalSource, await canonicalCandidate(resolve(root, server.command.slice(2))));
+    }
+    if (valid && server.cwd !== undefined && server.cwd !== "${PLUGIN_DATA}" && !server.cwd.startsWith("${PLUGIN_DATA}/")) {
+      const suffix = server.cwd.startsWith("./")
+        ? server.cwd.slice(2)
+        : server.cwd.slice("${PLUGIN_ROOT}".length).replace(/^\//, "");
+      valid = contained(canonicalAllowed, await canonicalCandidate(resolve(root, suffix)));
+    }
+    if (valid) continue;
+    issue(issues, "warn", "mcp", `MCP stdio server ${JSON.stringify(name)} is invalid and was skipped.`, `mcp.json#/mcpServers/${name}`);
+    delete config.mcpServers[name];
+  }
 }
 
 function validHeaders(value: unknown): value is Record<string, string> {
@@ -658,7 +700,10 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     const file = { path: "mcp.json", contents: await readFile(path), mode: 0o644 };
     const root = resolve(path, "..");
     const config = loadMcp(root, { files: [file], directories: new Set() }, issues, options.projectRoot);
-    if (config) source.mcp = { root, config };
+    if (config) {
+      await validateDirectMcpPaths(config, root, issues, options.projectRoot);
+      source.mcp = { root, config };
+    }
   }
   return { source, issues };
 }

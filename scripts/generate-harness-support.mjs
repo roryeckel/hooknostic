@@ -66,7 +66,17 @@ for (const adapter of adapters) {
     const projection = resolveAgentPluginProjection({ id: adapter.id, version: meta.recommendedRange, delivery: "project", output: "." }, { profiles: adapter.projectComponentProfiles });
     lines.push("#### Project delivery", "", "| Component | Support | Rationale |", "| --- | --- | --- |");
     for (const [component, support] of Object.entries(projection.matrix ?? {})) lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
-    lines.push("", "Evidence: `.capture/project-integration/README.md`. Project support is independent of package projection.", "");
+    lines.push("", "Project delivery validation records:", "");
+    lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
+    for (const profile of projection.profilesUsed) {
+      for (const record of profile.source.validatedOn) {
+        lines.push(
+          `| ${record.version} | ${record.date} | ${record.method} | ` +
+            `${record.artifact ? `\`${record.artifact}\`` : "—"} | ${record.what} |`,
+        );
+      }
+    }
+    lines.push("", "Project support is independent of package projection.", "");
   }
   if (adapter.agentPluginProjector) {
     const projection = resolveAgentPluginProjection(

@@ -465,7 +465,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
-  if (config.components?.root === undefined && componentSource && Object.values(config.targets).some(t => t.delivery === "package")) {
+  const componentTargetIds = new Set(config.components?.targets ?? Object.keys(config.targets));
+  if (config.components?.root === undefined && componentSource && Object.entries(config.targets).some(([id, target]) => componentTargetIds.has(id) && target.delivery === "package")) {
     diagnostics.push({ code: "HN501", severity: "error", message: "package delivery requires components.root with an Agent Plugins manifest" });
     return fail();
   }
@@ -777,7 +778,23 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 ? {}
                 : { mcpProjectCwdServers: projectCwdServers }),
             });
+            for (const omission of projected.omissions ?? []) {
+              diagnostics.push({
+                code: "HN205",
+                severity: config.components?.onUnsupported ?? "error",
+                target: id,
+                component: omission.component,
+                message: omission.reason,
+              });
+              omissions.push(omission);
+              const counted = counts[omission.component];
+              if (counted !== undefined && counted.emitted > 0) {
+                counted.emitted--;
+                counted.skipped++;
+              }
+            }
             target.project = { components: counts, omissions, guidance: projected.guidance };
+            if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
             integration.files.push(...projected.files);
             integration.entries.push(...projected.entries);
             integration.guidance.push(...projected.guidance);

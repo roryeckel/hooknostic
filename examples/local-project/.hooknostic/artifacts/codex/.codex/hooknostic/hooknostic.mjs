@@ -4476,7 +4476,8 @@ var hooknosticConfigSchema = external_exports.object({
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
     projectAdapters.add(adapter);
   }
-  if (config.components && !config.project && Object.values(config.targets).some((target) => target.delivery === "project")) {
+  const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+  if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
     context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "project component delivery requires project.root" });
   }
   if (config.components) {
@@ -4485,6 +4486,9 @@ var hooknosticConfigSchema = external_exports.object({
     }
     if (config.components.root !== void 0 && config.components.mcpOverrides !== void 0) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides is only valid with a direct MCP source" });
+    }
+    if (config.components.root === void 0 && config.components.executableFiles !== void 0) {
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["components", "executableFiles"], message: "components.executableFiles requires components.root" });
     }
     if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });

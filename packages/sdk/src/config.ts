@@ -112,8 +112,6 @@ interface ComponentPolicy<TTarget extends string> {
    * `entry`, every target output, the build report, and staging directories.
    */
   exclude?: string[];
-  /** Exact, case-sensitive POSIX paths of included files to emit as 0755; others use 0644. */
-  executableFiles?: string[];
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
   /** Whether a valid but unrepresentable component fails or degrades the build. Default `"error"`. */
@@ -133,9 +131,16 @@ type DirectComponentPolicy<TTarget extends string> = {
 };
 
 export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<TTarget> & (
-  | { root: string; skills?: never; mcp?: never; mcpOverrides?: never }
-  | ({ root?: never; skills: string[]; mcp?: string } & DirectComponentPolicy<TTarget>)
-  | ({ root?: never; skills?: string[]; mcp: string } & DirectComponentPolicy<TTarget>)
+  | {
+      root: string;
+      skills?: never;
+      mcp?: never;
+      mcpOverrides?: never;
+      /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
+      executableFiles?: string[];
+    }
+  | ({ root?: never; skills: string[]; mcp?: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
+  | ({ root?: never; skills?: string[]; mcp: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
 );
 
 export type TargetsConfig = Record<string, TargetConfig>;

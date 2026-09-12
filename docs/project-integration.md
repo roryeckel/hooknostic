@@ -36,6 +36,11 @@ package identity when projecting components. `components.targets` selects the
 configured targets receiving components; synchronization still processes the
 entire configured project integration. Targets may have arbitrary names with an
 explicit `adapter`, but only one project target may use a given adapter.
+Delivery-specific component validation applies only to those selected targets:
+an unrelated package target does not make direct sources invalid, and an
+unrelated project target does not require `project.root`. `executableFiles` is
+available only with `components.root`, because its paths are defined relative to
+the package root.
 Direct-source `exclude` patterns are evaluated independently relative to each
 configured skill collection root. They do not change the canonical MCP document.
 
@@ -84,7 +89,11 @@ runtime. Direct project sources resolve `${NAME}` from the launch environment.
 OpenCode disables only a remote declaration whose required variable is unset and
 warns with the server name and missing variables; other servers remain available.
 Agent Plugin package inputs retain unrecognized references literally under the
-package standard.
+package standard. Claude project MCP expands set `${NAME}` references in remote
+URLs and headers and has no captured lossless escape across both fields, so
+Hooknostic omits an affected package-origin remote server and reports HN205;
+literal package remotes without references are emitted normally. Direct Claude
+project declarations retain the harness's native runtime expansion.
 `${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves to
 ignored project-local `.hooknostic/data`. Dependencies must already be installed.
 Codex project MCP uses owned server entries in `.codex/config.toml`. Stdio uses

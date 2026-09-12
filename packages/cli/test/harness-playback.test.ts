@@ -46,9 +46,14 @@ async function startProjectionMcpTransports(): Promise<{
   httpUrl: string;
   sseUrl: string;
   counts: { http: number; sseGet: number; ssePost: number };
+  received: { httpPaths: string[]; authorizations: (string | undefined)[] };
   close(): Promise<void>;
 }> {
   const counts = { http: 0, sseGet: 0, ssePost: 0 };
+  const received: { httpPaths: string[]; authorizations: (string | undefined)[] } = {
+    httpPaths: [],
+    authorizations: [],
+  };
   let baseUrl = "";
   let sse: ServerResponse | undefined;
   const responseFor = (request: Record<string, unknown>, toolName: string) => {
@@ -89,8 +94,10 @@ async function startProjectionMcpTransports(): Promise<{
     let body = "";
     for await (const chunk of request) body += String(chunk);
     const rpc = body === "" ? {} : (JSON.parse(body) as Record<string, unknown>);
-    if (request.method === "POST" && request.url === "/http") {
+    if (request.method === "POST" && request.url?.startsWith("/http")) {
       counts.http += 1;
+      received.httpPaths.push(request.url);
+      received.authorizations.push(request.headers.authorization);
       if (rpc.id === undefined) {
         response.writeHead(202).end();
       } else {
@@ -125,6 +132,7 @@ async function startProjectionMcpTransports(): Promise<{
     httpUrl: `${baseUrl}/http`,
     sseUrl: `${baseUrl}/sse`,
     counts,
+    received,
     async close() {
       sse?.end();
       server.closeAllConnections();
@@ -1149,7 +1157,15 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       skills: [{ name: "local-sample", source: skillSource, files: [{ path: "SKILL.md", mode: 0o644, contents: new TextEncoder().encode("---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n") }] }],
       mcp: { root: source, config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: {
         localProbe: { type: "stdio" as const, command: "node", args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}", adapter!.id], env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" }, cwd: projectCwdOverride },
-        localHttp: { type: "streamable-http" as const, url: transports.httpUrl },
+        localHttp: {
+          type: "streamable-http" as const,
+          url: adapter!.id === "claude"
+            ? transports.httpUrl + "/${HOOKNOSTIC_PLAYBACK_REMOTE_PATH}"
+            : transports.httpUrl,
+          ...(adapter!.id === "claude"
+            ? { headers: { Authorization: "Bearer ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER}" } }
+            : {}),
+        },
         ...(adapter!.id === "opencode" ? { missingRemote: { type: "streamable-http" as const, url: "https://example.invalid/${HOOKNOSTIC_PLAYBACK_UNSET_REMOTE}/mcp" } } : {}),
         ...(adapter!.id === "codex" ? {} : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
       } } },
@@ -1157,6 +1173,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
     await mkdir(harnessCwd, { recursive: true });
     let harnessOutput = "";
+    if (adapter!.id === "claude") {
+      process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"] = "expanded-path";
+      process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"] = "expanded-header";
+    }
     try {
       await runInstalledHarness(build, "rewrite", {
         harnessCwd,
@@ -1175,6 +1195,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
             expect(environment.argv).toEqual([environment.pluginData, adapter!.id]);
             expect(transports.counts.http).toBeGreaterThan(0);
+            if (adapter!.id === "claude") {
+              expect(transports.received.httpPaths).toContain("/http/expanded-path");
+              expect(transports.received.authorizations).toContain("Bearer expanded-header");
+            }
             if (adapter!.id !== "codex") {
               expect(transports.counts.sseGet).toBeGreaterThan(0);
               expect(transports.counts.ssePost).toBeGreaterThan(0);
@@ -1182,7 +1206,11 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           }
         },
       });
-    } finally { await transports.close(); }
+    } finally {
+      delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"];
+      delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"];
+      await transports.close();
+    }
     if (adapter!.id === "opencode") {
       expect(harnessOutput).toContain("Hooknostic disabled MCP");
       expect(harnessOutput).toContain("HOOKNOSTIC_PLAYBACK_UNSET_REMOTE");
