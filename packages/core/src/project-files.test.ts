@@ -81,6 +81,22 @@ describe("project reconciliation", () => {
     await expect(applyProject(root, config, plan)).rejects.toThrow("changed during planning");
     expect(await readFile(join(root, "settings.json"), "utf8")).toBe('{"user":true}');
   });
+  it("detects an absent-entry collision added after an otherwise empty plan", async () => {
+    const guarded: ProjectIntegration = {
+      ...integration(),
+      absent: [{ path: "opencode.json", key: ["mcp", "sample"] }],
+    };
+    await writeFile(join(root, "opencode.json"), '{"mcp":{}}');
+    await sync(guarded);
+    const plan = await reconcileProject(root, config, guarded);
+    expect(plan.changes).toEqual([]);
+
+    const external = '{"mcp":{"sample":{"type":"remote","url":"https://example.com"}}}';
+    await writeFile(join(root, "opencode.json"), external);
+    await expect(applyProject(root, config, plan)).rejects.toThrow("changed during planning");
+    expect(await readFile(join(root, "opencode.json"), "utf8")).toBe(external);
+    await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("rejects another owner and unsafe paths", async () => {
     await sync(); await expect(reconcileProject(root, "other.ts", integration())).rejects.toThrow("another configuration");
     for (const path of ["../outside", ".git/config", ".env", "C:\\outside"]) {

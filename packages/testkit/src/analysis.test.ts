@@ -373,7 +373,7 @@ describe("analyzeCapabilities", () => {
     expect(analysis.diagnostics[0]).toMatchObject({ code: "HN501", target: "toString" });
   });
 
-  it("rejects unsupported artifact modes during analysis", () => {
+  it("rejects unsupported deliveries during analysis", () => {
     const adapters = {
       localOnly: makeFakeAdapter({
         id: "localOnly",
@@ -395,6 +395,8 @@ describe("analyzeCapabilities", () => {
       code: "HN204",
       severity: "error",
       target: "localOnly",
+      message: 'target "localOnly" delivery "package" is unsupported by adapter "localOnly".',
+      remediation: "use one of the supported deliveries: project.",
     });
   });
 

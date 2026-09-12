@@ -396,7 +396,7 @@ describe("hooknostic check", () => {
     expect(report.diagnostics[0].code).toBe("HN501");
   });
 
-  it("reports unsupported artifact modes before generation", async () => {
+  it("reports unsupported deliveries before generation", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-mode-"));
     tempDirs.push(dir);
     await writeFile(
@@ -423,11 +423,16 @@ describe("hooknostic check", () => {
         evaluate: EVALUATE,
       }),
     ).toBe(2);
-    const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string }[];
+    const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string; message: string; remediation?: string }[];
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN204", target: "opencode" }),
+      expect.objectContaining({
+        code: "HN204",
+        target: "opencode",
+        message: 'target "opencode" delivery "package" is unsupported by adapter "opencode".',
+        remediation: "use one of the supported deliveries: project.",
+      }),
     );
-    // "before generation": the mode is rejected during analysis, so no
+    // "before generation": the delivery is rejected during analysis, so no
     // generation- or commit-phase diagnostic can appear alongside it.
     expect(diagnostics.filter((d) => d.code.startsWith("HN3"))).toEqual([]);
   });

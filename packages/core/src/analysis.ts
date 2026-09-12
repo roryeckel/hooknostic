@@ -194,8 +194,8 @@ export function analyzeCapabilities(
         code: "HN204",
         severity: "error",
         target: targetId,
-        message: `target "${targetId}" mode "${spec.delivery}" is unsupported by adapter "${adapter.id}".`,
-        remediation: `use one of the supported modes: ${adapter.supportedDeliveries().join(", ")}.`,
+        message: `target "${targetId}" delivery "${spec.delivery}" is unsupported by adapter "${adapter.id}".`,
+        remediation: `use one of the supported deliveries: ${adapter.supportedDeliveries().join(", ")}.`,
       });
     }
     const resolved = adapter.capabilities(spec);

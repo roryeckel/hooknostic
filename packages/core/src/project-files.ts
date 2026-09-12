@@ -12,7 +12,8 @@ export interface ProjectIntegration { files: ProjectFile[]; entries: ProjectEntr
 interface Owned { format?: "jsonc" | "toml"; path: string; hash: string; key?: string[]; kind?: "array" | "property"; context?: string[]; mode?: number }
 interface Manifest { schemaVersion: 1; config: string; owned: Owned[] }
 export interface FileChange { path: string; before: Buffer | null; after: Buffer | null; mode: number; beforeMode?: number }
-export interface Reconciliation { changes: FileChange[]; manifest: Manifest }
+export interface ProjectFilePrecondition { path: string; before: Buffer | null }
+export interface Reconciliation { changes: FileChange[]; manifest: Manifest; preconditions: ProjectFilePrecondition[] }
 const STATE = ".hooknostic/integration.json";
 const JOURNAL = ".hooknostic/transaction.json";
 const LOCK = ".hooknostic/sync.lock";
@@ -90,8 +91,13 @@ function readManifest(raw: Buffer | null, config: string): Manifest {
 
 export async function reconcileProject(root: string, config: string, integration: ProjectIntegration): Promise<Reconciliation> {
   validatePath(config);
+  const observedAbsentFiles = new Map<string, Buffer | null>();
   for (const check of integration.absent ?? []) {
-    const raw = await bytes(await projectPath(root, check.path));
+    let raw = observedAbsentFiles.get(check.path);
+    if (raw === undefined && !observedAbsentFiles.has(check.path)) {
+      raw = await bytes(await projectPath(root, check.path));
+      observedAbsentFiles.set(check.path, raw);
+    }
     if (raw && get(document(raw.toString(), check.path), check.key) !== undefined) throw new Error(`unowned component collision: ${check.path}:${check.key.join(".")}`);
   }
   if (await bytes(await projectPath(root, JOURNAL))) throw new Error("unfinished integration transaction; run hooknostic recover");
@@ -180,7 +186,10 @@ export async function reconcileProject(root: string, config: string, integration
   const manifest: Manifest = { schemaVersion: 1, config, owned: owned.sort((a, b) => (identity(a) < identity(b) ? -1 : identity(a) > identity(b) ? 1 : 0)) };
   const afterManifest = Buffer.from(JSON.stringify(manifest, null, 2) + "\n");
   if (!same(manifestBytes, afterManifest)) changes.push({ path: STATE, before: manifestBytes, after: afterManifest, mode: 0o644 });
-  return { changes, manifest };
+  const preconditions = [...observedAbsentFiles]
+    .map(([path, before]) => ({ path, before }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return { changes, manifest, preconditions };
 }
 function same(a: Buffer | null, b: Buffer | null): boolean { return a === null ? b === null : b !== null && a.equals(b); }
 interface JournalEntry { path: string; before: string | null; afterHash: string | null; mode: number; beforeMode?: number }
@@ -211,15 +220,24 @@ async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> 
   try { await handle.writeFile(String(process.pid)); await handle.sync(); } finally { await handle.close(); }
   return () => rm(lock, { force: true });
 }
+async function verifyPreconditions(root: string, preconditions: readonly ProjectFilePrecondition[]): Promise<void> {
+  for (const precondition of preconditions) {
+    if (!same(await bytes(await projectPath(root, precondition.path)), precondition.before)) {
+      throw new Error(`project changed during planning: ${precondition.path}`);
+    }
+  }
+}
 export async function applyProject(root: string, config: string, plan: Reconciliation): Promise<void> {
   const release = await acquire(root);
   let journalWritten = false;
   const staged = new Map<string, string>();
   try {
     if (await bytes(await projectPath(root, JOURNAL))) throw new Error("unfinished transaction; run hooknostic recover");
+    await verifyPreconditions(root, plan.preconditions);
     for (const change of plan.changes) if (!same(await bytes(await projectPath(root, change.path)), change.before)) throw new Error(`project changed during planning: ${change.path}`);
     if (!plan.changes.length) return;
     for (const change of plan.changes) if (change.after !== null) staged.set(change.path, await stage(root, change.after, change.mode));
+    await verifyPreconditions(root, plan.preconditions);
     const journal: Journal = { schemaVersion: 1, config, entries: plan.changes.map(c => ({ path: c.path, before: c.before?.toString("base64") ?? null, afterHash: c.after === null ? null : fileHash(c.after), mode: c.mode, ...(c.beforeMode === undefined ? {} : { beforeMode: c.beforeMode }) })) };
     await replace(root, JOURNAL, Buffer.from(JSON.stringify(journal)), 0o600);
     journalWritten = true;
