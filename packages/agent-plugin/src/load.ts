@@ -341,9 +341,13 @@ function extractFrontmatter(text: string): unknown {
   return document.toJS({ maxAliasCount: 0 }) as unknown;
 }
 
-function validateSkillFrontmatter(value: unknown, directory: string): { name: string; description: string } {
+function validateSkillFrontmatter(
+  value: unknown,
+  directory: string,
+  options: { allowAdditionalFields?: boolean } = {},
+): { name: string; description: string } {
   if (!object(value)) throw new Error("frontmatter must be a mapping");
-  if (Object.keys(value).some((key) => !SKILL_KEYS.has(key))) {
+  if (!options.allowAdditionalFields && Object.keys(value).some((key) => !SKILL_KEYS.has(key))) {
     throw new Error("frontmatter contains an unknown field");
   }
   const name = value["name"];
@@ -381,7 +385,11 @@ function validateSkillFrontmatter(value: unknown, directory: string): { name: st
   return { name, description };
 }
 
-function loadSkills(inventory: InventoryResult, issues: AgentPluginIssue[]): AgentPluginSkill[] {
+function loadSkills(
+  inventory: InventoryResult,
+  issues: AgentPluginIssue[],
+  options: { allowAdditionalFields?: boolean } = {},
+): AgentPluginSkill[] {
   if (!inventory.directories.has("skills")) {
     if (inventory.files.some((file) => file.path === "skills")) {
       issue(issues, "warn", "skill", "skills is not a directory and was ignored.", "skills");
@@ -397,6 +405,7 @@ function loadSkills(inventory: InventoryResult, issues: AgentPluginIssue[]): Age
       const parsed = validateSkillFrontmatter(
         extractFrontmatter(new TextDecoder().decode(file.contents)),
         directory,
+        options,
       );
       skills.push({ ...parsed, directory: `skills/${directory}`, manifestPath: file.path });
     } catch (error) {
@@ -624,7 +633,12 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
       files: data.files.map(file => ({ ...file, path: "skills/" + file.path })),
       directories: new Set(["skills", ...[...data.directories].filter(Boolean).map(path => "skills/" + path)]),
     };
-    for (const skill of loadSkills(nested, issues)) {
+    // Direct project sources are delivered as their original files. Harnesses
+    // may attach native frontmatter alongside the portable Agent Skills fields,
+    // so validate the standard fields while preserving additional metadata.
+    // Packaged components remain strict because their manifest promises the
+    // portable package contract rather than a harness-owned local source tree.
+    for (const skill of loadSkills(nested, issues, { allowAdditionalFields: true })) {
       if (names.has(skill.name)) { issue(issues, "error", "skill", `duplicate skill name ${skill.name}`); continue; }
       names.add(skill.name);
       source.skills.push({ name: skill.name, source: resolve(directory, skill.directory.slice(7)), files: nested.files.filter(f => f.path.startsWith(skill.directory + "/")).map(f => ({ ...f, path: f.path.slice(skill.directory.length + 1) })) });

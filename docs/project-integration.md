@@ -58,6 +58,9 @@ Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`.
 Sources already in their destination are discovered directly. OpenCode references other source directories through its native `skills.paths`
 configuration hook. Claude and Codex copy other sources deterministically with all supporting resources. No symlinks are required.
 Duplicate skill names and unowned destination collisions fail.
+Direct project sources preserve additional harness-native frontmatter while
+Hooknostic validates every portable Agent Skills field. Agent Plugin package
+inputs remain strict about unknown skill fields.
 
 Claude MCP uses `.mcp.json`; OpenCode uses an adapter-owned configuration module.
 Both support stdio and remote transports as recorded in the project support

@@ -6,12 +6,37 @@ import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
   loadAgentPlugin,
+  loadProjectComponents,
 } from "./index.js";
 
 const roots: string[] = [];
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe("loadProjectComponents", () => {
+  it("preserves target-native frontmatter while validating portable skill fields", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skills-"));
+    roots.push(root);
+    await mkdir(join(root, "review"), { recursive: true });
+    const manifest = [
+      "---",
+      "name: review",
+      "description: Review a change",
+      "disable-model-invocation: true",
+      "---",
+      "Body",
+      "",
+    ].join("\n");
+    await writeFile(join(root, "review/SKILL.md"), manifest);
+
+    const loaded = await loadProjectComponents({ skills: [root] });
+
+    expect(loaded.issues).toEqual([]);
+    expect(loaded.source.skills.map((skill) => skill.name)).toEqual(["review"]);
+    expect(new TextDecoder().decode(loaded.source.skills[0]!.files[0]!.contents)).toBe(manifest);
+  });
 });
 
 async function packageRoot(manifest: Record<string, unknown> = {}): Promise<string> {
@@ -35,6 +60,26 @@ describe("loadAgentPlugin", () => {
     const loaded = await loadAgentPlugin({ root: valid });
     expect(loaded.package?.manifest.name).toBe("portable-tools");
     expect(loaded.issues).toContainEqual(expect.objectContaining({ severity: "info", scope: "manifest" }));
+  });
+
+  it("keeps packaged skill frontmatter strict", async () => {
+    const root = await packageRoot();
+    await mkdir(join(root, "skills/review"), { recursive: true });
+    await writeFile(
+      join(root, "skills/review/SKILL.md"),
+      "---\nname: review\ndescription: Review a change\ndisable-model-invocation: true\n---\n",
+    );
+
+    const loaded = await loadAgentPlugin({ root });
+
+    expect(loaded.package?.skills).toEqual([]);
+    expect(loaded.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "warn",
+        scope: "skill",
+        message: expect.stringContaining("unknown field"),
+      }),
+    );
   });
 
   it("skips only invalid skills and MCP servers at their component boundaries", async () => {
