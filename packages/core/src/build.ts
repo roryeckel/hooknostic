@@ -612,7 +612,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             const support = resolveAgentPluginProjection(spec, { profiles: adapter.projectComponentProfiles ?? [] });
             diagnostics.push(...support.diagnostics);
             if (!support.matrix) throw new Error("project component support is unavailable for the configured version range");
-            const selectedSource: ProjectComponents = { skills: [...componentSource.skills], ...(componentSource.mcp === undefined ? {} : { mcp: { ...componentSource.mcp, config: { ...componentSource.mcp.config, mcpServers: { ...componentSource.mcp.config.mcpServers } } } }) };
+            const selectedSource: ProjectComponents = { origin: componentSource.origin, skills: [...componentSource.skills], ...(componentSource.mcp === undefined ? {} : { mcp: { ...componentSource.mcp, config: { ...componentSource.mcp.config, mcpServers: { ...componentSource.mcp.config.mcpServers } } } }) };
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [];
             const count = (component: AgentPluginComponentId, discovered: number): boolean => {

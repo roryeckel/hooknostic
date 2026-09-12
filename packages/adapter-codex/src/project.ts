@@ -4,6 +4,34 @@ import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { translateMcp } from "./project-agent-plugin.js";
 import { projectSkillFiles, projectMcpLauncher, projectMcpBootstrap } from "@hooknostic/core";
 import type { GeneratedArtifact, ProjectIntegration, ProjectEntry } from "@hooknostic/core";
+
+const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+const EXACT_ENVIRONMENT_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+const BEARER_ENVIRONMENT_REFERENCE = /^Bearer \$\{([A-Za-z_][A-Za-z0-9_]*)\}$/i;
+
+function directRemote(name: string, server: { url: string; headers?: Record<string, string> }): Record<string, unknown> {
+  if ([...server.url.matchAll(ENVIRONMENT_REFERENCE)].length) {
+    throw new Error(`Codex project MCP ${JSON.stringify(name)} cannot represent environment references in a remote URL; use an environment-backed header`);
+  }
+  const httpHeaders: Record<string, string> = {};
+  const envHttpHeaders: Record<string, string> = {};
+  let bearerTokenEnvVar: string | undefined;
+  for (const [header, value] of Object.entries(server.headers ?? {})) {
+    const exact = value.match(EXACT_ENVIRONMENT_REFERENCE);
+    const bearer = header.toLowerCase() === "authorization" ? value.match(BEARER_ENVIRONMENT_REFERENCE) : null;
+    if (bearer) bearerTokenEnvVar = bearer[1]!;
+    else if (exact) envHttpHeaders[header] = exact[1]!;
+    else if ([...value.matchAll(ENVIRONMENT_REFERENCE)].length) {
+      throw new Error(`Codex project MCP ${JSON.stringify(name)} header ${JSON.stringify(header)} cannot mix an environment reference with literal text`);
+    } else httpHeaders[header] = value;
+  }
+  return {
+    url: server.url,
+    ...(Object.keys(httpHeaders).length ? { http_headers: httpHeaders } : {}),
+    ...(Object.keys(envHttpHeaders).length ? { env_http_headers: envHttpHeaders } : {}),
+    ...(bearerTokenEnvVar === undefined ? {} : { bearer_token_env_var: bearerTokenEnvVar }),
+  };
+}
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   if (/[$`]/.test(output)) throw new Error("Codex project output paths containing shell expansion characters are unsupported");
   const manifest = artifacts.find(a => a.path === ".codex/hooks.json");
@@ -25,9 +53,12 @@ export async function projectComponents(source: ProjectComponents, root: string,
   if (translated.omitted.length) throw new Error(translated.omitted.map(item => `${item.name}: ${item.reason}`).join("; "));
   result.files.push(...(await projectMcpLauncher(source, root, output, translated.launcherServers)).files);
   for (const [name, server] of Object.entries(translated.servers)) {
+    const declaration = source.mcp?.config.mcpServers[name];
     const value = "command" in server ? {
       command: "node", args: projectMcpBootstrap(output, config, Number(server.args![1])),
-    } : server;
+    } : source.origin === "direct" && declaration && declaration.type !== "stdio"
+      ? directRemote(name, declaration)
+      : server;
     result.entries.push({ path: ".codex/config.toml", key: ["mcp_servers", name], kind: "property", format: "toml", value });
   }
   if (result.entries.length) result.guidance.push("Codex reads project MCP only in trusted projects. Restart after synchronization. Same-named servers merge across home, project, nested, and command-line configuration; resolve conflicting declarations manually. Hooknostic does not inspect or change personal trust or connect to MCP servers during diagnostics.");

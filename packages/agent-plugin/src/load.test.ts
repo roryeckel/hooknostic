@@ -34,6 +34,7 @@ describe("loadProjectComponents", () => {
     const loaded = await loadProjectComponents({ skills: [root] });
 
     expect(loaded.issues).toEqual([]);
+    expect(loaded.source.origin).toBe("direct");
     expect(loaded.source.skills.map((skill) => skill.name)).toEqual(["review"]);
     expect(new TextDecoder().decode(loaded.source.skills[0]!.files[0]!.contents)).toBe(manifest);
   });

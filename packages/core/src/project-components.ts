@@ -15,7 +15,7 @@ export async function projectMcpLauncher(source: ProjectComponents, root: string
   const servers = selectedServers ?? Object.entries(source.mcp.config.mcpServers).filter(([, s]) => s.type === "stdio").map(([name, s]) => ({ name, ...s }));
   if (!servers.length) return { files: [], entries: [], guidance: [] };
   const relativeToOutput = (path: string) => relative(resolve(root, output), path).replaceAll("\\", "/") || ".";
-  const launcher = await bundleMcpLauncher({ frontEnd: "self-resolving", rootOffset: relativeToOutput(source.mcp.root), dataOffset: relativeToOutput(resolve(root, ".hooknostic/data")), pluginName: "project" });
+  const launcher = await bundleMcpLauncher({ frontEnd: "self-resolving", rootOffset: relativeToOutput(source.mcp.root), dataOffset: relativeToOutput(resolve(root, ".hooknostic/data")), pluginName: "project", environmentReferences: source.origin === "direct" });
   return { files: [
     { path: `${output}/.gitattributes`, contents: "* -text\n" },
     { path: `${output}/mcp-launcher.mjs`, contents: launcher },

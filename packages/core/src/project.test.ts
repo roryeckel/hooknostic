@@ -87,11 +87,11 @@ describe("complete project integration", () => {
     expect(synced.errors).toEqual([]);
     const path = join(root, ".codex/config.toml");
     const before = await readFile(path, "utf8");
-    const servers = readProjectToml(before).mcp_servers as Record<string, { args: string[]; http_headers: Record<string, string> }>;
-    expect(servers.remote!.http_headers.Authorization).toBe("${UNCHANGED}");
-    const execution = spawnSync(process.execPath, servers.probe!.args, { cwd: join(root, "nested/deeper"), encoding: "utf8", timeout: 10000 });
+    const servers = readProjectToml(before).mcp_servers as Record<string, { args: string[]; env_http_headers: Record<string, string> }>;
+    expect(servers.remote!.env_http_headers.Authorization).toBe("UNCHANGED");
+    const execution = spawnSync(process.execPath, servers.probe!.args, { cwd: join(root, "nested/deeper"), env: { ...process.env, UNCHANGED: "runtime-reference" }, encoding: "utf8", timeout: 10000 });
     expect(execution.status, execution.stderr).toBe(0);
-    expect(JSON.parse(execution.stdout)).toEqual({ cwd: join(root, "sources/worker"), root: join(root, "sources"), data: join(root, ".hooknostic/data"), ref: "${UNCHANGED}", args: [join(root, "sources") + "/support.txt"] });
+    expect(JSON.parse(execution.stdout)).toEqual({ cwd: join(root, "sources/worker"), root: join(root, "sources"), data: join(root, ".hooknostic/data"), ref: "runtime-reference", args: [join(root, "sources") + "/support.txt"] });
     const git = (args: string[]) => {
       const result = spawnSync("git", args, { cwd: root, encoding: "utf8", timeout: 10000 });
       expect(result.status, result.stderr).toBe(0);
@@ -104,7 +104,7 @@ describe("complete project integration", () => {
     git(["worktree", "add", "--detach", linked, "HEAD"]);
     await mkdir(join(linked, "nested/deeper"), { recursive: true });
     await mkdir(join(linked, "sources/worker"), { recursive: true });
-    const linkedRun = spawnSync(process.execPath, servers.probe!.args, { cwd: join(linked, "nested/deeper"), encoding: "utf8", timeout: 10000 });
+    const linkedRun = spawnSync(process.execPath, servers.probe!.args, { cwd: join(linked, "nested/deeper"), env: { ...process.env, UNCHANGED: "runtime-reference" }, encoding: "utf8", timeout: 10000 });
     expect(linkedRun.status, linkedRun.stderr).toBe(0);
     expect(JSON.parse(linkedRun.stdout).root).toBe(join(linked, "sources"));
     git(["worktree", "remove", "--force", linked]);

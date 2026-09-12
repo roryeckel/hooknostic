@@ -23,10 +23,22 @@ export async function projectComponents(source: ProjectComponents, root: string,
     const translated = translateMcp(source.mcp ? { mcp: source.mcp.config } : {});
     if (translated.omitted.length) throw new Error(translated.omitted.map(item => `${item.name}: ${item.reason}`).join("; "));
     const declarations = Object.entries(translated.servers);
+    const directEnvironmentResolution = source.origin === "direct" ? `
+const expandEnvironment = (value) => value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}/g, (reference, name) => {
+  const resolved = process.env[name];
+  if (resolved === undefined) throw new Error("Hooknostic MCP environment variable " + name + " is required by " + reference);
+  return resolved;
+});
+const resolveRemote = (server) => ({ ...server,
+  url: expandEnvironment(server.url),
+  ...(server.headers === undefined ? {} : { headers: Object.fromEntries(Object.entries(server.headers).map(([name, value]) => [name, expandEnvironment(value)])) }),
+});
+` : "\nconst resolveRemote = (server) => server;\n";
     const module = `import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const declarations = JSON.parse(${JSON.stringify(JSON.stringify(declarations))});
+${directEnvironmentResolution}
 export default async () => ({ config(config) {
   const paths = ${JSON.stringify(skillRoots)}.map(path => resolve(root, path));
   if (paths.length) config.skills = { ...(config.skills ?? {}), paths: [...new Set([...(config.skills?.paths ?? []), ...paths])] };
@@ -36,7 +48,7 @@ export default async () => ({ config(config) {
     const value = server.type === "local" ? { ...server,
       command: server.command.map(arg => arg === ${JSON.stringify(RUNTIME_LAUNCHER)} ? resolve(root, ${JSON.stringify(output + "/mcp-launcher.mjs")}) : arg),
       cwd: server.cwd === ${JSON.stringify(RUNTIME_PLUGIN_ROOT)} ? resolve(root, ${JSON.stringify(sourceRoot)}) : server.cwd,
-    } : server;
+    } : resolveRemote(server);
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;

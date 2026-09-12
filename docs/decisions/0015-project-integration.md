@@ -45,6 +45,18 @@ ownership and a repository-locating stdio bootstrap, with Streamable HTTP native
 projection; legacy SSE is still declined. See `.capture/codex-project-mcp` for
 configuration layering, trust, working-directory, and diagnostic boundaries.
 
+Direct MCP sources and Agent Plugin packages retain distinct runtime contracts.
+Generated project artifacts keep `${NAME}` references as text and resolve them
+from the harness environment only when the project integration activates. An
+unset reference fails activation instead of sending placeholder text as a
+credential. Packaged remote declarations remain literal because the Agent
+Plugins standard prohibits environment expansion there. OpenCode performs its
+native interpolation before project plugin hooks, so its generated direct-source
+module resolves remote URL and header references itself. Codex maps exact header
+references to `env_http_headers` and bearer authorization to
+`bearer_token_env_var`; references in URLs or mixed header values are rejected
+because Codex has no equivalent native field.
+
 ## Boundaries
 
 Hooknostic compiles artifacts and optionally reconciles explicitly configured

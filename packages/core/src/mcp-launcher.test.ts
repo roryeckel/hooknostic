@@ -53,7 +53,7 @@ interface Layout {
  */
 async function layout(
   servers: McpLauncherServer[],
-  options: { pluginName?: string; version?: string; document?: string } = {},
+  options: { pluginName?: string; version?: string; document?: string; environmentReferences?: boolean } = {},
 ): Promise<Layout> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-launcher-"));
   dirs.push(dir);
@@ -69,6 +69,7 @@ async function layout(
       frontEnd: "self-resolving",
       rootOffset: "..",
       pluginName: options.pluginName ?? "portable-tools",
+      environmentReferences: options.environmentReferences,
     }),
   );
   await writeFile(
@@ -209,6 +210,26 @@ describe("generated MCP launcher", () => {
       "${PLUGIN_ROOT",
     ]);
     expect(observed.declared).toBe(`${tree.root}/env`);
+  });
+
+  it("resolves direct project environment references only when requested", async () => {
+    const direct = await layout([
+      probeServer({ args: ["-e", PROBE, "prefix-${HOOKNOSTIC_PROJECT_TOKEN}"], env: { DECLARED: "${HOOKNOSTIC_PROJECT_TOKEN}" } }),
+    ], { environmentReferences: true });
+    const resolved = launch(direct, 0, { HOOKNOSTIC_PROJECT_TOKEN: "runtime-value" });
+    expect(resolved.status, resolved.stderr).toBe(0);
+    expect(JSON.parse(resolved.stdout)).toMatchObject({ declared: "runtime-value", args: ["prefix-runtime-value"] });
+
+    const missing = launch(direct, 0);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toContain("environment variable HOOKNOSTIC_PROJECT_TOKEN is required");
+
+    const packaged = await layout([
+      probeServer({ env: { DECLARED: "${HOOKNOSTIC_PROJECT_TOKEN}" } }),
+    ]);
+    const literal = launch(packaged, 0, { HOOKNOSTIC_PROJECT_TOKEN: "must-not-expand" });
+    expect(literal.status, literal.stderr).toBe(0);
+    expect(JSON.parse(literal.stdout).declared).toBe("${HOOKNOSTIC_PROJECT_TOKEN}");
   });
 
   it("agrees with the TypeScript placeholder oracle", async () => {

@@ -1138,6 +1138,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     await mkdir(skillSource, { recursive: true });
     await writeFile(join(skillSource, "SKILL.md"), "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n");
     const build = await buildPlaybackArtifact(adapter!, dir, { delivery: "project", project: true, components: {
+      origin: "direct",
       skills: [{ name: "local-sample", source: skillSource, files: [{ path: "SKILL.md", mode: 0o644, contents: new TextEncoder().encode("---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n") }] }],
       mcp: { root: source, config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: {
         localProbe: { type: "stdio" as const, command: "node", args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"], env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" }, cwd: "./mcp-working-dir" },

@@ -41,6 +41,8 @@ export interface McpLauncherOptions {
   dataOffset?: string;
   /** Names the data directory, so it survives a version-scoped reinstall. Self-resolving only. */
   pluginName?: string;
+  /** Resolve project-source `${NAME}` references from the launch environment. */
+  environmentReferences?: boolean;
 }
 
 /**
@@ -92,7 +94,7 @@ run({ cwd, command, args });
  * end implements it for them: it resolves the plugin root from its own
  * location, supplies a data directory, and expands before spawning.
  */
-function selfResolvingFrontEnd(rootOffset: string, pluginName: string, dataOffset?: string): string {
+function selfResolvingFrontEnd(rootOffset: string, pluginName: string, dataOffset?: string, environmentReferences = false): string {
   return `import { mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -103,6 +105,7 @@ const DATA_TOKEN = ${JSON.stringify(PLUGIN_DATA_PLACEHOLDER)};
 const ROOT_OFFSET = ${JSON.stringify(rootOffset)};
 const PLUGIN_NAME = ${JSON.stringify(pluginName)};
 const DOCUMENT = ${JSON.stringify(MCP_SERVERS_FILE)};
+const ENVIRONMENT_REFERENCES = ${JSON.stringify(environmentReferences)};
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(here, ROOT_OFFSET);
@@ -163,7 +166,15 @@ if (typeof entry.command !== "string") {
   fail("server at index " + index + " in " + documentPath + " declares no command");
 }
 
-const expand = (value) => value.split(ROOT_TOKEN).join(pluginRoot).split(DATA_TOKEN).join(pluginData);
+function expand(value) {
+  const paths = value.split(ROOT_TOKEN).join(pluginRoot).split(DATA_TOKEN).join(pluginData);
+  if (!ENVIRONMENT_REFERENCES) return paths;
+  return paths.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}/g, (reference, name) => {
+    const resolved = process.env[name];
+    if (resolved === undefined) fail("environment variable " + name + " is required by " + reference);
+    return resolved;
+  });
+}
 
 const cwd =
   entry.cwd === undefined
@@ -214,7 +225,7 @@ export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<st
     LAUNCHER_CORE +
     (options.frontEnd === "client-expanded"
       ? CLIENT_EXPANDED_FRONT_END
-      : selfResolvingFrontEnd(options.rootOffset ?? "..", options.pluginName ?? "", options.dataOffset));
+      : selfResolvingFrontEnd(options.rootOffset ?? "..", options.pluginName ?? "", options.dataOffset, options.environmentReferences));
   const entry = createRequire(import.meta.url).resolve("cross-spawn");
   const result = await build({
     stdin: { contents, resolveDir: dirname(entry) },

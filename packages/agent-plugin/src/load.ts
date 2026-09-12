@@ -613,18 +613,20 @@ export interface ProjectSkill {
   files: AgentPluginFile[];
 }
 export interface ProjectComponents {
+  origin: "package" | "direct";
   skills: ProjectSkill[];
   mcp?: { root: string; config: AgentPluginMcpConfig };
 }
 export function packageComponents(source: AgentPluginPackage): ProjectComponents {
   return {
+    origin: "package",
     skills: source.skills.map(skill => ({ name: skill.name, source: resolve(source.root, skill.directory), files: source.files.filter(f => f.path.startsWith(skill.directory + "/")).map(f => ({ ...f, path: f.path.slice(skill.directory.length + 1) })) })),
     ...(source.mcp === undefined ? {} : { mcp: { root: source.root, config: source.mcp } }),
   };
 }
 export async function loadProjectComponents(options: { skills?: string[]; mcp?: string }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
-  const source: ProjectComponents = { skills: [] };
+  const source: ProjectComponents = { origin: "direct", skills: [] };
   const names = new Set<string>();
   for (const directory of options.skills ?? []) {
     const data = await inventory(resolve(directory), DEFAULT_EXCLUDES, issues);

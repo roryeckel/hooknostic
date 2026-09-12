@@ -66,13 +66,23 @@ Claude MCP uses `.mcp.json`; OpenCode uses an adapter-owned configuration module
 Both support stdio and remote transports as recorded in the project support
 profiles. Stdio uses the existing portable launcher; command paths and cwd resolve
 from the MCP source file's directory. Environment references remain literal until
-runtime. `${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves
-to ignored project-local `.hooknostic/data`. Dependencies must already be installed.
+runtime. Direct project sources resolve `${NAME}` from the launch environment and
+fail activation when a referenced variable is unset; Agent Plugin package inputs
+retain unrecognized references literally under the package standard.
+`${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves to
+ignored project-local `.hooknostic/data`. Dependencies must already be installed.
 Codex project MCP uses owned server entries in `.codex/config.toml`. Stdio uses
 an inline Node bootstrap that locates the nearest integration from the invocation
 directory, checks its owner and generated-file hashes, then imports the launcher.
 This supports nested invocation and linked worktrees without absolute generated
-paths. Streamable HTTP uses native `url` and `http_headers`. Legacy SSE remains
+paths. Streamable HTTP uses native `url`, `http_headers`, `env_http_headers`, and
+`bearer_token_env_var`. A direct `${NAME}` header maps to `env_http_headers`, and
+an `Authorization: Bearer ${NAME}` header maps to `bearer_token_env_var` without
+placing the value in generated output. Codex cannot represent references inside a
+remote URL or mixed with other header text, so those configurations fail with a
+targeted diagnostic. OpenCode resolves direct remote URL and header references in
+its generated project module because its own interpolation runs before plugin
+configuration hooks. Legacy SSE remains
 unsupported; opt into `onUnsupported: "warn"` only when omissions are acceptable.
 
 Codex must trust the project before it reads project MCP configuration. Same-named
