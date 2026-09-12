@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { projectMcpBootstrap } from "./project-mcp-bootstrap.js";
+import { projectHookBootstrap, projectMcpBootstrap } from "./project-mcp-bootstrap.js";
 import { fileHash } from "./project-files.js";
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -64,4 +64,40 @@ it("rejects escaping compiler inputs", () => {
   expect(() => projectMcpBootstrap("../outside", config, 0)).toThrow("bootstrap path");
   expect(() => projectMcpBootstrap(output, "/absolute", 0)).toThrow("bootstrap path");
   expect(() => projectMcpBootstrap(output, config, -1)).toThrow("server index");
+});
+
+it("locates and invokes an owned hook runtime from a nested directory", async () => {
+  const root = await tree();
+  const runtimePath = `${output}/hooknostic.mjs`;
+  const runtime = `let input = ""; for await (const chunk of process.stdin) input += chunk; console.log(JSON.stringify({input, argv:process.argv[1]}));`;
+  await writeFile(join(root, runtimePath), runtime);
+  const manifestPath = join(root, ".hooknostic/integration.json");
+  const { readFile } = await import("node:fs/promises");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.owned.push({ path: runtimePath, hash: fileHash(runtime) });
+  await writeFile(manifestPath, JSON.stringify(manifest));
+
+  const result = spawnSync(projectHookBootstrap(runtimePath, config), {
+    cwd: join(root, "nested/deeper"),
+    encoding: "utf8",
+    input: "hook-input",
+    shell: true,
+    timeout: 10_000,
+  });
+
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({ input: "hook-input", argv: join(root, runtimePath) });
+  expect(projectHookBootstrap(runtimePath, config)).not.toContain(root);
+
+  await writeFile(join(root, runtimePath), "tampered");
+  const tampered = spawnSync(projectHookBootstrap(runtimePath, config), { cwd: join(root, "nested/deeper"), encoding: "utf8", shell: true });
+  expect(tampered.status).toBe(1);
+  expect(tampered.stderr).toContain("modified owned file");
+
+  await writeFile(join(root, runtimePath), runtime);
+  manifest.config = "other-config.ts";
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const mismatched = spawnSync(projectHookBootstrap(runtimePath, config), { cwd: join(root, "nested/deeper"), encoding: "utf8", shell: true });
+  expect(mismatched.status).toBe(1);
+  expect(mismatched.stderr).toContain("another configuration");
 });

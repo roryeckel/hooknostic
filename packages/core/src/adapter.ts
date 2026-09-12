@@ -13,6 +13,13 @@ import type { AgentPluginProjector, ProjectComponents, AgentPluginProjectionProf
 import type { Diagnostic } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
 
+export interface ProjectComponentOptions {
+  /** Effective startup timeout per MCP server for this target. */
+  mcpStartupTimeoutMs?: Readonly<Record<string, number>>;
+  /** Stdio cwd overrides already validated as contained by the project root. */
+  mcpProjectCwdServers?: readonly string[];
+}
+
 /** A configured build target: config entry keyed by adapter/target id. */
 export interface TargetSpec {
   id: string;
@@ -201,8 +208,10 @@ export interface HarnessAdapter {
   readonly adapterVersion: string;
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
   projectPaths?: readonly string[];
-  projectComponents?(source: ProjectComponents, root: string, output: string, config: string): Promise<ProjectIntegration>;
-  projectIntegration?(artifacts: readonly GeneratedArtifact[], outputFromRoot: string): ProjectIntegration;
+  projectComponents?(source: ProjectComponents, root: string, output: string, config: string, options: ProjectComponentOptions): Promise<ProjectIntegration>;
+  projectIntegration?(artifacts: readonly GeneratedArtifact[], outputFromRoot: string, configFromRoot: string): ProjectIntegration;
+  /** Project MCP options this adapter can encode without dropping policy. */
+  projectMcpOptions?: { startupTimeoutMs?: true };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;

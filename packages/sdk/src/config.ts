@@ -82,6 +82,22 @@ export interface AgentPluginRuntimePackageConfig {
   allowInstallScripts?: string[];
 }
 
+export interface ProjectMcpServerOverride {
+  /** Replace the portable stdio arguments for this target. */
+  args?: string[];
+  /** Replace the portable stdio working directory for this target. */
+  cwd?: string;
+  /** Target-native MCP startup timeout. */
+  startupTimeoutMs?: number;
+}
+
+export interface ProjectMcpTargetOverride {
+  /** Default startup timeout for every MCP server on this target. */
+  startupTimeoutMs?: number;
+  /** Per-server portable and startup overrides. */
+  servers?: Record<string, ProjectMcpServerOverride>;
+}
+
 interface ComponentPolicy<TTarget extends string> {
   /**
    * Configured targets that must receive a complete native package projection.
@@ -111,10 +127,15 @@ interface ComponentPolicy<TTarget extends string> {
   onInvalid?: "error" | "warn";
 }
 
+type DirectComponentPolicy<TTarget extends string> = {
+  /** Target-specific project delivery settings for a direct MCP source. */
+  mcpOverrides?: Partial<Record<TTarget, ProjectMcpTargetOverride>>;
+};
+
 export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<TTarget> & (
-  | { root: string; skills?: never; mcp?: never }
-  | { root?: never; skills: string[]; mcp?: string }
-  | { root?: never; skills?: string[]; mcp: string }
+  | { root: string; skills?: never; mcp?: never; mcpOverrides?: never }
+  | ({ root?: never; skills: string[]; mcp?: string } & DirectComponentPolicy<TTarget>)
+  | ({ root?: never; skills?: string[]; mcp: string } & DirectComponentPolicy<TTarget>)
 );
 
 export type TargetsConfig = Record<string, TargetConfig>;

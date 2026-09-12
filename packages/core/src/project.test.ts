@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { readProjectToml } from "./project-toml.js";
 import { runProject } from "./project.js";
@@ -35,6 +35,16 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".hooknostic/.gitattributes"), "utf8")).toBe("** -text\n");
     const codex = JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8"));
     expect(codex.hooks.PreToolUse[0].hooks[0].timeout).toBe(5);
+    await mkdir(join(root, "backend/nested"), { recursive: true });
+    const hookRun = spawnSync(codex.hooks.PreToolUse[0].hooks[0].command, {
+      cwd: join(root, "backend/nested"),
+      encoding: "utf8",
+      input: JSON.stringify({ hook_event_name: "PreToolUse", cwd: root, session_id: "sample", tool_name: "Bash", tool_input: { command: "echo test" } }),
+      shell: true,
+      timeout: 10_000,
+    });
+    expect(hookRun.status, hookRun.stderr).toBe(0);
+    expect(hookRun.stdout).toContain("project marker");
     expect(await readFile(join(root, ".opencode/plugins/hooknostic.js"), "utf8")).toContain(".hooknostic/artifacts/opencode");
     const source = await readFile(join(root, "hooks.ts"), "utf8");
     await writeFile(join(root, "hooks.ts"), source.replace("4000", "9000"));
@@ -52,12 +62,20 @@ describe("complete project integration", () => {
     expect(run.stdout).toContain("project marker");
   });
   it("copies direct skills and resources without requiring package metadata", async () => {
-    const { root, options } = await fixture({ components: { skills: ["./skills"] } });
+    const { root, options } = await fixture({ components: { skills: ["./skills"], exclude: ["**/__pycache__/**", "**/*.pyc", "sample/assets/**", "sample/references/test-credentials.md"] } });
     await mkdir(join(root, "skills/sample/references"), { recursive: true });
+    await mkdir(join(root, "skills/sample/assets"), { recursive: true });
+    await mkdir(join(root, "skills/sample/__pycache__"), { recursive: true });
     await writeFile(join(root, "skills/sample/SKILL.md"), "---\nname: sample\ndescription: Synthetic skill\n---\nRead references/note.md.\n");
     await writeFile(join(root, "skills/sample/references/note.md"), "resource\n");
+    await writeFile(join(root, "skills/sample/references/test-credentials.md"), "ignored\n");
+    await writeFile(join(root, "skills/sample/assets/session.json"), "ignored\n");
+    await writeFile(join(root, "skills/sample/__pycache__/probe.pyc"), "ignored\n");
     const synced = await runProject({ ...options, command: "sync" }); expect(synced.errors).toEqual([]);
     expect(await readFile(join(root, ".claude/skills/sample/references/note.md"), "utf8")).toBe("resource\n");
+    await expect(readFile(join(root, ".claude/skills/sample/references/test-credentials.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, ".claude/skills/sample/assets/session.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(root, ".claude/skills/sample/__pycache__/probe.pyc"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(join(root, ".claude/skills/.gitattributes"), "utf8")).toBe("** -text\n");
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
@@ -75,6 +93,45 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".hooknostic/artifacts/claude/mcp-servers.json"), "utf8")).toContain("${UNRESOLVED_TOKEN}");
     expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain("TOKEN");
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
+  it("applies independent target MCP arguments, cwd, and timeout translations", async () => {
+    const { root, options } = await fixture({ components: {
+      mcp: "./config/mcp.json",
+      targets: ["codex", "opencode"],
+      mcpOverrides: {
+        codex: { startupTimeoutMs: 60_000, servers: { serena: { args: ["start-mcp-server", "--context", "codex"] } } },
+        opencode: { servers: { serena: { args: ["start-mcp-server", "--context", "ide"], cwd: "${PLUGIN_ROOT}/..", startupTimeoutMs: 60_000 } } },
+      },
+    } });
+    await mkdir(join(root, "config"));
+    await writeFile(join(root, "config/mcp.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: {
+      serena: { type: "stdio", command: "uvx", args: ["start-mcp-server", "--context", "claude-code"], cwd: "${PLUGIN_ROOT}" },
+    } }));
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    expect(JSON.parse(await readFile(join(root, ".hooknostic/artifacts/codex/mcp-servers.json"), "utf8")).servers[0]).toMatchObject({ args: ["start-mcp-server", "--context", "codex"] });
+    expect(JSON.parse(await readFile(join(root, ".hooknostic/artifacts/opencode/mcp-servers.json"), "utf8")).servers[0]).toMatchObject({ args: ["start-mcp-server", "--context", "ide"], cwd: "${PLUGIN_ROOT}/.." });
+    const codexServers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8")).mcp_servers as Record<string, { startup_timeout_sec: number }>;
+    expect(codexServers.serena!.startup_timeout_sec).toBe(60);
+    const componentPath = join(root, ".opencode/plugins/hooknostic-components.js");
+    const plugin = await (await import(pathToFileURL(componentPath).href)).default();
+    const opencodeConfig: { mcp?: Record<string, { timeout?: number }> } = {};
+    plugin.config(opencodeConfig);
+    expect(opencodeConfig.mcp?.serena?.timeout).toBe(60_000);
+    expect(await readFile(join(root, "config/mcp.json"), "utf8")).toContain("claude-code");
+  });
+  it.each([
+    ["unknown server", { codex: { servers: { missing: { args: [] } } } }, "unknown server"],
+    ["remote argv", { codex: { servers: { remote: { args: [] } } } }, "only on a stdio server"],
+    ["cwd outside project", { codex: { servers: { local: { cwd: "${PLUGIN_ROOT}/.." } } } }, "unsupported portable command or working-directory semantics"],
+    ["unsupported timeout", { claude: { startupTimeoutMs: 1000 } }, "cannot represent project MCP startup timeouts"],
+  ])("rejects invalid target MCP overrides: %s", async (_name, mcpOverrides, message) => {
+    const { root, options } = await fixture({ components: { mcp: "./mcp.json", mcpOverrides } });
+    await writeFile(join(root, "mcp.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: {
+      local: { type: "stdio", command: "node" },
+      remote: { type: "streamable-http", url: "https://example.invalid/mcp" },
+    } }));
+    expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(message);
   });
   it("launches Codex project MCP from nested directories and detects registration drift", async () => {
     const { root, config, options } = await fixture({ components: { mcp: "./sources/mcp.json", targets: ["codex"] } });
@@ -148,6 +205,7 @@ describe("complete project integration", () => {
     const result = await runProject({ ...options, command: "sync" });
     expect(result.errors).toEqual([]);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ target: "codex", component: "agent-plugin.mcp.sse", severity: "warn" }));
+    expect(await readFile(join(root, ".opencode/plugins/hooknostic-components.js"), "utf8")).toContain("127.0.0.1:1/sse");
   });
   it("resolves a nested configuration relative to its declared project root", async () => {
     const { root, config, options } = await fixture();

@@ -282,6 +282,8 @@ interface DriveOptions {
   requireAgentRequest?: boolean;
   /** Extra CLI args appended to the harness invocation (e.g. stream-json output). */
   extraArgs?: readonly string[];
+  /** Run the harness from a nested project directory while retaining root ownership. */
+  harnessCwd?: string;
   /**
    * Path to the in-repo stdio MCP fixture server; registers it with the
    * harness (Codex: `mcp_servers.*`), enabling the MCP-only drive.
@@ -306,7 +308,7 @@ interface DriveOptions {
     serve?: OpenCodeServeSession;
   }) => Promise<void>;
   /** Extra provider-config keys for the opencode lanes (e.g. permission rules). */
-  opencodeConfig?: { permission?: Record<string, string> };
+  opencodeConfig?: { permission?: Record<string, string>; mcp?: Record<string, Record<string, unknown>> };
 }
 
 /** A message row from OpenCode's GET /session/:id/message (smoke-proven shape). */
@@ -364,7 +366,7 @@ async function runClaudePlayback(
         ...(options.extraArgs ?? []),
       ],
       {
-        cwd: build.artifactDir,
+        cwd: options.harnessCwd ?? build.artifactDir,
         timeoutMs: 90_000,
         env: {
           ...withoutCredentials(),
@@ -461,7 +463,7 @@ async function runCodexPlayback(
           : []),
       ],
       {
-        cwd: build.artifactDir,
+        cwd: options.harnessCwd ?? build.artifactDir,
         input: options.prompt ?? playbackPrompt(scenario),
         timeoutMs: 90_000,
         env: {
@@ -514,6 +516,7 @@ async function runOpenCodePlayback(
       process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
     );
     await writeOpenCodeProviderConfig(build.artifactDir, server.baseUrl, {
+      ...options.opencodeConfig,
       ...(options.mcpServerPath !== undefined ? { mcpServerPath: options.mcpServerPath } : {}),
     });
     let result: Awaited<ReturnType<typeof runProcess>>;
@@ -551,6 +554,7 @@ async function runOpenCodePlayback(
       options.expectedExitCodes ?? [0],
       `opencode exit ${result.code}: ${result.stdout}\n${result.stderr}`,
     ).toContain(result.code);
+    options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
     expect(server.errors).toEqual([]);
     if (options.requireAgentRequest === false) {
       await options.verify?.({ server, dir: build.artifactDir });
@@ -586,8 +590,18 @@ async function runInstalledHarness(
 async function writeOpenCodeProviderConfig(
   artifactDir: string,
   baseUrl: string,
-  options: { permission?: Record<string, string>; mcpServerPath?: string } = {},
+  options: { permission?: Record<string, string>; mcp?: Record<string, Record<string, unknown>>; mcpServerPath?: string } = {},
 ): Promise<void> {
+  const mcp = {
+    ...(options.mcp ?? {}),
+    ...(options.mcpServerPath === undefined ? {} : {
+      hooknostic_fixture: {
+        type: "local",
+        command: ["node", options.mcpServerPath],
+        enabled: true,
+      },
+    }),
+  };
   await writeFile(
     join(artifactDir, "opencode.json"),
     JSON.stringify(
@@ -596,17 +610,7 @@ async function writeOpenCodeProviderConfig(
         model: "playback/hooknostic-playback",
         enabled_providers: ["playback"],
         ...(options.permission !== undefined ? { permission: options.permission } : {}),
-        ...(options.mcpServerPath !== undefined
-          ? {
-              mcp: {
-                hooknostic_fixture: {
-                  type: "local",
-                  command: ["node", options.mcpServerPath],
-                  enabled: true,
-                },
-              },
-            }
-          : {}),
+        ...(Object.keys(mcp).length === 0 ? {} : { mcp }),
         provider: {
           playback: {
             npm: "@ai-sdk/openai-compatible",
@@ -1137,26 +1141,39 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     const skillSource = join(dir, "portable-skills/local-sample");
     await mkdir(skillSource, { recursive: true });
     await writeFile(join(skillSource, "SKILL.md"), "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n");
-    const build = await buildPlaybackArtifact(adapter!, dir, { delivery: "project", project: true, components: {
+    const projectCwdOverride = adapter!.id === "claude" ? "./mcp-working-dir" : "${PLUGIN_ROOT}/..";
+    const build = await buildPlaybackArtifact(adapter!, dir, { delivery: "project", project: true, componentOptions: {
+      ...(adapter!.id === "claude" ? {} : { mcpProjectCwdServers: ["localProbe"], mcpStartupTimeoutMs: { localProbe: 60_000 } }),
+    }, components: {
       origin: "direct",
       skills: [{ name: "local-sample", source: skillSource, files: [{ path: "SKILL.md", mode: 0o644, contents: new TextEncoder().encode("---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n") }] }],
       mcp: { root: source, config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: {
-        localProbe: { type: "stdio" as const, command: "node", args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}"], env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" }, cwd: "./mcp-working-dir" },
+        localProbe: { type: "stdio" as const, command: "node", args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}", adapter!.id], env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" }, cwd: projectCwdOverride },
         localHttp: { type: "streamable-http" as const, url: transports.httpUrl },
+        ...(adapter!.id === "opencode" ? { missingRemote: { type: "streamable-http" as const, url: "https://example.invalid/${HOOKNOSTIC_PLAYBACK_UNSET_REMOTE}/mcp" } } : {}),
         ...(adapter!.id === "codex" ? {} : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
       } } },
     } });
+    const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
+    await mkdir(harnessCwd, { recursive: true });
+    let harnessOutput = "";
     try {
       await runInstalledHarness(build, "rewrite", {
+        harnessCwd,
         ...(adapter!.id === "claude" ? { extraArgs: ["--strict-mcp-config", "--mcp-config", join(dir, ".mcp.json")] } : {}),
+        ...(adapter!.id === "opencode" ? { opencodeConfig: { mcp: {
+          localProbe: { type: "remote", url: "https://inherited.invalid/mcp", enabled: true },
+          inheritedOnly: { type: "remote", url: "https://example.invalid/inherited", enabled: false },
+        } } } : {}),
+        capture: ({ stdout, stderr }) => { harnessOutput = stdout + stderr; },
         verify: async ({ server }) => {
           expect(requestContents(server.requests).join("\n")).toContain("local-skill-marker");
           {
             const environment = JSON.parse(await readFile(join(source, "mcp-environment.json"), "utf8"));
             expect(normalize(environment.pluginRoot)).toBe(normalize(source));
-            expect(normalize(environment.cwd)).toBe(normalize(join(source, "mcp-working-dir")));
+            expect(normalize(environment.cwd)).toBe(normalize(adapter!.id === "claude" ? join(source, "mcp-working-dir") : dir));
             expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
-            expect(environment.argv).toEqual([environment.pluginData]);
+            expect(environment.argv).toEqual([environment.pluginData, adapter!.id]);
             expect(transports.counts.http).toBeGreaterThan(0);
             if (adapter!.id !== "codex") {
               expect(transports.counts.sseGet).toBeGreaterThan(0);
@@ -1166,6 +1183,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         },
       });
     } finally { await transports.close(); }
+    if (adapter!.id === "opencode") {
+      expect(harnessOutput).toContain("Hooknostic disabled MCP");
+      expect(harnessOutput).toContain("HOOKNOSTIC_PLAYBACK_UNSET_REMOTE");
+    }
     const events = await traceEvents(build.tracePath);
     expect(events).toContain("tool.before");
   }, 180_000);

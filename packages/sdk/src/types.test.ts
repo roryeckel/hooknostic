@@ -218,10 +218,19 @@ describe("compile-time config contracts", () => {
       components: { root: ".", targets: ["claude", "codex"], onInvalid: "warn" },
       targets: { claude, codex },
     });
-    expect([hooked.entry, hookless.entry, both.components?.targets]).toEqual([
+    const direct = defineConfig({
+      project: { root: "." },
+      components: {
+        mcp: "./mcp.json",
+        mcpOverrides: { codex: { startupTimeoutMs: 60_000, servers: { serena: { args: ["serve"] } } } },
+      },
+      targets: { codex },
+    });
+    expect([hooked.entry, hookless.entry, both.components?.targets, direct.components?.mcpOverrides?.codex?.startupTimeoutMs]).toEqual([
       "./src/hooks.ts",
       undefined,
       ["claude", "codex"],
+      60_000,
     ]);
 
     // @ts-expect-error at least one of entry or components is required
@@ -235,6 +244,23 @@ describe("compile-time config contracts", () => {
       entry: "./src/hooks.ts",
       // @ts-expect-error projection targets cannot be empty
       components: { root: ".", targets: [] },
+      targets: { claude },
+    });
+    defineConfig({
+      project: { root: "." },
+      components: {
+        mcp: "./mcp.json",
+        // @ts-expect-error "claude" is not a configured target
+        mcpOverrides: { claude: {} },
+      },
+      targets: { codex },
+    });
+    defineConfig({
+      components: {
+        root: ".",
+        // @ts-expect-error package components cannot carry direct MCP overrides
+        mcpOverrides: { claude: {} },
+      },
       targets: { claude },
     });
   });

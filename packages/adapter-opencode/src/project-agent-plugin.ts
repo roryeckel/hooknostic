@@ -53,6 +53,7 @@ interface OpenCodeLocalServer {
   cwd: string;
   environment?: Record<string, string>;
   enabled: true;
+  timeout?: number;
 }
 
 /** OpenCode's remote server. The client negotiates StreamableHTTP, then SSE. */
@@ -61,6 +62,7 @@ interface OpenCodeRemoteServer {
   url: string;
   headers?: Record<string, string>;
   enabled: true;
+  timeout?: number;
 }
 
 type OpenCodeServer = OpenCodeLocalServer | OpenCodeRemoteServer;
@@ -84,7 +86,7 @@ export const RUNTIME_LAUNCHER = "__HOOKNOSTIC_LAUNCHER__";
  * strip PATH -- which is how `command[0]` resolves. The launcher applies the
  * declared environment itself, on top of its own.
  */
-export function translateMcp(source: Pick<AgentPluginPackage, "mcp">): {
+export function translateMcp(source: Pick<AgentPluginPackage, "mcp">, projectCwdServers: ReadonlySet<string> = new Set()): {
   servers: Record<string, OpenCodeServer>;
   launcherServers: McpLauncherServer[];
   omitted: { name: string; reason: string }[];
@@ -113,7 +115,7 @@ export function translateMcp(source: Pick<AgentPluginPackage, "mcp">): {
       });
       continue;
     }
-    if (classifyStdioCwd(server.cwd) === undefined) {
+    if (classifyStdioCwd(server.cwd) === undefined && !projectCwdServers.has(name)) {
       omitted.push({
         name,
         reason: `working directory ${JSON.stringify(server.cwd)} escapes the directory it is anchored on`,

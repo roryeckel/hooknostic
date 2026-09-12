@@ -230,6 +230,41 @@ describe("canonical schemas", () => {
     ).toBe(false);
   });
 
+  it("validates direct project MCP overrides", () => {
+    const target = { version: ">=1 <2", delivery: "project" as const, output: "./dist/client" };
+    const base = {
+      project: { root: "." },
+      components: {
+        mcp: "./mcp.json",
+        targets: ["client"],
+        mcpOverrides: {
+          client: {
+            startupTimeoutMs: 60_000,
+            servers: { serena: { args: ["serve"], cwd: "${PLUGIN_ROOT}/..", startupTimeoutMs: 30_000 } },
+          },
+        },
+      },
+      targets: { client: target },
+    };
+    expect(hooknosticConfigSchema.safeParse(base).success).toBe(true);
+    expect(hooknosticConfigSchema.safeParse({
+      ...base,
+      components: { root: ".", mcpOverrides: base.components.mcpOverrides },
+    }).success).toBe(false);
+    expect(hooknosticConfigSchema.safeParse({
+      ...base,
+      components: { skills: ["./skills"], mcpOverrides: base.components.mcpOverrides },
+    }).success).toBe(false);
+    expect(hooknosticConfigSchema.safeParse({
+      ...base,
+      components: { ...base.components, mcpOverrides: { missing: {} } },
+    }).success).toBe(false);
+    expect(hooknosticConfigSchema.safeParse({
+      ...base,
+      components: { ...base.components, mcpOverrides: { client: { startupTimeoutMs: 0 } } },
+    }).success).toBe(false);
+  });
+
   it("validates hookless Agent Plugin projection target invariants", () => {
     const target = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/claude" };
     expect(

@@ -1,14 +1,22 @@
-/** Locate the nearest owned integration without relying on the harness session cwd. */
-export function projectMcpBootstrap(output: string, config: string, index: number): string[] {
-  for (const path of [output, config]) {
-    if (!path || path.includes("\\") || path.startsWith("/") || path.includes(":") || path.split("/").some(part => !part || part === "." || part === "..")) throw new Error("invalid project MCP bootstrap path");
+function validateProjectPath(path: string): void {
+  if (
+    !path ||
+    path.includes("\\") ||
+    path.startsWith("/") ||
+    path.includes(":") ||
+    path.split("/").some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error("invalid project bootstrap path");
   }
-  if (!Number.isSafeInteger(index) || index < 0) throw new Error("invalid project MCP server index");
-  const code = `import { readFileSync, realpathSync, lstatSync } from "node:fs";
+}
+
+function ownedProjectBootstrap(config: string, label: string, body: string): string {
+  validateProjectPath(config);
+  return `import { readFileSync, realpathSync, lstatSync } from "node:fs";
 import { dirname, join, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-const fail = message => { throw new Error("hooknostic project MCP: " + message); };
+const fail = message => { throw new Error(${JSON.stringify(`hooknostic project ${label}: `)} + message); };
 let root = realpathSync(process.cwd());
 let manifest;
 while (true) {
@@ -39,9 +47,26 @@ function ownedFile(path) {
   if (entries.length !== 1 || entries[0].hash !== hash) fail("missing or modified owned file: " + path);
   return destination;
 }
-const launcher = ownedFile(${JSON.stringify(`${output}/mcp-launcher.mjs`)});
+${body}`;
+}
+
+/** Locate an owned MCP launcher without relying on the harness session cwd. */
+export function projectMcpBootstrap(output: string, config: string, index: number): string[] {
+  validateProjectPath(output);
+  if (!Number.isSafeInteger(index) || index < 0) throw new Error("invalid project MCP server index");
+  const code = ownedProjectBootstrap(config, "MCP", `const launcher = ownedFile(${JSON.stringify(`${output}/mcp-launcher.mjs`)});
 ownedFile(${JSON.stringify(`${output}/mcp-servers.json`)});
 process.argv = [process.execPath, launcher, ${JSON.stringify(String(index))}];
-await import(pathToFileURL(launcher).href);`;
+await import(pathToFileURL(launcher).href);`);
   return ["--input-type=module", "--eval", code];
+}
+
+/** Locate and invoke an owned hook runtime from any directory below the project. */
+export function projectHookBootstrap(runtime: string, config: string): string {
+  validateProjectPath(runtime);
+  const code = ownedProjectBootstrap(config, "hook", `const runtime = ownedFile(${JSON.stringify(runtime)});
+process.argv = [process.execPath, runtime];
+await import(pathToFileURL(runtime).href);`);
+  const encoded = Buffer.from(code, "utf8").toString("base64");
+  return `node --input-type=module --eval "await import('data:text/javascript;base64,${encoded}')"`;
 }

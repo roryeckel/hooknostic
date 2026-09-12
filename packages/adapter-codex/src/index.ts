@@ -82,6 +82,7 @@ export function codexAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.
     shimExecution: "command",

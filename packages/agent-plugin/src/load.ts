@@ -624,12 +624,12 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
     ...(source.mcp === undefined ? {} : { mcp: { root: source.root, config: source.mcp } }),
   };
 }
-export async function loadProjectComponents(options: { skills?: string[]; mcp?: string }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
+export async function loadProjectComponents(options: { skills?: string[]; mcp?: string; exclude?: string[] }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
   const source: ProjectComponents = { origin: "direct", skills: [] };
   const names = new Set<string>();
   for (const directory of options.skills ?? []) {
-    const data = await inventory(resolve(directory), DEFAULT_EXCLUDES, issues);
+    const data = await inventory(resolve(directory), [...DEFAULT_EXCLUDES, ...(options.exclude ?? [])], issues);
     if (!data) continue;
     const nested: InventoryResult = {
       files: data.files.map(file => ({ ...file, path: "skills/" + file.path })),

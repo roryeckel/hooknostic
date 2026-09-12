@@ -87,7 +87,7 @@ interface CodexNativeManifest {
  * portable `headers` key is ignored for the same reason; `http_headers` is what
  * Codex reads, and through it a literal header value is preserved.
  */
-export function translateMcp(source: Pick<AgentPluginPackage, "mcp">): {
+export function translateMcp(source: Pick<AgentPluginPackage, "mcp">, projectCwdServers: ReadonlySet<string> = new Set()): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
   launcherServers: McpLauncherServer[];
   omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
@@ -123,7 +123,7 @@ export function translateMcp(source: Pick<AgentPluginPackage, "mcp">): {
       });
       continue;
     }
-    if (classifyStdioCwd(server.cwd) === undefined) {
+    if (classifyStdioCwd(server.cwd) === undefined && !projectCwdServers.has(name)) {
       omitted.push({
         name,
         component: "agent-plugin.mcp.stdio",

@@ -86,6 +86,7 @@ export function opencodeAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.
     shimExecution: "module",

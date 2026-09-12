@@ -3,6 +3,11 @@
   "config": "hooknostic.config.ts",
   "owned": [
     {
+      "path": ".agents/skills/.gitattributes",
+      "hash": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab",
+      "mode": 420
+    },
+    {
       "path": ".agents/skills/sample/SKILL.md",
       "hash": "54f2ed0cf1ec9bd903e89063ae309b538b0a8c8775000e49c6fd8f43d070059f",
       "mode": 420
@@ -21,6 +26,11 @@
       "kind": "array",
       "hash": "2d2b54f8d4046a164277aae005f92f791305e35b478cec43ee47d096e1c4fb85",
       "context": []
+    },
+    {
+      "path": ".claude/skills/.gitattributes",
+      "hash": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab",
+      "mode": 420
     },
     {
       "path": ".claude/skills/sample/SKILL.md",
@@ -49,8 +59,13 @@
         "PreToolUse"
       ],
       "kind": "array",
-      "hash": "f8c9b68191f178bac89f3cbd029e1f12265a243b09848c7073d3f6e1a7adbf83",
+      "hash": "ebf61b0f7070e0f05dc068dc420ea7793dcd0129f12243077b963fea4bf405e8",
       "context": []
+    },
+    {
+      "path": ".hooknostic/.gitattributes",
+      "hash": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab",
+      "mode": 420
     },
     {
       "path": ".hooknostic/.gitignore",
@@ -69,7 +84,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/mcp-launcher.mjs",
-      "hash": "746190b4d14b32d48a6e255557c5c5bb4d874b470fd2833745dc17acb5329653",
+      "hash": "2b957495e8f348f1b5934be526b1aa12f00dd27f218c73ea1dc39b2fc16d4181",
       "mode": 420
     },
     {
@@ -79,12 +94,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "0b36dc34b5f6b40012ba8e0f24cb69176d00e085452cfc3d1ae592d3fd016672",
+      "hash": "337a47fe9f061f6c20b67dbf4ad5e1bd757fa2015afe6667906d6285bb24d6bc",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "f562e70f98fc23c266f189ea009d5930ad94400667d4d011b12733eaf6a96245",
+      "hash": "f499867a6550d208bfca5dcf7ebb342a821afc6aa0871bc20bec890af51dc3b9",
       "mode": 420
     },
     {
@@ -99,7 +114,7 @@
     },
     {
       "path": ".hooknostic/artifacts/codex/mcp-launcher.mjs",
-      "hash": "746190b4d14b32d48a6e255557c5c5bb4d874b470fd2833745dc17acb5329653",
+      "hash": "2b957495e8f348f1b5934be526b1aa12f00dd27f218c73ea1dc39b2fc16d4181",
       "mode": 420
     },
     {
@@ -114,12 +129,12 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "cca5675e5a6da7858f1c0a7c909c4b14b56431f7491a4adcce62721edccdb63a",
+      "hash": "b7228998ccdceb69f26cc0dafcd21d58b9a105e6687f5ab09acd6ac550948d74",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/opencode/mcp-launcher.mjs",
-      "hash": "746190b4d14b32d48a6e255557c5c5bb4d874b470fd2833745dc17acb5329653",
+      "hash": "2b957495e8f348f1b5934be526b1aa12f00dd27f218c73ea1dc39b2fc16d4181",
       "mode": 420
     },
     {
@@ -137,8 +152,13 @@
       "hash": "312a022c478ac049e3b6a5d9dcb4fa8437b34a5e4d120202b81bb5948ab49d7b"
     },
     {
+      "path": ".opencode/plugins/.gitattributes",
+      "hash": "aa1f2084aa098e379453e60cce56b53a8439bcfed8108beccaeafc8b324f2d09",
+      "mode": 420
+    },
+    {
       "path": ".opencode/plugins/hooknostic-components.js",
-      "hash": "f31225b771bf65d769fc73a4cc4e72ec42474c03b0d030975b796e88936a7b4b",
+      "hash": "decd794cf86346b7a6ea6e62fc305a927ba5733cc93853c829426799e4cf5b10",
       "mode": 420
     },
     {

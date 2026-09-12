@@ -44,15 +44,29 @@ surfaces remain unsupported. Codex project MCP now uses format-aware TOML
 ownership and a repository-locating stdio bootstrap, with Streamable HTTP native
 projection; legacy SSE is still declined. See `.capture/codex-project-mcp` for
 configuration layering, trust, working-directory, and diagnostic boundaries.
+Direct-source exclusions are evaluated relative to each configured skill root.
+Per-target MCP overrides exist only for direct project sources: core validates
+and applies them to clones before adapters generate launchers and configuration,
+so the canonical Agent Plugins document remains unchanged. Argument and cwd
+replacement is stdio-only; project-contained cwd movement is allowed. A target
+startup timeout becomes a per-server default, with adapters required to represent
+every configured value or reject the build.
+
+Codex hook registration uses the same repository-locating ownership boundary as
+project MCP. The command finds the nearest integration from the session cwd,
+validates configuration identity plus generated runtime hash and containment,
+then imports the runtime with inherited standard streams and command-style argv.
 
 Direct MCP sources and Agent Plugin packages retain distinct runtime contracts.
 Generated project artifacts keep `${NAME}` references as text and resolve them
 from the harness environment only when the project integration activates. An
-unset reference fails activation instead of sending placeholder text as a
-credential. Packaged remote declarations remain literal because the Agent
-Plugins standard prohibits environment expansion there. OpenCode performs its
+missing OpenCode remote variable disables that declaration with a warning while
+unaffected servers remain available. Packaged remote declarations remain literal
+because the Agent Plugins standard prohibits environment expansion there. OpenCode performs its
 native interpolation before project plugin hooks, so its generated direct-source
-module resolves remote URL and header references itself. Codex maps exact header
+module resolves remote URL and header references itself. Project declarations
+replace same-named inherited OpenCode servers and preserve unrelated entries.
+Codex maps exact header
 references to `env_http_headers` and bearer authorization to
 `bearer_token_env_var`; references in URLs or mixed header values are rejected
 because Codex has no equivalent native field.

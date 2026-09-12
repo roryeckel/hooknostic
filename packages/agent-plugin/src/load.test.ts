@@ -38,6 +38,29 @@ describe("loadProjectComponents", () => {
     expect(loaded.source.skills.map((skill) => skill.name)).toEqual(["review"]);
     expect(new TextDecoder().decode(loaded.source.skills[0]!.files[0]!.contents)).toBe(manifest);
   });
+
+  it("applies configured exclusions relative to every direct skill root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skill-excludes-"));
+    roots.push(root);
+    await mkdir(join(root, "review/assets"), { recursive: true });
+    await mkdir(join(root, "review/scripts/__pycache__"), { recursive: true });
+    await writeFile(join(root, "review/SKILL.md"), "---\nname: review\ndescription: Review a change\n---\n");
+    await writeFile(join(root, "review/assets/local.txt"), "local-only");
+    await writeFile(join(root, "review/credentials.md"), "secret");
+    await writeFile(join(root, "review/scripts/__pycache__/helper.pyc"), "bytecode");
+    await writeFile(join(root, "review/reference.md"), "included");
+
+    const loaded = await loadProjectComponents({
+      skills: [root],
+      exclude: ["**/assets/**", "**/__pycache__/**", "review/credentials.md"],
+    });
+
+    expect(loaded.issues).toEqual([]);
+    expect(loaded.source.skills[0]!.files.map((file) => file.path)).toEqual([
+      "reference.md",
+      "SKILL.md",
+    ]);
+  });
 });
 
 async function packageRoot(manifest: Record<string, unknown> = {}): Promise<string> {

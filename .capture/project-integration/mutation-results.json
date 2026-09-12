@@ -207,5 +207,69 @@
     "failedTests": [
       "offline harness playback: opencode runs repository-local integration without installing a plugin"
     ]
+  },
+  {
+    "mutant": "ignore direct-source exclusion patterns",
+    "file": "packages/agent-plugin/src/load.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration copies direct skills and resources without requiring package metadata"
+    ]
+  },
+  {
+    "mutant": "look up the hook runtime at the wrong owned path",
+    "file": "packages/core/src/project-mcp-bootstrap.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "locates and invokes an owned hook runtime from a nested directory"
+    ]
+  },
+  {
+    "mutant": "retain canonical MCP argv instead of target replacement",
+    "file": "packages/core/src/build.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration applies independent target MCP arguments, cwd, and timeout translations"
+    ]
+  },
+  {
+    "mutant": "preserve inherited OpenCode server on a name collision",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "OpenCode project components lets project MCP declarations replace inherited servers"
+    ]
+  },
+  {
+    "mutant": "leave an OpenCode remote server enabled when environment is missing",
+    "file": "packages/adapter-opencode/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "OpenCode project components disables only a direct server whose environment is unavailable"
+    ]
+  },
+  {
+    "mutant": "round Codex startup timeout down",
+    "file": "packages/adapter-codex/src/project.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "Codex project components emits target-native startup timeouts"
+    ]
+  },
+  {
+    "mutant": "allow zero project MCP startup timeouts",
+    "file": "packages/sdk/src/schemas.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "canonical schemas validates direct project MCP overrides"
+    ]
+  },
+  {
+    "mutant": "share the canonical MCP declaration across project targets",
+    "file": "packages/core/src/build.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration reports every explicitly degraded project MCP omission"
+    ]
   }
 ]

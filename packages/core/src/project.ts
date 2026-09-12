@@ -33,7 +33,7 @@ export async function runProject(options: BuildOptions & { command: "sync" | "ve
       if (!adapter?.projectIntegration) throw new Error(`adapter ${configured.adapter ?? target.target} has no project integrator`);
       const output = relative(root, target.outputDir).replaceAll("\\", "/");
       for (const artifact of target.artifacts) integration.files.push({ path: `${output}/${artifact.path}`, contents: artifact.contents, mode: artifact.mode ?? (artifact.executable ? 0o755 : 0o644) });
-      const native = target.integration ?? adapter.projectIntegration(target.artifacts, output);
+      const native = target.integration ?? adapter.projectIntegration(target.artifacts, output, owner);
       (integration.absent ??= []).push(...native.absent ?? []);
       integration.files.push(...native.files);
       integration.entries.push(...native.entries);

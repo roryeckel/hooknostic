@@ -12,11 +12,12 @@ import {
   loadProjectComponents,
   packageComponents,
   type ProjectComponents,
+  type AgentPluginMcpServer,
   type AgentPluginComponentId,
   type AgentPluginPackage,
   type AgentPluginProjectionSummary,
 } from "@hooknostic/agent-plugin";
-import { meetsMinimum, type SupportLevel } from "@hooknostic/sdk";
+import { meetsMinimum, type ProjectMcpTargetOverride, type SupportLevel } from "@hooknostic/sdk";
 import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, TargetSpec } from "./adapter.js";
 import { targetSpecFromConfig } from "./adapter.js";
 import {
@@ -101,6 +102,93 @@ export interface BuildResult {
   reportPath?: string;
   componentSource?: ProjectComponents;
   plan?: { target: string; outputDir: string; artifacts: GeneratedArtifact[]; directories: readonly string[]; integration?: ProjectIntegration }[];
+}
+
+function cloneMcpServer(server: AgentPluginMcpServer): AgentPluginMcpServer {
+  if (server.type === "stdio") {
+    return {
+      ...server,
+      ...(server.args === undefined ? {} : { args: [...server.args] }),
+      ...(server.env === undefined ? {} : { env: { ...server.env } }),
+    };
+  }
+  return {
+    ...server,
+    ...(server.headers === undefined ? {} : { headers: { ...server.headers } }),
+  };
+}
+
+function applyProjectMcpOverrides(
+  source: ProjectComponents,
+  override: ProjectMcpTargetOverride | undefined,
+): { source: ProjectComponents; startupTimeoutMs: Record<string, number>; projectCwdServers: string[]; errors: string[] } {
+  const cloned: ProjectComponents = {
+    ...source,
+    skills: [...source.skills],
+    ...(source.mcp === undefined ? {} : {
+      mcp: {
+        ...source.mcp,
+        config: {
+          ...source.mcp.config,
+          mcpServers: Object.fromEntries(
+            Object.entries(source.mcp.config.mcpServers).map(([name, server]) => [name, cloneMcpServer(server)]),
+          ),
+        },
+      },
+    }),
+  };
+  if (override === undefined) {
+    return { source: cloned, startupTimeoutMs: {}, projectCwdServers: [], errors: [] };
+  }
+  if (!cloned.mcp) {
+    return { source: cloned, startupTimeoutMs: {}, projectCwdServers: [], errors: ["MCP overrides require a valid direct MCP source"] };
+  }
+  const servers = cloned.mcp.config.mcpServers;
+  const startupTimeoutMs: Record<string, number> = {};
+  const projectCwdServers: string[] = [];
+  if (override.startupTimeoutMs !== undefined) {
+    for (const name of Object.keys(servers)) startupTimeoutMs[name] = override.startupTimeoutMs;
+  }
+  const errors: string[] = [];
+  for (const [name, settings] of Object.entries(override.servers ?? {})) {
+    const server = servers[name];
+    if (server === undefined) {
+      errors.push(`MCP override references unknown server ${JSON.stringify(name)}`);
+      continue;
+    }
+    if ((settings.args !== undefined || settings.cwd !== undefined) && server.type !== "stdio") {
+      errors.push(`MCP override for ${JSON.stringify(name)} can replace args or cwd only on a stdio server`);
+      continue;
+    }
+    if (server.type === "stdio") {
+      servers[name] = {
+        ...server,
+        ...(settings.args === undefined ? {} : { args: [...settings.args] }),
+        ...(settings.cwd === undefined ? {} : { cwd: settings.cwd }),
+      };
+      if (settings.cwd !== undefined) projectCwdServers.push(name);
+    }
+    if (settings.startupTimeoutMs !== undefined) startupTimeoutMs[name] = settings.startupTimeoutMs;
+  }
+  return {
+    source: {
+      ...cloned,
+      mcp: { ...cloned.mcp, config: { ...cloned.mcp.config, mcpServers: servers } },
+    },
+    startupTimeoutMs,
+    projectCwdServers,
+    errors,
+  };
+}
+
+function validDirectProjectCwd(cwd: string | undefined, sourceRoot: string, projectRoot: string): boolean {
+  if (classifyStdioCwd(cwd) !== undefined) return true;
+  if (cwd === undefined || cwd.includes("\\")) return false;
+  const prefix = cwd.startsWith("${PLUGIN_ROOT}/") ? "${PLUGIN_ROOT}/" : cwd.startsWith("./") ? "./" : undefined;
+  if (prefix === undefined) return false;
+  const destination = resolve(sourceRoot, cwd.slice(prefix.length));
+  const rel = relative(projectRoot, destination);
+  return rel === "" || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\"));
 }
 
 function levelsFromMatrix(matrix: CapabilityMatrix): Partial<Record<string, SupportLevel>> {
@@ -370,6 +458,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     const loaded = await loadProjectComponents({
       ...(config.components.skills === undefined ? {} : { skills: config.components.skills.map(p => resolve(configDir, p)) }),
       ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
+      ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
     });
     diagnostics.push(...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }));
     if (hasFatal(diagnostics)) return fail();
@@ -604,15 +693,35 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           if (!adapter.projectIntegration) throw new Error(`adapter ${adapter.id} has no project integrator`);
           const root = resolve(configDir, config.project.root);
           const output = relative(root, outputFor(id)!.outputDir).replaceAll("\\", "/");
-          await projectPath(root, relative(root, configPath).replaceAll("\\", "/"));
+          const configFromRoot = relative(root, configPath).replaceAll("\\", "/");
+          await projectPath(root, configFromRoot);
           await projectPath(root, output);
-          integration = adapter.projectIntegration(artifacts, output);
+          integration = adapter.projectIntegration(artifacts, output, configFromRoot);
           if (componentSource && (config.components?.targets ?? Object.keys(config.targets)).includes(id)) {
             if (!adapter.projectComponents) throw new Error(`adapter ${adapter.id} has no project component integrator`);
             const support = resolveAgentPluginProjection(spec, { profiles: adapter.projectComponentProfiles ?? [] });
             diagnostics.push(...support.diagnostics);
             if (!support.matrix) throw new Error("project component support is unavailable for the configured version range");
-            const selectedSource: ProjectComponents = { origin: componentSource.origin, skills: [...componentSource.skills], ...(componentSource.mcp === undefined ? {} : { mcp: { ...componentSource.mcp, config: { ...componentSource.mcp.config, mcpServers: { ...componentSource.mcp.config.mcpServers } } } }) };
+            const selected = applyProjectMcpOverrides(
+              componentSource,
+              config.components?.mcpOverrides?.[id],
+            );
+            for (const message of selected.errors) {
+              diagnostics.push({ code: "HN501", severity: "error", target: id, message });
+            }
+            if (
+              Object.keys(selected.startupTimeoutMs).length > 0 &&
+              adapter.projectMcpOptions?.startupTimeoutMs !== true
+            ) {
+              diagnostics.push({
+                code: "HN205",
+                severity: "error",
+                target: id,
+                message: `adapter ${JSON.stringify(adapter.id)} cannot represent project MCP startup timeouts`,
+              });
+            }
+            if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
+            const selectedSource = selected.source;
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [];
             const count = (component: AgentPluginComponentId, discovered: number): boolean => {
@@ -637,7 +746,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               if (!count(`agent-plugin.mcp.${type}`, servers.length)) for (const [name] of servers) delete selectedSource.mcp!.config.mcpServers[name];
             }
             for (const [name, server] of Object.entries(selectedSource.mcp?.config.mcpServers ?? {})) {
-              if (server.type !== "stdio" || (!hasUnportableCommandPath(server.command) && classifyStdioCwd(server.cwd) !== undefined)) continue;
+              if (server.type !== "stdio") continue;
+              const cwdIsPortable = classifyStdioCwd(server.cwd) !== undefined || (
+                selectedSource.origin === "direct" &&
+                config.components?.mcpOverrides?.[id]?.servers?.[name]?.cwd !== undefined &&
+                validDirectProjectCwd(server.cwd, selectedSource.mcp!.root, root)
+              );
+              if (!hasUnportableCommandPath(server.command) && cwdIsPortable) continue;
               const reason = `MCP server ${name} has unsupported portable command or working-directory semantics`;
               diagnostics.push({ code: "HN205", severity: config.components?.onUnsupported ?? "error", target: id, component: "agent-plugin.mcp.stdio", message: reason });
               omissions.push({ component: "agent-plugin.mcp.stdio", reason });
@@ -649,7 +764,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             count("agent-plugin.client-extension.files", components && namespace ? components.files.filter(file => file.path.startsWith(namespace + "/")).length + (components.manifest.extensions?.[namespace] ? 1 : 0) : 0);
             target.project = { components: counts, omissions, guidance: [] };
             if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
-            const projected = await adapter.projectComponents(selectedSource, root, output, relative(root, configPath).replaceAll("\\", "/"));
+            const projected = await adapter.projectComponents(selectedSource, root, output, configFromRoot, {
+              ...(Object.keys(selected.startupTimeoutMs).length === 0
+                ? {}
+                : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),
+              ...(selected.projectCwdServers.length === 0
+                ? {}
+                : { mcpProjectCwdServers: selected.projectCwdServers }),
+            });
             target.project = { components: counts, omissions, guidance: projected.guidance };
             integration.files.push(...projected.files);
             integration.entries.push(...projected.entries);

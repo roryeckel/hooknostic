@@ -8,7 +8,7 @@ import { chmod, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
+import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
@@ -59,6 +59,7 @@ export interface ModelPlayback {
  */
 export interface PlaybackTargetOverride {
   components?: ProjectComponents;
+  componentOptions?: ProjectComponentOptions;
   project?: boolean;
   delivery?: TargetSpec["delivery"];
   version?: string;
@@ -360,10 +361,10 @@ export async function buildPlaybackArtifact(
   const prefix = override.project ? `.hooknostic/artifacts/${adapter.id}` : "";
   if (override.project) {
     if (!adapter.projectIntegration) throw new Error("missing project integrator");
-    const integration = adapter.projectIntegration(artifacts, prefix);
+    const integration = adapter.projectIntegration(artifacts, prefix, "hooknostic.config.ts");
     if (override.components) {
       if (!adapter.projectComponents) throw new Error("missing project component integrator");
-      const components = await adapter.projectComponents(override.components, artifactDir, prefix, "hooknostic.config.ts");
+      const components = await adapter.projectComponents(override.components, artifactDir, prefix, "hooknostic.config.ts", override.componentOptions ?? {});
       integration.files.push(...components.files);
       integration.entries.push(...components.entries);
       if (components.absent) integration.absent = components.absent;

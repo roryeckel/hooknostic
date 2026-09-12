@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:eaf0220d9569a8fcced8cef389f24cc13e3ceef6f9ccf9d536096fe1b95d02ee",
+        "contentDigest": "sha256:32a6163dce35dc478aac2d5ba688b6d98b03fd69bab0ca97aaf309c6ed966cd7",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:67f58d9dddc2e04a35c31ec7adcf451a3eec20458e14a0889bf46ca28ad7ad83",
+        "contentDigest": "sha256:eac07bd18b53d18919211a82ca873ec29a9a78228efb195971551cf3a6e34dca",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:0e4b22c6b8eced0e47af145d475fbf3e0cca6b76f03428eecfec3b8718b555ac",
+        "contentDigest": "sha256:92fad4236cc81bcc57b09c73281773268e79c1e9629a8eac8979773c0963dc17",
         "copiedFileCount": 7,
         "directories": [
           ".opencode/plugins/package/runtime",

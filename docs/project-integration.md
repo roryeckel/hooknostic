@@ -11,7 +11,15 @@ import { defineConfig } from "@hooknostic/sdk";
 export default defineConfig({
   project: { root: "." },
   entry: "./hooks.ts",
-  components: { skills: ["./skills"] },
+  components: {
+    skills: ["./skills"],
+    mcp: "./mcp.json",
+    exclude: ["**/__pycache__/**", "**/*.pyc"],
+    mcpOverrides: {
+      codex: { startupTimeoutMs: 60_000 },
+      opencode: { servers: { search: { args: ["serve", "--context", "ide"], startupTimeoutMs: 60_000 } } },
+    },
+  },
   targets: {
     claude: { version: ">=2.1 <3", delivery: "project", output: ".hooknostic/artifacts/claude" },
     codex: { version: ">=0.148 <1", delivery: "project", output: ".hooknostic/artifacts/codex" },
@@ -28,6 +36,8 @@ package identity when projecting components. `components.targets` selects the
 configured targets receiving components; synchronization still processes the
 entire configured project integration. Targets may have arbitrary names with an
 explicit `adapter`, but only one project target may use a given adapter.
+Direct-source `exclude` patterns are evaluated independently relative to each
+configured skill collection root. They do not change the canonical MCP document.
 
 | Command | Effect |
 | --- | --- |
@@ -51,8 +61,10 @@ of its owned files and entries on the next sync.
 Claude project hooks are structural entries in `.claude/settings.json`. Codex
 uses `.codex/hooks.json`. OpenCode gets a generated discovery module under
 `.opencode/plugins/`. Registration commands and timeout budgets derive from the
-compiled runtime plan. Launch hook sessions and Claude MCP sessions from the project root;
-restart harnesses after changing registrations and review their trust prompts.
+compiled runtime plan. Codex hook commands locate the nearest owned integration,
+validate its configuration identity and runtime hash, and therefore work from
+nested directories. Launch Claude MCP sessions from the project root; restart
+harnesses after changing registrations and review their trust prompts.
 
 Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`.
 Sources already in their destination are discovered directly. OpenCode references other source directories through its native `skills.paths`
@@ -66,9 +78,11 @@ Claude MCP uses `.mcp.json`; OpenCode uses an adapter-owned configuration module
 Both support stdio and remote transports as recorded in the project support
 profiles. Stdio uses the existing portable launcher; command paths and cwd resolve
 from the MCP source file's directory. Environment references remain literal until
-runtime. Direct project sources resolve `${NAME}` from the launch environment and
-fail activation when a referenced variable is unset; Agent Plugin package inputs
-retain unrecognized references literally under the package standard.
+runtime. Direct project sources resolve `${NAME}` from the launch environment.
+OpenCode disables only a remote declaration whose required variable is unset and
+warns with the server name and missing variables; other servers remain available.
+Agent Plugin package inputs retain unrecognized references literally under the
+package standard.
 `${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves to
 ignored project-local `.hooknostic/data`. Dependencies must already be installed.
 Codex project MCP uses owned server entries in `.codex/config.toml`. Stdio uses
@@ -82,8 +96,19 @@ placing the value in generated output. Codex cannot represent references inside 
 remote URL or mixed with other header text, so those configurations fail with a
 targeted diagnostic. OpenCode resolves direct remote URL and header references in
 its generated project module because its own interpolation runs before plugin
-configuration hooks. Legacy SSE remains
+configuration hooks. Project declarations replace same-named inherited servers
+while unrelated entries remain. Legacy SSE remains
 unsupported; opt into `onUnsupported: "warn"` only when omissions are acceptable.
+
+`mcpOverrides` is direct-project-only and keyed by target. A target-level
+`startupTimeoutMs` supplies the default; individual servers can replace `args`,
+`cwd`, or the timeout. Argument and cwd overrides require stdio. Direct cwd
+overrides may move above the MCP source directory only while they remain inside
+`project.root`. Codex translates milliseconds with ceiling conversion to
+`startup_timeout_sec`; OpenCode uses native millisecond `timeout`. Unknown targets
+or servers, non-positive timeouts, unrepresentable adapter options, and unsafe cwd
+values fail validation. Each target receives a clone; the canonical declaration
+is unchanged and stays standards-compliant.
 
 Codex must trust the project before it reads project MCP configuration. Same-named
 servers merge across home, project, nested, and command-line configuration;

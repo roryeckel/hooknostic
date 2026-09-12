@@ -4432,6 +4432,15 @@ var targetConfigSchema = external_exports.object({
   output: external_exports.string().min(1),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
+var projectMcpServerOverrideSchema = external_exports.object({
+  args: external_exports.array(external_exports.string()).optional(),
+  cwd: external_exports.string().min(1).optional(),
+  startupTimeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional()
+}).strict();
+var projectMcpTargetOverrideSchema = external_exports.object({
+  startupTimeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
+  servers: external_exports.record(external_exports.string().min(1), projectMcpServerOverrideSchema).optional()
+}).strict();
 var hooknosticConfigSchema = external_exports.object({
   project: external_exports.object({ root: external_exports.string().min(1) }).strict().optional(),
   entry: external_exports.string().min(1).optional(),
@@ -4442,6 +4451,7 @@ var hooknosticConfigSchema = external_exports.object({
     root: external_exports.string().min(1).optional(),
     skills: external_exports.array(external_exports.string().min(1)).optional(),
     mcp: external_exports.string().min(1).optional(),
+    mcpOverrides: external_exports.record(external_exports.string().min(1), projectMcpTargetOverrideSchema).optional(),
     targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
     executableFiles: external_exports.array(external_exports.string().min(1)).optional(),
@@ -4476,6 +4486,12 @@ var hooknosticConfigSchema = external_exports.object({
     if (config.components.root !== void 0 && (config.components.skills !== void 0 || config.components.mcp !== void 0)) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.root is mutually exclusive with direct skills/mcp sources" });
     }
+    if (config.components.root !== void 0 && config.components.mcpOverrides !== void 0) {
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides is only valid with a direct MCP source" });
+    }
+    if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
+    }
     if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
     }
@@ -4495,6 +4511,27 @@ var hooknosticConfigSchema = external_exports.object({
           code: external_exports.ZodIssueCode.custom,
           path: ["components", "targets"],
           message: `Agent Plugin projection target ${JSON.stringify(target)} is not configured`
+        });
+      }
+    }
+    for (const target of Object.keys(config.components.mcpOverrides ?? {})) {
+      if (!configured.has(target)) {
+        context.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["components", "mcpOverrides", target],
+          message: `MCP override target ${JSON.stringify(target)} is not configured`
+        });
+      } else if (!seen.has(target)) {
+        context.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["components", "mcpOverrides", target],
+          message: `MCP override target ${JSON.stringify(target)} does not receive components`
+        });
+      } else if (config.targets[target]?.delivery !== "project") {
+        context.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          path: ["components", "mcpOverrides", target],
+          message: `MCP override target ${JSON.stringify(target)} must use project delivery`
         });
       }
     }

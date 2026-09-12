@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENT_PLUGIN_MCP_SCHEMA, type ProjectComponents } from "@hooknostic/agent-plugin";
 import { projectComponents, projectIntegration } from "./project.js";
 
@@ -32,10 +32,19 @@ function source(origin: ProjectComponents["origin"]): ProjectComponents {
   };
 }
 
-async function moduleFor(origin: ProjectComponents["origin"]): Promise<string> {
+async function moduleFor(
+  origin: ProjectComponents["origin"],
+  options: { mcpStartupTimeoutMs?: Record<string, number> } = {},
+): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-opencode-project-"));
   roots.push(root);
-  const integration = await projectComponents(source(origin), root, ".hooknostic/artifacts/opencode");
+  const integration = await projectComponents(
+    source(origin),
+    root,
+    ".hooknostic/artifacts/opencode",
+    "hooknostic.config.ts",
+    options,
+  );
   const artifact = integration.files.find(file => file.path === ".opencode/plugins/hooknostic-components.js")!;
   const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   const path = join(root, artifact.path);
@@ -68,10 +77,45 @@ describe("OpenCode project components", () => {
     });
   });
 
-  it("fails direct activation when a referenced variable is unavailable", async () => {
+  it("disables only a direct server whose environment is unavailable", async () => {
     const path = await moduleFor("direct");
     const plugin = await (await import(pathToFileURL(path).href + "?missing")).default();
-    expect(() => plugin.config({})).toThrow("environment variable HOOKNOSTIC_PROJECT_TOKEN is required");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const config: { mcp?: Record<string, { enabled: boolean; url?: string }> } = {
+      mcp: { inherited: { enabled: true } },
+    };
+    plugin.config(config);
+    expect(config.mcp?.["remote"]).toMatchObject({
+      enabled: false,
+      url: "https://example.invalid/${HOOKNOSTIC_PROJECT_TOKEN}/mcp",
+    });
+    expect(config.mcp?.["inherited"]).toEqual({ enabled: true });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("HOOKNOSTIC_PROJECT_TOKEN"));
+    warn.mockRestore();
+  });
+
+  it("lets project MCP declarations replace inherited servers", async () => {
+    process.env["HOOKNOSTIC_PROJECT_TOKEN"] = "project-token";
+    const path = await moduleFor("direct");
+    const plugin = await (await import(pathToFileURL(path).href + "?collision")).default();
+    const config: { mcp?: Record<string, { url?: string }> } = {
+      mcp: {
+        remote: { url: "https://global.invalid/mcp" },
+        inherited: { url: "https://inherited.invalid/mcp" },
+      },
+    };
+    plugin.config(config);
+    expect(config.mcp?.["remote"]?.url).toBe("https://example.invalid/project-token/mcp");
+    expect(config.mcp?.["inherited"]?.url).toBe("https://inherited.invalid/mcp");
+  });
+
+  it("emits target-native MCP startup timeouts", async () => {
+    process.env["HOOKNOSTIC_PROJECT_TOKEN"] = "project-token";
+    const path = await moduleFor("direct", { mcpStartupTimeoutMs: { remote: 60_000 } });
+    const plugin = await (await import(pathToFileURL(path).href + "?timeout")).default();
+    const config: { mcp?: Record<string, { timeout?: number }> } = {};
+    plugin.config(config);
+    expect(config.mcp?.["remote"]?.timeout).toBe(60_000);
   });
 
   it("keeps Agent Plugin package remote fields literal", async () => {
