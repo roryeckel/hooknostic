@@ -8,7 +8,15 @@ import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
 export interface ProjectFile { path: string; contents: string | Uint8Array; mode?: number }
 export interface ProjectEntry { format?: "jsonc" | "toml"; path: string; key: string[]; kind: "array" | "property"; value: unknown }
 export interface ProjectComponentOmission { component: AgentPluginComponentId; name: string; reason: string }
-export interface ProjectIntegration { files: ProjectFile[]; entries: ProjectEntry[]; guidance: string[]; absent?: { path: string; key: string[] }[]; omissions?: ProjectComponentOmission[] }
+export interface ProjectIntegration {
+  files: ProjectFile[];
+  entries: ProjectEntry[];
+  guidance: string[];
+  absent?: { path: string; key: string[] }[];
+  omissions?: ProjectComponentOmission[];
+  /** Preserve these files while removing any prior whole-file ownership. */
+  relinquishFiles?: string[];
+}
 interface Owned { format?: "jsonc" | "toml"; path: string; hash: string; key?: string[]; kind?: "array" | "property"; context?: string[]; mode?: number }
 interface Manifest { schemaVersion: 1; config: string; owned: Owned[] }
 export interface FileChange { path: string; before: Buffer | null; after: Buffer | null; mode: number; beforeMode?: number }
@@ -126,6 +134,11 @@ export async function reconcileProject(root: string, config: string, integration
   const prior = readManifest(manifestBytes, config);
   const previous = new Map(prior.owned.map(entry => [identity(entry), entry]));
   const desired = new Map<string, ProjectFile | ProjectEntry>();
+  const relinquished = new Set(integration.relinquishFiles ?? []);
+  for (const path of relinquished) {
+    validatePath(path);
+    if ([STATE, JOURNAL, LOCK, RECOVERY_LOCK].includes(path.toLowerCase()) || /^\.hooknostic\/(?:data|staging)(?:\/|$)/i.test(path)) throw new Error(`reserved integration destination: ${path}`);
+  }
   for (const entry of [...integration.files, ...integration.entries]) {
     validatePath(entry.path);
     if ([STATE, JOURNAL, LOCK, RECOVERY_LOCK].includes(entry.path.toLowerCase()) || /^\.hooknostic\/(?:data|staging)(?:\/|$)/i.test(entry.path)) throw new Error(`reserved integration destination: ${entry.path}`);
@@ -138,7 +151,10 @@ export async function reconcileProject(root: string, config: string, integration
     }
     desired.set(id, entry);
   }
-  const paths = new Set([...prior.owned.map(e => e.path), ...[...desired.values()].map(e => e.path)]);
+  for (const path of relinquished) {
+    if ([...desired.values()].some(entry => entry.path === path)) throw new Error(`cannot generate and relinquish the same project path: ${path}`);
+  }
+  const paths = new Set([...prior.owned.map(e => e.path), ...[...desired.values()].map(e => e.path), ...relinquished]);
   const pathNames = [...paths];
   for (const path of pathNames) for (const other of pathNames) {
     if (path === other) continue;
@@ -155,6 +171,10 @@ export async function reconcileProject(root: string, config: string, integration
     let after: Buffer | null = before;
     const beforeMode = before ? (await lstat(await projectPath(root, path))).mode & 0o777 : 0o644;
     let mode = beforeMode;
+    if (relinquished.has(path)) {
+      if (oldEntries.some(entry => entry.key !== undefined)) throw new Error(`cannot relinquish structural ownership as a file: ${path}`);
+      continue;
+    }
     if (whole || oldWhole) {
       if (nextEntries.length > 1 || oldEntries.length > 1 || nextEntries.some(e => "key" in e)) throw new Error(`overlapping file and entry ownership: ${path}`);
       if (before && (!oldWhole || fileHash(before) !== oldWhole.hash || (process.platform !== "win32" && oldWhole.mode !== undefined && beforeMode !== oldWhole.mode))) throw new Error(`unowned or modified generated file: ${path}; move it aside before synchronizing`);

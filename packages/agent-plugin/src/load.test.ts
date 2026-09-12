@@ -16,6 +16,24 @@ afterEach(async () => {
 });
 
 describe("loadProjectComponents", () => {
+  it("reports a missing direct MCP source instead of rejecting", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-missing-"));
+    roots.push(root);
+    const path = join(root, "missing-mcp.json");
+
+    const loaded = await loadProjectComponents({ mcp: path, projectRoot: root });
+
+    expect(loaded.source.mcp).toBeUndefined();
+    expect(loaded.issues).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        scope: "mcp",
+        path,
+        message: expect.stringContaining("could not load direct MCP source"),
+      }),
+    ]);
+  });
+
   it("preserves target-native frontmatter while validating portable skill fields", async () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skills-"));
     roots.push(root);

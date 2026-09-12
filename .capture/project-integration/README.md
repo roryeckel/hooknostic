@@ -48,6 +48,8 @@ bootstrap, direct exclusions/cwd containment, per-target MCP cloning/override tr
 collision/missing-variable isolation. Follow-up mutants cover selected-target
 validation, direct executable-file rejection, canonical symlink containment,
 URL-safe OpenCode wrapper imports, and Claude remote-reference omission and
-runtime expansion. The reusable
-adapter contract also rejects a missing project support declaration. These are
-focused falsification checks; they do not assert exhaustive mutation coverage.
+runtime expansion. Additional regressions cover named OpenCode target discovery,
+whole-file ownership relinquishment (including the generated skill-directory
+marker), and missing direct MCP source diagnostics. The reusable adapter contract
+also rejects a missing project support declaration. These are focused falsification
+checks; they do not assert exhaustive mutation coverage.

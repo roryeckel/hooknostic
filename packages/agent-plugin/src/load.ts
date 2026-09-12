@@ -695,14 +695,23 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     }
   }
   if (options.mcp) {
-    const path = await realpath(resolve(options.mcp));
-    if (DEFAULT_EXCLUDES.some(pattern => minimatch(path.replaceAll("\\", "/"), pattern, MATCH))) throw new Error("MCP source is an excluded secret/configuration file");
-    const file = { path: "mcp.json", contents: await readFile(path), mode: 0o644 };
-    const root = resolve(path, "..");
-    const config = loadMcp(root, { files: [file], directories: new Set() }, issues, options.projectRoot);
-    if (config) {
-      await validateDirectMcpPaths(config, root, issues, options.projectRoot);
-      source.mcp = { root, config };
+    const requested = resolve(options.mcp);
+    let direct: { path: string; contents: Buffer } | undefined;
+    try {
+      const path = await realpath(requested);
+      direct = { path, contents: await readFile(path) };
+    } catch (error) {
+      issue(issues, "error", "mcp", `could not load direct MCP source ${JSON.stringify(requested)}: ${error instanceof Error ? error.message : String(error)}`, requested);
+    }
+    if (direct) {
+      if (DEFAULT_EXCLUDES.some(pattern => minimatch(direct.path.replaceAll("\\", "/"), pattern, MATCH))) throw new Error("MCP source is an excluded secret/configuration file");
+      const file = { path: "mcp.json", contents: direct.contents, mode: 0o644 };
+      const root = resolve(direct.path, "..");
+      const config = loadMcp(root, { files: [file], directories: new Set() }, issues, options.projectRoot);
+      if (config) {
+        await validateDirectMcpPaths(config, root, issues, options.projectRoot);
+        source.mcp = { root, config };
+      }
     }
   }
   return { source, issues };

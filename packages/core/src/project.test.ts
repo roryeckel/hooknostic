@@ -79,6 +79,36 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".claude/skills/.gitattributes"), "utf8")).toBe("** -text\n");
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
+  it("relinquishes copied skills when their native destination becomes the source", async () => {
+    const codex = registry.codex!;
+    const { root, config, options } = await fixture({
+      components: { skills: ["./skills"] },
+      targets: {
+        codex: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/codex" },
+      },
+    });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(join(root, "skills/sample/SKILL.md"), "---\nname: sample\ndescription: Synthetic skill\n---\nOriginal\n");
+    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+    const native = join(root, ".agents/skills/sample/SKILL.md");
+    const attributes = join(root, ".agents/skills/.gitattributes");
+    await writeFile(native, "---\nname: sample\ndescription: Native source\n---\nAuthored\n");
+    await writeFile(attributes, "# Native policy\n** -text\n");
+    await writeFile(options.configPath, `export default ${JSON.stringify({
+      ...config,
+      components: { skills: ["./.agents/skills"] },
+    })};`);
+
+    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+    expect(await readFile(native, "utf8")).toContain("Authored");
+    expect(await readFile(attributes, "utf8")).toBe("# Native policy\n** -text\n");
+    const manifest = await readFile(join(root, ".hooknostic/integration.json"), "utf8");
+    expect(manifest).not.toContain(".agents/skills/sample/SKILL.md");
+    expect(manifest).not.toContain(".agents/skills/.gitattributes");
+    await writeFile(native, "---\nname: sample\ndescription: Native source\n---\nEdited\n");
+    await writeFile(attributes, "# Edited native policy\n** -text\n");
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
   it("ignores unselected package targets when loading direct components", async () => {
     const claude = registry.claude!;
     const codex = registry.codex!;

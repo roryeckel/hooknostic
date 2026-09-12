@@ -59,6 +59,27 @@ describe("project reconciliation", () => {
     await sync(); await rm(join(root, "generated/runtime.mjs"));
     expect((await reconcileProject(root, config, integration())).changes.map(c => c.path)).toContain("generated/runtime.mjs");
   });
+  it("relinquishes whole-file ownership without changing current bytes", async () => {
+    const path = "skills/sample/SKILL.md";
+    await sync({ files: [{ path, contents: "generated\n" }], entries: [], guidance: [] });
+    await writeFile(join(root, path), "authored\n");
+    const relinquished: ProjectIntegration = {
+      files: [], entries: [], guidance: [], relinquishFiles: [path],
+    };
+    await sync(relinquished);
+    expect(await readFile(join(root, path), "utf8")).toBe("authored\n");
+    expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain(path);
+    await writeFile(join(root, path), "edited after relinquishment\n");
+    expect((await reconcileProject(root, config, relinquished)).changes).toEqual([]);
+  });
+  it("rejects generating and relinquishing the same path", async () => {
+    await expect(reconcileProject(root, config, {
+      files: [{ path: "generated/runtime.mjs", contents: "generated\n" }],
+      entries: [],
+      guidance: [],
+      relinquishFiles: ["generated/runtime.mjs"],
+    })).rejects.toThrow("relinquish");
+  });
   it("refuses unowned generated files even when their bytes match", async () => {
     await mkdir(join(root, "generated")); await writeFile(join(root, "generated/runtime.mjs"), "export default 1;\n");
     await expect(sync()).rejects.toThrow("unowned");

@@ -338,5 +338,40 @@
     "failedTests": [
       "complete project integration reports and omits Claude package remotes whose references cannot remain literal"
     ]
+  },
+  {
+    "mutant": "use the canonical OpenCode target during named callback discovery",
+    "file": "packages/adapter-opencode/src/shim.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "registers and runs callbacks scoped to a named OpenCode target"
+    ]
+  },
+  {
+    "mutant": "omit ownership relinquishment when a copied skill becomes native-source",
+    "file": "packages/core/src/project-components.ts and packages/core/src/project-files.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "relinquishes whole-file ownership without changing current bytes",
+      "rejects generating and relinquishing the same path",
+      "complete project integration relinquishes copied skills when their native destination becomes the source"
+    ]
+  },
+  {
+    "mutant": "let a missing direct MCP source reject component loading",
+    "file": "packages/agent-plugin/src/load.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "reports a missing direct MCP source instead of rejecting",
+      "reports a missing direct MCP source in the JSON build result"
+    ]
+  },
+  {
+    "mutant": "omit the generated skill-directory marker from native-source relinquishment",
+    "file": "packages/core/src/project-components.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "complete project integration relinquishes copied skills when their native destination becomes the source"
+    ]
   }
 ]

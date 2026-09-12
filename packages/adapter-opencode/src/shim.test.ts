@@ -351,6 +351,32 @@ describe("createHooknosticHooks", () => {
     );
   });
 
+  it("registers and runs callbacks scoped to a named OpenCode target", async () => {
+    let ran = false;
+    const plugin = definePlugin({
+      name: "named-target",
+      hooks: [
+        hook("tool.before", {
+          id: "primary-only",
+          targets: { include: ["primary"] },
+          async run() { ran = true; },
+        }),
+      ],
+    });
+
+    const registered = createHooknosticHooks(
+      plugin,
+      { capabilities: LEVELS, targetId: "primary" },
+      PLUGIN_INPUT,
+    );
+    expect(Object.keys(registered)).toContain("tool.execute.before");
+    await registered["tool.execute.before"]!(
+      { tool: "bash", sessionID: "s", callID: "c" },
+      { args: { command: "echo named" } },
+    );
+    expect(ran).toBe(true);
+  });
+
   it("is invocation-stateless across repeated dispatches in one module lifetime", async () => {
     const h = hooks(); // one persistent hooks object, as in a real session
     for (let i = 0; i < 3; i++) {

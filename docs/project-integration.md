@@ -148,6 +148,10 @@ Hooknostic refuses automatic adoption even when bytes are equivalent. This also
 applies if `build` created unowned artifacts before the first sync: use sync as
 the normal project workflow. Missing owned files are repaired. Target removal
 keeps shared native documents and deletes only unchanged whole-file outputs.
+If a skill collection is reconfigured to use its native discovery destination,
+sync preserves the current files and relinquishes their previous generated-file
+ownership, including the generated `.gitattributes` marker when no copied skills
+still need it. Later source edits remain unmanaged.
 
 Outputs must not overlap sources, native configuration, or transaction state.
 Destination ancestors are checked for symlinks and containment before replacement.

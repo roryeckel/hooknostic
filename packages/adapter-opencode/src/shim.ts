@@ -97,8 +97,9 @@ export function createHooknosticHooks(
   options: OpenCodeShimOptions,
   pluginInput: OpenCodePluginInput,
 ): Record<string, Callback> {
+  const targetId = options.targetId ?? "opencode";
   const invocation = {
-    targetId: "opencode",
+    targetId,
     ...(options.harnessVersion !== undefined
       ? { harnessVersion: options.harnessVersion }
       : {}),
@@ -122,7 +123,7 @@ export function createHooknosticHooks(
       throw error;
     }
     const result = await dispatch(plugin.hooks, event, {
-      targetId: options.targetId ?? "opencode",
+      targetId,
       harness: event.harness,
       capabilities: options.capabilities,
       ...(options.minimumCapabilityLevel !== undefined

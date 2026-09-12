@@ -3,13 +3,18 @@ import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { bundleMcpLauncher, type McpLauncherServer } from "./mcp-launcher.js";
 import type { ProjectIntegration } from "./project-files.js";
 export function projectSkillFiles(source: ProjectComponents, root: string, destination: string): ProjectIntegration {
+  const relinquishFiles: string[] = [];
   const files = source.skills.flatMap(skill => {
     const path = `${destination}/${skill.name}`;
-    if (resolve(root, path) === resolve(skill.source)) return [];
+    if (resolve(root, path) === resolve(skill.source)) {
+      relinquishFiles.push(...skill.files.map(file => `${path}/${file.path}`));
+      return [];
+    }
     return skill.files.map(file => ({ ...file, path: `${path}/${file.path}` }));
   });
   if (files.length) files.push({ path: `${destination}/.gitattributes`, contents: new TextEncoder().encode("** -text\n"), mode: 0o644 });
-  return { files, entries: [], guidance: [] };
+  else if (relinquishFiles.length) relinquishFiles.push(`${destination}/.gitattributes`);
+  return { files, entries: [], guidance: [], ...(relinquishFiles.length ? { relinquishFiles } : {}) };
 }
 export async function projectMcpLauncher(source: ProjectComponents, root: string, output: string, selectedServers?: McpLauncherServer[]): Promise<ProjectIntegration> {
   if (!source.mcp) return { files: [], entries: [], guidance: [] };

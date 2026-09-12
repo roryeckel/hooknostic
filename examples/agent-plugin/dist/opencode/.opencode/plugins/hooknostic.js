@@ -5128,8 +5128,9 @@ function withTimeout(promise) {
   });
 }
 function createHooknosticHooks(plugin, options, pluginInput) {
+  const targetId = options.targetId ?? "opencode";
   const invocation = {
-    targetId: "opencode",
+    targetId,
     ...options.harnessVersion !== void 0 ? { harnessVersion: options.harnessVersion } : {}
   };
   const events = new Set(
@@ -5146,7 +5147,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       throw error;
     }
     const result = await dispatch(plugin.hooks, event, {
-      targetId: options.targetId ?? "opencode",
+      targetId,
       harness: event.harness,
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},

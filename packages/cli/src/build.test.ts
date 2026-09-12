@@ -1521,6 +1521,34 @@ ${run.stderr}`).toBe(0);
     expect(Object.keys(mcp.mcpServers)).toEqual(["good"]);
   });
 
+  it("reports a missing direct MCP source in the JSON build result", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-missing-direct-mcp-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        project: { root: "." },
+        components: { mcp: "./missing-mcp.json", onInvalid: "warn" },
+        targets: { claude: { version: "${claudeHarness.recommendedRange}", delivery: "project", output: "./.hooknostic/artifacts/claude" } }
+      };`,
+    );
+    const capture = captureIO();
+
+    await expect(runBuild({
+      config: join(dir, "hooknostic.config.ts"),
+      json: true,
+      registry: defaultAdapterRegistry(),
+      io: capture.io,
+    })).resolves.toBe(2);
+    expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        severity: "error",
+        message: expect.stringContaining("could not load direct MCP source"),
+      }),
+    );
+  });
+
   it("rolls back a projection when a native overlay collides with the Hooknostic runtime", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-projection-rollback-"));
     cleanupDirs.push(dir);

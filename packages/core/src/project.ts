@@ -35,6 +35,7 @@ export async function runProject(options: BuildOptions & { command: "sync" | "ve
       for (const artifact of target.artifacts) integration.files.push({ path: `${output}/${artifact.path}`, contents: artifact.contents, mode: artifact.mode ?? (artifact.executable ? 0o755 : 0o644) });
       const native = target.integration ?? adapter.projectIntegration(target.artifacts, output, owner);
       (integration.absent ??= []).push(...native.absent ?? []);
+      (integration.relinquishFiles ??= []).push(...native.relinquishFiles ?? []);
       integration.files.push(...native.files);
       integration.entries.push(...native.entries);
       integration.guidance.push(...native.guidance);

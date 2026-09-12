@@ -27,6 +27,10 @@ have structural ownership, canonical content hashes, and array context hashes.
 Equivalent unowned content is a conflict. Missing owned content can be repaired;
 modified or ambiguous content requires resolution. Removing a target removes only
 unchanged owned content. Shared documents remain in place.
+When a configured skill source moves onto its native discovery destination,
+reconciliation relinquishes prior whole-file ownership without rewriting or
+deleting the source bytes, including the generated skill-directory attributes
+marker when no copied skills still need it.
 
 A project lock serializes synchronization. All replacement bytes are staged
 before applying changes. A durable journal records preimages and expected hashes;
