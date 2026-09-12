@@ -1,4 +1,3 @@
-
 /** Canonical serialized-schema version (events/effects/build report). */
 export const CANONICAL_SCHEMA_VERSION = 1 as const;
 

@@ -3,8 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { afterEach, describe, expect, it } from "vitest";
+
 import { bundleRuntime } from "@hooknostic/core";
+
 import { claudeShimEntrySource } from "./index.js";
 
 const PACKAGES = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
@@ -78,9 +81,7 @@ describe("Claude command shim stream draining", () => {
       { "tool.before.observe": "exact", "tool.before.input.replace": "exact" },
     );
     expect(result.code).toBe(0);
-    expect(
-      JSON.parse(result.stdout).hookSpecificOutput.updatedInput.command,
-    ).toHaveLength(2_000_000);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.updatedInput.command).toHaveLength(2_000_000);
   });
 
   it("flushes a large stderr blocking reason before exiting", async () => {

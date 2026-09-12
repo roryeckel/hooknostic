@@ -1,18 +1,21 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
+
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
-  loadAgentPlugin,
   type AgentPluginFile,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
+  loadAgentPlugin,
 } from "@hooknostic/agent-plugin";
-import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
 import type { McpLauncherDocument } from "@hooknostic/core";
+import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
+
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
@@ -36,9 +39,7 @@ function source(
       ...manifest,
     },
     skills: [],
-    ...(Object.keys(servers).length === 0
-      ? {}
-      : { mcp: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: servers } }),
+    ...(Object.keys(servers).length === 0 ? {} : { mcp: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: servers } }),
     files: [file("plugin.json"), file("mcp.json"), file("src/server.mjs")],
     contentDigest: "sha256:source",
   };
@@ -59,28 +60,19 @@ const project = (pkg: AgentPluginPackage) =>
 
 function nativeMcp(plan: AgentPluginProjectionPlan): Record<string, Record<string, unknown>> {
   const artifact = plan.files.find((candidate) => candidate.path === ".mcp.json")!;
-  const text =
-    typeof artifact.contents === "string"
-      ? artifact.contents
-      : new TextDecoder().decode(artifact.contents);
+  const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   return (JSON.parse(text) as { mcpServers: Record<string, Record<string, unknown>> }).mcpServers;
 }
 
 function launcherDocument(plan: AgentPluginProjectionPlan): McpLauncherDocument {
   const artifact = plan.files.find((candidate) => candidate.path === "runtime/mcp-servers.json")!;
-  const text =
-    typeof artifact.contents === "string"
-      ? artifact.contents
-      : new TextDecoder().decode(artifact.contents);
+  const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   return JSON.parse(text) as McpLauncherDocument;
 }
 
 function manifestOf(plan: AgentPluginProjectionPlan): Record<string, unknown> {
   const artifact = plan.files.find((candidate) => candidate.path === ".codex-plugin/plugin.json")!;
-  const text =
-    typeof artifact.contents === "string"
-      ? artifact.contents
-      : new TextDecoder().decode(artifact.contents);
+  const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   return JSON.parse(text) as Record<string, unknown>;
 }
 
@@ -128,9 +120,7 @@ describe("Agent Plugin to Codex projection", () => {
       // No server survives, so neither the native document nor the launcher is
       // written at all.
       expect(plan.files.some((candidate) => candidate.path === ".mcp.json")).toBe(false);
-      expect(plan.files.some((candidate) => candidate.path === "runtime/mcp-launcher.mjs")).toBe(
-        false,
-      );
+      expect(plan.files.some((candidate) => candidate.path === "runtime/mcp-launcher.mjs")).toBe(false);
       expect(plan.summary.omissions).toContainEqual(
         expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "srv" }),
       );
@@ -226,25 +216,15 @@ describe("Agent Plugin to Codex projection", () => {
     // Survivors only, contiguous, in emission order. An integer-like key sorts
     // first in JavaScript object order, which is exactly why a position in the
     // source document is not a position here.
-    expect(document.servers.map((entry) => entry.name)).toEqual([
-      "2",
-      "first",
-      "__proto__",
-    ]);
+    expect(document.servers.map((entry) => entry.name)).toEqual(["2", "first", "__proto__"]);
     for (const [index, entry] of document.servers.entries()) {
-      expect(nativeMcp(plan)[entry.name]!["args"]).toEqual([
-        "./runtime/mcp-launcher.mjs",
-        String(index),
-      ]);
+      expect(nativeMcp(plan)[entry.name]!["args"]).toEqual(["./runtime/mcp-launcher.mjs", String(index)]);
     }
   });
 
   it("keeps a server whose name would collide with Object.prototype", async () => {
     const plan = await project(
-      source({ ["__proto__"]: { type: "stdio", command: "node" } } as Record<
-        string,
-        AgentPluginMcpServer
-      >),
+      source({ ["__proto__"]: { type: "stdio", command: "node" } } as Record<string, AgentPluginMcpServer>),
     );
     // Assigned into a plain `{}` this reaches the inherited setter, so
     // JSON.stringify drops it while the summary still counts it emitted.
@@ -342,13 +322,7 @@ describe("Agent Plugin to Codex projection", () => {
         file("skills/audit/SKILL.md"),
         file("skills/audit-draft/SKILL.md"),
       ],
-      directories: [
-        "skills",
-        "skills/review",
-        "skills/review-notes",
-        "skills/audit",
-        "skills/audit-draft",
-      ],
+      directories: ["skills", "skills/review", "skills/review-notes", "skills/audit", "skills/audit-draft"],
     });
     const paths = plan.files.map((artifact) => artifact.path);
     expect(paths).not.toContain("skills/review/SKILL.md");

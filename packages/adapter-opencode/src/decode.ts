@@ -1,5 +1,6 @@
-import type { HookEvent } from "@hooknostic/sdk";
 import type { InvocationContext } from "@hooknostic/core";
+import type { HookEvent } from "@hooknostic/sdk";
+
 import { classifyOpenCodeTool } from "./toolmap.js";
 
 export class OpenCodeDecodeError extends Error {}
@@ -41,10 +42,7 @@ function snapshotOpenCodeArgs(args: unknown): unknown {
   }
 }
 
-export function decodeOpenCode(
-  nativeEvent: unknown,
-  invocation: InvocationContext,
-): HookEvent {
+export function decodeOpenCode(nativeEvent: unknown, invocation: InvocationContext): HookEvent {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new OpenCodeDecodeError("native event is not an object");
   }
@@ -60,9 +58,7 @@ export function decodeOpenCode(
     schemaVersion: 1 as const,
     harness: {
       id: "opencode",
-      ...(invocation.harnessVersion !== undefined
-        ? { version: invocation.harnessVersion }
-        : {}),
+      ...(invocation.harnessVersion !== undefined ? { version: invocation.harnessVersion } : {}),
       nativeEvent: native.hook,
     },
     session: {
@@ -107,9 +103,7 @@ export function decodeOpenCode(
           cwd: native.directory,
         },
         correlation: {
-          ...(typeof permission.callID === "string"
-            ? { toolCallId: permission.callID }
-            : {}),
+          ...(typeof permission.callID === "string" ? { toolCallId: permission.callID } : {}),
         },
         event: "permission.request",
         tool: classifyOpenCodeTool(permission.type ?? "unknown", native.input),
@@ -168,9 +162,7 @@ export function decodeOpenCode(
           return {
             ...withSession(properties.sessionID),
             correlation: {
-              ...(typeof properties.tool?.callID === "string"
-                ? { toolCallId: properties.tool.callID }
-                : {}),
+              ...(typeof properties.tool?.callID === "string" ? { toolCallId: properties.tool.callID } : {}),
             },
             event: "permission.request",
             tool: classifyOpenCodeTool(

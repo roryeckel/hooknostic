@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
+
 import type { AdapterRegistry, AgentPluginTargetReport, EvaluateOptions } from "@hooknostic/core";
 import { buildProject, formatDiagnostics } from "@hooknostic/core";
+
 import type { CommandIO } from "./check.js";
 
 /** One-line Agent Plugin projection summary for human output. */

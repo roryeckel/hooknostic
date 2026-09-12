@@ -1,8 +1,11 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PLUGIN_DATA_PLACEHOLDER, PLUGIN_ROOT_PLACEHOLDER } from "@hooknostic/agent-plugin";
+
 import { build } from "esbuild";
+
+import { PLUGIN_DATA_PLACEHOLDER, PLUGIN_ROOT_PLACEHOLDER } from "@hooknostic/agent-plugin";
+
 import { createRequireBanner, licenseNoticesPlugin } from "./bundle-support.mjs";
 
 export const MCP_LAUNCHER_FILE = "mcp-launcher.mjs";
@@ -94,7 +97,12 @@ run({ cwd, command, args });
  * end implements it for them: it resolves the plugin root from its own
  * location, supplies a data directory, and expands before spawning.
  */
-function selfResolvingFrontEnd(rootOffset: string, pluginName: string, dataOffset?: string, environmentReferences = false): string {
+function selfResolvingFrontEnd(
+  rootOffset: string,
+  pluginName: string,
+  dataOffset?: string,
+  environmentReferences = false,
+): string {
   return `import { mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -225,7 +233,12 @@ export async function bundleMcpLauncher(options: McpLauncherOptions): Promise<st
     LAUNCHER_CORE +
     (options.frontEnd === "client-expanded"
       ? CLIENT_EXPANDED_FRONT_END
-      : selfResolvingFrontEnd(options.rootOffset ?? "..", options.pluginName ?? "", options.dataOffset, options.environmentReferences));
+      : selfResolvingFrontEnd(
+          options.rootOffset ?? "..",
+          options.pluginName ?? "",
+          options.dataOffset,
+          options.environmentReferences,
+        ));
   const entry = createRequire(import.meta.url).resolve("cross-spawn");
   const result = await build({
     stdin: { contents, resolveDir: dirname(entry) },

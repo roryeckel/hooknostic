@@ -3,6 +3,7 @@ import type { AdapterRegistry } from "@hooknostic/core";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { CapabilityId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, isCapabilityId } from "@hooknostic/sdk";
+
 import type { CommandIO } from "./check.js";
 
 export interface InspectCommandOptions {
@@ -25,17 +26,14 @@ export interface InspectCommandOptions {
 export async function runInspect(options: InspectCommandOptions): Promise<number> {
   const errors: string[] = [];
   const failure = (): number => {
-    if (options.json) options.io.stdout(JSON.stringify({ schemaVersion: 1, command: "inspect", ok: false, errors }, null, 2));
+    if (options.json)
+      options.io.stdout(JSON.stringify({ schemaVersion: 1, command: "inspect", ok: false, errors }, null, 2));
     else for (const message of errors) options.io.stderr(message);
     return 2;
   };
-  const adapter = Object.hasOwn(options.registry, options.target)
-    ? options.registry[options.target]
-    : undefined;
+  const adapter = Object.hasOwn(options.registry, options.target) ? options.registry[options.target] : undefined;
   if (!adapter) {
-    errors.push(
-      `unknown target "${options.target}"; available: ${Object.keys(options.registry).join(", ")}`,
-    );
+    errors.push(`unknown target "${options.target}"; available: ${Object.keys(options.registry).join(", ")}`);
     return failure();
   }
   if (options.capability !== undefined && !isCapabilityId(options.capability)) {
@@ -90,18 +88,24 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       ...(entry?.rationale !== undefined ? { rationale: entry.rationale } : {}),
     };
   });
-  const projector = options.delivery === "project" ? (adapter.projectComponentProfiles ? { profiles: adapter.projectComponentProfiles } : undefined) : adapter.agentPluginProjector;
-  const projection = options.capability === undefined && projector
-    ? resolveAgentPluginProjection(
-        {
-          id: adapter.id,
-          version,
-          delivery: adapter.supportedDeliveries()[0] ?? "project",
-          output: ".",
-        },
-        projector,
-      )
-    : undefined;
+  const projector =
+    options.delivery === "project"
+      ? adapter.projectComponentProfiles
+        ? { profiles: adapter.projectComponentProfiles }
+        : undefined
+      : adapter.agentPluginProjector;
+  const projection =
+    options.capability === undefined && projector
+      ? resolveAgentPluginProjection(
+          {
+            id: adapter.id,
+            version,
+            delivery: adapter.supportedDeliveries()[0] ?? "project",
+            output: ".",
+          },
+          projector,
+        )
+      : undefined;
   if (projection && !projection.matrix) {
     for (const diagnostic of projection.diagnostics) {
       errors.push(`${diagnostic.code}: ${diagnostic.message}`);
@@ -149,13 +153,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     return 0;
   }
 
-  options.io.stdout(
-    `${adapter.id} (adapter ${adapter.adapterVersion}) — harness range ${version}`,
-  );
+  options.io.stdout(`${adapter.id} (adapter ${adapter.adapterVersion}) — harness range ${version}`);
   for (const profile of resolved.profilesUsed) {
-    options.io.stdout(
-      `profile ${profile.range}${profile.source ? ` (validated ${profile.source.date})` : ""}`,
-    );
+    options.io.stdout(`profile ${profile.range}${profile.source ? ` (validated ${profile.source.date})` : ""}`);
   }
   options.io.stdout("");
   for (const row of rows) {

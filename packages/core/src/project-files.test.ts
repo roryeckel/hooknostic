@@ -1,14 +1,35 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyProject, fileHash, reconcileProject, recoverProject, type ProjectIntegration } from "./project-files.js";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { applyProject, fileHash, type ProjectIntegration, reconcileProject, recoverProject } from "./project-files.js";
 let root: string;
 const config = "hooknostic.config.ts";
-const integration = (): ProjectIntegration => ({ files: [{ path: "generated/runtime.mjs", contents: "export default 1;\n" }], entries: [{ path: "settings.json", key: ["hooks", "Stop"], kind: "array", value: { hooks: [{ command: "node generated/runtime.mjs", timeout: 12 }] } }], guidance: [] });
-beforeEach(async () => { root = await mkdtemp(join(tmpdir(), "hooknostic project ")); });
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
-async function sync(input = integration()) { const plan = await reconcileProject(root, config, input); await applyProject(root, config, plan); return plan; }
+const integration = (): ProjectIntegration => ({
+  files: [{ path: "generated/runtime.mjs", contents: "export default 1;\n" }],
+  entries: [
+    {
+      path: "settings.json",
+      key: ["hooks", "Stop"],
+      kind: "array",
+      value: { hooks: [{ command: "node generated/runtime.mjs", timeout: 12 }] },
+    },
+  ],
+  guidance: [],
+});
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "hooknostic project "));
+});
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+async function sync(input = integration()) {
+  const plan = await reconcileProject(root, config, input);
+  await applyProject(root, config, plan);
+  return plan;
+}
 describe("project reconciliation", () => {
   it("plans without writing and becomes byte-idempotent", async () => {
     const plan = await reconcileProject(root, config, integration());
@@ -43,7 +64,8 @@ describe("project reconciliation", () => {
   });
   it("updates derived registration values without duplicate dispatch", async () => {
     await sync();
-    const next = integration(); next.entries[0]!.value = { hooks: [{ command: "node generated/runtime.mjs", timeout: 99 }] };
+    const next = integration();
+    next.entries[0]!.value = { hooks: [{ command: "node generated/runtime.mjs", timeout: 99 }] };
     await sync(next);
     const doc = JSON.parse(await readFile(join(root, "settings.json"), "utf8"));
     expect(doc.hooks.Stop).toHaveLength(1);
@@ -56,15 +78,21 @@ describe("project reconciliation", () => {
     expect(JSON.parse(await readFile(join(root, "settings.json"), "utf8")).hooks.Stop).toEqual([]);
   });
   it("repairs a missing generated file", async () => {
-    await sync(); await rm(join(root, "generated/runtime.mjs"));
-    expect((await reconcileProject(root, config, integration())).changes.map(c => c.path)).toContain("generated/runtime.mjs");
+    await sync();
+    await rm(join(root, "generated/runtime.mjs"));
+    expect((await reconcileProject(root, config, integration())).changes.map((c) => c.path)).toContain(
+      "generated/runtime.mjs",
+    );
   });
   it("relinquishes whole-file ownership without changing current bytes", async () => {
     const path = "skills/sample/SKILL.md";
     await sync({ files: [{ path, contents: "generated\n" }], entries: [], guidance: [] });
     await writeFile(join(root, path), "authored\n");
     const relinquished: ProjectIntegration = {
-      files: [], entries: [], guidance: [], relinquishFiles: [path],
+      files: [],
+      entries: [],
+      guidance: [],
+      relinquishFiles: [path],
     };
     await sync(relinquished);
     expect(await readFile(join(root, path), "utf8")).toBe("authored\n");
@@ -80,7 +108,10 @@ describe("project reconciliation", () => {
     await sync({ files, entries: [], guidance: [] });
     await writeFile(join(root, "skills/sample/local.txt"), "authored resource\n");
     const relinquished = {
-      files: [], entries: [], guidance: [], relinquishPrefixes: ["skills/sample"],
+      files: [],
+      entries: [],
+      guidance: [],
+      relinquishPrefixes: ["skills/sample"],
     } satisfies ProjectIntegration;
 
     await sync(relinquished);
@@ -91,37 +122,48 @@ describe("project reconciliation", () => {
     expect(manifest).not.toContain("skills/sample/");
   });
   it("rejects generating and relinquishing the same path", async () => {
-    await expect(reconcileProject(root, config, {
-      files: [{ path: "generated/runtime.mjs", contents: "generated\n" }],
-      entries: [],
-      guidance: [],
-      relinquishFiles: ["generated/runtime.mjs"],
-    })).rejects.toThrow("relinquish");
-    await expect(reconcileProject(root, config, {
-      files: [{ path: "skills/sample/SKILL.md", contents: "generated\n" }],
-      entries: [],
-      guidance: [],
-      relinquishPrefixes: ["skills/sample"],
-    })).rejects.toThrow("relinquish");
+    await expect(
+      reconcileProject(root, config, {
+        files: [{ path: "generated/runtime.mjs", contents: "generated\n" }],
+        entries: [],
+        guidance: [],
+        relinquishFiles: ["generated/runtime.mjs"],
+      }),
+    ).rejects.toThrow("relinquish");
+    await expect(
+      reconcileProject(root, config, {
+        files: [{ path: "skills/sample/SKILL.md", contents: "generated\n" }],
+        entries: [],
+        guidance: [],
+        relinquishPrefixes: ["skills/sample"],
+      }),
+    ).rejects.toThrow("relinquish");
   });
   it("refuses unowned generated files even when their bytes match", async () => {
-    await mkdir(join(root, "generated")); await writeFile(join(root, "generated/runtime.mjs"), "export default 1;\n");
+    await mkdir(join(root, "generated"));
+    await writeFile(join(root, "generated/runtime.mjs"), "export default 1;\n");
     await expect(sync()).rejects.toThrow("unowned");
   });
   it("refuses edited owned files and array entries", async () => {
-    await sync(); await writeFile(join(root, "generated/runtime.mjs"), "changed");
+    await sync();
+    await writeFile(join(root, "generated/runtime.mjs"), "changed");
     await expect(sync()).rejects.toThrow("modified");
     await writeFile(join(root, "generated/runtime.mjs"), "export default 1;\n");
     await writeFile(join(root, "settings.json"), '{"hooks":{"Stop":[{"changed":true}]}}');
     await expect(sync()).rejects.toThrow("modified");
   });
   it("refuses duplicate owned entry matches", async () => {
-    await sync(); const doc = JSON.parse(await readFile(join(root, "settings.json"), "utf8"));
-    doc.hooks.Stop.push(doc.hooks.Stop[0]); await writeFile(join(root, "settings.json"), JSON.stringify(doc));
+    await sync();
+    const doc = JSON.parse(await readFile(join(root, "settings.json"), "utf8"));
+    doc.hooks.Stop.push(doc.hooks.Stop[0]);
+    await writeFile(join(root, "settings.json"), JSON.stringify(doc));
     await expect(sync()).rejects.toThrow("ambiguous");
   });
   it("refuses taking over an equivalent unowned registration", async () => {
-    await writeFile(join(root, "settings.json"), JSON.stringify({ hooks: { Stop: [integration().entries[0]!.value] } }));
+    await writeFile(
+      join(root, "settings.json"),
+      JSON.stringify({ hooks: { Stop: [integration().entries[0]!.value] } }),
+    );
     await expect(sync()).rejects.toThrow("unowned matching");
   });
   it("detects edits between planning and commit without overwriting them", async () => {
@@ -147,34 +189,51 @@ describe("project reconciliation", () => {
     await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
   it("detects prototype-key collisions in unowned JSONC", async () => {
-    await writeFile(join(root, "opencode.jsonc"), '{"mcp":{"__proto__":{"type":"remote","url":"https://example.invalid"}}}');
-    await expect(reconcileProject(root, config, {
-      files: [],
-      entries: [],
-      guidance: [],
-      absent: [{ path: "opencode.jsonc", key: ["mcp", "__proto__"] }],
-    })).rejects.toThrow("unowned component collision");
+    await writeFile(
+      join(root, "opencode.jsonc"),
+      '{"mcp":{"__proto__":{"type":"remote","url":"https://example.invalid"}}}',
+    );
+    await expect(
+      reconcileProject(root, config, {
+        files: [],
+        entries: [],
+        guidance: [],
+        absent: [{ path: "opencode.jsonc", key: ["mcp", "__proto__"] }],
+      }),
+    ).rejects.toThrow("unowned component collision");
   });
-  it.each(["__proto__", "constructor", "prototype"])("reconciles a JSONC property named %s", async name => {
+  it.each(["__proto__", "constructor", "prototype"])("reconciles a JSONC property named %s", async (name) => {
     const desired = (command?: string): ProjectIntegration => ({
       files: [],
-      entries: command === undefined ? [] : [{ path: "settings.json", key: ["mcpServers", name], kind: "property", value: { command } }],
+      entries:
+        command === undefined
+          ? []
+          : [{ path: "settings.json", key: ["mcpServers", name], kind: "property", value: { command } }],
       guidance: [],
     });
     await sync(desired("node"));
-    let document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as { mcpServers: Record<string, unknown> };
+    let document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as {
+      mcpServers: Record<string, unknown>;
+    };
     expect(Object.hasOwn(document.mcpServers, name)).toBe(true);
     await sync(desired("bun"));
-    document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as { mcpServers: Record<string, unknown> };
+    document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as {
+      mcpServers: Record<string, unknown>;
+    };
     expect(document.mcpServers[name]).toEqual({ command: "bun" });
     await sync(desired());
-    document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as { mcpServers: Record<string, unknown> };
+    document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as {
+      mcpServers: Record<string, unknown>;
+    };
     expect(Object.hasOwn(document.mcpServers, name)).toBe(false);
   });
   it("rejects another owner and unsafe paths", async () => {
-    await sync(); await expect(reconcileProject(root, "other.ts", integration())).rejects.toThrow("another configuration");
+    await sync();
+    await expect(reconcileProject(root, "other.ts", integration())).rejects.toThrow("another configuration");
     for (const path of ["../outside", ".git/config", ".env", "C:\\outside"]) {
-      await expect(reconcileProject(root, config, { files: [{ path, contents: "bad" }], entries: [], guidance: [] })).rejects.toThrow("unsafe");
+      await expect(
+        reconcileProject(root, config, { files: [{ path, contents: "bad" }], entries: [], guidance: [] }),
+      ).rejects.toThrow("unsafe");
     }
   });
   it("rejects symlinked destination ancestors", async () => {
@@ -182,24 +241,47 @@ describe("project reconciliation", () => {
     try {
       await symlink(outside, join(root, "generated"), process.platform === "win32" ? "junction" : "dir");
       await expect(sync()).rejects.toThrow("symbolic link");
-    } finally { await rm(outside, { recursive: true, force: true }); }
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
   it("rejects a concurrent synchronization", async () => {
-    await mkdir(join(root, ".hooknostic")); await writeFile(join(root, ".hooknostic/sync.lock"), String(process.pid));
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, ".hooknostic/sync.lock"), String(process.pid));
     await expect(sync()).rejects.toMatchObject({ code: "EEXIST" });
     await expect(recoverProject(root, config)).rejects.toThrow("still running");
   });
   it("recovers interrupted replacements from preimages", async () => {
-    await mkdir(join(root, ".hooknostic")); await writeFile(join(root, "settings.json"), "after");
-    await writeFile(join(root, ".hooknostic/transaction.json"), JSON.stringify({ schemaVersion: 1, config, entries: [{ path: "settings.json", before: Buffer.from("before").toString("base64"), afterHash: fileHash("after"), mode: 0o644 }] }));
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, "settings.json"), "after");
+    await writeFile(
+      join(root, ".hooknostic/transaction.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        config,
+        entries: [
+          {
+            path: "settings.json",
+            before: Buffer.from("before").toString("base64"),
+            afterHash: fileHash("after"),
+            mode: 0o644,
+          },
+        ],
+      }),
+    );
     await expect(reconcileProject(root, config, integration())).rejects.toThrow("unfinished");
     await recoverProject(root, config);
     expect(await readFile(join(root, "settings.json"), "utf8")).toBe("before");
     await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
   it("keeps recovery records when an external edit conflicts", async () => {
-    await mkdir(join(root, ".hooknostic")); await writeFile(join(root, "settings.json"), "external");
-    const journal = JSON.stringify({ schemaVersion: 1, config, entries: [{ path: "settings.json", before: null, afterHash: fileHash("after"), mode: 0o644 }] });
+    await mkdir(join(root, ".hooknostic"));
+    await writeFile(join(root, "settings.json"), "external");
+    const journal = JSON.stringify({
+      schemaVersion: 1,
+      config,
+      entries: [{ path: "settings.json", before: null, afterHash: fileHash("after"), mode: 0o644 }],
+    });
     await writeFile(join(root, ".hooknostic/transaction.json"), journal);
     await expect(recoverProject(root, config)).rejects.toThrow("recovery conflict");
     expect(await readFile(join(root, ".hooknostic/transaction.json"), "utf8")).toBe(journal);

@@ -1,17 +1,26 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { setTimeout } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 /** Select only the latest push run of CI on the requested commit, including reruns. */
 export function ciState(runs, sha) {
-  const run = runs.filter((run) => run.head_sha === sha && run.event === "push" && run.path === ".github/workflows/ci.yml")
+  const run = runs
+    .filter((run) => run.head_sha === sha && run.event === "push" && run.path === ".github/workflows/ci.yml")
     .sort((a, b) => b.run_number - a.run_number || b.run_attempt - a.run_attempt || b.id - a.id)[0];
   if (!run || run.status !== "completed") return "pending";
   return run.conclusion === "success" ? "success" : "failed";
 }
 
-export async function waitForCI({ repo, sha, attempts = 40, intervalMs = 30_000, query = queryRuns, sleep = setTimeout, log = console.log }) {
+export async function waitForCI({
+  repo,
+  sha,
+  attempts = 40,
+  intervalMs = 30_000,
+  query = queryRuns,
+  sleep = setTimeout,
+  log = console.log,
+}) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     const state = ciState(await query(repo, sha), sha);
     log(`CI at ${sha}: ${state} (${attempt + 1}/${attempts})`);
@@ -23,7 +32,18 @@ export async function waitForCI({ repo, sha, attempts = 40, intervalMs = 30_000,
 }
 
 function queryRuns(repo, sha) {
-  const pages = JSON.parse(execFileSync("gh", ["api", "--paginate", "--slurp", `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${encodeURIComponent(sha)}&event=push&per_page=100`], { encoding: "utf8" }));
+  const pages = JSON.parse(
+    execFileSync(
+      "gh",
+      [
+        "api",
+        "--paginate",
+        "--slurp",
+        `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${encodeURIComponent(sha)}&event=push&per_page=100`,
+      ],
+      { encoding: "utf8" },
+    ),
+  );
   return pages.flatMap((page) => page.workflow_runs);
 }
 

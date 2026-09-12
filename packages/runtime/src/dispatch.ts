@@ -13,8 +13,8 @@ import type {
   ToolInvocation,
 } from "@hooknostic/sdk";
 import {
-  DEFAULT_RUNTIME,
   capabilityForEffect,
+  DEFAULT_RUNTIME,
   effectSchema,
   hookAppliesToTarget,
   isTerminalEffect,
@@ -133,9 +133,7 @@ export async function dispatch(
   // validation. NaN would otherwise produce an empty notification after slice(),
   // while Infinity would disable the cap entirely.
   let notifyBudget =
-    typeof policy.notifyCharLimit === "number" &&
-    Number.isFinite(policy.notifyCharLimit) &&
-    policy.notifyCharLimit > 0
+    typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0
       ? policy.notifyCharLimit
       : DEFAULT_RUNTIME.notifyCharLimit;
 
@@ -147,11 +145,7 @@ export async function dispatch(
     return true;
   });
 
-  const failDispatch = (
-    hookId: string,
-    error: HandlerError,
-    capabilities: CapabilitySet,
-  ): boolean => {
+  const failDispatch = (hookId: string, error: HandlerError, capabilities: CapabilitySet): boolean => {
     result.errors.push(error);
     if (policy.onHookError === "block") {
       const blockCapability = capabilityForEffect(event.event, "block");
@@ -175,11 +169,7 @@ export async function dispatch(
       level(id) {
         const level = targetCapabilities.level(id);
         const minimum = options.minimumCapabilityLevel;
-        if (
-          minimum !== undefined &&
-          hook.capabilities[id] !== "required" &&
-          !meetsMinimum(level, minimum)
-        ) {
+        if (minimum !== undefined && hook.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
           return "unsupported";
         }
         return level;
@@ -214,11 +204,15 @@ export async function dispatch(
         }),
       ]);
     } catch (error) {
-      const terminal = failDispatch(hook.id, {
-        hookId: hook.id,
-        kind: timedOut ? "timeout" : "error",
-        message: errorMessage(error),
-      }, capabilities);
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error),
+        },
+        capabilities,
+      );
       if (terminal) break;
       continue;
     } finally {
@@ -237,23 +231,31 @@ export async function dispatch(
       // violate the fail-open contract.
       parsedEffect = effectSchema.safeParse(outcome);
     } catch (error) {
-      const terminal = failDispatch(hook.id, {
-        hookId: hook.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
-      }, capabilities);
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
+        },
+        capabilities,
+      );
       if (terminal) break;
       continue;
     }
     if (!parsedEffect.success) {
       const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(hook.id, {
-        hookId: hook.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `hook "${hook.id}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
-      }, capabilities);
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook.id}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
+        },
+        capabilities,
+      );
       if (terminal) break;
       continue;
     }
@@ -261,32 +263,44 @@ export async function dispatch(
 
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === undefined) {
-      const terminal = failDispatch(hook.id, {
-        hookId: hook.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `effect "${effect.kind}" is not defined for event "${event.event}".`,
-      }, capabilities);
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `effect "${effect.kind}" is not defined for event "${event.event}".`,
+        },
+        capabilities,
+      );
       if (terminal) break;
       continue;
     }
     if (hook.capabilities[capability] === undefined) {
-      const terminal = failDispatch(hook.id, {
-        hookId: hook.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `hook "${hook.id}" returned "${effect.kind}" without declaring capability "${capability}".`,
-      }, capabilities);
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook.id}" returned "${effect.kind}" without declaring capability "${capability}".`,
+        },
+        capabilities,
+      );
       if (terminal) break;
       continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(hook.id, {
-        hookId: hook.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`,
-      }, capabilities);
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`,
+        },
+        capabilities,
+      );
       if (terminal) break;
       continue;
     }
@@ -304,16 +318,20 @@ export async function dispatch(
           ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command })
           : undefined;
       if (loweredShellInput === undefined) {
-        const terminal = failDispatch(hook.id, {
-          hookId: hook.id,
-          kind: "unsupported-effect",
-          code: "HN401",
-          message:
-            `hook "${hook.id}" returned "updateShell" for tool ` +
-            `"${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has ` +
-            `not captured; guard with event.tool.shell !== undefined, and use ` +
-            `replaceInput for uncaptured shapes.`,
-        }, capabilities);
+        const terminal = failDispatch(
+          hook.id,
+          {
+            hookId: hook.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message:
+              `hook "${hook.id}" returned "updateShell" for tool ` +
+              `"${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has ` +
+              `not captured; guard with event.tool.shell !== undefined, and use ` +
+              `replaceInput for uncaptured shapes.`,
+          },
+          capabilities,
+        );
         if (terminal) break;
         continue;
       }
@@ -364,10 +382,7 @@ export async function dispatch(
           });
           break;
         }
-        const context =
-          effect.context.length > contextBudget
-            ? effect.context.slice(0, contextBudget)
-            : effect.context;
+        const context = effect.context.length > contextBudget ? effect.context.slice(0, contextBudget) : effect.context;
         if (context.length < effect.context.length) {
           result.errors.push({
             hookId: hook.id,
@@ -450,9 +465,7 @@ export async function dispatch(
  */
 export function formatHandlerErrors(result: HookResult): string | undefined {
   if (result.errors.length === 0) return undefined;
-  return result.errors
-    .map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`)
-    .join("\n");
+  return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
 }
 
 /** Accumulated model-visible context additions, in application order. */
@@ -464,9 +477,7 @@ export function contextAdditions(result: HookResult): string[] {
 
 /** Accumulated user-visible notifications, in application order. */
 export function notifications(result: HookResult): string[] {
-  return result.effects
-    .filter((e) => e.effect.kind === "notify")
-    .map((e) => (e.effect as { message: string }).message);
+  return result.effects.filter((e) => e.effect.kind === "notify").map((e) => (e.effect as { message: string }).message);
 }
 
 /** The terminal effect, when dispatch was terminated. */

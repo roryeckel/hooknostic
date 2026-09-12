@@ -10,8 +10,8 @@
 // Never touches examples/ (their versions are example content, not release
 // versions) or workspace:* specifiers (pnpm rewrites those at pack time).
 // versions.test.ts is the gate that catches a carrier this script missed.
-import { readFileSync, writeFileSync, readdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,8 +22,10 @@ const version = check ? args[1] : args[0];
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$/;
 if (version === undefined || !SEMVER.test(version)) {
-  console.error(`usage: set-versions.mjs [--check] <semver>\n` +
-    `got: ${version ?? "<missing>"} (no leading "v"; MAJOR.MINOR.PATCH[-PRERELEASE])`);
+  console.error(
+    `usage: set-versions.mjs [--check] <semver>\n` +
+      `got: ${version ?? "<missing>"} (no leading "v"; MAJOR.MINOR.PATCH[-PRERELEASE])`,
+  );
   process.exit(2);
 }
 
@@ -86,5 +88,7 @@ if (check) {
   console.log(`all version carriers agree on ${version}`);
 } else {
   console.log(rewrites > 0 ? `${rewrites} files rewritten to ${version}` : `already at ${version}`);
-  console.log("next: pnpm install --lockfile-only && pnpm build, then rebuild both example artifacts from the repo root");
+  console.log(
+    "next: pnpm install --lockfile-only && pnpm build, then rebuild both example artifacts from the repo root",
+  );
 }

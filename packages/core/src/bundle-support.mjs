@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { cwd } from "node:process";
 import { TextEncoder } from "node:util";
@@ -6,7 +6,8 @@ import { TextEncoder } from "node:util";
 // Node >=22.13 supplies getBuiltinModule. Avoid an extra top-level import
 // binding: esbuild cannot rename banner identifiers when rebundling an artifact.
 // It does reserve `require`, renaming bundled source bindings as needed.
-export const createRequireBanner = 'const require = globalThis.process.getBuiltinModule("node:module").createRequire(import.meta.url);';
+export const createRequireBanner =
+  'const require = globalThis.process.getBuiltinModule("node:module").createRequire(import.meta.url);';
 
 async function manifestAt(directory) {
   try {
@@ -20,10 +21,13 @@ async function manifestAt(directory) {
 async function licenseText(directory) {
   const names = (await readdir(directory, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && /^(licen[cs]e|copying|notice|copyright)(?:[._-].*)?$/i.test(entry.name))
-    .map((entry) => entry.name).sort();
-  const parts = await Promise.all(names.map(async (name) =>
-    `${name}\n${(await readFile(join(directory, name), "utf8")).replaceAll("\r\n", "\n").trim()}`,
-  ));
+    .map((entry) => entry.name)
+    .sort();
+  const parts = await Promise.all(
+    names.map(
+      async (name) => `${name}\n${(await readFile(join(directory, name), "utf8")).replaceAll("\r\n", "\n").trim()}`,
+    ),
+  );
   return parts.join("\n\n");
 }
 
@@ -46,7 +50,10 @@ async function packageNotice(input, workingDir, cache) {
           const root = resolve(directory, "../..");
           if ((await manifestAt(root))?.name === "hooknostic-monorepo") text = await licenseText(root);
         }
-        if (!text) throw new Error(`Bundled dependency ${manifest.name}@${manifest.version} has no license/notice file; supply its redistribution notice before bundling.`);
+        if (!text)
+          throw new Error(
+            `Bundled dependency ${manifest.name}@${manifest.version} has no license/notice file; supply its redistribution notice before bundling.`,
+          );
         cache.set(directory, { id: `${manifest.name}@${manifest.version}`, text });
       }
       return cache.get(directory);
@@ -62,7 +69,10 @@ function formatNotices(notices) {
     if (!groups.has(text)) groups.set(text, new Set());
     groups.get(text).add(id);
   }
-  return [...groups].map(([text, names]) => `${[...names].sort().join("\n")}\n${text}`).sort().join("\n\n---\n\n");
+  return [...groups]
+    .map(([text, names]) => `${[...names].sort().join("\n")}\n${text}`)
+    .sort()
+    .join("\n\n---\n\n");
 }
 
 /** Carry full package notices in legal comments so another bundling pass preserves them. */
@@ -83,7 +93,10 @@ export function licenseNoticesPlugin({ noticeFile, additionalSources = [] } = {}
           // Generated stdin templates have no module path in the metafile.
           for (const source of additionalSources) {
             const notice = await packageNotice(source, workingDir, packages);
-            if (notice) { included.add(notice); all.add(notice); }
+            if (notice) {
+              included.add(notice);
+              all.add(notice);
+            }
           }
           for (const [input, contribution] of Object.entries(metadata.inputs)) {
             if (contribution.bytesInOutput === 0) continue;
@@ -99,7 +112,8 @@ export function licenseNoticesPlugin({ noticeFile, additionalSources = [] } = {}
           const path = resolve(workingDir, output);
           const file = result.outputFiles?.find((file) => file.path === path);
           if (file) file.contents = new TextEncoder().encode(file.text + comment);
-          else if (build.initialOptions.write !== false) await writeFile(path, await readFile(path, "utf8") + comment);
+          else if (build.initialOptions.write !== false)
+            await writeFile(path, (await readFile(path, "utf8")) + comment);
         }
         if (noticeFile) await writeFile(noticeFile, `Bundled package notices\n\n${formatNotices(all)}\n`);
       });

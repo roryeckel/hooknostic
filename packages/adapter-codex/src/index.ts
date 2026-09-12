@@ -1,7 +1,6 @@
-import { projectIntegration, projectComponents, projectComponentProfiles } from "./project.js";
-
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -13,13 +12,15 @@ import type {
 import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+
 import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
-import { codexAgentPluginProjector } from "./project-agent-plugin.js";
-import { codexCapabilityProfiles } from "./profile.js";
-import { codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
 import { codexHarness } from "./harness.js";
+import { codexCapabilityProfiles } from "./profile.js";
+import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { codexAgentPluginProjector } from "./project-agent-plugin.js";
+import { CODEX_SHELL_SHAPES, codexShellCodec } from "./toolmap.js";
 export { codexHarness } from "./harness.js";
 
 export { applyCodex } from "./apply.js";
@@ -65,9 +66,7 @@ export function codexShimEntrySource(options: {
       ? [`  minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
       : []),
     `  policy: ${JSON.stringify(options.policy)},`,
-    ...(options.harnessVersion !== undefined
-      ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`]
-      : []),
+    ...(options.harnessVersion !== undefined ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
     `});`,
     "",
   ].join("\n");
@@ -115,12 +114,7 @@ export function codexAdapter(): HarnessAdapter {
       });
     },
 
-    async compile(
-      plugin: PluginIR,
-      target: TargetSpec,
-      bundle: RuntimeBundle,
-      options,
-    ): Promise<GeneratedArtifact[]> {
+    async compile(plugin: PluginIR, target: TargetSpec, bundle: RuntimeBundle, options): Promise<GeneratedArtifact[]> {
       return generateCodexArtifacts(plugin, target, bundle, options);
     },
 
@@ -130,9 +124,7 @@ export function codexAdapter(): HarnessAdapter {
       if (hooksJson) {
         try {
           const parsed = JSON.parse(
-            typeof hooksJson.contents === "string"
-              ? hooksJson.contents
-              : new TextDecoder().decode(hooksJson.contents),
+            typeof hooksJson.contents === "string" ? hooksJson.contents : new TextDecoder().decode(hooksJson.contents),
           ) as {
             hooks?: Record<string, unknown>;
           };

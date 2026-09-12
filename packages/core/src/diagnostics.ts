@@ -1,11 +1,6 @@
-import { RUNTIME_DIAGNOSTIC_CODES } from "@hooknostic/sdk";
 import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
-import type {
-  CapabilityId,
-  HookEventName,
-  RequirementLevel,
-  SupportLevel,
-} from "@hooknostic/sdk";
+import type { CapabilityId, HookEventName, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
+import { RUNTIME_DIAGNOSTIC_CODES } from "@hooknostic/sdk";
 
 /**
  * Stable diagnostic codes.

@@ -1,5 +1,5 @@
-import type { HookResult } from "@hooknostic/sdk";
 import type { InvocationContext, NativeHookResult } from "@hooknostic/core";
+import type { HookResult } from "@hooknostic/sdk";
 
 const NATIVE_EVENT: Record<string, string> = {
   "session.start": "SessionStart",
@@ -31,15 +31,9 @@ export function applyClaude(
   const context = result.effects
     .filter((e) => e.effect.kind === "addContext")
     .map((e) => (e.effect as { context: string }).context);
-  const terminal =
-    result.terminatedBy !== undefined
-      ? result.effects[result.effects.length - 1]?.effect
-      : undefined;
-  const replacedInput = [...result.effects]
-    .reverse()
-    .find((e) => e.effect.kind === "replaceInput")?.effect as
-    | { input: unknown }
-    | undefined;
+  const terminal = result.terminatedBy !== undefined ? result.effects[result.effects.length - 1]?.effect : undefined;
+  const replacedInput = [...result.effects].reverse().find((e) => e.effect.kind === "replaceInput")?.effect as
+    { input: unknown } | undefined;
 
   const notices = result.effects
     .filter((e) => e.effect.kind === "notify")

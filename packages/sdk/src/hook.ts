@@ -1,7 +1,7 @@
 import type { CapabilityId, DeclarableCapability } from "./capabilities.js";
 import type { Effect, EffectForCapability } from "./effects.js";
 import type { HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
-import type { SupportLevel, RequirementLevel } from "./support.js";
+import type { RequirementLevel, SupportLevel } from "./support.js";
 import type { ToolMatch } from "./tools.js";
 
 /** Runtime capability lookup available to handlers for feature detection. */
@@ -35,10 +35,7 @@ export interface TargetScope {
  * it at dispatch time: importing it from `@hooknostic/core` would drag the
  * build-time dependency graph (esbuild) into every runtime artifact.
  */
-export function hookAppliesToTarget(
-  hook: { targets?: TargetScope | undefined },
-  targetId: string,
-): boolean {
+export function hookAppliesToTarget(hook: { targets?: TargetScope | undefined }, targetId: string): boolean {
   if (hook.targets?.include && !hook.targets.include.includes(targetId)) return false;
   if (hook.targets?.exclude && hook.targets.exclude.includes(targetId)) return false;
   return true;
@@ -50,10 +47,7 @@ export function hookAppliesToTarget(
  * an undeclared effect is a compile-time error (and independently a runtime
  * HN401, since type information can be bypassed).
  */
-export interface HookSpec<
-  E extends HookEventName,
-  C extends DeclarableCapability<E> = never,
-> {
+export interface HookSpec<E extends HookEventName, C extends DeclarableCapability<E> = never> {
   /** Stable hook identifier used in diagnostics and the build report. */
   id: string;
 
@@ -83,11 +77,7 @@ export interface HookSpec<
   run(
     event: HookEventMap[E],
     ctx: HookContext,
-  ):
-    | Promise<EffectForCapability<C> | undefined | void>
-    | EffectForCapability<C>
-    | undefined
-    | void;
+  ): Promise<EffectForCapability<C> | undefined | void> | EffectForCapability<C> | undefined | void;
 }
 
 /** Erased runtime representation of an authored hook. */
@@ -111,9 +101,7 @@ export function hook<E extends HookEventName, C extends DeclarableCapability<E> 
   const def: HookDefinition = {
     event,
     id: spec.id,
-    capabilities: (spec.capabilities ?? {}) as Partial<
-      Record<CapabilityId, RequirementLevel>
-    >,
+    capabilities: (spec.capabilities ?? {}) as Partial<Record<CapabilityId, RequirementLevel>>,
     run: spec.run as HookDefinition["run"],
   };
   if (spec.match !== undefined) def.match = spec.match;

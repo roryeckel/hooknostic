@@ -1,16 +1,19 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { AGENT_PLUGIN_MCP_SCHEMA, loadProjectComponents, type ProjectComponents } from "@hooknostic/agent-plugin";
+
 import { projectComponents, projectIntegration } from "./project.js";
 
 const roots: string[] = [];
 afterEach(async () => {
   delete process.env["HOOKNOSTIC_PROJECT_TOKEN"];
-  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 function source(origin: ProjectComponents["origin"]): ProjectComponents {
@@ -46,7 +49,7 @@ async function moduleFor(
     "hooknostic.config.ts",
     options,
   );
-  const artifact = integration.files.find(file => file.path === ".opencode/plugins/hooknostic-components.js")!;
+  const artifact = integration.files.find((file) => file.path === ".opencode/plugins/hooknostic-components.js")!;
   const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   const path = join(root, artifact.path);
   await mkdir(join(root, ".opencode/plugins"), { recursive: true });
@@ -76,10 +79,10 @@ describe("OpenCode project components", () => {
       {},
     );
 
-    expect(integration.files.map(file => file.path)).toContain(".agents/skills/review/SKILL.md");
-    expect(integration.files.map(file => file.path)).not.toContain(".agents/skills/review/credentials.md");
-    expect(integration.files.map(file => file.path)).not.toContain(".agents/skills/rejected/SKILL.md");
-    expect(integration.files.map(file => file.path)).not.toContain(".opencode/plugins/hooknostic-components.js");
+    expect(integration.files.map((file) => file.path)).toContain(".agents/skills/review/SKILL.md");
+    expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/review/credentials.md");
+    expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/rejected/SKILL.md");
+    expect(integration.files.map((file) => file.path)).not.toContain(".opencode/plugins/hooknostic-components.js");
   });
 
   it("imports generated project modules from URL-significant output paths", async () => {
@@ -88,7 +91,7 @@ describe("OpenCode project components", () => {
     const output = ".hooknostic/artifacts/space # percent % unicode ü";
     const artifact = ".opencode/plugins/hooknostic.js";
     const integration = projectIntegration([{ path: artifact, contents: "export default 1;\n" }], output);
-    const wrapper = integration.files.find(file => file.path === artifact)!;
+    const wrapper = integration.files.find((file) => file.path === artifact)!;
     const generated = join(root, output, artifact);
     const wrapperPath = join(root, artifact);
     await mkdir(join(generated, ".."), { recursive: true });

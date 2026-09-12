@@ -1,7 +1,9 @@
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
+
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -38,10 +40,13 @@ describe("loadProjectComponents", () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-excluded-"));
     roots.push(root);
     const path = join(root, ".env");
-    await writeFile(path, JSON.stringify({
-      $schema: AGENT_PLUGIN_MCP_SCHEMA,
-      mcpServers: {},
-    }));
+    await writeFile(
+      path,
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {},
+      }),
+    );
 
     const loaded = await loadProjectComponents({ mcp: path, projectRoot: root });
 
@@ -96,10 +101,7 @@ describe("loadProjectComponents", () => {
     });
 
     expect(loaded.issues).toEqual([]);
-    expect(loaded.source.skills[0]!.files.map((file) => file.path)).toEqual([
-      "reference.md",
-      "SKILL.md",
-    ]);
+    expect(loaded.source.skills[0]!.files.map((file) => file.path)).toEqual(["reference.md", "SKILL.md"]);
   });
 
   it("allows a direct MCP cwd to leave its source directory only within the project", async () => {
@@ -107,10 +109,11 @@ describe("loadProjectComponents", () => {
     roots.push(root);
     await mkdir(join(root, ".agents"));
     const path = join(root, ".agents/mcp.json");
-    const document = (cwd: string) => JSON.stringify({
-      $schema: AGENT_PLUGIN_MCP_SCHEMA,
-      mcpServers: { probe: { type: "stdio", command: "node", cwd } },
-    });
+    const document = (cwd: string) =>
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { probe: { type: "stdio", command: "node", cwd } },
+      });
     await writeFile(path, document("${PLUGIN_ROOT}/.."));
 
     const packagedSemantics = await loadProjectComponents({ mcp: path });
@@ -133,18 +136,21 @@ describe("loadProjectComponents", () => {
     await writeFile(join(outside, "tool.mjs"), "export {};\n");
     await symlink(outside, join(source, "linked"), process.platform === "win32" ? "junction" : "dir");
     const path = join(source, "mcp.json");
-    await writeFile(path, JSON.stringify({
-      $schema: AGENT_PLUGIN_MCP_SCHEMA,
-      mcpServers: {
-        cwdEscape: { type: "stdio", command: "node", cwd: "./linked" },
-        commandEscape: { type: "stdio", command: "./linked/tool.mjs" },
-        containedMissing: { type: "stdio", command: "node", cwd: "./missing/child" },
-      },
-    }));
+    await writeFile(
+      path,
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          cwdEscape: { type: "stdio", command: "node", cwd: "./linked" },
+          commandEscape: { type: "stdio", command: "./linked/tool.mjs" },
+          containedMissing: { type: "stdio", command: "node", cwd: "./missing/child" },
+        },
+      }),
+    );
 
     const loaded = await loadProjectComponents({ mcp: path, projectRoot: root });
     expect(Object.keys(loaded.source.mcp!.config.mcpServers)).toEqual(["containedMissing"]);
-    expect(loaded.issues.filter(issue => issue.message.includes("invalid and was skipped"))).toHaveLength(2);
+    expect(loaded.issues.filter((issue) => issue.message.includes("invalid and was skipped"))).toHaveLength(2);
   });
 });
 
@@ -248,10 +254,7 @@ describe("loadAgentPlugin", () => {
     );
 
     const loaded = await loadAgentPlugin({ root });
-    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual([
-      "executable",
-      "relative",
-    ]);
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["executable", "relative"]);
     expect(loaded.issues).toContainEqual(
       expect.objectContaining({
         severity: "warn",
@@ -298,15 +301,9 @@ describe("loadAgentPlugin", () => {
     const root = await packageRoot();
     await mkdir(join(root, "skills/kept/assets"), { recursive: true });
     await mkdir(join(root, "skills/removed/assets"), { recursive: true });
-    await writeFile(
-      join(root, "skills/kept/SKILL.md"),
-      "---\nname: kept\ndescription: Kept skill\n---\n",
-    );
+    await writeFile(join(root, "skills/kept/SKILL.md"), "---\nname: kept\ndescription: Kept skill\n---\n");
     await writeFile(join(root, "skills/kept/assets/secret.txt"), "omit only this file");
-    await writeFile(
-      join(root, "skills/removed/SKILL.md"),
-      "---\nname: removed\ndescription: Removed skill\n---\n",
-    );
+    await writeFile(join(root, "skills/removed/SKILL.md"), "---\nname: removed\ndescription: Removed skill\n---\n");
     await writeFile(join(root, "skills/removed/assets/resource.txt"), "omit whole skill");
     await writeFile(
       join(root, "mcp.json"),
@@ -323,12 +320,8 @@ describe("loadAgentPlugin", () => {
     expect(loaded.package?.skills.map((skill) => skill.name)).toEqual(["kept"]);
     expect(loaded.package?.mcp).toBeUndefined();
     expect(loaded.package?.files.some((file) => file.path === "mcp.json")).toBe(false);
-    expect(
-      loaded.package?.files.some((file) => file.path.startsWith("skills/removed/")),
-    ).toBe(false);
-    expect(
-      loaded.package?.files.some((file) => file.path === "skills/kept/assets/secret.txt"),
-    ).toBe(false);
+    expect(loaded.package?.files.some((file) => file.path.startsWith("skills/removed/"))).toBe(false);
+    expect(loaded.package?.files.some((file) => file.path === "skills/kept/assets/secret.txt")).toBe(false);
     expect(loaded.issues).toEqual([]);
 
     const missingManifest = await loadAgentPlugin({ root, exclude: ["*.json"] });
@@ -376,7 +369,20 @@ describe("loadAgentPlugin", () => {
   it("rejects invalid, missing, excluded, directory, and incorrectly cased executable paths", async () => {
     const root = await packageRoot();
     await writeFile(join(root, "data.txt"), "data");
-    for (const path of ["", "/data.txt", "../data.txt", "./data.txt", "a/../data.txt", "a//b", "a\\b", "C:/data.txt", "missing", "DATA.txt", "skills", "data.txt"]) {
+    for (const path of [
+      "",
+      "/data.txt",
+      "../data.txt",
+      "./data.txt",
+      "a/../data.txt",
+      "a//b",
+      "a\\b",
+      "C:/data.txt",
+      "missing",
+      "DATA.txt",
+      "skills",
+      "data.txt",
+    ]) {
       const options = { root, executableFiles: [path], ...(path === "data.txt" ? { exclude: [path] } : {}) };
       const result = await loadAgentPlugin(options);
       expect(result.package, path).toBeUndefined();
@@ -389,7 +395,9 @@ describe("loadAgentPlugin", () => {
     await writeFile(join(root, "inside.txt"), "safe");
     await symlink(join(root, "inside.txt"), join(root, "alias.txt"), "file");
     const safe = await loadAgentPlugin({ root });
-    expect(new TextDecoder().decode(safe.package?.files.find((file) => file.path === "alias.txt")?.contents)).toBe("safe");
+    expect(new TextDecoder().decode(safe.package?.files.find((file) => file.path === "alias.txt")?.contents)).toBe(
+      "safe",
+    );
 
     const outside = await mkdtemp(join(tmpdir(), "hooknostic-agent-plugin-outside-"));
     roots.push(outside);
@@ -446,9 +454,7 @@ describe("loadAgentPlugin", () => {
       }),
     ]);
     expect(loaded.issues.some((problem) => problem.scope === "skill")).toBe(false);
-    expect(loaded.issues.some((problem) => problem.message.includes("EXTERNAL_PARSE_MARKER"))).toBe(
-      false,
-    );
+    expect(loaded.issues.some((problem) => problem.message.includes("EXTERNAL_PARSE_MARKER"))).toBe(false);
   });
 
   it("rejects symbolic-link directory cycles", async () => {

@@ -11,12 +11,15 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
 import { afterAll, describe, expect, it } from "vitest";
-import { claudeHarness } from "./harness.js";
+
 import { bundleRuntime } from "@hooknostic/core";
-import { claudeShimEntrySource, claudeCapabilityProfiles } from "./index.js";
+
+import { claudeHarness } from "./harness.js";
+import { claudeCapabilityProfiles, claudeShimEntrySource } from "./index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -77,77 +80,71 @@ afterAll(async () => {
 });
 
 describe.skipIf(!enabled)("Claude Code smoke (real harness)", () => {
-  it(
-    "block, input rewrite, and session context all function in a live session",
-    { timeout: 300_000 },
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), "hooknostic-smoke-claude-"));
-      tempDirs.push(dir);
+  it("block, input rewrite, and session context all function in a live session", { timeout: 300_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-smoke-claude-"));
+    tempDirs.push(dir);
 
-      // 1. Bundle the shim exactly as the build pipeline will.
-      await writeFile(join(dir, "hooks.ts"), HOOKS_SOURCE, "utf8");
-      const levels = Object.fromEntries(
-        Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
-      );
-      const bundle = await bundleRuntime({
-        source: claudeShimEntrySource({
-          entryImportPath: join(dir, "hooks.ts").replaceAll("\\", "/"),
-          capabilities: levels,
-          policy: { onHookError: "continue", timeoutMs: 5000 },
-          harnessVersion: claudeHarness.referenceVersion,
-        }),
-        resolveDir: dir,
-        alias: ALIAS,
-      });
-      const bundlePath = join(dir, "hooknostic.mjs");
-      await writeFile(bundlePath, bundle.code, "utf8");
+    // 1. Bundle the shim exactly as the build pipeline will.
+    await writeFile(join(dir, "hooks.ts"), HOOKS_SOURCE, "utf8");
+    const levels = Object.fromEntries(
+      Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
+    );
+    const bundle = await bundleRuntime({
+      source: claudeShimEntrySource({
+        entryImportPath: join(dir, "hooks.ts").replaceAll("\\", "/"),
+        capabilities: levels,
+        policy: { onHookError: "continue", timeoutMs: 5000 },
+        harnessVersion: claudeHarness.referenceVersion,
+      }),
+      resolveDir: dir,
+      alias: ALIAS,
+    });
+    const bundlePath = join(dir, "hooknostic.mjs");
+    await writeFile(bundlePath, bundle.code, "utf8");
 
-      // 2. Wire it as project-settings command hooks (same protocol as the
-      //    plugin's hooks.json, exec form).
-      await mkdir(join(dir, ".claude"), { recursive: true });
-      const hookEntry = () => [
+    // 2. Wire it as project-settings command hooks (same protocol as the
+    //    plugin's hooks.json, exec form).
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    const hookEntry = () => [
+      {
+        hooks: [{ type: "command", command: "node", args: [bundlePath], timeout: 30 }],
+      },
+    ];
+    await writeFile(
+      join(dir, ".claude", "settings.json"),
+      JSON.stringify(
         {
-          hooks: [
-            { type: "command", command: "node", args: [bundlePath], timeout: 30 },
-          ],
-        },
-      ];
-      await writeFile(
-        join(dir, ".claude", "settings.json"),
-        JSON.stringify(
-          {
-            hooks: {
-              SessionStart: hookEntry(),
-              PreToolUse: hookEntry(),
-            },
+          hooks: {
+            SessionStart: hookEntry(),
+            PreToolUse: hookEntry(),
           },
-          null,
-          2,
-        ),
-        "utf8",
-      );
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
 
-      // 3. Drive a real session.
-      const prompt =
-        "Do these steps in order and do not retry failures. " +
-        "1) Run this exact bash command: echo hooknostic-original. Report its stdout verbatim. " +
-        "2) Run this exact bash command: echo made-it > forbidden-marker.txt (if it is blocked, say so and move on). " +
-        "3) If your context contains a hooknostic smoke token, repeat it verbatim. Then stop.";
-      // claude ships as a real executable; invoking without a shell keeps
-      // the prompt's special characters (">", parentheses) intact.
-      const { stdout } = await execFileAsync(
-        "claude",
-        ["-p", prompt, "--model", "sonnet", "--allowedTools", "Bash(echo:*)"],
-        { cwd: dir, timeout: 280_000 },
-      );
+    // 3. Drive a real session.
+    const prompt =
+      "Do these steps in order and do not retry failures. " +
+      "1) Run this exact bash command: echo hooknostic-original. Report its stdout verbatim. " +
+      "2) Run this exact bash command: echo made-it > forbidden-marker.txt (if it is blocked, say so and move on). " +
+      "3) If your context contains a hooknostic smoke token, repeat it verbatim. Then stop.";
+    // claude ships as a real executable; invoking without a shell keeps
+    // the prompt's special characters (">", parentheses) intact.
+    const { stdout } = await execFileAsync(
+      "claude",
+      ["-p", prompt, "--model", "sonnet", "--allowedTools", "Bash(echo:*)"],
+      { cwd: dir, timeout: 280_000 },
+    );
 
-      // Input rewrite observable: the executed command echoed the rewritten
-      // marker, which only exists if updatedInput was honored.
-      expect(stdout).toContain("hooknostic-rewritten");
-      // Block observable: the marker file was never created.
-      expect(existsSync(join(dir, "forbidden-marker.txt"))).toBe(false);
-      // Session context observable: the token reached the model.
-      expect(stdout).toContain("hooknostic-context-7c4f1");
-    },
-  );
+    // Input rewrite observable: the executed command echoed the rewritten
+    // marker, which only exists if updatedInput was honored.
+    expect(stdout).toContain("hooknostic-rewritten");
+    // Block observable: the marker file was never created.
+    expect(existsSync(join(dir, "forbidden-marker.txt"))).toBe(false);
+    // Session context observable: the token reached the model.
+    expect(stdout).toContain("hooknostic-context-7c4f1");
+  });
 });

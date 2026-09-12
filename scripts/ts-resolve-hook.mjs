@@ -16,11 +16,7 @@ export async function resolve(specifier, context, nextResolve) {
   try {
     return await nextResolve(specifier, context);
   } catch (error) {
-    if (
-      specifier.startsWith(".") &&
-      specifier.endsWith(".js") &&
-      context.parentURL?.startsWith(WORKSPACE)
-    ) {
+    if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.startsWith(WORKSPACE)) {
       const tsUrl = new URL(specifier, context.parentURL).href.replace(/\.js$/, ".ts");
       try {
         return await nextResolve(tsUrl, context);

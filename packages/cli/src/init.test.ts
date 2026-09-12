@@ -1,7 +1,9 @@
-import { expect, it } from "vitest";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { expect, it } from "vitest";
+
 import { runInit } from "./init.js";
 import { defaultAdapterRegistry } from "./registry.js";
 it("initializes only missing source scaffolding without overwriting or activating", async () => {
@@ -19,5 +21,7 @@ it("initializes only missing source scaffolding without overwriting or activatin
     expect(JSON.parse(output[1]!).created).toEqual([]);
     expect(await readFile(config, "utf8")).toBe("author config");
     expect(await readFile(join(root, "hooks.ts"), "utf8")).toBe("author hooks");
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

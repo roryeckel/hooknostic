@@ -1,36 +1,63 @@
+import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Buffer } from "node:buffer";
-import { artifactName, manifestLimit, workflowPath, validateManifest, verifyOrigin, planChanges } from "./renovate-artifacts.mjs";
+
+import {
+  artifactName,
+  manifestLimit,
+  planChanges,
+  validateManifest,
+  verifyOrigin,
+  workflowPath,
+} from "./renovate-artifacts.mjs";
 
 // Read one bounded JSON member without extracting any archive paths. Neither
 // the downloaded payload nor any code/configuration from the PR is executed.
 export function readArchive(archive) {
   if (archive.length > manifestLimit) throw new Error("Artifact archive is too large");
-  return JSON.parse(execFileSync("python3", ["-c", `
+  return JSON.parse(
+    execFileSync(
+      "python3",
+      [
+        "-c",
+        `
 import io, sys, zipfile
 with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as archive:
     entries = archive.infolist()
     if len(entries) != 1 or entries[0].filename != "manifest.json" or entries[0].file_size > ${manifestLimit}:
         raise ValueError("Malformed artifact archive")
     sys.stdout.buffer.write(archive.read(entries[0]))
-`], { input: archive, maxBuffer: manifestLimit, stdio: ["pipe", "pipe", "pipe"] }).toString("utf8"));
+`,
+      ],
+      { input: archive, maxBuffer: manifestLimit, stdio: ["pipe", "pipe", "pipe"] },
+    ).toString("utf8"),
+  );
 }
 
 export async function applyArtifacts({ repository, runId, attempt, api, download }) {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
-      !Number.isSafeInteger(runId) || !Number.isSafeInteger(attempt)) throw new Error("Invalid workflow identity");
+  if (
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
+    !Number.isSafeInteger(runId) ||
+    !Number.isSafeInteger(attempt)
+  )
+    throw new Error("Invalid workflow identity");
   const repo = `/repos/${repository}`;
   const run = await api(`${repo}/actions/runs/${runId}`);
   if (run.run_attempt !== attempt) return "stale attempt";
   const workflow = await api(`${repo}/actions/workflows/${workflowPath.split("/").at(-1)}`);
   // Establish the run before downloading; verifyOrigin repeats these checks
   // with the payload, PR association, and job result before any mutation.
-  if (run.workflow_id !== workflow.id || run.path !== workflowPath || run.event !== "pull_request" ||
-      run.conclusion !== "success" || run.repository?.full_name !== repository ||
-      run.head_repository?.full_name !== repository) throw new Error("Untrusted originating workflow");
+  if (
+    run.workflow_id !== workflow.id ||
+    run.path !== workflowPath ||
+    run.event !== "pull_request" ||
+    run.conclusion !== "success" ||
+    run.repository?.full_name !== repository ||
+    run.head_repository?.full_name !== repository
+  )
+    throw new Error("Untrusted originating workflow");
   const jobs = await api(`${repo}/actions/runs/${runId}/attempts/${attempt}/jobs?per_page=100`);
   if (jobs.total_count > 100) throw new Error("Incomplete job list");
   const artifacts = await api(`${repo}/actions/runs/${runId}/artifacts?per_page=100`);
@@ -54,12 +81,14 @@ export async function applyArtifacts({ repository, runId, attempt, api, download
       query: `mutation($input: CreateCommitOnBranchInput!) {
         createCommitOnBranch(input: $input) { commit { oid } }
       }`,
-      variables: { input: {
-        branch: { repositoryNameWithOwner: repository, branchName: pr.head.ref },
-        expectedHeadOid: manifest.headSha,
-        message: { headline: "chore: refresh committed example artifacts" },
-        fileChanges,
-      } },
+      variables: {
+        input: {
+          branch: { repositoryNameWithOwner: repository, branchName: pr.head.ref },
+          expectedHeadOid: manifest.headSha,
+          message: { headline: "chore: refresh committed example artifacts" },
+          fileChanges,
+        },
+      },
     });
   } catch (error) {
     if (!verifyOrigin({ ...origin, pr: await api(prPath) })) return "stale head or closed PR";
@@ -77,7 +106,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!token) throw new Error("Required workflow credential is missing; see docs/dependencies.md");
     const response = await fetch(`https://api.github.com${path}`, {
       method: body ? "POST" : "GET",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (!response.ok) throw new Error(`GitHub API ${response.status}: ${path}`);
@@ -99,8 +132,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     }
     return readArchive(Buffer.concat(chunks));
   };
-  console.log(await applyArtifacts({
-    repository: process.env.GITHUB_REPOSITORY,
-    runId: event.workflow_run.id, attempt: event.workflow_run.run_attempt, api, download,
-  }));
+  console.log(
+    await applyArtifacts({
+      repository: process.env.GITHUB_REPOSITORY,
+      runId: event.workflow_run.id,
+      attempt: event.workflow_run.run_attempt,
+      api,
+      download,
+    }),
+  );
 }

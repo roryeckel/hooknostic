@@ -1,12 +1,14 @@
-import { loadConfig, runProject } from "@hooknostic/core";
 import { resolve } from "node:path";
-import { runInit } from "./init.js";
 import { parseArgs } from "node:util";
+
 import type { AdapterRegistry } from "@hooknostic/core";
+import { loadConfig, runProject } from "@hooknostic/core";
+
 import { runBuild } from "./build.js";
 import type { CommandIO } from "./check.js";
 import { runCheck } from "./check.js";
 import { runDoctor } from "./doctor.js";
+import { runInit } from "./init.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
@@ -83,7 +85,10 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
 
   const targets =
     typeof parsed.values["target"] === "string"
-      ? parsed.values["target"].split(",").map((t) => t.trim()).filter(Boolean)
+      ? parsed.values["target"]
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
       : undefined;
 
   if (
@@ -101,17 +106,28 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
     switch (command) {
       case "init":
         if (!parsed.values["local"]) throw new Error("init requires --local");
-        return await runInit(typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts", registry, io, parsed.values["json"] === true);
+        return await runInit(
+          typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts",
+          registry,
+          io,
+          parsed.values["json"] === true,
+        );
       case "sync":
       case "verify":
       case "recover": {
         const result = await runProject({
-          command, configPath: resolve(typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts"),
-          registry, ...(targets === undefined ? {} : { targets }), dryRun: parsed.values["dry-run"] === true,
+          command,
+          configPath: resolve(
+            typeof parsed.values["config"] === "string" ? parsed.values["config"] : "hooknostic.config.ts",
+          ),
+          registry,
+          ...(targets === undefined ? {} : { targets }),
+          dryRun: parsed.values["dry-run"] === true,
         });
         if (parsed.values["json"]) io.stdout(JSON.stringify({ schemaVersion: 1, command, ...result }, null, 2));
         else {
-          for (const diagnostic of result.diagnostics) io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
+          for (const diagnostic of result.diagnostics)
+            io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
           for (const path of result.changes) io.stdout(`${command === "verify" ? "DRIFT" : "UPDATE"} ${path}`);
           for (const message of result.guidance) io.stdout(message);
           for (const message of result.errors) io.stderr(message);
@@ -121,9 +137,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
       }
       case "check":
         return await runCheck({
-          ...(typeof parsed.values["config"] === "string"
-            ? { config: parsed.values["config"] }
-            : {}),
+          ...(typeof parsed.values["config"] === "string" ? { config: parsed.values["config"] } : {}),
           ...(targets ? { targets } : {}),
           ...(parsed.values["json"] ? { json: true } : {}),
           registry,
@@ -131,9 +145,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         });
       case "build":
         return await runBuild({
-          ...(typeof parsed.values["config"] === "string"
-            ? { config: parsed.values["config"] }
-            : {}),
+          ...(typeof parsed.values["config"] === "string" ? { config: parsed.values["config"] } : {}),
           ...(targets ? { targets } : {}),
           ...(parsed.values["json"] ? { json: true } : {}),
           registry,
@@ -154,26 +166,26 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         }
         if (typeof parsed.values["config"] === "string") {
           const loaded = await loadConfig(resolve(parsed.values["config"]));
-          if (!loaded.config) throw new Error(loaded.diagnostics.map(d => d.message).join("\n"));
+          if (!loaded.config) throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
           const configured = loaded.config.targets[target];
           if (!configured) throw new Error(`target ${target} is not configured`);
           parsed.values["version"] ??= configured.version;
           parsed.values["delivery"] ??= configured.delivery;
           target = configured.adapter ?? target;
         }
-        if (parsed.values["delivery"] !== undefined && !["project", "package"].includes(String(parsed.values["delivery"]))) throw new Error("--delivery must be project or package");
+        if (
+          parsed.values["delivery"] !== undefined &&
+          !["project", "package"].includes(String(parsed.values["delivery"]))
+        )
+          throw new Error("--delivery must be project or package");
         return await runInspect({
-          ...(parsed.values["delivery"] === undefined ? {} : { delivery: parsed.values["delivery"] as "project" | "package" }),
+          ...(parsed.values["delivery"] === undefined
+            ? {}
+            : { delivery: parsed.values["delivery"] as "project" | "package" }),
           target,
-          ...(typeof parsed.values["capability"] === "string"
-            ? { capability: parsed.values["capability"] }
-            : {}),
-          ...(typeof parsed.values["component"] === "string"
-            ? { component: parsed.values["component"] }
-            : {}),
-          ...(typeof parsed.values["version"] === "string"
-            ? { version: parsed.values["version"] }
-            : {}),
+          ...(typeof parsed.values["capability"] === "string" ? { capability: parsed.values["capability"] } : {}),
+          ...(typeof parsed.values["component"] === "string" ? { component: parsed.values["component"] } : {}),
+          ...(typeof parsed.values["version"] === "string" ? { version: parsed.values["version"] } : {}),
           ...(parsed.values["json"] ? { json: true } : {}),
           registry,
           io,
@@ -187,7 +199,17 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
   } catch (error) {
     // Commands report expected failures as diagnostics; anything else must
     // still yield an exit code and a message rather than an uncaught exception.
-    if (parsed.values["json"]) { io.stdout(JSON.stringify({ schemaVersion: 1, command, ok: false, errors: [error instanceof Error ? error.message : String(error)] })); return 2; }
+    if (parsed.values["json"]) {
+      io.stdout(
+        JSON.stringify({
+          schemaVersion: 1,
+          command,
+          ok: false,
+          errors: [error instanceof Error ? error.message : String(error)],
+        }),
+      );
+      return 2;
+    }
     io.stderr(
       `hooknostic: unexpected error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
     );

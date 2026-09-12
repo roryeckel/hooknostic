@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 const { parse } = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url))("yaml");
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 export const dependencySections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
-export const nodeFiles = Object.fromEntries(["ci", "playback", "publishing"].map((role) => [role, `.github/node/${role}/.node-version`]));
+export const nodeFiles = Object.fromEntries(
+  ["ci", "playback", "publishing"].map((role) => [role, `.github/node/${role}/.node-version`]),
+);
 
 export function checkEngines(manifests) {
   const requirement = manifests["package.json"]?.engines?.node;
@@ -19,17 +21,24 @@ export function checkEngines(manifests) {
 
 export function inventory(root = repoRoot) {
   const read = (path) => readFileSync(resolve(root, path), "utf8");
-  const paths = ["package.json", ...["packages", "examples"].flatMap((dir) =>
-    readdirSync(resolve(root, dir), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory()).map((entry) => `${dir}/${entry.name}/package.json`))];
+  const paths = [
+    "package.json",
+    ...["packages", "examples"].flatMap((dir) =>
+      readdirSync(resolve(root, dir), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => `${dir}/${entry.name}/package.json`),
+    ),
+  ];
   const manifests = Object.fromEntries(paths.map((path) => [path, JSON.parse(read(path))]));
   checkEngines(manifests);
   const workspace = parse(read("pnpm-workspace.yaml"));
   const catalogs = { default: workspace.catalog, ...workspace.catalogs };
   const expected = [];
-  const add = (manager, packageFile, depName, currentValue, depType = "") => expected.push({ manager, packageFile, depName, currentValue, depType });
+  const add = (manager, packageFile, depName, currentValue, depType = "") =>
+    expected.push({ manager, packageFile, depName, currentValue, depType });
   for (const [name, dependencies] of Object.entries(catalogs)) {
-    for (const [dep, range] of Object.entries(dependencies)) add("npm", "pnpm-workspace.yaml", dep, range, `pnpm.catalog.${name}`);
+    for (const [dep, range] of Object.entries(dependencies))
+      add("npm", "pnpm-workspace.yaml", dep, range, `pnpm.catalog.${name}`);
   }
   for (const [path, pkg] of Object.entries(manifests)) {
     for (const section of dependencySections) {
@@ -74,25 +83,35 @@ export function inventory(root = repoRoot) {
         if (!image) throw new Error(`${path}: unversioned tooling container`);
         add("github-actions", path, image[1], image[2], "container");
       }
-      const role = name === "release-publish.yml" ? "publishing" :
-        ["harness-playback", "verify", "drift"].includes(jobName) ? "playback" : "ci";
+      const role =
+        name === "release-publish.yml"
+          ? "publishing"
+          : ["harness-playback", "verify", "drift"].includes(jobName)
+            ? "playback"
+            : "ci";
       for (const step of job.steps ?? []) {
         if (!step.uses || step.uses.startsWith("./")) continue;
         const [dep, value] = step.uses.split("@");
         if (!value) throw new Error(`${path}: unversioned Action`);
         add("github-actions", path, dep, value, "action");
-        if (dep === "actions/setup-node" &&
-            (step.with?.["node-version-file"] !== nodeFiles[role] || "node-version" in (step.with ?? {}))) {
+        if (
+          dep === "actions/setup-node" &&
+          (step.with?.["node-version-file"] !== nodeFiles[role] || "node-version" in (step.with ?? {}))
+        ) {
           throw new Error(`${path}/${jobName}: use the ${role} Node version file`);
         }
-        if (dep === "pnpm/action-setup" && step.with?.version !== undefined) throw new Error(`${path}: duplicated pnpm pin`);
+        if (dep === "pnpm/action-setup" && step.with?.version !== undefined)
+          throw new Error(`${path}: duplicated pnpm pin`);
       }
     }
   }
   const watch = read(".github/workflows/harness-watch.yml");
-  if (!watch.includes('$(cat .github/requirements/litellm.txt)') ||
-      !watch.includes('$(cat .github/node/playback/.node-version)') ||
-      !watch.includes('"node:${PLAYBACK_NODE}-bookworm"')) throw new Error("Relocated tooling files are not consumed");
+  if (
+    !watch.includes("$(cat .github/requirements/litellm.txt)") ||
+    !watch.includes("$(cat .github/node/playback/.node-version)") ||
+    !watch.includes('"node:${PLAYBACK_NODE}-bookworm"')
+  )
+    throw new Error("Relocated tooling files are not consumed");
   const requirement = read(".github/requirements/litellm.txt").trim();
   const match = /^litellm\[proxy\](==\d+\.\d+\.\d+)$/.exec(requirement);
   if (!match) throw new Error("Expected one pinned LiteLLM proxy requirement");
@@ -109,18 +128,22 @@ export function checkExtraction(expected, packageFiles) {
     for (const file of files) {
       // npm emits references and manual engines for workspace manifests too;
       // their own package version is release data, never an updatable dep.
-      if (!allowedFiles.has(file.packageFile) &&
-          !(manager === "npm" && /^(packages|examples)\/[^/]+\/package\.json$/.test(file.packageFile))) {
+      if (
+        !allowedFiles.has(file.packageFile) &&
+        !(manager === "npm" && /^(packages|examples)\/[^/]+\/package\.json$/.test(file.packageFile))
+      ) {
         throw new Error(`Unexpected extracted file: ${file.packageFile}`);
       }
       for (const dep of file.deps) {
-        if (manager === "npm" && (dep.depType === "engines" || /^(catalog:|workspace:)/.test(dep.currentValue))) continue;
+        if (manager === "npm" && (dep.depType === "engines" || /^(catalog:|workspace:)/.test(dep.currentValue)))
+          continue;
         if (manager === "github-actions" && dep.depType === "github-runner" && dep.currentValue === "latest") continue;
         const record = { ...dep, manager, packageFile: file.packageFile };
         if (!wanted.has(key(record))) throw new Error(`Unexpected extracted dependency: ${key(record)}`);
         // Token-free extraction still discovers Action refs. Lookups require
         // the hosted app's GitHub token; no token is needed to prove discovery.
-        if (dep.skipReason && dep.skipReason !== "github-token-required") throw new Error(`Skipped dependency: ${key(record)}`);
+        if (dep.skipReason && dep.skipReason !== "github-token-required")
+          throw new Error(`Skipped dependency: ${key(record)}`);
         found.add(key(record));
       }
     }
@@ -132,7 +155,10 @@ export function checkExtraction(expected, packageFiles) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const expected = inventory();
   if (process.argv[2]) {
-    const logs = readFileSync(process.argv[2], "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const logs = readFileSync(process.argv[2], "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
     const files = logs.filter((entry) => entry.packageFiles).at(-1)?.packageFiles;
     if (!files) throw new Error("Renovate extraction log contains no packageFiles");
     console.log(checkExtraction(expected, files));

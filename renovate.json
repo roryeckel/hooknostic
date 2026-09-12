@@ -8,14 +8,7 @@
   "gitIgnoredAuthors": [],
   "rangeStrategy": "bump",
   "enabledManagers": ["npm", "nodenv", "github-actions", "pip_requirements"],
-  "ignorePaths": [
-    "**/node_modules/**",
-    "**/dist/**",
-    ".capture/**",
-    "fixtures/**",
-    "docs/**",
-    "examples/*/com.*/**"
-  ],
+  "ignorePaths": ["**/node_modules/**", "**/dist/**", ".capture/**", "fixtures/**", "docs/**", "examples/*/com.*/**"],
   "pip_requirements": {
     "managerFilePatterns": ["/^\\.github/requirements/[^/]+\\.txt$/"]
   },

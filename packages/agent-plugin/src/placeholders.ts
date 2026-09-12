@@ -38,17 +38,12 @@ export function expandStdioServer(
 ): { command: string; args?: string[]; env?: Record<string, string> } {
   return {
     command: server.command,
-    ...(server.args === undefined
-      ? {}
-      : { args: server.args.map((arg) => expandPluginRoot(arg, root)) }),
+    ...(server.args === undefined ? {} : { args: server.args.map((arg) => expandPluginRoot(arg, root)) }),
     ...(server.env === undefined
       ? {}
       : {
           env: Object.fromEntries(
-            Object.entries(server.env).map(([key, value]) => [
-              key,
-              expandPluginRoot(value, root),
-            ]),
+            Object.entries(server.env).map(([key, value]) => [key, expandPluginRoot(value, root)]),
           ),
         }),
   };

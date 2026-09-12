@@ -19,8 +19,7 @@ if (capture) {
   );
 }
 
-const respond = (id, result) =>
-  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+const respond = (id, result) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
 const input = createInterface({ input: process.stdin });
 input.on("line", (line) => {
   let request;

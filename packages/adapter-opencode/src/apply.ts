@@ -1,5 +1,5 @@
-import type { HookResult } from "@hooknostic/sdk";
 import type { InvocationContext, NativeHookResult } from "@hooknostic/core";
+import type { HookResult } from "@hooknostic/sdk";
 
 /**
  * Description of the native-side application of a HookResult in OpenCode's
@@ -69,10 +69,7 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
   const application: OpenCodeApplication = {};
   const mutations: NonNullable<OpenCodeApplication["mutations"]> = {};
 
-  const terminal =
-    result.terminatedBy !== undefined
-      ? result.effects[result.effects.length - 1]?.effect
-      : undefined;
+  const terminal = result.terminatedBy !== undefined ? result.effects[result.effects.length - 1]?.effect : undefined;
 
   if (terminal?.kind === "block") {
     if (result.event === "permission.request") {
@@ -85,20 +82,14 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
     }
   }
 
-  const replacedInput = [...result.effects]
-    .reverse()
-    .find((e) => e.effect.kind === "replaceInput")?.effect as
-    | { input: unknown }
-    | undefined;
+  const replacedInput = [...result.effects].reverse().find((e) => e.effect.kind === "replaceInput")?.effect as
+    { input: unknown } | undefined;
   if (replacedInput !== undefined && application.throwMessage === undefined) {
     mutations.args = replacedInput.input;
   }
 
-  const replacedOutput = [...result.effects]
-    .reverse()
-    .find((e) => e.effect.kind === "replaceOutput")?.effect as
-    | { output: unknown }
-    | undefined;
+  const replacedOutput = [...result.effects].reverse().find((e) => e.effect.kind === "replaceOutput")?.effect as
+    { output: unknown } | undefined;
   if (replacedOutput !== undefined) {
     mutations.output = serializeOpenCodeOutput(replacedOutput.output);
   }

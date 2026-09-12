@@ -1,6 +1,8 @@
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+
 import type { HooknosticConfig } from "@hooknostic/sdk";
+
 import type { Diagnostic } from "./diagnostics.js";
 
 export interface ManagedOutput {
@@ -77,7 +79,9 @@ export async function validateOutputLayout(options: {
 }): Promise<OutputLayoutResult> {
   const configPath = resolve(options.configPath);
   const configDir = dirname(configPath);
-  const canonicalConfigDir = await canonicalCandidate(options.config.project ? resolve(configDir, options.config.project.root) : configDir);
+  const canonicalConfigDir = await canonicalCandidate(
+    options.config.project ? resolve(configDir, options.config.project.root) : configDir,
+  );
   const protectedPaths = (
     await Promise.all(
       [
@@ -85,9 +89,7 @@ export async function validateOutputLayout(options: {
         ...(options.protectedPaths ?? []),
         ...(options.entryPath === undefined ? [] : [resolve(options.entryPath)]),
         join(configDir, "hooknostic-build.json"),
-      ].map(
-        pathIdentities,
-      ),
+      ].map(pathIdentities),
     )
   ).flat();
   const agentPluginPaths =
@@ -103,9 +105,7 @@ export async function validateOutputLayout(options: {
     if (!targetConfig) continue;
     const outputDir = resolve(configDir, targetConfig.output);
     const identities = await pathIdentities(outputDir);
-    const escapedPath = identities.find(
-      (path) => !isStrictDescendant(canonicalConfigDir, path),
-    );
+    const escapedPath = identities.find((path) => !isStrictDescendant(canonicalConfigDir, path));
     if (escapedPath !== undefined) {
       diagnostics.push(
         layoutError(
@@ -154,9 +154,7 @@ export async function validateOutputLayout(options: {
       const aPaths = comparisonPaths.get(a)!;
       const bPaths = comparisonPaths.get(b)!;
       const overlaps = aPaths.some((aPath) =>
-        bPaths.some(
-          (bPath) => containsPath(aPath, bPath) || containsPath(bPath, aPath),
-        ),
+        bPaths.some((bPath) => containsPath(aPath, bPath) || containsPath(bPath, aPath)),
       );
       if (!overlaps) {
         continue;

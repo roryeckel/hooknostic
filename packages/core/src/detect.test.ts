@@ -57,11 +57,9 @@ describe("detectCommandVersion", () => {
   it("refuses a probe that would need shell quoting", async () => {
     // Concatenation is only safe for literals; anything a shell would have to
     // parse is a programming error in the adapter, not a runtime condition.
-    await expect(
-      detectCommandVersion("node", { args: ["--eval", "console.log(1); rm -rf /"] }),
-    ).rejects.toThrow(/would need shell quoting/);
-    await expect(detectCommandVersion("my harness")).rejects.toThrow(
+    await expect(detectCommandVersion("node", { args: ["--eval", "console.log(1); rm -rf /"] })).rejects.toThrow(
       /would need shell quoting/,
     );
+    await expect(detectCommandVersion("my harness")).rejects.toThrow(/would need shell quoting/);
   });
 });

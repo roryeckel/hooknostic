@@ -74,7 +74,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "session.end.observe": {
         level: "approximate",
         rationale:
-          "closest signals are session.deleted/session.idle on the event bus; OpenCode sessions persist and may resume, so \"end\" is not a native concept.",
+          'closest signals are session.deleted/session.idle on the event bus; OpenCode sessions persist and may resume, so "end" is not a native concept.',
       },
 
       "prompt.before.observe": {
@@ -118,7 +118,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "permission.request.block": {
         level: "approximate",
         rationale:
-          "denial posts client.postSessionIdPermissionsPermissionId { response: \"reject\" } " +
+          'denial posts client.postSessionIdPermissionsPermissionId { response: "reject" } ' +
           "from the permission.asked bus event (captured live on 1.18.25: API answers true, " +
           "the command does not run, the turn halts). Approximate because it is a round-trip " +
           "through the server API rather than an in-callback mutation, it is a silent no-op " +
@@ -132,8 +132,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       },
       "context.compact.before.context.add": {
         level: "exact",
-        rationale:
-          "output.context strings are appended to the compaction prompt (experimental-prefixed upstream API).",
+        rationale: "output.context strings are appended to the compaction prompt (experimental-prefixed upstream API).",
       },
       // Compaction cannot be blocked → context.compact.before.block unsupported.
 

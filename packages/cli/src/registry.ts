@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { AdapterRegistry, HarnessAdapter } from "@hooknostic/core";
+
 import { claudeAdapter } from "@hooknostic/adapter-claude";
 import { codexAdapter } from "@hooknostic/adapter-codex";
 import { opencodeAdapter } from "@hooknostic/adapter-opencode";
+import type { AdapterRegistry, HarnessAdapter } from "@hooknostic/core";
 
 /**
  * The published CLI ships each adapter's runtime shim prebundled next to this

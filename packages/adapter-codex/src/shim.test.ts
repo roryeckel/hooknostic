@@ -3,8 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { afterEach, describe, expect, it } from "vitest";
+
 import { bundleRuntime } from "@hooknostic/core";
+
 import { codexShimEntrySource } from "./index.js";
 
 const PACKAGES = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
@@ -49,10 +52,7 @@ describe("Codex command shim stream draining", () => {
       alias: ALIAS,
     });
     await writeFile(bundlePath, bundle.code, "utf8");
-    const input = await readFile(
-      join(REPO, "fixtures/codex/0.148/pre-tool-bash.input.json"),
-      "utf8",
-    );
+    const input = await readFile(join(REPO, "fixtures/codex/0.148/pre-tool-bash.input.json"), "utf8");
     const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>(
       (resolvePromise, rejectPromise) => {
         const child = spawn(process.execPath, [bundlePath], {
@@ -69,9 +69,7 @@ describe("Codex command shim stream draining", () => {
     );
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
-    expect(
-      JSON.parse(result.stdout).hookSpecificOutput.updatedInput.command,
-    ).toHaveLength(2_000_000);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.updatedInput.command).toHaveLength(2_000_000);
   });
 
   it("exits after a handler timeout even when the handler retains a live handle", async () => {
@@ -112,10 +110,7 @@ describe("Codex command shim stream draining", () => {
       alias: ALIAS,
     });
     await writeFile(bundlePath, bundle.code, "utf8");
-    const input = await readFile(
-      join(REPO, "fixtures/codex/0.148/pre-tool-bash.input.json"),
-      "utf8",
-    );
+    const input = await readFile(join(REPO, "fixtures/codex/0.148/pre-tool-bash.input.json"), "utf8");
     const startedAt = Date.now();
     const result = await new Promise<{
       stdout: string;

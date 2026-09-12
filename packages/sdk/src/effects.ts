@@ -107,9 +107,7 @@ export function block(reason: string): BlockEffect {
 }
 
 export function requestApproval(reason?: string): RequestApprovalEffect {
-  return reason === undefined
-    ? { kind: "requestApproval" }
-    : { kind: "requestApproval", reason };
+  return reason === undefined ? { kind: "requestApproval" } : { kind: "requestApproval", reason };
 }
 
 /**
@@ -177,10 +175,7 @@ const EFFECT_CAPABILITY_SUFFIX: Record<EffectKind, string> = {
  * Returns `undefined` when the effect has no registered capability at that
  * event (i.e. the effect is structurally impossible there).
  */
-export function capabilityForEffect(
-  event: HookEventName,
-  kind: EffectKind,
-): CapabilityId | undefined {
+export function capabilityForEffect(event: HookEventName, kind: EffectKind): CapabilityId | undefined {
   const id = `${event}.${EFFECT_CAPABILITY_SUFFIX[kind]}`;
   return isCapabilityId(id) ? id : undefined;
 }

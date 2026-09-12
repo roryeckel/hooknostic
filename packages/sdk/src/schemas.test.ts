@@ -1,29 +1,30 @@
 import { describe, expect, it } from "vitest";
+
 import {
+  addContext,
+  ALL_CAPABILITY_IDS,
   baseHookEventSchema,
   block,
-  capabilityForEffect,
+  blockContinuation,
   capabilitiesForEvent,
+  capabilityForEffect,
   effectSchema,
+  findNonJsonPath,
+  hook,
+  HOOK_EVENT_NAMES,
   hooknosticConfigSchema,
+  isJsonValue,
   isTerminalEffect,
   leastCapable,
   meetsMinimum,
+  notify,
   observeCapability,
   pluginSpecSchema,
-  replaceInput,
-  updateShell,
-  addContext,
-  requestApproval,
   preventStop,
-  blockContinuation,
-  notify,
+  replaceInput,
   replaceOutput,
-  HOOK_EVENT_NAMES,
-  ALL_CAPABILITY_IDS,
-  hook,
-  isJsonValue,
-  findNonJsonPath,
+  requestApproval,
+  updateShell,
 } from "./index.js";
 
 describe("support levels", () => {
@@ -52,11 +53,7 @@ describe("capability registry", () => {
   });
 
   it("lists capabilities per event", () => {
-    expect(capabilitiesForEvent("turn.stop")).toEqual([
-      "turn.stop.observe",
-      "turn.stop.prevent",
-      "turn.stop.notify",
-    ]);
+    expect(capabilitiesForEvent("turn.stop")).toEqual(["turn.stop.observe", "turn.stop.prevent", "turn.stop.notify"]);
     expect(capabilitiesForEvent("agent.stop")).toEqual([
       "agent.stop.observe",
       "agent.stop.prevent",
@@ -75,24 +72,12 @@ describe("capability registry", () => {
 describe("effect → capability mapping", () => {
   it("maps every helper to its event-scoped capability", () => {
     expect(capabilityForEffect("tool.before", "block")).toBe("tool.before.block");
-    expect(capabilityForEffect("tool.before", "replaceInput")).toBe(
-      "tool.before.input.replace",
-    );
-    expect(capabilityForEffect("tool.before", "updateShell")).toBe(
-      "tool.before.input.replace",
-    );
-    expect(capabilityForEffect("tool.before", "requestApproval")).toBe(
-      "tool.before.requestApproval",
-    );
-    expect(capabilityForEffect("tool.after", "replaceOutput")).toBe(
-      "tool.after.output.replace",
-    );
-    expect(capabilityForEffect("tool.after", "blockContinuation")).toBe(
-      "tool.after.blockContinuation",
-    );
-    expect(capabilityForEffect("session.start", "addContext")).toBe(
-      "session.start.context.add",
-    );
+    expect(capabilityForEffect("tool.before", "replaceInput")).toBe("tool.before.input.replace");
+    expect(capabilityForEffect("tool.before", "updateShell")).toBe("tool.before.input.replace");
+    expect(capabilityForEffect("tool.before", "requestApproval")).toBe("tool.before.requestApproval");
+    expect(capabilityForEffect("tool.after", "replaceOutput")).toBe("tool.after.output.replace");
+    expect(capabilityForEffect("tool.after", "blockContinuation")).toBe("tool.after.blockContinuation");
+    expect(capabilityForEffect("session.start", "addContext")).toBe("session.start.context.add");
     expect(capabilityForEffect("turn.stop", "preventStop")).toBe("turn.stop.prevent");
     expect(capabilityForEffect("agent.stop", "preventStop")).toBe("agent.stop.prevent");
     expect(capabilityForEffect("turn.stop", "notify")).toBe("turn.stop.notify");
@@ -186,9 +171,7 @@ describe("canonical schemas", () => {
       },
     };
     expect(hooknosticConfigSchema.parse(config).entry).toBe("./src/hooks.ts");
-    expect(() =>
-      hooknosticConfigSchema.parse({ ...config, daemon: true }),
-    ).toThrow();
+    expect(() => hooknosticConfigSchema.parse({ ...config, daemon: true })).toThrow();
     expect(() =>
       hooknosticConfigSchema.parse({
         ...config,
@@ -221,9 +204,9 @@ describe("canonical schemas", () => {
       targets: { claude: { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/claude" } },
     };
     for (const onInvalid of ["error", "warn"]) {
-      expect(
-        hooknosticConfigSchema.safeParse({ ...base, components: { ...base.components, onInvalid } }).success,
-      ).toBe(true);
+      expect(hooknosticConfigSchema.safeParse({ ...base, components: { ...base.components, onInvalid } }).success).toBe(
+        true,
+      );
     }
     expect(
       hooknosticConfigSchema.safeParse({ ...base, components: { ...base.components, onInvalid: "ignore" } }).success,
@@ -234,17 +217,21 @@ describe("canonical schemas", () => {
     const entry = "./src/hooks.ts";
     const packageTarget = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/package" };
     const projectTarget = { version: ">=0.148 <1", delivery: "project" as const, output: "./dist/project" };
-    expect(hooknosticConfigSchema.safeParse({
-      entry,
-      components: { root: ".", targets: ["packaged"] },
-      targets: { packaged: packageTarget, unrelated: projectTarget },
-    }).success).toBe(true);
-    expect(hooknosticConfigSchema.safeParse({
-      project: { root: "." },
-      entry,
-      components: { skills: ["./skills"], targets: ["local"] },
-      targets: { local: projectTarget, unrelated: packageTarget },
-    }).success).toBe(true);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        entry,
+        components: { root: ".", targets: ["packaged"] },
+        targets: { packaged: packageTarget, unrelated: projectTarget },
+      }).success,
+    ).toBe(true);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        project: { root: "." },
+        entry,
+        components: { skills: ["./skills"], targets: ["local"] },
+        targets: { local: projectTarget, unrelated: packageTarget },
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects executable file policy for direct component sources", () => {
@@ -255,9 +242,10 @@ describe("canonical schemas", () => {
       targets: { local: { version: ">=1 <2", delivery: "project", output: "./dist/local" } },
     });
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.issues.map(issue => issue.message)).toContain(
-      "components.executableFiles requires components.root",
-    );
+    if (!result.success)
+      expect(result.error.issues.map((issue) => issue.message)).toContain(
+        "components.executableFiles requires components.root",
+      );
   });
 
   it("validates direct project MCP overrides", () => {
@@ -277,22 +265,30 @@ describe("canonical schemas", () => {
       targets: { client: target },
     };
     expect(hooknosticConfigSchema.safeParse(base).success).toBe(true);
-    expect(hooknosticConfigSchema.safeParse({
-      ...base,
-      components: { root: ".", mcpOverrides: base.components.mcpOverrides },
-    }).success).toBe(false);
-    expect(hooknosticConfigSchema.safeParse({
-      ...base,
-      components: { skills: ["./skills"], mcpOverrides: base.components.mcpOverrides },
-    }).success).toBe(false);
-    expect(hooknosticConfigSchema.safeParse({
-      ...base,
-      components: { ...base.components, mcpOverrides: { missing: {} } },
-    }).success).toBe(false);
-    expect(hooknosticConfigSchema.safeParse({
-      ...base,
-      components: { ...base.components, mcpOverrides: { client: { startupTimeoutMs: 0 } } },
-    }).success).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...base,
+        components: { root: ".", mcpOverrides: base.components.mcpOverrides },
+      }).success,
+    ).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...base,
+        components: { skills: ["./skills"], mcpOverrides: base.components.mcpOverrides },
+      }).success,
+    ).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...base,
+        components: { ...base.components, mcpOverrides: { missing: {} } },
+      }).success,
+    ).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...base,
+        components: { ...base.components, mcpOverrides: { client: { startupTimeoutMs: 0 } } },
+      }).success,
+    ).toBe(false);
   });
 
   it("validates hookless Agent Plugin projection target invariants", () => {
@@ -367,11 +363,7 @@ describe("effect payload JSON rule", () => {
   it("rejects payloads that JSON serialization would drop, throw on, or transform", () => {
     const symbolKey = Symbol("hidden");
     const symbolProperty = { command: "ls", [symbolKey]: "dropped" };
-    const nonEnumerableProperty = Object.defineProperty(
-      { command: "ls" },
-      "hidden",
-      { value: "dropped" },
-    );
+    const nonEnumerableProperty = Object.defineProperty({ command: "ls" }, "hidden", { value: "dropped" });
     const arrayProperty = Object.assign(["ls"], { hidden: "dropped" });
     const cases: [string, unknown][] = [
       ["undefined", undefined],
@@ -385,7 +377,14 @@ describe("effect payload JSON rule", () => {
       ["cycle", cyclic],
       ["nested undefined", { nested: { deep: [undefined] } }],
       ["class instance", new (class Thing {})()],
-      ["accessor", { get changesAfterValidation() { return 1; } }],
+      [
+        "accessor",
+        {
+          get changesAfterValidation() {
+            return 1;
+          },
+        },
+      ],
       ["toJSON", Object.defineProperty({}, "toJSON", { value: () => ({ ok: true }) })],
       ["symbol-keyed property", symbolProperty],
       ["non-enumerable property", nonEnumerableProperty],

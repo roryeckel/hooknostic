@@ -93,9 +93,7 @@ export async function detectCommandVersion(
     });
     const detail = stdout.trim();
     const version = VERSION_PATTERN.exec(stdout)?.[1];
-    return version !== undefined
-      ? { installed: true, version, detail }
-      : { installed: true, detail };
+    return version !== undefined ? { installed: true, version, detail } : { installed: true, detail };
   } catch {
     return {
       installed: false,

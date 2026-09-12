@@ -1,4 +1,4 @@
-import { definePlugin, hook, block } from "@hooknostic/sdk";
+import { block, definePlugin, hook } from "@hooknostic/sdk";
 
 export default definePlugin({
   // name is required here; version/description are inherited from the Agent

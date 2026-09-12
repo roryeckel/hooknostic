@@ -1,4 +1,4 @@
-import { definePlugin, hook, block } from "@hooknostic/sdk";
+import { block, definePlugin, hook } from "@hooknostic/sdk";
 
 /**
  * Minimal portable plugin: one guard on shell tools, one session observer.

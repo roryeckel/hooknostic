@@ -3,11 +3,14 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { afterAll, describe, expect, it } from "vitest";
+
 import type { CapabilityProfile, HarnessAdapter } from "@hooknostic/core";
 import { buildProject } from "@hooknostic/core";
 import type { FakeAdapterOptions } from "@hooknostic/testkit";
 import { makeFakeAdapter } from "@hooknostic/testkit";
+
 import { runBuild } from "./build.js";
 import { runCli } from "./cli.js";
 
@@ -15,9 +18,7 @@ import { runCli } from "./cli.js";
 // meaningless for a fake harness, so one shared stub keeps the noise down.
 const SRC: CapabilityProfile["source"] = {
   date: "2026-01-01",
-  validatedOn: [
-    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
-  ],
+  validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
 };
 
 const SDK_PATH = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../sdk/src/index.ts");
@@ -219,7 +220,11 @@ describe("build pipeline hardening", () => {
     expect(result.ok).toBe(false);
     expect(result.report.targets["fake"]?.status).toBe("failed");
     expect(result.report.diagnostics.map((d) => [d.code, d.target, d.message])).toEqual([
-      ["HN302", "fake", expect.stringContaining(`existing output ${join(dir, "dist/fake")} is not a regular directory`)],
+      [
+        "HN302",
+        "fake",
+        expect.stringContaining(`existing output ${join(dir, "dist/fake")} is not a regular directory`),
+      ],
       ["HN302", undefined, expect.stringContaining("hooknostic-build.json is not a regular file")],
     ]);
     expect(await readFile(join(dir, "dist/fake"), "utf8")).toBe("not a directory");
@@ -254,26 +259,23 @@ describe("build pipeline hardening", () => {
     expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
   });
 
-  it.skipIf(process.platform === "win32")(
-    "honors the executable flag on staged and committed artifacts",
-    async () => {
-      const dir = await project();
-      const result = await build(
-        dir,
-        fake({
-          compile: () => [
-            { path: "bin/run.sh", contents: "#!/bin/sh\nexit 0\n", executable: true },
-            { path: "data.txt", contents: "plain" },
-          ],
-        }),
-      );
-      expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
-      const executable = await stat(join(dir, "dist/fake/bin/run.sh"));
-      const plain = await stat(join(dir, "dist/fake/data.txt"));
-      expect(executable.mode & 0o111).not.toBe(0);
-      expect(plain.mode & 0o111).toBe(0);
-    },
-  );
+  it.skipIf(process.platform === "win32")("honors the executable flag on staged and committed artifacts", async () => {
+    const dir = await project();
+    const result = await build(
+      dir,
+      fake({
+        compile: () => [
+          { path: "bin/run.sh", contents: "#!/bin/sh\nexit 0\n", executable: true },
+          { path: "data.txt", contents: "plain" },
+        ],
+      }),
+    );
+    expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
+    const executable = await stat(join(dir, "dist/fake/bin/run.sh"));
+    const plain = await stat(join(dir, "dist/fake/data.txt"));
+    expect(executable.mode & 0o111).not.toBe(0);
+    expect(plain.mode & 0o111).toBe(0);
+  });
 
   it("commits artifacts and the report when the adapter behaves", async () => {
     const dir = await project();

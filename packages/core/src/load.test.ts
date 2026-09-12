@@ -1,18 +1,17 @@
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
-import { claudeHarness } from "../../adapter-claude/src/harness.js";
+
 import { afterAll, describe, expect, it } from "vitest";
+
+import { claudeHarness } from "../../adapter-claude/src/harness.js";
 import { buildPluginIR } from "./ir.js";
 import { loadConfig, loadPluginSource } from "./load.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 
-const SDK_PATH = resolve(
-  fileURLToPath(new URL(".", import.meta.url)),
-  "../../sdk/src/index.ts",
-);
+const SDK_PATH = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../sdk/src/index.ts");
 const OPTIONS = { alias: { "@hooknostic/sdk": SDK_PATH } };
 
 const tempDirs: string[] = [];
@@ -29,16 +28,29 @@ afterAll(async () => {
 describe("loadConfig", () => {
   it("evaluates CommonJS dependencies requiring Node builtins at module initialization", async () => {
     const dir = await fixtureDir();
-    await writeFile(join(dir, "helper.cjs"), 'const path = require("node:path"); module.exports = path.basename("/project/hooks.ts");');
+    await writeFile(
+      join(dir, "helper.cjs"),
+      'const path = require("node:path"); module.exports = path.basename("/project/hooks.ts");',
+    );
     const file = join(dir, "config.ts");
-    await writeFile(file, 'import entry from "./helper.cjs"; export default { entry, targets: { fake: { version: "1", delivery: "project", output: "dist" } } };');
+    await writeFile(
+      file,
+      'import entry from "./helper.cjs"; export default { entry, targets: { fake: { version: "1", delivery: "project", output: "dist" } } };',
+    );
     const result = await loadConfig(file);
     expect(result.diagnostics).toEqual([]);
     expect(result.config?.entry).toBe("hooks.ts");
     // Vitest can supply a require shim; only a native subprocess pins ESM evaluation.
     await writeFile(join(dir, "hooks.ts"), 'export default { name: "cjs", hooks: [] };');
-    await writeFile(file, `import entry from "./helper.cjs"; export default { entry, targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist" } } };`);
-    const child = spawnSync(process.execPath, [resolve(import.meta.dirname, "../../cli/bin/hooknostic.mjs"), "check", "--config", file, "--json"], { encoding: "utf8" });
+    await writeFile(
+      file,
+      `import entry from "./helper.cjs"; export default { entry, targets: { claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "dist" } } };`,
+    );
+    const child = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dirname, "../../cli/bin/hooknostic.mjs"), "check", "--config", file, "--json"],
+      { encoding: "utf8" },
+    );
     expect(child.status, child.stdout + child.stderr).toBe(0);
   });
   it("evaluates and validates a TypeScript config module", async () => {
@@ -119,18 +131,16 @@ describe("loadConfig", () => {
     const result = await loadConfig(file, OPTIONS);
 
     expect(result.config).toBeUndefined();
-    expect(result.diagnostics[0]?.message).toContain('targets listed in agentPlugin.targets should use delivery: "package"');
+    expect(result.diagnostics[0]?.message).toContain(
+      'targets listed in agentPlugin.targets should use delivery: "package"',
+    );
     expect(result.diagnostics[0]?.message).not.toContain("local → project");
   });
 
   it("reports an empty target set as HN501", async () => {
     const dir = await fixtureDir();
     const file = join(dir, "hooknostic.config.ts");
-    await writeFile(
-      file,
-      `export default { entry: "./src/hooks.ts", targets: {} };`,
-      "utf8",
-    );
+    await writeFile(file, `export default { entry: "./src/hooks.ts", targets: {} };`, "utf8");
     const result = await loadConfig(file, OPTIONS);
     expect(result.config).toBeUndefined();
     expect(result.diagnostics[0]?.message).toContain("no targets");
@@ -139,11 +149,7 @@ describe("loadConfig", () => {
   it("allows an empty target set only for project-aware config loading", async () => {
     const dir = await fixtureDir();
     const file = join(dir, "hooknostic.config.ts");
-    await writeFile(
-      file,
-      `export default { project: { root: "." }, entry: "./hooks.ts", targets: {} };`,
-      "utf8",
-    );
+    await writeFile(file, `export default { project: { root: "." }, entry: "./hooks.ts", targets: {} };`, "utf8");
 
     const ordinary = await loadConfig(file, OPTIONS);
     expect(ordinary.config).toBeUndefined();

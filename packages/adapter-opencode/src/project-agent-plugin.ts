@@ -1,9 +1,3 @@
-import {
-  classifyStdioCwd,
-  componentSummary,
-  hasUnportableCommandPath,
-  isRejectedSkillPath,
-} from "@hooknostic/agent-plugin";
 import type {
   AgentPluginIssue,
   AgentPluginPackage,
@@ -11,8 +5,14 @@ import type {
   AgentPluginProjectionPlan,
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
+import {
+  classifyStdioCwd,
+  componentSummary,
+  hasUnportableCommandPath,
+  isRejectedSkillPath,
+} from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
-import { MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, bundleMcpLauncher } from "@hooknostic/core";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
 
 /**
  * OpenCode scans `.opencode/plugins/` for `*.ts` / `*.js` and does NOT recurse,
@@ -86,7 +86,10 @@ export const RUNTIME_LAUNCHER = "__HOOKNOSTIC_LAUNCHER__";
  * strip PATH -- which is how `command[0]` resolves. The launcher applies the
  * declared environment itself, on top of its own.
  */
-export function translateMcp(source: Pick<AgentPluginPackage, "mcp">, projectCwdServers: ReadonlySet<string> = new Set()): {
+export function translateMcp(
+  source: Pick<AgentPluginPackage, "mcp">,
+  projectCwdServers: ReadonlySet<string> = new Set(),
+): {
   servers: Record<string, OpenCodeServer>;
   launcherServers: McpLauncherServer[];
   omitted: { name: string; reason: string }[];
@@ -340,14 +343,14 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-08",
             method: "type-derived",
             artifact: ".capture/opencode-agent-plugin",
-            what: "McpLocalConfig declares an optional cwd whose own description reads \"Working directory for the MCP server process. Relative paths resolve from the workspace directory\", so a working directory IS expressible and must be absolute; an injected cwd also survived config resolution unchanged.",
+            what: 'McpLocalConfig declares an optional cwd whose own description reads "Working directory for the MCP server process. Relative paths resolve from the workspace directory", so a working directory IS expressible and must be absolute; an injected cwd also survived config resolution unchanged.',
           },
           {
             version: "1.18.29",
             date: "2026-09-08",
             method: "live-probe",
             artifact: ".capture/opencode-agent-plugin",
-            what: "Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with \"Plugin export is not a function\".",
+            what: 'Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with "Plugin export is not a function".',
           },
           {
             version: "1.18.29",
@@ -395,9 +398,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // Staging creates parents for emitted files only, so a directory with no
     // files in it -- a server's `cwd`, say -- exists in the package and not in
     // the output unless it is named here.
-    const directories = (source.directories ?? []).map(
-      (directory) => `${PACKAGE_DIR}/${directory}`,
-    );
+    const directories = (source.directories ?? []).map((directory) => `${PACKAGE_DIR}/${directory}`);
 
     const { servers, launcherServers, omitted } = translateMcp(source);
     for (const { name, reason } of omitted) {

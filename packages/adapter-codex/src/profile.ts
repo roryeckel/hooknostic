@@ -5,7 +5,7 @@ import type { CapabilityProfile } from "@hooknostic/core";
  * rendered, which is the one place the three harnesses genuinely diverge.
  */
 const NOTIFY_ACCEPTED_AND_DISCARDED =
-  "systemMessage is accepted by the stop.command.output / subagent-stop.command.output wire schemas -- a live 0.148.0 run validates cleanly and logs \"Stop Completed\" -- but 0.148.0 has no rendering path for it and the message appears nowhere. Accepted-and-discarded is not support: claiming it would make a portable hook lose every notice on this target, silently.";
+  'systemMessage is accepted by the stop.command.output / subagent-stop.command.output wire schemas -- a live 0.148.0 run validates cleanly and logs "Stop Completed" -- but 0.148.0 has no rendering path for it and the message appears nowhere. Accepted-and-discarded is not support: claiming it would make a portable hook lose every notice on this target, silently.';
 
 /**
  * Codex CLI capability data. Where docs and the binary disagreed, the binary
@@ -28,7 +28,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-09-08",
           method: "live-probe",
           artifact: ".capture/codex-plugin-hooks",
-          what: "Hook EFFECTS survive the installed-plugin delivery boundary, not just hook invocation: driven through the offline playback lane, a tool.before deny stopped the tool running and a tool.before input rewrite reached the spawned command. The capability matrix resolves by version and ignores mode, so this is what lets mode: \"plugin\" advertise the same write channels the local .codex/hooks.json route evidences.",
+          what: 'Hook EFFECTS survive the installed-plugin delivery boundary, not just hook invocation: driven through the offline playback lane, a tool.before deny stopped the tool running and a tool.before input rewrite reached the spawned command. The capability matrix resolves by version and ignores mode, so this is what lets mode: "plugin" advertise the same write channels the local .codex/hooks.json route evidences.',
         },
         {
           version: "0.148.0",
@@ -74,7 +74,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/codex-tools",
           what:
             "PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with " +
-            "\"PostToolUse hook returned unsupported updatedMCPToolOutput\", run status Failed; " +
+            '"PostToolUse hook returned unsupported updatedMCPToolOutput", run status Failed; ' +
             "matches upstream codex-rs hooks/src/events/post_tool_use.rs " +
             "unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is " +
             "therefore unsupported on the hook channel; the output parser also shows the MCP " +
@@ -107,12 +107,12 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.block": { level: "exact" },
       "tool.before.requestApproval": {
         level: "exact",
-        rationale: "permissionDecision \"ask\" surfaces a native approval prompt.",
+        rationale: 'permissionDecision "ask" surfaces a native approval prompt.',
       },
       "tool.before.input.replace": {
         level: "exact",
         rationale:
-          "vendor protocol requires permissionDecision \"allow\" alongside updatedInput, so a rewrite also resolves the permission decision.",
+          'vendor protocol requires permissionDecision "allow" alongside updatedInput, so a rewrite also resolves the permission decision.',
       },
       "tool.before.context.add": { level: "exact" },
 
@@ -135,7 +135,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         level: "unsupported",
         rationale:
           "the hook engine strictly rejects updatedMCPToolOutput from a PostToolUse hook " +
-          "(fails open: run logs \"PostToolUse hook returned unsupported updatedMCPToolOutput\", " +
+          '(fails open: run logs "PostToolUse hook returned unsupported updatedMCPToolOutput", ' +
           "status Failed; captured live on 0.151.0, .capture/codex-tools, and pinned by upstream " +
           "codex-rs unsupported_updated_mcp_tool_output_fails_open). Only additionalContext is " +
           "honoured on this event; the MCP connector path is the only output-replacement surface.",
@@ -148,7 +148,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       "permission.request.observe": { level: "exact" },
       "permission.request.block": {
         level: "exact",
-        rationale: "hookSpecificOutput.decision.behavior \"deny\" with message.",
+        rationale: 'hookSpecificOutput.decision.behavior "deny" with message.',
       },
       // PermissionRequest output wire has no additionalContext channel.
 

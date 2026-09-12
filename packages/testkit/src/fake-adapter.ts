@@ -2,9 +2,9 @@ import type {
   AdapterCompileOptions,
   CapabilityProfile,
   Diagnostic,
-  HarnessMetadata,
   GeneratedArtifact,
   HarnessAdapter,
+  HarnessMetadata,
   InvocationContext,
   PluginIR,
   RuntimeBundle,
@@ -39,10 +39,7 @@ export interface FakeAdapterOptions {
     options: AdapterCompileOptions,
   ): GeneratedArtifact[] | Promise<GeneratedArtifact[]>;
   /** Optional artifact validator, forwarded verbatim (may throw, for pipeline tests). */
-  validateArtifacts?(
-    artifacts: GeneratedArtifact[],
-    target: TargetSpec,
-  ): Diagnostic[] | Promise<Diagnostic[]>;
+  validateArtifacts?(artifacts: GeneratedArtifact[], target: TargetSpec): Diagnostic[] | Promise<Diagnostic[]>;
   /** Optional Agent Plugin projector, forwarded verbatim (omit for a projector-less fake). */
   agentPluginProjector?: HarnessAdapter["agentPluginProjector"];
 }
@@ -63,9 +60,7 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
       referenceVersion: "1.0.0",
     },
     ...(options.shimExecution !== undefined ? { shimExecution: options.shimExecution } : {}),
-    ...(options.agentPluginProjector !== undefined
-      ? { agentPluginProjector: options.agentPluginProjector }
-      : {}),
+    ...(options.agentPluginProjector !== undefined ? { agentPluginProjector: options.agentPluginProjector } : {}),
 
     supportedHarnessVersions() {
       return options.profiles.map((p) => p.range);
@@ -84,19 +79,13 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
       return [
         {
           path: "fake-plugin.json",
-          contents: JSON.stringify(
-            { adapter: options.id, target: target.id, plugin: plugin.name },
-            null,
-            2,
-          ),
+          contents: JSON.stringify({ adapter: options.id, target: target.id, plugin: plugin.name }, null, 2),
         },
       ];
     },
 
     runtime: {
-      decode:
-        options.decode ??
-        (async (nativeEvent) => nativeEvent as HookEvent),
+      decode: options.decode ?? (async (nativeEvent) => nativeEvent as HookEvent),
       async apply(result: HookResult) {
         return { body: result };
       },
@@ -105,8 +94,7 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
 
   const shimEntry = options.shimEntry;
   if (shimEntry !== undefined) {
-    adapter.shimEntry = (shimOptions) =>
-      typeof shimEntry === "string" ? shimEntry : shimEntry(shimOptions);
+    adapter.shimEntry = (shimOptions) => (typeof shimEntry === "string" ? shimEntry : shimEntry(shimOptions));
   }
   const validateArtifacts = options.validateArtifacts;
   if (validateArtifacts !== undefined) {
@@ -123,8 +111,6 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
 export function syntheticSource(): CapabilityProfile["source"] {
   return {
     date: "2026-01-01",
-    validatedOn: [
-      { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic test profile" },
-    ],
+    validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic test profile" }],
   };
 }

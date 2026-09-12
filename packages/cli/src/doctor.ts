@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildProject, loadConfig, runProject, type ProjectCommandResult } from "@hooknostic/core";
+
 import semver from "semver";
+
 import type { AdapterRegistry } from "@hooknostic/core";
+import { buildProject, loadConfig, type ProjectCommandResult, runProject } from "@hooknostic/core";
+
 import type { CommandIO } from "./check.js";
 
 export interface DoctorCommandOptions {
@@ -22,12 +25,7 @@ interface DoctorEntry {
   installed: boolean;
   version?: string;
   status:
-    | "ok"
-    | "outside-recommended"
-    | "newer-than-validated"
-    | "outside-validated"
-    | "not-detected"
-    | "unknown-version";
+    "ok" | "outside-recommended" | "newer-than-validated" | "outside-validated" | "not-detected" | "unknown-version";
   detail?: string;
 }
 
@@ -38,7 +36,8 @@ interface DoctorEntry {
  * (reproducibility, design §16.2).
  */
 export async function runDoctor(options: DoctorCommandOptions): Promise<number> {
-  if (options.config === undefined && existsSync(resolve("hooknostic.config.ts"))) options = { ...options, config: "hooknostic.config.ts" };
+  if (options.config === undefined && existsSync(resolve("hooknostic.config.ts")))
+    options = { ...options, config: "hooknostic.config.ts" };
   const entries: DoctorEntry[] = [];
 
   let adapters = Object.values(options.registry);
@@ -48,7 +47,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   if (loaded) {
     if (loaded.config) {
       const selected = new Set(Object.entries(loaded.config.targets).map(([name, target]) => target.adapter ?? name));
-      adapters = adapters.filter(adapter => selected.has(adapter.id));
+      adapters = adapters.filter((adapter) => selected.has(adapter.id));
     }
   }
   for (const adapter of adapters) {
@@ -79,7 +78,12 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       ...(newestValidated !== undefined ? { newestValidated } : {}),
     };
     if (!adapter.detect) {
-      entries.push({ ...base, installed: false, status: "not-detected", detail: "detection unavailable for this adapter" });
+      entries.push({
+        ...base,
+        installed: false,
+        status: "not-detected",
+        detail: "detection unavailable for this adapter",
+      });
       continue;
     }
     const detection = await adapter.detect();
@@ -124,25 +128,52 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   let project: ProjectCommandResult | undefined;
   let configurationErrors: string[] = [];
   if (options.config) {
-    if (loaded?.config?.project) project = await runProject({ command: "verify", configPath: resolve(options.config), registry: options.registry, ...(loaded === undefined ? {} : { configResult: loaded }) });
+    if (loaded?.config?.project)
+      project = await runProject({
+        command: "verify",
+        configPath: resolve(options.config),
+        registry: options.registry,
+        ...(loaded === undefined ? {} : { configResult: loaded }),
+      });
     else {
-      const checked = await buildProject({ configPath: resolve(options.config), registry: options.registry, dryRun: true, ...(loaded === undefined ? {} : { configResult: loaded }) });
-      configurationErrors = checked.report.diagnostics.filter(d => d.severity === "error").map(d => d.message);
+      const checked = await buildProject({
+        configPath: resolve(options.config),
+        registry: options.registry,
+        dryRun: true,
+        ...(loaded === undefined ? {} : { configResult: loaded }),
+      });
+      configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
     }
   }
-  const ok = configurationErrors.length === 0 && entries.every((e) => e.status === "ok") && (project === undefined || project.ok);
+  const ok =
+    configurationErrors.length === 0 &&
+    entries.every((e) => e.status === "ok") &&
+    (project === undefined || project.ok);
 
   if (options.json) {
     options.io.stdout(
-      JSON.stringify({ schemaVersion: 2, command: "doctor", ok, harnesses: entries, configurationErrors, runtime: { node: process.version }, ...(project === undefined ? {} : { project: { ...project, execution: "not-observed", trust: "not-inspected" } }) }, null, 2),
+      JSON.stringify(
+        {
+          schemaVersion: 2,
+          command: "doctor",
+          ok,
+          harnesses: entries,
+          configurationErrors,
+          runtime: { node: process.version },
+          ...(project === undefined
+            ? {}
+            : { project: { ...project, execution: "not-observed", trust: "not-inspected" } }),
+        },
+        null,
+        2,
+      ),
     );
     return ok ? 0 : 2;
   }
 
   for (const entry of entries) {
     const version = entry.version ?? (entry.installed ? "unknown version" : "not installed");
-    const marker =
-      entry.status === "ok" ? "OK  " : entry.status === "not-detected" ? "MISS" : "WARN";
+    const marker = entry.status === "ok" ? "OK  " : entry.status === "not-detected" ? "MISS" : "WARN";
     const drift =
       entry.status === "ok" &&
       entry.version !== undefined &&
@@ -167,7 +198,9 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   }
   for (const message of configurationErrors) options.io.stderr(message);
   if (project) {
-    options.io.stdout(`Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`);
+    options.io.stdout(
+      `Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`,
+    );
     for (const message of [...project.guidance, ...project.errors]) options.io.stdout(message);
   }
   return ok ? 0 : 2;

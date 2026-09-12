@@ -1,7 +1,8 @@
-﻿import type { CapabilityId } from "@hooknostic/sdk";
-import { HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+﻿import { describe, expect, it } from "vitest";
+
 import type { HarnessAdapter } from "@hooknostic/core";
-import { describe, expect, it } from "vitest";
+import type { CapabilityId } from "@hooknostic/sdk";
+import { HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 /**
  * The scenario registry: the executable contract between the capability
@@ -40,13 +41,7 @@ import { describe, expect, it } from "vitest";
  * - `opencode-serve` â€” OpenCode driven under `opencode serve` so the client
  *   channel outlives a turn (see `turn.stop.prevent`'s rationale).
  */
-export type ScenarioDriver =
-  | "loopback"
-  | "pty-approval"
-  | "mcp-stdio"
-  | "compaction"
-  | "subagent"
-  | "opencode-serve";
+export type ScenarioDriver = "loopback" | "pty-approval" | "mcp-stdio" | "compaction" | "subagent" | "opencode-serve";
 
 export interface ScenarioDefinition {
   /** Stable id; the playback suite keys its drives and outcome JSON on this. */
@@ -69,9 +64,7 @@ export interface ScenarioDefinition {
    */
   inconclusiveByHarness?: Partial<Record<string, string>>;
 }
-const EVERY_EVENT_OBSERVE = Object.freeze(
-  HOOK_EVENT_NAMES.map((event) => `${event}.observe`) as CapabilityId[],
-);
+const EVERY_EVENT_OBSERVE = Object.freeze(HOOK_EVENT_NAMES.map((event) => `${event}.observe`) as CapabilityId[]);
 
 /**
  * One entry per capability family, in event-vocabulary order. A scenario may
@@ -81,8 +74,7 @@ const EVERY_EVENT_OBSERVE = Object.freeze(
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   {
     id: "lifecycle-observe",
-    title:
-      "every advertised observable event reaches the artifact and normalizes to its canonical event name",
+    title: "every advertised observable event reaches the artifact and normalizes to its canonical event name",
     covers: EVERY_EVENT_OBSERVE,
     driver: "loopback",
   },
@@ -125,8 +117,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     // driver for its approval UI. Do not let a skipped Claude-only pty test
     // masquerade as scheduled Codex coverage.
     inconclusiveByHarness: {
-      codex:
-        "the scheduled playback suite has no captured Codex interactive approval driver",
+      codex: "the scheduled playback suite has no captured Codex interactive approval driver",
     },
   },
   {
@@ -167,11 +158,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   {
     id: "permission-request",
     title: "an interactive permission prompt is observable and deniable from a hook",
-    covers: [
-      "permission.request.observe",
-      "permission.request.block",
-      "permission.request.context.add",
-    ],
+    covers: ["permission.request.observe", "permission.request.block", "permission.request.context.add"],
     driver: "pty-approval",
     // Captured live on 1.18.25 (.capture/opencode-permission): OpenCode's
     // permission ask surfaces as the permission.asked bus event whether or
@@ -183,8 +170,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     // pty recipe cannot establish Codex behavior, so scheduled playback must
     // surface this as inconclusive rather than skip it silently.
     inconclusiveByHarness: {
-      codex:
-        "the scheduled playback suite has no captured Codex interactive permission driver",
+      codex: "the scheduled playback suite has no captured Codex interactive permission driver",
     },
   },
   {
@@ -279,9 +265,7 @@ export function assessScenarioCoverage(
     throw new Error(`${adapter.id}: capabilities did not resolve at referenceVersion`);
   }
 
-  const attributed = new Set<CapabilityId>(
-    scenarios.flatMap((scenario) => scenario.covers),
-  );
+  const attributed = new Set<CapabilityId>(scenarios.flatMap((scenario) => scenario.covers));
 
   const gaps: ScenarioCoverageGap[] = [];
   for (const [cell, entry] of Object.entries(resolved.matrix)) {
@@ -349,4 +333,3 @@ export function describeScenarioCoverage(adapter: HarnessAdapter): void {
     });
   });
 }
-

@@ -40,10 +40,11 @@ captured harness payloads in `fixtures/`, capture projects in `.capture/`.
 - **Normalization is additive.** Raw forms always survive: `tool.input` stays
   verbatim, `event.raw` is untouched, and absence of a normalized view is the
   documented signal to fall back to the raw form.
-- Verification per commit: `pnpm lint`, `pnpm build`, `pnpm test`, capturing
-  each exit code explicitly — never trust a piped or chained exit code.
-  `pretest` bundles agent-plugin, SDK, and CLI; direct `vitest` can test a
-  **stale bundle**. Before targeting single files, run `pnpm run bundle`.
+- Verification per commit: `pnpm lint`, `pnpm format:check`, `pnpm build`,
+  `pnpm test`, capturing each exit code explicitly — never trust a piped or
+  chained exit code. `pretest` bundles agent-plugin, SDK, and CLI; direct
+  `vitest` can test a **stale bundle**. Before targeting single files, run
+  `pnpm run bundle`.
 - A new test must be shown to fail against the defect it pins — revert the
   fix or apply a mutant, watch it fail, restore. This repository's history
   includes five tests that passed against the exact bugs they were written

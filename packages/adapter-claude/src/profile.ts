@@ -38,8 +38,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-09-01",
           method: "live-probe",
           artifact: "packages/cli/test/harness-playback.test.ts",
-          what:
-            "PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298)",
+          what: "PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298)",
         },
         {
           version: "2.1.263",

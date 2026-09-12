@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
+
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 function packageVersion(relDir: string): string {
-  const manifest = JSON.parse(
-    readFileSync(resolve(REPO_ROOT, relDir, "package.json"), "utf8"),
-  ) as { version: string };
+  const manifest = JSON.parse(readFileSync(resolve(REPO_ROOT, relDir, "package.json"), "utf8")) as { version: string };
   return manifest.version;
 }
 
@@ -60,9 +60,10 @@ describe("workspace version lockstep", () => {
       "packages/adapter-codex",
       "packages/adapter-opencode",
     ]) {
-      const manifest = JSON.parse(
-        readFileSync(resolve(REPO_ROOT, dir, "package.json"), "utf8"),
-      ) as { name: string; private?: boolean };
+      const manifest = JSON.parse(readFileSync(resolve(REPO_ROOT, dir, "package.json"), "utf8")) as {
+        name: string;
+        private?: boolean;
+      };
       if (manifest.private !== true) publishable.push(manifest.name);
     }
     // While unreleased, all three ALSO carry private:true as the
@@ -76,10 +77,7 @@ describe("workspace version lockstep", () => {
   it("keeps both release workflows guarded by all three public packages", () => {
     const guard = "for pkg in packages/agent-plugin packages/sdk packages/cli; do";
     for (const workflow of ["release-draft.yml", "release-publish.yml"]) {
-      expect(
-        readFileSync(resolve(REPO_ROOT, ".github/workflows", workflow), "utf8"),
-        workflow,
-      ).toContain(guard);
+      expect(readFileSync(resolve(REPO_ROOT, ".github/workflows", workflow), "utf8"), workflow).toContain(guard);
     }
   });
 });

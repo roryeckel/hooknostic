@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { componentSummary } from "./component-counts.js";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
@@ -89,8 +90,7 @@ describe("componentSummary", () => {
 
   it("splits a component the harness will not consume into emitted and skipped", () => {
     const counts = componentSummary(source({ servers: { a: stdio, b: sse, c: sse } }), {
-      skipped: (component, discovered) =>
-        component === "agent-plugin.mcp.sse" ? discovered : 0,
+      skipped: (component, discovered) => (component === "agent-plugin.mcp.sse" ? discovered : 0),
     });
     expect(counts["agent-plugin.mcp.sse"]).toEqual({ discovered: 2, emitted: 0, skipped: 2 });
     expect(counts["agent-plugin.mcp.stdio"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });

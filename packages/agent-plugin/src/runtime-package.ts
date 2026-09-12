@@ -30,8 +30,7 @@ export interface NpmRuntimeLockfile {
 }
 
 export type NpmRuntimePackageValidation =
-  | { ok: true; manifest: NpmRuntimeManifest; lockfile: NpmRuntimeLockfile }
-  | { ok: false; error: string };
+  { ok: true; manifest: NpmRuntimeManifest; lockfile: NpmRuntimeLockfile } | { ok: false; error: string };
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -237,7 +236,8 @@ function parseOverrides(
     if (problem !== undefined) return unsupported(problem);
     if (typeof value !== "string") return unsupported("nested overrides are not modelled");
     if (value.startsWith("$")) return unsupported("$reference values are not modelled");
-    if (semver.validRange(value, { loose: true }) === null) return unsupported("only semver range overrides are modelled");
+    if (semver.validRange(value, { loose: true }) === null)
+      return unsupported("only semver range overrides are modelled");
     // npm's own rule: a direct dependency may only be overridden to its own spec.
     const direct = dependencies[key];
     if (direct !== undefined && direct !== value) {
@@ -255,7 +255,11 @@ function parseOverrides(
  * The lock entry `name` resolves to from the package at `location`, walking
  * up through nested `node_modules` the way Node and npm resolve it.
  */
-function locate(packages: Record<string, unknown>, location: string, name: string): Record<string, unknown> | undefined {
+function locate(
+  packages: Record<string, unknown>,
+  location: string,
+  name: string,
+): Record<string, unknown> | undefined {
   let base = location;
   for (;;) {
     const entry = packages[base === "" ? `node_modules/${name}` : `${base}/node_modules/${name}`];
@@ -285,7 +289,9 @@ function lockedGraphProblem(packages: Record<string, unknown>, overrides: Record
     const meta = object(entry["peerDependenciesMeta"]) ? entry["peerDependenciesMeta"] : {};
     // arborist reads `optionalDependencies` before `dependencies`: a name in
     // both is one optional edge with the optional spec, not two edges.
-    const optionalNames = object(entry["optionalDependencies"]) ? new Set(Object.keys(entry["optionalDependencies"])) : new Set<string>();
+    const optionalNames = object(entry["optionalDependencies"])
+      ? new Set(Object.keys(entry["optionalDependencies"]))
+      : new Set<string>();
     for (const section of LOCKED_SECTIONS) {
       const declared = entry[section];
       if (declared === undefined) continue;
@@ -295,16 +301,20 @@ function lockedGraphProblem(packages: Record<string, unknown>, overrides: Record
         // An overridden edge is judged by the override, never by its own spec.
         const spec = overrides[name] ?? declaredSpec;
         const peerMeta = meta[name];
-        const optional = section === "optionalDependencies" || (section === "peerDependencies" && object(peerMeta) && peerMeta["optional"] === true);
+        const optional =
+          section === "optionalDependencies" ||
+          (section === "peerDependencies" && object(peerMeta) && peerMeta["optional"] === true);
         const dependency = locate(packages, location, name);
         if (dependency === undefined) {
           if (optional) continue;
           return `lockfile entry ${JSON.stringify(location)} depends on ${JSON.stringify(name)} (${JSON.stringify(spec)}), which is not locked anywhere it resolves`;
         }
         const version = dependency["version"];
-        if (typeof version !== "string") return `lockfile entry for ${JSON.stringify(name)} under ${JSON.stringify(location)} has no version`;
+        if (typeof version !== "string")
+          return `lockfile entry for ${JSON.stringify(name)} under ${JSON.stringify(location)} has no version`;
         const problem = edgeProblem(name, spec, dependency, version);
-        if (problem !== undefined) return `lockfile entry ${JSON.stringify(location)} dependency ${JSON.stringify(name)} ${problem}`;
+        if (problem !== undefined)
+          return `lockfile entry ${JSON.stringify(location)} dependency ${JSON.stringify(name)} ${problem}`;
       }
     }
   }
@@ -332,10 +342,7 @@ function lockedName(location: string): string {
  * omit it, and a package shipping a prebuilt binary with no install script is
  * not caught by it at all.
  */
-function installScriptProblem(
-  packages: Record<string, unknown>,
-  allowed: ReadonlySet<string>,
-): string | undefined {
+function installScriptProblem(packages: Record<string, unknown>, allowed: ReadonlySet<string>): string | undefined {
   for (const [location, entry] of Object.entries(packages)) {
     if (location === "" || !object(entry) || entry["hasInstallScript"] !== true) continue;
     const name = lockedName(location);
@@ -413,7 +420,10 @@ export function validateNpmRuntimePackage(
     for (const name of Object.keys(dependencies)) {
       const problem = packageNameProblem(name);
       if (problem !== undefined) {
-        return { ok: false, error: `runtime package manifest dependency name ${JSON.stringify(name)} is not a valid npm package name: ${problem}` };
+        return {
+          ok: false,
+          error: `runtime package manifest dependency name ${JSON.stringify(name)} is not a valid npm package name: ${problem}`,
+        };
       }
     }
 
@@ -440,7 +450,8 @@ export function validateNpmRuntimePackage(
     if (!stringRecord(rootDependencies) || !sameDependencies(dependencies, rootDependencies)) {
       return {
         ok: false,
-        error: "runtime package lockfile root dependencies do not match the manifest dependencies; regenerate the lockfile from the manifest",
+        error:
+          "runtime package lockfile root dependencies do not match the manifest dependencies; regenerate the lockfile from the manifest",
       };
     }
     for (const [name, spec] of Object.entries(dependencies)) {

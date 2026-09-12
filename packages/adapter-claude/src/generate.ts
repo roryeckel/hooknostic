@@ -1,9 +1,5 @@
 import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import {
-  assertNativeTimeoutFits,
-  hooksByNativeEvent,
-  nativeTimeoutSeconds,
-} from "@hooknostic/core";
+import { assertNativeTimeoutFits, hooksByNativeEvent, nativeTimeoutSeconds } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
 /**
@@ -46,12 +42,7 @@ function claudeNativeTimeout(
   runtime: Parameters<typeof nativeTimeoutSeconds>[1],
 ): number {
   const seconds = nativeTimeoutSeconds(reaching, runtime);
-  assertNativeTimeoutFits(
-    nativeEvent,
-    seconds,
-    CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS,
-    "Claude Code",
-  );
+  assertNativeTimeoutFits(nativeEvent, seconds, CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS, "Claude Code");
   return seconds;
 }
 
@@ -61,11 +52,7 @@ export function generateClaudeArtifacts(
   bundle: RuntimeBundle,
   options: AdapterCompileOptions,
 ): GeneratedArtifact[] {
-  const byNativeEvent = hooksByNativeEvent(
-    plugin.hooks,
-    target.id,
-    (event) => CLAUDE_NATIVE_EVENT[event],
-  );
+  const byNativeEvent = hooksByNativeEvent(plugin.hooks, target.id, (event) => CLAUDE_NATIVE_EVENT[event]);
 
   const hooksJson = {
     description: plugin.description ?? `Hooknostic-generated hooks for ${plugin.name}`,
@@ -78,7 +65,11 @@ export function generateClaudeArtifacts(
               {
                 type: "command",
                 command: "node",
-                args: [target.delivery === "package" ? `\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}` : `\${CLAUDE_PROJECT_DIR}/${RUNTIME_PATH}`],
+                args: [
+                  target.delivery === "package"
+                    ? `\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`
+                    : `\${CLAUDE_PROJECT_DIR}/${RUNTIME_PATH}`,
+                ],
                 timeout: claudeNativeTimeout(nativeEvent, reaching, options.runtime),
               },
             ],
@@ -95,7 +86,9 @@ export function generateClaudeArtifacts(
   };
 
   return [
-    ...(target.delivery === "package" ? [{ path: ".claude-plugin/plugin.json", contents: JSON.stringify(pluginJson, null, 2) + "\n" }] : []),
+    ...(target.delivery === "package"
+      ? [{ path: ".claude-plugin/plugin.json", contents: JSON.stringify(pluginJson, null, 2) + "\n" }]
+      : []),
     { path: "hooks/hooks.json", contents: JSON.stringify(hooksJson, null, 2) + "\n" },
     { path: RUNTIME_PATH, contents: bundle.code },
   ];

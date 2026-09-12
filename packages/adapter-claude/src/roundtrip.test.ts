@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";
+
 import { dispatch } from "@hooknostic/runtime";
+import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
+
 import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
-import { claudeShellCodec } from "./toolmap.js";
-import { claudeCapabilityProfiles } from "./profile.js";
 import { claudeHarness } from "./harness.js";
+import { claudeCapabilityProfiles } from "./profile.js";
+import { claudeShellCodec } from "./toolmap.js";
 
 const INVOCATION = { targetId: "claude", harnessVersion: claudeHarness.referenceVersion };
 
 const LEVELS = Object.fromEntries(
-  Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, entry]) => [
-    id,
-    entry.level,
-  ]),
+  Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, entry]) => [id, entry.level]),
 );
 
 /** Appendix-A style plugin used for the golden round-trip. */
@@ -59,11 +58,7 @@ async function roundTrip(nativeInput: unknown) {
 
 describe("golden round-trip: native fixture → decode → handlers → apply → native result", () => {
   it("blocks a destructive shell command", async () => {
-    const input = loadFixture<Record<string, unknown>>(
-      "claude",
-      "2.1",
-      "pre-tool-bash.input.json",
-    );
+    const input = loadFixture<Record<string, unknown>>("claude", "2.1", "pre-tool-bash.input.json");
     const native = await roundTrip({
       ...input,
       tool_input: { command: "rm -rf / --no-preserve-root" },
@@ -81,11 +76,7 @@ describe("golden round-trip: native fixture → decode → handlers → apply �
   });
 
   it("rewrites npm to pnpm", async () => {
-    const input = loadFixture<Record<string, unknown>>(
-      "claude",
-      "2.1",
-      "pre-tool-bash.input.json",
-    );
+    const input = loadFixture<Record<string, unknown>>("claude", "2.1", "pre-tool-bash.input.json");
     const native = await roundTrip({
       ...input,
       tool_input: { command: "npm install", description: "Echo fixture string" },

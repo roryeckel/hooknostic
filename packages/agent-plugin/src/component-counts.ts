@@ -44,9 +44,7 @@ export function componentSummary(
   for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
     if (!id.startsWith("agent-plugin.mcp.")) continue;
     const transport = id.slice("agent-plugin.mcp.".length);
-    const servers = Object.values(source.mcp?.mcpServers ?? {}).filter(
-      (server) => server.type === transport,
-    );
+    const servers = Object.values(source.mcp?.mcpServers ?? {}).filter((server) => server.type === transport);
     if (servers.length > 0) discovered.set(id, servers.length);
   }
 

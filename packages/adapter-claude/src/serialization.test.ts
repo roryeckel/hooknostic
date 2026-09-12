@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
+
+import { dispatch } from "@hooknostic/runtime";
 import type { ToolBeforeEvent } from "@hooknostic/sdk";
 import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
-import { dispatch } from "@hooknostic/runtime";
-import { applyClaude } from "./apply.js";
-import { claudeCapabilityProfiles } from "./profile.js";
-import { claudeHarness } from "./harness.js";
 
-const LEVELS = Object.fromEntries(
-  Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
-);
+import { applyClaude } from "./apply.js";
+import { claudeHarness } from "./harness.js";
+import { claudeCapabilityProfiles } from "./profile.js";
+
+const LEVELS = Object.fromEntries(Object.entries(claudeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]));
 
 function preToolUse(): ToolBeforeEvent {
   return {

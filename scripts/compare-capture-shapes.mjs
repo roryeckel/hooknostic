@@ -73,8 +73,7 @@ const VOLATILE_KEYS = new Set([
 
 /** Values that look like absolute paths or model-internal ids. */
 const ABSOLUTE_PATH = /^(?:[A-Za-z]:\\|\/|\\\\)/;
-const UUID_LIKE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOOLU_LIKE = /^(?:toolu_|call_|msg_|ses_|prt_|per_|evt_|usr_)[0-9A-Za-z]+$/i;
 
 /**
@@ -204,7 +203,8 @@ export function shapeDiff(capturedShape, fixtureShape, path = "$") {
   const capturedKeys = new Set(Object.keys(capturedShape));
   const fixtureKeys = new Set(Object.keys(fixtureShape));
   for (const k of fixtureKeys) {
-    if (!capturedKeys.has(k)) lines.push(`${path}.${k}: missing in capture (fixture ${JSON.stringify(fixtureShape[k])})`);
+    if (!capturedKeys.has(k))
+      lines.push(`${path}.${k}: missing in capture (fixture ${JSON.stringify(fixtureShape[k])})`);
   }
   for (const k of capturedKeys) {
     if (!fixtureKeys.has(k)) lines.push(`${path}.${k}: NEW in capture (${JSON.stringify(capturedShape[k])})`);
@@ -226,12 +226,7 @@ export function shapeDiff(capturedShape, fixtureShape, path = "$") {
  * - no tool-exchange capture at all                              → inconclusive
  * Returns {verdict, report}.
  */
-export function compareCaptures({
-  harness,
-  captured,
-  fixtures,
-  expectedVariants = [],
-}) {
+export function compareCaptures({ harness, captured, fixtures, expectedVariants = [] }) {
   const report = [];
   let busAppendix = [];
   let payloads = captured;
@@ -275,13 +270,9 @@ export function compareCaptures({
     const fixtureShapes = variantFixtures.map((f) => shapeOf(f));
     // Every captured instance must match a committed fixture shape for this
     // variant (fixtures may legitimately differ among themselves).
-    const clean = capturedShapes.every((cs) =>
-      fixtureShapes.some((fs) => deepEqual(cs, fs)),
-    );
+    const clean = capturedShapes.every((cs) => fixtureShapes.some((fs) => deepEqual(cs, fs)));
     if (!clean) {
-      driftLines.push(
-        `variant ${variant}: shape differs from every committed fixture`,
-      );
+      driftLines.push(`variant ${variant}: shape differs from every committed fixture`);
       for (const cs of capturedShapes) {
         for (const fs of fixtureShapes) {
           for (const line of shapeDiff(cs, fs)) {
@@ -298,19 +289,14 @@ export function compareCaptures({
   // hook stopped being emitted); with no tool capture at all, the drive
   // never exercised the exchange, so absence is not a drift claim.
   const isToolVariant = (variant) =>
-    variant.includes("tool") ||
-    variant.includes("PreToolUse") ||
-    variant.includes("PostToolUse");
+    variant.includes("tool") || variant.includes("PreToolUse") || variant.includes("PostToolUse");
   const toolExchangeFired = [...capturedByVariant.keys()].some(isToolVariant);
   const toolExchangeMissing =
-    !toolExchangeFired &&
-    expectedVariants.filter(isToolVariant).some((variant) => !capturedByVariant.has(variant));
+    !toolExchangeFired && expectedVariants.filter(isToolVariant).some((variant) => !capturedByVariant.has(variant));
   for (const expected of expectedVariants) {
     if (capturedByVariant.has(expected)) continue;
     if (toolExchangeFired) {
-      driftLines.push(
-        `expected variant ${expected} absent from the capture (the tool exchange ran)`,
-      );
+      driftLines.push(`expected variant ${expected} absent from the capture (the tool exchange ran)`);
     }
     // else: whole tool exchange absent — inconclusive territory, not drift.
   }
@@ -345,11 +331,7 @@ export function compareCaptures({
     }
   }
   const verdict =
-    driftLines.length > 0 || newVariants.length > 0
-      ? "drift"
-      : toolExchangeMissing
-        ? "inconclusive"
-        : "clean";
+    driftLines.length > 0 || newVariants.length > 0 ? "drift" : toolExchangeMissing ? "inconclusive" : "clean";
   return { verdict, report: report.join("\n") };
 }
 
@@ -387,13 +369,7 @@ const FIXTURE_DIRS = {
  * comparator as a module and needs the same expected set.
  */
 export const EXPECTED_VARIANTS = {
-  claude: [
-    "SessionStart",
-    "UserPromptSubmit",
-    "PreToolUse+Bash",
-    "PostToolUse+Bash",
-    "Stop",
-  ],
+  claude: ["SessionStart", "UserPromptSubmit", "PreToolUse+Bash", "PostToolUse+Bash", "Stop"],
   codex: ["SessionStart", "UserPromptSubmit", "PreToolUse+Bash", "PostToolUse+Bash", "Stop"],
   opencode: [
     "event+session.created",

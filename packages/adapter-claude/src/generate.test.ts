@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+
 import { buildPluginIR } from "@hooknostic/core";
-import { claudeAdapter } from "./index.js";
+import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+
 import { generateClaudeArtifacts } from "./generate.js";
 import { claudeHarness } from "./harness.js";
+import { claudeAdapter } from "./index.js";
 
-const TARGET = { id: "claude", version: claudeHarness.recommendedRange, delivery: "package" as const, output: "./dist/claude" };
+const TARGET = {
+  id: "claude",
+  version: claudeHarness.recommendedRange,
+  delivery: "package" as const,
+  output: "./dist/claude",
+};
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
   runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },

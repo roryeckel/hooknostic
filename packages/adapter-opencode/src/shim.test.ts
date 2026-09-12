@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import {
   addContext,
   block,
@@ -7,9 +8,10 @@ import {
   notify,
   preventStop,
   replaceInput,
-  updateShell,
   replaceOutput,
+  updateShell,
 } from "@hooknostic/sdk";
+
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { createHooknosticHooks } from "./shim.js";
 
@@ -79,10 +81,18 @@ function hooks() {
 describe("createHooknosticHooks", () => {
   it("copies __proto__ as an own data key without changing live argument identity or prototype", async () => {
     const replacement = JSON.parse('{"__proto__":{"injected":"yes"},"command":"echo safe"}');
-    const plugin = definePlugin({ name: "data-keys", hooks: [hook("tool.before", {
-      id: "replace", capabilities: { "tool.before.input.replace": "required" },
-      async run() { return replaceInput(replacement); },
-    })] });
+    const plugin = definePlugin({
+      name: "data-keys",
+      hooks: [
+        hook("tool.before", {
+          id: "replace",
+          capabilities: { "tool.before.input.replace": "required" },
+          async run() {
+            return replaceInput(replacement);
+          },
+        }),
+      ],
+    });
     const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
     for (const prototype of [Object.prototype, null]) {
       const args = Object.assign(Object.create(prototype), { command: "old", stale: true });
@@ -90,7 +100,12 @@ describe("createHooknosticHooks", () => {
       await h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, output);
       expect(output.args).toBe(args);
       expect(Object.getPrototypeOf(args)).toBe(prototype);
-      expect(Object.getOwnPropertyDescriptor(args, "__proto__")).toEqual({ value: { injected: "yes" }, writable: true, enumerable: true, configurable: true });
+      expect(Object.getOwnPropertyDescriptor(args, "__proto__")).toEqual({
+        value: { injected: "yes" },
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
       expect(args.injected).toBeUndefined();
       expect(args.stale).toBeUndefined();
       expect(args.command).toBe("echo safe");
@@ -108,10 +123,7 @@ describe("createHooknosticHooks", () => {
   it("blocks by throwing inside tool.execute.before", async () => {
     const h = hooks();
     await expect(
-      h["tool.execute.before"]!(
-        { tool: "bash", sessionID: "s", callID: "c" },
-        { args: { command: "rm -rf /" } },
-      ),
+      h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "rm -rf /" } }),
     ).rejects.toThrow("blocked by guard");
   });
 
@@ -160,10 +172,7 @@ describe("createHooknosticHooks", () => {
     const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
     const output = { args: { command: "npm install" } };
 
-    await h["tool.execute.before"]!(
-      { tool: "bash", sessionID: "s", callID: "c" },
-      output,
-    );
+    await h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, output);
 
     expect(output.args).toEqual({ command: "npm install" });
   });
@@ -171,10 +180,7 @@ describe("createHooknosticHooks", () => {
   it("replaces tool output by mutating output.output", async () => {
     const h = hooks();
     const output = { title: "t", output: "token SECRET here", metadata: {} };
-    await h["tool.execute.after"]!(
-      { tool: "bash", sessionID: "s", callID: "c", args: {} },
-      output,
-    );
+    await h["tool.execute.after"]!({ tool: "bash", sessionID: "s", callID: "c", args: {} }, output);
     expect(output.output).toBe("token [redacted] here");
   });
 
@@ -196,10 +202,7 @@ describe("createHooknosticHooks", () => {
     const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
     const output = { output: "before" };
     await expect(
-      h["tool.execute.after"]!(
-        { tool: "bash", sessionID: "s", callID: "c", args: {} },
-        output,
-      ),
+      h["tool.execute.after"]!({ tool: "bash", sessionID: "s", callID: "c", args: {} }, output),
     ).resolves.toBeUndefined();
     // Non-JSON payloads never reach the native side; fail-open keeps the original.
     expect(output.output).toBe("before");
@@ -252,9 +255,7 @@ describe("createHooknosticHooks", () => {
       },
     };
     await h["event"]!(native.input, undefined);
-    expect(replies).toEqual([
-      { path: { id: "ses_1", permissionID: "per_1" }, body: { response: "reject" } },
-    ]);
+    expect(replies).toEqual([{ path: { id: "ses_1", permissionID: "per_1" }, body: { response: "reject" } }]);
   });
 
   it("is a silent no-op denying a permission without a client or ids", async () => {
@@ -296,9 +297,7 @@ describe("createHooknosticHooks", () => {
 
   it("ignores unmapped bus events without throwing (fail-open)", async () => {
     const h = hooks();
-    await expect(
-      h["event"]!({ event: { type: "message.part.updated" } }, undefined),
-    ).resolves.toBeUndefined();
+    await expect(h["event"]!({ event: { type: "message.part.updated" } }, undefined)).resolves.toBeUndefined();
   });
 
   it("does not deny the user's tool call when the shim itself fails", async () => {
@@ -313,19 +312,14 @@ describe("createHooknosticHooks", () => {
     // context assignment throw in the same place a real bug would.
     const h = hooks();
     const frozen = Object.freeze({});
-    await expect(
-      h["experimental.session.compacting"]!({ sessionID: "s" }, frozen),
-    ).resolves.toBeUndefined();
+    await expect(h["experimental.session.compacting"]!({ sessionID: "s" }, frozen)).resolves.toBeUndefined();
   });
 
   it("still delivers a block the plugin actually asked for", async () => {
     // The wrapper must not swallow the deliberate throw the block rides on.
     const h = hooks();
     await expect(
-      h["tool.execute.before"]!(
-        { tool: "bash", sessionID: "s", callID: "c" },
-        { args: { command: "rm -rf /" } },
-      ),
+      h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "rm -rf /" } }),
     ).rejects.toThrow("blocked by guard");
   });
 
@@ -346,9 +340,7 @@ describe("createHooknosticHooks", () => {
       ],
     });
 
-    expect(Object.keys(createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT))).toEqual(
-      [],
-    );
+    expect(Object.keys(createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT))).toEqual([]);
   });
 
   it("registers and runs callbacks scoped to a named OpenCode target", async () => {
@@ -359,16 +351,14 @@ describe("createHooknosticHooks", () => {
         hook("tool.before", {
           id: "primary-only",
           targets: { include: ["primary"] },
-          async run() { ran = true; },
+          async run() {
+            ran = true;
+          },
         }),
       ],
     });
 
-    const registered = createHooknosticHooks(
-      plugin,
-      { capabilities: LEVELS, targetId: "primary" },
-      PLUGIN_INPUT,
-    );
+    const registered = createHooknosticHooks(plugin, { capabilities: LEVELS, targetId: "primary" }, PLUGIN_INPUT);
     expect(Object.keys(registered)).toContain("tool.execute.before");
     await registered["tool.execute.before"]!(
       { tool: "bash", sessionID: "s", callID: "c" },
@@ -386,10 +376,7 @@ describe("createHooknosticHooks", () => {
       expect(output.args).toEqual({ command: "pnpm install" });
     }
     await expect(
-      h["tool.execute.before"]!(
-        { tool: "bash", sessionID: "s", callID: "c9" },
-        { args: { command: "rm -rf /" } },
-      ),
+      h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c9" }, { args: { command: "rm -rf /" } }),
     ).rejects.toThrow("blocked by guard");
   });
 });
@@ -423,11 +410,10 @@ describe("createHooknosticHooks turn.stop posting", () => {
   }
 
   function idleHooks(client?: unknown) {
-    return createHooknosticHooks(
-      stopPlugin(),
-      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
-      { ...PLUGIN_INPUT, ...(client === undefined ? {} : { client }) } as never,
-    );
+    return createHooknosticHooks(stopPlugin(), { capabilities: LEVELS, minimumCapabilityLevel: "approximate" }, {
+      ...PLUGIN_INPUT,
+      ...(client === undefined ? {} : { client }),
+    } as never);
   }
 
   const idle = {

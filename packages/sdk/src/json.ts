@@ -25,10 +25,7 @@ function hasToJson(value: object): boolean {
   return false;
 }
 
-function dataProperty(
-  value: object,
-  key: PropertyKey,
-): { value: unknown } | undefined {
+function dataProperty(value: object, key: PropertyKey): { value: unknown } | undefined {
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   return descriptor !== undefined && "value" in descriptor ? { value: descriptor.value } : undefined;
 }

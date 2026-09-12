@@ -1,11 +1,9 @@
-import { describe, expect, it } from "vitest";
-import {
-  ROLLING_WHAT,
-  isMainModule,
-  rewriteRollingRecord,
-} from "./record-playback-validation.mjs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+import { isMainModule, rewriteRollingRecord, ROLLING_WHAT } from "./record-playback-validation.mjs";
 
 const BEGIN = "// scheduled-playback:begin";
 const END = "// scheduled-playback:end";
@@ -21,11 +19,11 @@ describe("isMainModule", () => {
 // A minimal stand-in for the real profile source: prior records above the
 // markers, empty marker region, trailing content after the array.
 const EMPTY_REGION = [
-  "import type { CapabilityProfile } from \"@hooknostic/core\";",
+  'import type { CapabilityProfile } from "@hooknostic/core";',
   "",
   "export const fakeCapabilityProfiles: CapabilityProfile[] = [",
   "  {",
-  "    range: \">=1.0 <2\",",
+  '    range: ">=1.0 <2",',
   "    source: {",
   '      date: "2026-08-29",',
   "      validatedOn: [",
@@ -107,16 +105,12 @@ describe("rewriteRollingRecord", () => {
     const noMarkers = EMPTY_REGION.split("\n")
       .filter((line) => !line.includes(BEGIN) && !line.includes(END))
       .join("\n");
-    expect(() =>
-      rewriteRollingRecord(noMarkers, { version: "1.18.30", date: "2026-09-09" }),
-    ).toThrow();
+    expect(() => rewriteRollingRecord(noMarkers, { version: "1.18.30", date: "2026-09-09" })).toThrow();
     const duplicated = EMPTY_REGION.replace(
       "      ],",
       `        ${BEGIN}\n        ${END}\n      ],\n      // stray ${BEGIN} ${END}`,
     );
-    expect(() =>
-      rewriteRollingRecord(duplicated, { version: "1.18.30", date: "2026-09-09" }),
-    ).toThrow();
+    expect(() => rewriteRollingRecord(duplicated, { version: "1.18.30", date: "2026-09-09" })).toThrow();
   });
 
   it("keeps CRLF files CRLF", () => {

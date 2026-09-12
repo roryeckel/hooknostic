@@ -1,5 +1,6 @@
-import type { HookEvent } from "@hooknostic/sdk";
 import type { InvocationContext } from "@hooknostic/core";
+import type { HookEvent } from "@hooknostic/sdk";
+
 import { classifyCodexTool } from "./toolmap.js";
 
 export class CodexDecodeError extends Error {}
@@ -46,9 +47,7 @@ export function decodeCodex(nativeEvent: unknown, invocation: InvocationContext)
     schemaVersion: 1 as const,
     harness: {
       id: "codex",
-      ...(invocation.harnessVersion !== undefined
-        ? { version: invocation.harnessVersion }
-        : {}),
+      ...(invocation.harnessVersion !== undefined ? { version: invocation.harnessVersion } : {}),
       nativeEvent: nativeName,
     },
     session: {
@@ -57,9 +56,7 @@ export function decodeCodex(nativeEvent: unknown, invocation: InvocationContext)
     },
     correlation: {
       ...(typeof payload.turn_id === "string" ? { turnId: payload.turn_id } : {}),
-      ...(typeof payload.tool_use_id === "string"
-        ? { toolCallId: payload.tool_use_id }
-        : {}),
+      ...(typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {}),
       ...(typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {}),
     },
     raw: nativeEvent,
@@ -113,17 +110,13 @@ export function decodeCodex(nativeEvent: unknown, invocation: InvocationContext)
         ...base,
         event: "agent.stop",
         agent: agent(),
-        ...(typeof payload.last_assistant_message === "string"
-          ? { lastMessage: payload.last_assistant_message }
-          : {}),
+        ...(typeof payload.last_assistant_message === "string" ? { lastMessage: payload.last_assistant_message } : {}),
       };
     case "Stop":
       return {
         ...base,
         event: "turn.stop",
-        ...(typeof payload.last_assistant_message === "string"
-          ? { lastMessage: payload.last_assistant_message }
-          : {}),
+        ...(typeof payload.last_assistant_message === "string" ? { lastMessage: payload.last_assistant_message } : {}),
       };
     default:
       throw new CodexDecodeError(`unmapped native event "${nativeName}"`);

@@ -3,13 +3,12 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classifyStdioCwd, expandStdioServer } from "@hooknostic/agent-plugin";
+
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  MCP_SERVERS_FILE,
-  bundleMcpLauncher,
-  type McpLauncherServer,
-} from "./mcp-launcher.js";
+
+import { classifyStdioCwd, expandStdioServer } from "@hooknostic/agent-plugin";
+
+import { bundleMcpLauncher, MCP_SERVERS_FILE, type McpLauncherServer } from "./mcp-launcher.js";
 
 // Node resolves homedir() from USERPROFILE on Windows and HOME elsewhere, so
 // stubbing both keeps every case out of the real ~/.hooknostic.
@@ -53,7 +52,13 @@ interface Layout {
  */
 async function layout(
   servers: McpLauncherServer[],
-  options: { pluginName?: string; version?: string; document?: string; environmentReferences?: boolean; dataOffset?: string } = {},
+  options: {
+    pluginName?: string;
+    version?: string;
+    document?: string;
+    environmentReferences?: boolean;
+    dataOffset?: string;
+  } = {},
 ): Promise<Layout> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-launcher-"));
   dirs.push(dir);
@@ -80,11 +85,7 @@ async function layout(
   return { root, launcher, homeDir };
 }
 
-function launch(
-  { launcher, homeDir }: Layout,
-  index: string | number,
-  env: Record<string, string> = {},
-) {
+function launch({ launcher, homeDir }: Layout, index: string | number, env: Record<string, string> = {}) {
   return spawnSync(process.execPath, [launcher, String(index)], {
     // A directory that is neither the plugin root nor any declared cwd, so a
     // launcher that simply inherited its own would be visible.
@@ -151,9 +152,7 @@ describe("generated MCP launcher", () => {
     const tree = await layout([probeServer()], { pluginName: "other-plugin" });
     const result = launch(tree, 0);
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout).pluginData).toBe(
-      join(tree.homeDir, ".hooknostic", "plugin-data", "other-plugin"),
-    );
+    expect(JSON.parse(result.stdout).pluginData).toBe(join(tree.homeDir, ".hooknostic", "plugin-data", "other-plugin"));
   });
 
   it("resolves a plugin-relative command against the root, not against cwd", async () => {
@@ -162,16 +161,12 @@ describe("generated MCP launcher", () => {
     // where nothing is installed, so this only runs if the root won.
     const windows = process.platform === "win32";
     const executable = windows ? "serve.cmd" : "serve";
-    const tree = await layout([
-      { name: "probe", command: `./bin/${executable}`, cwd: "${PLUGIN_ROOT}/worker" },
-    ]);
+    const tree = await layout([{ name: "probe", command: `./bin/${executable}`, cwd: "${PLUGIN_ROOT}/worker" }]);
     await mkdir(join(tree.root, "worker"), { recursive: true });
     await mkdir(join(tree.root, "bin"), { recursive: true });
-    await writeFile(
-      join(tree.root, "bin", executable),
-      windows ? "@echo off\r\necho %CD%\r\n" : "#!/bin/sh\npwd\n",
-      { mode: 0o755 },
-    );
+    await writeFile(join(tree.root, "bin", executable), windows ? "@echo off\r\necho %CD%\r\n" : "#!/bin/sh\npwd\n", {
+      mode: 0o755,
+    });
     const result = launch(tree, 0);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout.trim()).toBe(join(tree.root, "worker"));
@@ -225,9 +220,15 @@ describe("generated MCP launcher", () => {
   });
 
   it("resolves direct project environment references only when requested", async () => {
-    const direct = await layout([
-      probeServer({ args: ["-e", PROBE, "prefix-${HOOKNOSTIC_PROJECT_TOKEN}"], env: { DECLARED: "${HOOKNOSTIC_PROJECT_TOKEN}" } }),
-    ], { environmentReferences: true });
+    const direct = await layout(
+      [
+        probeServer({
+          args: ["-e", PROBE, "prefix-${HOOKNOSTIC_PROJECT_TOKEN}"],
+          env: { DECLARED: "${HOOKNOSTIC_PROJECT_TOKEN}" },
+        }),
+      ],
+      { environmentReferences: true },
+    );
     const resolved = launch(direct, 0, { HOOKNOSTIC_PROJECT_TOKEN: "runtime-value" });
     expect(resolved.status, resolved.stderr).toBe(0);
     expect(JSON.parse(resolved.stdout)).toMatchObject({ declared: "runtime-value", args: ["prefix-runtime-value"] });
@@ -236,9 +237,7 @@ describe("generated MCP launcher", () => {
     expect(missing.status).not.toBe(0);
     expect(missing.stderr).toContain("environment variable HOOKNOSTIC_PROJECT_TOKEN is required");
 
-    const packaged = await layout([
-      probeServer({ env: { DECLARED: "${HOOKNOSTIC_PROJECT_TOKEN}" } }),
-    ]);
+    const packaged = await layout([probeServer({ env: { DECLARED: "${HOOKNOSTIC_PROJECT_TOKEN}" } })]);
     const literal = launch(packaged, 0, { HOOKNOSTIC_PROJECT_TOKEN: "must-not-expand" });
     expect(literal.status, literal.stderr).toBe(0);
     expect(JSON.parse(literal.stdout).declared).toBe("${HOOKNOSTIC_PROJECT_TOKEN}");
@@ -260,15 +259,10 @@ describe("generated MCP launcher", () => {
       expect(result.status, result.stderr).toBe(0);
       const observed = JSON.parse(result.stdout);
 
-      const oracle = expandStdioServer(
-        { type: "stdio", command: "node", args: item.args },
-        tree.root,
-      );
+      const oracle = expandStdioServer({ type: "stdio", command: "node", args: item.args }, tree.root);
       expect(observed.args).toEqual(oracle.args ?? []);
       const classified = classifyStdioCwd(item.cwd)!;
-      expect(observed.cwd).toBe(
-        classified.relative === "." ? tree.root : join(tree.root, classified.relative),
-      );
+      expect(observed.cwd).toBe(classified.relative === "." ? tree.root : join(tree.root, classified.relative));
     }
   });
 
@@ -278,10 +272,7 @@ describe("generated MCP launcher", () => {
   it("passes through an environment variable named __proto__", async () => {
     // Built by JSON.parse, because an object literal's `__proto__:` sets the
     // prototype and never creates the key -- the same trap on the way in.
-    const env = JSON.parse('{"__proto__":"survived","DECLARED":"also-survived"}') as Record<
-      string,
-      string
-    >;
+    const env = JSON.parse('{"__proto__":"survived","DECLARED":"also-survived"}') as Record<string, string>;
     const tree = await layout([probeServer({ env })]);
     const result = launch(tree, 0);
     expect(result.status, result.stderr).toBe(0);
@@ -302,14 +293,8 @@ describe("generated MCP launcher", () => {
   });
 
   it.each([
-    [
-      "an unrelated PLUGIN_ROOT",
-      () => ({ PLUGIN_ROOT: tmpdir(), PLUGIN_DATA: join(tmpdir(), "elsewhere") }),
-    ],
-    [
-      "PLUGIN_DATA with no PLUGIN_ROOT",
-      () => ({ PLUGIN_ROOT: "", PLUGIN_DATA: join(tmpdir(), "elsewhere") }),
-    ],
+    ["an unrelated PLUGIN_ROOT", () => ({ PLUGIN_ROOT: tmpdir(), PLUGIN_DATA: join(tmpdir(), "elsewhere") })],
+    ["PLUGIN_DATA with no PLUGIN_ROOT", () => ({ PLUGIN_ROOT: "", PLUGIN_DATA: join(tmpdir(), "elsewhere") })],
     ["an empty PLUGIN_DATA", (root: string) => ({ PLUGIN_ROOT: root, PLUGIN_DATA: "" })],
     ["a relative PLUGIN_DATA", (root: string) => ({ PLUGIN_ROOT: root, PLUGIN_DATA: "relative/state" })],
   ])("does not defer on %s", async (_label, env) => {

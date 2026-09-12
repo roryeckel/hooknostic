@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { HookEvent, RuntimePolicy, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
 import {
   addContext,
@@ -13,6 +14,7 @@ import {
   shellCodec,
   updateShell,
 } from "@hooknostic/sdk";
+
 import type { CapabilityLevels } from "./dispatch.js";
 import {
   contextAdditions,
@@ -489,9 +491,7 @@ describe("runtime contract violations (HN401)", () => {
       }),
     ];
     const result = await dispatch(hooks, toolBefore({}), OPTIONS);
-    expect(result.errors).toEqual([
-      expect.objectContaining({ hookId: "sneaky", kind: "unsupported-effect" }),
-    ]);
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "sneaky", kind: "unsupported-effect" })]);
     expect(result.errors[0]?.code).toBe("HN401");
     // fail-open: the effect was not applied and later handlers ran
     expect(result.terminatedBy).toBeUndefined();
@@ -575,9 +575,7 @@ describe("error and timeout policy", () => {
       }),
     ];
     const result = await dispatch(hooks, toolBefore({}), OPTIONS);
-    expect(result.errors).toEqual([
-      expect.objectContaining({ hookId: "boom", kind: "error", message: "exploded" }),
-    ]);
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "boom", kind: "error", message: "exploded" })]);
     expect(ran).toEqual(["survivor"]);
   });
 
@@ -825,9 +823,7 @@ describe("effect payload JSON rule at dispatch", () => {
       event,
       OPTIONS,
     );
-    expect(result.errors).toEqual([
-      expect.objectContaining({ hookId: "cyclic-rewrite", kind: "unsupported-effect" }),
-    ]);
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "cyclic-rewrite", kind: "unsupported-effect" })]);
     expect(result.errors[0]?.code).toBe("HN401");
     expect(result.errors[0]?.message).toContain("not a JSON value");
     // The rejected payload never reached the event or the result…
@@ -880,9 +876,7 @@ describe("effect payload JSON rule at dispatch", () => {
       toolAfter("original"),
       OPTIONS,
     );
-    expect(result.errors).toEqual([
-      expect.objectContaining({ hookId: "hostile-output", kind: "unsupported-effect" }),
-    ]);
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "hostile-output", kind: "unsupported-effect" })]);
     expect(result.errors[0]?.code).toBe("HN401");
     expect(replacedOutput(result)).toBeUndefined();
   });
@@ -929,9 +923,7 @@ describe("effect payload JSON rule at dispatch", () => {
       OPTIONS,
     );
 
-    expect(result.errors).toEqual([
-      expect.objectContaining({ hookId: "hostile-effect", kind: "unsupported-effect" }),
-    ]);
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "hostile-effect", kind: "unsupported-effect" })]);
     expect(result.errors[0]?.code).toBe("HN401");
     expect(result.errors[0]?.message).toContain("uninspectable thrown value");
     expect(ran).toEqual(["after"]);
@@ -1226,11 +1218,7 @@ describe("updateShell under policy edges", () => {
     });
     // updateShell pushes TWO entries; the invariant "effects[last] is the
     // terminal" is what all three apply() reducers rely on.
-    expect(result.effects.map((e) => e.effect.kind)).toEqual([
-      "updateShell",
-      "replaceInput",
-      "block",
-    ]);
+    expect(result.effects.map((e) => e.effect.kind)).toEqual(["updateShell", "replaceInput", "block"]);
     expect(result.terminatedBy).toBe("guard");
     expect(terminalEffect(result)?.kind).toBe("block");
   });

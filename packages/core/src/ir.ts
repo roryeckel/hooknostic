@@ -7,6 +7,7 @@ import type {
   ToolMatch,
 } from "@hooknostic/sdk";
 import { isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
+
 import type { Diagnostic } from "./diagnostics.js";
 
 /**
@@ -63,8 +64,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
         code: "HN501",
         severity: "error",
         message: `invalid plugin source: ${issue.path.join(".") || "<root>"}: ${issue.message}`,
-        remediation:
-          "export default definePlugin({...}) built from hook() calls in the entry module.",
+        remediation: "export default definePlugin({...}) built from hook() calls in the entry module.",
       });
     }
     return { diagnostics };

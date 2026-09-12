@@ -20,7 +20,9 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { build } from "esbuild";
+
 import { createRequireBanner, licenseNoticesPlugin } from "../../core/src/bundle-support.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,10 +30,7 @@ const packageDir = resolve(here, "..");
 const dist = join(packageDir, "dist");
 const require = createRequire(import.meta.url);
 const agentPluginRequire = createRequire(resolve(packageDir, "../agent-plugin/package.json"));
-const yamlBrowser = resolve(
-  dirname(agentPluginRequire.resolve("yaml/package.json")),
-  "browser/index.js",
-);
+const yamlBrowser = resolve(dirname(agentPluginRequire.resolve("yaml/package.json")), "browser/index.js");
 
 /** Adapters whose shims ship inside the CLI; `defaultAdapterRegistry()` routes to them. */
 const SHIMS = {
@@ -51,9 +50,7 @@ function fail(message) {
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   const nested = await Promise.all(
-    entries.map((entry) =>
-      entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)],
-    ),
+    entries.map((entry) => (entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)])),
   );
   return nested.flat();
 }
@@ -143,11 +140,7 @@ for (const file of declarations) {
 }
 const cliEntry = join(typesRoot, "packages/cli/src/index.d.ts");
 if (!declarations.includes(cliEntry)) fail(`expected ${cliEntry} to be emitted`);
-await writeFile(
-  join(dist, "index.d.ts"),
-  'export * from "./types/packages/cli/src/index.js";\n',
-  "utf8",
-);
+await writeFile(join(dist, "index.d.ts"), 'export * from "./types/packages/cli/src/index.js";\n', "utf8");
 
 console.log(
   `hooknostic bundle: dist/index.js, dist/hooknostic.mjs, dist/shims/{${Object.keys(SHIMS).join(",")}}.mjs, ${declarations.length} declaration files`,

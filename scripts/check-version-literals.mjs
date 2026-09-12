@@ -10,13 +10,11 @@
 // harness names (see AGENTS.md), which keeps this scan low-noise.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { defaultAdapterRegistry } = await import(
-  new URL("../packages/cli/dist/index.js", import.meta.url).href
-);
+const { defaultAdapterRegistry } = await import(new URL("../packages/cli/dist/index.js", import.meta.url).href);
 
 const registry = defaultAdapterRegistry();
 const allowed = new Map(
@@ -35,10 +33,7 @@ const allowed = new Map(
 );
 
 // Generated or deliberately version-dated files are exempt.
-const EXEMPT = [
-  /^docs\/harness-support\.md$/,
-  /^docs\/baseline-.*\.md$/,
-];
+const EXEMPT = [/^docs\/harness-support\.md$/, /^docs\/baseline-.*\.md$/];
 
 const files = execFileSync("git", ["ls-files", "*.md", "examples/*/hooknostic.config.ts"], {
   cwd: ROOT,

@@ -68,18 +68,9 @@ export function rollingPlaybackVersion(profileSource) {
  * metadata. The baseline ignores everything but referenceVersion and the
  * rolling record.
  */
-export function assessRelease({
-  harness,
-  pkg,
-  referenceVersion,
-  rollingVersion,
-  latest,
-  semver,
-}) {
+export function assessRelease({ harness, pkg, referenceVersion, rollingVersion, latest, semver }) {
   const playbackBaseline =
-    rollingVersion !== undefined && semver.gt(rollingVersion, referenceVersion)
-      ? rollingVersion
-      : referenceVersion;
+    rollingVersion !== undefined && semver.gt(rollingVersion, referenceVersion) ? rollingVersion : referenceVersion;
   const newerAvailable = semver.gt(latest, playbackBaseline);
   return {
     harness,
@@ -134,9 +125,7 @@ async function main() {
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
 
-  const selected = Object.entries(packages).filter(
-    ([id]) => opts.harness === undefined || opts.harness === id,
-  );
+  const selected = Object.entries(packages).filter(([id]) => opts.harness === undefined || opts.harness === id);
   if (selected.length === 0) {
     process.stderr.write(
       `usage: node --experimental-strip-types ${process.argv[1]} [<${Object.keys(packages).join("|")}>] [--version <v>] [--force] [--matrix]\n`,
@@ -148,18 +137,13 @@ async function main() {
   for (const [id, entry] of selected) {
     // strip-types import of unbuilt TS (same pattern as
     // harness-playback-version.mjs / record-playback-validation.mjs).
-    const harnessMod = await import(
-      new URL(entry.module.replace("profile.ts", "harness.ts"), import.meta.url)
-    );
+    const harnessMod = await import(new URL(entry.module.replace("profile.ts", "harness.ts"), import.meta.url));
     const metadata = harnessMod[entry.harnessExport];
     if (metadata === undefined) {
       process.stderr.write(`${id}: harness export ${entry.harnessExport} not found\n`);
       process.exit(1);
     }
-    const profileSource = readFileSync(
-      fileURLToPath(new URL(entry.module, import.meta.url)),
-      "utf8",
-    );
+    const profileSource = readFileSync(fileURLToPath(new URL(entry.module, import.meta.url)), "utf8");
     const latest = opts.version ?? fetchLatestDistTag(entry.pkg);
     const assessment = assessRelease({
       harness: id,

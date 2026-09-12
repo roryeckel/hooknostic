@@ -16,8 +16,6 @@ export function effectiveCompatibility(
   };
 }
 
-export function effectiveRuntime(
-  config: Pick<HooknosticConfig, "runtime">,
-): Required<RuntimePolicy> {
+export function effectiveRuntime(config: Pick<HooknosticConfig, "runtime">): Required<RuntimePolicy> {
   return { ...DEFAULT_RUNTIME, ...config.runtime };
 }

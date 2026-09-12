@@ -1,7 +1,5 @@
-export const AGENT_PLUGIN_MANIFEST_SCHEMA =
-  "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" as const;
-export const AGENT_PLUGIN_MCP_SCHEMA =
-  "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json" as const;
+export const AGENT_PLUGIN_MANIFEST_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" as const;
+export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json" as const;
 
 export interface AgentPluginAuthor {
   name?: string;
@@ -113,11 +111,7 @@ export const AGENT_PLUGIN_COMPONENT_IDS = [
 ] as const;
 
 export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number];
-export type AgentPluginProjectionSupportLevel =
-  | "exact"
-  | "emulated"
-  | "approximate"
-  | "unsupported";
+export type AgentPluginProjectionSupportLevel = "exact" | "emulated" | "approximate" | "unsupported";
 
 export interface AgentPluginComponentSupport {
   level: AgentPluginProjectionSupportLevel;
@@ -191,9 +185,7 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
 }
 
 export interface AgentPluginProjectionSummary {
-  components: Partial<
-    Record<AgentPluginComponentId, { discovered: number; emitted: number; skipped: number }>
-  >;
+  components: Partial<Record<AgentPluginComponentId, { discovered: number; emitted: number; skipped: number }>>;
   omissions: { component: AgentPluginComponentId; name?: string; reason: string }[];
   /**
    * Plan paths copied byte-for-byte from the source package after overlay

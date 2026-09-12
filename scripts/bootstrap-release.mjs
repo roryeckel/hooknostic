@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,9 +17,19 @@ export async function bootstrapRelease({ repo, tag, directory, run = execute }) 
   }
   const files = (await readdir(directory)).sort();
   const version = tag.replace(/^v/, "");
-  const expected = ["hooknostic-sdk", "hooknostic-agent-plugin", "hooknostic"].map((name) => `${name}-${version}.tgz`).sort();
-  if (JSON.stringify(files) !== JSON.stringify(expected)) throw new Error("Packed filenames do not match the three release packages and tag");
-  const checksums = await Promise.all(files.map(async (name) => `${createHash("sha256").update(await readFile(join(directory, name))).digest("hex")}  ${name}`));
+  const expected = ["hooknostic-sdk", "hooknostic-agent-plugin", "hooknostic"]
+    .map((name) => `${name}-${version}.tgz`)
+    .sort();
+  if (JSON.stringify(files) !== JSON.stringify(expected))
+    throw new Error("Packed filenames do not match the three release packages and tag");
+  const checksums = await Promise.all(
+    files.map(
+      async (name) =>
+        `${createHash("sha256")
+          .update(await readFile(join(directory, name)))
+          .digest("hex")}  ${name}`,
+    ),
+  );
   await writeFile(join(directory, "SHA256SUMS"), checksums.join("\n") + "\n");
   const release = JSON.parse(await run("gh", ["release", "view", tag, "--repo", repo, "--json", "assets"]));
   const scratch = await mkdtemp(join(tmpdir(), "hooknostic-release-assets-"));
@@ -27,12 +37,15 @@ export async function bootstrapRelease({ repo, tag, directory, run = execute }) 
     for (const name of [...files, "SHA256SUMS"]) {
       if (release.assets.some((asset) => asset.name === name)) {
         await run("gh", ["release", "download", tag, "--repo", repo, "--pattern", name, "--dir", scratch]);
-        if (!(await readFile(join(scratch, name))).equals(await readFile(join(directory, name)))) throw new Error(`Existing release asset ${name} differs; refusing to replace it`);
+        if (!(await readFile(join(scratch, name))).equals(await readFile(join(directory, name))))
+          throw new Error(`Existing release asset ${name} differs; refusing to replace it`);
       } else {
         await run("gh", ["release", "upload", tag, join(directory, name), "--repo", repo]);
       }
     }
-  } finally { await rm(scratch, { recursive: true, force: true }); }
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

@@ -1,5 +1,6 @@
-import type { HookEvent } from "@hooknostic/sdk";
 import type { InvocationContext } from "@hooknostic/core";
+import type { HookEvent } from "@hooknostic/sdk";
+
 import { classifyClaudeTool } from "./toolmap.js";
 
 export class ClaudeDecodeError extends Error {}
@@ -46,9 +47,7 @@ export function decodeClaude(nativeEvent: unknown, invocation: InvocationContext
     schemaVersion: 1 as const,
     harness: {
       id: "claude",
-      ...(invocation.harnessVersion !== undefined
-        ? { version: invocation.harnessVersion }
-        : {}),
+      ...(invocation.harnessVersion !== undefined ? { version: invocation.harnessVersion } : {}),
       nativeEvent: nativeName,
     },
     session: {
@@ -57,9 +56,7 @@ export function decodeClaude(nativeEvent: unknown, invocation: InvocationContext
     },
     correlation: {
       ...(typeof payload.prompt_id === "string" ? { turnId: payload.prompt_id } : {}),
-      ...(typeof payload.tool_use_id === "string"
-        ? { toolCallId: payload.tool_use_id }
-        : {}),
+      ...(typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {}),
       ...(typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {}),
     },
     raw: nativeEvent,
@@ -127,17 +124,13 @@ export function decodeClaude(nativeEvent: unknown, invocation: InvocationContext
           ...(typeof payload.agent_id === "string" ? { id: payload.agent_id } : {}),
           ...(typeof payload.agent_type === "string" ? { type: payload.agent_type } : {}),
         },
-        ...(typeof payload.last_assistant_message === "string"
-          ? { lastMessage: payload.last_assistant_message }
-          : {}),
+        ...(typeof payload.last_assistant_message === "string" ? { lastMessage: payload.last_assistant_message } : {}),
       };
     case "Stop":
       return {
         ...base,
         event: "turn.stop",
-        ...(typeof payload.last_assistant_message === "string"
-          ? { lastMessage: payload.last_assistant_message }
-          : {}),
+        ...(typeof payload.last_assistant_message === "string" ? { lastMessage: payload.last_assistant_message } : {}),
       };
     default:
       // Vendor events outside the normalized vocabulary (Setup, Notification,

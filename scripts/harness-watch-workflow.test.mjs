@@ -19,9 +19,10 @@
 // The YAML is parsed with the `yaml` package if present; otherwise a
 // line-based fallback is used. All assertions work on plain text/structure
 // either way.
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
 
 const WORKFLOW = new URL("../.github/workflows/harness-watch.yml", import.meta.url);
 const source = readFileSync(fileURLToPath(WORKFLOW), "utf8");
@@ -31,9 +32,7 @@ function jobSource(name) {
   const lines = source.split(/\r?\n/);
   const start = lines.findIndex((l) => l === `  ${name}:`);
   if (start < 0) return "";
-  const end = lines.findIndex(
-    (l, i) => i > start && /^ {2}\w[\w-]*:$/.test(l),
-  );
+  const end = lines.findIndex((l, i) => i > start && /^ {2}\w[\w-]*:$/.test(l));
   return lines.slice(start, end < 0 ? lines.length : end).join("\n");
 }
 
@@ -49,7 +48,9 @@ describe("harness-watch workflow structure", () => {
 
   it("record re-runs the detect matrix with a leading artifact gate", () => {
     const record = jobSource("record");
-    expect(record).toMatch(/strategy:\s*\n\s*fail-fast: false\s*\n\s*matrix:\s*\n\s*include: \$\{\{ fromJson\(needs\.detect\.outputs\.matrix\)\.include \}\}/);
+    expect(record).toMatch(
+      /strategy:\s*\n\s*fail-fast: false\s*\n\s*matrix:\s*\n\s*include: \$\{\{ fromJson\(needs\.detect\.outputs\.matrix\)\.include \}\}/,
+    );
     // The gate must download the outcome artifact before anything that uses
     // matrix.harness, and skip legs without it.
     expect(record).toContain("watch-outcome-${{ matrix.harness }}");
@@ -58,14 +59,14 @@ describe("harness-watch workflow structure", () => {
 
   it("record still runs its per-harness artifact gates after a verify matrix leg fails", () => {
     const record = jobSource("record");
-    expect(record).toMatch(/if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/);
+    expect(record).toMatch(
+      /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/,
+    );
   });
 
   it("never expands a matrix when detect was skipped or failed", () => {
     for (const job of ["record", "report-failure"]) {
-      expect(jobSource(job)).toMatch(
-        /needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0'/,
-      );
+      expect(jobSource(job)).toMatch(/needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0'/);
     }
   });
 
@@ -93,7 +94,7 @@ describe("harness-watch workflow structure", () => {
     const verify = jobSource("verify");
     // steps.*.conclusion of an unrun step is "skipped" for `if:` gating but
     // the outcome is "" — the workflow must branch on outcome emptiness.
-    expect(verify).toContain('steps.playback.outcome');
+    expect(verify).toContain("steps.playback.outcome");
     expect(verify).not.toContain("steps.playback.conclusion");
     expect(verify).toMatch(/outcome=install-failure/);
   });
@@ -116,9 +117,7 @@ describe("harness-watch workflow structure", () => {
       const usesMatrix = /\$\{\{ matrix\./.test(src);
       if (usesMatrix) {
         expect(src, `${job} uses matrix context`).toMatch(/strategy:/);
-        expect(src, `${job} matrix source`).toContain(
-          "fromJson(needs.detect.outputs.matrix).include",
-        );
+        expect(src, `${job} matrix source`).toContain("fromJson(needs.detect.outputs.matrix).include");
       }
     }
   });
@@ -162,9 +161,7 @@ describe("harness-watch workflow structure", () => {
       drift.indexOf("Install LiteLLM sidecar"),
       drift.indexOf("Run the drift capture-compare"),
     );
-    expect(sidecar).toContain(
-      "Keep the upstream secret out of dependency installation too.",
-    );
+    expect(sidecar).toContain("Keep the upstream secret out of dependency installation too.");
     expect(sidecar.indexOf("pipx install")).toBeLessThan(
       sidecar.indexOf("HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}"),
     );
@@ -178,15 +175,11 @@ describe("harness-watch workflow structure", () => {
 
   it("publish-verdict is the single final writer gated on detect", () => {
     const publish = jobSource("publish-verdict");
-    expect(publish).toMatch(
-      /needs: \[detect, record, report-failure, drift\]/,
-    );
+    expect(publish).toMatch(/needs: \[detect, record, report-failure, drift\]/);
     expect(publish).toMatch(
       /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/,
     );
-    expect(publish).toMatch(
-      /permissions:\s*\n\s*contents: read\s*\n\s*issues: write\s*\n\s*pull-requests: write/,
-    );
+    expect(publish).toMatch(/permissions:\s*\n\s*contents: read\s*\n\s*issues: write\s*\n\s*pull-requests: write/);
     // Every verdict gets a durable destination even with no PR/issue.
     const summary = publish.indexOf("GITHUB_STEP_SUMMARY");
     const comment = publish.indexOf("Comment the verdict on the destination");

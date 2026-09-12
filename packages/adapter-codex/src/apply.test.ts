@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+
 import type { HookResult } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
+
 import { applyCodex } from "./apply.js";
 import { codexHarness } from "./harness.js";
 
@@ -127,18 +129,14 @@ describe("applyCodex", () => {
       {},
       INVOCATION,
     );
-    expect(cont).toEqual(
-      loadFixture("codex", "0.148", "post-tool-block-continuation.output.json"),
-    );
+    expect(cont).toEqual(loadFixture("codex", "0.148", "post-tool-block-continuation.output.json"));
   });
 
   it("encodes permission.request block via decision.behavior deny", async () => {
     const native = await applyCodex(
       result({
         event: "permission.request",
-        effects: [
-          { hookId: "g", effect: { kind: "block", reason: "Blocked by policy hook" } },
-        ],
+        effects: [{ hookId: "g", effect: { kind: "block", reason: "Blocked by policy hook" } }],
         terminatedBy: "g",
       }),
       {},
@@ -151,9 +149,7 @@ describe("applyCodex", () => {
     const native = await applyCodex(
       result({
         event: "tool.after",
-        effects: [
-          { hookId: "redact", effect: { kind: "replaceOutput", output: "[redacted]" } },
-        ],
+        effects: [{ hookId: "redact", effect: { kind: "replaceOutput", output: "[redacted]" } }],
       }),
       {},
       INVOCATION,

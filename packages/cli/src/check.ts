@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+
 import type {
   AdapterRegistry,
   AgentPluginTargetReport,
@@ -6,11 +7,8 @@ import type {
   Diagnostic,
   EvaluateOptions,
 } from "@hooknostic/core";
-import {
-  buildProject,
-  formatDiagnostics,
-  hasFatal,
-} from "@hooknostic/core";
+import { buildProject, formatDiagnostics, hasFatal } from "@hooknostic/core";
+
 import { describeProjection } from "./build.js";
 
 export interface CommandIO {
@@ -36,10 +34,7 @@ interface CheckReport {
   ok: boolean;
   targets: Record<
     string,
-    Pick<
-      AnalysisResult["targets"][string],
-      "ok" | "adapter" | "requestedVersion" | "counts" | "resolutions"
-    > & {
+    Pick<AnalysisResult["targets"][string], "ok" | "adapter" | "requestedVersion" | "counts" | "resolutions"> & {
       /** Paths `build` would generate for this target (nothing is written by `check`). */
       artifacts?: string[];
       projection?: AgentPluginTargetReport;

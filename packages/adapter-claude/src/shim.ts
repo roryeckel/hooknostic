@@ -1,6 +1,7 @@
-import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+
 import { applyClaude } from "./apply.js";
 import { ClaudeDecodeError, decodeClaude } from "./decode.js";
 import { claudeShellCodec } from "./toolmap.js";
@@ -36,18 +37,13 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  * Fail-open on protocol-level problems: an undecodable payload must never
  * block the user's session.
  */
-export async function runClaudeCommandShim(
-  plugin: PluginSpec,
-  options: ClaudeShimOptions,
-): Promise<void> {
+export async function runClaudeCommandShim(plugin: PluginSpec, options: ClaudeShimOptions): Promise<void> {
   let exitCode = 0;
   try {
     const nativeEvent: unknown = JSON.parse(await readStdin());
     const invocation = {
       targetId: "claude",
-      ...(options.harnessVersion !== undefined
-        ? { harnessVersion: options.harnessVersion }
-        : {}),
+      ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
     };
     const event = decodeClaude(nativeEvent, invocation);
     const result = await dispatch(plugin.hooks, event, {
@@ -71,17 +67,13 @@ export async function runClaudeCommandShim(
       // Separator guard: a native stderr payload (e.g. a block reason) need
       // not end in a newline, and concatenating onto it would corrupt the
       // machine-greppable "hooknostic HNxxx" prefix.
-      const separator =
-        native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
+      const separator = native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
       await writeStream(process.stderr, `${separator}${diagnostics}\n`);
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof ClaudeDecodeError)) {
-      await writeStream(
-        process.stderr,
-        `hooknostic: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
     }
     exitCode = 0; // fail-open
   }

@@ -20,7 +20,7 @@
 // dry runs) section 2 is a placeholder and the script says so.
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,10 +30,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const BODY_BUDGET = 120_000;
 
 function escapeHtml(text) {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 /**
@@ -46,9 +43,7 @@ function escapeHtml(text) {
 export function composeNotes({ harnessTable, generatedBody, commits }) {
   // A commit already grouped under a PR in the generated body is covered;
   // match by the (#N) reference GitHub appends to squash/merge subjects.
-  const covered = new Set(
-    [...generatedBody.matchAll(/#(\d+)/g)].map((match) => match[1]),
-  );
+  const covered = new Set([...generatedBody.matchAll(/#(\d+)/g)].map((match) => match[1]));
   const direct = commits.filter((commit) => {
     const ref = commit.subject.match(/\(#(\d+)\)\s*$/);
     return ref === null || !covered.has(ref[1]);
@@ -87,11 +82,11 @@ export function composeNotes({ harnessTable, generatedBody, commits }) {
 
 export function commitsInRange(range, cwd = ROOT) {
   // %x1f field / %x1e record separators dodge every quoting hazard in bodies.
-  const raw = execFileSync(
-    "git",
-    ["log", "--first-parent", "--format=%H%x1f%s%x1f%b%x1e", range],
-    { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
+  const raw = execFileSync("git", ["log", "--first-parent", "--format=%H%x1f%s%x1f%b%x1e", range], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return raw
     .split("\x1e")
     .map((record) => record.trim())
@@ -112,22 +107,27 @@ async function main() {
   const repo = args.get("--repo");
   const output = args.get("--output") ?? "release-notes.md";
   if (!version || !sha) {
-    console.error("usage: release-notes.mjs --version X.Y.Z --sha <sha> [--previous-tag vA.B.C] --repo owner/name [--output file]");
+    console.error(
+      "usage: release-notes.mjs --version X.Y.Z --sha <sha> [--previous-tag vA.B.C] --repo owner/name [--output file]",
+    );
     process.exit(2);
   }
 
   // Section 1: reuse the generated support table's summary block.
-  const { defaultAdapterRegistry } = await import(
-    new URL("../packages/cli/dist/index.js", import.meta.url).href
-  );
+  const { defaultAdapterRegistry } = await import(new URL("../packages/cli/dist/index.js", import.meta.url).href);
   const adapters = Object.values(defaultAdapterRegistry());
   const harnessTable = [
     "| Harness | Recommended target range | Validated ranges | Reference build |",
     "| --- | --- | --- | --- |",
-    ...adapters.map((adapter) =>
-      `| ${adapter.harness.displayName} | \`${adapter.harness.recommendedRange}\` | ` +
-      `${adapter.supportedHarnessVersions().map((r) => `\`${r}\``).join(", ")} | ` +
-      `${adapter.harness.referenceVersion} |`),
+    ...adapters.map(
+      (adapter) =>
+        `| ${adapter.harness.displayName} | \`${adapter.harness.recommendedRange}\` | ` +
+        `${adapter
+          .supportedHarnessVersions()
+          .map((r) => `\`${r}\``)
+          .join(", ")} | ` +
+        `${adapter.harness.referenceVersion} |`,
+    ),
   ].join("\n");
 
   // Section 2: GitHub's generate-notes, as text.

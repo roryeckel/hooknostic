@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { runProject, type HarnessAdapter } from "@hooknostic/core";
-import { makeFakeAdapter } from "@hooknostic/testkit";
-import { runDoctor } from "./doctor.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { type HarnessAdapter, runProject } from "@hooknostic/core";
+import { makeFakeAdapter } from "@hooknostic/testkit";
+
+import { runDoctor } from "./doctor.js";
 
 function fakeIO() {
   const out: string[] = [];

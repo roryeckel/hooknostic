@@ -24,7 +24,7 @@
 // pinned in-range OLDER build with an empty marker region is a no-op (exit 4)
 // rather than a redundant record.
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -76,9 +76,7 @@ export function rewriteRollingRecord(source, { version, date }) {
   const beginCount = source.split(BEGIN).length - 1;
   const endCount = source.split(END).length - 1;
   if (beginCount !== 1 || endCount !== 1) {
-    throw new Error(
-      `expected exactly one ${BEGIN} and one ${END} pair, found ${beginCount}/${endCount}`,
-    );
+    throw new Error(`expected exactly one ${BEGIN} and one ${END} pair, found ${beginCount}/${endCount}`);
   }
   const beginIdx = source.indexOf(BEGIN);
   const endIdx = source.indexOf(END);
@@ -150,12 +148,7 @@ async function main() {
   }
 
   // Guard 2: baseline = max(referenceVersion, rolling record), nothing else.
-  const harnessModule = await import(
-    new URL(
-      entry.profileModule.replace("profile.ts", "harness.ts"),
-      import.meta.url,
-    )
-  );
+  const harnessModule = await import(new URL(entry.profileModule.replace("profile.ts", "harness.ts"), import.meta.url));
   const harnessExport = Object.values(harnessModule).find(
     (v) => v !== null && typeof v === "object" && "referenceVersion" in v,
   );
@@ -175,9 +168,7 @@ async function main() {
   // the harness-watch record job greps `outcome=noop` to skip the commit
   // leg cleanly instead of failing on an empty index.
   if (existing !== undefined && existing.version === version) {
-    process.stdout.write(
-      `${harness}: rolling record already at ${version} -- no-op\noutcome=noop\n`,
-    );
+    process.stdout.write(`${harness}: rolling record already at ${version} -- no-op\noutcome=noop\n`);
     process.exit(0);
   }
   // Strictly advancing guard: equal-to-reference with empty region is a

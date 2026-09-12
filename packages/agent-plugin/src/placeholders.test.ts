@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  classifyStdioCwd,
-  hasAmbiguousSeparator,
-  hasUnportableCommandPath,
-} from "./placeholders.js";
+
+import { classifyStdioCwd, hasAmbiguousSeparator, hasUnportableCommandPath } from "./placeholders.js";
 
 describe("classifyStdioCwd", () => {
   it.each([
@@ -16,12 +13,9 @@ describe("classifyStdioCwd", () => {
     expect(classifyStdioCwd(cwd)).toEqual(expected);
   });
 
-  it.each(["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape", "../escape", "/absolute"])(
-    "refuses %s",
-    (cwd) => {
-      expect(classifyStdioCwd(cwd)).toBeUndefined();
-    },
-  );
+  it.each(["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape", "../escape", "/absolute"])("refuses %s", (cwd) => {
+    expect(classifyStdioCwd(cwd)).toBeUndefined();
+  });
 
   // A backslash is one ordinary filename character on POSIX and a separator on
   // Windows, so this value passes containment where the package is built and

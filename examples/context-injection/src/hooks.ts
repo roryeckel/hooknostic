@@ -1,4 +1,4 @@
-import { definePlugin, hook, addContext } from "@hooknostic/sdk";
+import { addContext, definePlugin, hook } from "@hooknostic/sdk";
 
 /**
  * Context injection at two lifecycle points: session start (repo context)

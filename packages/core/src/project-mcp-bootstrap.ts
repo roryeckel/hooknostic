@@ -54,19 +54,27 @@ ${body}`;
 export function projectMcpBootstrap(output: string, config: string, index: number): string[] {
   validateProjectPath(output);
   if (!Number.isSafeInteger(index) || index < 0) throw new Error("invalid project MCP server index");
-  const code = ownedProjectBootstrap(config, "MCP", `const launcher = ownedFile(${JSON.stringify(`${output}/mcp-launcher.mjs`)});
+  const code = ownedProjectBootstrap(
+    config,
+    "MCP",
+    `const launcher = ownedFile(${JSON.stringify(`${output}/mcp-launcher.mjs`)});
 ownedFile(${JSON.stringify(`${output}/mcp-servers.json`)});
 process.argv = [process.execPath, launcher, ${JSON.stringify(String(index))}];
-await import(pathToFileURL(launcher).href);`);
+await import(pathToFileURL(launcher).href);`,
+  );
   return ["--input-type=module", "--eval", code];
 }
 
 /** Locate and invoke an owned hook runtime from any directory below the project. */
 export function projectHookBootstrap(runtime: string, config: string): string {
   validateProjectPath(runtime);
-  const code = ownedProjectBootstrap(config, "hook", `const runtime = ownedFile(${JSON.stringify(runtime)});
+  const code = ownedProjectBootstrap(
+    config,
+    "hook",
+    `const runtime = ownedFile(${JSON.stringify(runtime)});
 process.argv = [process.execPath, runtime];
-await import(pathToFileURL(runtime).href);`);
+await import(pathToFileURL(runtime).href);`,
+  );
   const encoded = Buffer.from(code, "utf8").toString("base64");
   return `node --input-type=module --eval "await import('data:text/javascript;base64,${encoded}')"`;
 }

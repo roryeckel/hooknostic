@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { loadFixture } from "@hooknostic/testkit";
+
 import { baseHookEventSchema } from "@hooknostic/sdk";
+import { loadFixture } from "@hooknostic/testkit";
+
 import { ClaudeDecodeError, decodeClaude } from "./decode.js";
-import { classifyClaudeTool } from "./toolmap.js";
 import { claudeHarness } from "./harness.js";
+import { classifyClaudeTool } from "./toolmap.js";
 
 const INVOCATION = { targetId: "claude", harnessVersion: claudeHarness.referenceVersion };
 
@@ -28,11 +30,7 @@ describe("decodeClaude fixtures", () => {
   for (const name of CASES) {
     it(`decodes ${name} to its canonical event`, () => {
       const input = loadFixture("claude", "2.1", `${name}.input.json`);
-      const canonical = loadFixture<Record<string, unknown>>(
-        "claude",
-        "2.1",
-        `${name}.canonical.json`,
-      );
+      const canonical = loadFixture<Record<string, unknown>>("claude", "2.1", `${name}.canonical.json`);
       const decoded = decodeClaude(input, INVOCATION);
       // Canonical fixtures omit raw and harness.version; splice them in.
       expect(decoded).toEqual({
@@ -45,11 +43,7 @@ describe("decodeClaude fixtures", () => {
   }
 
   it("tolerates unknown additive vendor fields and preserves them in raw", () => {
-    const input = loadFixture<Record<string, unknown>>(
-      "claude",
-      "2.1",
-      "pre-tool-bash.input.json",
-    );
+    const input = loadFixture<Record<string, unknown>>("claude", "2.1", "pre-tool-bash.input.json");
     const extended = {
       ...input,
       brand_new_field: { future: true },
@@ -63,19 +57,14 @@ describe("decodeClaude fixtures", () => {
   });
 
   it("does not invent missing correlation identifiers", () => {
-    const decoded = decodeClaude(
-      { hook_event_name: "SessionStart", cwd: "C:/x" },
-      { targetId: "claude" },
-    );
+    const decoded = decodeClaude({ hook_event_name: "SessionStart", cwd: "C:/x" }, { targetId: "claude" });
     expect(decoded.session.id).toBeUndefined();
     expect(decoded.correlation).toEqual({});
     expect(decoded.harness.version).toBeUndefined();
   });
 
   it("throws ClaudeDecodeError for unmapped vendor events and malformed payloads", () => {
-    expect(() =>
-      decodeClaude({ hook_event_name: "Notification", cwd: "C:/x" }, INVOCATION),
-    ).toThrow(ClaudeDecodeError);
+    expect(() => decodeClaude({ hook_event_name: "Notification", cwd: "C:/x" }, INVOCATION)).toThrow(ClaudeDecodeError);
     expect(() => decodeClaude("not-an-object", INVOCATION)).toThrow(ClaudeDecodeError);
     expect(() => decodeClaude({ cwd: "C:/x" }, INVOCATION)).toThrow(ClaudeDecodeError);
   });

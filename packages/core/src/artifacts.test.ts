@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
+
 import { artifactPathProblem, validateGeneratedArtifacts } from "./artifacts.js";
 
 describe("generated artifact paths", () => {
   it.each([["../escape"], ["file"], ["file/child"], ["worker", "WORKER"]])(
-    "rejects unsafe or conflicting explicit directories %j", (...directories) => {
-      expect(validateGeneratedArtifacts([{ path: "file", contents: "" }],
-        { adapterId: "fake", target: "t" }, directories)).not.toEqual([]);
-      expect(validateGeneratedArtifacts([{ path: "worker/server.js", contents: "" }],
-        { adapterId: "fake", target: "t" }, ["worker", "worker/empty"])).toEqual([]);
+    "rejects unsafe or conflicting explicit directories %j",
+    (...directories) => {
+      expect(
+        validateGeneratedArtifacts([{ path: "file", contents: "" }], { adapterId: "fake", target: "t" }, directories),
+      ).not.toEqual([]);
+      expect(
+        validateGeneratedArtifacts([{ path: "worker/server.js", contents: "" }], { adapterId: "fake", target: "t" }, [
+          "worker",
+          "worker/empty",
+        ]),
+      ).toEqual([]);
     },
   );
 

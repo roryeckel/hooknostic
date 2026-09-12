@@ -1,7 +1,6 @@
-import { projectIntegration, projectComponents, projectComponentProfiles } from "./project.js";
-
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -13,13 +12,15 @@ import type {
 import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+
 import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
 import { generateClaudeArtifacts } from "./generate.js";
-import { claudeCapabilityProfiles } from "./profile.js";
-import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
-import { claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
 import { claudeHarness } from "./harness.js";
+import { claudeCapabilityProfiles } from "./profile.js";
+import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
+import { CLAUDE_SHELL_SHAPES, claudeShellCodec } from "./toolmap.js";
 export { claudeHarness } from "./harness.js";
 
 export { applyClaude } from "./apply.js";
@@ -65,9 +66,7 @@ export function claudeShimEntrySource(options: {
       ? [`  minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
       : []),
     `  policy: ${JSON.stringify(options.policy)},`,
-    ...(options.harnessVersion !== undefined
-      ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`]
-      : []),
+    ...(options.harnessVersion !== undefined ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
     `});`,
     "",
   ].join("\n");
@@ -116,12 +115,7 @@ export function claudeAdapter(): HarnessAdapter {
       });
     },
 
-    async compile(
-      plugin: PluginIR,
-      target: TargetSpec,
-      bundle: RuntimeBundle,
-      options,
-    ): Promise<GeneratedArtifact[]> {
+    async compile(plugin: PluginIR, target: TargetSpec, bundle: RuntimeBundle, options): Promise<GeneratedArtifact[]> {
       return generateClaudeArtifacts(plugin, target, bundle, options);
     },
 
@@ -131,9 +125,7 @@ export function claudeAdapter(): HarnessAdapter {
       if (hooksJson) {
         try {
           const parsed = JSON.parse(
-            typeof hooksJson.contents === "string"
-              ? hooksJson.contents
-              : new TextDecoder().decode(hooksJson.contents),
+            typeof hooksJson.contents === "string" ? hooksJson.contents : new TextDecoder().decode(hooksJson.contents),
           ) as unknown;
           const object = (value: unknown): value is Record<string, unknown> =>
             typeof value === "object" && value !== null && !Array.isArray(value);

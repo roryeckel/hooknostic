@@ -2,11 +2,14 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
 import { build } from "esbuild";
+
 import type { HooknosticConfig, PluginSpec } from "@hooknostic/sdk";
 import { hooknosticConfigSchema } from "@hooknostic/sdk";
-import type { Diagnostic } from "./diagnostics.js";
+
 import { createRequireBanner } from "./bundle-support.mjs";
+import type { Diagnostic } from "./diagnostics.js";
 
 export interface EvaluateOptions {
   /**
@@ -94,8 +97,21 @@ export async function loadConfig(
   if (evaluated && typeof evaluated === "object") {
     const raw = evaluated as Record<string, unknown>;
     const oldTargets = raw["targets"] && typeof raw["targets"] === "object" ? Object.values(raw["targets"]) : [];
-    if (Object.hasOwn(raw, "agentPlugin") || oldTargets.some(t => t && typeof t === "object" && Object.hasOwn(t, "mode"))) {
-      return { diagnostics: [{ code: "HN501", severity: "error", message: 'obsolete configuration: rename agentPlugin to components and replace target mode with delivery; targets listed in agentPlugin.targets should use delivery: "package" (including OpenCode local-layout projections), while other targets map local to "project" and plugin to "package"', location: { file: configPath } }] };
+    if (
+      Object.hasOwn(raw, "agentPlugin") ||
+      oldTargets.some((t) => t && typeof t === "object" && Object.hasOwn(t, "mode"))
+    ) {
+      return {
+        diagnostics: [
+          {
+            code: "HN501",
+            severity: "error",
+            message:
+              'obsolete configuration: rename agentPlugin to components and replace target mode with delivery; targets listed in agentPlugin.targets should use delivery: "package" (including OpenCode local-layout projections), while other targets map local to "project" and plugin to "package"',
+            location: { file: configPath },
+          },
+        ],
+      };
     }
   }
   const parsed = hooknosticConfigSchema.safeParse(evaluated);
@@ -138,10 +154,7 @@ export interface LoadPluginResult {
  * Evaluate the plugin entry module. Structural validation (and IR
  * construction) happens in buildPluginIR; this only gets the module loaded.
  */
-export async function loadPluginSource(
-  entryPath: string,
-  options?: EvaluateOptions,
-): Promise<LoadPluginResult> {
+export async function loadPluginSource(entryPath: string, options?: EvaluateOptions): Promise<LoadPluginResult> {
   const diagnostics: Diagnostic[] = [];
   try {
     const evaluated = await evaluateModule(entryPath, options);

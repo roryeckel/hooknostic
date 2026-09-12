@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { isRejectedSkillPath } from "./skills.js";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
@@ -35,10 +36,7 @@ function source(paths: string[], accepted: string[]): AgentPluginPackage {
 describe("isRejectedSkillPath", () => {
   it("matches every path inside a skill the loader rejected", () => {
     const rejected = isRejectedSkillPath(
-      source(
-        ["skills/good/SKILL.md", "skills/broken/SKILL.md", "skills/broken/assets/logo.png"],
-        ["skills/good"],
-      ),
+      source(["skills/good/SKILL.md", "skills/broken/SKILL.md", "skills/broken/assets/logo.png"], ["skills/good"]),
     );
     expect(rejected("skills/broken/SKILL.md")).toBe(true);
     expect(rejected("skills/broken/assets/logo.png")).toBe(true);
@@ -49,9 +47,7 @@ describe("isRejectedSkillPath", () => {
   // nothing rejected at all, and a shared-asset directory is not a skill.
   it("leaves a directory that never declared a skill alone", () => {
     const rejected = isRejectedSkillPath(
-      source(["skills/good/SKILL.md", "skills/shared/logo.png", "skills/README.md"], [
-        "skills/good",
-      ]),
+      source(["skills/good/SKILL.md", "skills/shared/logo.png", "skills/README.md"], ["skills/good"]),
     );
     expect(rejected("skills/shared/logo.png")).toBe(false);
     expect(rejected("skills/README.md")).toBe(false);
@@ -78,9 +74,7 @@ describe("isRejectedSkillPath", () => {
   });
 
   it("matches nothing outside the skills tree", () => {
-    const rejected = isRejectedSkillPath(
-      source(["src/server.mjs", "skillsy/SKILL.md", "skills/broken/SKILL.md"], []),
-    );
+    const rejected = isRejectedSkillPath(source(["src/server.mjs", "skillsy/SKILL.md", "skills/broken/SKILL.md"], []));
     expect(rejected("src/server.mjs")).toBe(false);
     expect(rejected("skillsy/SKILL.md")).toBe(false);
     expect(rejected("skills/broken/SKILL.md")).toBe(true);

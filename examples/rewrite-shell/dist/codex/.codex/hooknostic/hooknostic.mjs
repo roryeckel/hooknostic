@@ -4272,12 +4272,7 @@ var coerce = {
 var NEVER = INVALID;
 
 // ../../packages/sdk/dist/support.js
-var SUPPORT_LEVELS = [
-  "exact",
-  "emulated",
-  "approximate",
-  "unsupported"
-];
+var SUPPORT_LEVELS = ["exact", "emulated", "approximate", "unsupported"];
 var RANK = {
   exact: 3,
   emulated: 2,
@@ -4485,13 +4480,23 @@ var hooknosticConfigSchema = external_exports.object({
   }
   if (config.components) {
     if (config.components.root !== void 0 && (config.components.skills !== void 0 || config.components.mcp !== void 0)) {
-      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.root is mutually exclusive with direct skills/mcp sources" });
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: "components.root is mutually exclusive with direct skills/mcp sources"
+      });
     }
     if (config.components.root !== void 0 && config.components.mcpOverrides !== void 0) {
-      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides is only valid with a direct MCP source" });
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: "components.mcpOverrides is only valid with a direct MCP source"
+      });
     }
     if (config.components.root === void 0 && config.components.executableFiles !== void 0) {
-      context.addIssue({ code: external_exports.ZodIssueCode.custom, path: ["components", "executableFiles"], message: "components.executableFiles requires components.root" });
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["components", "executableFiles"],
+        message: "components.executableFiles requires components.root"
+      });
     }
     if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
@@ -4741,11 +4746,15 @@ async function dispatch(hooks, event, options) {
         })
       ]);
     } catch (error) {
-      const terminal = failDispatch(hook2.id, {
-        hookId: hook2.id,
-        kind: timedOut ? "timeout" : "error",
-        message: errorMessage(error)
-      }, capabilities);
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error)
+        },
+        capabilities
+      );
       if (terminal) break;
       continue;
     } finally {
@@ -4756,55 +4765,75 @@ async function dispatch(hooks, event, options) {
     try {
       parsedEffect = effectSchema.safeParse(outcome);
     } catch (error) {
-      const terminal = failDispatch(hook2.id, {
-        hookId: hook2.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
-      }, capabilities);
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
+        },
+        capabilities
+      );
       if (terminal) break;
       continue;
     }
     if (!parsedEffect.success) {
       const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(hook2.id, {
-        hookId: hook2.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
-      }, capabilities);
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
+        },
+        capabilities
+      );
       if (terminal) break;
       continue;
     }
     const effect = parsedEffect.data;
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === void 0) {
-      const terminal = failDispatch(hook2.id, {
-        hookId: hook2.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `effect "${effect.kind}" is not defined for event "${event.event}".`
-      }, capabilities);
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `effect "${effect.kind}" is not defined for event "${event.event}".`
+        },
+        capabilities
+      );
       if (terminal) break;
       continue;
     }
     if (hook2.capabilities[capability] === void 0) {
-      const terminal = failDispatch(hook2.id, {
-        hookId: hook2.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `hook "${hook2.id}" returned "${effect.kind}" without declaring capability "${capability}".`
-      }, capabilities);
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned "${effect.kind}" without declaring capability "${capability}".`
+        },
+        capabilities
+      );
       if (terminal) break;
       continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(hook2.id, {
-        hookId: hook2.id,
-        kind: "unsupported-effect",
-        code: "HN401",
-        message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`
-      }, capabilities);
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`
+        },
+        capabilities
+      );
       if (terminal) break;
       continue;
     }
@@ -4813,12 +4842,16 @@ async function dispatch(hooks, event, options) {
       const tool = toolOf(event);
       loweredShellInput = tool !== void 0 ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
       if (loweredShellInput === void 0) {
-        const terminal = failDispatch(hook2.id, {
-          hookId: hook2.id,
-          kind: "unsupported-effect",
-          code: "HN401",
-          message: `hook "${hook2.id}" returned "updateShell" for tool "${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has not captured; guard with event.tool.shell !== undefined, and use replaceInput for uncaptured shapes.`
-        }, capabilities);
+        const terminal = failDispatch(
+          hook2.id,
+          {
+            hookId: hook2.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook2.id}" returned "updateShell" for tool "${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has not captured; guard with event.tool.shell !== undefined, and use replaceInput for uncaptured shapes.`
+          },
+          capabilities
+        );
         if (terminal) break;
         continue;
       }
@@ -5161,10 +5194,7 @@ async function runCodexCommandShim(plugin, options) {
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CodexDecodeError)) {
-      await writeStream(
-        process.stderr,
-        `hooknostic: ${error instanceof Error ? error.message : String(error)}`
-      );
+      await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
     }
     exitCode = 0;
   }

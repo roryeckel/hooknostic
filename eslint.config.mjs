@@ -1,4 +1,5 @@
 import eslint from "@eslint/js";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -30,11 +31,29 @@ export default tseslint.config(
     },
   },
   {
+    // Import order: node builtins, external packages, workspace packages,
+    // then relative — the order the source already follows dominantly.
+    // Longest-match routing sends `@hooknostic/*` here even though `^@?\w`
+    // also matches it. Prettier runs after this fixer and tidies its spacing.
+    plugins: { "simple-import-sort": simpleImportSort },
     rules: {
-      "@typescript-eslint/no-unused-vars": [
+      "simple-import-sort/imports": [
         "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        {
+          groups: [
+            ["^\\u0000"], // side-effect imports
+            ["^node:"], // node: builtins
+            ["^@?\\w"], // external packages
+            ["^@hooknostic/"], // workspace packages
+            ["^\\."], // relative
+          ],
+        },
       ],
+    },
+  },
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-imports": "error",
       // `unknown` payloads from vendor decode paths require controlled assertions.
       "@typescript-eslint/no-explicit-any": "off",

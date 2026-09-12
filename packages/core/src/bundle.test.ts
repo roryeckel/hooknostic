@@ -1,21 +1,28 @@
-import { describe, expect, it } from "vitest";
-import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
-import { createRequire } from "node:module";
+
+import { describe, expect, it } from "vitest";
+
+import { bundleHasMainModuleGuard, bundleRuntime } from "./bundle.js";
 
 it("executes bundled CommonJS builtins without the source dependency tree", async () => {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-cjs-"));
   try {
     await writeFile(join(root, "helper.cjs"), 'module.exports = () => require("node:path").basename("/tmp/blocked");');
-    const result = await bundleRuntime({ source: 'import helper from "./helper.cjs"; console.log(helper());', resolveDir: root });
+    const result = await bundleRuntime({
+      source: 'import helper from "./helper.cjs"; console.log(helper());',
+      resolveDir: root,
+    });
     await rm(join(root, "helper.cjs"));
     const artifact = join(root, "hook.mjs");
     await writeFile(artifact, result.code);
     expect(execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim()).toBe("blocked");
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 it("carries dependency license and notice text plus source legal comments through rebundling", async () => {
@@ -23,12 +30,28 @@ it("carries dependency license and notice text plus source legal comments throug
   try {
     const dependency = join(root, "node_modules/notice-fixture");
     await mkdir(dependency, { recursive: true });
-    await writeFile(join(dependency, "package.json"), JSON.stringify({ name: "notice-fixture", version: "1.0.0", license: "MIT", main: "index.js" }));
+    await writeFile(
+      join(dependency, "package.json"),
+      JSON.stringify({ name: "notice-fixture", version: "1.0.0", license: "MIT", main: "index.js" }),
+    );
     await writeFile(join(dependency, "index.js"), 'module.exports = require("node:path").basename("/fixture/42");');
-    await writeFile(join(dependency, "LICENSE"), "Copyright Example Author\nPermission is hereby granted, free of charge.\n");
+    await writeFile(
+      join(dependency, "LICENSE"),
+      "Copyright Example Author\nPermission is hereby granted, free of charge.\n",
+    );
     await writeFile(join(dependency, "NOTICE"), "Example attribution notice.\n");
-    const first = await bundleRuntime({ source: '/*! Keep this source attribution. */\nimport value from "notice-fixture"; console.log(value);', resolveDir: root });
-    for (const text of ["notice-fixture@1.0.0", "Copyright Example Author", "Permission is hereby granted, free of charge.", "Example attribution notice.", "Keep this source attribution."]) expect(first.code).toContain(text);
+    const first = await bundleRuntime({
+      source: '/*! Keep this source attribution. */\nimport value from "notice-fixture"; console.log(value);',
+      resolveDir: root,
+    });
+    for (const text of [
+      "notice-fixture@1.0.0",
+      "Copyright Example Author",
+      "Permission is hereby granted, free of charge.",
+      "Example attribution notice.",
+      "Keep this source attribution.",
+    ])
+      expect(first.code).toContain(text);
     await writeFile(join(root, "prebundled.mjs"), first.code);
     await rm(join(root, "node_modules"), { recursive: true });
     const second = await bundleRuntime({ source: 'import "./prebundled.mjs";', resolveDir: root });
@@ -39,7 +62,9 @@ it("carries dependency license and notice text plus source legal comments throug
     await writeFile(artifact, second.code);
     await rm(join(root, "prebundled.mjs"));
     expect(execFileSync(process.execPath, [artifact], { encoding: "utf8" }).trim()).toBe("42");
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 it("includes the SDK's own license in standalone runtimes as well as third-party licenses", async () => {
@@ -48,7 +73,9 @@ it("includes the SDK's own license in standalone runtimes as well as third-party
     resolveDir: import.meta.dirname,
     alias: { "@hooknostic/sdk": resolve(import.meta.dirname, "../../sdk/src/index.ts") },
   });
-  expect(result.code).toContain((await readFile(resolve(import.meta.dirname, "../../sdk/LICENSE"), "utf8")).replaceAll("\r\n", "\n").trim());
+  expect(result.code).toContain(
+    (await readFile(resolve(import.meta.dirname, "../../sdk/LICENSE"), "utf8")).replaceAll("\r\n", "\n").trim(),
+  );
   const sdkRequire = createRequire(resolve(import.meta.dirname, "../../sdk/package.json"));
   const zodLicense = resolve(sdkRequire.resolve("zod/package.json"), "../LICENSE");
   expect(result.code).toContain((await readFile(zodLicense, "utf8")).replaceAll("\r\n", "\n").trim());
@@ -88,8 +115,6 @@ describe("bundleHasMainModuleGuard", () => {
   });
 
   it("does not match across a statement boundary", () => {
-    expect(
-      bundleHasMainModuleGuard(`const url = import.meta.url;\nif (x === process.argv[1]) run();`),
-    ).toBe(false);
+    expect(bundleHasMainModuleGuard(`const url = import.meta.url;\nif (x === process.argv[1]) run();`)).toBe(false);
   });
 });

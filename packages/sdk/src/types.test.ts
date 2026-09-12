@@ -4,6 +4,7 @@
  * proves that undeclared effects and mis-scoped capabilities fail the build.
  */
 import { describe, expect, it } from "vitest";
+
 import {
   addContext,
   block,
@@ -171,11 +172,7 @@ describe("compile-time hook contracts", () => {
       },
     });
 
-    expect([ok.id, wrongEvent.id, undeclared.id]).toEqual([
-      "notifier",
-      "notify-on-tool",
-      "notify-undeclared",
-    ]);
+    expect([ok.id, wrongEvent.id, undeclared.id]).toEqual(["notifier", "notify-on-tool", "notify-undeclared"]);
   });
 
   it("erases to a uniform HookDefinition inside definePlugin", () => {
@@ -226,12 +223,12 @@ describe("compile-time config contracts", () => {
       },
       targets: { codex },
     });
-    expect([hooked.entry, hookless.entry, both.components?.targets, direct.components?.mcpOverrides?.codex?.startupTimeoutMs]).toEqual([
-      "./src/hooks.ts",
-      undefined,
-      ["claude", "codex"],
-      60_000,
-    ]);
+    expect([
+      hooked.entry,
+      hookless.entry,
+      both.components?.targets,
+      direct.components?.mcpOverrides?.codex?.startupTimeoutMs,
+    ]).toEqual(["./src/hooks.ts", undefined, ["claude", "codex"], 60_000]);
 
     // @ts-expect-error at least one of entry or components is required
     defineConfig({ targets: { claude } });

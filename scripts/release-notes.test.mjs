@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { composeNotes } from "./release-notes.mjs";
 
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
+
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   type AgentPluginPackage,
   type AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
-import { analyzeAgentPluginProjection, resolveAgentPluginProjection } from "./agent-plugin.js";
+
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
+import { analyzeAgentPluginProjection, resolveAgentPluginProjection } from "./agent-plugin.js";
 
 const target: TargetSpec = { id: "test", version: ">=2.1 <3", delivery: "package", output: "dist" };
 const projector: AgentPluginProjector<TargetSpec> = {
@@ -62,12 +64,7 @@ describe("resolveAgentPluginProjection", () => {
   });
 
   it("reports HN205 for a manifest-only client extension without projector support", () => {
-    const result = analyzeAgentPluginProjection(
-      manifestOnlyExtensionSource,
-      adapterWithProjector,
-      target,
-      "error",
-    );
+    const result = analyzeAgentPluginProjection(manifestOnlyExtensionSource, adapterWithProjector, target, "error");
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({
         code: "HN205",

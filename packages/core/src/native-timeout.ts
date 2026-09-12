@@ -1,6 +1,8 @@
 import semver from "semver";
-import { hookAppliesToTarget } from "@hooknostic/sdk";
+
 import type { RuntimePolicy } from "@hooknostic/sdk";
+import { hookAppliesToTarget } from "@hooknostic/sdk";
+
 import type { HookIR } from "./ir.js";
 
 /**
@@ -55,14 +57,8 @@ export function hooksByNativeEvent(
  * per-hook budgets inert in the lowering direction, which is the direction they
  * exist for. The schema keeps budgets positive, so no clamp is needed.
  */
-export function nativeTimeoutSeconds(
-  reaching: HookIR[],
-  runtime: Required<RuntimePolicy>,
-): number {
-  const totalMs = reaching.reduce(
-    (sum, hook) => sum + (hook.timeoutMs ?? runtime.timeoutMs),
-    0,
-  );
+export function nativeTimeoutSeconds(reaching: HookIR[], runtime: Required<RuntimePolicy>): number {
+  const totalMs = reaching.reduce((sum, hook) => sum + (hook.timeoutMs ?? runtime.timeoutMs), 0);
   return Math.ceil(totalMs / 1000) + 1;
 }
 

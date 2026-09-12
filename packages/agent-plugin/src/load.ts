@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+
 import { minimatch } from "minimatch";
 import { parseDocument } from "yaml";
+
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -32,14 +34,7 @@ const MANIFEST_KEYS = new Set([
   "extensions",
 ]);
 const AUTHOR_KEYS = new Set(["name", "email", "url"]);
-const SKILL_KEYS = new Set([
-  "name",
-  "description",
-  "license",
-  "compatibility",
-  "metadata",
-  "allowed-tools",
-]);
+const SKILL_KEYS = new Set(["name", "description", "license", "compatibility", "metadata", "allowed-tools"]);
 const PLUGIN_NAME = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const SKILL_NAME = /^(?!.*--)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
@@ -82,20 +77,10 @@ function validateManifest(value: unknown, issues: AgentPluginIssue[]): AgentPlug
     }
   }
   if (value["$schema"] !== AGENT_PLUGIN_MANIFEST_SCHEMA) {
-    issue(
-      issues,
-      "error",
-      "manifest",
-      `plugin.json must target ${AGENT_PLUGIN_MANIFEST_SCHEMA}.`,
-      "plugin.json",
-    );
+    issue(issues, "error", "manifest", `plugin.json must target ${AGENT_PLUGIN_MANIFEST_SCHEMA}.`, "plugin.json");
     return undefined;
   }
-  if (
-    typeof value["name"] !== "string" ||
-    value["name"].length > 64 ||
-    !PLUGIN_NAME.test(value["name"])
-  ) {
+  if (typeof value["name"] !== "string" || value["name"].length > 64 || !PLUGIN_NAME.test(value["name"])) {
     issue(issues, "error", "manifest", "plugin.json has an invalid Agent Plugins name.", "plugin.json");
     return undefined;
   }
@@ -200,14 +185,25 @@ async function validateDirectMcpPaths(
     if (valid && server.command.startsWith("./")) {
       valid = contained(canonicalSource, await canonicalCandidate(resolve(root, server.command.slice(2))));
     }
-    if (valid && server.cwd !== undefined && server.cwd !== "${PLUGIN_DATA}" && !server.cwd.startsWith("${PLUGIN_DATA}/")) {
+    if (
+      valid &&
+      server.cwd !== undefined &&
+      server.cwd !== "${PLUGIN_DATA}" &&
+      !server.cwd.startsWith("${PLUGIN_DATA}/")
+    ) {
       const suffix = server.cwd.startsWith("./")
         ? server.cwd.slice(2)
         : server.cwd.slice("${PLUGIN_ROOT}".length).replace(/^\//, "");
       valid = contained(canonicalAllowed, await canonicalCandidate(resolve(root, suffix)));
     }
     if (valid) continue;
-    issue(issues, "warn", "mcp", `MCP stdio server ${JSON.stringify(name)} is invalid and was skipped.`, `mcp.json#/mcpServers/${name}`);
+    issue(
+      issues,
+      "warn",
+      "mcp",
+      `MCP stdio server ${JSON.stringify(name)} is invalid and was skipped.`,
+      `mcp.json#/mcpServers/${name}`,
+    );
     delete config.mcpServers[name];
   }
 }
@@ -258,7 +254,13 @@ function validateServer(
 ): AgentPluginMcpServer | undefined {
   const path = `mcp.json#/mcpServers/${name}`;
   if (!object(value) || typeof value["type"] !== "string") {
-    issue(issues, "warn", "mcp", `MCP server ${JSON.stringify(name)} is not a valid server object and was skipped.`, path);
+    issue(
+      issues,
+      "warn",
+      "mcp",
+      `MCP server ${JSON.stringify(name)} is not a valid server object and was skipped.`,
+      path,
+    );
     return undefined;
   }
   if (value["type"] === "stdio") {
@@ -291,15 +293,9 @@ function validateServer(
             ((cwd.startsWith("./") && contained(projectRoot, resolve(root, cwd.slice(2)))) ||
               ((cwd === "${PLUGIN_ROOT}" || cwd.startsWith("${PLUGIN_ROOT}/")) &&
                 contained(projectRoot, resolve(root, cwd.slice("${PLUGIN_ROOT}".length).replace(/^\//, "")))))) ||
-          (cwd === "${PLUGIN_DATA}" ||
-            (cwd.startsWith("${PLUGIN_DATA}/") && !cwd.slice("${PLUGIN_DATA}/".length).split("/").includes("..")))));
-    if (
-      Object.keys(value).some((key) => !allowed.has(key)) ||
-      !commandValid ||
-      !argsValid ||
-      !envValid ||
-      !cwdValid
-    ) {
+          cwd === "${PLUGIN_DATA}" ||
+          (cwd.startsWith("${PLUGIN_DATA}/") && !cwd.slice("${PLUGIN_DATA}/".length).split("/").includes(".."))));
+    if (Object.keys(value).some((key) => !allowed.has(key)) || !commandValid || !argsValid || !envValid || !cwdValid) {
       issue(issues, "warn", "mcp", `MCP stdio server ${JSON.stringify(name)} is invalid and was skipped.`, path);
       return undefined;
     }
@@ -400,12 +396,7 @@ function validateSkillFrontmatter(
   }
   const name = value["name"];
   const description = value["description"];
-  if (
-    typeof name !== "string" ||
-    name.length > 64 ||
-    !SKILL_NAME.test(name) ||
-    name !== directory
-  ) {
+  if (typeof name !== "string" || name.length > 64 || !SKILL_NAME.test(name) || name !== directory) {
     throw new Error("name must match its directory and satisfy the Agent Skills name rules");
   }
   if (typeof description !== "string" || description.length === 0 || description.length > 1024) {
@@ -607,18 +598,31 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
   for (const path of options.executableFiles ?? []) {
     const file = inventoried.files.find((entry) => entry.path === path);
     if (
-      typeof path !== "string" || /[\\:]/.test(path) || [...path].some((character) => character.charCodeAt(0) < 32) ||
+      typeof path !== "string" ||
+      /[\\:]/.test(path) ||
+      [...path].some((character) => character.charCodeAt(0) < 32) ||
       path.split("/").some((part) => part === "" || part === "." || part === "..") ||
       file === undefined
     ) {
-      issue(issues, "error", "file", `executableFiles entry ${JSON.stringify(path)} must be an exact, case-sensitive POSIX path to an included file.`);
+      issue(
+        issues,
+        "error",
+        "file",
+        `executableFiles entry ${JSON.stringify(path)} must be an exact, case-sensitive POSIX path to an included file.`,
+      );
       return { issues };
     }
     file.mode = 0o755;
   }
   const manifestFile = inventoried.files.find((file) => file.path === "plugin.json");
   if (manifestFile === undefined) {
-    issue(issues, "error", "manifest", "could not read plugin.json: file is missing or is not a regular file.", "plugin.json");
+    issue(
+      issues,
+      "error",
+      "manifest",
+      "could not read plugin.json: file is missing or is not a regular file.",
+      "plugin.json",
+    );
     return { issues };
   }
   let manifestValue: unknown;
@@ -654,7 +658,6 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
   return { package: source, issues };
 }
 
-
 export interface ProjectSkill {
   name: string;
   source: string;
@@ -668,11 +671,22 @@ export interface ProjectComponents {
 export function packageComponents(source: AgentPluginPackage): ProjectComponents {
   return {
     origin: "package",
-    skills: source.skills.map(skill => ({ name: skill.name, source: resolve(source.root, skill.directory), files: source.files.filter(f => f.path.startsWith(skill.directory + "/")).map(f => ({ ...f, path: f.path.slice(skill.directory.length + 1) })) })),
+    skills: source.skills.map((skill) => ({
+      name: skill.name,
+      source: resolve(source.root, skill.directory),
+      files: source.files
+        .filter((f) => f.path.startsWith(skill.directory + "/"))
+        .map((f) => ({ ...f, path: f.path.slice(skill.directory.length + 1) })),
+    })),
     ...(source.mcp === undefined ? {} : { mcp: { root: source.root, config: source.mcp } }),
   };
 }
-export async function loadProjectComponents(options: { skills?: string[]; mcp?: string; exclude?: string[]; projectRoot?: string }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
+export async function loadProjectComponents(options: {
+  skills?: string[];
+  mcp?: string;
+  exclude?: string[];
+  projectRoot?: string;
+}): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
   const source: ProjectComponents = { origin: "direct", skills: [] };
   const names = new Set<string>();
@@ -680,8 +694,8 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     const data = await inventory(resolve(directory), [...DEFAULT_EXCLUDES, ...(options.exclude ?? [])], issues);
     if (!data) continue;
     const nested: InventoryResult = {
-      files: data.files.map(file => ({ ...file, path: "skills/" + file.path })),
-      directories: new Set(["skills", ...[...data.directories].filter(Boolean).map(path => "skills/" + path)]),
+      files: data.files.map((file) => ({ ...file, path: "skills/" + file.path })),
+      directories: new Set(["skills", ...[...data.directories].filter(Boolean).map((path) => "skills/" + path)]),
     };
     // Direct project sources are delivered as their original files. Harnesses
     // may attach native frontmatter alongside the portable Agent Skills fields,
@@ -689,9 +703,18 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     // Packaged components remain strict because their manifest promises the
     // portable package contract rather than a harness-owned local source tree.
     for (const skill of loadSkills(nested, issues, { allowAdditionalFields: true })) {
-      if (names.has(skill.name)) { issue(issues, "error", "skill", `duplicate skill name ${skill.name}`); continue; }
+      if (names.has(skill.name)) {
+        issue(issues, "error", "skill", `duplicate skill name ${skill.name}`);
+        continue;
+      }
       names.add(skill.name);
-      source.skills.push({ name: skill.name, source: resolve(directory, skill.directory.slice(7)), files: nested.files.filter(f => f.path.startsWith(skill.directory + "/")).map(f => ({ ...f, path: f.path.slice(skill.directory.length + 1) })) });
+      source.skills.push({
+        name: skill.name,
+        source: resolve(directory, skill.directory.slice(7)),
+        files: nested.files
+          .filter((f) => f.path.startsWith(skill.directory + "/"))
+          .map((f) => ({ ...f, path: f.path.slice(skill.directory.length + 1) })),
+      });
     }
   }
   if (options.mcp) {
@@ -699,11 +722,17 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     let direct: { path: string; contents: Buffer } | undefined;
     try {
       const path = await realpath(requested);
-      if (DEFAULT_EXCLUDES.some(pattern => minimatch(path.replaceAll("\\", "/"), pattern, MATCH))) {
+      if (DEFAULT_EXCLUDES.some((pattern) => minimatch(path.replaceAll("\\", "/"), pattern, MATCH))) {
         issue(issues, "error", "mcp", "MCP source is an excluded secret/configuration file", requested);
       } else direct = { path, contents: await readFile(path) };
     } catch (error) {
-      issue(issues, "error", "mcp", `could not load direct MCP source ${JSON.stringify(requested)}: ${error instanceof Error ? error.message : String(error)}`, requested);
+      issue(
+        issues,
+        "error",
+        "mcp",
+        `could not load direct MCP source ${JSON.stringify(requested)}: ${error instanceof Error ? error.message : String(error)}`,
+        requested,
+      );
     }
     if (direct) {
       const file = { path: "mcp.json", contents: direct.contents, mode: 0o644 };

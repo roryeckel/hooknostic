@@ -1,6 +1,7 @@
-import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+
 import { applyCodex } from "./apply.js";
 import { CodexDecodeError, decodeCodex } from "./decode.js";
 import { codexShellCodec } from "./toolmap.js";
@@ -34,18 +35,13 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  * portable dispatch → strict JSON stdout / exit code. Fail-open on
  * protocol-level problems.
  */
-export async function runCodexCommandShim(
-  plugin: PluginSpec,
-  options: CodexShimOptions,
-): Promise<void> {
+export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShimOptions): Promise<void> {
   let exitCode = 0;
   try {
     const nativeEvent: unknown = JSON.parse(await readStdin());
     const invocation = {
       targetId: "codex",
-      ...(options.harnessVersion !== undefined
-        ? { harnessVersion: options.harnessVersion }
-        : {}),
+      ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
     };
     const event = decodeCodex(nativeEvent, invocation);
     const result = await dispatch(plugin.hooks, event, {
@@ -69,17 +65,13 @@ export async function runCodexCommandShim(
       // Separator guard: a native stderr payload (e.g. a block reason) need
       // not end in a newline, and concatenating onto it would corrupt the
       // machine-greppable "hooknostic HNxxx" prefix.
-      const separator =
-        native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
+      const separator = native.stderr !== undefined && !native.stderr.endsWith("\n") ? "\n" : "";
       await writeStream(process.stderr, `${separator}${diagnostics}\n`);
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CodexDecodeError)) {
-      await writeStream(
-        process.stderr,
-        `hooknostic: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
     }
     exitCode = 0; // fail-open
   }

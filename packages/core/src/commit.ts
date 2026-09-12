@@ -55,13 +55,9 @@ function isTransient(error: unknown): boolean {
   return code !== undefined && TRANSIENT_CODES.has(code);
 }
 
-const defaultSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function retryTransient<T>(
-  files: FileOperations,
-  operation: () => Promise<T>,
-): Promise<T> {
+async function retryTransient<T>(files: FileOperations, operation: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await operation();
@@ -105,10 +101,7 @@ export async function existingKindProblem(
   return matches ? undefined : `existing output ${outputDir} is not a regular ${kind}`;
 }
 
-async function validateExistingKind(
-  entry: StagedOutput,
-  files: FileOperations,
-): Promise<void> {
+async function validateExistingKind(entry: StagedOutput, files: FileOperations): Promise<void> {
   const problem = await existingKindProblem(entry.outputDir, entry.kind ?? "directory", files);
   if (problem !== undefined) throw new Error(problem);
 }
@@ -134,9 +127,7 @@ export async function commitStagedOutputs(
       await validateExistingKind(entry, files);
       const parent = dirname(entry.outputDir);
       await files.mkdir(parent, { recursive: true });
-      const transactionDir = await files.mkdtemp(
-        join(parent, `.hooknostic-${basename(entry.outputDir)}-`),
-      );
+      const transactionDir = await files.mkdtemp(join(parent, `.hooknostic-${basename(entry.outputDir)}-`));
       const payloadDir = join(transactionDir, "payload");
       prepared.push({
         ...entry,
@@ -154,9 +145,7 @@ export async function commitStagedOutputs(
   } catch (error) {
     await Promise.allSettled(
       prepared.map((entry) =>
-        retryTransient(files, () =>
-          files.rm(entry.transactionDir, { recursive: true, force: true }),
-        ),
+        retryTransient(files, () => files.rm(entry.transactionDir, { recursive: true, force: true })),
       ),
     );
     const entry = preparing ?? entries.at(-1);
@@ -193,9 +182,7 @@ export async function commitStagedOutputs(
     for (const entry of [...prepared].reverse()) {
       try {
         if (entry.installed) {
-          await retryTransient(files, () =>
-            files.rm(entry.outputDir, { recursive: true, force: true }),
-          );
+          await retryTransient(files, () => files.rm(entry.outputDir, { recursive: true, force: true }));
           entry.installed = false;
         }
         if (entry.backedUp) {
@@ -203,22 +190,14 @@ export async function commitStagedOutputs(
           entry.backedUp = false;
         }
       } catch (error) {
-        rollbackErrors.push(
-          `${entry.key}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        rollbackErrors.push(`${entry.key}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    const recoveryPaths = prepared
-      .filter((entry) => entry.backedUp)
-      .map((entry) => entry.backupDir);
+    const recoveryPaths = prepared.filter((entry) => entry.backedUp).map((entry) => entry.backupDir);
     await Promise.allSettled(
       prepared
         .filter((entry) => !entry.backedUp)
-        .map((entry) =>
-          retryTransient(files, () =>
-            files.rm(entry.transactionDir, { recursive: true, force: true }),
-          ),
-        ),
+        .map((entry) => retryTransient(files, () => files.rm(entry.transactionDir, { recursive: true, force: true }))),
     );
     return {
       ok: false,
@@ -236,8 +215,6 @@ export async function commitStagedOutputs(
     };
   }
 
-  await Promise.allSettled(
-    prepared.map((entry) => files.rm(entry.transactionDir, { recursive: true, force: true })),
-  );
+  await Promise.allSettled(prepared.map((entry) => files.rm(entry.transactionDir, { recursive: true, force: true })));
   return { ok: true };
 }

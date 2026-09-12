@@ -1,4 +1,4 @@
-import { definePlugin, hook, block, updateShell } from "@hooknostic/sdk";
+import { block, definePlugin, hook, updateShell } from "@hooknostic/sdk";
 
 /**
  * The design document's Appendix A example: block destructive shell commands

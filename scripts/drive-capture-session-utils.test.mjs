@@ -1,13 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  flattenCaptured,
-  isEntrypoint,
-  listCaptured,
-} from "./drive-capture-session-utils.mjs";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { flattenCaptured, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
 
 const tempDirs = [];
 
@@ -25,16 +23,9 @@ describe("drive capture-session helpers", () => {
     const captured = mkdtempSync(join(tmpdir(), "hooknostic-drive-capture-"));
     tempDirs.push(captured);
     writeFileSync(join(captured, "plugin-load.jsonl"), '{"hook":"plugin-load"}\n', "utf8");
-    writeFileSync(
-      join(captured, "chat.message.jsonl"),
-      '{"hook":"chat.message","input":{}}\n',
-      "utf8",
-    );
+    writeFileSync(join(captured, "chat.message.jsonl"), '{"hook":"chat.message","input":{}}\n', "utf8");
 
-    expect(listCaptured(captured).sort()).toEqual([
-      "chat.message.jsonl",
-      "plugin-load.jsonl",
-    ]);
+    expect(listCaptured(captured).sort()).toEqual(["chat.message.jsonl", "plugin-load.jsonl"]);
     const { dst, count } = flattenCaptured(captured, "opencode");
     expect(count).toBe(1);
     expect(readdirSync(dst)).toEqual(["chat.message-0.json"]);

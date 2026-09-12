@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { block, definePlugin, hook } from "@hooknostic/sdk";
+
 import { buildPluginIR } from "@hooknostic/core";
-import { codexAdapter } from "./index.js";
+import { block, definePlugin, hook } from "@hooknostic/sdk";
+
 import { CODEX_PLUGIN_MODE_RANGE, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
+import { codexAdapter } from "./index.js";
 
-const TARGET = { id: "codex", version: codexHarness.recommendedRange, delivery: "project" as const, output: "./dist/codex" };
+const TARGET = {
+  id: "codex",
+  version: codexHarness.recommendedRange,
+  delivery: "project" as const,
+  output: "./dist/codex",
+};
 const BUNDLE = { code: "// bundled runtime placeholder\n" };
 const OPTIONS = {
   runtime: { onHookError: "continue" as const, timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
@@ -34,10 +41,7 @@ function exampleIR() {
 describe("generateCodexArtifacts", () => {
   it("emits a self-contained repo-level .codex directory", () => {
     const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
-    expect(artifacts.map((a) => a.path)).toEqual([
-      ".codex/hooks.json",
-      ".codex/hooknostic/hooknostic.mjs",
-    ]);
+    expect(artifacts.map((a) => a.path)).toEqual([".codex/hooks.json", ".codex/hooknostic/hooknostic.mjs"]);
     const hooksJson = JSON.parse(artifacts[0]!.contents as string);
     expect(Object.keys(hooksJson.hooks)).toEqual(["PreToolUse", "Stop"]);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0]).toEqual({
@@ -64,13 +68,12 @@ describe("generateCodexArtifacts", () => {
     ]);
     // The manifest is what makes the tree installable at all, and ${PLUGIN_ROOT}
     // below only resolves inside an installed plugin.
-    const manifest = JSON.parse(
-      String(artifacts.find((a) => a.path === ".codex-plugin/plugin.json")!.contents),
-    );
+    const manifest = JSON.parse(String(artifacts.find((a) => a.path === ".codex-plugin/plugin.json")!.contents));
     expect(manifest).toMatchObject({ hooks: "./hooks.json" });
     const hooks = JSON.parse(String(artifacts.find((a) => a.path === "hooks.json")!.contents));
-    const commands = Object.values(hooks.hooks as Record<string, { hooks: { command: string }[] }[]>)
-      .flatMap((groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)));
+    const commands = Object.values(hooks.hooks as Record<string, { hooks: { command: string }[] }[]>).flatMap(
+      (groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)),
+    );
     expect(commands.length).toBeGreaterThan(0);
     for (const command of commands) {
       // Quoted: ${PLUGIN_ROOT} expands to an absolute install path, and a
@@ -83,21 +86,13 @@ describe("generateCodexArtifacts", () => {
   // 0.148.0 binary was read as having removed it and is not re-testable.
   it("declines plugin mode on a range wider than the captured one", () => {
     expect(() =>
-      generateCodexArtifacts(
-        exampleIR(),
-        { ...TARGET, delivery: "package", version: ">=0.148 <1" },
-        BUNDLE,
-        OPTIONS,
-      ),
+      generateCodexArtifacts(exampleIR(), { ...TARGET, delivery: "package", version: ">=0.148 <1" }, BUNDLE, OPTIONS),
     ).toThrow(/requires harness >=0\.153 <1/);
   });
 
   it("keeps the local-mode command relative to the project root", () => {
     const artifacts = generateCodexArtifacts(exampleIR(), TARGET, BUNDLE, OPTIONS);
-    expect(artifacts.map((a) => a.path).sort()).toEqual([
-      ".codex/hooknostic/hooknostic.mjs",
-      ".codex/hooks.json",
-    ]);
+    expect(artifacts.map((a) => a.path).sort()).toEqual([".codex/hooknostic/hooknostic.mjs", ".codex/hooks.json"]);
     expect(String(artifacts.find((a) => a.path === ".codex/hooks.json")!.contents)).toContain(
       "node .codex/hooknostic/hooknostic.mjs",
     );
@@ -121,9 +116,7 @@ describe("generateCodexArtifacts", () => {
       capabilities: {},
     });
     const artifacts = generateCodexArtifacts(ir, TARGET, BUNDLE, OPTIONS);
-    const hooksJson = JSON.parse(
-      artifacts.find((a) => a.path.endsWith("hooks.json"))!.contents as string,
-    );
+    const hooksJson = JSON.parse(artifacts.find((a) => a.path.endsWith("hooks.json"))!.contents as string);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(11);
 
     // codex-cli clamps SessionEnd to 3s, so the 5s default cannot fit and the
@@ -136,9 +129,7 @@ describe("generateCodexArtifacts", () => {
       id: "teardown",
       capabilities: {},
     });
-    expect(() => generateCodexArtifacts(capped, TARGET, BUNDLE, OPTIONS)).toThrow(
-      /SessionEnd.*grants at most 3s/,
-    );
+    expect(() => generateCodexArtifacts(capped, TARGET, BUNDLE, OPTIONS)).toThrow(/SessionEnd.*grants at most 3s/);
   });
 
   it("does not preempt runtime timeouts longer than 60 seconds", () => {

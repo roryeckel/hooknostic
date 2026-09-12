@@ -1,4 +1,5 @@
 import { posix, win32 } from "node:path";
+
 import type { GeneratedArtifact } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 
@@ -66,7 +67,10 @@ export function validateGeneratedArtifacts(
       });
       continue;
     }
-    if (artifact.mode !== undefined && (!Number.isInteger(artifact.mode) || artifact.mode < 0 || artifact.mode > 0o7777)) {
+    if (
+      artifact.mode !== undefined &&
+      (!Number.isInteger(artifact.mode) || artifact.mode < 0 || artifact.mode > 0o7777)
+    ) {
       diagnostics.push({
         code: "HN301",
         severity: "error",

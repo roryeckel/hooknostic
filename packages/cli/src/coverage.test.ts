@@ -7,16 +7,19 @@
  * gap the previous SUBJECTS array admitted it could not catch. Fixture paths
  * and audit ranges derive from each adapter's own `harness` metadata.
  */
-import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
+
 import {
   adapterFixturesDir,
   describeAdapterContract,
   describeScenarioCoverage,
   scenarioById,
 } from "@hooknostic/testkit";
+
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -34,12 +37,8 @@ describe("scheduled scenario limitations", () => {
     expect(scenarioById("permission-request")?.inconclusiveByHarness?.["codex"]).toMatch(
       /interactive permission driver/,
     );
-    expect(scenarioById("agent-subagent")?.inconclusiveByHarness?.["codex"]).toMatch(
-      /hook-trust bypass/,
-    );
-    expect(scenarioById("context-compact")?.inconclusiveByHarness?.["claude"]).toMatch(
-      /cannot deterministically fill/,
-    );
+    expect(scenarioById("agent-subagent")?.inconclusiveByHarness?.["codex"]).toMatch(/hook-trust bypass/);
+    expect(scenarioById("context-compact")?.inconclusiveByHarness?.["claude"]).toMatch(/cannot deterministically fill/);
   });
 });
 

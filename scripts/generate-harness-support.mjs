@@ -9,7 +9,7 @@
 // committed-artifact byte gate: what the docs claim about versions is derived,
 // never hand-maintained.
 import { writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,7 +38,10 @@ for (const adapter of adapters) {
   const meta = adapter.harness;
   lines.push(
     `| ${meta.displayName} (\`${adapter.id}\`) | \`${meta.recommendedRange}\` | ` +
-      `${adapter.supportedHarnessVersions().map((range) => `\`${range}\``).join(", ")} | ` +
+      `${adapter
+        .supportedHarnessVersions()
+        .map((range) => `\`${range}\``)
+        .join(", ")} | ` +
       `${meta.referenceVersion} | \`fixtures/${adapter.id}/${meta.fixtureDir}\` |`,
   );
 }
@@ -63,9 +66,13 @@ for (const adapter of adapters) {
   }
   lines.push("");
   if (adapter.projectComponentProfiles) {
-    const projection = resolveAgentPluginProjection({ id: adapter.id, version: meta.recommendedRange, delivery: "project", output: "." }, { profiles: adapter.projectComponentProfiles });
+    const projection = resolveAgentPluginProjection(
+      { id: adapter.id, version: meta.recommendedRange, delivery: "project", output: "." },
+      { profiles: adapter.projectComponentProfiles },
+    );
     lines.push("#### Project delivery", "", "| Component | Support | Rationale |", "| --- | --- | --- |");
-    for (const [component, support] of Object.entries(projection.matrix ?? {})) lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
+    for (const [component, support] of Object.entries(projection.matrix ?? {}))
+      lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
     lines.push("", "Project delivery validation records:", "");
     lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
     for (const profile of projection.profilesUsed) {

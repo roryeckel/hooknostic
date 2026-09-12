@@ -1,10 +1,5 @@
 import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import {
-  assertNativeTimeoutFits,
-  hooksByNativeEvent,
-  nativeTimeoutSeconds,
-  rangeWithin,
-} from "@hooknostic/core";
+import { assertNativeTimeoutFits, hooksByNativeEvent, nativeTimeoutSeconds, rangeWithin } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 
 /**
@@ -63,12 +58,7 @@ function codexNativeTimeout(
   runtime: Parameters<typeof nativeTimeoutSeconds>[1],
 ): number {
   const seconds = nativeTimeoutSeconds(reaching, runtime);
-  assertNativeTimeoutFits(
-    nativeEvent,
-    seconds,
-    CODEX_NATIVE_TIMEOUT_CEILING_SECONDS,
-    "codex-cli",
-  );
+  assertNativeTimeoutFits(nativeEvent, seconds, CODEX_NATIVE_TIMEOUT_CEILING_SECONDS, "codex-cli");
   return seconds;
 }
 
@@ -96,15 +86,9 @@ export function generateCodexArtifacts(
   // honoured, and does NOT accept Claude's exec form: of three spellings on one
   // event, `command` + `args` was the one that failed, while the quoted and bare
   // strings both ran (.capture/codex-hook-command).
-  const command = bundled
-    ? `node "\${PLUGIN_ROOT}/${runtimePath}"`
-    : `node ${runtimePath}`;
+  const command = bundled ? `node "\${PLUGIN_ROOT}/${runtimePath}"` : `node ${runtimePath}`;
 
-  const byNativeEvent = hooksByNativeEvent(
-    plugin.hooks,
-    target.id,
-    (event) => CODEX_NATIVE_EVENT[event],
-  );
+  const byNativeEvent = hooksByNativeEvent(plugin.hooks, target.id, (event) => CODEX_NATIVE_EVENT[event]);
 
   const hooksJson = {
     description: plugin.description ?? `Hooknostic-generated hooks for ${plugin.name}`,

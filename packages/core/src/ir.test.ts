@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+
 import { buildPluginIR, hookAppliesToTarget } from "./ir.js";
 
 function examplePlugin() {
@@ -17,8 +19,7 @@ function examplePlugin() {
         async run(event, ctx) {
           const { command = "" } = event.tool.input as { command?: string };
           if (command.includes("rm -rf /")) return block("no");
-          if (ctx.capabilities.has("tool.before.input.replace"))
-            return replaceInput({ command });
+          if (ctx.capabilities.has("tool.before.input.replace")) return replaceInput({ command });
           return;
         },
       }),
@@ -162,8 +163,7 @@ describe("buildPluginIR", () => {
       name: "bad-scope",
       hooks: [hook("tool.after", { id: "t", async run() {} })],
     });
-    (plugin.hooks[0]!.capabilities as Record<string, string>)["tool.before.block"] =
-      "required";
+    (plugin.hooks[0]!.capabilities as Record<string, string>)["tool.before.block"] = "required";
     const result = buildPluginIR(plugin);
     expect(result.ir).toBeUndefined();
     expect(result.diagnostics[0]).toMatchObject({
@@ -179,9 +179,7 @@ describe("hookAppliesToTarget", () => {
     expect(hookAppliesToTarget({}, "claude")).toBe(true);
     expect(hookAppliesToTarget({ targets: { include: ["claude"] } }, "claude")).toBe(true);
     expect(hookAppliesToTarget({ targets: { include: ["claude"] } }, "codex")).toBe(false);
-    expect(hookAppliesToTarget({ targets: { exclude: ["opencode"] } }, "opencode")).toBe(
-      false,
-    );
+    expect(hookAppliesToTarget({ targets: { exclude: ["opencode"] } }, "opencode")).toBe(false);
     expect(hookAppliesToTarget({ targets: { exclude: ["opencode"] } }, "claude")).toBe(true);
   });
 });

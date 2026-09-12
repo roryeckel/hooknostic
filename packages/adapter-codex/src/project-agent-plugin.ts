@@ -1,10 +1,3 @@
-import {
-  AGENT_PLUGIN_COMPONENT_IDS,
-  classifyStdioCwd,
-  componentSummary,
-  hasUnportableCommandPath,
-  isRejectedSkillPath,
-} from "@hooknostic/agent-plugin";
 import type {
   AgentPluginComponentId,
   AgentPluginIssue,
@@ -13,13 +6,16 @@ import type {
   AgentPluginProjectionPlan,
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
-import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import {
-  MCP_LAUNCHER_FILE,
-  MCP_SERVERS_FILE,
-  bundleMcpLauncher,
-  rangeWithin,
-} from "@hooknostic/core";
+  AGENT_PLUGIN_COMPONENT_IDS,
+  classifyStdioCwd,
+  componentSummary,
+  hasUnportableCommandPath,
+  isRejectedSkillPath,
+} from "@hooknostic/agent-plugin";
+import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
+
 import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js";
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
@@ -87,7 +83,10 @@ interface CodexNativeManifest {
  * portable `headers` key is ignored for the same reason; `http_headers` is what
  * Codex reads, and through it a literal header value is preserved.
  */
-export function translateMcp(source: Pick<AgentPluginPackage, "mcp">, projectCwdServers: ReadonlySet<string> = new Set()): {
+export function translateMcp(
+  source: Pick<AgentPluginPackage, "mcp">,
+  projectCwdServers: ReadonlySet<string> = new Set(),
+): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
   launcherServers: McpLauncherServer[];
   omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
@@ -104,8 +103,7 @@ export function translateMcp(source: Pick<AgentPluginPackage, "mcp">, projectCwd
         omitted.push({
           name,
           component: "agent-plugin.mcp.sse",
-          reason:
-            "Codex has no sse transport; emitting it would register a streamable_http connection to the same url",
+          reason: "Codex has no sse transport; emitting it would register a streamable_http connection to the same url",
         });
         continue;
       }
@@ -307,14 +305,14 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-08",
             method: "live-probe",
             artifact: ".capture/codex-native-mcp",
-            what: "The declared cwd is honoured at spawn, not merely recorded: in a session a server declaring cwd \".\" started with process.cwd() equal to the installed plugin root and resolved its relative argument against it, while an identical server declaring no cwd never started. PLUGIN_ROOT and PLUGIN_DATA were unset in the spawned process.",
+            what: 'The declared cwd is honoured at spawn, not merely recorded: in a session a server declaring cwd "." started with process.cwd() equal to the installed plugin root and resolved its relative argument against it, while an identical server declaring no cwd never started. PLUGIN_ROOT and PLUGIN_DATA were unset in the spawned process.',
           },
           {
             version: "0.153.2",
             date: "2026-09-08",
             method: "live-probe",
             artifact: ".capture/codex-plugin-launcher",
-            what: "An installed projected plugin started its stdio server through the generated launcher: reached by `node ./runtime/mcp-launcher.mjs <index>` with cwd \".\", the server received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and the declared working directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI.",
+            what: 'An installed projected plugin started its stdio server through the generated launcher: reached by `node ./runtime/mcp-launcher.mjs <index>` with cwd ".", the server received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and the declared working directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI.',
           },
           {
             version: "0.153.2",
@@ -395,14 +393,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const manifest: CodexNativeManifest = {
       name: source.manifest.name,
       ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
-      ...(source.manifest.description === undefined
-        ? {}
-        : { description: source.manifest.description }),
+      ...(source.manifest.description === undefined ? {} : { description: source.manifest.description }),
       ...(source.manifest.author === undefined ? {} : { author: source.manifest.author }),
       ...(source.manifest.homepage === undefined ? {} : { homepage: source.manifest.homepage }),
-      ...(source.manifest.repository === undefined
-        ? {}
-        : { repository: source.manifest.repository }),
+      ...(source.manifest.repository === undefined ? {} : { repository: source.manifest.repository }),
       ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
       ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
       ...(source.skills.length === 0 ? {} : { skills: "./skills/" }),
@@ -496,9 +490,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const counts = componentSummary(source, {
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component === "agent-plugin.runtime-package"
-          ? discovered
-          : (skippedByComponent.get(component) ?? 0),
+        component === "agent-plugin.runtime-package" ? discovered : (skippedByComponent.get(component) ?? 0),
     });
     if (context.runtimePackage !== undefined) {
       omissions.push({
@@ -514,9 +506,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(source.directories === undefined
         ? {}
         : {
-            directories: source.directories.filter(
-              (directory) => !insideRejectedSkill(`${directory}/`),
-            ),
+            directories: source.directories.filter((directory) => !insideRejectedSkill(`${directory}/`)),
           }),
       issues,
       summary: {

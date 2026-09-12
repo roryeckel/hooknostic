@@ -1,18 +1,20 @@
-import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { applyProject, reconcileProject } from "@hooknostic/core";
 import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
-import { chmod, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { createRequire } from "node:module";
+import type { AddressInfo, Socket } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { expect } from "vitest";
+
+import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
+import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
-import { expect } from "vitest";
 
 const RUNTIME_POLICY = {
   onHookError: "continue" as const,
@@ -100,9 +102,7 @@ export function contextAddEvents(adapter: HarnessAdapter): ReadonlySet<HookEvent
   const target = targetFor(adapter, ".");
   const matrix = adapter.capabilities(target).matrix ?? {};
   return new Set(
-    HOOK_EVENT_NAMES.filter(
-      (event) => matrix[`${event}.context.add` as keyof typeof matrix] !== undefined,
-    ),
+    HOOK_EVENT_NAMES.filter((event) => matrix[`${event}.context.add` as keyof typeof matrix] !== undefined),
   );
 }
 
@@ -132,10 +132,7 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "replace-outputs",
 ];
 
-function playbackPluginSource(
-  events: readonly HookEventName[],
-  contextAdd: ReadonlySet<HookEventName>,
-): string {
+function playbackPluginSource(events: readonly HookEventName[], contextAdd: ReadonlySet<HookEventName>): string {
   const definitions = events.map((event) => {
     const capabilities = [
       event === "tool.before"
@@ -171,13 +168,12 @@ function playbackPluginSource(
       },`
         : "";
 
-    const contextAddBranch =
-      contextAdd.has(event)
-        ? `
+    const contextAddBranch = contextAdd.has(event)
+      ? `
         if (effects.includes("context-add")) {
           return addContext("hooknostic-context [${event}]");
         }`
-        : "";
+      : "";
 
     const extraEffects = `
         const effects = (process.env["HOOKNOSTIC_PLAYBACK_EFFECTS"] ?? "").split(",").filter(Boolean);
@@ -319,9 +315,7 @@ export async function buildPlaybackArtifact(
         }
         const context = contextCapabilityFor(event);
         if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
-        return Object.keys(declared).length > 0
-          ? { capabilities: declared as Record<CapabilityId, "optional"> }
-          : {};
+        return Object.keys(declared).length > 0 ? { capabilities: declared as Record<CapabilityId, "optional"> } : {};
       })(),
       async run() {},
     }),
@@ -329,9 +323,7 @@ export async function buildPlaybackArtifact(
   const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", hooks }));
   if (ir === undefined) {
     throw new Error(
-      `${adapter.id}: could not build playback IR: ${diagnostics
-        .map((diagnostic) => diagnostic.message)
-        .join("; ")}`,
+      `${adapter.id}: could not build playback IR: ${diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`,
     );
   }
 
@@ -364,12 +356,18 @@ export async function buildPlaybackArtifact(
     const integration = adapter.projectIntegration(artifacts, prefix, "hooknostic.config.ts");
     if (override.components) {
       if (!adapter.projectComponents) throw new Error("missing project component integrator");
-      const components = await adapter.projectComponents(override.components, artifactDir, prefix, "hooknostic.config.ts", override.componentOptions ?? {});
+      const components = await adapter.projectComponents(
+        override.components,
+        artifactDir,
+        prefix,
+        "hooknostic.config.ts",
+        override.componentOptions ?? {},
+      );
       integration.files.push(...components.files);
       integration.entries.push(...components.entries);
       if (components.absent) integration.absent = components.absent;
     }
-    integration.files.push(...artifacts.map(file => ({ ...file, path: `${prefix}/${file.path}` })));
+    integration.files.push(...artifacts.map((file) => ({ ...file, path: `${prefix}/${file.path}` })));
     const plan = await reconcileProject(artifactDir, "hooknostic.config.ts", integration);
     await applyProject(artifactDir, "hooknostic.config.ts", plan);
   }
@@ -386,7 +384,13 @@ export async function buildPlaybackArtifact(
       : artifact.path.endsWith("hooknostic.js"),
   );
   if (runtime === undefined) throw new Error(`${adapter.id}: generated runtime artifact not found`);
-  return { artifactDir, runtimePath: join(artifactDir, prefix, runtime.path), tracePath, events, ...(override.project ? { project: true } : {}) };
+  return {
+    artifactDir,
+    runtimePath: join(artifactDir, prefix, runtime.path),
+    tracePath,
+    events,
+    ...(override.project ? { project: true } : {}),
+  };
 }
 
 function runNode(
@@ -447,9 +451,7 @@ export function runProcess(
       child.stdin.destroy();
       child.stdout.destroy();
       child.stderr.destroy();
-      rejectPromise(
-        new Error(`${command} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`),
-      );
+      rejectPromise(new Error(`${command} timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
     }, options.timeoutMs ?? 60_000);
     child.on("error", (error) => {
       if (settled) return;
@@ -487,14 +489,8 @@ export function openCodePlaybackConfigHome(projectDir: string): string {
   return join(projectDir, ".opencode-config");
 }
 
-export async function prepareOpenCodePluginDependency(
-  projectDir: string,
-  harnessVersion: string,
-): Promise<void> {
-  const dependencyDirs = [
-    join(projectDir, ".opencode"),
-    join(openCodePlaybackConfigHome(projectDir), "opencode"),
-  ];
+export async function prepareOpenCodePluginDependency(projectDir: string, harnessVersion: string): Promise<void> {
+  const dependencyDirs = [join(projectDir, ".opencode"), join(openCodePlaybackConfigHome(projectDir), "opencode")];
   for (const dependencyDir of dependencyDirs) {
     const result = await runProcess(
       "npm",
@@ -583,20 +579,21 @@ export function scriptedTool(
   // Namespace tools (Codex MCP groups, multi_agent_v1) resolve by the exact
   // {namespace, name} pair; the pair emission is the same for every payload,
   // so compute it once and branch only on the arguments below.
-  const namespaceEmission = tool["namespace"] !== undefined
-    ? {
-        // The namespace tool spec the model sees carries name
-        // "mcp__<server>", and the callable emission mirrors it verbatim:
-        // name = bare inner tool name, namespace = the container name
-        // ("mcp__<server>", no trailing underscores). The flattened-name form
-        // (`mcp__<server>__<tool>` in `name` alone) and the trailing-__
-        // namespace variant both fail the exact match with "unsupported
-        // call" on codex 0.151.0 (verified live; upstream openai/codex#33263
-        // records the same resolution failure for proxy-flattened calls).
-        name,
-        namespace: String(tool["namespace"]),
-      }
-    : { name };
+  const namespaceEmission =
+    tool["namespace"] !== undefined
+      ? {
+          // The namespace tool spec the model sees carries name
+          // "mcp__<server>", and the callable emission mirrors it verbatim:
+          // name = bare inner tool name, namespace = the container name
+          // ("mcp__<server>", no trailing underscores). The flattened-name form
+          // (`mcp__<server>__<tool>` in `name` alone) and the trailing-__
+          // namespace variant both fail the exact match with "unsupported
+          // call" on codex 0.151.0 (verified live; upstream openai/codex#33263
+          // records the same resolution failure for proxy-flattened calls).
+          name,
+          namespace: String(tool["namespace"]),
+        }
+      : { name };
   const schema = jsonSchemaForTool(tool);
   const properties =
     schema["properties"] !== null && typeof schema["properties"] === "object"
@@ -620,9 +617,7 @@ export function scriptedTool(
       return {
         ...namespaceEmission,
         arguments: JSON.stringify({
-          ...(properties["description"] !== undefined
-            ? { description: "Playback subagent probe" }
-            : {}),
+          ...(properties["description"] !== undefined ? { description: "Playback subagent probe" } : {}),
           [promptKey]: "Say the single word ready, then stop.",
           ...(properties["subagent_type"] !== undefined ? { subagent_type: "general-purpose" } : {}),
           ...(properties["run_in_background"] !== undefined ? { run_in_background: false } : {}),
@@ -661,18 +656,12 @@ export function scriptedTool(
     ...namespaceEmission,
     arguments: JSON.stringify({
       [key]: value,
-      ...(properties["description"] !== undefined
-        ? { description: "Playback probe command" }
-        : {}),
+      ...(properties["description"] !== undefined ? { description: "Playback probe command" } : {}),
     }),
   };
 }
 
-function sse(
-  response: ServerResponse,
-  events: unknown[],
-  namedEvents = false,
-): void {
+function sse(response: ServerResponse, events: unknown[], namedEvents = false): void {
   response.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
@@ -801,21 +790,17 @@ function responsesTurn(
       { type: "response.output_item.done", output_index: 0, item },
     );
   } else {
-    events.push(
-      {
-        type: "response.output_item.done",
-        output_index: 0,
-        item: {
-          type: "message",
-          role: "assistant",
-          id: "msg_playback",
-          status: "completed",
-          content: [
-            { type: "output_text", text: action.text ?? "playback complete", annotations: [] },
-          ],
-        },
+    events.push({
+      type: "response.output_item.done",
+      output_index: 0,
+      item: {
+        type: "message",
+        role: "assistant",
+        id: "msg_playback",
+        status: "completed",
+        content: [{ type: "output_text", text: action.text ?? "playback complete", annotations: [] }],
       },
-    );
+    });
   }
   events.push({
     type: "response.completed",
@@ -833,12 +818,7 @@ function responsesTurn(
   sse(response, events);
 }
 
-function chatTurn(
-  response: ServerResponse,
-  request: Record<string, unknown>,
-  turn: number,
-  action: TurnAction,
-): void {
+function chatTurn(response: ServerResponse, request: Record<string, unknown>, turn: number, action: TurnAction): void {
   const base = {
     id: `chatcmpl-playback-${turn}`,
     object: "chat.completion.chunk",
@@ -914,10 +894,7 @@ export async function startModelPlayback(
   const turns: ScenarioScript =
     script ??
     (scenario === "rewrite" || scenario === "block" || scenario === "fail" || scenario === "continuation"
-      ? [
-          { kind: "tool", disposition: scenario },
-          { kind: "text" },
-        ]
+      ? [{ kind: "tool", disposition: scenario }, { kind: "text" }]
       : [{ kind: "text", text: "playback complete" }]);
   const requests: unknown[] = [];
   const errors: string[] = [];
@@ -977,9 +954,7 @@ export async function startModelPlayback(
           JSON.stringify({
             object: "list",
             models: [modelInfo],
-            data: [
-              { ...modelInfo, object: "model", owned_by: "hooknostic" },
-            ],
+            data: [{ ...modelInfo, object: "model", owned_by: "hooknostic" }],
           }),
         );
         return;
@@ -1046,21 +1021,16 @@ export async function startModelPlayback(
 }
 
 async function fixturePairs(fixturesDir: string) {
-  const names = (await readdir(fixturesDir))
-    .filter((name) => name.endsWith(".input.json"))
-    .sort();
+  const names = (await readdir(fixturesDir)).filter((name) => name.endsWith(".input.json")).sort();
   return Promise.all(
     names.map(async (name) => {
       const stem = name.slice(0, -".input.json".length);
       return {
         name,
-        input: JSON.parse(await readFile(join(fixturesDir, name), "utf8")) as Record<
-          string,
-          unknown
-        >,
-        canonical: JSON.parse(
-          await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8"),
-        ) as { event: HookEventName },
+        input: JSON.parse(await readFile(join(fixturesDir, name), "utf8")) as Record<string, unknown>,
+        canonical: JSON.parse(await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8")) as {
+          event: HookEventName;
+        },
       };
     }),
   );
@@ -1078,10 +1048,7 @@ export async function traceEvents(path: string): Promise<HookEventName[]> {
   return (await readTrace(path)).map((entry) => entry.event);
 }
 
-export async function replayCommandFixtures(
-  build: PlaybackBuild,
-  fixturesDir: string,
-): Promise<void> {
+export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
   const pairs = await fixturePairs(fixturesDir);
   for (const fixture of pairs) {
     const result = await runNode([build.runtimePath], {
@@ -1096,18 +1063,16 @@ export async function replayCommandFixtures(
   );
 }
 
-export async function replayOpenCodeFixtures(
-  build: PlaybackBuild,
-  fixturesDir: string,
-): Promise<void> {
+export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
   const pairs = await fixturePairs(fixturesDir);
   const previousTrace = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
   process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = build.tracePath;
   try {
     const imported = (await import(`${pathToFileURL(build.runtimePath).href}?playback=1`)) as {
-      default: (input: { directory: string; worktree?: string }) => Promise<
-        Record<string, (input: unknown, output: unknown) => Promise<void>>
-      >;
+      default: (input: {
+        directory: string;
+        worktree?: string;
+      }) => Promise<Record<string, (input: unknown, output: unknown) => Promise<void>>>;
     };
     for (const fixture of pairs) {
       const native = fixture.input as {

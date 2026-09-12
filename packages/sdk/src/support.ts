@@ -2,12 +2,7 @@
  * Support fidelity levels for a capability on a given target, ordered
  * `exact > emulated > approximate > unsupported`.
  */
-export const SUPPORT_LEVELS = [
-  "exact",
-  "emulated",
-  "approximate",
-  "unsupported",
-] as const;
+export const SUPPORT_LEVELS = ["exact", "emulated", "approximate", "unsupported"] as const;
 
 export type SupportLevel = (typeof SUPPORT_LEVELS)[number];
 

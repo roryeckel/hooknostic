@@ -1,20 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import {
-  cp,
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  realpath,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
 import { afterAll, describe, expect, it } from "vitest";
 
 const ROOT_VERSION = (
@@ -40,9 +31,7 @@ async function manifestOf(packageDir: string): Promise<Manifest> {
 async function walk(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const nested = await Promise.all(
-    entries.map((entry) =>
-      entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)],
-    ),
+    entries.map((entry) => (entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)])),
   );
   return nested.flat();
 }
@@ -58,10 +47,7 @@ function packageRoot(name: string, consumerDir: string): string {
   let dir = dirname(require.resolve(name));
   for (;;) {
     const manifest = join(dir, "package.json");
-    if (
-      existsSync(manifest) &&
-      (JSON.parse(readFileSync(manifest, "utf8")) as Manifest).name === name
-    ) {
+    if (existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as Manifest).name === name) {
       return dir;
     }
     const parent = dirname(dir);
@@ -89,9 +75,7 @@ describe("public package outputs", () => {
       types: "./dist/index.d.ts",
       default: "./dist/index.js",
     });
-    expect(await readFile(resolve(packageRoot, "dist/index.d.ts"), "utf8")).toContain(
-      "export",
-    );
+    expect(await readFile(resolve(packageRoot, "dist/index.d.ts"), "utf8")).toContain("export");
     const sdk = await import(pathToFileURL(resolve(packageRoot, "dist/index.js")).href);
     expect(sdk.definePlugin).toBeTypeOf("function");
   });
@@ -104,16 +88,12 @@ describe("public package outputs", () => {
       types: "./dist/index.d.ts",
       default: "./dist/index.js",
     });
-    expect(await readFile(resolve(packageRoot, "dist/index.d.ts"), "utf8")).toContain(
-      "export",
-    );
+    expect(await readFile(resolve(packageRoot, "dist/index.d.ts"), "utf8")).toContain("export");
     const cli = await import(pathToFileURL(resolve(packageRoot, "dist/index.js")).href);
     expect(cli.runCli).toBeTypeOf("function");
     expect(cli.runBuild).toBeTypeOf("function");
     // The binary reuses the programmatic bundle instead of duplicating it.
-    expect(await readFile(resolve(packageRoot, "dist/hooknostic.mjs"), "utf8")).toContain(
-      'from "./index.js"',
-    );
+    expect(await readFile(resolve(packageRoot, "dist/hooknostic.mjs"), "utf8")).toContain('from "./index.js"');
   });
 
   it("ships prebundled adapter shims whose only external import is the SDK", async () => {
@@ -132,14 +112,10 @@ describe("public package outputs", () => {
   });
 
   it("emits declarations that need no unpublished workspace package", async () => {
-    const files = (await walk(resolve(REPO, "packages/cli/dist/types"))).filter((f) =>
-      f.endsWith(".d.ts"),
-    );
+    const files = (await walk(resolve(REPO, "packages/cli/dist/types"))).filter((f) => f.endsWith(".d.ts"));
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      expect(await readFile(file, "utf8"), file).not.toMatch(
-        /["']@hooknostic\/(agent-plugin|core|runtime|adapter-)/,
-      );
+      expect(await readFile(file, "utf8"), file).not.toMatch(/["']@hooknostic\/(agent-plugin|core|runtime|adapter-)/);
     }
   });
 });
@@ -198,9 +174,7 @@ describe("simulated registry install", () => {
         for (const dependency of Object.keys(manifest.dependencies ?? {})) {
           if (published.has(dependency)) continue;
           // Everything else must exist on the registry: no unpublished workspace packages.
-          expect(dependency, `${manifest.name} depends on ${dependency}`).not.toMatch(
-            /^@hooknostic\//,
-          );
+          expect(dependency, `${manifest.name} depends on ${dependency}`).not.toMatch(/^@hooknostic\//);
           await linkThirdParty(dependency, consumerDir, installRoot);
         }
       }
@@ -210,10 +184,7 @@ describe("simulated registry install", () => {
       expect(installedAgentPlugin.loadAgentPlugin).toBeTypeOf("function");
 
       await mkdir(join(project, "src"), { recursive: true });
-      await cp(
-        join(REPO, "examples/basic/hooknostic.config.ts"),
-        join(project, "hooknostic.config.ts"),
-      );
+      await cp(join(REPO, "examples/basic/hooknostic.config.ts"), join(project, "hooknostic.config.ts"));
       await cp(join(REPO, "examples/basic/src/hooks.ts"), join(project, "src/hooks.ts"));
       await writeFile(
         join(project, "package.json"),
@@ -243,7 +214,9 @@ describe("simulated registry install", () => {
       );
       expect(run.status, `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`).toBe(0);
       // Piped stdout arrived complete: the binary lets the loop drain instead of forcing exit.
-      const report = JSON.parse(run.stdout) as { targets: Record<string, { status: string; requestedVersion: string }> };
+      const report = JSON.parse(run.stdout) as {
+        targets: Record<string, { status: string; requestedVersion: string }>;
+      };
       expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode"]);
       for (const target of Object.values(report.targets)) expect(target.status).toBe("success");
 
@@ -266,9 +239,7 @@ describe("simulated registry install", () => {
       // Spawned rather than imported in-process: vitest routes import()
       // through vite-node, which resolves and transforms differently than
       // Node, so an in-process import would not test the stated contract.
-      const artifact = pathToFileURL(
-        join(project, "dist/opencode/.opencode/plugins/hooknostic.js"),
-      ).href;
+      const artifact = pathToFileURL(join(project, "dist/opencode/.opencode/plugins/hooknostic.js")).href;
       const load = spawnSync(
         process.execPath,
         [
@@ -286,25 +257,47 @@ describe("simulated registry install", () => {
       // The installed compiler must resolve its own launcher dependencies;
       // the projected launcher must then run with no node_modules beside it.
       await mkdir(join(project, "portable"));
-      await writeFile(join(project, "portable/plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "portable-probe",
-      }));
-      await writeFile(join(project, "portable/mcp.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-        mcpServers: { probe: { type: "stdio", command: "node" } },
-      }));
+      await writeFile(
+        join(project, "portable/plugin.json"),
+        JSON.stringify({
+          $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+          name: "portable-probe",
+        }),
+      );
+      await writeFile(
+        join(project, "portable/mcp.json"),
+        JSON.stringify({
+          $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+          mcpServers: { probe: { type: "stdio", command: "node" } },
+        }),
+      );
       const config = join(project, "projection.config.ts");
-      await writeFile(config, `export default ${JSON.stringify({
-        components: { root: "portable", targets: ["claude"] },
-        targets: { claude: { version: report.targets["claude"]!.requestedVersion, delivery: "package", output: "projected" } },
-      })};`);
-      const projection = spawnSync(process.execPath, [
-        join(cliRoot, "node_modules/hooknostic/bin/hooknostic.mjs"), "build", "--config", config,
-      ], { cwd: project, encoding: "utf8", timeout: 60_000 });
+      await writeFile(
+        config,
+        `export default ${JSON.stringify({
+          components: { root: "portable", targets: ["claude"] },
+          targets: {
+            claude: { version: report.targets["claude"]!.requestedVersion, delivery: "package", output: "projected" },
+          },
+        })};`,
+      );
+      const projection = spawnSync(
+        process.execPath,
+        [join(cliRoot, "node_modules/hooknostic/bin/hooknostic.mjs"), "build", "--config", config],
+        { cwd: project, encoding: "utf8", timeout: 60_000 },
+      );
       expect(projection.status, `${projection.stdout}\n${projection.stderr}`).toBe(0);
-      const launcher = spawnSync(process.execPath, [
-        join(project, "projected/runtime/mcp-launcher.mjs"), project, process.execPath, "-e", 'console.log("standalone launcher")',
-      ], { cwd: project, encoding: "utf8", timeout: 10_000 });
+      const launcher = spawnSync(
+        process.execPath,
+        [
+          join(project, "projected/runtime/mcp-launcher.mjs"),
+          project,
+          process.execPath,
+          "-e",
+          'console.log("standalone launcher")',
+        ],
+        { cwd: project, encoding: "utf8", timeout: 10_000 },
+      );
       expect(launcher.status, launcher.stderr).toBe(0);
       expect(launcher.stdout.trim()).toBe("standalone launcher");
     },

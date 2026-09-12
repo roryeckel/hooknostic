@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { shellCodec } from "./tools.js";
 
 // A Codex-shaped table exercises every feature: two tools disagreeing on the
@@ -21,10 +22,7 @@ describe("shellCodec", () => {
 
   it("preserves every sibling key and adds none", () => {
     const input = { cmd: "echo old", workdir: "C:/proj", login: false, shell: "cmd" };
-    const encoded = CODEC.encode("exec_command", input, { command: "echo new" }) as Record<
-      string,
-      unknown
-    >;
+    const encoded = CODEC.encode("exec_command", input, { command: "echo new" }) as Record<string, unknown>;
     // Codex's wire schemas are additionalProperties:false, so the encoded
     // object must contain exactly the keys the wire already carried.
     expect(Object.keys(encoded).sort()).toEqual(Object.keys(input).sort());
@@ -97,9 +95,12 @@ describe("shellCodec", () => {
   });
 
   it("applies normalizeName to the lookup", () => {
-    const lower = shellCodec({ bash: { commandKey: "command" } }, {
-      normalizeName: (n) => n.toLowerCase(),
-    });
+    const lower = shellCodec(
+      { bash: { commandKey: "command" } },
+      {
+        normalizeName: (n) => n.toLowerCase(),
+      },
+    );
     expect(lower.classify("Bash", { command: "x" })?.command).toBe("x");
     expect(lower.encode("BASH", { command: "x" }, { command: "y" })).toEqual({ command: "y" });
   });

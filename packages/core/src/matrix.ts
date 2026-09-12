@@ -1,12 +1,9 @@
 import semver from "semver";
+
 import type { CapabilityId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, leastCapable } from "@hooknostic/sdk";
-import type {
-  CapabilityEntry,
-  CapabilityMatrix,
-  CapabilityProfile,
-  CapabilityResolutionResult,
-} from "./adapter.js";
+
+import type { CapabilityEntry, CapabilityMatrix, CapabilityProfile, CapabilityResolutionResult } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 
 interface StableInterval {
@@ -114,14 +111,12 @@ function containsInterval(container: StableInterval, candidate: StableInterval):
     !container.lower ||
     (candidate.lower !== undefined &&
       (container.lower.compare(candidate.lower) < 0 ||
-        (container.lower.compare(candidate.lower) === 0 &&
-          (container.lowerInclusive || !candidate.lowerInclusive))));
+        (container.lower.compare(candidate.lower) === 0 && (container.lowerInclusive || !candidate.lowerInclusive))));
   const upperCovered =
     !container.upper ||
     (candidate.upper !== undefined &&
       (container.upper.compare(candidate.upper) > 0 ||
-        (container.upper.compare(candidate.upper) === 0 &&
-          (container.upperInclusive || !candidate.upperInclusive))));
+        (container.upper.compare(candidate.upper) === 0 && (container.upperInclusive || !candidate.upperInclusive))));
   return lowerCovered && upperCovered;
 }
 
@@ -131,9 +126,7 @@ function hasExplicitPrerelease(range: string): boolean {
 
 export function isRangeFullyCovered(requestedRange: string, profileRanges: readonly string[]): boolean {
   const union = profileRanges.join(" || ");
-  const options = hasExplicitPrerelease(requestedRange)
-    ? { includePrerelease: true }
-    : undefined;
+  const options = hasExplicitPrerelease(requestedRange) ? { includePrerelease: true } : undefined;
   if (semver.subset(requestedRange, union, options)) return true;
   // node-semver treats the synthetic `-0` boundaries used for `<major/minor>`
   // ranges as prerelease gaps. Retry over stable-version intervals so adjacent
@@ -143,9 +136,7 @@ export function isRangeFullyCovered(requestedRange: string, profileRanges: reado
     return false;
   }
 
-  const coverage = profileRanges
-    .flatMap((range) => stableIntervals(new semver.Range(range)))
-    .sort(compareLower);
+  const coverage = profileRanges.flatMap((range) => stableIntervals(new semver.Range(range))).sort(compareLower);
   const merged: StableInterval[] = [];
   for (const interval of coverage) {
     const previous = merged.at(-1);
@@ -193,17 +184,13 @@ export function resolveCapabilityMatrix(
       severity: "error",
       target: adapterId,
       message: `"${requestedRange}" is not a valid semver range.`,
-      remediation: "use a bounded semver range such as \">=2.1 <3\" in the target's version field.",
+      remediation: 'use a bounded semver range such as ">=2.1 <3" in the target\'s version field.',
     });
     return { profilesUsed: [], diagnostics };
   }
 
-  const rangeOptions = hasExplicitPrerelease(requestedRange)
-    ? { includePrerelease: true }
-    : undefined;
-  const used = profiles.filter((p) =>
-    semver.intersects(p.range, requestedRange, rangeOptions),
-  );
+  const rangeOptions = hasExplicitPrerelease(requestedRange) ? { includePrerelease: true } : undefined;
+  const used = profiles.filter((p) => semver.intersects(p.range, requestedRange, rangeOptions));
   if (used.length === 0) {
     diagnostics.push({
       code: "HN203",
@@ -216,7 +203,12 @@ export function resolveCapabilityMatrix(
     return { profilesUsed: [], diagnostics };
   }
 
-  if (!isRangeFullyCovered(requestedRange, used.map((profile) => profile.range))) {
+  if (
+    !isRangeFullyCovered(
+      requestedRange,
+      used.map((profile) => profile.range),
+    )
+  ) {
     diagnostics.push({
       code: "HN203",
       severity: "error",

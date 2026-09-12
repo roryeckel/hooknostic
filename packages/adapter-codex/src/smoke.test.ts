@@ -15,11 +15,14 @@ import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
-import { codexHarness } from "./harness.js";
-import { bundleRuntime, buildPluginIR } from "@hooknostic/core";
+
+import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import { definePlugin, hook } from "@hooknostic/sdk";
-import { codexShimEntrySource, codexCapabilityProfiles, generateCodexArtifacts } from "./index.js";
+
+import { codexHarness } from "./harness.js";
+import { codexCapabilityProfiles, codexShimEntrySource, generateCodexArtifacts } from "./index.js";
 
 const smokeFlag = process.env["HOOKNOSTIC_SMOKE"] ?? "";
 const enabled = smokeFlag === "1" || smokeFlag.split(",").includes("codex");
@@ -118,83 +121,79 @@ async function ensureProjectTrust(dir: string): Promise<void> {
 }
 
 describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
-  it(
-    "block, input rewrite, and session context all function in a live session",
-    { timeout: 300_000 },
-    async () => {
-      await rm(SMOKE_DIR, { recursive: true, force: true });
-      await mkdir(SMOKE_DIR, { recursive: true });
-      await runCommand("git", ["init"], { cwd: SMOKE_DIR, timeoutMs: 30_000 });
-      await ensureProjectTrust(SMOKE_DIR);
+  it("block, input rewrite, and session context all function in a live session", { timeout: 300_000 }, async () => {
+    await rm(SMOKE_DIR, { recursive: true, force: true });
+    await mkdir(SMOKE_DIR, { recursive: true });
+    await runCommand("git", ["init"], { cwd: SMOKE_DIR, timeoutMs: 30_000 });
+    await ensureProjectTrust(SMOKE_DIR);
 
-      // Bundle + generate exactly as the build pipeline does.
-      await writeFile(join(SMOKE_DIR, "hooks.ts"), HOOKS_SOURCE, "utf8");
-      const levels = Object.fromEntries(
-        Object.entries(codexCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
-      );
-      const bundle = await bundleRuntime({
-        source: codexShimEntrySource({
-          entryImportPath: join(SMOKE_DIR, "hooks.ts").replaceAll("\\", "/"),
-          capabilities: levels,
-          policy: { onHookError: "continue", timeoutMs: 5000 },
-          harnessVersion: codexHarness.referenceVersion,
-        }),
-        resolveDir: SMOKE_DIR,
-        alias: ALIAS,
-      });
+    // Bundle + generate exactly as the build pipeline does.
+    await writeFile(join(SMOKE_DIR, "hooks.ts"), HOOKS_SOURCE, "utf8");
+    const levels = Object.fromEntries(
+      Object.entries(codexCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
+    );
+    const bundle = await bundleRuntime({
+      source: codexShimEntrySource({
+        entryImportPath: join(SMOKE_DIR, "hooks.ts").replaceAll("\\", "/"),
+        capabilities: levels,
+        policy: { onHookError: "continue", timeoutMs: 5000 },
+        harnessVersion: codexHarness.referenceVersion,
+      }),
+      resolveDir: SMOKE_DIR,
+      alias: ALIAS,
+    });
 
-      const { ir } = buildPluginIR(
-        definePlugin({
-          name: "smoke",
-          hooks: [
-            hook("tool.before", { id: "smoke-guard", async run() {} }),
-            hook("session.start", { id: "smoke-context", async run() {} }),
-          ],
-        }),
-      );
-      const artifacts = generateCodexArtifacts(
-        ir!,
-        { id: "codex", version: codexHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
-        bundle,
-        {
-          runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
-        },
-      );
-      for (const artifact of artifacts) {
-        const target = join(SMOKE_DIR, artifact.path);
-        await mkdir(join(target, ".."), { recursive: true });
-        await writeFile(target, artifact.contents, "utf8");
-      }
-
-      const prompt =
-        "Do these steps in order and do not retry failures. " +
-        "1. Run this exact shell command: echo hooknostic-original. Report its stdout verbatim. " +
-        "2. Try to create a file named forbidden-marker.txt in the workdir using a single shell command. If the command is blocked or denied, say so and move on without retrying. " +
-        "3. If your context contains a hooknostic smoke token, repeat it verbatim. Then stop.";
-
-      const { stdout, stderr } = await runCommand(
-        "codex",
-        [
-          "exec",
-          "-",
-          "-m",
-          "gpt-5.3-codex-spark",
-          "-s",
-          "workspace-write",
-          "--dangerously-bypass-hook-trust",
-          "--color",
-          "never",
+    const { ir } = buildPluginIR(
+      definePlugin({
+        name: "smoke",
+        hooks: [
+          hook("tool.before", { id: "smoke-guard", async run() {} }),
+          hook("session.start", { id: "smoke-context", async run() {} }),
         ],
-        { cwd: SMOKE_DIR, input: prompt, timeoutMs: 280_000 },
-      );
+      }),
+    );
+    const artifacts = generateCodexArtifacts(
+      ir!,
+      { id: "codex", version: codexHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
+      bundle,
+      {
+        runtime: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 16_000, notifyCharLimit: 2_000 },
+      },
+    );
+    for (const artifact of artifacts) {
+      const target = join(SMOKE_DIR, artifact.path);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, artifact.contents, "utf8");
+    }
 
-      const transcript = stdout + "\n" + stderr;
-      // Input rewrite honored end-to-end.
-      expect(transcript).toContain("hooknostic-rewritten");
-      // Block honored: the marker file was never created.
-      expect(existsSync(join(SMOKE_DIR, "forbidden-marker.txt"))).toBe(false);
-      // Session context reached the model.
-      expect(transcript).toContain("hooknostic-context-7c4f1");
-    },
-  );
+    const prompt =
+      "Do these steps in order and do not retry failures. " +
+      "1. Run this exact shell command: echo hooknostic-original. Report its stdout verbatim. " +
+      "2. Try to create a file named forbidden-marker.txt in the workdir using a single shell command. If the command is blocked or denied, say so and move on without retrying. " +
+      "3. If your context contains a hooknostic smoke token, repeat it verbatim. Then stop.";
+
+    const { stdout, stderr } = await runCommand(
+      "codex",
+      [
+        "exec",
+        "-",
+        "-m",
+        "gpt-5.3-codex-spark",
+        "-s",
+        "workspace-write",
+        "--dangerously-bypass-hook-trust",
+        "--color",
+        "never",
+      ],
+      { cwd: SMOKE_DIR, input: prompt, timeoutMs: 280_000 },
+    );
+
+    const transcript = stdout + "\n" + stderr;
+    // Input rewrite honored end-to-end.
+    expect(transcript).toContain("hooknostic-rewritten");
+    // Block honored: the marker file was never created.
+    expect(existsSync(join(SMOKE_DIR, "forbidden-marker.txt"))).toBe(false);
+    // Session context reached the model.
+    expect(transcript).toContain("hooknostic-context-7c4f1");
+  });
 });

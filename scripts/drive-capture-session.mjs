@@ -25,23 +25,14 @@
 //   LiteLLM sidecar (/v1/messages and /v1/responses), opencode directly.
 //   What only this adds: real model tool-call emission patterns through the
 //   real provider path. Probe failure → exit 5, never a false verdict.
-import {
-  cpSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
+import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { register } from "node:module";
-import { pathToFileURL, fileURLToPath } from "node:url";
-import {
-  flattenCaptured,
-  isEntrypoint,
-  listCaptured,
-} from "./drive-capture-session-utils.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { flattenCaptured, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
 
 const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -58,8 +49,7 @@ const { openCodePlaybackConfigHome, prepareOpenCodePluginDependency, startModelP
   pathToFileURL(join(REPO, "packages/cli/test/harness-playback.ts")).href
 );
 
-const DRIVE_PROMPT =
-  "Use the shell tool exactly once to print the word drift-probe, then stop.";
+const DRIVE_PROMPT = "Use the shell tool exactly once to print the word drift-probe, then stop.";
 const DRIVE_TIMEOUT_MS = 120_000;
 
 /** Credential-scrubbed environment: the drive must never see model tokens. */
@@ -105,8 +95,7 @@ const FIXTURE_DIRS = {
 };
 
 function prepareScratch(repo, harness, scratchOverride) {
-  const scratch =
-    scratchOverride ?? join(mkdtempSync(join(tmpdir(), "hkn-drift-")), harness);
+  const scratch = scratchOverride ?? join(mkdtempSync(join(tmpdir(), "hkn-drift-")), harness);
   const template = join(repo, TEE_TEMPLATE_DIRS[harness]);
   cpSync(template, scratch, { recursive: true });
   rmSync(join(scratch, "captured"), { recursive: true, force: true });
@@ -129,10 +118,7 @@ function prepareScratch(repo, harness, scratchOverride) {
     // tees relative to its own directory (HKN_CAPTURE_DIR unset), so point the
     // comparator at the load location's captured/ dir.
     mkdirSync(join(scratch, ".opencode", "plugins"), { recursive: true });
-    cpSync(
-      join(scratch, "hooknostic-capture.js"),
-      join(scratch, ".opencode", "plugins", "hooknostic-capture.js"),
-    );
+    cpSync(join(scratch, "hooknostic-capture.js"), join(scratch, ".opencode", "plugins", "hooknostic-capture.js"));
   }
   return scratch;
 }
@@ -164,9 +150,7 @@ function llmConfig() {
   const model = process.env["HARNESS_LLM_MODEL"];
   const proxyUrl = process.env["HARNESS_LLM_PROXY_URL"]?.replace(/\/$/, "");
   if (model === undefined || proxyUrl === undefined) {
-    throw new Error(
-      "llm transport requires HARNESS_LLM_MODEL and HARNESS_LLM_PROXY_URL",
-    );
+    throw new Error("llm transport requires HARNESS_LLM_MODEL and HARNESS_LLM_PROXY_URL");
   }
   return {
     model,
@@ -193,31 +177,43 @@ async function probeEndpoint(url, headers, body) {
 async function probeLlmPath(harness, config) {
   if (harness === "claude") {
     // LiteLLM /v1/messages: Anthropic Messages → upstream chat completions.
-    await probeEndpoint(`${config.proxyUrl}/v1/messages`, {
-      "x-api-key": config.proxyKey,
-      "anthropic-version": "2023-06-01",
-    }, {
-      model: config.model,
-      max_tokens: 1,
-      messages: [{ role: "user", content: "ping" }],
-    });
+    await probeEndpoint(
+      `${config.proxyUrl}/v1/messages`,
+      {
+        "x-api-key": config.proxyKey,
+        "anthropic-version": "2023-06-01",
+      },
+      {
+        model: config.model,
+        max_tokens: 1,
+        messages: [{ role: "user", content: "ping" }],
+      },
+    );
     return;
   }
   if (harness === "codex") {
     // LiteLLM /v1/responses: Responses API → upstream chat completions.
-    await probeEndpoint(`${config.proxyUrl}/v1/responses`, {
-      authorization: `Bearer ${config.proxyKey}`,
-    }, { model: config.model, input: "ping", max_output_tokens: 16 });
+    await probeEndpoint(
+      `${config.proxyUrl}/v1/responses`,
+      {
+        authorization: `Bearer ${config.proxyKey}`,
+      },
+      { model: config.model, input: "ping", max_output_tokens: 16 },
+    );
     return;
   }
   // opencode: OpenAI-compatible chat completions directly.
-  await probeEndpoint(`${config.proxyUrl}/v1/chat/completions`, {
-    authorization: `Bearer ${config.proxyKey}`,
-  }, {
-    model: config.model,
-    messages: [{ role: "user", content: "ping" }],
-    max_tokens: 16,
-  });
+  await probeEndpoint(
+    `${config.proxyUrl}/v1/chat/completions`,
+    {
+      authorization: `Bearer ${config.proxyKey}`,
+    },
+    {
+      model: config.model,
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 16,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -226,28 +222,36 @@ async function probeLlmPath(harness, config) {
 // ---------------------------------------------------------------------------
 
 async function driveClaude(scratch, model) {
-  return runProcess("claude", [
-    "-p", DRIVE_PROMPT,
-    "--model", "hooknostic-drift",
-    "--settings", join(scratch, ".claude", "settings.json"),
-    "--dangerously-skip-permissions",
-    "--max-turns", "6",
-  ], {
-    cwd: scratch,
-    timeoutMs: DRIVE_TIMEOUT_MS,
-    env: {
-      ...withoutCredentials(),
-      // Claude always needs a nonempty proxy-facing key (playback parity:
-      // harness-playback.test.ts:84). This is only the disposable local
-      // LiteLLM credential, never the upstream API key.
-      ANTHROPIC_API_KEY: model.key ?? "hooknostic-drift",
-      ANTHROPIC_BASE_URL: model.url,
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
-      DISABLE_AUTOUPDATER: "1",
-      DISABLE_TELEMETRY: "1",
+  return runProcess(
+    "claude",
+    [
+      "-p",
+      DRIVE_PROMPT,
+      "--model",
+      "hooknostic-drift",
+      "--settings",
+      join(scratch, ".claude", "settings.json"),
+      "--dangerously-skip-permissions",
+      "--max-turns",
+      "6",
+    ],
+    {
+      cwd: scratch,
+      timeoutMs: DRIVE_TIMEOUT_MS,
+      env: {
+        ...withoutCredentials(),
+        // Claude always needs a nonempty proxy-facing key (playback parity:
+        // harness-playback.test.ts:84). This is only the disposable local
+        // LiteLLM credential, never the upstream API key.
+        ANTHROPIC_API_KEY: model.key ?? "hooknostic-drift",
+        ANTHROPIC_BASE_URL: model.url,
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+        CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
+        DISABLE_AUTOUPDATER: "1",
+        DISABLE_TELEMETRY: "1",
+      },
     },
-  });
+  );
 }
 
 async function driveCodex(scratch, model) {
@@ -256,79 +260,97 @@ async function driveCodex(scratch, model) {
   // — git init in the scratch dir is a capture-skill trap, same as the
   // playback lane (harness-playback.test.ts:296).
   await runProcess("git", ["init"], { cwd: scratch, env: process.env, timeoutMs: 30_000 });
-  return runProcess("codex", [
-    "exec", "-",
-    "--dangerously-bypass-hook-trust",
-    "--color", "never",
-    "-c", `model="${model.name}"`,
-    "-c", 'model_provider="hooknostic_drift"',
-    "-c", 'approval_policy="never"',
-    "-c", 'sandbox_mode="danger-full-access"',
-    "-c", 'model_providers.hooknostic_drift.name="Hooknostic Drift"',
-    "-c", `model_providers.hooknostic_drift.base_url=${q(model.baseUrl)}`,
-    "-c", 'model_providers.hooknostic_drift.wire_api="responses"',
-    // env_key names the env var carrying the disposable local proxy
-    // credential; an empty env_key with requires_openai_auth=false is how the
-    // loopback lane runs.
-    ...(model.key !== undefined
-      ? ["-c", 'model_providers.hooknostic_drift.env_key="HARNESS_LLM_PROXY_KEY"']
-      : ["-c", 'model_providers.hooknostic_drift.requires_openai_auth=false']),
-    "-c", "model_providers.hooknostic_drift.request_max_retries=0",
-    "-c", "model_providers.hooknostic_drift.stream_max_retries=0",
-    "-c", `projects={${q(scratch)}={trust_level=${q("trusted")}}}`,
-  ], {
-    cwd: scratch,
-    input: DRIVE_PROMPT,
-    timeoutMs: DRIVE_TIMEOUT_MS,
-    env: {
-      ...withoutCredentials(),
-      ...(model.key !== undefined ? { HARNESS_LLM_PROXY_KEY: model.key } : {}),
+  return runProcess(
+    "codex",
+    [
+      "exec",
+      "-",
+      "--dangerously-bypass-hook-trust",
+      "--color",
+      "never",
+      "-c",
+      `model="${model.name}"`,
+      "-c",
+      'model_provider="hooknostic_drift"',
+      "-c",
+      'approval_policy="never"',
+      "-c",
+      'sandbox_mode="danger-full-access"',
+      "-c",
+      'model_providers.hooknostic_drift.name="Hooknostic Drift"',
+      "-c",
+      `model_providers.hooknostic_drift.base_url=${q(model.baseUrl)}`,
+      "-c",
+      'model_providers.hooknostic_drift.wire_api="responses"',
+      // env_key names the env var carrying the disposable local proxy
+      // credential; an empty env_key with requires_openai_auth=false is how the
+      // loopback lane runs.
+      ...(model.key !== undefined
+        ? ["-c", 'model_providers.hooknostic_drift.env_key="HARNESS_LLM_PROXY_KEY"']
+        : ["-c", "model_providers.hooknostic_drift.requires_openai_auth=false"]),
+      "-c",
+      "model_providers.hooknostic_drift.request_max_retries=0",
+      "-c",
+      "model_providers.hooknostic_drift.stream_max_retries=0",
+      "-c",
+      `projects={${q(scratch)}={trust_level=${q("trusted")}}}`,
+    ],
+    {
+      cwd: scratch,
+      input: DRIVE_PROMPT,
+      timeoutMs: DRIVE_TIMEOUT_MS,
+      env: {
+        ...withoutCredentials(),
+        ...(model.key !== undefined ? { HARNESS_LLM_PROXY_KEY: model.key } : {}),
+      },
     },
-  });
+  );
 }
 
 async function driveOpencode(scratch, modelLabel) {
   // The PWD-precedence trap: OpenCode trusts inherited PWD over the spawn cwd,
   // so plugins/config resolve against the scratch dir only if PWD says so.
   await runProcess("git", ["init"], { cwd: scratch, env: process.env, timeoutMs: 30_000 });
-  return runProcess("opencode", [
-    "run",
-    DRIVE_PROMPT,
-    "--model", `drift/${modelLabel}`,
-    "--print-logs",
-    "--log-level", "DEBUG",
-  ], {
-    cwd: scratch,
-    timeoutMs: DRIVE_TIMEOUT_MS,
-    env: {
-      ...withoutCredentials(),
-      PWD: scratch,
-      XDG_CONFIG_HOME: openCodePlaybackConfigHome(scratch),
+  return runProcess(
+    "opencode",
+    ["run", DRIVE_PROMPT, "--model", `drift/${modelLabel}`, "--print-logs", "--log-level", "DEBUG"],
+    {
+      cwd: scratch,
+      timeoutMs: DRIVE_TIMEOUT_MS,
+      env: {
+        ...withoutCredentials(),
+        PWD: scratch,
+        XDG_CONFIG_HOME: openCodePlaybackConfigHome(scratch),
+      },
     },
-  });
+  );
 }
 
 function writeOpencodeConfig(scratch, baseUrl, apiKey, modelLabel) {
   writeFileSync(
     join(scratch, "opencode.json"),
-    JSON.stringify({
-      $schema: "https://opencode.ai/config.json",
-      model: `drift/${modelLabel}`,
-      enabled_providers: ["drift"],
-      provider: {
-        drift: {
-          npm: "@ai-sdk/openai-compatible",
-          name: "Hooknostic Drift",
-          options: { baseURL: `${baseUrl}/v1`, apiKey },
-          models: {
-            [modelLabel]: {
-              name: modelLabel,
-              limit: { context: 32768, output: 4096 },
+    JSON.stringify(
+      {
+        $schema: "https://opencode.ai/config.json",
+        model: `drift/${modelLabel}`,
+        enabled_providers: ["drift"],
+        provider: {
+          drift: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Hooknostic Drift",
+            options: { baseURL: `${baseUrl}/v1`, apiKey },
+            models: {
+              [modelLabel]: {
+                name: modelLabel,
+                limit: { context: 32768, output: 4096 },
+              },
             },
           },
         },
       },
-    }, null, 2),
+      null,
+      2,
+    ),
     "utf8",
   );
 }
@@ -376,15 +398,12 @@ async function main() {
     }
     try {
       await prepareOpenCodePluginDependency(scratch, harnessVersion);
-      console.log(
-        `[drift] prepared @opencode-ai/plugin@${harnessVersion} in the scratch project`,
-      );
+      console.log(`[drift] prepared @opencode-ai/plugin@${harnessVersion} in the scratch project`);
     } catch (error) {
       console.error(`[drift] OpenCode project dependency bootstrap failed: ${String(error)}`);
       process.exit(6);
     }
   }
-
 
   let modelSide;
   if (opts.transport === "playback") {
@@ -430,10 +449,7 @@ async function main() {
             };
       result = await driveCodex(scratch, wired);
     } else {
-      const base =
-        opts.transport === "playback"
-          ? server.baseUrl
-          : modelSide.config.proxyUrl;
+      const base = opts.transport === "playback" ? server.baseUrl : modelSide.config.proxyUrl;
       const key = opts.transport === "playback" ? "hooknostic-playback" : modelSide.config.proxyKey;
       const modelLabel = opts.transport === "playback" ? "hooknostic-playback" : modelSide.config.model;
       writeOpencodeConfig(scratch, base, key, modelLabel);
@@ -457,9 +473,7 @@ async function main() {
   // <scratch>/captured (import.meta.dirname-relative), the opencode plugin
   // tees next to its load location (.opencode/plugins/captured).
   const capturedDir =
-    opts.harness === "opencode"
-      ? join(scratch, ".opencode", "plugins", "captured")
-      : join(scratch, "captured");
+    opts.harness === "opencode" ? join(scratch, ".opencode", "plugins", "captured") : join(scratch, "captured");
   const files = listCaptured(capturedDir);
   console.log(`[drift] captured files: ${files.join(", ") || "(NONE)"}`);
   if (files.length === 0) {

@@ -1,14 +1,7 @@
 // Small, runtime-independent helpers for the drift capture driver. Keeping
 // these separate lets their filesystem and entrypoint behavior be tested
 // without loading the driver's TypeScript playback dependencies.
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 

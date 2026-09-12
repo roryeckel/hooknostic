@@ -1,19 +1,14 @@
-import type {
-  HookEvent,
-  HookEventName,
-  PluginSpec,
-  RuntimePolicy,
-  SupportLevel,
-} from "@hooknostic/sdk";
+import type { CapabilityLevels } from "@hooknostic/runtime";
+import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import type { HookEvent, HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
 import { hookAppliesToTarget } from "@hooknostic/sdk";
-import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+
 import { planOpenCodeApplication } from "./apply.js";
 import type { OpenCodeNativeEvent } from "./decode.js";
+import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { opencodeShellCodec } from "./toolmap.js";
-import { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 
 export interface OpenCodeShimOptions {
   targetId?: string;
@@ -100,15 +95,11 @@ export function createHooknosticHooks(
   const targetId = options.targetId ?? "opencode";
   const invocation = {
     targetId,
-    ...(options.harnessVersion !== undefined
-      ? { harnessVersion: options.harnessVersion }
-      : {}),
+    ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
   };
 
   const events = new Set<HookEventName>(
-    plugin.hooks
-      .filter((hook) => hookAppliesToTarget(hook, invocation.targetId))
-      .map((hook) => hook.event),
+    plugin.hooks.filter((hook) => hookAppliesToTarget(hook, invocation.targetId)).map((hook) => hook.event),
   );
 
   /** A block the plugin meant to deliver, as opposed to a bug escaping. */
@@ -265,8 +256,8 @@ export function createHooknosticHooks(
     application: ReturnType<typeof planOpenCodeApplication>,
   ): Promise<void> => {
     if (application.permissionReply === undefined) return;
-    const properties = ((native.input as { event?: { properties?: Record<string, unknown> } })
-      ?.event?.properties ?? {}) as { id?: unknown; sessionID?: unknown };
+    const properties = ((native.input as { event?: { properties?: Record<string, unknown> } })?.event?.properties ??
+      {}) as { id?: unknown; sessionID?: unknown };
     const permissionID = typeof properties.id === "string" ? properties.id : undefined;
     const sessionID = typeof properties.sessionID === "string" ? properties.sessionID : undefined;
     if (permissionID === undefined || sessionID === undefined) return;

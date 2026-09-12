@@ -1,7 +1,6 @@
-import { projectIntegration, projectComponents, projectComponentProfiles } from "./project.js";
-
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -13,20 +12,18 @@ import type {
 import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+
 import { applyOpenCode } from "./apply.js";
 import { decodeOpenCode } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
-import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
-import { opencodeCapabilityProfiles } from "./profile.js";
-import { opencodeShellCodec, OPENCODE_SHELL_SHAPES } from "./toolmap.js";
 import { opencodeHarness } from "./harness.js";
+import { opencodeCapabilityProfiles } from "./profile.js";
+import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
+import { OPENCODE_SHELL_SHAPES, opencodeShellCodec } from "./toolmap.js";
 export { opencodeHarness } from "./harness.js";
 
-export {
-  applyOpenCode,
-  planOpenCodeApplication,
-  serializeOpenCodeOutput,
-} from "./apply.js";
+export { applyOpenCode, planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
 export type { OpenCodeApplication } from "./apply.js";
 export { OpenCodeDecodeError, decodeOpenCode } from "./decode.js";
 export type { OpenCodeNativeEvent } from "./decode.js";
@@ -68,9 +65,7 @@ export function opencodeShimEntrySource(options: {
       ? [`    minimumCapabilityLevel: ${JSON.stringify(options.minimumCapabilityLevel)},`]
       : []),
     `    policy: ${JSON.stringify(options.policy)},`,
-    ...(options.harnessVersion !== undefined
-      ? [`    harnessVersion: ${JSON.stringify(options.harnessVersion)},`]
-      : []),
+    ...(options.harnessVersion !== undefined ? [`    harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
     `  }, input);`,
     `export default HooknosticPlugin;`,
     "",
@@ -119,11 +114,7 @@ export function opencodeAdapter(): HarnessAdapter {
       });
     },
 
-    async compile(
-      plugin: PluginIR,
-      target: TargetSpec,
-      bundle: RuntimeBundle,
-    ): Promise<GeneratedArtifact[]> {
+    async compile(plugin: PluginIR, target: TargetSpec, bundle: RuntimeBundle): Promise<GeneratedArtifact[]> {
       return generateOpenCodeArtifacts(plugin, target, bundle);
     },
 

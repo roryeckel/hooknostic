@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { definePlugin, hook, replaceOutput } from "@hooknostic/sdk";
-import type { HookResult } from "@hooknostic/sdk";
+
 import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
+import type { HookResult } from "@hooknostic/sdk";
+import { definePlugin, hook, replaceOutput } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
+
 import { planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
+import { opencodeHarness } from "./harness.js";
 import { opencodeAdapter } from "./index.js";
 import { classifyOpenCodeTool } from "./toolmap.js";
-import { opencodeHarness } from "./harness.js";
 
 const INVOCATION = { targetId: "opencode", harnessVersion: opencodeHarness.referenceVersion };
 
@@ -33,11 +35,7 @@ describe("decodeOpenCode fixtures", () => {
         "1.18",
         name === "permission-ask" ? "permission-ask.type-derived.json" : `${name}.input.json`,
       );
-      const canonical = loadFixture<Record<string, unknown>>(
-        "opencode",
-        "1.18",
-        `${name}.canonical.json`,
-      );
+      const canonical = loadFixture<Record<string, unknown>>("opencode", "1.18", `${name}.canonical.json`);
       const decoded = decodeOpenCode(input, INVOCATION);
       expect(decoded).toEqual({
         ...canonical,
@@ -48,11 +46,7 @@ describe("decodeOpenCode fixtures", () => {
   }
 
   it("tolerates unknown callback input fields", () => {
-    const input = loadFixture<Record<string, any>>(
-      "opencode",
-      "1.18",
-      "tool-before.input.json",
-    );
+    const input = loadFixture<Record<string, any>>("opencode", "1.18", "tool-before.input.json");
     input["input"]["agent"] = "build";
     input["input"]["brandNew"] = true;
     const decoded = decodeOpenCode(input, INVOCATION);
@@ -82,14 +76,11 @@ describe("decodeOpenCode fixtures", () => {
   });
 
   it("rejects unmapped callbacks and bus events", () => {
+    expect(() => decodeOpenCode({ hook: "lsp.updated", directory: "C:/x", input: {} }, INVOCATION)).toThrow(
+      OpenCodeDecodeError,
+    );
     expect(() =>
-      decodeOpenCode({ hook: "lsp.updated", directory: "C:/x", input: {} }, INVOCATION),
-    ).toThrow(OpenCodeDecodeError);
-    expect(() =>
-      decodeOpenCode(
-        { hook: "event", directory: "C:/x", input: { event: { type: "storage.write" } } },
-        INVOCATION,
-      ),
+      decodeOpenCode({ hook: "event", directory: "C:/x", input: { event: { type: "storage.write" } } }, INVOCATION),
     ).toThrow(OpenCodeDecodeError);
   });
 });
@@ -133,9 +124,7 @@ describe("planOpenCodeApplication", () => {
       planOpenCodeApplication(
         result({
           event: "tool.before",
-          effects: [
-            { hookId: "r", effect: { kind: "replaceInput", input: { command: "pnpm install" } } },
-          ],
+          effects: [{ hookId: "r", effect: { kind: "replaceInput", input: { command: "pnpm install" } } }],
         }),
       ),
     ).toEqual(loadFixture("opencode", "1.18", "tool-before-rewrite.output.json"));
@@ -235,8 +224,9 @@ describe("generateOpenCodeArtifacts", () => {
   });
 
   it("emits a directory package using the project module format", () => {
-    expect(generateOpenCodeArtifacts(exampleIR(), { ...TARGET, delivery: "package" }, { code: "export default 1;" }))
-      .toEqual([{ path: ".opencode/plugins/hooknostic.js", contents: "export default 1;" }]);
+    expect(
+      generateOpenCodeArtifacts(exampleIR(), { ...TARGET, delivery: "package" }, { code: "export default 1;" }),
+    ).toEqual([{ path: ".opencode/plugins/hooknostic.js", contents: "export default 1;" }]);
   });
 });
 
@@ -393,8 +383,6 @@ describe("opencodeAdapter capability data", () => {
       { opencode: adapter },
     );
     expect(relaxed.ok).toBe(true);
-    expect(relaxed.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN101", support: "approximate" }),
-    );
+    expect(relaxed.diagnostics).toContainEqual(expect.objectContaining({ code: "HN101", support: "approximate" }));
   });
 });

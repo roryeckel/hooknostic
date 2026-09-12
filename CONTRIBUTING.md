@@ -106,6 +106,7 @@ issue tracker, which is kept to actionable, evidenced work.
 ```bash
 pnpm install
 pnpm lint
+pnpm format:check
 pnpm build
 pnpm test
 ```
@@ -202,6 +203,11 @@ an external adapter correct. Making them first-class is a real possibility after
 ## Conventions
 
 - Match the surrounding code: its naming, its comment density, its idiom.
+- Formatting is mechanical and enforced: run `pnpm format` (Prettier,
+  `printWidth: 120`), and let ESLint's `simple-import-sort/imports` rule order
+  imports — `node:` builtins, external packages, `@hooknostic/*`, then
+  relative. Markdown and YAML are deliberately outside Prettier's scope; do
+  not add them back without revisiting that decision (see `.prettierignore`).
 - Leave a short comment where you made a judgement call — an ambiguous fix, a
   non-obvious guard, a choice between two plausible approaches. Skip it where the
   code speaks for itself.

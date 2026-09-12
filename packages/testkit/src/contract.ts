@@ -1,10 +1,13 @@
 import { readdirSync } from "node:fs";
 import { basename, join } from "node:path";
+
 import { describe, expect, it } from "vitest";
-import type { HookEventName } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+
 import type { HarnessAdapter } from "@hooknostic/core";
 import { rangeCoversVersion } from "@hooknostic/core";
+import type { HookEventName } from "@hooknostic/sdk";
+import { ALL_CAPABILITY_IDS, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+
 import { loadFixtureFrom } from "./fixtures.js";
 
 export interface AdapterContractOptions {
@@ -38,10 +41,7 @@ export interface AdapterContractOptions {
  * });
  * ```
  */
-export function describeAdapterContract(
-  adapter: HarnessAdapter,
-  options: AdapterContractOptions,
-): void {
+export function describeAdapterContract(adapter: HarnessAdapter, options: AdapterContractOptions): void {
   describe(`adapter contract: ${adapter.id}`, () => {
     const resolved = adapter.capabilities({
       id: adapter.id,
@@ -54,14 +54,9 @@ export function describeAdapterContract(
     const observedEvents = HOOK_EVENT_NAMES.filter(
       (event) => matrix[`${event}.observe` as keyof typeof matrix] !== undefined,
     );
-    const fixtureNames = readdirSync(options.fixturesDir).filter((name) =>
-      name.endsWith(".canonical.json"),
-    );
+    const fixtureNames = readdirSync(options.fixturesDir).filter((name) => name.endsWith(".canonical.json"));
     const coveredEvents = new Set<HookEventName>(
-      fixtureNames.map(
-        (name) =>
-          loadFixtureFrom<{ event: HookEventName }>(join(options.fixturesDir, name)).event,
-      ),
+      fixtureNames.map((name) => loadFixtureFrom<{ event: HookEventName }>(join(options.fixturesDir, name)).event),
     );
 
     it("declares project integration and independently evidenced component support", () => {
@@ -103,10 +98,9 @@ export function describeAdapterContract(
         // Structured records, not prose: at least one validation event, and
         // at least one of them captured -- doc-derived-only support is not
         // validation.
-        expect(
-          profile.source.validatedOn.length,
-          `profile ${profile.range} needs validatedOn records`,
-        ).toBeGreaterThan(0);
+        expect(profile.source.validatedOn.length, `profile ${profile.range} needs validatedOn records`).toBeGreaterThan(
+          0,
+        );
         expect(
           profile.source.validatedOn.some((record) => record.method === "captured"),
           `profile ${profile.range} needs at least one captured record`,
@@ -124,10 +118,7 @@ export function describeAdapterContract(
       const registered = new Set<string>(ALL_CAPABILITY_IDS);
       for (const profile of resolved.profilesUsed) {
         const unknown = Object.keys(profile.matrix).filter((id) => !registered.has(id));
-        expect(
-          unknown,
-          `profile ${profile.range}: unregistered capability ids: ${unknown.join(", ")}`,
-        ).toEqual([]);
+        expect(unknown, `profile ${profile.range}: unregistered capability ids: ${unknown.join(", ")}`).toEqual([]);
       }
     });
 
@@ -169,25 +160,20 @@ export function describeAdapterContract(
         fixtureNames
           .map(
             (name) =>
-              loadFixtureFrom<{ tool?: { nativeName?: string; shell?: unknown } }>(
-                join(options.fixturesDir, name),
-              ).tool,
+              loadFixtureFrom<{ tool?: { nativeName?: string; shell?: unknown } }>(join(options.fixturesDir, name))
+                .tool,
           )
           .filter((tool) => tool?.shell !== undefined)
           .map((tool) => tool!.nativeName!.toLowerCase()),
       );
-      const uncovered = Object.keys(shapes).filter(
-        (key) => !shellFixtureNames.has(key.toLowerCase()),
-      );
+      const uncovered = Object.keys(shapes).filter((key) => !shellFixtureNames.has(key.toLowerCase()));
       expect(uncovered, `shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
     });
 
     it("keeps its harness metadata consistent with its profiles and fixtures", () => {
       const meta = adapter.harness;
       // fixtureDir pins the one name that was previously derived from nothing.
-      expect(basename(options.fixturesDir), "fixturesDir basename must equal harness.fixtureDir").toBe(
-        meta.fixtureDir,
-      );
+      expect(basename(options.fixturesDir), "fixturesDir basename must equal harness.fixtureDir").toBe(meta.fixtureDir);
       // recommendedRange must resolve cleanly (i.e. be a subset of profile
       // coverage) -- HN203 here means the recommendation outruns the evidence.
       const atRecommended = adapter.capabilities({

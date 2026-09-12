@@ -1,4 +1,9 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import semver from "semver";
 import { describe, expect, it } from "vitest";
+
 import {
   assessRelease,
   classifyJump,
@@ -6,31 +11,31 @@ import {
   rollingPlaybackVersion,
   shouldInclude,
 } from "./check-harness-releases.mjs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import semver from "semver";
 
-const PROFILE = (rolling) => [
-  "import type { CapabilityProfile } from \"@hooknostic/core\";",
-  "export const fakeCapabilityProfiles = [{",
-  "  range: \">=0.140 <1\",",
-  "  source: {",
-  "    date: \"2026-08-29\",",
-  "    validatedOn: [",
-  "      { version: \"0.151.0\", date: \"2026-08-30\", method: \"router-log\",",
-  "        what: \"exec_command router args\" },",
-  "      { version: \"0.152.0\", date: \"2026-08-31\", method: \"live-probe\",",
-  "        what: \"a scoped probe of one channel\" },",
-  "      // scheduled-playback:begin",
-  rolling === undefined
-    ? "      // (empty)"
-    : "      { version: \"" + rolling + "\", date: \"2026-09-02\", method: \"live-probe\",",
-  rolling === undefined ? "" : "        what: \"scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified\" },",
-  "      // scheduled-playback:end",
-  "    ],",
-  "  },",
-  "}];",
-].join("\n");
+const PROFILE = (rolling) =>
+  [
+    'import type { CapabilityProfile } from "@hooknostic/core";',
+    "export const fakeCapabilityProfiles = [{",
+    '  range: ">=0.140 <1",',
+    "  source: {",
+    '    date: "2026-08-29",',
+    "    validatedOn: [",
+    '      { version: "0.151.0", date: "2026-08-30", method: "router-log",',
+    '        what: "exec_command router args" },',
+    '      { version: "0.152.0", date: "2026-08-31", method: "live-probe",',
+    '        what: "a scoped probe of one channel" },',
+    "      // scheduled-playback:begin",
+    rolling === undefined
+      ? "      // (empty)"
+      : '      { version: "' + rolling + '", date: "2026-09-02", method: "live-probe",',
+    rolling === undefined
+      ? ""
+      : '        what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified" },',
+    "      // scheduled-playback:end",
+    "    ],",
+    "  },",
+    "}];",
+  ].join("\n");
 
 const BASE = {
   harness: "codex",

@@ -1,4 +1,5 @@
 import semver from "semver";
+
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginComponentId,
@@ -10,6 +11,7 @@ import {
   type AgentPluginRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import { leastCapable } from "@hooknostic/sdk";
+
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { isRangeFullyCovered } from "./matrix.js";
@@ -62,7 +64,10 @@ export function resolveAgentPluginProjection(
   const used = projector.profiles.filter((profile) => semver.intersects(profile.range, target.version));
   if (
     used.length === 0 ||
-    !isRangeFullyCovered(target.version, used.map((profile) => profile.range))
+    !isRangeFullyCovered(
+      target.version,
+      used.map((profile) => profile.range),
+    )
   ) {
     diagnostics.push({
       code: "HN203",
@@ -128,7 +133,13 @@ export function analyzeAgentPluginProjection(
           code: "HN205",
           severity: "error",
           target: target.id,
-          message: `target ${JSON.stringify(target.id)} (adapter ${JSON.stringify(adapter.id)}) has no Agent Plugin projector; components ${discoveredComponents(source, "", runtimePackage).map((component) => JSON.stringify(component)).join(", ")} cannot be projected.`,
+          message: `target ${JSON.stringify(target.id)} (adapter ${JSON.stringify(adapter.id)}) has no Agent Plugin projector; components ${discoveredComponents(
+            source,
+            "",
+            runtimePackage,
+          )
+            .map((component) => JSON.stringify(component))
+            .join(", ")} cannot be projected.`,
           remediation: "remove the target from components.targets or use an adapter with package projection support.",
         },
       ],

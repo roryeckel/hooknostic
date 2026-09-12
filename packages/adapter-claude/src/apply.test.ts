@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+
 import type { HookResult } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
+
 import { applyClaude } from "./apply.js";
 import { claudeHarness } from "./harness.js";
 
@@ -46,10 +48,7 @@ describe("applyClaude", () => {
       {},
       INVOCATION,
     );
-    const hookSpecific = (native.body as Record<string, unknown>)["hookSpecificOutput"] as Record<
-      string,
-      unknown
-    >;
+    const hookSpecific = (native.body as Record<string, unknown>)["hookSpecificOutput"] as Record<string, unknown>;
     expect(hookSpecific["permissionDecision"]).toBe("deny");
     expect(hookSpecific["updatedInput"]).toBeUndefined();
   });
@@ -216,9 +215,7 @@ describe("applyClaude", () => {
       {},
       INVOCATION,
     );
-    expect(native).toEqual(
-      loadFixture("claude", "2.1", "post-tool-block-continuation.output.json"),
-    );
+    expect(native).toEqual(loadFixture("claude", "2.1", "post-tool-block-continuation.output.json"));
   });
 
   it("encodes prompt.before and compact blocks via exit 2", async () => {

@@ -2,7 +2,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+
 import { describe, expect, it } from "vitest";
+
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -11,8 +13,9 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
 } from "@hooknostic/agent-plugin";
-import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { McpLauncherDocument } from "@hooknostic/core";
+import { resolveAgentPluginProjection } from "@hooknostic/core";
+
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
@@ -39,15 +42,8 @@ function source(
         manifestPath: "skills/review/SKILL.md",
       },
     ],
-    ...(Object.keys(servers).length === 0
-      ? {}
-      : { mcp: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: servers } }),
-    files: [
-      file("plugin.json"),
-      file("mcp.json"),
-      file("skills/review/SKILL.md"),
-      ...files.map(file),
-    ],
+    ...(Object.keys(servers).length === 0 ? {} : { mcp: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: servers } }),
+    files: [file("plugin.json"), file("mcp.json"), file("skills/review/SKILL.md"), ...files.map(file)],
     ...(directories === undefined ? {} : { directories }),
     contentDigest: "sha256:source",
   };
@@ -65,22 +61,15 @@ const project = (pkg: AgentPluginPackage) =>
   });
 
 function injector(plan: AgentPluginProjectionPlan): string {
-  const artifact = plan.files.find(
-    (candidate) => candidate.path === ".opencode/plugins/hooknostic-agent-plugin.js",
-  )!;
-  return typeof artifact.contents === "string"
-    ? artifact.contents
-    : new TextDecoder().decode(artifact.contents);
+  const artifact = plan.files.find((candidate) => candidate.path === ".opencode/plugins/hooknostic-agent-plugin.js")!;
+  return typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
 }
 
 function launcherDocument(plan: AgentPluginProjectionPlan): McpLauncherDocument {
   const artifact = plan.files.find(
     (candidate) => candidate.path === ".opencode/plugins/hooknostic-runtime/mcp-servers.json",
   )!;
-  const text =
-    typeof artifact.contents === "string"
-      ? artifact.contents
-      : new TextDecoder().decode(artifact.contents);
+  const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   return JSON.parse(text) as McpLauncherDocument;
 }
 
@@ -177,15 +166,11 @@ describe("Agent Plugin to OpenCode projection", () => {
 
   it("points ${PLUGIN_ROOT} at the nested package, not at the module", async () => {
     const plan = await project(source({}, ["src/server.mjs"]));
-    expect(injector(plan)).toContain(
-      "const here = dirname(fileURLToPath(import.meta.url));",
-    );
+    expect(injector(plan)).toContain("const here = dirname(fileURLToPath(import.meta.url));");
     expect(injector(plan)).toContain('const pluginRoot = join(here, "package");');
     // A sibling of the package, so it is neither inside the author's namespace
     // nor at the level OpenCode's flat scan loads.
-    expect(injector(plan)).toContain(
-      'const launcher = join(here, "hooknostic-runtime", "mcp-launcher.mjs");',
-    );
+    expect(injector(plan)).toContain('const launcher = join(here, "hooknostic-runtime", "mcp-launcher.mjs");');
   });
 
   // OpenCode binds neither variable, so every stdio server runs through the
@@ -258,9 +243,7 @@ describe("Agent Plugin to OpenCode projection", () => {
       expect(config.mcp!["srv"]!["cwd"]).toBe(join(dir, "package"));
       // A remote server is returned untouched: neither the marker nor the
       // unrecognized placeholder is rewritten.
-      expect(config.mcp!["api"]!["url"]).toBe(
-        "https://example.invalid/__HOOKNOSTIC_PLUGIN_ROOT__/${TENANT}/mcp",
-      );
+      expect(config.mcp!["api"]!["url"]).toBe("https://example.invalid/__HOOKNOSTIC_PLUGIN_ROOT__/${TENANT}/mcp");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -317,22 +300,16 @@ describe("Agent Plugin to OpenCode projection", () => {
     // OpenCode loads every module directly in .opencode/plugins/ and a
     // non-function export fails the whole module, so the launcher must not sit
     // at that level.
-    expect(
-      paths.filter((path) => /^\.opencode\/plugins\/[^/]+$/.test(path)),
-    ).toEqual([".opencode/plugins/hooknostic-agent-plugin.js"]);
+    expect(paths.filter((path) => /^\.opencode\/plugins\/[^/]+$/.test(path))).toEqual([
+      ".opencode/plugins/hooknostic-agent-plugin.js",
+    ]);
   });
 
   // Staging creates parents for emitted files only, so a directory carrying no
   // files -- a server's cwd, typically -- has to be named in the plan or it
   // never reaches the output and the server cannot start.
   it("carries an empty package directory into the nested package", async () => {
-    const plan = await project(
-      source(
-        { worker: { type: "stdio", command: "node", cwd: "./worker" } },
-        [],
-        ["worker"],
-      ),
-    );
+    const plan = await project(source({ worker: { type: "stdio", command: "node", cwd: "./worker" } }, [], ["worker"]));
     expect(plan.directories).toContain(".opencode/plugins/package/worker");
   });
 
@@ -414,10 +391,7 @@ describe("Agent Plugin to OpenCode projection", () => {
 
   it("keeps a server whose name would collide with Object.prototype", async () => {
     const plan = await project(
-      source({ ["__proto__"]: { type: "stdio", command: "node" } } as Record<
-        string,
-        AgentPluginMcpServer
-      >),
+      source({ ["__proto__"]: { type: "stdio", command: "node" } } as Record<string, AgentPluginMcpServer>),
     );
     // Written as an object literal this key would set the prototype, so the
     // module is emitted as JSON text and parsed at load time instead.

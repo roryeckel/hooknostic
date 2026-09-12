@@ -57,23 +57,16 @@ export const ALL_CAPABILITY_IDS = [
 export type CapabilityId = (typeof ALL_CAPABILITY_IDS)[number];
 
 /** All capability IDs scoped to a single normalized event. */
-export type CapabilityIdForEvent<E extends HookEventName> = Extract<
-  CapabilityId,
-  `${E}.${string}`
->;
+export type CapabilityIdForEvent<E extends HookEventName> = Extract<CapabilityId, `${E}.${string}`>;
 
 /** The implicit observation capability of an event. */
-export type ObserveCapability<E extends HookEventName> = `${E}.observe` &
-  CapabilityId;
+export type ObserveCapability<E extends HookEventName> = `${E}.observe` & CapabilityId;
 
 /**
  * Capabilities a hook may declare for an event — everything scoped to the
  * event except `observe`, which is implied by using the event at all.
  */
-export type DeclarableCapability<E extends HookEventName> = Exclude<
-  CapabilityIdForEvent<E>,
-  `${E}.observe`
->;
+export type DeclarableCapability<E extends HookEventName> = Exclude<CapabilityIdForEvent<E>, `${E}.observe`>;
 
 const CAPABILITY_SET: ReadonlySet<string> = new Set(ALL_CAPABILITY_IDS);
 

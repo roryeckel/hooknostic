@@ -1,18 +1,18 @@
 import {
-  classifyStdioCwd,
-  componentSummary,
-  hasUnportableCommandPath,
-  isRejectedSkillPath,
-  validateNpmRuntimePackage,
   type AgentPluginIssue,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
   type AgentPluginProjectionFile,
   type AgentPluginProjectionPlan,
   type AgentPluginProjector,
+  classifyStdioCwd,
+  componentSummary,
+  hasUnportableCommandPath,
+  isRejectedSkillPath,
+  validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
-import { MCP_LAUNCHER_FILE, bundleMcpLauncher } from "@hooknostic/core";
 import type { TargetSpec } from "@hooknostic/core";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE } from "@hooknostic/core";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
 const MANIFEST_PATH = ".claude-plugin/plugin.json";
@@ -116,9 +116,7 @@ function replacePluginVariables(value: string): string {
 const MCP_LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
 
 /** A translated server, or the reason this one cannot be represented. */
-type TranslatedServer =
-  | { entry: Record<string, unknown>; reason?: undefined }
-  | { entry?: undefined; reason: string };
+type TranslatedServer = { entry: Record<string, unknown>; reason?: undefined } | { entry?: undefined; reason: string };
 
 function translateServer(server: AgentPluginMcpServer): TranslatedServer {
   if (server.type !== "stdio") {
@@ -153,10 +151,7 @@ function translateServer(server: AgentPluginMcpServer): TranslatedServer {
   // passed `${PLUGIN_DATA}/../x` through unchecked and left `./worker/./`
   // unnormalized.
   const base = classified.base === "root" ? "CLAUDE_PLUGIN_ROOT" : "CLAUDE_PLUGIN_DATA";
-  const cwd =
-    classified.relative === "."
-      ? `\${${base}}`
-      : `\${${base}}/${classified.relative}`;
+  const cwd = classified.relative === "." ? `\${${base}}` : `\${${base}}/${classified.relative}`;
   return {
     entry: {
       type: "stdio",
@@ -236,8 +231,7 @@ function componentCounts(
       // Only the overlay files npm would read as install input are withheld;
       // the manifest extension and every other overlay file are emitted.
       return source.files.filter(
-        (file) =>
-          file.path.startsWith(prefix) && isRootNpmManifestPath(file.path.slice(prefix.length)),
+        (file) => file.path.startsWith(prefix) && isRootNpmManifestPath(file.path.slice(prefix.length)),
       ).length;
     },
   });
@@ -259,7 +253,14 @@ export async function projectAgentPluginToClaude(
   } catch (error) {
     return {
       files: [],
-      issues: [{ severity: "error", scope: "file", component: "agent-plugin.runtime-package", message: error instanceof Error ? error.message : String(error) }],
+      issues: [
+        {
+          severity: "error",
+          scope: "file",
+          component: "agent-plugin.runtime-package",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      ],
       summary: {
         components: componentCounts(source, "skipped"),
         omissions: [],
@@ -276,7 +277,8 @@ export async function projectAgentPluginToClaude(
       // and lockfile.
       isRootNpmManifestPath(file.path) ||
       runtimePackage?.sourcePaths.has(file.path)
-    ) continue;
+    )
+      continue;
     if (file.path.startsWith(`${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`)) continue;
     if (isReservedNativePath(file.path)) {
       // Reported rather than skipped, and fatal rather than subject to
@@ -342,7 +344,10 @@ export async function projectAgentPluginToClaude(
     // author object (.capture/claude-plugin-author). Check after identity
     // precedence is resolved so an overlay cannot invent a missing name.
     const author = manifest["author"];
-    if (author !== undefined && (!object(author) || typeof author["name"] !== "string" || author["name"].length === 0)) {
+    if (
+      author !== undefined &&
+      (!object(author) || typeof author["name"] !== "string" || author["name"].length === 0)
+    ) {
       const reason = "Claude requires author.name to be a non-empty string";
       issues.push({
         severity: context.onUnsupported,
@@ -390,7 +395,9 @@ export async function projectAgentPluginToClaude(
     // check would then fail a build that onUnsupported: "warn" should pass.
     if (emittedStdio > 0) {
       if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
-        throw new Error(`generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`);
+        throw new Error(
+          `generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`,
+        );
       }
       files.set(MCP_LAUNCHER_PATH, {
         path: MCP_LAUNCHER_PATH,
@@ -425,7 +432,6 @@ export async function projectAgentPluginToClaude(
       }
       files.set(hookFile.path, hookFile);
     }
-
   } catch (error) {
     issues.push({
       severity: "error",
@@ -462,7 +468,8 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       components: {
         "agent-plugin.manifest": {
           level: "exact",
-          rationale: "Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn.",
+          rationale:
+            "Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn.",
         },
         "agent-plugin.skills": { level: "exact" },
         "agent-plugin.mcp.stdio": { level: "exact" },

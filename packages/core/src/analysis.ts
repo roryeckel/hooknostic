@@ -1,10 +1,6 @@
-import type {
-  CapabilityId,
-  HooknosticConfig,
-  RequirementLevel,
-  SupportLevel,
-} from "@hooknostic/sdk";
+import type { CapabilityId, HooknosticConfig, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
 import { isCapabilityId, meetsMinimum, observeCapability } from "@hooknostic/sdk";
+
 import type { AdapterRegistry, CapabilityMatrix } from "./adapter.js";
 import { targetSpecFromConfig } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
@@ -161,12 +157,12 @@ export function analyzeCapabilities(
   }
 
   for (const targetId of selection) {
-    const targetConfig = Object.hasOwn(config.targets, targetId)
-      ? config.targets[targetId]
-      : undefined;
+    const targetConfig = Object.hasOwn(config.targets, targetId) ? config.targets[targetId] : undefined;
     if (!targetConfig) continue;
 
-    const adapter = Object.hasOwn(adapters, targetConfig.adapter ?? targetId) ? adapters[targetConfig.adapter ?? targetId] : undefined;
+    const adapter = Object.hasOwn(adapters, targetConfig.adapter ?? targetId)
+      ? adapters[targetConfig.adapter ?? targetId]
+      : undefined;
     if (!adapter) {
       diagnostics.push({
         code: "HN501",
@@ -222,9 +218,7 @@ export function analyzeCapabilities(
           if (entry?.rationale !== undefined) resolution.rationale = entry.rationale;
           resolutions.push(resolution);
           counts[support] += 1;
-          return entry?.rationale !== undefined
-            ? { support, rationale: entry.rationale }
-            : { support };
+          return entry?.rationale !== undefined ? { support, rationale: entry.rationale } : { support };
         };
 
         // 1. Implicit observation requirement for the hook's event.
@@ -241,8 +235,7 @@ export function analyzeCapabilities(
             support: "unsupported",
             ...(observed.rationale !== undefined ? { rationale: observed.rationale } : {}),
             message: `event "${hook.event}" is unavailable on target "${targetId}" for the configured version range.`,
-            remediation:
-              "exclude this target from the hook, or drop the target from the build.",
+            remediation: "exclude this target from the hook, or drop the target from the build.",
           });
         } else if (!meetsMinimum(observed.support, policy.minimum)) {
           targetDiagnostics.push({
@@ -273,10 +266,7 @@ export function analyzeCapabilities(
         }
 
         // 2. Declared capabilities.
-        for (const [capabilityKey, requested] of Object.entries(hook.capabilities) as [
-          string,
-          RequirementLevel,
-        ][]) {
+        for (const [capabilityKey, requested] of Object.entries(hook.capabilities) as [string, RequirementLevel][]) {
           if (!isCapabilityId(capabilityKey)) continue; // IR validation already rejected these
           const capability = capabilityKey;
           const { support, rationale } = record(capability, requested);

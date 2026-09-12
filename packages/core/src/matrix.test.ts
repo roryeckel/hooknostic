@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { CapabilityProfile } from "./adapter.js";
 import { resolveCapabilityMatrix } from "./matrix.js";
 
@@ -6,9 +7,7 @@ import { resolveCapabilityMatrix } from "./matrix.js";
 // meaningless for a fake harness, so one shared stub keeps the noise down.
 const SRC: CapabilityProfile["source"] = {
   date: "2026-01-01",
-  validatedOn: [
-    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
-  ],
+  validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
 };
 
 const older: CapabilityProfile = {

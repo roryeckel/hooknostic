@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
 import {
-  OPENCODE_MAPPED_BUS_EVENTS,
   compareCaptures,
   filterOpenCodeBus,
+  OPENCODE_MAPPED_BUS_EVENTS,
   shapeDiff,
   shapeOf,
   variantOf,
@@ -73,22 +75,60 @@ describe("shapeOf", () => {
 
 describe("variantOf", () => {
   it("discriminates claude/codex by event + tool", () => {
-    expect(variantOf("claude", CLAUDE_FIXTURES.find((f) => f.tool_name === "Bash" && f.hook_event_name === "PreToolUse"))).toBe("PreToolUse+Bash");
-    expect(variantOf("codex", CODEX_FIXTURES.find((f) => f.tool_name === "exec_command"))).toBe("PreToolUse+exec_command");
-    expect(variantOf("codex", CODEX_FIXTURES.find((f) => f.hook_event_name === "Stop"))).toBe("Stop");
+    expect(
+      variantOf(
+        "claude",
+        CLAUDE_FIXTURES.find((f) => f.tool_name === "Bash" && f.hook_event_name === "PreToolUse"),
+      ),
+    ).toBe("PreToolUse+Bash");
+    expect(
+      variantOf(
+        "codex",
+        CODEX_FIXTURES.find((f) => f.tool_name === "exec_command"),
+      ),
+    ).toBe("PreToolUse+exec_command");
+    expect(
+      variantOf(
+        "codex",
+        CODEX_FIXTURES.find((f) => f.hook_event_name === "Stop"),
+      ),
+    ).toBe("Stop");
   });
 
   it("discriminates opencode tool callbacks by hook + tool", () => {
     const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before");
     expect(variantOf("opencode", toolBefore)).toBe("tool.execute.before+bash");
-    expect(variantOf("opencode", OPENCODE_FIXTURES.find((f) => f.hook === "chat.message"))).toBe("chat.message");
+    expect(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "chat.message"),
+      ),
+    ).toBe("chat.message");
   });
 
   it("discriminates the opencode generic bus by event type", () => {
-    expect(variantOf("opencode", OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.created"))).toBe("event+session.created");
-    expect(variantOf("opencode", OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "permission.asked"))).toBe("event+permission.asked");
-    expect(variantOf("opencode", OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.idle"))).not.toBe(
-      variantOf("opencode", OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.created")),
+    expect(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.created"),
+      ),
+    ).toBe("event+session.created");
+    expect(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "permission.asked"),
+      ),
+    ).toBe("event+permission.asked");
+    expect(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.idle"),
+      ),
+    ).not.toBe(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.created"),
+      ),
     );
   });
 });
@@ -113,10 +153,7 @@ describe("filterOpenCodeBus", () => {
     };
     const { compared, appendix } = filterOpenCodeBus([mapped, unmapped, asked, unmapped2]);
     expect(compared).toHaveLength(2);
-    expect(appendix.map((p) => p.input.event.type)).toEqual([
-      "session.updated",
-      "message.updated",
-    ]);
+    expect(appendix.map((p) => p.input.event.type)).toEqual(["session.updated", "message.updated"]);
   });
 
   it("never filters non-bus callbacks", () => {
@@ -178,13 +215,8 @@ describe("compareCaptures", () => {
   });
 
   it("reports drift when one of several captured instances of a variant changes shape", () => {
-    const fixture = CLAUDE_FIXTURES.find(
-      (f) => f.hook_event_name === "PreToolUse" && f.tool_name === "Bash",
-    );
-    const captured = [
-      fixture,
-      { ...fixture, tool_input: { ...fixture.tool_input, timeout: 30 } },
-    ];
+    const fixture = CLAUDE_FIXTURES.find((f) => f.hook_event_name === "PreToolUse" && f.tool_name === "Bash");
+    const captured = [fixture, { ...fixture, tool_input: { ...fixture.tool_input, timeout: 30 } }];
     const { verdict, report } = compareCaptures({
       harness: "claude",
       captured,
@@ -288,7 +320,9 @@ describe("compareCaptures", () => {
   });
 
   it("unmapped opencode bus events never affect the verdict and appear in the appendix", () => {
-    const sessionCreated = OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.created");
+    const sessionCreated = OPENCODE_FIXTURES.find(
+      (f) => f.hook === "event" && f.input.event.type === "session.created",
+    );
     const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before");
     const noise = [
       { hook: "event", directory: "D:\\t", input: { event: { type: "session.updated", properties: {} } } },
@@ -313,7 +347,9 @@ describe("compareCaptures", () => {
     // appendix), but the drive's expected variant for the mapped event is
     // then absent while the tool exchange ran — drift via the expected-
     // variant rule, which is exactly how a real renamed event surfaces.
-    const sessionCreated = OPENCODE_FIXTURES.find((f) => f.hook === "event" && f.input.event.type === "session.created");
+    const sessionCreated = OPENCODE_FIXTURES.find(
+      (f) => f.hook === "event" && f.input.event.type === "session.created",
+    );
     const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before");
     const renamed = {
       ...sessionCreated,

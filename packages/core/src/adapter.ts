@@ -1,17 +1,18 @@
-import type { ProjectIntegration } from "./project-files.js";
+import type { AgentPluginProjectionProfile, AgentPluginProjector, ProjectComponents } from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
   HookEvent,
   HookResult,
+  RuntimePolicy,
   ShellCodec,
   ShellShapes,
   SupportLevel,
   TargetConfig,
-  RuntimePolicy,
 } from "@hooknostic/sdk";
-import type { AgentPluginProjector, ProjectComponents, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+
 import type { Diagnostic } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
+import type { ProjectIntegration } from "./project-files.js";
 
 export interface ProjectComponentOptions {
   /** Effective startup timeout per MCP server for this target. */
@@ -84,12 +85,7 @@ export interface HarnessMetadata {
  * the hook boundary.
  */
 export type ValidationMethod =
-  | "captured"
-  | "live-probe"
-  | "schema-derived"
-  | "type-derived"
-  | "doc-derived"
-  | "router-log";
+  "captured" | "live-probe" | "schema-derived" | "type-derived" | "doc-derived" | "router-log";
 
 /** One validation event: which build, when, how, and what it established. */
 export interface ValidationRecord {
@@ -177,11 +173,7 @@ export interface NativeHookResult {
 
 export interface RuntimeAdapter {
   decode(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
-  apply(
-    result: HookResult,
-    nativeEvent: unknown,
-    invocation: InvocationContext,
-  ): Promise<NativeHookResult>;
+  apply(result: HookResult, nativeEvent: unknown, invocation: InvocationContext): Promise<NativeHookResult>;
 }
 
 /** Build-time inputs for generating a target's shim entry module source. */
@@ -208,8 +200,18 @@ export interface HarnessAdapter {
   readonly adapterVersion: string;
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
   projectPaths?: readonly string[];
-  projectComponents?(source: ProjectComponents, root: string, output: string, config: string, options: ProjectComponentOptions): Promise<ProjectIntegration>;
-  projectIntegration?(artifacts: readonly GeneratedArtifact[], outputFromRoot: string, configFromRoot: string): ProjectIntegration;
+  projectComponents?(
+    source: ProjectComponents,
+    root: string,
+    output: string,
+    config: string,
+    options: ProjectComponentOptions,
+  ): Promise<ProjectIntegration>;
+  projectIntegration?(
+    artifacts: readonly GeneratedArtifact[],
+    outputFromRoot: string,
+    configFromRoot: string,
+  ): ProjectIntegration;
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
 
@@ -283,10 +285,7 @@ export interface HarnessAdapter {
     options: AdapterCompileOptions,
   ): Promise<GeneratedArtifact[]>;
 
-  validateArtifacts?(
-    artifacts: GeneratedArtifact[],
-    target: TargetSpec,
-  ): Promise<Diagnostic[]>;
+  validateArtifacts?(artifacts: GeneratedArtifact[], target: TargetSpec): Promise<Diagnostic[]>;
 
   runtime: RuntimeAdapter;
 }

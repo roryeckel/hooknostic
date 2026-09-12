@@ -11,15 +11,14 @@ import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
-import { opencodeHarness } from "./harness.js";
-import { bundleRuntime, buildPluginIR } from "@hooknostic/core";
+
+import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import { definePlugin, hook } from "@hooknostic/sdk";
-import {
-  generateOpenCodeArtifacts,
-  opencodeCapabilityProfiles,
-  opencodeShimEntrySource,
-} from "./index.js";
+
+import { opencodeHarness } from "./harness.js";
+import { generateOpenCodeArtifacts, opencodeCapabilityProfiles, opencodeShimEntrySource } from "./index.js";
 
 const smokeFlag = process.env["HOOKNOSTIC_SMOKE"] ?? "";
 const enabled = smokeFlag === "1" || smokeFlag.split(",").includes("opencode");
@@ -177,10 +176,7 @@ function stopProcessTree(child: ReturnType<typeof spawn>): Promise<void> {
     return Promise.resolve();
   }
   return new Promise<void>((resolvePromise) => {
-    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" }).on(
-      "close",
-      () => resolvePromise(),
-    );
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" }).on("close", () => resolvePromise());
   });
 }
 
@@ -192,175 +188,167 @@ async function stopServer(server: ReturnType<typeof spawn>): Promise<void> {
 }
 
 describe.skipIf(!enabled)("OpenCode smoke (real harness)", () => {
-  it(
-    "block and input rewrite function in a live session",
-    { timeout: 300_000 },
-    async () => {
-      await removeScratch(SMOKE_DIR);
-      await mkdir(SMOKE_DIR, { recursive: true });
-      await runCommand("git", ["init"], { cwd: SMOKE_DIR, timeoutMs: 30_000 });
+  it("block and input rewrite function in a live session", { timeout: 300_000 }, async () => {
+    await removeScratch(SMOKE_DIR);
+    await mkdir(SMOKE_DIR, { recursive: true });
+    await runCommand("git", ["init"], { cwd: SMOKE_DIR, timeoutMs: 30_000 });
 
-      await writeFile(join(SMOKE_DIR, "hooks.ts"), HOOKS_SOURCE, "utf8");
-      const levels = Object.fromEntries(
-        Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
-      );
-      const bundle = await bundleRuntime({
-        source: opencodeShimEntrySource({
-          entryImportPath: join(SMOKE_DIR, "hooks.ts").replaceAll("\\", "/"),
-          capabilities: levels,
-          policy: { onHookError: "continue", timeoutMs: 5000 },
-          harnessVersion: opencodeHarness.referenceVersion,
-        }),
-        resolveDir: SMOKE_DIR,
-        alias: ALIAS,
-      });
+    await writeFile(join(SMOKE_DIR, "hooks.ts"), HOOKS_SOURCE, "utf8");
+    const levels = Object.fromEntries(
+      Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
+    );
+    const bundle = await bundleRuntime({
+      source: opencodeShimEntrySource({
+        entryImportPath: join(SMOKE_DIR, "hooks.ts").replaceAll("\\", "/"),
+        capabilities: levels,
+        policy: { onHookError: "continue", timeoutMs: 5000 },
+        harnessVersion: opencodeHarness.referenceVersion,
+      }),
+      resolveDir: SMOKE_DIR,
+      alias: ALIAS,
+    });
 
-      const { ir } = buildPluginIR(
-        definePlugin({
-          name: "smoke",
-          hooks: [hook("tool.before", { id: "smoke-guard", async run() {} })],
-        }),
-      );
-      const artifacts = generateOpenCodeArtifacts(
-        ir!,
-        { id: "opencode", version: opencodeHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
-        bundle,
-      );
-      for (const artifact of artifacts) {
-        const target = join(SMOKE_DIR, artifact.path);
-        await mkdir(join(target, ".."), { recursive: true });
-        await writeFile(target, artifact.contents, "utf8");
-      }
+    const { ir } = buildPluginIR(
+      definePlugin({
+        name: "smoke",
+        hooks: [hook("tool.before", { id: "smoke-guard", async run() {} })],
+      }),
+    );
+    const artifacts = generateOpenCodeArtifacts(
+      ir!,
+      { id: "opencode", version: opencodeHarness.recommendedRange, delivery: "project", output: SMOKE_DIR },
+      bundle,
+    );
+    for (const artifact of artifacts) {
+      const target = join(SMOKE_DIR, artifact.path);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, artifact.contents, "utf8");
+    }
 
-      const prompt =
-        "Do these steps in order and do not retry failures. " +
-        "1. Run this exact shell command with the bash tool: echo hooknostic-original. Report its stdout verbatim. " +
-        "2. Try to create a file named forbidden-marker.txt in this directory using a single shell command. If the command errors or is blocked, say so and move on without retrying. " +
-        "3. Then stop.";
+    const prompt =
+      "Do these steps in order and do not retry failures. " +
+      "1. Run this exact shell command with the bash tool: echo hooknostic-original. Report its stdout verbatim. " +
+      "2. Try to create a file named forbidden-marker.txt in this directory using a single shell command. If the command errors or is blocked, say so and move on without retrying. " +
+      "3. Then stop.";
 
-      const { stdout, stderr } = await runCommand(
-        "opencode",
-        ["run", prompt, "--model", MODEL],
-        { cwd: SMOKE_DIR, timeoutMs: 280_000 },
-      );
+    const { stdout, stderr } = await runCommand("opencode", ["run", prompt, "--model", MODEL], {
+      cwd: SMOKE_DIR,
+      timeoutMs: 280_000,
+    });
 
-      const transcript = stdout + "\n" + stderr;
-      expect(transcript).toContain("hooknostic-rewritten");
-      expect(existsSync(join(SMOKE_DIR, "forbidden-marker.txt"))).toBe(false);
-    },
-  );
+    const transcript = stdout + "\n" + stderr;
+    expect(transcript).toContain("hooknostic-rewritten");
+    expect(existsSync(join(SMOKE_DIR, "forbidden-marker.txt"))).toBe(false);
+  });
 
-  it(
-    "stop prevention drives another turn in a live session",
-    { timeout: 300_000 },
-    async () => {
-      const dir = STOP_DIR;
-      await removeScratch(dir);
-      await mkdir(dir, { recursive: true });
-      await runCommand("git", ["init"], { cwd: dir, timeoutMs: 30_000 });
-      await writeFile(join(dir, "hooks.ts"), STOP_HOOKS_SOURCE, "utf8");
+  it("stop prevention drives another turn in a live session", { timeout: 300_000 }, async () => {
+    const dir = STOP_DIR;
+    await removeScratch(dir);
+    await mkdir(dir, { recursive: true });
+    await runCommand("git", ["init"], { cwd: dir, timeoutMs: 30_000 });
+    await writeFile(join(dir, "hooks.ts"), STOP_HOOKS_SOURCE, "utf8");
 
-      const levels = Object.fromEntries(
-        Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
-      );
-      const bundle = await bundleRuntime({
-        source: opencodeShimEntrySource({
-          entryImportPath: join(dir, "hooks.ts").replaceAll("\\", "/"),
-          capabilities: levels,
-          // turn.stop.observe is approximate on OpenCode (an aborted turn fires
-          // session.idle twice) and the default floor is emulated, so without
-          // this an OpenCode turn.stop hook cannot dispatch at all.
-          minimumCapabilityLevel: "approximate",
-          policy: {
-            onHookError: "continue",
-            timeoutMs: 5000,
-            contextCharLimit: 16_000,
-            notifyCharLimit: 2_000,
-          },
-          // Deliberately a literal, newer than referenceVersion: this probe
-          // exercised a later build than the fixture capture.
-          harnessVersion: "1.18.25",
-        }),
-        resolveDir: dir,
-        alias: ALIAS,
-      });
+    const levels = Object.fromEntries(
+      Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
+    );
+    const bundle = await bundleRuntime({
+      source: opencodeShimEntrySource({
+        entryImportPath: join(dir, "hooks.ts").replaceAll("\\", "/"),
+        capabilities: levels,
+        // turn.stop.observe is approximate on OpenCode (an aborted turn fires
+        // session.idle twice) and the default floor is emulated, so without
+        // this an OpenCode turn.stop hook cannot dispatch at all.
+        minimumCapabilityLevel: "approximate",
+        policy: {
+          onHookError: "continue",
+          timeoutMs: 5000,
+          contextCharLimit: 16_000,
+          notifyCharLimit: 2_000,
+        },
+        // Deliberately a literal, newer than referenceVersion: this probe
+        // exercised a later build than the fixture capture.
+        harnessVersion: "1.18.25",
+      }),
+      resolveDir: dir,
+      alias: ALIAS,
+    });
 
-      const { ir } = buildPluginIR(
-        definePlugin({
-          name: "stop-smoke",
-          hooks: [hook("turn.stop", { id: "smoke-continue", async run() {} })],
-        }),
-      );
-      for (const artifact of generateOpenCodeArtifacts(
-        ir!,
-        { id: "opencode", version: opencodeHarness.recommendedRange, delivery: "project", output: dir },
-        bundle,
-      )) {
-        const target = join(dir, artifact.path);
-        await mkdir(join(target, ".."), { recursive: true });
-        await writeFile(target, artifact.contents, "utf8");
-      }
+    const { ir } = buildPluginIR(
+      definePlugin({
+        name: "stop-smoke",
+        hooks: [hook("turn.stop", { id: "smoke-continue", async run() {} })],
+      }),
+    );
+    for (const artifact of generateOpenCodeArtifacts(
+      ir!,
+      { id: "opencode", version: opencodeHarness.recommendedRange, delivery: "project", output: dir },
+      bundle,
+    )) {
+      const target = join(dir, artifact.path);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, artifact.contents, "utf8");
+    }
 
-      // `opencode run` cannot observe this: it exits at session.idle, before a
-      // posted turn can start. A persistent server is the only vehicle.
-      const port = 47411;
-      const server = spawn("opencode", ["serve", "--port", String(port)], {
-        cwd: dir,
-        shell: process.platform === "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      try {
-        const base = `http://127.0.0.1:${port}`;
-        for (let attempt = 0; attempt < 80; attempt += 1) {
-          try {
-            if ((await fetch(`${base}/app`)).ok) break;
-          } catch {
-            /* not listening yet */
-          }
-          await new Promise((r) => setTimeout(r, 500));
+    // `opencode run` cannot observe this: it exits at session.idle, before a
+    // posted turn can start. A persistent server is the only vehicle.
+    const port = 47411;
+    const server = spawn("opencode", ["serve", "--port", String(port)], {
+      cwd: dir,
+      shell: process.platform === "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    try {
+      const base = `http://127.0.0.1:${port}`;
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        try {
+          if ((await fetch(`${base}/app`)).ok) break;
+        } catch {
+          /* not listening yet */
         }
+        await new Promise((r) => setTimeout(r, 500));
+      }
 
-        const session = (await (
-          await fetch(`${base}/session`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: "{}",
-          })
-        ).json()) as { id: string };
-
-        await fetch(`${base}/session/${session.id}/message`, {
+      const session = (await (
+        await fetch(`${base}/session`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            model: { providerID: MODEL.split("/")[0], modelID: MODEL.split("/")[1] },
-            parts: [{ type: "text", text: "Say the single word ready, then stop." }],
-          }),
-        });
+          body: "{}",
+        })
+      ).json()) as { id: string };
 
-        // The post happens during session.idle, which resolves only after the
-        // prompt request returns; give the driven turn room to run.
-        await new Promise((r) => setTimeout(r, 45_000));
+      await fetch(`${base}/session/${session.id}/message`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: { providerID: MODEL.split("/")[0], modelID: MODEL.split("/")[1] },
+          parts: [{ type: "text", text: "Say the single word ready, then stop." }],
+        }),
+      });
 
-        const messages = (await (
-          await fetch(`${base}/session/${session.id}/message`)
-        ).json()) as { info?: { role?: string }; parts?: { type?: string; text?: string }[] }[];
-        const rendered = messages.map((m) => ({
-          role: m.info?.role,
-          text: (m.parts ?? [])
-            .filter((part) => part.type === "text")
-            .map((part) => part.text)
-            .join(" "),
-        }));
+      // The post happens during session.idle, which resolves only after the
+      // prompt request returns; give the driven turn room to run.
+      await new Promise((r) => setTimeout(r, 45_000));
 
-        // preventStop posted a prompt and the agent answered it — a turn that
-        // would not exist had the stop been allowed to stand.
-        expect(rendered.filter((m) => m.role === "assistant").length).toBeGreaterThan(1);
-        expect(rendered.some((m) => m.text?.includes("hooknostic-continued"))).toBe(true);
-        // notify posted with noReply, so it is present without a turn of its own.
-        expect(rendered.some((m) => m.text?.includes("hooknostic-notice"))).toBe(true);
-      } finally {
-        await stopServer(server);
-      }
-    },
-  );
+      const messages = (await (await fetch(`${base}/session/${session.id}/message`)).json()) as {
+        info?: { role?: string };
+        parts?: { type?: string; text?: string }[];
+      }[];
+      const rendered = messages.map((m) => ({
+        role: m.info?.role,
+        text: (m.parts ?? [])
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join(" "),
+      }));
+
+      // preventStop posted a prompt and the agent answered it — a turn that
+      // would not exist had the stop been allowed to stand.
+      expect(rendered.filter((m) => m.role === "assistant").length).toBeGreaterThan(1);
+      expect(rendered.some((m) => m.text?.includes("hooknostic-continued"))).toBe(true);
+      // notify posted with noReply, so it is present without a turn of its own.
+      expect(rendered.some((m) => m.text?.includes("hooknostic-notice"))).toBe(true);
+    } finally {
+      await stopServer(server);
+    }
+  });
 });

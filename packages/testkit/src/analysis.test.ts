@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { definePlugin, hook, block, replaceInput, preventStop } from "@hooknostic/sdk";
-import type { HooknosticConfig } from "@hooknostic/sdk";
-import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
+
 import type { AdapterRegistry, CapabilityProfile } from "@hooknostic/core";
+import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
+import type { HooknosticConfig } from "@hooknostic/sdk";
+import { block, definePlugin, hook, preventStop, replaceInput } from "@hooknostic/sdk";
+
 import { makeFakeAdapter } from "./fake-adapter.js";
 
 // Synthetic profiles need a syntactically valid source; provenance is
 // meaningless for a fake harness, so one shared stub keeps the noise down.
 const SRC: CapabilityProfile["source"] = {
   date: "2026-01-01",
-  validatedOn: [
-    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
-  ],
+  validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
 };
 
 const richProfile: CapabilityProfile = {
@@ -201,9 +201,7 @@ describe("analyzeCapabilities", () => {
     // feature-detect -- an optional capability below the floor is reported
     // unavailable too. The remediation has to say both halves or it reads like
     // declaring it is the whole fix.
-    const remediation = strict.targets.poor?.diagnostics.find(
-      (d) => d.code === "HN201",
-    )?.remediation;
+    const remediation = strict.targets.poor?.diagnostics.find((d) => d.code === "HN201")?.remediation;
     expect(remediation).toContain('targets.poor.compatibility: { minimum: "approximate" }');
     expect(remediation).toContain("branch on `ctx.capabilities.has()`");
   });
@@ -345,9 +343,7 @@ describe("analyzeCapabilities", () => {
       ["rich", "surprise"],
     );
     expect(analysis.ok).toBe(false);
-    expect(
-      analysis.diagnostics.find((d) => d.code === "HN501" && d.target === "surprise"),
-    ).toBeDefined();
+    expect(analysis.diagnostics.find((d) => d.code === "HN501" && d.target === "surprise")).toBeDefined();
   });
 
   it("reports HN501 when a configured target has no registered adapter", () => {

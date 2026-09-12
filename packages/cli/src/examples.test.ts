@@ -1,7 +1,10 @@
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
+
 import { loadConfig, rangeWithin } from "@hooknostic/core";
+
 import { defaultAdapterRegistry } from "./registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");

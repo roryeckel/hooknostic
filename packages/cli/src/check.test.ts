@@ -3,30 +3,28 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { afterAll, describe, expect, it } from "vitest";
+
+import { claudeHarness } from "@hooknostic/adapter-claude";
+import { opencodeHarness } from "@hooknostic/adapter-opencode";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
 import type { CapabilityProfile } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
+
 import { runBuild } from "./build.js";
 import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
-import { claudeHarness } from "@hooknostic/adapter-claude";
-import { opencodeHarness } from "@hooknostic/adapter-opencode";
-import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
 
 // Synthetic profiles need a syntactically valid source; provenance is
 // meaningless for a fake harness, so one shared stub keeps the noise down.
 const SRC: CapabilityProfile["source"] = {
   date: "2026-01-01",
-  validatedOn: [
-    { version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" },
-  ],
+  validatedOn: [{ version: "1.0.0", date: "2026-01-01", method: "doc-derived", what: "synthetic" }],
 };
 
-const SDK_PATH = resolve(
-  fileURLToPath(new URL(".", import.meta.url)),
-  "../../sdk/src/index.ts",
-);
+const SDK_PATH = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../sdk/src/index.ts");
 const EVALUATE = { alias: { "@hooknostic/sdk": SDK_PATH } };
 
 const fullProfile: CapabilityProfile = {
@@ -126,12 +124,14 @@ describe("hooknostic check", () => {
     );
     const capture = captureIO();
 
-    expect(await runCheck({
-      config: join(dir, "hooknostic.config.ts"),
-      json: true,
-      registry: defaultAdapterRegistry(),
-      io: capture.io,
-    })).toBe(2);
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+    ).toBe(2);
 
     expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
       expect.objectContaining({ code: "HN503", severity: "error" }),
@@ -182,9 +182,7 @@ describe("hooknostic check", () => {
     expect(report.targets.beta.ok).toBe(false);
     expect(report.targets.alpha.counts.exact).toBe(3);
     expect(
-      report.diagnostics.some(
-        (d: { code: string; target: string }) => d.code === "HN201" && d.target === "beta",
-      ),
+      report.diagnostics.some((d: { code: string; target: string }) => d.code === "HN201" && d.target === "beta"),
     ).toBe(true);
     // resolutions record every capability decision, including implicit observe
     expect(
@@ -228,9 +226,7 @@ describe("hooknostic check", () => {
     const report = JSON.parse(capture.out());
     expect(report.ok).toBe(false);
     expect(report.targets.noproj.ok).toBe(false);
-    expect(report.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN205", target: "noproj" }),
-    );
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "HN205", target: "noproj" }));
   });
 
   it("runs projection so overlay collisions and runtime package defects fail check, not just build", async () => {
@@ -243,7 +239,10 @@ describe("hooknostic check", () => {
       JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "preflight" }),
     );
     await writeFile(join(dir, "runtime.package.json"), JSON.stringify({ dependencies: { "is-number": "7.0.0" } }));
-    await writeFile(join(dir, "runtime.package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": {} } }));
+    await writeFile(
+      join(dir, "runtime.package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3, packages: { "": {} } }),
+    );
     await writeFile(
       join(dir, "hooks.ts"),
       `import { definePlugin, hook } from "@hooknostic/sdk";
@@ -436,11 +435,7 @@ describe("hooknostic check", () => {
       };`,
       "utf8",
     );
-    await writeFile(
-      join(dir, "hooks.ts"),
-      `export default { name: "empty-targets", hooks: [] };`,
-      "utf8",
-    );
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "empty-targets", hooks: [] };`, "utf8");
 
     for (const run of [runCheck, runBuild]) {
       const capture = captureIO();
@@ -484,12 +479,19 @@ describe("hooknostic check", () => {
       await runCheck({
         config: join(dir, "hooknostic.config.ts"),
         json: true,
-        registry: { ...defaultAdapterRegistry(), opencode: { ...defaultAdapterRegistry().opencode!, supportedDeliveries: () => ["project"] } },
+        registry: {
+          ...defaultAdapterRegistry(),
+          opencode: { ...defaultAdapterRegistry().opencode!, supportedDeliveries: () => ["project"] },
+        },
         io: capture.io,
         evaluate: EVALUATE,
       }),
     ).toBe(2);
-    const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string; message: string; remediation?: string }[];
+    const diagnostics = JSON.parse(capture.out()).diagnostics as {
+      code: string;
+      message: string;
+      remediation?: string;
+    }[];
     expect(diagnostics).toContainEqual(
       expect.objectContaining({
         code: "HN204",

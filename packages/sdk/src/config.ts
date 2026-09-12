@@ -130,18 +130,19 @@ type DirectComponentPolicy<TTarget extends string> = {
   mcpOverrides?: Partial<Record<TTarget, ProjectMcpTargetOverride>>;
 };
 
-export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<TTarget> & (
-  | {
-      root: string;
-      skills?: never;
-      mcp?: never;
-      mcpOverrides?: never;
-      /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
-      executableFiles?: string[];
-    }
-  | ({ root?: never; skills: string[]; mcp?: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
-  | ({ root?: never; skills?: string[]; mcp: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
-);
+export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<TTarget> &
+  (
+    | {
+        root: string;
+        skills?: never;
+        mcp?: never;
+        mcpOverrides?: never;
+        /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
+        executableFiles?: string[];
+      }
+    | ({ root?: never; skills: string[]; mcp?: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
+    | ({ root?: never; skills?: string[]; mcp: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
+  );
 
 export type TargetsConfig = Record<string, TargetConfig>;
 
@@ -159,20 +160,19 @@ interface HooknosticConfigBase<TTargets extends TargetsConfig> {
  * only name keys of `targets`. `defineConfig` infers the target names so both
  * rules are checked by the editor, not only by the schema at build time.
  */
-export type HooknosticConfig<TTargets extends TargetsConfig = TargetsConfig> =
-  HooknosticConfigBase<TTargets> &
-    (
-      | {
-          /** Path to the hook source entry. */
-          entry: string;
-          components?: ComponentConfig<keyof TTargets & string>;
-        }
-      | {
-          /** Agent Plugin-only builds omit the hook entry. */
-          entry?: undefined;
-          components: ComponentConfig<keyof TTargets & string>;
-        }
-    );
+export type HooknosticConfig<TTargets extends TargetsConfig = TargetsConfig> = HooknosticConfigBase<TTargets> &
+  (
+    | {
+        /** Path to the hook source entry. */
+        entry: string;
+        components?: ComponentConfig<keyof TTargets & string>;
+      }
+    | {
+        /** Agent Plugin-only builds omit the hook entry. */
+        entry?: undefined;
+        components: ComponentConfig<keyof TTargets & string>;
+      }
+  );
 
 export function defineConfig<const TTargets extends TargetsConfig>(
   config: HooknosticConfig<TTargets>,

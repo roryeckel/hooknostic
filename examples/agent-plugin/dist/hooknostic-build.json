@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:1b97c4b193282b968cdf0f5cceac199fa00b0324bafaa91f48a3284fa261dd1b",
+        "contentDigest": "sha256:95109eff9f49c3b535a617220afa5470ffe687dc4ac05cb654b9a487d2a74de5",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:1c49d5778df3303375dc5ce197c19ad75b60e29368d6e330a21f60dcc6f530d6",
+        "contentDigest": "sha256:705c622feaa5b0481b65dfd154198dce018aa79e5a90ffd7709127f3711a3af5",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:3740cd7dbf8f3055215a2dee07008db6cc001d5d2fd5c9a0b8dc122451740e32",
+        "contentDigest": "sha256:cb0769c18171e577941a49fa85753d5555275ae44679cb8aa1605dc326ec423b",
         "copiedFileCount": 7,
         "directories": [
           ".opencode/plugins/package/runtime",
@@ -218,7 +218,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:01ed03fcaf9b5cc804535a5aaf753bfe45a903fc6db35056937fed4a8e31edcf"
+    "contentDigest": "sha256:0f02b0c32ac8de8939cdf4b2fe60977d5f8122d719a92b62b2ab8cac990c32b9"
   },
   "source": "./src/hooks.ts"
 }

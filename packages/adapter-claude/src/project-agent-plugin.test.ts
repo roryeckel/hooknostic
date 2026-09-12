@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
+
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -10,6 +12,7 @@ import {
   type AgentPluginPackage,
 } from "@hooknostic/agent-plugin";
 import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
+
 import { claudeAdapter } from "./index.js";
 import { claudeAgentPluginProjector, projectAgentPluginToClaude } from "./project-agent-plugin.js";
 
@@ -31,12 +34,23 @@ function source(files: AgentPluginFile[] = []): AgentPluginPackage {
       description: "portable description",
       license: "MIT",
     },
-    skills: [{ name: "review", description: "Review code", directory: "skills/review", manifestPath: "skills/review/SKILL.md" }],
+    skills: [
+      {
+        name: "review",
+        description: "Review code",
+        directory: "skills/review",
+        manifestPath: "skills/review/SKILL.md",
+      },
+    ],
     mcp: {
       $schema: AGENT_PLUGIN_MCP_SCHEMA,
       mcpServers: {
         local: { type: "stdio", command: "./bin/server", args: ["${PLUGIN_ROOT}/x", "${PLUGIN_DATA}/y"] },
-        remote: { type: "streamable-http", url: "https://example.com/mcp", headers: { Authorization: "Bearer literal" } },
+        remote: {
+          type: "streamable-http",
+          url: "https://example.com/mcp",
+          headers: { Authorization: "Bearer literal" },
+        },
       },
     },
     files: [file("plugin.json", "{}"), file("skills/review/SKILL.md", "skill"), ...files],
@@ -51,29 +65,38 @@ const support = resolveAgentPluginProjection(target, claudeAgentPluginProjector)
 
 function parsed(plan: Awaited<ReturnType<typeof projectAgentPluginToClaude>>, path: string) {
   const artifact = plan.files.find((candidate) => candidate.path === path)!;
-  return JSON.parse(typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents));
+  return JSON.parse(
+    typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents),
+  );
 }
 
 describe("Agent Plugin to Claude projection", () => {
   it("preserves opaque Notification hooks alongside generated hooks through final validation", async () => {
     const notification = [{ hooks: [{ type: "command", command: "echo native" }] }];
     const generated = [{ hooks: [{ type: "command", command: "node runtime/hooknostic.mjs" }] }];
-    const plan = await projectAgentPluginToClaude(source([
-      file("com.anthropic.claude-code/hooks/hooks.json", JSON.stringify({ hooks: { Notification: notification } })),
-    ]), {
-      target, support, onUnsupported: "error",
-      hookArtifacts: [file("hooks/hooks.json", JSON.stringify({ hooks: { PreToolUse: generated } }))],
-    });
+    const plan = await projectAgentPluginToClaude(
+      source([
+        file("com.anthropic.claude-code/hooks/hooks.json", JSON.stringify({ hooks: { Notification: notification } })),
+      ]),
+      {
+        target,
+        support,
+        onUnsupported: "error",
+        hookArtifacts: [file("hooks/hooks.json", JSON.stringify({ hooks: { PreToolUse: generated } }))],
+      },
+    );
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, "hooks/hooks.json")).toEqual({ hooks: { Notification: notification, PreToolUse: generated } });
     expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
   });
 
   it.each([null, [], {}, { hooks: null }, { hooks: [] }, { hooks: { Notification: {} } }])(
-    "rejects malformed final hook documents: %j", async (document) => {
-      const diagnostics = await claudeAdapter().validateArtifacts!([
-        { path: "hooks/hooks.json", contents: JSON.stringify(document) },
-      ], target);
+    "rejects malformed final hook documents: %j",
+    async (document) => {
+      const diagnostics = await claudeAdapter().validateArtifacts!(
+        [{ path: "hooks/hooks.json", contents: JSON.stringify(document) }],
+        target,
+      );
       expect(diagnostics).toEqual([expect.objectContaining({ code: "HN301", severity: "error" })]);
     },
   );
@@ -92,10 +115,16 @@ describe("Agent Plugin to Claude projection", () => {
   ])("anchors portable MCP cwd %s", async (cwd, expected) => {
     const portable = source();
     portable.mcp!.mcpServers = { worker: { type: "stdio", command: "node", ...(cwd === undefined ? {} : { cwd }) } };
-    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+    });
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, ".mcp.json").mcpServers.worker).toMatchObject({
-      command: "node", cwd: expected,
+      command: "node",
+      cwd: expected,
       args: ["${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs", expected, "node"],
     });
   });
@@ -163,24 +192,48 @@ describe("Agent Plugin to Claude projection", () => {
       await mkdir(projectDir);
       await mkdir(join(pluginDir, "worker"), { recursive: true });
       const portable = source();
-      portable.mcp!.mcpServers = { worker: {
-        type: "stdio", command: process.execPath, cwd: "./worker",
-        args: ["-e", "console.log(JSON.stringify({cwd:process.cwd(),arg:process.argv[1],env:process.env.PROBE}));process.exit(7)", "literal $value with spaces"],
-        env: { PROBE: "preserved" },
-      } };
-      const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
+      portable.mcp!.mcpServers = {
+        worker: {
+          type: "stdio",
+          command: process.execPath,
+          cwd: "./worker",
+          args: [
+            "-e",
+            "console.log(JSON.stringify({cwd:process.cwd(),arg:process.argv[1],env:process.env.PROBE}));process.exit(7)",
+            "literal $value with spaces",
+          ],
+          env: { PROBE: "preserved" },
+        },
+      };
+      const plan = await projectAgentPluginToClaude(portable, {
+        target,
+        hookArtifacts: [],
+        support,
+        onUnsupported: "error",
+      });
       expect(plan.issues).toEqual([]);
       for (const artifact of plan.files) {
         await mkdir(join(pluginDir, artifact.path, ".."), { recursive: true });
         await writeFile(join(pluginDir, artifact.path), artifact.contents);
       }
       const server = parsed(plan, ".mcp.json").mcpServers.worker;
-      const result = spawnSync(server.command, server.args.map((arg: string) => arg.replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginDir)), {
-        cwd: projectDir, env: { ...process.env, ...server.env }, encoding: "utf8", timeout: 10_000,
-      });
+      const result = spawnSync(
+        server.command,
+        server.args.map((arg: string) => arg.replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginDir)),
+        {
+          cwd: projectDir,
+          env: { ...process.env, ...server.env },
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+      );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(7);
-      expect(JSON.parse(result.stdout)).toEqual({ cwd: join(pluginDir, "worker"), arg: "literal $value with spaces", env: "preserved" });
+      expect(JSON.parse(result.stdout)).toEqual({
+        cwd: join(pluginDir, "worker"),
+        arg: "literal $value with spaces",
+        env: "preserved",
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -188,9 +241,14 @@ describe("Agent Plugin to Claude projection", () => {
 
   it("rejects package content at the generated MCP launcher path", async () => {
     const plan = await projectAgentPluginToClaude(source([file("runtime/mcp-launcher.mjs", "untrusted")]), {
-      target, hookArtifacts: [], support, onUnsupported: "error",
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
     });
-    expect(plan.issues).toEqual([expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") })]);
+    expect(plan.issues).toEqual([
+      expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }),
+    ]);
   });
 
   it.skipIf(process.platform !== "win32").each(["probe", "probe.cmd"])(
@@ -203,11 +261,19 @@ describe("Agent Plugin to Claude projection", () => {
         await mkdir(bin);
         await mkdir(worker);
         await writeFile(join(bin, "probe.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0probe.cjs" %*\r\n`);
-        await writeFile(join(bin, "probe.cjs"), 'console.log(JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)}));process.exit(7);');
+        await writeFile(
+          join(bin, "probe.cjs"),
+          "console.log(JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)}));process.exit(7);",
+        );
         const args = ["", "with spaces", 'a"quote', "trailing\\", "%PATH%", "!literal!", "a&b|c<d>e^f(g)"];
         const portable = source();
         portable.mcp!.mcpServers = { worker: { type: "stdio", command, args } };
-        const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
+        const plan = await projectAgentPluginToClaude(portable, {
+          target,
+          hookArtifacts: [],
+          support,
+          onUnsupported: "error",
+        });
         expect(plan.issues).toEqual([]);
         const launcher = plan.files.find((item) => item.path === "runtime/mcp-launcher.mjs")!;
         const launcherPath = join(dir, "launcher.mjs");
@@ -216,7 +282,10 @@ describe("Agent Plugin to Claude projection", () => {
         const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
         env[pathKey] = `${bin};${env[pathKey] ?? ""}`;
         const result = spawnSync(process.execPath, [launcherPath, worker, command, ...args], {
-          cwd: dir, env, encoding: "utf8", timeout: 10_000,
+          cwd: dir,
+          env,
+          encoding: "utf8",
+          timeout: 10_000,
         });
         expect(result.error).toBeUndefined();
         expect(result.status, result.stderr).toBe(7);
@@ -231,7 +300,8 @@ describe("Agent Plugin to Claude projection", () => {
     const plan = await projectAgentPluginToClaude(source([file("bin/server", Uint8Array.from([0, 255]), 0o755)]), {
       target,
       hookArtifacts: [],
-      support, onUnsupported: "error",
+      support,
+      onUnsupported: "error",
     });
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({
@@ -247,7 +317,13 @@ describe("Agent Plugin to Claude projection", () => {
     const mcp = parsed(plan, ".mcp.json");
     expect(mcp.mcpServers.local).toMatchObject({
       command: "node",
-      args: ["${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs", "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}/bin/server", "${CLAUDE_PLUGIN_ROOT}/x", "${CLAUDE_PLUGIN_DATA}/y"],
+      args: [
+        "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "${CLAUDE_PLUGIN_ROOT}/bin/server",
+        "${CLAUDE_PLUGIN_ROOT}/x",
+        "${CLAUDE_PLUGIN_DATA}/y",
+      ],
       cwd: "${CLAUDE_PLUGIN_ROOT}",
       env: {
         PLUGIN_ROOT: "${CLAUDE_PLUGIN_ROOT}",
@@ -269,11 +345,15 @@ describe("Agent Plugin to Claude projection", () => {
       file(`${namespace}/.claude-plugin/plugin.json`, JSON.stringify({ name: "wrong", custom: true })),
     ]);
     portable.manifest.extensions = { [namespace]: { name: "also-wrong", manifestOnly: true } };
-    const plan = await projectAgentPluginToClaude(
-      portable,
-      { target, hookArtifacts: [], support, onUnsupported: "error" },
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+    });
+    expect(new TextDecoder().decode(plan.files.find((item) => item.path === "README.md")!.contents as Uint8Array)).toBe(
+      "overlay",
     );
-    expect(new TextDecoder().decode(plan.files.find((item) => item.path === "README.md")!.contents as Uint8Array)).toBe("overlay");
     expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({
       name: "portable-tools",
       custom: true,
@@ -289,10 +369,12 @@ describe("Agent Plugin to Claude projection", () => {
     const namespace = "com.anthropic.claude-code";
     const portable = source();
     portable.manifest.extensions = { [namespace]: { manifestOnly: true } };
-    const plan = await projectAgentPluginToClaude(
-      portable,
-      { target, hookArtifacts: [], support, onUnsupported: "error" },
-    );
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+    });
     expect(parsed(plan, ".claude-plugin/plugin.json")).toMatchObject({ manifestOnly: true });
     expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
       discovered: 1,
@@ -302,7 +384,8 @@ describe("Agent Plugin to Claude projection", () => {
   });
 
   it.each([{}, { email: "maintainer@example.com" }, { url: "https://example.com" }, { name: "" }])(
-    "reports an unrepresentable author under both projection policies: %j", async (author) => {
+    "reports an unrepresentable author under both projection policies: %j",
+    async (author) => {
       const portable = source();
       delete portable.mcp;
       portable.manifest.author = author;
@@ -310,15 +393,20 @@ describe("Agent Plugin to Claude projection", () => {
       portable.manifest.extensions = { "com.anthropic.claude-code": { author: { name: "Overlay" } } };
       for (const onUnsupported of ["error", "warn"] as const) {
         const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported });
-        expect(plan.issues).toEqual([expect.objectContaining({
-          severity: onUnsupported,
-          component: "agent-plugin.manifest",
-          message: expect.stringContaining("author.name"),
-        })]);
+        expect(plan.issues).toEqual([
+          expect.objectContaining({
+            severity: onUnsupported,
+            component: "agent-plugin.manifest",
+            message: expect.stringContaining("author.name"),
+          }),
+        ]);
         expect(parsed(plan, ".claude-plugin/plugin.json")).not.toHaveProperty("author");
-        expect(plan.summary.omissions).toEqual([expect.objectContaining({
-          component: "agent-plugin.manifest", name: "author",
-        })]);
+        expect(plan.summary.omissions).toEqual([
+          expect.objectContaining({
+            component: "agent-plugin.manifest",
+            name: "author",
+          }),
+        ]);
         expect(portable.manifest.author).toEqual(author);
       }
     },
@@ -329,7 +417,12 @@ describe("Agent Plugin to Claude projection", () => {
     delete portable.mcp;
     // The native validator accepts whitespace; the requirement is length, not trimming.
     portable.manifest.author = { name: " ", email: "maintainer@example.com" };
-    const plan = await projectAgentPluginToClaude(portable, { target, hookArtifacts: [], support, onUnsupported: "error" });
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+    });
     expect(plan.issues).toEqual([]);
     expect(parsed(plan, ".claude-plugin/plugin.json").author).toEqual(portable.manifest.author);
     expect(plan.summary.omissions).toEqual([]);
@@ -353,19 +446,34 @@ describe("Agent Plugin to Claude projection", () => {
     async (name) => {
       for (const prefix of ["", "com.anthropic.claude-code/"]) {
         for (const onUnsupported of ["error", "warn"] as const) {
-          const plan = await projectAgentPluginToClaude(source([
-            file(`${prefix}${name}`, JSON.stringify({ lockfileVersion: 3, packages: {} })),
-            file("runtime.package.json", JSON.stringify({ dependencies: {} })),
-            file("runtime.package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: {} } } })),
-          ]), {
-            target, hookArtifacts: [], support, onUnsupported,
-            runtimePackage: { manifest: "runtime.package.json", lockfile: "runtime.package-lock.json" },
-          });
+          const plan = await projectAgentPluginToClaude(
+            source([
+              file(`${prefix}${name}`, JSON.stringify({ lockfileVersion: 3, packages: {} })),
+              file("runtime.package.json", JSON.stringify({ dependencies: {} })),
+              file(
+                "runtime.package-lock.json",
+                JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: {} } } }),
+              ),
+            ]),
+            {
+              target,
+              hookArtifacts: [],
+              support,
+              onUnsupported,
+              runtimePackage: { manifest: "runtime.package.json", lockfile: "runtime.package-lock.json" },
+            },
+          );
           expect(plan.files.map((item) => item.path)).not.toContain(name);
           expect(parsed(plan, "package-lock.json").packages).toHaveProperty("");
           if (prefix) {
-            expect(plan.issues).toContainEqual(expect.objectContaining({ severity: onUnsupported, path: `${prefix}${name}` }));
-            expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+            expect(plan.issues).toContainEqual(
+              expect.objectContaining({ severity: onUnsupported, path: `${prefix}${name}` }),
+            );
+            expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
+              discovered: 1,
+              emitted: 0,
+              skipped: 1,
+            });
           } else {
             expect(plan.issues).toEqual([]);
           }
@@ -441,7 +549,10 @@ describe("Agent Plugin to Claude projection", () => {
       lockfileVersion: 3,
       packages: {
         "": { dependencies: { "is-number": "7.0.0" } },
-        "node_modules/is-number": { version: "7.0.0", resolved: "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz" },
+        "node_modules/is-number": {
+          version: "7.0.0",
+          resolved: "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+        },
       },
     });
     const plan = await projectAgentPluginToClaude(
@@ -454,7 +565,8 @@ describe("Agent Plugin to Claude projection", () => {
         target,
         hookArtifacts: [],
         runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
-        support, onUnsupported: "warn",
+        support,
+        onUnsupported: "warn",
       },
     );
     expect(plan.issues).toEqual([expect.objectContaining({ severity: "warn", path: `${namespace}/package.json` })]);
@@ -465,7 +577,9 @@ describe("Agent Plugin to Claude projection", () => {
   it("runs native hooks first and appends one generated dispatcher per event", async () => {
     const namespace = "com.anthropic.claude-code";
     const native = { hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "native" }] }] } };
-    const generated = { hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "hooknostic" }] }] } };
+    const generated = {
+      hooks: { PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "hooknostic" }] }] },
+    };
     const plan = await projectAgentPluginToClaude(
       source([file(`${namespace}/hooks/hooks.json`, JSON.stringify(native))]),
       {
@@ -474,10 +588,15 @@ describe("Agent Plugin to Claude projection", () => {
           { path: "hooks/hooks.json", contents: JSON.stringify(generated) },
           { path: "runtime/hooknostic.mjs", contents: "runtime" },
         ],
-        support, onUnsupported: "error",
+        support,
+        onUnsupported: "error",
       },
     );
-    expect(parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map((entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command)).toEqual(["native", "hooknostic"]);
+    expect(
+      parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map(
+        (entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command,
+      ),
+    ).toEqual(["native", "hooknostic"]);
   });
 
   it("materializes a separate locked runtime package at the Claude plugin root", async () => {
@@ -489,7 +608,10 @@ describe("Agent Plugin to Claude projection", () => {
       lockfileVersion: 3,
       packages: {
         "": { dependencies: { "is-number": "7.0.0" } },
-        "node_modules/is-number": { version: "7.0.0", resolved: "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz" },
+        "node_modules/is-number": {
+          version: "7.0.0",
+          resolved: "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+        },
       },
     });
     const plan = await projectAgentPluginToClaude(
@@ -502,7 +624,8 @@ describe("Agent Plugin to Claude projection", () => {
         target,
         hookArtifacts: [],
         runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
-        support, onUnsupported: "error",
+        support,
+        onUnsupported: "error",
       },
     );
     expect(plan.issues).toEqual([]);
@@ -520,7 +643,7 @@ describe("Agent Plugin to Claude projection", () => {
     {
       label: "a lockfile that does not lock a manifest dependency",
       lockfile: JSON.stringify({ lockfileVersion: 3, packages: { "": { dependencies: { "is-number": "7.0.0" } } } }),
-      message: "does not lock dependency \"is-number\"",
+      message: 'does not lock dependency "is-number"',
     },
     {
       label: "a lockfile whose root dependencies differ from the manifest",
@@ -550,7 +673,8 @@ describe("Agent Plugin to Claude projection", () => {
         target,
         hookArtifacts: [],
         runtimePackage: { manifest: "./runtime.package.json", lockfile: "./runtime.package-lock.json" },
-        support, onUnsupported: "error",
+        support,
+        onUnsupported: "error",
       },
     );
     expect(plan.files.some((item) => item.path === "package-lock.json")).toBe(false);
@@ -568,7 +692,8 @@ describe("Agent Plugin to Claude projection", () => {
       target,
       hookArtifacts: [],
       runtimePackage: { manifest: "../package.json", lockfile: "runtime.package-lock.json" },
-      support, onUnsupported: "error",
+      support,
+      onUnsupported: "error",
     });
     expect(plan.issues).toContainEqual(
       expect.objectContaining({
@@ -598,13 +723,22 @@ describe("Agent Plugin to Claude projection", () => {
       source([file(`${namespace}/.mcp.json`, JSON.stringify({ mcpServers: { local: { command: "other" } } }))]),
       { target, hookArtifacts: [], support, onUnsupported: "error" },
     );
-    expect(duplicate.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("both") }));
+    expect(duplicate.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", message: expect.stringContaining("both") }),
+    );
 
     const collision = await projectAgentPluginToClaude(
       source([file(`${namespace}/runtime/hooknostic.mjs`, "native")]),
-      { target, hookArtifacts: [{ path: "runtime/hooknostic.mjs", contents: "generated" }], support, onUnsupported: "error" },
+      {
+        target,
+        hookArtifacts: [{ path: "runtime/hooknostic.mjs", contents: "generated" }],
+        support,
+        onUnsupported: "error",
+      },
     );
-    expect(collision.issues).toContainEqual(expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }));
+    expect(collision.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") }),
+    );
   });
 
   // A Claude-native file at the package root is not a client extension. The
@@ -623,7 +757,8 @@ describe("Agent Plugin to Claude projection", () => {
     const plan = await projectAgentPluginToClaude(source([file(path, contents)]), {
       target,
       hookArtifacts: [],
-      support, onUnsupported: "error",
+      support,
+      onUnsupported: "error",
     });
     expect(plan.issues).toContainEqual(
       expect.objectContaining({
@@ -641,14 +776,23 @@ describe("Agent Plugin to Claude projection", () => {
       source([
         file(".mcp.json", JSON.stringify({ mcpServers: { rogue: { command: "rogue" } }, extra: "leaked" })),
         file(".claude-plugin/plugin.json", JSON.stringify({ name: "impostor", rogue: "leaked" })),
-        file("hooks/hooks.json", JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "rogue" }] }] } })),
+        file(
+          "hooks/hooks.json",
+          JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "rogue" }] }] } }),
+        ),
       ]),
       {
         target,
         hookArtifacts: [
-          { path: "hooks/hooks.json", contents: JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "hooknostic" }] }] } }) },
+          {
+            path: "hooks/hooks.json",
+            contents: JSON.stringify({
+              hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "hooknostic" }] }] },
+            }),
+          },
         ],
-        support, onUnsupported: "error",
+        support,
+        onUnsupported: "error",
       },
     );
     const mcp = parsed(plan, ".mcp.json");
@@ -656,7 +800,9 @@ describe("Agent Plugin to Claude projection", () => {
     expect(mcp.extra).toBeUndefined();
     expect(parsed(plan, ".claude-plugin/plugin.json")).not.toHaveProperty("rogue");
     expect(
-      parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map((entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command),
+      parsed(plan, "hooks/hooks.json").hooks.PreToolUse.map(
+        (entry: { hooks: { command: string }[] }) => entry.hooks[0]!.command,
+      ),
     ).toEqual(["hooknostic"]);
     expect(plan.issues).toHaveLength(3);
   });

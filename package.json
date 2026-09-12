@@ -17,12 +17,16 @@
     "pretest": "pnpm run bundle",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
     "@types/node": "catalog:",
     "eslint": "catalog:",
+    "eslint-plugin-simple-import-sort": "catalog:",
+    "prettier": "catalog:",
     "semver": "catalog:semver-tooling",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",

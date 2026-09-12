@@ -1,7 +1,8 @@
 import { z } from "zod";
+
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
-import { findNonJsonPath } from "./json.js";
 import { HOOK_EVENT_NAMES } from "./events.js";
+import { findNonJsonPath } from "./json.js";
 import { SUPPORT_LEVELS } from "./support.js";
 import { TOOL_KINDS } from "./tools.js";
 
@@ -26,10 +27,7 @@ export const toolInvocationSchema = z
     kind: toolKindSchema,
     nativeName: z.string(),
     input: z.unknown(),
-    mcp: z
-      .object({ server: z.string().optional(), tool: z.string().optional() })
-      .strict()
-      .optional(),
+    mcp: z.object({ server: z.string().optional(), tool: z.string().optional() }).strict().optional(),
     shell: z
       .object({
         command: z.string(),
@@ -147,7 +145,10 @@ const projectMcpTargetOverrideSchema = z
 
 export const hooknosticConfigSchema = z
   .object({
-    project: z.object({ root: z.string().min(1) }).strict().optional(),
+    project: z
+      .object({ root: z.string().min(1) })
+      .strict()
+      .optional(),
     entry: z.string().min(1).optional(),
     compatibility: compatibilityPolicySchema.optional(),
     runtime: runtimePolicySchema.optional(),
@@ -187,27 +188,51 @@ export const hooknosticConfigSchema = z
     for (const [name, target] of Object.entries(config.targets)) {
       if (target.delivery !== "project") continue;
       const adapter = target.adapter ?? name;
-      if (projectAdapters.has(adapter)) context.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
+      if (projectAdapters.has(adapter))
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
       projectAdapters.add(adapter);
     }
     const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
-    if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
+    if (
+      config.components &&
+      !config.project &&
+      Object.entries(config.targets).some(
+        ([name, target]) => componentTargets.has(name) && target.delivery === "project",
+      )
+    ) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: "project component delivery requires project.root" });
     }
     if (config.components) {
-      if (config.components.root !== undefined && (config.components.skills !== undefined || config.components.mcp !== undefined)) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "components.root is mutually exclusive with direct skills/mcp sources" });
+      if (
+        config.components.root !== undefined &&
+        (config.components.skills !== undefined || config.components.mcp !== undefined)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "components.root is mutually exclusive with direct skills/mcp sources",
+        });
       }
       if (config.components.root !== undefined && config.components.mcpOverrides !== undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "components.mcpOverrides is only valid with a direct MCP source" });
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "components.mcpOverrides is only valid with a direct MCP source",
+        });
       }
       if (config.components.root === undefined && config.components.executableFiles !== undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: ["components", "executableFiles"], message: "components.executableFiles requires components.root" });
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "executableFiles"],
+          message: "components.executableFiles requires components.root",
+        });
       }
       if (config.components.mcp === undefined && config.components.mcpOverrides !== undefined) {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
       }
-      if (config.components.root === undefined && config.components.skills === undefined && config.components.mcp === undefined) {
+      if (
+        config.components.root === undefined &&
+        config.components.skills === undefined &&
+        config.components.mcp === undefined
+      ) {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
       }
       const configured = new Set(Object.keys(config.targets));

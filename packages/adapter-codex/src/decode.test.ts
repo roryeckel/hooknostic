@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { loadFixture } from "@hooknostic/testkit";
+
 import { baseHookEventSchema } from "@hooknostic/sdk";
+import { loadFixture } from "@hooknostic/testkit";
+
 import { CodexDecodeError, decodeCodex } from "./decode.js";
-import { classifyCodexTool } from "./toolmap.js";
 import { codexHarness } from "./harness.js";
+import { classifyCodexTool } from "./toolmap.js";
 
 const INVOCATION = { targetId: "codex", harnessVersion: codexHarness.referenceVersion };
 
@@ -24,11 +26,7 @@ describe("decodeCodex fixtures", () => {
   for (const name of CASES) {
     it(`decodes ${name} to its canonical event`, () => {
       const input = loadFixture("codex", "0.148", `${name}.input.json`);
-      const canonical = loadFixture<Record<string, unknown>>(
-        "codex",
-        "0.148",
-        `${name}.canonical.json`,
-      );
+      const canonical = loadFixture<Record<string, unknown>>("codex", "0.148", `${name}.canonical.json`);
       const decoded = decodeCodex(input, INVOCATION);
       expect(decoded).toEqual({
         ...canonical,
@@ -40,11 +38,7 @@ describe("decodeCodex fixtures", () => {
   }
 
   it("tolerates additive vendor fields and preserves raw", () => {
-    const input = loadFixture<Record<string, unknown>>(
-      "codex",
-      "0.148",
-      "pre-tool-bash.input.json",
-    );
+    const input = loadFixture<Record<string, unknown>>("codex", "0.148", "pre-tool-bash.input.json");
     const decoded = decodeCodex({ ...input, future_field: 42 }, INVOCATION);
     expect(decoded.event).toBe("tool.before");
     expect((decoded.raw as Record<string, unknown>)["future_field"]).toBe(42);
@@ -58,9 +52,7 @@ describe("decodeCodex fixtures", () => {
   });
 
   it("throws CodexDecodeError for unmapped events", () => {
-    expect(() =>
-      decodeCodex({ hook_event_name: "SomethingNew", cwd: "C:/x" }, INVOCATION),
-    ).toThrow(CodexDecodeError);
+    expect(() => decodeCodex({ hook_event_name: "SomethingNew", cwd: "C:/x" }, INVOCATION)).toThrow(CodexDecodeError);
   });
 });
 
@@ -75,9 +67,12 @@ describe("shell argument normalization", () => {
       command: "echo one",
       commandKey: "command",
     });
-    expect(
-      classifyCodexTool("exec_command", { cmd: "echo two", workdir: "C:/proj" }).shell,
-    ).toEqual({ command: "echo two", cwd: "C:/proj", commandKey: "cmd", cwdKey: "workdir" });
+    expect(classifyCodexTool("exec_command", { cmd: "echo two", workdir: "C:/proj" }).shell).toEqual({
+      command: "echo two",
+      cwd: "C:/proj",
+      commandKey: "cmd",
+      cwdKey: "workdir",
+    });
   });
 
   it("leaves shell undefined for a shell tool whose shape was never captured", () => {

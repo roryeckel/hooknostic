@@ -1,8 +1,9 @@
 import { z } from "zod";
+
 import type { Effect } from "./effects.js";
 import { EFFECT_KINDS } from "./effects.js";
-import { effectSchema } from "./schemas.js";
 import type { HookEventName } from "./events.js";
+import { effectSchema } from "./schemas.js";
 import { hookEventNameSchema } from "./schemas.js";
 
 /** One effect as applied during composition, attributed to its hook. */
