@@ -126,6 +126,29 @@ describe("complete project integration", () => {
     expect(result.errors).toEqual([]);
     expect(await readFile(join(root, ".claude/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
+  it("keeps synchronized project wiring out of package component sources", async () => {
+    const claude = registry.claude!;
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: { root: ".", targets: ["bundle"] },
+      targets: {
+        bundle: { adapter: "claude", version: claude.harness.recommendedRange, delivery: "package", output: "dist/bundle" },
+        local: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/local" },
+      },
+    });
+    await writeFile(join(root, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mixed-delivery" }));
+    await writeFile(join(root, "portable.txt"), "portable package content\n");
+
+    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+    expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
+
+    const built = await buildProject(options);
+    expect(built.ok).toBe(true);
+    expect(built.report.components?.sourceFiles).toContain("portable.txt");
+    expect(built.report.components?.sourceFiles).not.toContain(".codex/hooks.json");
+    expect(await readFile(join(root, "dist/bundle/portable.txt"), "utf8")).toBe("portable package content\n");
+    await expect(readFile(join(root, "dist/bundle/.codex/hooks.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("rejects duplicate project adapters and partial synchronization", async () => {
     const adapter = registry.claude!;
     const target = { adapter: "claude", version: adapter.harness.recommendedRange, delivery: "project", output: "dist/a" };

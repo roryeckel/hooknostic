@@ -230,8 +230,9 @@ async function canonical(path: string): Promise<string> {
 
 /**
  * Hooknostic-project paths that must never ship inside a projected package:
- * transaction directories, the build report, every target output, the config
- * file itself, and the hook source entry (its compiled runtime ships instead).
+ * transaction directories, native project wiring, the build report, every
+ * target output, the config file itself, and the hook source entry (its
+ * compiled runtime ships instead).
  * Package-level junk (`node_modules`, `.env`, …) is excluded by the loader.
  *
  * The loader inventories the root's realpath, so every pattern is derived from
@@ -243,6 +244,7 @@ async function projectionExcludes(
   lexicalConfigPath: string,
   entry: string | undefined,
   outputs: readonly string[],
+  nativeProjectPaths: readonly string[],
   configured: readonly string[],
 ): Promise<string[]> {
   const root = await canonical(lexicalRoot);
@@ -279,6 +281,10 @@ async function projectionExcludes(
     // through a link inside the package (`link -> dist`) is walked under the
     // link's name and rejected as resolving to an excluded path.
     ...(await Promise.all(outputs.map((p) => spellings(resolve(configDir, p))))).flat(),
+    // Repository-local registrations are build products too. When the package
+    // root is also the project root, a sync must not make the next package
+    // projection inventory its own generated/shared native configuration.
+    ...(await Promise.all(nativeProjectPaths.map((p) => spellings(p)))).flat(),
   ];
   for (const path of projectPaths) {
     const rel = relative(root, path);
@@ -421,6 +427,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   let components: AgentPluginPackage | undefined;
   if (config.components?.root !== undefined) {
     const agentPluginRoot = resolve(configDir, config.components.root);
+    const nativeProjectPaths = config.project === undefined
+      ? []
+      : Object.entries(config.targets).flatMap(([name, target]) =>
+          target.delivery !== "project"
+            ? []
+            : (options.registry[target.adapter ?? name]?.projectPaths ?? []).map((path) =>
+                resolve(configDir, config.project!.root, path),
+              ),
+        );
     const loaded = await loadAgentPlugin({
       root: agentPluginRoot,
       ...(config.components.executableFiles === undefined ? {} : { executableFiles: config.components.executableFiles }),
@@ -432,6 +447,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         // `root: "."` a projector then copies it into the next one, nesting a
         // level deeper every run until path validation fails.
         Object.values(config.targets).map((target) => target.output),
+        nativeProjectPaths,
         config.components.exclude ?? [],
       ),
     });

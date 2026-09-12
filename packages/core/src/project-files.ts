@@ -61,6 +61,23 @@ async function bytes(path: string): Promise<Buffer | null> {
     throw error;
   }
 }
+interface FileState { contents: Buffer | null; mode?: number }
+async function fileState(path: string): Promise<FileState> {
+  const contents = await bytes(path);
+  if (contents === null || process.platform === "win32") return { contents };
+  return { contents, mode: (await lstat(path)).mode & 0o777 };
+}
+function sameState(left: FileState, right: FileState): boolean {
+  if (!same(left.contents, right.contents)) return false;
+  if (process.platform === "win32" || left.contents === null || right.contents === null) return true;
+  // Older schema-v1 journals did not necessarily record a preimage mode. An
+  // absent mode therefore remains a wildcard for compatibility; new plans and
+  // journals always capture it for existing files.
+  return left.mode === undefined || right.mode === undefined || left.mode === right.mode;
+}
+function beforeState(change: Pick<FileChange, "before" | "beforeMode">): FileState {
+  return { contents: change.before, ...(change.beforeMode === undefined ? {} : { mode: change.beforeMode }) };
+}
 function dataObject(): Record<string, unknown> { return {}; }
 function define(target: Record<string, unknown>, key: string, value: unknown): void {
   Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
@@ -130,7 +147,8 @@ export async function reconcileProject(root: string, config: string, integration
     if (raw && get(document(raw.toString(), check.path), check.key) !== undefined) throw new Error(`unowned component collision: ${check.path}:${check.key.join(".")}`);
   }
   if (await bytes(await projectPath(root, JOURNAL))) throw new Error("unfinished integration transaction; run hooknostic recover");
-  const manifestBytes = await bytes(await projectPath(root, STATE));
+  const manifestState = await fileState(await projectPath(root, STATE));
+  const manifestBytes = manifestState.contents;
   const prior = readManifest(manifestBytes, config);
   const previous = new Map(prior.owned.map(entry => [identity(entry), entry]));
   const desired = new Map<string, ProjectFile | ProjectEntry>();
@@ -163,13 +181,14 @@ export async function reconcileProject(root: string, config: string, integration
   const owned: Owned[] = [];
   const changes: FileChange[] = [];
   for (const path of [...paths].sort()) {
-    const before = await bytes(await projectPath(root, path));
+    const observed = await fileState(await projectPath(root, path));
+    const before = observed.contents;
     const oldEntries = prior.owned.filter(e => e.path === path);
     const nextEntries = [...desired.values()].filter(e => e.path === path);
     const whole = nextEntries.find(e => !("key" in e));
     const oldWhole = oldEntries.find(e => e.key === undefined);
     let after: Buffer | null = before;
-    const beforeMode = before ? (await lstat(await projectPath(root, path))).mode & 0o777 : 0o644;
+    const beforeMode = observed.mode ?? 0o644;
     let mode = beforeMode;
     if (relinquished.has(path)) {
       if (oldEntries.some(entry => entry.key !== undefined)) throw new Error(`cannot relinquish structural ownership as a file: ${path}`);
@@ -226,7 +245,9 @@ export async function reconcileProject(root: string, config: string, integration
   }
   const manifest: Manifest = { schemaVersion: 1, config, owned: owned.sort((a, b) => (identity(a) < identity(b) ? -1 : identity(a) > identity(b) ? 1 : 0)) };
   const afterManifest = Buffer.from(JSON.stringify(manifest, null, 2) + "\n");
-  if (!same(manifestBytes, afterManifest)) changes.push({ path: STATE, before: manifestBytes, after: afterManifest, mode: 0o644 });
+  if (!same(manifestBytes, afterManifest) || (process.platform !== "win32" && manifestBytes !== null && manifestState.mode !== 0o644)) {
+    changes.push({ path: STATE, before: manifestBytes, after: afterManifest, mode: 0o644, ...(manifestState.mode === undefined ? {} : { beforeMode: manifestState.mode }) });
+  }
   const preconditions = [...observedAbsentFiles]
     .map(([path, before]) => ({ path, before }))
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -235,15 +256,15 @@ export async function reconcileProject(root: string, config: string, integration
 function same(a: Buffer | null, b: Buffer | null): boolean { return a === null ? b === null : b !== null && a.equals(b); }
 interface JournalEntry { path: string; before: string | null; afterHash: string | null; mode: number; beforeMode?: number }
 interface Journal { schemaVersion: 1; config: string; entries: JournalEntry[] }
-async function replace(root: string, path: string, value: Buffer | null, mode: number, expected?: Buffer | null, staged?: string): Promise<void> {
+async function replace(root: string, path: string, value: Buffer | null, mode: number, expected?: FileState, staged?: string): Promise<void> {
   const destination = await projectPath(root, path);
-  if (expected !== undefined && !same(await bytes(destination), expected)) throw new Error(`write precondition changed: ${path}`);
+  if (expected !== undefined && !sameState(await fileState(destination), expected)) throw new Error(`write precondition changed: ${path}`);
   if (value === null) { await rm(destination, { force: true }); return; }
   await mkdir(dirname(destination), { recursive: true });
   const temp = staged ?? await stage(root, value, mode);
   try {
     await projectPath(root, path);
-    if (expected !== undefined && !same(await bytes(destination), expected)) throw new Error(`write precondition changed: ${path}`);
+    if (expected !== undefined && !sameState(await fileState(destination), expected)) throw new Error(`write precondition changed: ${path}`);
     await rename(temp, destination);
   } finally { await rm(temp, { force: true }); }
 }
@@ -251,7 +272,11 @@ async function stage(root: string, value: Buffer, mode: number): Promise<string>
   const temp = await projectPath(root, `.hooknostic/staging/${randomUUID()}`);
   await mkdir(dirname(temp), { recursive: true });
   const handle = await open(temp, "wx", mode);
-  try { await handle.writeFile(value); await handle.sync(); } finally { await handle.close(); }
+  try {
+    if (process.platform !== "win32") await handle.chmod(mode);
+    await handle.writeFile(value);
+    await handle.sync();
+  } finally { await handle.close(); }
   return temp;
 }
 async function acquire(root: string, name = LOCK): Promise<() => Promise<void>> {
@@ -275,7 +300,7 @@ export async function applyProject(root: string, config: string, plan: Reconcili
   try {
     if (await bytes(await projectPath(root, JOURNAL))) throw new Error("unfinished transaction; run hooknostic recover");
     await verifyPreconditions(root, plan.preconditions);
-    for (const change of plan.changes) if (!same(await bytes(await projectPath(root, change.path)), change.before)) throw new Error(`project changed during planning: ${change.path}`);
+    for (const change of plan.changes) if (!sameState(await fileState(await projectPath(root, change.path)), beforeState(change))) throw new Error(`project changed during planning: ${change.path}`);
     if (!plan.changes.length) return;
     for (const change of plan.changes) if (change.after !== null) staged.set(change.path, await stage(root, change.after, change.mode));
     await verifyPreconditions(root, plan.preconditions);
@@ -283,8 +308,9 @@ export async function applyProject(root: string, config: string, plan: Reconcili
     await replace(root, JOURNAL, Buffer.from(JSON.stringify(journal)), 0o600);
     journalWritten = true;
     for (const change of plan.changes) {
-      if (!same(await bytes(await projectPath(root, change.path)), change.before)) throw new Error(`project changed during synchronization: ${change.path}`);
-      await replace(root, change.path, change.after, change.mode, change.before, staged.get(change.path));
+      const expected = beforeState(change);
+      if (!sameState(await fileState(await projectPath(root, change.path)), expected)) throw new Error(`project changed during synchronization: ${change.path}`);
+      await replace(root, change.path, change.after, change.mode, expected, staged.get(change.path));
     }
     await rm(await projectPath(root, JOURNAL));
   } catch (error) {
@@ -299,19 +325,23 @@ async function restore(root: string, config: string): Promise<void> {
   if (!raw) return;
   const journal = JSON.parse(raw.toString()) as Journal;
   if (journal.schemaVersion !== 1 || journal.config !== config || !Array.isArray(journal.entries)) throw new Error("invalid recovery journal");
-  const actions: { entry: JournalEntry; before: Buffer | null; current: Buffer | null }[] = [];
+  const actions: { entry: JournalEntry; before: FileState; current: FileState }[] = [];
   const seen = new Set<string>();
   for (const entry of journal.entries) {
-    if (!entry || typeof entry.path !== "string" || seen.has(entry.path) || [JOURNAL, LOCK, RECOVERY_LOCK].includes(entry.path) || (entry.before !== null && typeof entry.before !== "string") || (entry.afterHash !== null && !/^[a-f0-9]{64}$/.test(entry.afterHash)) || !Number.isInteger(entry.mode) || entry.mode < 0 || entry.mode > 0o777) throw new Error("invalid recovery journal entry");
+    if (!entry || typeof entry.path !== "string" || seen.has(entry.path) || [JOURNAL, LOCK, RECOVERY_LOCK].includes(entry.path) || (entry.before !== null && typeof entry.before !== "string") || (entry.afterHash !== null && !/^[a-f0-9]{64}$/.test(entry.afterHash)) || !Number.isInteger(entry.mode) || entry.mode < 0 || entry.mode > 0o777 || (entry.beforeMode !== undefined && (!Number.isInteger(entry.beforeMode) || entry.beforeMode < 0 || entry.beforeMode > 0o777))) throw new Error("invalid recovery journal entry");
     seen.add(entry.path);
-    const before = entry.before === null ? null : Buffer.from(entry.before, "base64");
-    const current = await bytes(await projectPath(root, entry.path));
-    if (!same(current, before) && (current === null ? null : fileHash(current)) !== entry.afterHash) throw new Error(`recovery conflict at ${entry.path}; preserve the journal and resolve the external edit manually`);
+    const beforeContents = entry.before === null ? null : Buffer.from(entry.before, "base64");
+    const before: FileState = { contents: beforeContents, ...(entry.beforeMode === undefined ? {} : { mode: entry.beforeMode }) };
+    const current = await fileState(await projectPath(root, entry.path));
+    const matchesAfter = entry.afterHash === null
+      ? current.contents === null
+      : current.contents !== null && fileHash(current.contents) === entry.afterHash && (process.platform === "win32" || current.mode === entry.mode);
+    if (!sameState(current, before) && !matchesAfter) throw new Error(`recovery conflict at ${entry.path}; preserve the journal and resolve the external edit manually`);
     actions.push({ entry, before, current });
   }
   for (const { entry, before, current } of actions.reverse()) {
-    if (!same(await bytes(await projectPath(root, entry.path)), current)) throw new Error(`recovery precondition changed: ${entry.path}`);
-    if (!same(current, before)) await replace(root, entry.path, before, entry.beforeMode ?? entry.mode, current);
+    if (!sameState(await fileState(await projectPath(root, entry.path)), current)) throw new Error(`recovery precondition changed: ${entry.path}`);
+    if (!sameState(current, before)) await replace(root, entry.path, before.contents, before.mode ?? entry.mode, current);
   }
   await rm(await projectPath(root, JOURNAL));
 }
