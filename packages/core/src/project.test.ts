@@ -32,6 +32,7 @@ describe("complete project integration", () => {
     const synced = await runProject({ ...options, command: "sync" });
     expect(synced.errors).toEqual([]);
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+    expect(await readFile(join(root, ".hooknostic/.gitattributes"), "utf8")).toBe("** -text\n");
     const codex = JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8"));
     expect(codex.hooks.PreToolUse[0].hooks[0].timeout).toBe(5);
     expect(await readFile(join(root, ".opencode/plugins/hooknostic.js"), "utf8")).toContain(".hooknostic/artifacts/opencode");
@@ -57,6 +58,7 @@ describe("complete project integration", () => {
     await writeFile(join(root, "skills/sample/references/note.md"), "resource\n");
     const synced = await runProject({ ...options, command: "sync" }); expect(synced.errors).toEqual([]);
     expect(await readFile(join(root, ".claude/skills/sample/references/note.md"), "utf8")).toBe("resource\n");
+    expect(await readFile(join(root, ".claude/skills/.gitattributes"), "utf8")).toBe("** -text\n");
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
   it("rejects duplicate project adapters and partial synchronization", async () => {

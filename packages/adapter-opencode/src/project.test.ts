@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { AGENT_PLUGIN_MCP_SCHEMA, type ProjectComponents } from "@hooknostic/agent-plugin";
-import { projectComponents } from "./project.js";
+import { projectComponents, projectIntegration } from "./project.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -45,6 +45,13 @@ async function moduleFor(origin: ProjectComponents["origin"]): Promise<string> {
 }
 
 describe("OpenCode project components", () => {
+  it("pins generated project modules against Git line-ending conversion", () => {
+    expect(projectIntegration([], "out").files).toContainEqual({
+      path: ".opencode/plugins/.gitattributes",
+      contents: "hooknostic.js -text\nhooknostic-components.js -text\n",
+    });
+  });
+
   it("resolves direct MCP environment references at module load without writing secrets", async () => {
     const path = await moduleFor("direct");
     const generated = await readFile(path, "utf8");

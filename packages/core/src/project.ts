@@ -22,7 +22,10 @@ export async function runProject(options: BuildOptions & { command: "sync" | "ve
     const built = await buildProject({ ...options, configResult: loaded, dryRun: true });
     result.diagnostics = built.report.diagnostics;
     if (!built.ok) throw new Error(built.report.diagnostics.map(d => d.message).join("\n"));
-    const integration: ProjectIntegration = { files: [{ path: ".hooknostic/.gitignore", contents: "/data/\n/sync.lock\n/recovery.lock\n/transaction.json\n/staging/\n" }], entries: [], guidance: [] };
+    const integration: ProjectIntegration = { files: [
+      { path: ".hooknostic/.gitattributes", contents: "** -text\n" },
+      { path: ".hooknostic/.gitignore", contents: "/data/\n/sync.lock\n/recovery.lock\n/transaction.json\n/staging/\n" },
+    ], entries: [], guidance: [] };
     for (const target of built.plan ?? []) {
       const configured = config.targets[target.target]!;
       if (configured.delivery !== "project") continue;

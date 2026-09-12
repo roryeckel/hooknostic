@@ -6,10 +6,13 @@ import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { projectMcpLauncher } from "@hooknostic/core";
 import type { GeneratedArtifact, ProjectIntegration } from "@hooknostic/core";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
-  const files = artifacts.filter(a => a.path.startsWith(".opencode/plugins/")).map(a => ({
+  const files = [{
+    path: ".opencode/plugins/.gitattributes",
+    contents: "hooknostic.js -text\nhooknostic-components.js -text\n",
+  }, ...artifacts.filter(a => a.path.startsWith(".opencode/plugins/")).map(a => ({
     path: a.path,
     contents: `export { default } from ${JSON.stringify("../../" + output + "/" + a.path)};\n`,
-  }));
+  }))];
   return { files, entries: [], guidance: ["Restart OpenCode to reload project modules; execution has not been observed by this command."] };
 }
 

@@ -8,6 +8,7 @@ export function projectSkillFiles(source: ProjectComponents, root: string, desti
     if (resolve(root, path) === resolve(skill.source)) return [];
     return skill.files.map(file => ({ ...file, path: `${path}/${file.path}` }));
   });
+  if (files.length) files.push({ path: `${destination}/.gitattributes`, contents: new TextEncoder().encode("** -text\n"), mode: 0o644 });
   return { files, entries: [], guidance: [] };
 }
 export async function projectMcpLauncher(source: ProjectComponents, root: string, output: string, selectedServers?: McpLauncherServer[]): Promise<ProjectIntegration> {
