@@ -21,6 +21,16 @@ describe("Codex project components", () => {
     });
   });
 
+  it("preserves a prototype-key literal remote header", async () => {
+    const headers = JSON.parse('{"__proto__":"present"}') as Record<string, string>;
+    const integration = await projectComponents(source({
+      remote: { type: "streamable-http", url: "https://example.invalid/mcp", headers },
+    }), ".", "out", "hooknostic.config.ts", {});
+    const value = integration.entries[0]!.value as { http_headers: Record<string, string> };
+    expect(Object.hasOwn(value.http_headers, "__proto__")).toBe(true);
+    expect(value.http_headers["__proto__"]).toBe("present");
+  });
+
   it.each([
     [{ bad: { type: "streamable-http" as const, url: "https://example.invalid/${TOKEN}/mcp" } }, "cannot represent environment references in a remote URL"],
     [{ bad: { type: "streamable-http" as const, url: "https://example.invalid/mcp", headers: { "x-key": "prefix-${TOKEN}" } } }, "cannot mix an environment reference with literal text"],

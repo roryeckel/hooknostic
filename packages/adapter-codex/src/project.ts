@@ -13,8 +13,8 @@ function directRemote(name: string, server: { url: string; headers?: Record<stri
   if ([...server.url.matchAll(ENVIRONMENT_REFERENCE)].length) {
     throw new Error(`Codex project MCP ${JSON.stringify(name)} cannot represent environment references in a remote URL; use an environment-backed header`);
   }
-  const httpHeaders: Record<string, string> = {};
-  const envHttpHeaders: Record<string, string> = {};
+  const httpHeaders: Record<string, string> = Object.create(null);
+  const envHttpHeaders: Record<string, string> = Object.create(null);
   let bearerTokenEnvVar: string | undefined;
   for (const [header, value] of Object.entries(server.headers ?? {})) {
     const exact = value.match(EXACT_ENVIRONMENT_REFERENCE);

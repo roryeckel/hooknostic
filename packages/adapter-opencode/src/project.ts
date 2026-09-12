@@ -1,9 +1,9 @@
 import { translateMcp, RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT } from "./project-agent-plugin.js";
 import { opencodeHarness } from "./harness.js";
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
-import { dirname, relative, resolve } from "node:path";
+import { relative } from "node:path";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { projectMcpLauncher } from "@hooknostic/core";
+import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const importPath = (path: string): string => path.split("/").map(segment => encodeURIComponent(segment)).join("/");
@@ -18,9 +18,11 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
 }
 
 export async function projectComponents(source: ProjectComponents, root: string, output: string, _config: string, options: ProjectComponentOptions): Promise<ProjectIntegration> {
-  const result: ProjectIntegration = { files: [], entries: [], guidance: [] };
-  const skillRoots = [...new Set(source.skills.filter(skill => resolve(skill.source) !== resolve(root, ".agents/skills", skill.name)).map(skill => relative(root, dirname(skill.source)).replaceAll("\\", "/") || "."))];
-  if (source.mcp || skillRoots.length) {
+  // OpenCode discovers .agents/skills natively. Copy the loader's filtered
+  // inventory there instead of naming its unfiltered source directory through
+  // skills.paths, which would re-expose excluded files and rejected siblings.
+  const result = projectSkillFiles(source, root, ".agents/skills");
+  if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
     const sourceRoot = relative(root, source.mcp?.root ?? root).replaceAll("\\", "/") || ".";
@@ -54,8 +56,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const declarations = JSON.parse(${JSON.stringify(JSON.stringify(declarations))});
 ${directEnvironmentResolution}
 export default async () => ({ config(config) {
-  const paths = ${JSON.stringify(skillRoots)}.map(path => resolve(root, path));
-  if (paths.length) config.skills = { ...(config.skills ?? {}), paths: [...new Set([...(config.skills?.paths ?? []), ...paths])] };
   const mcp = { ...(config.mcp ?? {}) };
   for (const [name, server] of declarations) {
     const value = server.type === "local" ? { ...server,

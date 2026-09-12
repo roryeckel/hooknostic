@@ -111,6 +111,28 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain("TOKEN");
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
+  it("synchronizes prototype-key MCP server names for Claude and Codex", async () => {
+    const claude = registry.claude!;
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: { mcp: "./mcp.json" },
+      targets: {
+        claude: { adapter: "claude", version: claude.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/claude" },
+        codex: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/codex" },
+      },
+    });
+    await writeFile(join(root, "mcp.json"), `{"$schema":"${AGENT_PLUGIN_MCP_SCHEMA}","mcpServers":{"__proto__":{"type":"streamable-http","url":"https://proto.invalid/mcp"},"constructor":{"type":"streamable-http","url":"https://constructor.invalid/mcp"},"prototype":{"type":"streamable-http","url":"https://prototype.invalid/mcp"}}}`);
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    const claudeServers = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8")).mcpServers as Record<string, unknown>;
+    const codexServers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8")).mcp_servers as Record<string, unknown>;
+    for (const name of ["__proto__", "constructor", "prototype"]) {
+      expect(Object.hasOwn(claudeServers, name)).toBe(true);
+      expect(Object.hasOwn(codexServers, name)).toBe(true);
+    }
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
   it("reports and omits Claude package remotes whose references cannot remain literal", async () => {
     const claude = registry.claude!;
     const { root, options } = await fixture({

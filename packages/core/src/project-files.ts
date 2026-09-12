@@ -2,7 +2,7 @@ import { readProjectToml, editProjectToml } from "./project-toml.js";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
-import { applyEdits, modify, parse, type ParseError } from "jsonc-parser/lib/esm/main.js";
+import { applyEdits, modify, parseTree, type Node as JsonNode, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
 
 export interface ProjectFile { path: string; contents: string | Uint8Array; mode?: number }
@@ -53,12 +53,29 @@ async function bytes(path: string): Promise<Buffer | null> {
     throw error;
   }
 }
+function dataObject(): Record<string, unknown> { return {}; }
+function define(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+}
+function jsonNodeValue(node: JsonNode): unknown {
+  if (node.type === "array") return (node.children ?? []).map(jsonNodeValue);
+  if (node.type === "object") {
+    const value = dataObject();
+    for (const property of node.children ?? []) {
+      const [key, child] = property.children ?? [];
+      if (key?.type !== "string" || child === undefined) throw new Error("invalid JSONC property node");
+      define(value, String(key.value), jsonNodeValue(child));
+    }
+    return value;
+  }
+  return node.value;
+}
 function document(text: string, path: string, format?: "jsonc" | "toml"): Record<string, unknown> {
   if (format === "toml") return readProjectToml(text);
   const errors: ParseError[] = [];
-  const value: unknown = parse(text, errors, { allowTrailingComma: true });
-  if (errors.length || value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(`invalid object document: ${path}`);
-  return value as Record<string, unknown>;
+  const tree = parseTree(text, errors, { allowTrailingComma: true });
+  if (errors.length || tree?.type !== "object") throw new Error(`invalid object document: ${path}`);
+  return jsonNodeValue(tree) as Record<string, unknown>;
 }
 function get(value: unknown, key: string[]): unknown {
   for (const part of key) {
@@ -78,7 +95,7 @@ function readManifest(raw: Buffer | null, config: string): Manifest {
   for (const entry of value.owned) {
     if (!entry || typeof entry !== "object") throw new Error("invalid integration ownership entry");
     validatePath(entry.path);
-    if (!/^[a-f0-9]{64}$/.test(entry.hash) || (entry.key !== undefined && (!Array.isArray(entry.key) || entry.key.length === 0 || entry.key.some(k => typeof k !== "string" || ["__proto__", "constructor", "prototype"].includes(k))))) throw new Error("invalid integration ownership entry");
+    if (!/^[a-f0-9]{64}$/.test(entry.hash) || (entry.key !== undefined && (!Array.isArray(entry.key) || entry.key.length === 0 || entry.key.some(k => typeof k !== "string")))) throw new Error("invalid integration ownership entry");
     if (entry.key !== undefined && entry.kind !== "array" && entry.kind !== "property") throw new Error("invalid integration entry kind");
     if (entry.context !== undefined && (!Array.isArray(entry.context) || entry.context.some(hash => !/^[a-f0-9]{64}$/.test(hash)))) throw new Error("invalid ownership context");
     if (entry.format !== undefined && entry.format !== "jsonc" && entry.format !== "toml") throw new Error("invalid ownership format");
@@ -108,7 +125,7 @@ export async function reconcileProject(root: string, config: string, integration
   for (const entry of [...integration.files, ...integration.entries]) {
     validatePath(entry.path);
     if ([STATE, JOURNAL, LOCK, RECOVERY_LOCK].includes(entry.path.toLowerCase()) || /^\.hooknostic\/(?:data|staging)(?:\/|$)/i.test(entry.path)) throw new Error(`reserved integration destination: ${entry.path}`);
-    if ("key" in entry && (!entry.key.length || entry.key.some(k => typeof k !== "string" || ["__proto__", "constructor", "prototype"].includes(k)))) throw new Error("unsafe structural key");
+    if ("key" in entry && (!entry.key.length || entry.key.some(k => typeof k !== "string"))) throw new Error("unsafe structural key");
     const id = identity(entry);
     const sameDestination = desired.get(id);
     if (sameDestination) {

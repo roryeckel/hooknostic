@@ -21,8 +21,6 @@ const resolveRemote = (name, server) => {
 };
 
 export default async () => ({ config(config) {
-  const paths = ["skills"].map(path => resolve(root, path));
-  if (paths.length) config.skills = { ...(config.skills ?? {}), paths: [...new Set([...(config.skills?.paths ?? []), ...paths])] };
   const mcp = { ...(config.mcp ?? {}) };
   for (const [name, server] of declarations) {
     const value = server.type === "local" ? { ...server,

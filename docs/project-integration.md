@@ -72,8 +72,9 @@ nested directories. Launch Claude MCP sessions from the project root; restart
 harnesses after changing registrations and review their trust prompts.
 
 Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`.
-Sources already in their destination are discovered directly. OpenCode references other source directories through its native `skills.paths`
-configuration hook. Claude and Codex copy other sources deterministically with all supporting resources. No symlinks are required.
+Sources already in their destination are discovered directly. Claude, Codex,
+and OpenCode copy other sources deterministically with all included supporting
+resources. No symlinks are required.
 Duplicate skill names and unowned destination collisions fail.
 Direct project sources preserve additional harness-native frontmatter while
 Hooknostic validates every portable Agent Skills field. Agent Plugin package

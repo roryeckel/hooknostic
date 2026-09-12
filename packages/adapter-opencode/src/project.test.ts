@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGENT_PLUGIN_MCP_SCHEMA, type ProjectComponents } from "@hooknostic/agent-plugin";
+import { AGENT_PLUGIN_MCP_SCHEMA, loadProjectComponents, type ProjectComponents } from "@hooknostic/agent-plugin";
 import { projectComponents, projectIntegration } from "./project.js";
 
 const roots: string[] = [];
@@ -55,6 +55,33 @@ async function moduleFor(
 }
 
 describe("OpenCode project components", () => {
+  it("materializes only the filtered direct skill inventory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-opencode-skills-"));
+    roots.push(root);
+    await mkdir(join(root, "skills/review"), { recursive: true });
+    await mkdir(join(root, "skills/rejected"), { recursive: true });
+    await writeFile(join(root, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review a change\n---\n");
+    await writeFile(join(root, "skills/review/credentials.md"), "excluded\n");
+    await writeFile(join(root, "skills/rejected/SKILL.md"), "invalid\n");
+    const loaded = await loadProjectComponents({
+      skills: [join(root, "skills")],
+      exclude: ["review/credentials.md"],
+    });
+
+    const integration = await projectComponents(
+      loaded.source,
+      root,
+      ".hooknostic/artifacts/opencode",
+      "hooknostic.config.ts",
+      {},
+    );
+
+    expect(integration.files.map(file => file.path)).toContain(".agents/skills/review/SKILL.md");
+    expect(integration.files.map(file => file.path)).not.toContain(".agents/skills/review/credentials.md");
+    expect(integration.files.map(file => file.path)).not.toContain(".agents/skills/rejected/SKILL.md");
+    expect(integration.files.map(file => file.path)).not.toContain(".opencode/plugins/hooknostic-components.js");
+  });
+
   it("imports generated project modules from URL-significant output paths", async () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-opencode-import-"));
     roots.push(root);
@@ -85,6 +112,7 @@ describe("OpenCode project components", () => {
     const generated = await readFile(path, "utf8");
     expect(generated).toContain("${HOOKNOSTIC_PROJECT_TOKEN}");
     expect(generated).not.toContain("runtime-secret");
+    expect(generated).not.toContain("config.skills");
 
     process.env["HOOKNOSTIC_PROJECT_TOKEN"] = "runtime-secret";
     const plugin = await (await import(pathToFileURL(path).href)).default();

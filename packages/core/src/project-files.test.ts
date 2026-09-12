@@ -97,6 +97,31 @@ describe("project reconciliation", () => {
     expect(await readFile(join(root, "opencode.json"), "utf8")).toBe(external);
     await expect(readFile(join(root, ".hooknostic/transaction.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
+  it("detects prototype-key collisions in unowned JSONC", async () => {
+    await writeFile(join(root, "opencode.jsonc"), '{"mcp":{"__proto__":{"type":"remote","url":"https://example.invalid"}}}');
+    await expect(reconcileProject(root, config, {
+      files: [],
+      entries: [],
+      guidance: [],
+      absent: [{ path: "opencode.jsonc", key: ["mcp", "__proto__"] }],
+    })).rejects.toThrow("unowned component collision");
+  });
+  it.each(["__proto__", "constructor", "prototype"])("reconciles a JSONC property named %s", async name => {
+    const desired = (command?: string): ProjectIntegration => ({
+      files: [],
+      entries: command === undefined ? [] : [{ path: "settings.json", key: ["mcpServers", name], kind: "property", value: { command } }],
+      guidance: [],
+    });
+    await sync(desired("node"));
+    let document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as { mcpServers: Record<string, unknown> };
+    expect(Object.hasOwn(document.mcpServers, name)).toBe(true);
+    await sync(desired("bun"));
+    document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as { mcpServers: Record<string, unknown> };
+    expect(document.mcpServers[name]).toEqual({ command: "bun" });
+    await sync(desired());
+    document = JSON.parse(await readFile(join(root, "settings.json"), "utf8")) as { mcpServers: Record<string, unknown> };
+    expect(Object.hasOwn(document.mcpServers, name)).toBe(false);
+  });
   it("rejects another owner and unsafe paths", async () => {
     await sync(); await expect(reconcileProject(root, "other.ts", integration())).rejects.toThrow("another configuration");
     for (const path of ["../outside", ".git/config", ".env", "C:\\outside"]) {

@@ -49,6 +49,10 @@ it("inserts into an existing inline parent without rewriting its sibling", async
   expect(await readFile(join(root, path), "utf8")).toContain('other = {command="other"}');
   expect((await sync()).changes).toEqual([]);
 });
+it("retains ordinary and nested array-table semantics", () => {
+  const parsed = readProjectToml('[[products]]\nname = "hammer"\n[products.details]\nweight = 2\n[[products]]\nname = "nail"\n');
+  expect(parsed).toEqual({ products: [{ name: "hammer", details: { weight: 2 } }, { name: "nail" }] });
+});
 it("repairs missing output and refuses adoption, manual edits, and invalid TOML", async () => {
   await sync();
   const generated = await readFile(join(root, path), "utf8");
@@ -62,4 +66,24 @@ it("repairs missing output and refuses adoption, manual edits, and invalid TOML"
   await expect(sync()).rejects.toThrow("unowned");
   await writeFile(join(root, path), 'x = 1\nx = 2\n');
   await expect(sync()).rejects.toThrow();
+});
+it.each([
+  ["__proto__", '[mcp_servers.__proto__]\ncommand = "node"\nargs = ["a"]\nenv = { REF = "${TOKEN}" }\n'],
+  ["constructor", 'mcp_servers.constructor = { command = "node", args = ["a"], env = { REF = "${TOKEN}" } }\n'],
+  ["prototype", 'mcp_servers = { prototype = { command = "node", args = ["a"], env = { REF = "${TOKEN}" } } }\n'],
+])("preserves and reconciles the prototype-key server %s", async (name, syntax) => {
+  const named = (next: unknown = value, omit = false): ProjectIntegration => ({
+    files: [],
+    entries: omit ? [] : [{ path, format: "toml", key: ["mcp_servers", name], kind: "property", value: next }],
+    guidance: [],
+  });
+  await sync(named());
+  await writeFile(join(root, path), syntax + unrelated);
+  expect((await reconcileProject(root, owner, named())).changes).toEqual([]);
+  const parsed = readProjectToml(await readFile(join(root, path), "utf8"));
+  expect(Object.hasOwn(parsed.mcp_servers as object, name)).toBe(true);
+  await sync(named({ ...value, args: ["changed"] }));
+  expect((readProjectToml(await readFile(join(root, path), "utf8")).mcp_servers as Record<string, unknown>)[name]).toEqual({ ...value, args: ["changed"] });
+  await sync(named(undefined, true));
+  expect(Object.hasOwn((readProjectToml(await readFile(join(root, path), "utf8")).mcp_servers ?? {}) as object, name)).toBe(false);
 });

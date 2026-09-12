@@ -1,14 +1,56 @@
 import { parseForESLint, getStaticTOMLValue, traverseNodes, type AST } from "toml-eslint-parser";
 
 function ast(text: string): AST.TOMLProgram {
-  const result = parseForESLint(text, { tomlVersion: "1.0" }).ast;
-  traverseNodes(result, { enterNode(node) {
-    if (node.type === "TOMLKey" && getStaticTOMLValue(node).some(key => ["__proto__", "constructor", "prototype"].includes(key))) throw new Error("unsafe TOML key");
-  }, leaveNode() {} });
-  return result;
+  return parseForESLint(text, { tomlVersion: "1.0" }).ast;
+}
+type Table = Record<string, unknown>;
+const table = (): Table => ({});
+function own(target: Table, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+}
+function tableAt(root: Table, path: readonly (string | number)[]): Table {
+  let current: Table | unknown[] = root;
+  for (let index = 0; index < path.length; index++) {
+    const part = path[index]!;
+    const nextPart = path[index + 1];
+    let next: unknown;
+    if (typeof part === "number") {
+      if (!Array.isArray(current)) throw new Error("invalid TOML array-table path");
+      next = current[part];
+      if (next === undefined) { next = table(); current[part] = next; }
+    } else {
+      if (Array.isArray(current)) throw new Error("invalid TOML table path");
+      next = Object.hasOwn(current, part) ? current[part] : undefined;
+      if (next === undefined) { next = typeof nextPart === "number" ? [] : table(); own(current, part, next); }
+    }
+    if (next === null || typeof next !== "object") throw new Error("invalid TOML table path");
+    current = next as Table | unknown[];
+  }
+  if (Array.isArray(current)) throw new Error("invalid TOML table path");
+  return current;
+}
+function assign(root: Table, path: readonly (string | number)[], value: unknown): void {
+  const parent = tableAt(root, path.slice(0, -1));
+  own(parent, String(path.at(-1)), value);
+}
+function content(node: AST.TOMLContentNode): unknown {
+  if (node.type === "TOMLValue") return node.value;
+  if (node.type === "TOMLArray") return node.elements.map(content);
+  const value = table();
+  for (const entry of node.body) assign(value, getStaticTOMLValue(entry.key), content(entry.value));
+  return value;
 }
 export function readProjectToml(text: string): Record<string, unknown> {
-  return getStaticTOMLValue(ast(text));
+  const root = table();
+  for (const node of ast(text).body[0].body) {
+    if (node.type === "TOMLKeyValue") {
+      assign(root, getStaticTOMLValue(node.key), content(node.value));
+      continue;
+    }
+    const destination = tableAt(root, node.resolvedKey);
+    for (const entry of node.body) assign(destination, getStaticTOMLValue(entry.key), content(entry.value));
+  }
+  return root;
 }
 function literal(value: unknown): string {
   if (typeof value === "string") return JSON.stringify(value);
