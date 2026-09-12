@@ -69,7 +69,7 @@ async function layout(
       frontEnd: "self-resolving",
       rootOffset: "..",
       pluginName: options.pluginName ?? "portable-tools",
-      environmentReferences: options.environmentReferences,
+      ...(options.environmentReferences === undefined ? {} : { environmentReferences: options.environmentReferences }),
     }),
   );
   await writeFile(
