@@ -8,7 +8,7 @@ import type { GeneratedArtifact, ProjectIntegration } from "@hooknostic/core";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const files = [{
     path: ".opencode/plugins/.gitattributes",
-    contents: "hooknostic.js -text\nhooknostic-components.js -text\n",
+    contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
   }, ...artifacts.filter(a => a.path.startsWith(".opencode/plugins/")).map(a => ({
     path: a.path,
     contents: `export { default } from ${JSON.stringify("../../" + output + "/" + a.path)};\n`,

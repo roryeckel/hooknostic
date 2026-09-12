@@ -48,7 +48,7 @@ describe("OpenCode project components", () => {
   it("pins generated project modules against Git line-ending conversion", () => {
     expect(projectIntegration([], "out").files).toContainEqual({
       path: ".opencode/plugins/.gitattributes",
-      contents: "hooknostic.js -text\nhooknostic-components.js -text\n",
+      contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
     });
   });
 
