@@ -59,7 +59,10 @@ Commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
 verification drift, and 2 for invalid configuration, conflicts, or operational
 failure. A dry run with planned changes succeeds; conflicts fail. Project commands
 reject `--target`: removing a project target from configuration schedules removal
-of its owned files and entries on the next sync.
+of its owned files and entries on the next sync. To remove the final project
+target, leave `project.root` and the portable source configured, set `targets: {}`,
+and run `sync`; this empty cleanup state is accepted by project-aware commands,
+including `doctor`, while `check` and `build` still require at least one target.
 
 ## Discovery and components
 

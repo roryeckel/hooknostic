@@ -136,6 +136,29 @@ describe("loadConfig", () => {
     expect(result.diagnostics[0]?.message).toContain("no targets");
   });
 
+  it("allows an empty target set only for project-aware config loading", async () => {
+    const dir = await fixtureDir();
+    const file = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      file,
+      `export default { project: { root: "." }, entry: "./hooks.ts", targets: {} };`,
+      "utf8",
+    );
+
+    const ordinary = await loadConfig(file, OPTIONS);
+    expect(ordinary.config).toBeUndefined();
+    expect(ordinary.diagnostics[0]?.message).toContain("no targets");
+
+    const project = await loadConfig(file, OPTIONS, { allowEmptyProjectTargets: true });
+    expect(project.diagnostics).toEqual([]);
+    expect(project.config?.targets).toEqual({});
+
+    await writeFile(file, `export default { entry: "./hooks.ts", targets: {} };`, "utf8");
+    const nonProject = await loadConfig(file, OPTIONS, { allowEmptyProjectTargets: true });
+    expect(nonProject.config).toBeUndefined();
+    expect(nonProject.diagnostics[0]?.message).toContain("no targets");
+  });
+
   it("reports unloadable modules as HN501 instead of throwing", async () => {
     const dir = await fixtureDir();
     const file = join(dir, "hooknostic.config.ts");

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import type { CapabilityProfile } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
+import { runBuild } from "./build.js";
 import { runCheck } from "./check.js";
 import { runCli } from "./cli.js";
 import { defaultAdapterRegistry } from "./registry.js";
@@ -394,6 +395,45 @@ describe("hooknostic check", () => {
     const report = JSON.parse(out());
     expect(report.ok).toBe(false);
     expect(report.diagnostics[0].code).toBe("HN501");
+  });
+
+  it("keeps empty project targets invalid for ordinary check and build", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-empty-targets-"));
+    tempDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      config,
+      `export default {
+        project: { root: "." },
+        entry: "./hooks.ts",
+        targets: {},
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `export default { name: "empty-targets", hooks: [] };`,
+      "utf8",
+    );
+
+    for (const run of [runCheck, runBuild]) {
+      const capture = captureIO();
+      expect(
+        await run({
+          config,
+          json: true,
+          registry: registry(),
+          io: capture.io,
+          evaluate: EVALUATE,
+        }),
+      ).toBe(2);
+      expect(JSON.parse(capture.out()).diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "HN501",
+          message: expect.stringContaining("no targets"),
+        }),
+      );
+    }
   });
 
   it("reports unsupported deliveries before generation", async () => {

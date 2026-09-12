@@ -66,9 +66,15 @@ export interface LoadConfigResult {
   diagnostics: Diagnostic[];
 }
 
+export interface LoadConfigPolicy {
+  /** Allow a project configuration to describe removal of its final target. */
+  allowEmptyProjectTargets?: boolean;
+}
+
 export async function loadConfig(
   configPath: string,
   options?: EvaluateOptions,
+  policy?: LoadConfigPolicy,
 ): Promise<LoadConfigResult> {
   const diagnostics: Diagnostic[] = [];
   let evaluated: unknown;
@@ -106,7 +112,10 @@ export async function loadConfig(
     return { diagnostics };
   }
 
-  if (Object.keys(parsed.data.targets).length === 0) {
+  if (
+    Object.keys(parsed.data.targets).length === 0 &&
+    !(policy?.allowEmptyProjectTargets === true && parsed.data.project !== undefined)
+  ) {
     diagnostics.push({
       code: "HN501",
       severity: "error",

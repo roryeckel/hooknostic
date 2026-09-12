@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -254,6 +254,47 @@ describe("complete project integration", () => {
     } }));
     expect((await runProject({ ...options, command: "sync" })).errors.join()).toContain(message);
   });
+  it("rejects a direct MCP cwd override whose symlink escapes the project", async () => {
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: { mcp: "./config/mcp.json", mcpOverrides: { codex: { servers: { sample: { cwd: "./linked" } } } } },
+      targets: {
+        codex: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/codex" },
+      },
+    });
+    const outside = await mkdtemp(join(tmpdir(), "hooknostic-cwd-outside-"));
+    dirs.push(outside);
+    await mkdir(join(root, "config"));
+    await symlink(outside, join(root, "config/linked"), process.platform === "win32" ? "junction" : "dir");
+    await writeFile(join(root, "config/mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { sample: { type: "stdio", command: "node" } },
+    }));
+
+    const result = await runProject({ ...options, command: "sync" });
+    expect(result.errors.join()).toContain("unsupported portable command or working-directory semantics");
+    await expect(readFile(join(root, ".codex/config.toml"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("accepts a direct MCP cwd override whose symlink stays inside the project", async () => {
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: { mcp: "./config/mcp.json", mcpOverrides: { codex: { servers: { sample: { cwd: "./linked" } } } } },
+      targets: {
+        codex: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/codex" },
+      },
+    });
+    await mkdir(join(root, "config"));
+    await mkdir(join(root, "worker"));
+    await symlink(join(root, "worker"), join(root, "config/linked"), process.platform === "win32" ? "junction" : "dir");
+    await writeFile(join(root, "config/mcp.json"), JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { sample: { type: "stdio", command: "node" } },
+    }));
+
+    const result = await runProject({ ...options, command: "sync" });
+    expect(result.errors).toEqual([]);
+    expect(await readFile(join(root, ".codex/config.toml"), "utf8")).toContain("sample");
+  });
   it("launches Codex project MCP from nested directories and detects registration drift", async () => {
     const { root, config, options } = await fixture({ components: { mcp: "./sources/mcp.json", targets: ["codex"] } });
     await mkdir(join(root, "sources/worker"), { recursive: true });
@@ -306,6 +347,27 @@ describe("complete project integration", () => {
     await expect(readFile(join(root, ".opencode/plugins/hooknostic.js"))).rejects.toMatchObject({ code: "ENOENT" });
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
     expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
+  });
+  it("removes the final project target from an empty desired target set", async () => {
+    const codex = registry.codex!;
+    const { root, config, options } = await fixture({
+      targets: {
+        codex: { adapter: "codex", version: codex.harness.recommendedRange, delivery: "project", output: ".hooknostic/artifacts/codex" },
+      },
+    });
+    expect((await runProject({ ...options, command: "sync" })).ok).toBe(true);
+    expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
+
+    await writeFile(options.configPath, `export default ${JSON.stringify({ ...config, targets: {} })};`);
+    const removed = await runProject({ ...options, command: "sync" });
+
+    expect(removed.errors).toEqual([]);
+    expect(removed.ok).toBe(true);
+    expect(JSON.parse(await readFile(join(root, ".codex/hooks.json"), "utf8")).hooks.PreToolUse).toEqual([]);
+    await expect(readFile(join(root, ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(join(root, ".hooknostic/.gitignore"), "utf8")).toContain("/data/");
+    expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain(".codex/hooks.json");
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
   it("rejects mutated native timeout values and runtimes during verification", async () => {
     const { root, options } = await fixture();

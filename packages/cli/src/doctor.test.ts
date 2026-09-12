@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { HarnessAdapter } from "@hooknostic/core";
+import { runProject, type HarnessAdapter } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 import { runDoctor } from "./doctor.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function fakeIO() {
   const out: string[] = [];
@@ -80,5 +83,23 @@ describe("doctor version comparison", () => {
 
   it("keeps not-detected reporting intact", async () => {
     expect(await statusFor(undefined)).toMatchObject({ status: "not-detected", installed: false });
+  });
+
+  it("accepts a clean empty-target project cleanup state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-doctor-empty-"));
+    try {
+      const configPath = join(root, "hooknostic.config.ts");
+      await writeFile(join(root, "hooks.ts"), `export default { name: "empty-project", hooks: [] };`);
+      await writeFile(configPath, `export default { project: { root: "." }, entry: "./hooks.ts", targets: {} };`);
+      expect((await runProject({ command: "sync", configPath, registry: {} })).ok).toBe(true);
+
+      const { io, out } = fakeIO();
+      expect(await runDoctor({ config: configPath, json: true, registry: {}, io })).toBe(0);
+      const payload = JSON.parse(out.join(""));
+      expect(payload.configurationErrors).toEqual([]);
+      expect(payload.project).toMatchObject({ ok: true, drift: false });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

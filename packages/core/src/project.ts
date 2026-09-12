@@ -9,7 +9,11 @@ export async function runProject(options: BuildOptions & { command: "sync" | "ve
   const result: ProjectCommandResult = { ok: false, drift: false, changes: [], guidance: [], errors: [], diagnostics: [] };
   try {
     if (options.targets !== undefined) throw new Error("project commands do not support partial target selection");
-    const loaded = options.configResult ?? await loadConfig(options.configPath, options.evaluate);
+    const loaded = options.configResult ?? await loadConfig(
+      options.configPath,
+      options.evaluate,
+      { allowEmptyProjectTargets: true },
+    );
     if (!loaded.config) throw new Error(loaded.diagnostics.map(d => d.message).join("\n"));
     const config = loaded.config;
     if (!config.project) throw new Error("project commands require project.root in the configuration");

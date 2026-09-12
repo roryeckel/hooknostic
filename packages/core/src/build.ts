@@ -181,13 +181,24 @@ function applyProjectMcpOverrides(
   };
 }
 
-function validDirectProjectCwd(cwd: string | undefined, sourceRoot: string, projectRoot: string): boolean {
-  if (classifyStdioCwd(cwd) !== undefined) return true;
-  if (cwd === undefined || cwd.includes("\\")) return false;
-  const prefix = cwd.startsWith("${PLUGIN_ROOT}/") ? "${PLUGIN_ROOT}/" : cwd.startsWith("./") ? "./" : undefined;
-  if (prefix === undefined) return false;
-  const destination = resolve(sourceRoot, cwd.slice(prefix.length));
-  const rel = relative(projectRoot, destination);
+async function validDirectProjectCwd(cwd: string | undefined, sourceRoot: string, projectRoot: string): Promise<boolean> {
+  const classified = classifyStdioCwd(cwd);
+  if (classified?.base === "data") return true;
+  if (cwd?.includes("\\")) return false;
+  let destination: string;
+  if (classified?.base === "root") {
+    destination = resolve(sourceRoot, classified.relative);
+  } else {
+    if (cwd === undefined) return false;
+    const prefix = cwd.startsWith("${PLUGIN_ROOT}/") ? "${PLUGIN_ROOT}/" : cwd.startsWith("./") ? "./" : undefined;
+    if (prefix === undefined) return false;
+    destination = resolve(sourceRoot, cwd.slice(prefix.length));
+  }
+  const [canonicalProjectRoot, canonicalDestination] = await Promise.all([
+    canonical(projectRoot),
+    canonical(destination),
+  ]);
+  const rel = relative(canonicalProjectRoot, canonicalDestination);
   return rel === "" || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\"));
 }
 
@@ -767,10 +778,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             }
             for (const [name, server] of Object.entries(selectedSource.mcp?.config.mcpServers ?? {})) {
               if (server.type !== "stdio") continue;
-              const cwdIsPortable = classifyStdioCwd(server.cwd) !== undefined || (
-                selectedSource.origin === "direct" &&
-                validDirectProjectCwd(server.cwd, selectedSource.mcp!.root, root)
-              );
+              const cwdIsPortable = selectedSource.origin === "direct"
+                ? await validDirectProjectCwd(server.cwd, selectedSource.mcp!.root, root)
+                : classifyStdioCwd(server.cwd) !== undefined;
               if (!hasUnportableCommandPath(server.command) && cwdIsPortable) continue;
               const reason = `MCP server ${name} has unsupported portable command or working-directory semantics`;
               diagnostics.push({ code: "HN205", severity: config.components?.onUnsupported ?? "error", target: id, component: "agent-plugin.mcp.stdio", message: reason });

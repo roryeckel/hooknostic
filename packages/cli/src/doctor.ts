@@ -42,7 +42,9 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   const entries: DoctorEntry[] = [];
 
   let adapters = Object.values(options.registry);
-  const loaded = options.config ? await loadConfig(resolve(options.config)) : undefined;
+  const loaded = options.config
+    ? await loadConfig(resolve(options.config), undefined, { allowEmptyProjectTargets: true })
+    : undefined;
   if (loaded) {
     if (loaded.config) {
       const selected = new Set(Object.entries(loaded.config.targets).map(([name, target]) => target.adapter ?? name));
