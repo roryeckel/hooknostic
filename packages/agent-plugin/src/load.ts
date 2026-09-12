@@ -212,6 +212,7 @@ function validateServer(
   name: string,
   value: unknown,
   issues: AgentPluginIssue[],
+  projectRoot?: string,
 ): AgentPluginMcpServer | undefined {
   const path = `mcp.json#/mcpServers/${name}`;
   if (!object(value) || typeof value["type"] !== "string") {
@@ -244,6 +245,10 @@ function validateServer(
         ((cwd.startsWith("./") && containedPortablePath(root, cwd, "./")) ||
           ((cwd === "${PLUGIN_ROOT}" || cwd.startsWith("${PLUGIN_ROOT}/")) &&
             containedPortablePath(root, cwd, "${PLUGIN_ROOT}")) ||
+          (projectRoot !== undefined &&
+            ((cwd.startsWith("./") && contained(projectRoot, resolve(root, cwd.slice(2)))) ||
+              ((cwd === "${PLUGIN_ROOT}" || cwd.startsWith("${PLUGIN_ROOT}/")) &&
+                contained(projectRoot, resolve(root, cwd.slice("${PLUGIN_ROOT}".length).replace(/^\//, "")))))) ||
           (cwd === "${PLUGIN_DATA}" ||
             (cwd.startsWith("${PLUGIN_DATA}/") && !cwd.slice("${PLUGIN_DATA}/".length).split("/").includes("..")))));
     if (
@@ -288,6 +293,7 @@ function loadMcp(
   root: string,
   inventory: InventoryResult,
   issues: AgentPluginIssue[],
+  projectRoot?: string,
 ): AgentPluginMcpConfig | undefined {
   const file = inventory.files.find((candidate) => candidate.path === "mcp.json");
   if (file === undefined) {
@@ -320,7 +326,7 @@ function loadMcp(
   }
   const serverEntries: [string, AgentPluginMcpServer][] = [];
   for (const [name, server] of Object.entries(value["mcpServers"])) {
-    const valid = validateServer(root, name, server, issues);
+    const valid = validateServer(root, name, server, issues, projectRoot);
     if (valid !== undefined) serverEntries.push([name, valid]);
   }
   // Object.fromEntries defines own data properties, including `__proto__`.
@@ -624,7 +630,7 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
     ...(source.mcp === undefined ? {} : { mcp: { root: source.root, config: source.mcp } }),
   };
 }
-export async function loadProjectComponents(options: { skills?: string[]; mcp?: string; exclude?: string[] }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
+export async function loadProjectComponents(options: { skills?: string[]; mcp?: string; exclude?: string[]; projectRoot?: string }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
   const source: ProjectComponents = { origin: "direct", skills: [] };
   const names = new Set<string>();
@@ -651,7 +657,7 @@ export async function loadProjectComponents(options: { skills?: string[]; mcp?: 
     if (DEFAULT_EXCLUDES.some(pattern => minimatch(path.replaceAll("\\", "/"), pattern, MATCH))) throw new Error("MCP source is an excluded secret/configuration file");
     const file = { path: "mcp.json", contents: await readFile(path), mode: 0o644 };
     const root = resolve(path, "..");
-    const config = loadMcp(root, { files: [file], directories: new Set() }, issues);
+    const config = loadMcp(root, { files: [file], directories: new Set() }, issues, options.projectRoot);
     if (config) source.mcp = { root, config };
   }
   return { source, issues };

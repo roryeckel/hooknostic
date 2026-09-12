@@ -271,5 +271,13 @@
     "failedTests": [
       "complete project integration reports every explicitly degraded project MCP omission"
     ]
+  },
+  {
+    "mutant": "apply package-root cwd containment to direct project MCP",
+    "file": "packages/agent-plugin/src/load.ts",
+    "exitCode": 1,
+    "failedTests": [
+      "loadProjectComponents allows a direct MCP cwd to leave its source directory only within the project"
+    ]
   }
 ]

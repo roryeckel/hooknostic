@@ -61,6 +61,28 @@ describe("loadProjectComponents", () => {
       "SKILL.md",
     ]);
   });
+
+  it("allows a direct MCP cwd to leave its source directory only within the project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-cwd-"));
+    roots.push(root);
+    await mkdir(join(root, ".agents"));
+    const path = join(root, ".agents/mcp.json");
+    const document = (cwd: string) => JSON.stringify({
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: { probe: { type: "stdio", command: "node", cwd } },
+    });
+    await writeFile(path, document("${PLUGIN_ROOT}/.."));
+
+    const packagedSemantics = await loadProjectComponents({ mcp: path });
+    expect(packagedSemantics.source.mcp?.config.mcpServers).toEqual({});
+    const direct = await loadProjectComponents({ mcp: path, projectRoot: root });
+    expect(direct.issues).toEqual([]);
+    expect(direct.source.mcp?.config.mcpServers.probe).toMatchObject({ cwd: "${PLUGIN_ROOT}/.." });
+
+    await writeFile(path, document("${PLUGIN_ROOT}/../.."));
+    const escaping = await loadProjectComponents({ mcp: path, projectRoot: root });
+    expect(escaping.source.mcp?.config.mcpServers).toEqual({});
+  });
 });
 
 async function packageRoot(manifest: Record<string, unknown> = {}): Promise<string> {

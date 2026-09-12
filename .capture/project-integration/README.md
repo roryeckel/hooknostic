@@ -44,7 +44,7 @@ was observed failing against at least one mutant, with production source restore
 after each run. Mutants cover ownership, missing output, formatting, derived
 timeouts, source-relative paths, runtime target identity, component omissions,
 initialization overwrite, lock exclusivity, rollback, recovery, nested hook
-bootstrap, direct exclusions, per-target MCP cloning/override translation, and OpenCode
+bootstrap, direct exclusions/cwd containment, per-target MCP cloning/override translation, and OpenCode
 collision/missing-variable isolation. The reusable
 adapter contract also rejects a missing project support declaration. These are
 focused falsification checks; they do not assert exhaustive mutation coverage.

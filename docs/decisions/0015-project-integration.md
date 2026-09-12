@@ -48,7 +48,8 @@ Direct-source exclusions are evaluated relative to each configured skill root.
 Per-target MCP overrides exist only for direct project sources: core validates
 and applies them to clones before adapters generate launchers and configuration,
 so the canonical Agent Plugins document remains unchanged. Argument and cwd
-replacement is stdio-only; project-contained cwd movement is allowed. A target
+replacement is stdio-only; direct declarations and overrides may move cwd above
+their source root only while remaining inside the project. A target
 startup timeout becomes a per-server default, with adapters required to represent
 every configured value or reject the build.
 

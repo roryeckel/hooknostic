@@ -459,6 +459,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       ...(config.components.skills === undefined ? {} : { skills: config.components.skills.map(p => resolve(configDir, p)) }),
       ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
       ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
+      ...(config.project === undefined ? {} : { projectRoot: resolve(configDir, config.project.root) }),
     });
     diagnostics.push(...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }));
     if (hasFatal(diagnostics)) return fail();
@@ -749,7 +750,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               if (server.type !== "stdio") continue;
               const cwdIsPortable = classifyStdioCwd(server.cwd) !== undefined || (
                 selectedSource.origin === "direct" &&
-                config.components?.mcpOverrides?.[id]?.servers?.[name]?.cwd !== undefined &&
                 validDirectProjectCwd(server.cwd, selectedSource.mcp!.root, root)
               );
               if (!hasUnportableCommandPath(server.command) && cwdIsPortable) continue;
@@ -764,13 +764,18 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             count("agent-plugin.client-extension.files", components && namespace ? components.files.filter(file => file.path.startsWith(namespace + "/")).length + (components.manifest.extensions?.[namespace] ? 1 : 0) : 0);
             target.project = { components: counts, omissions, guidance: [] };
             if (hasFatal(diagnostics)) { target.status = "failed"; continue; }
+            const projectCwdServers = [...new Set([
+              ...selected.projectCwdServers,
+              ...Object.entries(selectedSource.mcp?.config.mcpServers ?? {}).flatMap(([name, server]) =>
+                server.type === "stdio" && classifyStdioCwd(server.cwd) === undefined ? [name] : []),
+            ])];
             const projected = await adapter.projectComponents(selectedSource, root, output, configFromRoot, {
               ...(Object.keys(selected.startupTimeoutMs).length === 0
                 ? {}
                 : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),
-              ...(selected.projectCwdServers.length === 0
+              ...(projectCwdServers.length === 0
                 ? {}
-                : { mcpProjectCwdServers: selected.projectCwdServers }),
+                : { mcpProjectCwdServers: projectCwdServers }),
             });
             target.project = { components: counts, omissions, guidance: projected.guidance };
             integration.files.push(...projected.files);

@@ -77,7 +77,9 @@ inputs remain strict about unknown skill fields.
 Claude MCP uses `.mcp.json`; OpenCode uses an adapter-owned configuration module.
 Both support stdio and remote transports as recorded in the project support
 profiles. Stdio uses the existing portable launcher; command paths and cwd resolve
-from the MCP source file's directory. Environment references remain literal until
+from the MCP source file's directory. A direct-source cwd may move above that
+directory only when its resolved destination remains inside `project.root`;
+packaged declarations retain package-root containment. Environment references remain literal until
 runtime. Direct project sources resolve `${NAME}` from the launch environment.
 OpenCode disables only a remote declaration whose required variable is unset and
 warns with the server name and missing variables; other servers remain available.
@@ -102,9 +104,8 @@ unsupported; opt into `onUnsupported: "warn"` only when omissions are acceptable
 
 `mcpOverrides` is direct-project-only and keyed by target. A target-level
 `startupTimeoutMs` supplies the default; individual servers can replace `args`,
-`cwd`, or the timeout. Argument and cwd overrides require stdio. Direct cwd
-overrides may move above the MCP source directory only while they remain inside
-`project.root`. Codex translates milliseconds with ceiling conversion to
+`cwd`, or the timeout. Argument and cwd overrides require stdio and the same
+project containment rule. Codex translates milliseconds with ceiling conversion to
 `startup_timeout_sec`; OpenCode uses native millisecond `timeout`. Unknown targets
 or servers, non-positive timeouts, unrepresentable adapter options, and unsafe cwd
 values fail validation. Each target receives a clone; the canonical declaration
