@@ -183,6 +183,39 @@ describe("scriptedTool schema fidelity", () => {
   });
 });
 
+describe("runProcess argument passing", () => {
+  const ARGS = ["plain", "has space", 'has "quote"', "100%", "%PATH%", "a&b|c", String.raw`C:\dir with space\file`];
+  const echoArgv = "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n";
+
+  it("passes arguments with spaces to a script at a spaced path intact", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic run process "));
+    try {
+      const script = join(dir, "echo argv.mjs");
+      await writeFile(script, echoArgv);
+      const result = await runProcess("node", [script, ...ARGS], { cwd: dir, env: process.env, timeoutMs: 10_000 });
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toEqual(ARGS);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // npm installs harness CLIs on Windows as .cmd shims that forward %*.
+  it.skipIf(process.platform !== "win32")("passes arguments through an npm-style .cmd shim intact", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic run process "));
+    try {
+      await writeFile(join(dir, "echo-argv.mjs"), echoArgv);
+      await writeFile(join(dir, "echo-argv.cmd"), '@node "%~dp0\\echo-argv.mjs" %*\r\n');
+      const env = { ...process.env, PATH: `${dir};${process.env["PATH"] ?? ""}` };
+      const result = await runProcess("echo-argv", ARGS, { cwd: dir, env, timeoutMs: 10_000 });
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toEqual(ARGS);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("model playback cleanup", () => {
   it("closes child stdin when no input is supplied", async () => {
     const result = await runProcess("node", [StdinEofFixturePath], {

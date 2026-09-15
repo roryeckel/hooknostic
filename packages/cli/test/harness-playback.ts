@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn, type SpawnOptions } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo, Socket } from "node:net";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { expect } from "vitest";
@@ -413,6 +413,38 @@ function runNode(
   });
 }
 
+const crossSpawn = require("cross-spawn") as {
+  _parse(
+    command: string,
+    args: string[],
+    options: SpawnOptions,
+  ): { command: string; args: string[]; options: SpawnOptions; file?: string };
+};
+const cmdEscape = require("cross-spawn/lib/util/escape.js") as {
+  command(value: string): string;
+  argument(value: string, doubleEscape: boolean): string;
+};
+
+/**
+ * Spawn without a shell splitting arguments. On Windows a harness CLI is usually
+ * an npm `.cmd` shim, which cross-spawn resolves through cmd.exe; global shims
+ * forward `%*` too, so they get the double escape the MCP launcher applies.
+ */
+function spawnIntact(
+  command: string,
+  args: string[],
+  options: SpawnOptions & { stdio: ["pipe", "pipe", "pipe"] },
+): ChildProcessWithoutNullStreams {
+  const parsed = crossSpawn._parse(command, args, options);
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(parsed.file ?? "")) {
+    const line = [cmdEscape.command(normalize(parsed.file!)), ...args.map((arg) => cmdEscape.argument(arg, true))].join(
+      " ",
+    );
+    parsed.args = ["/d", "/s", "/c", `"${line}"`];
+  }
+  return spawn(parsed.command, parsed.args, parsed.options) as ChildProcessWithoutNullStreams;
+}
+
 export function runProcess(
   command: string,
   args: string[],
@@ -424,10 +456,9 @@ export function runProcess(
   },
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, {
+    const child = spawnIntact(command, args, {
       cwd: options.cwd,
       env: options.env,
-      shell: process.platform === "win32",
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
