@@ -58,4 +58,14 @@ dispatch table is identical to Windows, and Codex ran the shell call through
 Only `PreToolUse`, a shell tool, and a project `.codex/hooks.json` were
 exercised. Other tool kinds, `PostToolUse`, `PermissionRequest`, MCP tool names,
 and hooks delivered by an installed plugin remain uncaptured, so the generator
-filters project `PreToolUse` shell selections only. macOS is not established.
+filters project `PreToolUse` shell selections only.
+
+macOS is not established, and the generator emits the matcher there anyway. This
+is a recorded decision, with inferred rather than captured provenance: the
+generated `hooks.json` is identical on every platform, so a macOS-only gate
+cannot be expressed; matcher evaluation against the hook-boundary tool name
+happens in Codex's shared hook engine rather than platform code; and native
+Windows and Linux produced identical dispatch tables. A macOS run of the same
+probe (the standalone bundle described under Method needs only Node 22 and
+`@openai/codex`) would promote this to captured, or reverse the decision if it
+disagrees.

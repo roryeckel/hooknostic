@@ -56,6 +56,11 @@ export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
  * Only a shell call through a project `.codex/hooks.json` was captured, so the
  * vocabulary describes only `shell`, and plugin delivery, other kinds, other tool
  * events, and MCP names stay unfiltered.
+ *
+ * macOS is uncaptured and deliberately not excluded: hooks.json is shared by
+ * every platform, so there is no per-OS gate, and Windows and Linux agree
+ * exactly on a platform-independent part of the hook engine. Inferred, not
+ * captured; see the capture's Limits.
  */
 export const CODEX_NATIVE_MATCHER_RANGE = ">=0.153 <1";
 const CODEX_TOOL_VOCABULARY: NativeToolVocabulary = {
