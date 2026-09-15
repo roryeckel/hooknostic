@@ -98,6 +98,8 @@ tutorials built on the [examples](examples/).
 - [Core concepts](docs/concepts.md) — events, effects, capabilities, and the build
   pipeline, in plain language
 - [Getting started](docs/getting-started.md) — from empty folder to installed hooks
+- [Writing hooks safely](docs/writing-hooks-safely.md) — stdout, side effects,
+  `process.execPath`, stop loops, and `HOOKNOSTIC_DEBUG`
 - [Tutorials](docs/tutorials/) — guided walkthroughs of every example plugin
 - [Installing built output](docs/installing-artifacts.md) — pointing each harness at
   `hooknostic build` output, including a repo that consumes its own hooks

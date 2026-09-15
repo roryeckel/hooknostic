@@ -188,6 +188,8 @@ how you answer "would `requestApproval` work on OpenCode?" without trial and err
 
 ## Where next
 
+- [Writing hooks safely](writing-hooks-safely.md): read before you ship — what a bundled
+  hook must not do, and `HOOKNOSTIC_DEBUG` for when one does nothing.
 - [Tutorial 2 — Rewriting tool input](tutorials/02-rewriting-tool-input.md): optional
   capabilities and graceful degradation, the feature that makes portability practical.
 - [Tutorial 3 — Injecting context](tutorials/03-injecting-context.md): what happens

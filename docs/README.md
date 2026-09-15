@@ -12,6 +12,7 @@ Pick your path:
 | --- | --- |
 | [Core concepts](concepts.md) | The five ideas everything else builds on — harnesses, events, effects, capabilities, and the build pipeline — in plain language, ~10 minutes |
 | [Getting started](getting-started.md) | A hands-on walkthrough: empty folder → working hook → built output installed in a real agent |
+| [Writing hooks safely](writing-hooks-safely.md) | The rules a bundled hook must follow — stdout, side effects, `process.execPath`, stop loops — and `HOOKNOSTIC_DEBUG` for when a hook does nothing |
 
 ## 📚 Tutorials
 
