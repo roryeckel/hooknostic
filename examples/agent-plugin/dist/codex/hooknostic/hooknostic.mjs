@@ -4628,6 +4628,8 @@ var hooks_default = definePlugin({
 });
 
 // ../../packages/cli/dist/shims/codex.mjs
+import { Console } from "node:console";
+import { Writable } from "node:stream";
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4934,12 +4936,18 @@ function formatHandlerErrors(result) {
   return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
 }
 function claimProtocolStdout() {
-  const stdout = process.stdout;
-  const protocolWrite = stdout.write.bind(stdout);
-  const redirect = (...args) => process.stderr.write(...args);
-  stdout.write = redirect;
+  const protocol = process.stdout;
+  const stderr = process.stderr;
+  const redirected = new Writable({
+    decodeStrings: false,
+    write(chunk, encoding, callback) {
+      stderr.write(chunk, encoding, callback);
+    }
+  });
+  Object.defineProperty(process, "stdout", { value: redirected, configurable: true, enumerable: true, writable: true });
+  globalThis.console = new Console({ stdout: redirected, stderr });
   return (contents) => new Promise((resolve, reject) => {
-    protocolWrite(contents, (error) => {
+    protocol.write(contents, (error) => {
       if (error) reject(error);
       else resolve();
     });

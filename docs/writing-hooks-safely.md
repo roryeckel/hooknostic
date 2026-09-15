@@ -11,10 +11,10 @@ Claude Code and Codex run your artifact as a command and read its **stdout as th
 hook's reply**. A stray line in front of that JSON turns a `block` into plain text the
 harness ignores, so the guard fails open.
 
-The generated command shims claim stdout before your handlers run: anything written
-through `process.stdout` afterwards — `console.log`, `console.info`,
-`process.stdout.write` — is redirected to stderr, and only the reply reaches stdout.
-Two cases that guard cannot reach:
+The generated command shims claim stdout before your handlers run: `process.stdout`
+and the global `console` are pointed at a stream that forwards to stderr, so
+`console.log`, `process.stdout.write`, piping into stdout, and even `process.stdout.end()`
+land on stderr while the reply keeps the real stdout. Two cases that guard cannot reach:
 
 - **Output at module top level.** It runs while the artifact loads, before the shim
   starts. Keep modules your hooks import free of side effects (see below).

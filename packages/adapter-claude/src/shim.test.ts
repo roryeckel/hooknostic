@@ -175,3 +175,28 @@ describe("Claude command shim output discipline", () => {
     expect(result.stderr).toMatch(/^hooknostic debug: effects \[noisy:block\], terminated by noisy, 0 errors$/m);
   });
 });
+
+describe("Claude command shim stdout claim", () => {
+  it("survives a handler that back-pressures and ends stdout after console was initialized", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    console.error("module loaded");
+    export default definePlugin({ name: "streamy", hooks: [hook("tool.before", {
+      id: "streamy", capabilities: { "tool.before.block": "required" },
+      async run() {
+        console.log("log after console init");
+        const accepted = process.stdout.write("z".repeat(4 * 1024 * 1024));
+        if (!accepted) await new Promise((resolve) => process.stdout.once("drain", resolve));
+        process.stdout.end("closing stdout");
+        return block("nope");
+      }
+    })] });`,
+      "fixtures/claude/2.1/pre-tool-bash.input.json",
+      { "tool.before.observe": "exact", "tool.before.block": "exact" },
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.stderr).toContain("log after console init");
+    expect(result.stderr).toContain("closing stdout");
+  });
+});
