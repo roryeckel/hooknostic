@@ -8,7 +8,7 @@ import { shellCodec } from "@hooknostic/sdk";
  * `update_plan` stay "other"; `spawn_agent` is the subagent tool; MCP tools
  * follow the `mcp__<server>__<tool>` convention.
  */
-const EXACT: Record<string, ToolKind> = {
+export const CODEX_TOOL_KINDS: Record<string, ToolKind> = {
   Bash: "shell",
   exec_command: "shell",
   shell: "shell",
@@ -54,7 +54,7 @@ export function classifyCodexTool(nativeName: string, input: unknown): ToolInvoc
   }
   const shell = codexShellCodec.classify(nativeName, input);
   return {
-    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : undefined) ?? "other",
+    kind: (Object.hasOwn(CODEX_TOOL_KINDS, nativeName) ? CODEX_TOOL_KINDS[nativeName] : undefined) ?? "other",
     nativeName,
     input,
     ...(shell !== undefined ? { shell } : {}),

@@ -5023,7 +5023,7 @@ function applyCodex(result, _nativeEvent, _invocation) {
   }
   return Promise.resolve({ exitCode: 0, body });
 }
-var EXACT = {
+var CODEX_TOOL_KINDS = {
   Bash: "shell",
   exec_command: "shell",
   shell: "shell",
@@ -5055,7 +5055,7 @@ function classifyCodexTool(nativeName, input) {
   }
   const shell = codexShellCodec.classify(nativeName, input);
   return {
-    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : void 0) ?? "other",
+    kind: (Object.hasOwn(CODEX_TOOL_KINDS, nativeName) ? CODEX_TOOL_KINDS[nativeName] : void 0) ?? "other",
     nativeName,
     input,
     ...shell !== void 0 ? { shell } : {}

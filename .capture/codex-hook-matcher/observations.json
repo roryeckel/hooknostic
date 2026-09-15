@@ -1,0 +1,33 @@
+{
+  "codexVersion": "codex-cli 0.153.2",
+  "exitCode": 0,
+  "matchers": {
+    "wildcard": "*",
+    "exactBash": "Bash",
+    "exactExecCommand": "exec_command",
+    "wordList": "Bash|PowerShell",
+    "anchoredRegex": "^(?:Bash|exec_command)$",
+    "prefixOnly": "Ba",
+    "otherTool": "Read"
+  },
+  "dispatched": {
+    "unmatched": [
+      "Bash"
+    ],
+    "wildcard": [
+      "Bash"
+    ],
+    "exactBash": [
+      "Bash"
+    ],
+    "exactExecCommand": [],
+    "wordList": [
+      "Bash"
+    ],
+    "anchoredRegex": [
+      "Bash"
+    ],
+    "prefixOnly": [],
+    "otherTool": []
+  }
+}

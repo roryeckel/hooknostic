@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildPluginIR } from "@hooknostic/core";
 import { block, definePlugin, hook } from "@hooknostic/sdk";
 
-import { CODEX_PLUGIN_MODE_RANGE, generateCodexArtifacts } from "./generate.js";
+import { CODEX_NATIVE_MATCHER_RANGE, CODEX_PLUGIN_MODE_RANGE, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
 import { codexAdapter } from "./index.js";
 
@@ -138,6 +138,39 @@ describe("generateCodexArtifacts", () => {
     });
     const hooksJson = JSON.parse(artifacts[0]!.contents as string);
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(62);
+  });
+});
+
+describe("Codex native tool matchers", () => {
+  function hooksFor(version: string, ...matches: ({ kind: "shell" } | { kind: "mcp" } | undefined)[]) {
+    const { ir, diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "matchers",
+        hooks: [
+          ...matches.map((match, index) =>
+            hook("tool.before", { id: `before-${index}`, ...(match === undefined ? {} : { match }), async run() {} }),
+          ),
+          hook("tool.after", { id: "after-shell", match: { kind: "shell" }, async run() {} }),
+        ],
+      }),
+    );
+    expect(diagnostics).toEqual([]);
+    return JSON.parse(generateCodexArtifacts(ir!, { ...TARGET, version }, BUNDLE, OPTIONS)[0]!.contents as string)
+      .hooks;
+  }
+
+  it("selects the classifier's shell names on PreToolUse only", () => {
+    const hooks = hooksFor(CODEX_NATIVE_MATCHER_RANGE, { kind: "shell" });
+    expect(hooks.PreToolUse[0].matcher).toBe("Bash|exec_command|shell");
+    expect(hooks.PostToolUse[0]).not.toHaveProperty("matcher");
+  });
+
+  it.each([
+    ["an uncaptured version", ">=0.148 <0.153", [{ kind: "shell" as const }]],
+    ["an undescribed MCP kind", CODEX_NATIVE_MATCHER_RANGE, [{ kind: "shell" as const }, { kind: "mcp" as const }]],
+    ["an unmatched hook", CODEX_NATIVE_MATCHER_RANGE, [{ kind: "shell" as const }, undefined]],
+  ])("selects every tool for %s", (_label, version, matches) => {
+    expect(hooksFor(version, ...matches).PreToolUse[0]).not.toHaveProperty("matcher");
   });
 });
 

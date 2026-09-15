@@ -1,6 +1,23 @@
-import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import { assertNativeTimeoutFits, hooksByNativeEvent, nativeTimeoutSeconds, rangeWithin } from "@hooknostic/core";
+import type {
+  AdapterCompileOptions,
+  GeneratedArtifact,
+  NativeToolVocabulary,
+  PluginIR,
+  RuntimeBundle,
+  TargetSpec,
+} from "@hooknostic/core";
+import {
+  assertNativeTimeoutFits,
+  hooksByNativeEvent,
+  namesByKind,
+  nativeTimeoutSeconds,
+  nativeToolSelection,
+  rangeWithin,
+  wordListOrAnchoredMatcher,
+} from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
+
+import { CODEX_TOOL_KINDS } from "./toolmap.js";
 
 /**
  * Native events whose timeout codex-cli caps regardless of the configured
@@ -33,6 +50,14 @@ const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
 export const CODEX_PLUGIN_HOOKS_PATH = "hooks.json";
 export const CODEX_PLUGIN_RUNTIME_PATH = "hooknostic/hooknostic.mjs";
 export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
+/**
+ * Versions whose PreToolUse matcher semantics are captured
+ * (.capture/codex-hook-matcher): matched against the hook-boundary tool name.
+ * Other tool events and MCP tool names are uncaptured, so they stay unfiltered.
+ */
+export const CODEX_NATIVE_MATCHER_RANGE = ">=0.153 <1";
+const CODEX_TOOL_VOCABULARY: NativeToolVocabulary = { names: namesByKind(CODEX_TOOL_KINDS) };
+
 /** Versions where an installed plugin is known to run its hooks. */
 export const CODEX_PLUGIN_MODE_RANGE = ">=0.153 <1";
 
@@ -93,20 +118,27 @@ export function generateCodexArtifacts(
   const hooksJson = {
     description: plugin.description ?? `Hooknostic-generated hooks for ${plugin.name}`,
     hooks: Object.fromEntries(
-      [...byNativeEvent].map(([nativeEvent, reaching]) => [
-        nativeEvent,
-        [
-          {
-            hooks: [
-              {
-                type: "command",
-                command,
-                timeout: codexNativeTimeout(nativeEvent, reaching, options.runtime),
-              },
-            ],
-          },
-        ],
-      ]),
+      [...byNativeEvent].map(([nativeEvent, reaching]) => {
+        const selection =
+          nativeEvent === "PreToolUse" && rangeWithin(target.version, CODEX_NATIVE_MATCHER_RANGE)
+            ? nativeToolSelection(reaching, CODEX_TOOL_VOCABULARY)
+            : undefined;
+        return [
+          nativeEvent,
+          [
+            {
+              ...(selection === undefined ? {} : { matcher: wordListOrAnchoredMatcher(selection) }),
+              hooks: [
+                {
+                  type: "command",
+                  command,
+                  timeout: codexNativeTimeout(nativeEvent, reaching, options.runtime),
+                },
+              ],
+            },
+          ],
+        ];
+      }),
     ),
   };
 

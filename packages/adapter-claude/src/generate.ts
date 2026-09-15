@@ -1,7 +1,6 @@
 import type {
   AdapterCompileOptions,
   GeneratedArtifact,
-  NativeToolSelection,
   NativeToolVocabulary,
   PluginIR,
   RuntimeBundle,
@@ -13,6 +12,7 @@ import {
   namesByKind,
   nativeTimeoutSeconds,
   nativeToolSelection,
+  wordListOrAnchoredMatcher,
 } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 import { isToolScopedEvent } from "@hooknostic/sdk";
@@ -53,20 +53,6 @@ const CLAUDE_TOOL_VOCABULARY: NativeToolVocabulary = {
 };
 
 /**
- * Claude compares a matcher of only letters, digits, `_` and `|` as exact names,
- * and evaluates anything else as an unanchored regex, so a selection needing a
- * pattern or a non-word name is anchored and escaped. Doc-derived:
- * docs/baseline-2026-08-20.md, "Matchers".
- */
-function claudeMatcher(selection: NativeToolSelection): string {
-  if (selection.patterns.length === 0 && selection.names.every((name) => /^\w+$/.test(name))) {
-    return selection.names.join("|");
-  }
-  const escaped = selection.names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return `^(?:${[...escaped, ...selection.patterns].join("|")})$`;
-}
-
-/**
  * Generate the self-contained Claude Code plugin artifact:
  * one native command-hook entry (exec form, no shell) per lifecycle event the
  * plugin uses; all matcher/handler composition happens inside the bundled
@@ -102,7 +88,7 @@ export function generateClaudeArtifacts(
           nativeEvent,
           [
             {
-              ...(selection === undefined ? {} : { matcher: claudeMatcher(selection) }),
+              ...(selection === undefined ? {} : { matcher: wordListOrAnchoredMatcher(selection) }),
               hooks: [
                 {
                   type: "command",

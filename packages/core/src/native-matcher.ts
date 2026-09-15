@@ -52,6 +52,20 @@ export function nativeToolSelection(
   return { names: [...names].sort(), patterns: [...patterns].sort() };
 }
 
+/**
+ * Encode a selection for harnesses that compare a matcher of only letters,
+ * digits, `_` and `|` as exact names and otherwise evaluate a regex: a word
+ * list when it suffices, else an anchored, escaped alternation. Claude:
+ * doc-derived (docs/baseline-2026-08-20.md). Codex: .capture/codex-hook-matcher.
+ */
+export function wordListOrAnchoredMatcher(selection: NativeToolSelection): string {
+  if (selection.patterns.length === 0 && selection.names.every((name) => /^\w+$/.test(name))) {
+    return selection.names.join("|");
+  }
+  const escaped = selection.names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return `^(?:${[...escaped, ...selection.patterns].join("|")})$`;
+}
+
 /** Invert a classifier's exact name table into a vocabulary's `names`. */
 export function namesByKind(table: Record<string, ToolKind>): Partial<Record<ToolKind, readonly string[]>> {
   const grouped: Partial<Record<ToolKind, string[]>> = {};
