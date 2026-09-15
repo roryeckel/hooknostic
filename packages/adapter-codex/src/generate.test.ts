@@ -162,6 +162,23 @@ describe("Codex native tool matchers", () => {
       .hooks;
   }
 
+  it("leaves installed-plugin delivery unfiltered", () => {
+    const { ir } = buildPluginIR(
+      definePlugin({
+        name: "matchers",
+        hooks: [hook("tool.before", { id: "shell", match: { kind: "shell" }, async run() {} })],
+      }),
+    );
+    const artifacts = generateCodexArtifacts(
+      ir!,
+      { ...TARGET, delivery: "package", version: CODEX_PLUGIN_MODE_RANGE },
+      BUNDLE,
+      OPTIONS,
+    );
+    const hooks = JSON.parse(String(artifacts.find((a) => a.path === "hooks.json")!.contents)).hooks;
+    expect(hooks.PreToolUse[0]).not.toHaveProperty("matcher");
+  });
+
   it("selects the classifier's shell names on PreToolUse only", () => {
     const hooks = hooksFor(CODEX_NATIVE_MATCHER_RANGE, { kind: "shell" });
     expect(hooks.PreToolUse[0].matcher).toBe("Bash|exec_command|shell");

@@ -53,8 +53,9 @@ export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
 /**
  * Versions whose PreToolUse matcher semantics are captured
  * (.capture/codex-hook-matcher): matched against the hook-boundary tool name.
- * Only a shell call was captured, so the vocabulary describes only `shell`;
- * other kinds, other tool events, and MCP names stay unfiltered.
+ * Only a shell call through a project `.codex/hooks.json` was captured, so the
+ * vocabulary describes only `shell`, and plugin delivery, other kinds, other tool
+ * events, and MCP names stay unfiltered.
  */
 export const CODEX_NATIVE_MATCHER_RANGE = ">=0.153 <1";
 const CODEX_TOOL_VOCABULARY: NativeToolVocabulary = {
@@ -123,7 +124,7 @@ export function generateCodexArtifacts(
     hooks: Object.fromEntries(
       [...byNativeEvent].map(([nativeEvent, reaching]) => {
         const selection =
-          nativeEvent === "PreToolUse" && rangeWithin(target.version, CODEX_NATIVE_MATCHER_RANGE)
+          !bundled && nativeEvent === "PreToolUse" && rangeWithin(target.version, CODEX_NATIVE_MATCHER_RANGE)
             ? nativeToolSelection(reaching, CODEX_TOOL_VOCABULARY)
             : undefined;
         return [
