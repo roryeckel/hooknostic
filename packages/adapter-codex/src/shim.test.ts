@@ -251,20 +251,24 @@ describe("Codex command shim stdout claim", () => {
 
 describe("Codex command shim plugin loading and exit", () => {
   const PLUGIN = `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    import { stdout as namedStdout } from "node:process";
     const capturedStdout = process.stdout;
     console.log("module top-level log");
-    // Slow stderr callbacks so redirected chunks queue behind each other.
+    // Defer stderr writes, like an asynchronous pipe, so queued output outlives the reply.
     const realStderrWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = (chunk, encoding, callback) => {
       const done = typeof encoding === "function" ? encoding : callback;
-      realStderrWrite(chunk);
-      setTimeout(() => done?.(), 5);
+      setTimeout(() => {
+        realStderrWrite(chunk);
+        done?.();
+      }, 5);
       return true;
     };
     export default definePlugin({ name: "captured", hooks: [hook("tool.before", {
       id: "captured", capabilities: { "tool.before.block": "required" },
       async run() {
         capturedStdout.write("written through a captured reference");
+        namedStdout.write("written through the node:process export");
         for (let chunk = 0; chunk < 100; chunk += 1) process.stdout.write("q");
         return block("nope");
       }
@@ -277,6 +281,7 @@ describe("Codex command shim plugin loading and exit", () => {
     expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
     expect(result.stderr).toContain("module top-level log");
     expect(result.stderr).toContain("written through a captured reference");
+    expect(result.stderr).toContain("written through the node:process export");
     expect(result.stderr.split("q").length - 1).toBe(100);
   });
 
@@ -284,5 +289,7 @@ describe("Codex command shim plugin loading and exit", () => {
     const result = await runCodexShim(PLUGIN, CAPS, { input: "not json" });
     expect(result).toMatchObject({ code: 0, stdout: "" });
     expect(result.stderr).not.toContain("hooknostic:");
+    const traced = await runCodexShim(PLUGIN, CAPS, { input: "not json", env: { HOOKNOSTIC_DEBUG: "1" } });
+    expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: payload is not JSON/m);
   });
 });

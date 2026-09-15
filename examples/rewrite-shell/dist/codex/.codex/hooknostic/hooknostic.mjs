@@ -4813,6 +4813,7 @@ var init_hooks = __esm({
 init_dist();
 init_dist();
 import { Console } from "node:console";
+import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 function createCapabilitySet(levels) {
   return {
@@ -5134,6 +5135,7 @@ function claimProtocolStdout() {
   redirected.on("error", () => {
   });
   Object.defineProperty(process, "stdout", { value: redirected, configurable: true, enumerable: true, writable: true });
+  syncBuiltinESMExports();
   globalThis.console = new Console({ stdout: redirected, stderr });
   return {
     writeReply: (contents) => new Promise((resolve, reject) => {
@@ -5142,12 +5144,15 @@ function claimProtocolStdout() {
         else resolve();
       });
     }),
-    release: () => new Promise((resolve) => {
-      if (redirected.writableFinished) return resolve();
-      redirected.once("finish", resolve);
-      redirected.once("close", resolve);
-      if (!redirected.writableEnded) redirected.end();
-    })
+    release: async () => {
+      await new Promise((resolve) => {
+        if (redirected.writableFinished) return resolve();
+        redirected.once("finish", resolve);
+        redirected.once("close", resolve);
+        if (!redirected.writableEnded) redirected.end();
+      });
+      await new Promise((resolve) => stderr.write("", () => resolve()));
+    }
   };
 }
 function debugTracer(env = process.env) {

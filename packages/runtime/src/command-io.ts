@@ -1,4 +1,5 @@
 import { Console } from "node:console";
+import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 
 import type { HookEvent, HookResult, PluginSpec } from "@hooknostic/sdk";
@@ -13,7 +14,7 @@ export async function loadCommandPlugin(source: CommandPluginSource): Promise<Pl
 export interface ProtocolStdout {
   /** Write the reply to the real stdout. */
   writeReply(contents: string): Promise<void>;
-  /** Flush output redirected to stderr; call before exiting. */
+  /** Flush redirected output and pending stderr writes; call before exiting. */
   release(): Promise<void>;
 }
 
@@ -38,6 +39,8 @@ export function claimProtocolStdout(): ProtocolStdout {
   // A handler writing after release, or after its own end(), must not crash the shim.
   redirected.on("error", () => {});
   Object.defineProperty(process, "stdout", { value: redirected, configurable: true, enumerable: true, writable: true });
+  // `import { stdout } from "node:process"` is a live binding set at startup.
+  syncBuiltinESMExports();
   // The global console binds its stream on first use, possibly before this ran.
   globalThis.console = new Console({ stdout: redirected, stderr });
   return {
@@ -48,13 +51,17 @@ export function claimProtocolStdout(): ProtocolStdout {
           else resolve();
         });
       }),
-    release: () =>
-      new Promise<void>((resolve) => {
+    release: async () => {
+      await new Promise<void>((resolve) => {
         if (redirected.writableFinished) return resolve();
         redirected.once("finish", resolve);
         redirected.once("close", resolve);
         if (!redirected.writableEnded) redirected.end();
-      }),
+      });
+      // Write callbacks fire in order, so this waits out every earlier stderr
+      // write, debug traces included.
+      await new Promise<void>((resolve) => stderr.write("", () => resolve()));
+    },
   };
 }
 

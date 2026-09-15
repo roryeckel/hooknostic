@@ -14,8 +14,8 @@ the `block` or rewrite it carried cannot be relied on.
 The generated command shims claim stdout before your plugin's modules even load:
 `process.stdout` and the global `console` are pointed at a stream that forwards to
 stderr, so `console.log`, `process.stdout.write`, piping into stdout,
-`process.stdout.end()`, and a `process.stdout` reference captured at module scope all
-land on stderr, and that output is flushed before the hook exits. The reply keeps the
+`process.stdout.end()`, `import { stdout } from "node:process"`, and a
+`process.stdout` reference captured at module scope all land on stderr, and that output is flushed before the hook exits. The reply keeps the
 real stdout. One case the guard cannot reach:
 
 - **Child processes that inherit stdout.** A `spawn(..., { stdio: "inherit" })` writes
