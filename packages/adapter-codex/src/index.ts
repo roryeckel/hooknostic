@@ -57,9 +57,9 @@ export function codexShimEntrySource(options: {
   harnessVersion?: string;
 }): string {
   return [
-    `import plugin from ${JSON.stringify(options.entryImportPath)};`,
     `import { runCodexCommandShim } from "@hooknostic/adapter-codex/shim";`,
-    `await runCodexCommandShim(plugin, {`,
+    // Loaded lazily so the shim claims stdout before plugin modules evaluate.
+    `await runCodexCommandShim(() => import(${JSON.stringify(options.entryImportPath)}), {`,
     `  targetId: ${JSON.stringify(options.targetId ?? "codex")},`,
     `  capabilities: ${JSON.stringify(options.capabilities)},`,
     ...(options.minimumCapabilityLevel !== undefined

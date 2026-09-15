@@ -200,3 +200,41 @@ describe("Claude command shim stdout claim", () => {
     expect(result.stderr).toContain("closing stdout");
   });
 });
+
+describe("Claude command shim plugin loading and exit", () => {
+  const PLUGIN = `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    const capturedStdout = process.stdout;
+    console.log("module top-level log");
+    // Slow stderr callbacks so redirected chunks queue behind each other.
+    const realStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (chunk, encoding, callback) => {
+      const done = typeof encoding === "function" ? encoding : callback;
+      realStderrWrite(chunk);
+      setTimeout(() => done?.(), 5);
+      return true;
+    };
+    export default definePlugin({ name: "captured", hooks: [hook("tool.before", {
+      id: "captured", capabilities: { "tool.before.block": "required" },
+      async run() {
+        capturedStdout.write("written through a captured reference");
+        for (let chunk = 0; chunk < 100; chunk += 1) process.stdout.write("q");
+        return block("nope");
+      }
+    })] });`;
+  const CAPS = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
+
+  it("claims stdout before plugin modules evaluate, and flushes redirected output before exiting", async () => {
+    const result = await runShim(PLUGIN, "fixtures/claude/2.1/pre-tool-bash.input.json", CAPS);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.stderr).toContain("module top-level log");
+    expect(result.stderr).toContain("written through a captured reference");
+    expect(result.stderr.split("q").length - 1).toBe(100);
+  });
+
+  it("treats a payload that is not JSON as ignored", async () => {
+    const result = await runShim(PLUGIN, "", CAPS, 5_000, { input: "not json" });
+    expect(result).toMatchObject({ code: 0, stdout: "" });
+    expect(result.stderr).not.toContain("hooknostic:");
+  });
+});

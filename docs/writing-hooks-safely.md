@@ -8,16 +8,16 @@ ship a hook that other people will run.
 ## Keep stdout for the harness
 
 Claude Code and Codex run your artifact as a command and read its **stdout as the
-hook's reply**. A stray line in front of that JSON turns a `block` into plain text the
-harness ignores, so the guard fails open.
+hook's reply**, parsed as JSON. Anything else written there stops the reply parsing, so
+the `block` or rewrite it carried cannot be relied on.
 
-The generated command shims claim stdout before your handlers run: `process.stdout`
-and the global `console` are pointed at a stream that forwards to stderr, so
-`console.log`, `process.stdout.write`, piping into stdout, and even `process.stdout.end()`
-land on stderr while the reply keeps the real stdout. Two cases that guard cannot reach:
+The generated command shims claim stdout before your plugin's modules even load:
+`process.stdout` and the global `console` are pointed at a stream that forwards to
+stderr, so `console.log`, `process.stdout.write`, piping into stdout,
+`process.stdout.end()`, and a `process.stdout` reference captured at module scope all
+land on stderr, and that output is flushed before the hook exits. The reply keeps the
+real stdout. One case the guard cannot reach:
 
-- **Output at module top level.** It runs while the artifact loads, before the shim
-  starts. Keep modules your hooks import free of side effects (see below).
 - **Child processes that inherit stdout.** A `spawn(..., { stdio: "inherit" })` writes
   straight to the harness's pipe. Capture a child's output (`stdio: "pipe"`) and decide
   what to do with it.

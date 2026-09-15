@@ -1,13 +1,15 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import {
   claimProtocolStdout,
+  type CommandPluginSource,
   debugTracer,
   describeDecodedEvent,
   describeHookResult,
   dispatch,
   formatHandlerErrors,
+  loadCommandPlugin,
 } from "@hooknostic/runtime";
-import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
+import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyCodex } from "./apply.js";
 import { CodexDecodeError, decodeCodex } from "./decode.js";
@@ -42,12 +44,18 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  * portable dispatch → strict JSON stdout / exit code. Fail-open on
  * protocol-level problems.
  */
-export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShimOptions): Promise<void> {
+export async function runCodexCommandShim(source: CommandPluginSource, options: CodexShimOptions): Promise<void> {
   let exitCode = 0;
-  const writeProtocol = claimProtocolStdout();
+  const stdout = claimProtocolStdout();
   const trace = debugTracer();
   try {
-    const nativeEvent: unknown = JSON.parse(await readStdin());
+    const plugin = await loadCommandPlugin(source);
+    let nativeEvent: unknown;
+    try {
+      nativeEvent = JSON.parse(await readStdin());
+    } catch (error) {
+      throw new CodexDecodeError(`payload is not JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const invocation = {
       targetId: "codex",
       ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
@@ -66,7 +74,7 @@ export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShim
     });
     trace?.(describeHookResult(result));
     const native = await applyCodex(result, nativeEvent, invocation);
-    if (native.body !== undefined) await writeProtocol(JSON.stringify(native.body));
+    if (native.body !== undefined) await stdout.writeReply(JSON.stringify(native.body));
     if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
     // Handler failures go to stderr on the exit-0 path. Both harnesses capture
     // it, and it must not go in the JSON body: Codex's wire schemas are
@@ -87,5 +95,6 @@ export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShim
     }
     exitCode = 0; // fail-open
   }
+  await stdout.release();
   process.exit(exitCode);
 }

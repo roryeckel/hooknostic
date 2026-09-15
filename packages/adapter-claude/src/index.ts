@@ -55,11 +55,11 @@ export function claudeShimEntrySource(options: {
   harnessVersion?: string;
 }): string {
   return [
-    `import plugin from ${JSON.stringify(options.entryImportPath)};`,
     // The /shim subpath keeps compile-time-only machinery (core, esbuild)
     // out of the generated runtime bundle.
     `import { runClaudeCommandShim } from "@hooknostic/adapter-claude/shim";`,
-    `await runClaudeCommandShim(plugin, {`,
+    // Loaded lazily so the shim claims stdout before plugin modules evaluate.
+    `await runClaudeCommandShim(() => import(${JSON.stringify(options.entryImportPath)}), {`,
     `  targetId: ${JSON.stringify(options.targetId ?? "claude")},`,
     `  capabilities: ${JSON.stringify(options.capabilities)},`,
     ...(options.minimumCapabilityLevel !== undefined
