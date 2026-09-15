@@ -43,7 +43,8 @@ describe("nativeToolSelection", () => {
     ["a hook without a match", hooks({ kind: "shell" }, undefined)],
     ["an empty match", hooks({})],
     ["the unenumerable other kind", hooks({ kind: "shell" }, { kind: "other" })],
-    ["kinds this harness has no tools for", hooks({ kind: "web.search" })],
+    ["a kind the vocabulary does not describe", hooks({ kind: "web.search" })],
+    ["an undescribed kind beside a described one", hooks({ kind: "shell" }, { kind: "web.search" })],
   ])("selects every tool for %s", (_label, reaching) => {
     expect(nativeToolSelection(reaching, VOCABULARY)).toBeUndefined();
   });

@@ -24,8 +24,8 @@ export interface NativeToolSelection {
  * matches (a `kind` and `nativeName` pair contributes the names alone); the
  * dispatcher re-applies each `match`, so only a narrower selection could lose a
  * dispatch. `undefined` means every tool must reach the dispatcher: a hook
- * without a match, or one matching `other`, which is defined by absence from
- * the vocabulary and so cannot be enumerated.
+ * without a match, one matching `other` (defined by absence, so unenumerable),
+ * or one matching a kind the vocabulary does not describe.
  */
 export function nativeToolSelection(
   reaching: readonly HookIR[],
@@ -41,9 +41,10 @@ export function nativeToolSelection(
       continue;
     }
     for (const kind of [match.kind!].flat()) {
-      if (kind === "other") return undefined;
-      for (const name of vocabulary.names[kind] ?? []) names.add(name);
+      const kindNames = vocabulary.names[kind];
       const pattern = vocabulary.patterns?.[kind];
+      if (kind === "other" || (kindNames === undefined && pattern === undefined)) return undefined;
+      for (const name of kindNames ?? []) names.add(name);
       if (pattern !== undefined) patterns.add(pattern);
     }
   }
