@@ -1,7 +1,8 @@
 # Codex PreToolUse matcher investigation
 
-Evidence class: **live-probe**. Measured Codex CLI **0.153.2**, native Windows,
-2026-09-14. No model credits: the model is the loopback playback server.
+Evidence class: **live-probe**. Measured Codex CLI **0.153.2** on native Windows and
+on Linux x64 (WSL2, Ubuntu 24.04, Node 22.23.2), 2026-09-14. No model credits:
+the model is the loopback playback server.
 
 ## Question
 
@@ -22,7 +23,14 @@ project, each recording the `tool_name` it received, then drives one scripted
 shell call through `codex exec` with an isolated `CODEX_HOME`, credential
 variables removed, and `--dangerously-bypass-hook-trust` (the scratch home has
 no recorded trust, which is the state that flag was observed to cover). The
-scratch tree is deleted afterwards. `observations.json` is the record.
+scratch tree is deleted afterwards. `observations.json` is the Windows record.
+
+The Linux run used the same probe body, bundled with esbuild into one module (the
+playback helper's test-only imports stubbed) and run under a Linux Node 22 and
+a locally installed `@openai/codex@0.153.2`, since the checkout's `node_modules`
+holds Windows-native binaries. `observations-linux.json` is that record; its
+dispatch table is identical to Windows, and Codex ran the shell call through
+`/bin/bash -lc`.
 
 ## Observations
 
@@ -47,7 +55,7 @@ scratch tree is deleted afterwards. `observations.json` is the record.
 
 ## Limits
 
-Only `PreToolUse` and a shell tool were exercised. `PostToolUse`,
-`PermissionRequest`, and MCP tool names under a matcher remain uncaptured, so
-the generator filters `PreToolUse` only and leaves the `mcp` kind unfiltered.
-POSIX harness behaviour is not established here.
+Only `PreToolUse`, a shell tool, and a project `.codex/hooks.json` were
+exercised. Other tool kinds, `PostToolUse`, `PermissionRequest`, MCP tool names,
+and hooks delivered by an installed plugin remain uncaptured, so the generator
+filters project `PreToolUse` shell selections only. macOS is not established.

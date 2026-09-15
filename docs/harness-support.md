@@ -79,6 +79,7 @@ Projection validation records:
 | 0.151.0 | 2026-08-30 | live-probe | `.capture/codex-tools` | updatedInput write channel verified honoured (rewritten command reached spawn) |
 | 0.151.0 | 2026-09-02 | live-probe | `.capture/codex-tools` | PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with "PostToolUse hook returned unsupported updatedMCPToolOutput", run status Failed; matches upstream codex-rs hooks/src/events/post_tool_use.rs unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is therefore unsupported on the hook channel; the output parser also shows the MCP connector path (not hooks) is the only output-replacement surface. |
 | 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-hook-matcher` | Project PreToolUse matcher is honoured for a shell call on Windows and compared against the hook-boundary tool name (Bash, not exec_command); exact word lists and anchored regexes match, a bare prefix does not. Non-shell tools, other tool events, MCP names, and POSIX are uncaptured. |
+| 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-hook-matcher` | The same PreToolUse matcher probe on Linux x64 (WSL2) produced an identical dispatch table: matched against the hook-boundary name Bash, word lists and anchored regexes match, a bare prefix does not. macOS is uncaptured. |
 
 #### Project delivery
 

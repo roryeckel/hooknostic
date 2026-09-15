@@ -90,6 +90,15 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
             "hook-boundary tool name (Bash, not exec_command); exact word lists and anchored regexes match, " +
             "a bare prefix does not. Non-shell tools, other tool events, MCP names, and POSIX are uncaptured.",
         },
+        {
+          version: "0.153.2",
+          date: "2026-09-14",
+          method: "live-probe",
+          artifact: ".capture/codex-hook-matcher",
+          what:
+            "The same PreToolUse matcher probe on Linux x64 (WSL2) produced an identical dispatch table: " +
+            "matched against the hook-boundary name Bash, word lists and anchored regexes match, a bare prefix does not. macOS is uncaptured.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and
