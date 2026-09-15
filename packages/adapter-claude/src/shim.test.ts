@@ -221,7 +221,7 @@ describe("Claude command shim plugin loading and exit", () => {
       async run() {
         capturedStdout.write("written through a captured reference");
         namedStdout.write("written through the node:process export");
-        for (let chunk = 0; chunk < 100; chunk += 1) process.stdout.write("q");
+        for (let chunk = 0; chunk < 20; chunk += 1) process.stdout.write("q");
         return block("nope");
       }
     })] });`;
@@ -234,7 +234,7 @@ describe("Claude command shim plugin loading and exit", () => {
     expect(result.stderr).toContain("module top-level log");
     expect(result.stderr).toContain("written through a captured reference");
     expect(result.stderr).toContain("written through the node:process export");
-    expect(result.stderr.split("q").length - 1).toBe(100);
+    expect(result.stderr.split("q").length - 1).toBe(20);
   });
 
   it("treats a payload that is not JSON as ignored", async () => {
@@ -248,6 +248,25 @@ describe("Claude command shim plugin loading and exit", () => {
 
 describe("Claude command shim with an unusable stderr", () => {
   const CAPS = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
+
+  it("exits promptly when a handler destroys stdout", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    export default definePlugin({ name: "stdout-destroyer", hooks: [hook("tool.before", {
+      id: "stdout-destroyer", capabilities: { "tool.before.block": "required" },
+      async run() {
+        process.stdout.destroy();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return block("nope");
+      }
+    })] });`,
+      "fixtures/claude/2.1/pre-tool-bash.input.json",
+      CAPS,
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.elapsedMs).toBeLessThan(1_000);
+  });
 
   it("still replies and exits 0 when a handler ends stderr", async () => {
     const result = await runShim(

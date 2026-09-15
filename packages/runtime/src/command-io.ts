@@ -57,7 +57,7 @@ export function claimProtocolStdout(): ProtocolStdout {
       while (stderr.writableCorked > 0) stderr.uncork();
       await bounded(
         new Promise<void>((resolve) => {
-          if (redirected.writableFinished) return resolve();
+          if (redirected.writableFinished || redirected.destroyed) return resolve();
           redirected.once("finish", resolve);
           redirected.once("close", resolve);
           if (!redirected.writableEnded) redirected.end();
@@ -71,7 +71,8 @@ export function claimProtocolStdout(): ProtocolStdout {
   };
 }
 
-const RELEASE_BOUND_MS = 2_000;
+// Well inside the 1s process allowance nativeTimeoutSeconds adds to every hook budget.
+const RELEASE_BOUND_MS = 500;
 
 /**
  * Settles when `work` does, or after the release bound. The timer stays

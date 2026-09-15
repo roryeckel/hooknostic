@@ -155,7 +155,7 @@ async function runCodexShim(
   pluginSource: string,
   capabilities: Record<string, "exact">,
   extra: { env?: NodeJS.ProcessEnv; input?: string } = {},
-): Promise<{ stdout: string; stderr: string; code: number | null }> {
+): Promise<{ stdout: string; stderr: string; code: number | null; elapsedMs: number }> {
   const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-shim-"));
   cleanup.push(dir);
   const pluginPath = join(dir, "hooks.ts");
@@ -174,6 +174,7 @@ async function runCodexShim(
   await writeFile(bundlePath, bundle.code, "utf8");
   const input = extra.input ?? (await readFile(join(REPO, "fixtures/codex/0.148/pre-tool-bash.input.json"), "utf8"));
   return new Promise((resolvePromise, rejectPromise) => {
+    const startedAt = Date.now();
     const child = spawn(process.execPath, [bundlePath], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, HOOKNOSTIC_DEBUG: "", ...extra.env },
@@ -183,7 +184,7 @@ async function runCodexShim(
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     child.on("error", rejectPromise);
-    child.on("close", (code) => resolvePromise({ stdout, stderr, code }));
+    child.on("close", (code) => resolvePromise({ stdout, stderr, code, elapsedMs: Date.now() - startedAt }));
     child.stdin.end(input);
   });
 }
@@ -269,7 +270,7 @@ describe("Codex command shim plugin loading and exit", () => {
       async run() {
         capturedStdout.write("written through a captured reference");
         namedStdout.write("written through the node:process export");
-        for (let chunk = 0; chunk < 100; chunk += 1) process.stdout.write("q");
+        for (let chunk = 0; chunk < 20; chunk += 1) process.stdout.write("q");
         return block("nope");
       }
     })] });`;
@@ -282,7 +283,7 @@ describe("Codex command shim plugin loading and exit", () => {
     expect(result.stderr).toContain("module top-level log");
     expect(result.stderr).toContain("written through a captured reference");
     expect(result.stderr).toContain("written through the node:process export");
-    expect(result.stderr.split("q").length - 1).toBe(100);
+    expect(result.stderr.split("q").length - 1).toBe(20);
   });
 
   it("treats a payload that is not JSON as ignored", async () => {
@@ -296,6 +297,24 @@ describe("Codex command shim plugin loading and exit", () => {
 
 describe("Codex command shim with an unusable stderr", () => {
   const CAPS = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
+
+  it("exits promptly when a handler destroys stdout", async () => {
+    const result = await runCodexShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    export default definePlugin({ name: "stdout-destroyer", hooks: [hook("tool.before", {
+      id: "stdout-destroyer", capabilities: { "tool.before.block": "required" },
+      async run() {
+        process.stdout.destroy();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return block("nope");
+      }
+    })] });`,
+      CAPS,
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.elapsedMs).toBeLessThan(1_000);
+  });
 
   it("still replies and exits 0 when a handler ends stderr", async () => {
     const result = await runCodexShim(

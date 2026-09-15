@@ -5135,7 +5135,7 @@ function claimProtocolStdout() {
       while (stderr.writableCorked > 0) stderr.uncork();
       await bounded(
         new Promise((resolve) => {
-          if (redirected.writableFinished) return resolve();
+          if (redirected.writableFinished || redirected.destroyed) return resolve();
           redirected.once("finish", resolve);
           redirected.once("close", resolve);
           if (!redirected.writableEnded) redirected.end();
@@ -5146,7 +5146,7 @@ function claimProtocolStdout() {
     }
   };
 }
-var RELEASE_BOUND_MS = 2e3;
+var RELEASE_BOUND_MS = 500;
 function bounded(work) {
   let timer;
   return Promise.race([
