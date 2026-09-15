@@ -245,3 +245,58 @@ describe("Claude command shim plugin loading and exit", () => {
     expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: payload is not JSON/m);
   });
 });
+
+describe("Claude command shim with an unusable stderr", () => {
+  const CAPS = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
+
+  it("still replies and exits 0 when a handler ends stderr", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    export default definePlugin({ name: "stderr-abuse", hooks: [hook("tool.before", {
+      id: "stderr-abuse", capabilities: { "tool.before.block": "required" },
+      async run() {
+        process.stderr.end("closing stderr");
+        return block("nope");
+      }
+    })] });`,
+      "fixtures/claude/2.1/pre-tool-bash.input.json",
+      CAPS,
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+  });
+
+  it("still replies and exits 0 when a handler leaves stderr corked", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    export default definePlugin({ name: "stderr-abuse", hooks: [hook("tool.before", {
+      id: "stderr-abuse", capabilities: { "tool.before.block": "required" },
+      async run() {
+        process.stderr.cork(); process.stderr.write("corked");
+        return block("nope");
+      }
+    })] });`,
+      "fixtures/claude/2.1/pre-tool-bash.input.json",
+      CAPS,
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+  });
+
+  it("still replies and exits 0 when a handler destroys stderr", async () => {
+    const result = await runShim(
+      `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    export default definePlugin({ name: "stderr-abuse", hooks: [hook("tool.before", {
+      id: "stderr-abuse", capabilities: { "tool.before.block": "required" },
+      async run() {
+        process.stderr.destroy();
+        return block("nope");
+      }
+    })] });`,
+      "fixtures/claude/2.1/pre-tool-bash.input.json",
+      CAPS,
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+  });
+});

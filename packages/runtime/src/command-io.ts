@@ -36,8 +36,9 @@ export function claimProtocolStdout(): ProtocolStdout {
       stderr.write(chunk, encoding, callback);
     },
   });
-  // A handler writing after release, or after its own end(), must not crash the shim.
+  // A handler that ends or breaks either stream must not crash the shim.
   redirected.on("error", () => {});
+  stderr.on("error", () => {});
   Object.defineProperty(process, "stdout", { value: redirected, configurable: true, enumerable: true, writable: true });
   // `import { stdout } from "node:process"` is a live binding set at startup.
   syncBuiltinESMExports();
@@ -52,17 +53,39 @@ export function claimProtocolStdout(): ProtocolStdout {
         });
       }),
     release: async () => {
-      await new Promise<void>((resolve) => {
-        if (redirected.writableFinished) return resolve();
-        redirected.once("finish", resolve);
-        redirected.once("close", resolve);
-        if (!redirected.writableEnded) redirected.end();
-      });
+      // Best effort and bounded: a handler may have corked, ended, or destroyed stderr.
+      while (stderr.writableCorked > 0) stderr.uncork();
+      await bounded(
+        new Promise<void>((resolve) => {
+          if (redirected.writableFinished) return resolve();
+          redirected.once("finish", resolve);
+          redirected.once("close", resolve);
+          if (!redirected.writableEnded) redirected.end();
+        }),
+      );
+      if (stderr.writableEnded || stderr.destroyed) return;
       // Write callbacks fire in order, so this waits out every earlier stderr
       // write, debug traces included.
-      await new Promise<void>((resolve) => stderr.write("", () => resolve()));
+      await bounded(new Promise<void>((resolve) => stderr.write("", () => resolve())));
     },
   };
+}
+
+const RELEASE_BOUND_MS = 2_000;
+
+/**
+ * Settles when `work` does, or after the release bound. The timer stays
+ * referenced: with a stuck stream nothing else may keep the event loop alive,
+ * and an unsettled top-level await would end the process with exit code 13.
+ */
+function bounded(work: Promise<void>): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    work.finally(() => clearTimeout(timer)),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, RELEASE_BOUND_MS);
+    }),
+  ]);
 }
 
 /** A stderr tracer when `HOOKNOSTIC_DEBUG` is set to a non-empty value other than `0`. */

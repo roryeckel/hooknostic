@@ -31,12 +31,11 @@ async function readStdin(): Promise<string> {
   return data;
 }
 
+/** Write and wait for the flush. A stream a handler ended or destroyed is skipped, not fatal. */
 async function writeStream(stream: NodeJS.WriteStream, contents: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    stream.write(contents, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
+  if (stream.writableEnded || stream.destroyed) return;
+  await new Promise<void>((resolve) => {
+    stream.write(contents, () => resolve());
   });
 }
 
@@ -97,6 +96,6 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
     }
     exitCode = 0; // fail-open
   }
-  await stdout.release();
+  await stdout.release().catch(() => {});
   process.exit(exitCode);
 }

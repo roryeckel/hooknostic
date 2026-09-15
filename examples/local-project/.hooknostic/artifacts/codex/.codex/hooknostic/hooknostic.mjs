@@ -5119,6 +5119,8 @@ function claimProtocolStdout() {
   });
   redirected.on("error", () => {
   });
+  stderr.on("error", () => {
+  });
   Object.defineProperty(process, "stdout", { value: redirected, configurable: true, enumerable: true, writable: true });
   syncBuiltinESMExports();
   globalThis.console = new Console({ stdout: redirected, stderr });
@@ -5130,15 +5132,29 @@ function claimProtocolStdout() {
       });
     }),
     release: async () => {
-      await new Promise((resolve) => {
-        if (redirected.writableFinished) return resolve();
-        redirected.once("finish", resolve);
-        redirected.once("close", resolve);
-        if (!redirected.writableEnded) redirected.end();
-      });
-      await new Promise((resolve) => stderr.write("", () => resolve()));
+      while (stderr.writableCorked > 0) stderr.uncork();
+      await bounded(
+        new Promise((resolve) => {
+          if (redirected.writableFinished) return resolve();
+          redirected.once("finish", resolve);
+          redirected.once("close", resolve);
+          if (!redirected.writableEnded) redirected.end();
+        })
+      );
+      if (stderr.writableEnded || stderr.destroyed) return;
+      await bounded(new Promise((resolve) => stderr.write("", () => resolve())));
     }
   };
+}
+var RELEASE_BOUND_MS = 2e3;
+function bounded(work) {
+  let timer;
+  return Promise.race([
+    work.finally(() => clearTimeout(timer)),
+    new Promise((resolve) => {
+      timer = setTimeout(resolve, RELEASE_BOUND_MS);
+    })
+  ]);
 }
 function debugTracer(env = process.env) {
   const flag = env["HOOKNOSTIC_DEBUG"];
@@ -5373,11 +5389,9 @@ async function readStdin() {
   return data;
 }
 async function writeStream(stream, contents) {
-  await new Promise((resolve, reject) => {
-    stream.write(contents, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
+  if (stream.writableEnded || stream.destroyed) return;
+  await new Promise((resolve) => {
+    stream.write(contents, () => resolve());
   });
 }
 async function runCodexCommandShim(source, options) {
@@ -5424,7 +5438,8 @@ async function runCodexCommandShim(source, options) {
     }
     exitCode = 0;
   }
-  await stdout.release();
+  await stdout.release().catch(() => {
+  });
   process.exit(exitCode);
 }
 
