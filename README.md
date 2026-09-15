@@ -23,6 +23,14 @@ plugin. Hookless skill/MCP packages work too; OpenCode package projection is def
 
 v0.1 targets **Claude Code**, **OpenAI Codex CLI**, and **OpenCode**.
 
+> [!WARNING]
+> **macOS is untested.** Every observation of a real harness behind these adapters was
+> made on Windows or Linux. On macOS only the unit and fixture tests run in CI; no
+> Claude Code, Codex, or OpenCode session has ever been driven there, so generated
+> integrations are unverified on that platform. If you run Hooknostic on macOS, the
+> credential-free playback lane in [docs/testing.md](docs/testing.md) is the quickest
+> way to confirm it, and a report either way is welcome.
+
 ## What it looks like
 
 ```ts
@@ -130,7 +138,8 @@ v0.1: all three adapters are implemented against fixtures captured from real ins
 harnesses (the exact builds are listed in [docs/harness-support.md](docs/harness-support.md),
 generated from the adapter metadata) and verified by
 live smoke tests (`HOOKNOSTIC_SMOKE=1 pnpm test`): tool blocking, input rewriting, and
-context injection observed working end-to-end in real sessions of all three. `check`,
+context injection observed working end-to-end in real sessions of all three, on Windows
+and Linux only (macOS is untested; see the warning above). `check`,
 `build`, `doctor`, and `inspect` are functional; builds are atomic (nothing is written
 until every selected target passes) and reproducible from the version ranges in your
 config — never from whatever happens to be installed locally.

@@ -31,6 +31,11 @@ const lines = [
   "capability profiles (`packages/adapter-*/src/{harness,profile}.ts`). The",
   "contract suite in `@hooknostic/testkit` audits every row.",
   "",
+  "> [!WARNING]",
+  "> **macOS is untested.** Every record below was established on Windows or Linux.",
+  "> CI runs only the unit and fixture tests on macOS; no harness session has been",
+  "> captured or played back there.",
+  "",
   "| Harness | Recommended target range | Validated ranges | Reference build | Fixtures |",
   "| --- | --- | --- | --- | --- |",
 ];

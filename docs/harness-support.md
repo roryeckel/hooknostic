@@ -6,6 +6,11 @@ The single source for these facts is each adapter's `harness` metadata and
 capability profiles (`packages/adapter-*/src/{harness,profile}.ts`). The
 contract suite in `@hooknostic/testkit` audits every row.
 
+> [!WARNING]
+> **macOS is untested.** Every record below was established on Windows or Linux.
+> CI runs only the unit and fixture tests on macOS; no harness session has been
+> captured or played back there.
+
 | Harness | Recommended target range | Validated ranges | Reference build | Fixtures |
 | --- | --- | --- | --- | --- |
 | Claude Code (`claude`) | `>=2.1 <3` | `>=2.0 <3` | 2.1.238 | `fixtures/claude/2.1` |
