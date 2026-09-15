@@ -142,7 +142,10 @@ describe("generateCodexArtifacts", () => {
 });
 
 describe("Codex native tool matchers", () => {
-  function hooksFor(version: string, ...matches: ({ kind: "shell" } | { kind: "mcp" } | undefined)[]) {
+  function hooksFor(
+    version: string,
+    ...matches: ({ kind: "shell" } | { kind: "mcp" } | { kind: "file.read" } | undefined)[]
+  ) {
     const { ir, diagnostics } = buildPluginIR(
       definePlugin({
         name: "matchers",
@@ -169,6 +172,7 @@ describe("Codex native tool matchers", () => {
     ["an uncaptured version", ">=0.148 <0.153", [{ kind: "shell" as const }]],
     ["an undescribed MCP kind", CODEX_NATIVE_MATCHER_RANGE, [{ kind: "shell" as const }, { kind: "mcp" as const }]],
     ["an unmatched hook", CODEX_NATIVE_MATCHER_RANGE, [{ kind: "shell" as const }, undefined]],
+    ["an uncaptured non-shell kind", CODEX_NATIVE_MATCHER_RANGE, [{ kind: "file.read" as const }]],
   ])("selects every tool for %s", (_label, version, matches) => {
     expect(hooksFor(version, ...matches).PreToolUse[0]).not.toHaveProperty("matcher");
   });

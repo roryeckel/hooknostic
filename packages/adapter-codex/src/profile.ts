@@ -80,6 +80,16 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
             "therefore unsupported on the hook channel; the output parser also shows the MCP " +
             "connector path (not hooks) is the only output-replacement surface.",
         },
+        {
+          version: "0.153.2",
+          date: "2026-09-14",
+          method: "live-probe",
+          artifact: ".capture/codex-hook-matcher",
+          what:
+            "Project PreToolUse matcher is honoured for a shell call on Windows and compared against the " +
+            "hook-boundary tool name (Bash, not exec_command); exact word lists and anchored regexes match, " +
+            "a bare prefix does not. Non-shell tools, other tool events, MCP names, and POSIX are uncaptured.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

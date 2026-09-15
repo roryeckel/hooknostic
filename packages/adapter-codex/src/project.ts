@@ -185,6 +185,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           artifact: ".capture/codex-project-mcp",
           what: "Official Codex MCP documentation defines bearer_token_env_var as the environment variable whose token is sent in the Authorization header; project startup behavior for this field was not live-probed.",
         },
+        {
+          version: "0.153.2",
+          date: "2026-09-14",
+          method: "live-probe",
+          artifact: ".capture/codex-project-mcp",
+          what: "A variable set in Codex's environment but not listed in env_vars does not reach a project stdio server (undeclaredEnvVar), so the projector lists every variable the launcher expands.",
+        },
       ],
     },
   },

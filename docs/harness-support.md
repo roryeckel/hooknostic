@@ -78,6 +78,7 @@ Projection validation records:
 | 0.151.0 | 2026-08-30 | router-log | `.capture/codex-tools` | exec_command router args (cmd/workdir); NOTE the hook boundary translates these calls to Bash/command payloads and drops workdir |
 | 0.151.0 | 2026-08-30 | live-probe | `.capture/codex-tools` | updatedInput write channel verified honoured (rewritten command reached spawn) |
 | 0.151.0 | 2026-09-02 | live-probe | `.capture/codex-tools` | PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with "PostToolUse hook returned unsupported updatedMCPToolOutput", run status Failed; matches upstream codex-rs hooks/src/events/post_tool_use.rs unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is therefore unsupported on the hook channel; the output parser also shows the MCP connector path (not hooks) is the only output-replacement surface. |
+| 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-hook-matcher` | Project PreToolUse matcher is honoured for a shell call on Windows and compared against the hook-boundary tool name (Bash, not exec_command); exact word lists and anchored regexes match, a bare prefix does not. Non-shell tools, other tool events, MCP names, and POSIX are uncaptured. |
 
 #### Project delivery
 
@@ -98,6 +99,7 @@ Project delivery validation records:
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/codex-project-mcp` | Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
 | 0.153.2 | 2026-09-12 | doc-derived | `.capture/codex-project-mcp` | Official Codex MCP documentation defines bearer_token_env_var as the environment variable whose token is sent in the Authorization header; project startup behavior for this field was not live-probed. |
+| 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-project-mcp` | A variable set in Codex's environment but not listed in env_vars does not reach a project stdio server (undeclaredEnvVar), so the projector lists every variable the launcher expands. |
 
 Project support is independent of package projection.
 

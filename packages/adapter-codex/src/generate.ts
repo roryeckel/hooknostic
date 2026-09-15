@@ -53,10 +53,13 @@ export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
 /**
  * Versions whose PreToolUse matcher semantics are captured
  * (.capture/codex-hook-matcher): matched against the hook-boundary tool name.
- * Other tool events and MCP tool names are uncaptured, so they stay unfiltered.
+ * Only a shell call was captured, so the vocabulary describes only `shell`;
+ * other kinds, other tool events, and MCP names stay unfiltered.
  */
 export const CODEX_NATIVE_MATCHER_RANGE = ">=0.153 <1";
-const CODEX_TOOL_VOCABULARY: NativeToolVocabulary = { names: namesByKind(CODEX_TOOL_KINDS) };
+const CODEX_TOOL_VOCABULARY: NativeToolVocabulary = {
+  names: { shell: namesByKind(CODEX_TOOL_KINDS).shell ?? [] },
+};
 
 /** Versions where an installed plugin is known to run its hooks. */
 export const CODEX_PLUGIN_MODE_RANGE = ">=0.153 <1";
