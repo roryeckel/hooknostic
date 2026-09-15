@@ -4943,6 +4943,36 @@ function formatHandlerErrors(result) {
   if (result.errors.length === 0) return void 0;
   return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
 }
+function claimProtocolStdout() {
+  const stdout = process.stdout;
+  const protocolWrite = stdout.write.bind(stdout);
+  const redirect = (...args) => process.stderr.write(...args);
+  stdout.write = redirect;
+  return (contents) => new Promise((resolve, reject) => {
+    protocolWrite(contents, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+function debugTracer(env = process.env) {
+  const flag = env["HOOKNOSTIC_DEBUG"];
+  if (flag === void 0 || flag === "" || flag === "0") return void 0;
+  return (message) => {
+    process.stderr.write(`hooknostic debug: ${message}
+`);
+  };
+}
+function describeDecodedEvent(event) {
+  const tool = "tool" in event ? ` (${event.tool.kind} ${event.tool.nativeName})` : "";
+  return `${event.harness.nativeEvent} -> ${event.event}${tool}`;
+}
+function describeHookResult(result) {
+  const effects = result.effects.map((applied) => `${applied.hookId}:${applied.effect.kind}`).join(", ");
+  const terminated = result.terminatedBy === void 0 ? "" : `, terminated by ${result.terminatedBy}`;
+  const errors = `${result.errors.length} error${result.errors.length === 1 ? "" : "s"}`;
+  return `effects [${effects}]${terminated}, ${errors}`;
+}
 var NATIVE_EVENT = {
   "session.start": "SessionStart",
   "session.end": "SessionEnd",
@@ -5167,6 +5197,8 @@ async function writeStream(stream, contents) {
 }
 async function runCodexCommandShim(plugin, options) {
   let exitCode = 0;
+  const writeProtocol = claimProtocolStdout();
+  const trace = debugTracer();
   try {
     const nativeEvent = JSON.parse(await readStdin());
     const invocation = {
@@ -5174,6 +5206,7 @@ async function runCodexCommandShim(plugin, options) {
       ...options.harnessVersion !== void 0 ? { harnessVersion: options.harnessVersion } : {}
     };
     const event = decodeCodex(nativeEvent, invocation);
+    trace?.(describeDecodedEvent(event));
     const result = await dispatch(plugin.hooks, event, {
       targetId: options.targetId ?? "codex",
       harness: event.harness,
@@ -5182,8 +5215,9 @@ async function runCodexCommandShim(plugin, options) {
       ...options.policy !== void 0 ? { policy: options.policy } : {},
       shellCodec: codexShellCodec
     });
+    trace?.(describeHookResult(result));
     const native = await applyCodex(result, nativeEvent, invocation);
-    if (native.body !== void 0) await writeStream(process.stdout, JSON.stringify(native.body));
+    if (native.body !== void 0) await writeProtocol(JSON.stringify(native.body));
     if (native.stderr !== void 0) await writeStream(process.stderr, native.stderr);
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== void 0) {
@@ -5193,7 +5227,8 @@ async function runCodexCommandShim(plugin, options) {
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
-    if (!(error instanceof CodexDecodeError)) {
+    if (error instanceof CodexDecodeError) trace?.(`ignored payload: ${error.message}`);
+    else {
       await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
     }
     exitCode = 0;

@@ -1,5 +1,12 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import {
+  claimProtocolStdout,
+  debugTracer,
+  describeDecodedEvent,
+  describeHookResult,
+  dispatch,
+  formatHandlerErrors,
+} from "@hooknostic/runtime";
 import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyClaude } from "./apply.js";
@@ -39,6 +46,8 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  */
 export async function runClaudeCommandShim(plugin: PluginSpec, options: ClaudeShimOptions): Promise<void> {
   let exitCode = 0;
+  const writeProtocol = claimProtocolStdout();
+  const trace = debugTracer();
   try {
     const nativeEvent: unknown = JSON.parse(await readStdin());
     const invocation = {
@@ -46,6 +55,7 @@ export async function runClaudeCommandShim(plugin: PluginSpec, options: ClaudeSh
       ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
     };
     const event = decodeClaude(nativeEvent, invocation);
+    trace?.(describeDecodedEvent(event));
     const result = await dispatch(plugin.hooks, event, {
       targetId: options.targetId ?? "claude",
       harness: event.harness,
@@ -56,8 +66,9 @@ export async function runClaudeCommandShim(plugin: PluginSpec, options: ClaudeSh
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: claudeShellCodec,
     });
+    trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);
-    if (native.body !== undefined) await writeStream(process.stdout, JSON.stringify(native.body));
+    if (native.body !== undefined) await writeProtocol(JSON.stringify(native.body));
     if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
     // Handler failures go to stderr on the exit-0 path. Both harnesses capture
     // it, and it must not go in the JSON body: Codex's wire schemas are
@@ -72,7 +83,8 @@ export async function runClaudeCommandShim(plugin: PluginSpec, options: ClaudeSh
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
-    if (!(error instanceof ClaudeDecodeError)) {
+    if (error instanceof ClaudeDecodeError) trace?.(`ignored payload: ${error.message}`);
+    else {
       await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
     }
     exitCode = 0; // fail-open

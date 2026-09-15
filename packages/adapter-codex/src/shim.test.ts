@@ -150,3 +150,77 @@ describe("Codex command shim stream draining", () => {
     expect(result.elapsedMs).toBeLessThan(2_000);
   });
 });
+
+async function runCodexShim(
+  pluginSource: string,
+  capabilities: Record<string, "exact">,
+  extra: { env?: NodeJS.ProcessEnv; input?: string } = {},
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
+  const dir = await mkdtemp(join(tmpdir(), "hooknostic-codex-shim-"));
+  cleanup.push(dir);
+  const pluginPath = join(dir, "hooks.ts");
+  const bundlePath = join(dir, "hooknostic.mjs");
+  await writeFile(pluginPath, pluginSource, "utf8");
+  const bundle = await bundleRuntime({
+    source: codexShimEntrySource({
+      entryImportPath: pluginPath.replaceAll("\\", "/"),
+      capabilities,
+      minimumCapabilityLevel: "emulated",
+      policy: { onHookError: "continue", timeoutMs: 5_000, contextCharLimit: 4_000_000 },
+    }),
+    resolveDir: dir,
+    alias: ALIAS,
+  });
+  await writeFile(bundlePath, bundle.code, "utf8");
+  const input = extra.input ?? (await readFile(join(REPO, "fixtures/codex/0.148/pre-tool-bash.input.json"), "utf8"));
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [bundlePath], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, HOOKNOSTIC_DEBUG: "", ...extra.env },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.on("error", rejectPromise);
+    child.on("close", (code) => resolvePromise({ stdout, stderr, code }));
+    child.stdin.end(input);
+  });
+}
+
+describe("Codex command shim output discipline", () => {
+  const BLOCKING_LOGGER = `import { block, definePlugin, hook } from "@hooknostic/sdk";
+    export default definePlugin({ name: "noisy", hooks: [hook("tool.before", {
+      id: "noisy", capabilities: { "tool.before.block": "required" },
+      async run() {
+        console.log("log from a hook");
+        process.stdout.write("raw stdout from a hook\\n");
+        return block("nope");
+      }
+    })] });`;
+  const CAPABILITIES = { "tool.before.observe": "exact", "tool.before.block": "exact" } as const;
+
+  it("keeps handler output off the protocol stdout", async () => {
+    const result = await runCodexShim(BLOCKING_LOGGER, CAPABILITIES);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.stderr).toContain("log from a hook");
+    expect(result.stderr).toContain("raw stdout from a hook");
+  });
+
+  it("stays silent on an undecodable payload unless HOOKNOSTIC_DEBUG is set", async () => {
+    const quiet = await runCodexShim(BLOCKING_LOGGER, CAPABILITIES, { input: "{}" });
+    expect(quiet).toMatchObject({ code: 0, stdout: "", stderr: "" });
+    const traced = await runCodexShim(BLOCKING_LOGGER, CAPABILITIES, { input: "{}", env: { HOOKNOSTIC_DEBUG: "1" } });
+    expect(traced.code).toBe(0);
+    expect(traced.stdout).toBe("");
+    expect(traced.stderr).toMatch(/^hooknostic debug: ignored payload: /m);
+  });
+
+  it("traces a dispatch when HOOKNOSTIC_DEBUG is set", async () => {
+    const result = await runCodexShim(BLOCKING_LOGGER, CAPABILITIES, { env: { HOOKNOSTIC_DEBUG: "1" } });
+    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.stderr).toMatch(/^hooknostic debug: PreToolUse -> tool\.before \(shell Bash\)$/m);
+    expect(result.stderr).toMatch(/^hooknostic debug: effects \[noisy:block\], terminated by noisy, 0 errors$/m);
+  });
+});

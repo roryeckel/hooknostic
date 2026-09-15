@@ -94,12 +94,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "37a97bc034eb0d441c0262dd499e7acd3a1579fb3b9cb4839eac5c2f6a691bd4",
+      "hash": "ef77d5a0b21869cb8bd658034b222135f6fc24d50251ec99065120aa8f7ea2a4",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "3311ab9dee873509404cf84a6b013d0e6ccb1febdcd2aa80e6237c402fe39e3a",
+      "hash": "c3667a5b83d89069c7d86bf65ec406c640e9411227955bb1a3488df1017d5dd9",
       "mode": 420
     },
     {

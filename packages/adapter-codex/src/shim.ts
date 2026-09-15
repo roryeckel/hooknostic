@@ -1,5 +1,12 @@
 import type { CapabilityLevels } from "@hooknostic/runtime";
-import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
+import {
+  claimProtocolStdout,
+  debugTracer,
+  describeDecodedEvent,
+  describeHookResult,
+  dispatch,
+  formatHandlerErrors,
+} from "@hooknostic/runtime";
 import type { PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyCodex } from "./apply.js";
@@ -37,6 +44,8 @@ async function writeStream(stream: NodeJS.WriteStream, contents: string): Promis
  */
 export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShimOptions): Promise<void> {
   let exitCode = 0;
+  const writeProtocol = claimProtocolStdout();
+  const trace = debugTracer();
   try {
     const nativeEvent: unknown = JSON.parse(await readStdin());
     const invocation = {
@@ -44,6 +53,7 @@ export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShim
       ...(options.harnessVersion !== undefined ? { harnessVersion: options.harnessVersion } : {}),
     };
     const event = decodeCodex(nativeEvent, invocation);
+    trace?.(describeDecodedEvent(event));
     const result = await dispatch(plugin.hooks, event, {
       targetId: options.targetId ?? "codex",
       harness: event.harness,
@@ -54,8 +64,9 @@ export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShim
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: codexShellCodec,
     });
+    trace?.(describeHookResult(result));
     const native = await applyCodex(result, nativeEvent, invocation);
-    if (native.body !== undefined) await writeStream(process.stdout, JSON.stringify(native.body));
+    if (native.body !== undefined) await writeProtocol(JSON.stringify(native.body));
     if (native.stderr !== undefined) await writeStream(process.stderr, native.stderr);
     // Handler failures go to stderr on the exit-0 path. Both harnesses capture
     // it, and it must not go in the JSON body: Codex's wire schemas are
@@ -70,7 +81,8 @@ export async function runCodexCommandShim(plugin: PluginSpec, options: CodexShim
     }
     exitCode = native.exitCode ?? 0;
   } catch (error) {
-    if (!(error instanceof CodexDecodeError)) {
+    if (error instanceof CodexDecodeError) trace?.(`ignored payload: ${error.message}`);
+    else {
       await writeStream(process.stderr, `hooknostic: ${error instanceof Error ? error.message : String(error)}`);
     }
     exitCode = 0; // fail-open
