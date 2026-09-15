@@ -5020,7 +5020,7 @@ function applyClaude(result, _nativeEvent, _invocation) {
   }
   return Promise.resolve({ exitCode: 0, body });
 }
-var EXACT = {
+var CLAUDE_TOOL_KINDS = {
   Bash: "shell",
   PowerShell: "shell",
   BashOutput: "other",
@@ -5041,8 +5041,9 @@ var CLAUDE_SHELL_SHAPES = {
   PowerShell: { commandKey: "command" }
 };
 var claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);
+var CLAUDE_MCP_TOOL = /^mcp__(.+)__([^_].*)$/;
 function classifyClaudeTool(nativeName, input) {
-  const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
+  const mcpMatch = CLAUDE_MCP_TOOL.exec(nativeName);
   if (mcpMatch) {
     return {
       kind: "mcp",
@@ -5053,7 +5054,7 @@ function classifyClaudeTool(nativeName, input) {
   }
   const shell = claudeShellCodec.classify(nativeName, input);
   return {
-    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : void 0) ?? "other",
+    kind: (Object.hasOwn(CLAUDE_TOOL_KINDS, nativeName) ? CLAUDE_TOOL_KINDS[nativeName] : void 0) ?? "other",
     nativeName,
     input,
     ...shell !== void 0 ? { shell } : {}

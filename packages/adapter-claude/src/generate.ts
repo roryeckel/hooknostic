@@ -1,6 +1,23 @@
-import type { AdapterCompileOptions, GeneratedArtifact, PluginIR, RuntimeBundle, TargetSpec } from "@hooknostic/core";
-import { assertNativeTimeoutFits, hooksByNativeEvent, nativeTimeoutSeconds } from "@hooknostic/core";
+import type {
+  AdapterCompileOptions,
+  GeneratedArtifact,
+  NativeToolSelection,
+  NativeToolVocabulary,
+  PluginIR,
+  RuntimeBundle,
+  TargetSpec,
+} from "@hooknostic/core";
+import {
+  assertNativeTimeoutFits,
+  hooksByNativeEvent,
+  namesByKind,
+  nativeTimeoutSeconds,
+  nativeToolSelection,
+} from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
+import { isToolScopedEvent } from "@hooknostic/sdk";
+
+import { CLAUDE_MCP_TOOL, CLAUDE_TOOL_KINDS } from "./toolmap.js";
 
 /**
  * Native events whose timeout the harness caps regardless of what we ask for.
@@ -30,11 +47,31 @@ export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string> = {
 
 const RUNTIME_PATH = "runtime/hooknostic.mjs";
 
+const CLAUDE_TOOL_VOCABULARY: NativeToolVocabulary = {
+  names: namesByKind(CLAUDE_TOOL_KINDS),
+  patterns: { mcp: CLAUDE_MCP_TOOL.source.slice(1, -1) },
+};
+
+/**
+ * Claude compares a matcher of only letters, digits, `_` and `|` as exact names,
+ * and evaluates anything else as an unanchored regex, so a selection needing a
+ * pattern or a non-word name is anchored and escaped. Doc-derived:
+ * docs/baseline-2026-08-20.md, "Matchers".
+ */
+function claudeMatcher(selection: NativeToolSelection): string {
+  if (selection.patterns.length === 0 && selection.names.every((name) => /^\w+$/.test(name))) {
+    return selection.names.join("|");
+  }
+  const escaped = selection.names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return `^(?:${[...escaped, ...selection.patterns].join("|")})$`;
+}
+
 /**
  * Generate the self-contained Claude Code plugin artifact:
  * one native command-hook entry (exec form, no shell) per lifecycle event the
  * plugin uses; all matcher/handler composition happens inside the bundled
- * dispatcher (ADR-0003).
+ * dispatcher (ADR-0003). A tool event's native matcher only skips tools no
+ * hook can match, so the dispatcher is not started for them.
  */
 function claudeNativeTimeout(
   nativeEvent: string,
@@ -57,25 +94,31 @@ export function generateClaudeArtifacts(
   const hooksJson = {
     description: plugin.description ?? `Hooknostic-generated hooks for ${plugin.name}`,
     hooks: Object.fromEntries(
-      [...byNativeEvent].map(([nativeEvent, reaching]) => [
-        nativeEvent,
-        [
-          {
-            hooks: [
-              {
-                type: "command",
-                command: "node",
-                args: [
-                  target.delivery === "package"
-                    ? `\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`
-                    : `\${CLAUDE_PROJECT_DIR}/${RUNTIME_PATH}`,
-                ],
-                timeout: claudeNativeTimeout(nativeEvent, reaching, options.runtime),
-              },
-            ],
-          },
-        ],
-      ]),
+      [...byNativeEvent].map(([nativeEvent, reaching]) => {
+        const selection = isToolScopedEvent(reaching[0]!.event)
+          ? nativeToolSelection(reaching, CLAUDE_TOOL_VOCABULARY)
+          : undefined;
+        return [
+          nativeEvent,
+          [
+            {
+              ...(selection === undefined ? {} : { matcher: claudeMatcher(selection) }),
+              hooks: [
+                {
+                  type: "command",
+                  command: "node",
+                  args: [
+                    target.delivery === "package"
+                      ? `\${CLAUDE_PLUGIN_ROOT}/${RUNTIME_PATH}`
+                      : `\${CLAUDE_PROJECT_DIR}/${RUNTIME_PATH}`,
+                  ],
+                  timeout: claudeNativeTimeout(nativeEvent, reaching, options.runtime),
+                },
+              ],
+            },
+          ],
+        ];
+      }),
     ),
   };
 

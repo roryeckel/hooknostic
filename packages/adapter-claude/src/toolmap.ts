@@ -7,7 +7,7 @@ import { shellCodec } from "@hooknostic/sdk";
  * MCP tools follow `mcp__<server>__<tool>` (plugin-bundled servers appear as
  * `mcp__plugin_<plugin>_<server>__<tool>` and keep the composite server id).
  */
-const EXACT: Record<string, ToolKind> = {
+export const CLAUDE_TOOL_KINDS: Record<string, ToolKind> = {
   Bash: "shell",
   PowerShell: "shell",
   BashOutput: "other",
@@ -39,8 +39,10 @@ export const CLAUDE_SHELL_SHAPES: ShellShapes = {
 
 export const claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);
 
+export const CLAUDE_MCP_TOOL = /^mcp__(.+)__([^_].*)$/;
+
 export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvocation {
-  const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
+  const mcpMatch = CLAUDE_MCP_TOOL.exec(nativeName);
   if (mcpMatch) {
     return {
       kind: "mcp",
@@ -51,7 +53,7 @@ export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvo
   }
   const shell = claudeShellCodec.classify(nativeName, input);
   return {
-    kind: (Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : undefined) ?? "other",
+    kind: (Object.hasOwn(CLAUDE_TOOL_KINDS, nativeName) ? CLAUDE_TOOL_KINDS[nativeName] : undefined) ?? "other",
     nativeName,
     input,
     ...(shell !== undefined ? { shell } : {}),

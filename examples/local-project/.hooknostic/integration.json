@@ -24,7 +24,7 @@
         "PreToolUse"
       ],
       "kind": "array",
-      "hash": "2d2b54f8d4046a164277aae005f92f791305e35b478cec43ee47d096e1c4fb85",
+      "hash": "5c04db9b81653d53d99e19c1c71a8e07b1a355d55ce1d9f7f4d6a922538e74e7",
       "context": []
     },
     {
@@ -79,7 +79,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/hooks/hooks.json",
-      "hash": "508aab549912f221609a7ce4e822cb924a43e2956a6a366e2f5eff2c67098d55",
+      "hash": "8547853e03bc214e26cc775b8e92c336355208b1617372f5222398da0cfb2048",
       "mode": 420
     },
     {
@@ -94,7 +94,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "4aff4efdb43e61bf0fc5bdaf3aca4207639966d8b6da6ed03d2576f81b3c77f8",
+      "hash": "37a97bc034eb0d441c0262dd499e7acd3a1579fb3b9cb4839eac5c2f6a691bd4",
       "mode": 420
     },
     {

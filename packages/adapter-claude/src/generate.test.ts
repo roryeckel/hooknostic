@@ -75,6 +75,8 @@ describe("generateClaudeArtifacts", () => {
     // hook contributes no Stop entry for this target.
     expect(Object.keys(hooksJson.hooks)).toEqual(["PreToolUse", "SessionStart"]);
     expect(hooksJson.hooks.PreToolUse).toHaveLength(1);
+    // second-tool-hook has no match, so every tool must still reach the dispatcher.
+    expect(hooksJson.hooks.PreToolUse[0]).not.toHaveProperty("matcher");
     const command = hooksJson.hooks.PreToolUse[0].hooks[0];
     // exec form: command + args array, no shell string interpolation.
     expect(command).toEqual({
@@ -132,6 +134,54 @@ describe("generateClaudeArtifacts", () => {
     expect(hooksJson.hooks.PreToolUse[0].hooks[0].timeout).toBe(126);
     // The event it does not touch is unchanged.
     expect(hooksJson.hooks.SessionStart[0].hooks[0].timeout).toBe(6);
+  });
+});
+
+describe("Claude native tool matchers", () => {
+  function hooksFor(...specs: Parameters<typeof hook<"tool.before">>[1][]) {
+    const { ir, diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "matchers",
+        hooks: [
+          ...specs.map((spec) => hook("tool.before", spec)),
+          hook("tool.after", { id: "after-shell", match: { kind: "shell" }, async run() {} }),
+          hook("session.start", { id: "start", async run() {} }),
+        ],
+      }),
+    );
+    expect(diagnostics).toEqual([]);
+    return JSON.parse(generateClaudeArtifacts(ir!, TARGET, BUNDLE, OPTIONS)[1]!.contents as string).hooks;
+  }
+
+  it("selects exactly the native shell tools for shell-kind hooks", () => {
+    const hooks = hooksFor(
+      { id: "a", match: { kind: "shell" }, async run() {} },
+      { id: "b", match: { kind: "shell" }, async run() {} },
+    );
+    expect(hooks.PreToolUse[0].matcher).toBe("Bash|PowerShell");
+    expect(hooks.PostToolUse[0].matcher).toBe("Bash|PowerShell");
+    expect(hooks.SessionStart[0]).not.toHaveProperty("matcher");
+  });
+
+  it("anchors a selection that needs a pattern or a non-word name", () => {
+    const hooks = hooksFor(
+      { id: "a", match: { kind: "mcp" }, async run() {} },
+      { id: "b", match: { nativeName: "my.tool" }, async run() {} },
+    );
+    const matcher = new RegExp(hooks.PreToolUse[0].matcher);
+    expect(hooks.PreToolUse[0].matcher).toMatch(/^\^\(\?:.*\)\$$/);
+    expect(matcher.test("my.tool")).toBe(true);
+    expect(matcher.test("myXtool")).toBe(false);
+    expect(matcher.test("mcp__gitea__list_issues")).toBe(true);
+    expect(matcher.test("Read")).toBe(false);
+  });
+
+  it("selects every tool when any hook cannot be narrowed", () => {
+    const hooks = hooksFor(
+      { id: "a", match: { kind: "shell" }, async run() {} },
+      { id: "b", match: { kind: "other" }, async run() {} },
+    );
+    expect(hooks.PreToolUse[0]).not.toHaveProperty("matcher");
   });
 });
 
