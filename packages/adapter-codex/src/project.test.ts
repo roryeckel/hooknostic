@@ -103,6 +103,30 @@ describe("Codex project components", () => {
     expect(integration.entries[0]?.value).toMatchObject({ startup_timeout_sec: 61 });
   });
 
+  it("forwards every environment variable the stdio launcher expands", async () => {
+    const integration = await projectComponents(
+      source({
+        tracker: {
+          type: "stdio",
+          command: "tracker-mcp",
+          args: ["--host", "${TRACKER_HOST}", "${PLUGIN_ROOT}/data"],
+          env: { TRACKER_TOKEN: "${TRACKER_TOKEN}", LITERAL: "plain", DATA: "${PLUGIN_DATA}" },
+          cwd: "${TRACKER_WORKDIR}",
+        },
+        relative: { type: "stdio", command: "plain-mcp", cwd: "./${NOT_EXPANDED}" },
+      }),
+      ".",
+      "out",
+      "hooknostic.config.ts",
+      { mcpProjectCwdServers: ["tracker"] },
+    );
+    const entries = Object.fromEntries(
+      integration.entries.map((entry) => [String(entry.key[1]), entry.value]),
+    ) as Record<string, Record<string, unknown>>;
+    expect(entries["tracker"]?.["env_vars"]).toEqual(["TRACKER_HOST", "TRACKER_TOKEN", "TRACKER_WORKDIR"]);
+    expect(entries["relative"]).not.toHaveProperty("env_vars");
+  });
+
   it("uses an owned hook bootstrap instead of a cwd-relative runtime path", () => {
     const artifacts = [
       {

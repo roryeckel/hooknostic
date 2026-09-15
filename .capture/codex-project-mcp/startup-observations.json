@@ -101,6 +101,15 @@
           "method": "POST"
         }
       ]
+    },
+    "undeclaredEnvVar": {
+      "execution": {
+        "code": 1,
+        "loopbackModelFailure": true
+      },
+      "observed": {
+        "forwarded": null
+      }
     }
   }
 }

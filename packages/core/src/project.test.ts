@@ -390,7 +390,7 @@ describe("complete project integration", () => {
         mcpOverrides: {
           codex: {
             startupTimeoutMs: 60_000,
-            servers: { serena: { args: ["start-mcp-server", "--context", "codex"] } },
+            servers: { serena: { args: ["start-mcp-server", "--context", "codex", "--project", "${SERENA_PROJECT}"] } },
           },
           opencode: {
             servers: {
@@ -423,13 +423,14 @@ describe("complete project integration", () => {
     expect(synced.errors).toEqual([]);
     expect(
       JSON.parse(await readFile(join(root, ".hooknostic/artifacts/codex/mcp-servers.json"), "utf8")).servers[0],
-    ).toMatchObject({ args: ["start-mcp-server", "--context", "codex"] });
+    ).toMatchObject({ args: ["start-mcp-server", "--context", "codex", "--project", "${SERENA_PROJECT}"] });
     expect(
       JSON.parse(await readFile(join(root, ".hooknostic/artifacts/opencode/mcp-servers.json"), "utf8")).servers[0],
     ).toMatchObject({ args: ["start-mcp-server", "--context", "ide"], cwd: "${PLUGIN_ROOT}/.." });
     const codexServers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8"))
-      .mcp_servers as Record<string, { startup_timeout_sec: number }>;
+      .mcp_servers as Record<string, { startup_timeout_sec: number; env_vars?: string[] }>;
     expect(codexServers.serena!.startup_timeout_sec).toBe(60);
+    expect(codexServers.serena!.env_vars).toEqual(["SERENA_PROJECT"]);
     const componentPath = join(root, ".opencode/plugins/hooknostic-components.js");
     const plugin = await (await import(pathToFileURL(componentPath).href)).default();
     const opencodeConfig: { mcp?: Record<string, { timeout?: number }> } = {};

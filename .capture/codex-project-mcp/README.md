@@ -44,6 +44,9 @@ probe is not a claim that the harness performs no other network traffic.
   directory. Neither anchors it to the project or configuration directory.
 - `${SYNTHETIC_VALUE}` remains literal in declared arguments and environment values
   at actual startup. `env_vars = ["SYNTHETIC_VALUE"]` forwards the variable value.
+  Without that listing the same variable, set in Codex's own environment, does not
+  reach the stdio child (`undeclaredEnvVar`), so the project projector lists every
+  variable its launcher expands in `env_vars`.
 - Streamable HTTP reaches initialize, notifications/initialized, and tools/list.
   `env_http_headers` reads a synthetic environment variable at runtime and sends
   the resulting header. The reference is not expanded during generation.

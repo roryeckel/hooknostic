@@ -66,6 +66,13 @@ try {
     results.cases[cwd === null ? "omittedCwd" : "dotCwd"] = { execution, observed, listRequests, requests: requests.slice(before + listRequests.length) };
     rmSync(marker);
   }
+  // Same variable in the harness environment, but not listed in env_vars.
+  writeFileSync(join(project, ".codex/config.toml"), `[mcp_servers.stdio_probe]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(fixture)}]\n[mcp_servers.stdio_probe.env]\nCAPTURE_PATH = ${JSON.stringify(marker)}\n`);
+  const undeclared = await run(["exec", "--skip-git-repo-check", "-"]);
+  assert.ok(existsSync(marker), "stdio server must start: " + JSON.stringify(undeclared));
+  const undeclaredObserved = JSON.parse(readFileSync(marker, "utf8"));
+  results.cases.undeclaredEnvVar = { execution: undeclared, observed: { forwarded: undeclaredObserved.forwarded ?? null } };
+  rmSync(marker);
   const sanitize = value => JSON.stringify(value, null, 2).split(JSON.stringify(scratch).slice(1, -1)).join("<scratch>");
   writeFileSync(new URL("startup-observations.json", import.meta.url), sanitize(results) + "\n");
   console.log(sanitize(results));
