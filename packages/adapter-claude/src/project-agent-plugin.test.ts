@@ -90,6 +90,46 @@ describe("Agent Plugin to Claude projection", () => {
     expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
   });
 
+  it("carries a runner command through untouched, whatever language it launches", async () => {
+    // The dominant real-world shape: of 24 stdio servers configured on one
+    // developer machine, every third-party one was a runner (`npx`, `bun`,
+    // `uvx`, `docker`, `php`) rather than an interpreter plus a bundled entry.
+    const portable = source();
+    portable.mcp = {
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        python: { type: "stdio", command: "uvx", args: ["mcp-server-git", "--repository", "${PLUGIN_ROOT}"] },
+      },
+    };
+
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      support,
+      onUnsupported: "error",
+      hookArtifacts: [],
+    });
+
+    // Claude spells the real command inline in the launcher's own argv, and
+    // ${PLUGIN_ROOT} becomes Claude's variable rather than a build-time path.
+    expect(parsed(plan, ".mcp.json").mcpServers.python).toEqual({
+      type: "stdio",
+      command: "node",
+      args: [
+        "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "uvx",
+        "mcp-server-git",
+        "--repository",
+        "${CLAUDE_PLUGIN_ROOT}",
+      ],
+      // Claude does not honour a declared cwd itself (.capture/claude-mcp-cwd),
+      // so the launcher is handed the plugin root and both bindings.
+      cwd: "${CLAUDE_PLUGIN_ROOT}",
+      env: { PLUGIN_ROOT: "${CLAUDE_PLUGIN_ROOT}", PLUGIN_DATA: "${CLAUDE_PLUGIN_DATA}" },
+    });
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
   it.each([null, [], {}, { hooks: null }, { hooks: [] }, { hooks: { Notification: {} } }])(
     "rejects malformed final hook documents: %j",
     async (document) => {

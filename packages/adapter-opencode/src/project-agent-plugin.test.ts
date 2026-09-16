@@ -100,6 +100,25 @@ describe("Agent Plugin to OpenCode projection", () => {
   // Every validatedOn record for this projection is 1.18.29. A profile reaching
   // below that would let a build claim exact/emulated support for a config hook,
   // a skills.paths merge and an MCP shape nothing has watched on those releases.
+  it("carries a runner command through untouched, whatever language it launches", async () => {
+    // The dominant real-world shape: of 24 stdio servers configured on one
+    // developer machine, every third-party one was a runner (`npx`, `bun`,
+    // `uvx`, `docker`, `php`) rather than an interpreter plus a bundled entry.
+    const plan = await project(
+      source({
+        python: { type: "stdio", command: "uvx", args: ["mcp-server-git", "--repository", "${PLUGIN_ROOT}"] },
+        container: { type: "stdio", command: "docker", args: ["run", "-i", "--rm", "example/mcp"] },
+      }),
+    );
+
+    const servers = launcherDocument(plan).servers;
+    expect(servers.map((server) => server.command)).toEqual(["uvx", "docker"]);
+    // The placeholder survives: the launcher expands it at spawn, and rewriting
+    // it here would bake in the build machine's path.
+    expect(servers[0]?.args).toEqual(["mcp-server-git", "--repository", "${PLUGIN_ROOT}"]);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
   it("declines versions below the ones its evidence covers", () => {
     const evidenced = opencodeAgentPluginProjector.profiles.flatMap((profile) =>
       (profile.source?.validatedOn ?? []).map((record) => record.version),
