@@ -288,6 +288,28 @@ describe("Agent Plugin to OpenCode projection", () => {
     ).toBe(true);
   });
 
+  it("warns that a versionless package cannot be published, but still emits it", async () => {
+    const pkg = source({});
+    const { version: _dropped, ...manifest } = pkg.manifest;
+    const plan = await project({ ...pkg, manifest });
+
+    // A warning rather than an error: the package still loads from a local
+    // path, which is a supported route. Publication is the one it cannot reach,
+    // and npm only says so at `npm publish` -- long after the build.
+    const warning = plan.issues.find((issue) => issue.message.includes("cannot be published"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.path).toBe("package.json");
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(JSON.parse(text(plan, "package.json")).version).toBeUndefined();
+  });
+
+  it("stays silent when the manifest carries a version", async () => {
+    const plan = await project(source({}));
+
+    expect(plan.issues.filter((issue) => issue.message.includes("cannot be published"))).toEqual([]);
+    expect(JSON.parse(text(plan, "package.json")).version).toBe("1.2.3");
+  });
+
   it("points ${PLUGIN_ROOT} at the nested package, not at the module", async () => {
     const plan = await project(source({}, ["src/server.mjs"]));
     expect(injector(plan)).toContain("const here = dirname(fileURLToPath(import.meta.url));");

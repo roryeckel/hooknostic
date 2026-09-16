@@ -391,12 +391,33 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Nothing installs a declared manifest on either route OpenCode offers. A package named by a local path in opencode.json is loaded, not installed, and its declared dependencies do not resolve; a module in .opencode/plugins/ is read from disk with no install step at all. Whether installing a PUBLISHED module by name installs its closure is a third route and is not probed. Ordinary Node resolution does apply, so a node_modules beside the module would resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
+            "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so vendoring is not reachable through this build either.",
         },
       },
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "1.18.30",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/opencode-npm-publish",
+            what: 'The third route is now measured: this projector\'s output, published unmodified to a loopback registry and installed with `opencode plugin <name>`, loaded through exports["./server"] from the package cache, and the component injector contributed both the skills path and the stdio server -- each resolving its own sibling assets at the cache location rather than the build output. A scoped name works the same way, which matters because an Agent Plugins manifest name cannot be one.',
+          },
+          {
+            version: "1.18.30",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/opencode-npm-publish",
+            what: "A registry-installed plugin's declared dependencies ARE installed, unlike on either other route: a published package declaring is-number@7.0.0 resolved it from the cache root beside itself, a specifier published nowhere failed, and deleting that dependency from the installed closure flipped the result -- so the check discriminates. This is the one OpenCode route on which a plugin could declare dependencies rather than bundle them.",
+          },
+          {
+            version: "1.18.30",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/opencode-npm-publish",
+            what: 'An installed plugin does not follow new publications. The cache directory is named @latest but pins the exact version resolved at first load; after publishing 1.0.1 over an installed 1.0.0 the consumer still loaded 1.0.0, and `opencode plugin <name> --force` -- documented as "replace existing plugin version" -- did not move it. Deleting the cached package root did. Unlike Claude and Codex, bumping the version is not enough here.',
+          },
           {
             version: "1.18.31",
             date: "2026-09-15",
@@ -561,6 +582,22 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         message:
           `package delivery emits an npm package, and manifest name ` +
           `${JSON.stringify(source.manifest.name)} is not a valid npm package name: ${nameProblem}.`,
+      });
+    }
+    // A version is optional on an Agent Plugins manifest, and the package loads
+    // without one from a local path -- so this is a warning, not an error. But
+    // npm refuses to publish a manifest with no version, and publication is the
+    // only route that reaches a consumer who does not have the build output on
+    // disk, so an author who never sees this discovers it at `npm publish`.
+    if (source.manifest.version === undefined) {
+      issues.push({
+        severity: "warn",
+        scope: "projection",
+        component: "agent-plugin.manifest",
+        path: MANIFEST_PATH,
+        message:
+          "package delivery emits an npm package and the manifest declares no version, " +
+          "so the result loads from a local path but cannot be published.",
       });
     }
     files.push({

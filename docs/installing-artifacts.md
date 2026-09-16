@@ -287,9 +287,35 @@ output ([`load.ts`](../packages/agent-plugin/src/load.ts),
 `AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES`). Following that route leaves an MCP
 server's imports unresolved with no build error.
 
-Publishing to npm and installing by name is a third route. Whether *it* installs
-a dependency closure has not been probed; do not rely on it.
-See `.capture/opencode-plugin-routes`.
+### Publishing it, and installing by name
+
+The third route is publication. `npm publish` the output directory, then
+consumers run `opencode plugin <name>`; the package is fetched on first load
+into `<cache>/opencode/packages/<name>@latest/node_modules/<name>/` and read
+through `exports["./server"]`. Skills and MCP servers arrive with it, resolving
+their own assets at that cache location. Scoped names work — which matters,
+because the Agent Plugins manifest name cannot be one (`@` and `/` are outside
+the permitted character set), so the emitted `package.json` name is unscoped
+unless you rename it before publishing.
+
+**This is the only OpenCode route that installs a dependency closure.** A
+published package's declared `dependencies` do resolve, unlike on the local-path
+route above. That does not make `components.runtimePackage` work here — the
+route reads the package's own generated manifest, not the separate runtime
+manifest that component supplies — and bundling remains the recommendation,
+because it is the only thing that works on all three OpenCode routes and on all
+three harnesses.
+
+> **An installed plugin does not follow new publications.** The cache directory
+> is named `@latest`, but it pins the exact version resolved at first load.
+> Publishing a new version changes nothing for existing consumers, and
+> `opencode plugin <name> --force` — documented as "replace existing plugin
+> version" — did not move an installed 1.0.0 to a published 1.0.1. Deleting
+> `<cache>/opencode/packages/<name>@latest` did. Unlike Claude and Codex, where
+> bumping the version is the whole update story, here it is not enough.
+
+Measured on 1.18.30; see `.capture/opencode-npm-publish` and
+`.capture/opencode-plugin-routes`.
 
 **A relative path is relative to the config file, not to you.** An entry in a
 `plugin` array resolves against the directory of the `opencode.json` that
