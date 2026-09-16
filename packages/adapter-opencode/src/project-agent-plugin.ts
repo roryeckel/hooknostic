@@ -12,6 +12,7 @@ import {
   hasUnportableCommandPath,
   isRejectedSkillPath,
   packageNameProblem,
+  packageVersionProblem,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -317,6 +318,16 @@ function injectorSource(
  *   deeper and in a neighbouring directory did not.
  */
 /**
+ * How to describe a manifest version npm would not publish, or `undefined` when
+ * it would. Phrased to slot into the projection warning.
+ */
+function unpublishableVersion(version: string | undefined): string | undefined {
+  if (version === undefined) return "the manifest declares no version";
+  const problem = packageVersionProblem(version);
+  return problem === undefined ? undefined : `the manifest version ${JSON.stringify(version)} is ${problem}`;
+}
+
+/**
  * The npm manifest that makes the output a package rather than a directory.
  *
  * `exports["./server"]` is what selects the entry: measured on 1.18.30 to be
@@ -584,19 +595,21 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           `${JSON.stringify(source.manifest.name)} is not a valid npm package name: ${nameProblem}.`,
       });
     }
-    // A version is optional on an Agent Plugins manifest, and the package loads
-    // without one from a local path -- so this is a warning, not an error. But
-    // npm refuses to publish a manifest with no version, and publication is the
-    // only route that reaches a consumer who does not have the build output on
-    // disk, so an author who never sees this discovers it at `npm publish`.
-    if (source.manifest.version === undefined) {
+    // A version is optional on an Agent Plugins manifest and unconstrained when
+    // present, so neither its absence nor its presence says whether npm would
+    // publish the result. The package still loads from a local path either way
+    // -- hence a warning, not an error -- but publication is the only route that
+    // reaches a consumer without the build output on disk, and npm does not
+    // object until `npm publish`, long after the build.
+    const versionProblem = unpublishableVersion(source.manifest.version);
+    if (versionProblem !== undefined) {
       issues.push({
         severity: "warn",
         scope: "projection",
         component: "agent-plugin.manifest",
         path: MANIFEST_PATH,
         message:
-          "package delivery emits an npm package and the manifest declares no version, " +
+          `package delivery emits an npm package and ${versionProblem}, ` +
           "so the result loads from a local path but cannot be published.",
       });
     }
@@ -667,7 +680,9 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       omissions.push({
         component: "agent-plugin.runtime-package",
         reason:
-          "this projection emits an npm package that is loaded from a local path rather than installed, so nothing acts on its manifest or lockfile; bundle the dependencies instead",
+          "the generated root manifest is the only one any OpenCode route reads, and this component's manifest " +
+          "and lockfile are copied into the nested author package, where nothing merges or installs them; bundle " +
+          "the dependencies instead",
       });
     }
 

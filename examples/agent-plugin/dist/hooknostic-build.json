@@ -168,7 +168,7 @@
         "omissions": [
           {
             "component": "agent-plugin.runtime-package",
-            "reason": "this projection emits an npm package that is loaded from a local path rather than installed, so nothing acts on its manifest or lockfile; bundle the dependencies instead"
+            "reason": "the generated root manifest is the only one any OpenCode route reads, and this component's manifest and lockfile are copied into the nested author package, where nothing merges or installs them; bundle the dependencies instead"
           }
         ]
       },

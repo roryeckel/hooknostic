@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { packageNameProblem, validateNpmRuntimePackage } from "./runtime-package.js";
+import { packageNameProblem, packageVersionProblem, validateNpmRuntimePackage } from "./runtime-package.js";
 
 const manifest = JSON.stringify({ name: "runtime", dependencies: { left: "1.0.0", right: "^2.0.0" } });
 
@@ -249,6 +249,23 @@ describe("validateNpmRuntimePackage", () => {
     for (const name of ["UPPER", "@Scope/Name", "a".repeat(215), "http", "weird~'!()*"]) {
       expect(packageNameProblem(name), name).toBeUndefined();
     }
+  });
+
+  it.each([
+    ["1.0.0", undefined],
+    // npm normalises a leading v, so refusing it would be stricter than npm.
+    ["v2.3.4", undefined],
+    ["1.0.0-rc.1+build.5", undefined],
+    ["", "empty"],
+    ["   ", "empty"],
+    // A dist-tag is what a consumer installs by, never what a manifest declares.
+    ["next", "not a semantic version"],
+    ["latest", "not a semantic version"],
+    // A range is legal in a dependency edge and illegal as a version.
+    ["^1.0.0", "not a semantic version"],
+    ["1.0", "not a semantic version"],
+  ])("judges manifest version %j the way npm publish would", (version, problem) => {
+    expect(packageVersionProblem(version)).toBe(problem);
   });
 
   describe("locked dependency graph", () => {

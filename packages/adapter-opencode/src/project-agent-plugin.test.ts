@@ -303,11 +303,56 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(JSON.parse(text(plan, "package.json")).version).toBeUndefined();
   });
 
-  it("stays silent when the manifest carries a version", async () => {
-    const plan = await project(source({}));
+  // The manifest loader accepts any string here, so presence is not
+  // publishability: a dist-tag or a range reaches the projector intact and npm
+  // would refuse every one of them.
+  it.each([
+    ["next", "next"],
+    ["^1.0.0", "^1.0.0"],
+    ["1.0", "1.0"],
+    ["", ""],
+  ])("warns that a package versioned %j cannot be published", async (version) => {
+    const pkg = source({});
+    const plan = await project({ ...pkg, manifest: { ...pkg.manifest, version } });
 
-    expect(plan.issues.filter((issue) => issue.message.includes("cannot be published"))).toEqual([]);
-    expect(JSON.parse(text(plan, "package.json")).version).toBe("1.2.3");
+    const warning = plan.issues.find((issue) => issue.message.includes("cannot be published"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.message).toContain(JSON.stringify(version));
+    // Still emitted: the local-path route does not care, and refusing here
+    // would break a supported way to ship.
+    expect(JSON.parse(text(plan, "package.json")).version).toBe(version);
+  });
+
+  // No route on this harness reads the component's manifest, so the omission is
+  // permanent -- but its stated reason has to describe the real obstacle, and it
+  // survived one round of being wrong because nothing exercised it.
+  it("explains the runtime-package omission by what no route reads", async () => {
+    const plan = await opencodeAgentPluginProjector.project(source({}), {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+      runtimePackage: { manifest: "runtime/package.json", lockfile: "runtime/package-lock.json" },
+    });
+
+    const omission = plan.summary.omissions.find((candidate) => candidate.component === "agent-plugin.runtime-package");
+    expect(omission?.reason).toContain("generated root manifest");
+    // A registry-installed package IS installed, so the old explanation --
+    // "loaded from a local path rather than installed" -- is now false.
+    expect(omission?.reason).not.toContain("rather than installed");
+  });
+
+  it("stays silent when the manifest carries a version npm would accept", async () => {
+    for (const version of ["1.2.3", "v2.0.0", "1.0.0-rc.1"]) {
+      const pkg = source({});
+      const plan = await project({ ...pkg, manifest: { ...pkg.manifest, version } });
+
+      expect(
+        plan.issues.filter((issue) => issue.message.includes("cannot be published")),
+        version,
+      ).toEqual([]);
+      expect(JSON.parse(text(plan, "package.json")).version).toBe(version);
+    }
   });
 
   it("points ${PLUGIN_ROOT} at the nested package, not at the module", async () => {

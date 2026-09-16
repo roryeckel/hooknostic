@@ -34,6 +34,8 @@ dependency result needs the module deleted from
 `<XDG_CACHE_HOME>/opencode/packages/<name>@latest/node_modules/` and the probe
 re-run, or it establishes nothing.
 
-To re-check the update behaviour, publish a second version with a distinguishing
-field in `index.js`, then compare re-running, `opencode plugin <name> --force`,
-and deleting the cached package root.
+To re-check the update behaviour, bump only `package.json`'s `version` and
+publish again -- the marker reports `shipped` from the manifest it was installed
+with, so nothing else has to be kept in step. Then compare three things:
+re-running the consumer, `opencode plugin <name> --force`, and deleting the
+cached package root.

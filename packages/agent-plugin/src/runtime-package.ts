@@ -67,6 +67,20 @@ export function packageNameProblem(name: string): string | undefined {
   return result.validForOldPackages ? undefined : (result.errors ?? ["invalid package name"]).join("; ");
 }
 
+/**
+ * Why npm would refuse `version` in a manifest it publishes, or `undefined`
+ * when it is acceptable.
+ *
+ * An Agent Plugins manifest accepts any string here, so a projector that emits
+ * an npm package cannot infer publishability from the field's presence: npm
+ * wants one exact semantic version, not a range and not a dist-tag. `semver`
+ * normalises a leading `v`, which npm also accepts.
+ */
+export function packageVersionProblem(version: string): string | undefined {
+  if (semver.valid(version) !== null) return undefined;
+  return version.trim().length === 0 ? "empty" : "not a semantic version";
+}
+
 /** Package-manager-specific protocols npm rejects; named here for a clearer message than npa's. */
 const FOREIGN_PROTOCOLS = new Set(["workspace", "link", "portal", "patch", "catalog", "jsr"]);
 

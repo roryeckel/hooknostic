@@ -42,10 +42,15 @@ directory listing restored.
 
 ## Method
 
-The plugin module writes a marker file recording `import.meta.url` and, for each
-specifier, whether `import()` resolved. Findings rest on that marker, never on
-the installer's own output — the install prints "Plugin package ready" before
-anything has been loaded.
+The plugin module writes a marker file recording `import.meta.url`, the version
+of the release it was loaded from, and, for each specifier, whether `import()`
+resolved. Findings rest on that marker, never on the installer's own output —
+the install prints "Plugin package ready" before anything has been loaded.
+
+The version is **read from the module's own `package.json` at load time**, not
+written into the module. The update finding below turns on telling two releases
+apart, so a hand-maintained marker that drifted from the manifest beside it
+would report a version the registry never served.
 
 Two controls make the dependency result discriminating:
 
@@ -133,6 +138,9 @@ cache root pinned `1.0.1`, so this is not registry metadata staleness. **`--forc
 did not move an installed plugin to a newer published version.** Deleting the
 cached package root is the only observed way forward. Treat this as measured
 behaviour on 1.18.30 rather than a settled upstream contract.
+
+The whole table was re-run from the committed `probe/` contents, publishing 1.0.1
+by editing `package.json`'s `version` and nothing else.
 
 ## Consequences
 

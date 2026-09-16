@@ -1,4 +1,11 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+
+// Read rather than hardcoded, so the marker can never disagree with the release
+// it came from -- which is the whole basis of the cache-update finding. npm
+// includes package.json in every tarball regardless of `files`, and
+// `import.meta.url` resolves to the real file on this route
+// (.capture/opencode-plugin-routes), so a sibling is addressable.
+const manifest = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
 // Findings rest on this marker, not on log lines: a harness that prints
 // "installed" is not evidence that a module resolves.
@@ -15,7 +22,7 @@ export const ProbePlugin = async () => {
   const marker = process.env.HOOKNOSTIC_PROBE_MARKER;
   const record = {
     loadedFrom: import.meta.url,
-    shipped: "1.0.1",
+    shipped: manifest.version,
     resolved: {
       // Declared in this package's own dependencies.
       "is-number": await resolves("is-number"),
