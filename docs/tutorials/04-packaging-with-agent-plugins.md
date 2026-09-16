@@ -95,9 +95,10 @@ its `runtimePackage` has no Codex or OpenCode equivalent — see
 [harness support](../harness-support.md) for the per-component table.
 
 Claude's projection is a third translation: `.claude-plugin/`, a rewritten `.mcp.json`,
-and a generated launcher. OpenCode's is `delivery: "package"`, with an adapter-owned project-module layout: its project plugin
-already IS local — `.opencode/plugins/` is read from the project directory, so there is
-nothing to install. None of the outputs is portable, and that is the point — the
+and a generated launcher. OpenCode's is an npm package: a `package.json` whose `exports["./server"]` names a
+generated entry, which re-exports both the compiled hooks and a module contributing the
+package's MCP servers and skills. A local directory is installable as-is — no registry
+publication. None of the outputs is portable, and that is the point — the
 *source* is the portable artifact.
 
 Listing a target under `components.targets` whose adapter has no projector at all is a

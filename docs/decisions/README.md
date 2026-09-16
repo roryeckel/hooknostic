@@ -21,6 +21,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0008 — Harness version metadata](0008-harness-version-metadata.md) | Where do harness version facts live, and what keeps every other mention honest? |
 | [0009 — Rolling scheduled-playback record](0009-rolling-scheduled-validation-record.md) | Why does one profile validation record get rewritten in place while every other stays append-only? |
 | [0010 — Capability coverage policy](0010-capability-coverage-policy.md) | What does "full automated coverage" of the capability profiles mean, and what enforces it? |
+| [0016 — A portable model.request.before event](0016-model-request-before-event.md) | Why does a moment only OpenCode exposes a hook at get its own normalized event? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

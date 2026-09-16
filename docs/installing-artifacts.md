@@ -259,6 +259,62 @@ not running:
 
 ## OpenCode
 
+What the build emits depends on the target's `delivery`, and the two install
+completely differently.
+
+### `delivery: "package"` — an npm package
+
+The output directory *is* an npm package: a `package.json` declaring
+`exports["./server"]`, an `index.js` entry, and the compiled modules beside it.
+OpenCode loads exactly the module that condition names. Install it by naming the
+directory in the project's `opencode.json`:
+
+```json
+{ "plugin": ["./path/to/dist/opencode"] }
+```
+
+The path needs no registry publication — a local directory is enough.
+
+**Bundle the dependencies.** Nothing installs them for you on this route: a
+local-path package's declared `dependencies` are *not* installed, measured on
+1.18.30 — a package declaring one loaded fine and then failed to resolve it.
+
+Vendoring is not an alternative here, even though OpenCode itself would accept
+it. Ordinary Node resolution does apply at runtime, so a `node_modules` beside
+the module resolves; but Hooknostic never inventories `node_modules`, at any
+depth, so one placed in the source package is stripped and never reaches the
+output ([`load.ts`](../packages/agent-plugin/src/load.ts),
+`AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES`). Following that route leaves an MCP
+server's imports unresolved with no build error.
+
+Publishing to npm and installing by name is a third route. Whether *it* installs
+a dependency closure has not been probed; do not rely on it.
+See `.capture/opencode-plugin-routes`.
+
+**A relative path is relative to the config file, not to you.** An entry in a
+`plugin` array resolves against the directory of the `opencode.json` that
+declares it. In the root `opencode.json` above, `./path/to/dist/opencode` is
+therefore project-root relative and means what it looks like. Upstream considers
+this intended and closed a report of it as such
+([#28384](https://github.com/anomalyco/opencode/issues/28384)), so it is a rule
+to write against rather than a bug to wait out.
+
+> **Do not install this with `opencode plugin <relative-path>`.** That command
+> writes your argument into `.opencode/opencode.json` without rewriting it for
+> that file's directory, so a path given from the project root lands one level
+> too deep at `<project>/.opencode/<path>`. The install reports success and the
+> plugin silently never loads — a missing plugin directory is dropped with no
+> diagnostic ([#48577](https://github.com/anomalyco/opencode/issues/48577)).
+> Declare the path in the root `opencode.json` yourself, or pass an absolute
+> path. Confirmed on 1.18.30 and 1.18.31, with the relevant upstream code
+> unchanged since May 2026; recorded in `.capture/opencode-plugin-routes`.
+
+Two plugins from one repository no longer collide: each package carries its own
+name and its own directory, rather than every build writing the same
+`.opencode/plugins/hooknostic.js`.
+
+### `delivery: "project"` — a module in the scanned directory
+
 Output directories are sandboxed strictly below the config directory, so the
 build cannot write `<project>/.opencode/` itself. For a repository consuming its
 own hooks, bridge to it with a one-line re-export rather than a copy —
@@ -375,10 +431,12 @@ Install from a marketplace whose `.agents/plugins/marketplace.json` points at th
 output, then `codex plugin add`. Remember that this is a **user-level** install:
 the plugin's skills and servers are then offered in every session on the machine.
 
-OpenCode needs no install at all. `.opencode/plugins/` is read from the project
-directory, so copying the target output into the repository is the whole
-procedure: the compiled hook module and the generated package module sit side by
-side there, and the package itself is nested one level down under
-`package/`, out of OpenCode's flat plugin scan. It is the only harness of the
-three whose projection is project-scoped rather than user-level. See
+OpenCode needs no install step. Its package projection is an npm package, named
+from a project's `opencode.json` `plugin` array — a local directory path is
+enough, with no registry publication and nothing copied into the repository. The
+compiled hook module and the generated components module sit at the package root
+and are both re-exported from the entry `exports["./server"]` names, while the
+author's package nests one level down under `package/`, where it cannot collide
+with a generated name. It is the only harness of the three whose projection is
+project-scoped rather than user-level. See
 [ADR-0011](decisions/0011-agent-plugin-native-projection.md).

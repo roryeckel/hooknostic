@@ -66,6 +66,12 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "prompt.before.block": { level: "exact" },
       "prompt.before.context.add": { level: "exact" },
 
+      // Claude Code exposes no per-model-request lifecycle point: no hook sits
+      // between system-prompt assembly and the model request. model.request.before
+      // is therefore absent entirely rather than rated unsupported -- a defined
+      // .observe cell would advertise the event and require a native fixture.
+      // Capability analysis rejects a hook on it first (HN202).
+
       "tool.before.observe": { level: "exact" },
       "tool.before.block": { level: "exact" },
       "tool.before.requestApproval": { level: "exact" },

@@ -581,12 +581,12 @@ ${run.stderr}`,
         hooks: "./hooks.json",
       });
       expect(existsSync(join(dir, "dist/codex/skills/greet/SKILL.md"))).toBe(true);
-      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/package/skills/greet/SKILL.md"))).toBe(true);
-      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
+      expect(existsSync(join(dir, "dist/opencode/package/skills/greet/SKILL.md"))).toBe(true);
+      expect(existsSync(join(dir, "dist/opencode/hooknostic.js"))).toBe(true);
       // The MCP server's implementation, which its argv names with
       // ${PLUGIN_ROOT}: shipping the argv without the file is a server that
       // cannot start, reported emitted.
-      expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/package/src/greet-mcp.mjs"))).toBe(true);
+      expect(existsSync(join(dir, "dist/opencode/package/src/greet-mcp.mjs"))).toBe(true);
 
       // `runtimePackage` is a Claude-only component, which is why the example
       // sets onUnsupported: "warn" -- the other two record the omission.
@@ -883,9 +883,9 @@ ${run.stderr}`,
 
     // The hook module and the package module are siblings; OpenCode loads every
     // module in this directory, and does not recurse into `skills/`.
-    expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
-    expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/package/skills/review/SKILL.md"))).toBe(true);
-    const injector = await readFile(join(dir, "dist/opencode/.opencode/plugins/hooknostic-agent-plugin.js"), "utf8");
+    expect(existsSync(join(dir, "dist/opencode/hooknostic.js"))).toBe(true);
+    expect(existsSync(join(dir, "dist/opencode/package/skills/review/SKILL.md"))).toBe(true);
+    const injector = await readFile(join(dir, "dist/opencode/hooknostic-agent-plugin.js"), "utf8");
 
     // Agent Plugins 1.0 defines two placeholders and requires unrecognized
     // placeholder-like text to stay literal, so ${MY_TOKEN} reaches the harness
@@ -896,9 +896,7 @@ ${run.stderr}`,
     // The declared environment reaches the launcher through the servers
     // document, not through OpenCode's `environment` key, and its unrecognized
     // placeholder-like text stays literal on the way.
-    const servers = JSON.parse(
-      await readFile(join(dir, "dist/opencode/.opencode/plugins/hooknostic-runtime/mcp-servers.json"), "utf8"),
-    );
+    const servers = JSON.parse(await readFile(join(dir, "dist/opencode/hooknostic-runtime/mcp-servers.json"), "utf8"));
     expect(servers.servers[0]).toMatchObject({
       name: "local",
       env: { TOKEN: "${MY_TOKEN}" },

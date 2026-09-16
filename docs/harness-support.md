@@ -111,21 +111,47 @@ Project support is independent of package projection.
 
 #### Agent Plugin projection
 
+Support resolves by harness version, and the recommended range `>=0.148 <1`
+spans 2 profiles. A build targeting one of the ranges below gets that
+table; a range spanning more than one resolves to the least capable level for
+each component.
+
+##### `>=0.140 <0.153`
+
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.skills` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.mcp.stdio` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.mcp.streamable-http` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
-| `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
-| `agent-plugin.client-extension.files` | unsupported | Codex reads no portable client-extension namespace; its native .codex-plugin/ directory is not one, and none of its bundled plugins use the extensions map. |
-| `agent-plugin.runtime-package` | unsupported | Not probed. Codex's installer was only observed copying package content; whether it runs a locked npm install like Claude's marketplace is unestablished. |
+| `agent-plugin.mcp.sse` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
+| `agent-plugin.client-extension.files` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
+| `agent-plugin.runtime-package` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 0.148.0 | 2026-08-20 | doc-derived | `.capture/codex-plugin-hooks` | Recorded as having removed the plugin_hooks feature; not re-testable on this machine, so the versions between it and 0.153.2 are declined rather than assumed. |
+
+##### `>=0.153 <1`
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
+| `agent-plugin.skills` | exact | — |
+| `agent-plugin.mcp.stdio` | emulated | The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so the projection emits a Node launcher that resolves the plugin root from its own location, creates and binds a Hooknostic-managed PLUGIN_DATA directory outside the version-scoped install root, and expands args, env values and cwd before spawning the server. The directory is chosen by Hooknostic rather than by Codex, and the server runs one process below the harness, so the contract is emulated rather than native. Node must be on PATH, because the launcher is a Node program. |
+| `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
+| `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
+| `agent-plugin.client-extension.files` | unsupported | Codex reads no portable client-extension namespace; its native .codex-plugin/ directory is not one, and none of its bundled plugins use the extensions map. |
+| `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build. |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | No npm dependency installation. A plugin declaring is-number@7.0.0 with a package-lock.json and no node_modules installed with both manifests copied verbatim, no node_modules in the installed root, and import("is-number") failing ERR_MODULE_NOT_FOUND from there. Placing node_modules/is-number by hand made the same import succeed and removing it restored the failure, so the negative is the dependency and not a broken probe. |
+| 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | A node_modules directory shipped inside the source package survives installation and resolves from the installed plugin root, so a vendored or bundled dependency closure is a working route where a declared manifest is not. |
 | 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | `codex plugin add` copies the plugin source directory wholesale -- a junk directory and a stray README both landed in the install cache -- so the filtered package is what a build adds. Installation is user-level: marketplace and plugin entries land in ~/.codex/config.toml. |
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | One native .codex-plugin/plugin.json declaring skills, mcpServers and hooks had all three active at once: the skill was discovered, both servers registered, and the UserPromptSubmit hook ran. |
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Manifest precedence suppresses hooks: a package carrying both a root plugin.json and a native manifest with hooks loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. |
@@ -148,6 +174,10 @@ Projection validation records:
 | 1.18.25 | 2026-08-29 | live-probe | `.capture/opencode-client` | plugin-client probe: promptAsync notification channel and session.idle timing |
 | 1.18.25 | 2026-08-30 | live-probe | — | PWD env precedence: opencode trusts an inherited PWD over the process cwd and runs the session in PWD's project -- where plugins may not exist. Spawners must set PWD to agree with cwd (see the smoke's runCommand). |
 | 1.18.25 | 2026-09-01 | captured | `.capture/opencode-permission` | permission.ask plugin hook NEVER fires (upstream anomalyco/opencode #9229): observe arrives via the permission.asked bus event on the generic event callback, and denial works via client.postSessionIdPermissionsPermissionId response "reject" (API true, command not executed, turn halts). The 1.18 permission fixtures' callback-envelope shape is type-derived, not captured. |
+| 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-context-channel` | experimental.chat.system.transform is a real model-visible channel: a string pushed into output.system arrived as its own role:"system" message in the recorded request body. The sibling chat.params channel is NOT one -- output.options.systemPrompt landed as a top-level JSON key beside model and max_tokens, which no OpenAI-compatible API reads (this retires the widely copied plugin approach whose success log is non-evidence). Cadence is per model request, not per session: one user turn produced two invocations, for the title-generation and build agents. input.sessionID was present on both, though the published typings declare it optional, so the decoder tolerates its absence. output carries exactly the one key system. |
+| 1.14.17 | 2026-09-15 | type-derived | `.capture/opencode-context-channel` | experimental.chat.system.transform is declared with an identical signature (input { sessionID?, model }, output { system: string[] }) in the published @opencode-ai/plugin typings at 1.14.17, 1.16.0 and 1.18.18. opencode-ai publishes no 1.10.x-1.13.x release, so 1.14.17 is this profile range's floor in practice and the callback is declared across all of it. Only the 1.18.30 delivery behaviour is live-probed; the intervening versions rest on the type declaration, which is why observe/context.add cite both records. |
+| 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-context-channel` | OpenAI-OAuth path: the same output.system push reaches the model even though prepare() sends no system messages on it, joining the array into the provider-options instructions field instead. Captured effect-level rather than on the wire, because the OAuth path ignores a baseURL override and reaches OpenAI directly: with no plugin the model answered the prompt normally, and with an injected directive it returned the directive's token instead. So the channel is provider-path independent, but its delivered shape is not. |
+| 1.18.31 | 2026-09-15 | live-probe | `.capture/harness-playback` | model.request.before delivery still holds on a build past the one it was established on, through the repeatable offline lane rather than a one-off probe: driven against a loopback model server, a string pushed into output.system arrived as a role:"system" message in EVERY recorded request of the session, which is the per-request cadence cell itself and not merely presence somewhere among them. Deliberately SCOPED -- openai-compatible provider path, wire-level, one capability family. It re-confirms neither the OpenAI-OAuth delivery shape nor the chat.params negative, both of which rest on the 1.18.30 records above; and being a scoped record it does not raise the scheduled-playback baseline, so harness-watch still owes this build a full lane sweep (ADR-0009). |
 
 #### Project delivery
 
@@ -174,18 +204,22 @@ Project support is independent of package projection.
 
 | Component | Support | Rationale |
 | --- | --- | --- |
-| `agent-plugin.manifest` | emulated | A project plugin is resolved by path and has no manifest, so name, version and description survive only as a comment in the generated module. They cannot be a named export: every export of a plugin module is loaded as a plugin, and a non-function one fails the whole module. |
+| `agent-plugin.manifest` | exact | — |
 | `agent-plugin.skills` | exact | — |
 | `agent-plugin.mcp.stdio` | emulated | A project plugin has no declarative config, so the servers are contributed by a generated module that resolves the install directory at load time and launches each one through a generated Node launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and expands args, env values and cwd. cwd is emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. The declared environment is applied by the launcher rather than through OpenCode's environment key, whose merge-or-replace behaviour is uncaptured, and the data directory is chosen by Hooknostic rather than by OpenCode, so the contract is emulated. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
 | `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace. |
-| `agent-plugin.runtime-package` | unsupported | A project plugin is loaded from disk with no install step, so a declared npm manifest and lockfile have nothing to install them. |
+| `agent-plugin.runtime-package` | unsupported | Nothing installs a declared manifest on either route OpenCode offers. A package named by a local path in opencode.json is loaded, not installed, and its declared dependencies do not resolve; a module in .opencode/plugins/ is read from disk with no install step at all. Whether installing a PUBLISHED module by name installs its closure is a third route and is not probed. Ordinary Node resolution does apply, so a node_modules beside the module would resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build. |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.31 | 2026-09-15 | live-probe | `.capture/harness-playback` | What this projector EMITS is an installable unit, not merely the route it targets: a projected package written outside the project and named by absolute path in a root opencode.json loaded through its generated exports["./server"] entry, and the component injector reached through that entry's re-export started the stdio server through the generated launcher -- ${PLUGIN_ROOT} resolved to the nested author package, ${PLUGIN_DATA} to a directory outside both the package and the project, and the declared cwd anchored inside the package. The 1.18.30 records below establish that such a directory loads; this establishes that the build produces one. |
+| 1.18.31 | 2026-09-15 | live-probe | `.capture/opencode-plugin-routes` | A relative plugin entry resolves against the declaring config file's own directory, from a matched pair against a ROOT opencode.json naming "./plugin-package": the package at <project>/plugin-package loaded, the same package at <project>/.opencode/plugin-package did not. This is the same rule the 1.18.30 .opencode/opencode.json observation shows, seen from a config file in a different directory, and upstream closed a report of it as intended (anomalyco/opencode#28384) -- so it is a rule an author writes against, not a defect awaiting a fix. |
+| 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-plugin-routes` | A local directory declaring exports["./server"] loads as a plugin with no registry publication, and that condition is preferred over `main` when the two name different files -- so an emitted npm package is a real installable unit and its manifest is read, not decorative. |
+| 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-plugin-routes` | Two distinct functions exported from one entry module are each loaded exactly once, while one function exported as both a named export and `default` is loaded once rather than twice -- which is what lets a single package entry re-export the hook plugin and the component injector. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A project plugin's config hook contributed both an mcp entry and a skills.paths entry, each visible in `opencode debug config`, and the skill at the injected path was listed by `opencode debug skill`. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | skills.paths is additive: an injected path coexisted with the project's own configured path and with the default .agents/skills discovery directory. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Interpolation runs BEFORE plugin config hooks: in one run the same {env:VAR} header expanded when it came from opencode.json and survived verbatim when a plugin injected it. A plugin therefore cannot emit OpenCode's own syntax -- and per Agent Plugins 1.0 it must not expand the value itself either, so such text stays literal. |

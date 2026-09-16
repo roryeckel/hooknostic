@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:9d4521346ef4759dbd8c93b86c6f2e817debe764d958febb2c84413db7e0f029",
+        "contentDigest": "sha256:67ff46ac5b3b108e9a0a604b95e54d65949abf1d33ac973b13889c7ac5ae54a7",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:989199211b26b7927deaa36ff7eb71343328dbc8a96581e1bb917a22a618e69f",
+        "contentDigest": "sha256:4ebda217ec2170adec956166581f2436a65e1833eceb3b174c7b1c79192ca3c1",
         "copiedFileCount": 5,
         "directories": [
           "runtime",
@@ -131,17 +131,17 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:cb0769c18171e577941a49fa85753d5555275ae44679cb8aa1605dc326ec423b",
+        "contentDigest": "sha256:01c63eea4ab44729928171bda397dd6bef9b0d44b51a43945fc6bdd0c6ee8730",
         "copiedFileCount": 7,
         "directories": [
-          ".opencode/plugins/package/runtime",
-          ".opencode/plugins/package/skills",
-          ".opencode/plugins/package/skills/greet",
-          ".opencode/plugins/package/src"
+          "package/runtime",
+          "package/skills",
+          "package/skills/greet",
+          "package/src"
         ],
         "components": {
           "agent-plugin.manifest": {
-            "support": "emulated",
+            "support": "exact",
             "discovered": 1,
             "emitted": 1,
             "skipped": 0
@@ -168,15 +168,17 @@
         "omissions": [
           {
             "component": "agent-plugin.runtime-package",
-            "reason": "a project plugin is loaded from disk, so nothing installs its npm dependencies"
+            "reason": "this projection emits an npm package that is loaded from a local path rather than installed, so nothing acts on its manifest or lockfile; bundle the dependencies instead"
           }
         ]
       },
       "artifacts": [
-        ".opencode/plugins/hooknostic-agent-plugin.js",
-        ".opencode/plugins/hooknostic-runtime/mcp-launcher.mjs",
-        ".opencode/plugins/hooknostic-runtime/mcp-servers.json",
-        ".opencode/plugins/hooknostic.js"
+        "hooknostic-agent-plugin.js",
+        "hooknostic-runtime/mcp-launcher.mjs",
+        "hooknostic-runtime/mcp-servers.json",
+        "hooknostic.js",
+        "index.js",
+        "package.json"
       ]
     }
   },
@@ -187,7 +189,7 @@
       "target": "codex",
       "component": "agent-plugin.runtime-package",
       "support": "unsupported",
-      "rationale": "Not probed. Codex's installer was only observed copying package content; whether it runs a locked npm install like Claude's marketplace is unestablished.",
+      "rationale": "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
       "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"codex\"."
     },
     {
@@ -196,7 +198,7 @@
       "target": "opencode",
       "component": "agent-plugin.runtime-package",
       "support": "unsupported",
-      "rationale": "A project plugin is loaded from disk with no install step, so a declared npm manifest and lockfile have nothing to install them.",
+      "rationale": "Nothing installs a declared manifest on either route OpenCode offers. A package named by a local path in opencode.json is loaded, not installed, and its declared dependencies do not resolve; a module in .opencode/plugins/ is read from disk with no install step at all. Whether installing a PUBLISHED module by name installs its closure is a third route and is not probed. Ordinary Node resolution does apply, so a node_modules beside the module would resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
       "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"opencode\"."
     }
   ],

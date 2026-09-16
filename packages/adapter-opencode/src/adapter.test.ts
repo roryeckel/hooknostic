@@ -26,6 +26,7 @@ describe("decodeOpenCode fixtures", () => {
     "session-idle",
     "session-compacted",
     "chat-message",
+    "system-transform",
   ] as const;
 
   for (const name of CASES) {
@@ -196,6 +197,36 @@ describe("planOpenCodeApplication", () => {
       ),
     ).toEqual(loadFixture("opencode", "1.18", "compacting-context.output.json"));
   });
+
+  it("routes model.request.before context to output.system, not output.context", () => {
+    expect(
+      planOpenCodeApplication(
+        result({
+          event: "model.request.before",
+          effects: [
+            {
+              hookId: "c",
+              effect: { kind: "addContext", context: "Working directory layout: see AGENTS.md" },
+            },
+            { hookId: "c2", effect: { kind: "addContext", context: "Prefer pnpm over npm" } },
+          ],
+        }),
+      ),
+    ).toEqual(loadFixture("opencode", "1.18", "model-request-before-context.output.json"));
+  });
+
+  it("does not plan a system mutation for a different event", () => {
+    // The two channels share addContext but not their output key; crossing them
+    // would silently inject into the compaction prompt instead of the request.
+    const planned = planOpenCodeApplication(
+      result({
+        event: "context.compact.before",
+        effects: [{ hookId: "c", effect: { kind: "addContext", context: "x" } }],
+      }),
+    );
+    expect(planned.mutations?.system).toBeUndefined();
+    expect(planned.mutations?.context).toEqual(["x"]);
+  });
 });
 
 describe("generateOpenCodeArtifacts", () => {
@@ -223,10 +254,80 @@ describe("generateOpenCodeArtifacts", () => {
     expect(artifacts.map((a) => a.path)).toEqual([".opencode/plugins/hooknostic.js"]);
   });
 
-  it("emits a directory package using the project module format", () => {
-    expect(
-      generateOpenCodeArtifacts(exampleIR(), { ...TARGET, delivery: "package" }, { code: "export default 1;" }),
-    ).toEqual([{ path: ".opencode/plugins/hooknostic.js", contents: "export default 1;" }]);
+  it("emits a loadable package for package delivery with no components", () => {
+    // `components.root` is optional, and without it the Agent Plugin projector
+    // never runs. Emitting the bundle alone would leave a bare module at the
+    // output root with no manifest -- something OpenCode cannot load at all,
+    // and worse than the project-shaped tree this replaced.
+    const artifacts = generateOpenCodeArtifacts(
+      exampleIR(),
+      { ...TARGET, delivery: "package" },
+      { code: "export const HooknosticPlugin = async () => ({});\n" },
+    );
+    expect(artifacts.map((a) => a.path).sort()).toEqual(["hooknostic.js", "index.js", "package.json"]);
+
+    const manifest = JSON.parse(String(artifacts.find((a) => a.path === "package.json")!.contents)) as Record<
+      string,
+      unknown
+    >;
+    expect(manifest["exports"]).toEqual({ "./server": "./index.js" });
+    expect(manifest["type"]).toBe("module");
+
+    const entry = String(artifacts.find((a) => a.path === "index.js")!.contents);
+    expect(entry).toContain('export { HooknosticPlugin } from "./hooknostic.js";');
+    // No injector exists in this shape, so the entry must not name one.
+    expect(entry).not.toContain("hooknostic-agent-plugin.js");
+  });
+});
+
+describe("validateArtifacts for package delivery", () => {
+  const adapter = opencodeAdapter();
+  const PKG = { id: "opencode", version: ">=1.18 <2", delivery: "package" as const, output: "dist" };
+  const manifest = { path: "package.json", contents: '{"name":"example-plugin"}\n' };
+  const goodEntry = { path: "index.js", contents: 'export { HooknosticPlugin } from "./hooknostic.js";\n' };
+
+  it("validates the package-root module rather than the project path", async () => {
+    // The project path never exists in a package, so reading it unconditionally
+    // made validation a no-op for every package delivery: a hook module missing
+    // its export shipped clean.
+    const diagnostics = await adapter.validateArtifacts!(
+      [{ path: "hooknostic.js", contents: "export const NotThePlugin = 1;\n" }, goodEntry, manifest],
+      PKG,
+    );
+    expect(diagnostics.map((d) => d.code)).toContain("HN301");
+  });
+
+  it("refuses an entry re-exporting a hook module the output does not contain", async () => {
+    const diagnostics = await adapter.validateArtifacts!([goodEntry, manifest], PKG);
+    expect(diagnostics.some((d) => d.message.includes("does not contain"))).toBe(true);
+  });
+
+  it("refuses a package with no manifest", async () => {
+    const diagnostics = await adapter.validateArtifacts!([{ path: "index.js", contents: "// nothing\n" }], PKG);
+    expect(diagnostics.some((d) => d.message.includes("package.json"))).toBe(true);
+  });
+
+  it("refuses a hooks-only package whose name npm would reject", async () => {
+    // A hooks-only package takes its name from PluginSpec.name, which is only
+    // string().min(1) -- the component projection's own check never runs on
+    // this path, so without this the build emits a directory npm cannot pack.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"My Hooks"}\n' },
+      ],
+      PKG,
+    );
+    expect(diagnostics.some((d) => d.message.includes("not a valid npm package name"))).toBe(true);
+  });
+
+  it("accepts a well-formed package", async () => {
+    const diagnostics = await adapter.validateArtifacts!(
+      [{ path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" }, goodEntry, manifest],
+      PKG,
+    );
+    expect(diagnostics).toEqual([]);
   });
 });
 

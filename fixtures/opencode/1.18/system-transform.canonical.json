@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "event": "model.request.before",
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "experimental.chat.system.transform"
+  },
+  "session": {
+    "id": "ses_8f2a1c",
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-context-channel"
+  },
+  "correlation": {}
+}

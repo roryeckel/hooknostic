@@ -473,3 +473,47 @@ decided here.
   on Claude's launcher path is *not* redundant and stays: that projector
   accumulates into a `Map`, so a collision there is a silent overwrite rather
   than a duplicate-path failure core would catch.
+
+## Amendments — 2026-09-15 (eleventh)
+
+- **OpenCode package delivery now emits an npm package, and its projection *is*
+  an installable unit.** Two statements above are superseded. "A projection is
+  not always an installable unit … OpenCode reads `.opencode/plugins/` from the
+  project directory, so its projection is project-scoped by construction"
+  described the only route then established. It generalised from the route
+  Hooknostic targeted to the harness: OpenCode also loads a plugin named in a
+  project's `opencode.json` `plugin` array, resolving it as an npm package
+  through `exports["./server"]`, and a **local directory path is accepted with no
+  registry publication** (`.capture/opencode-plugin-routes`, 1.18.30). Package
+  delivery emits that package; project delivery is unchanged and still writes a
+  module into the scanned directory.
+
+- **The package root, not `.opencode/plugins/`, is the projection root.** The
+  nesting rule that put everything under `.opencode/plugins/package/` existed
+  because the flat scan loads every module it finds and a non-function export
+  fails the whole module. Nothing scans a package's interior, so that constraint
+  does not apply; the author's package still nests under `package/`, now for a
+  different and narrower reason — it must not collide with a generated root name
+  such as the `index.js` entry.
+
+- **A single entry re-exports both plugins.** A package exposes one module, while
+  the layout needs two: compiled hooks and the component injector. Measured on
+  1.18.30, two distinct functions exported from one module are each loaded
+  exactly once, so the generated `index.js` re-exports both. The same probe
+  showed one function exported as both a named export and `default` is loaded
+  once rather than twice; the entry nonetheless re-exports no `default`, because
+  an entry whose correctness depends on the harness de-duplicating an alias is
+  worse than one that never creates the ambiguity.
+
+- **`agent-plugin.manifest` rises from `emulated` to `exact` on OpenCode.** The
+  `emulated` rating recorded that a path-resolved project plugin has no manifest,
+  so identity survived only as a comment in the generated module. A package has
+  `package.json`, and every portable identity field — name, version, description,
+  author, homepage, repository, license, keywords — has an npm equivalent and is
+  emitted. `extensions` is not, and correctly so: it belongs to the
+  client-extension component, which OpenCode does not read.
+
+- **An invalid package name is an error, not a coercion.** The Agent Plugins
+  manifest name becomes the npm package name verbatim, validated with npm's own
+  rules. Silently rewriting it would publish under a name the author never chose
+  and never sees.

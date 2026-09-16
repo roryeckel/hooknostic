@@ -17,8 +17,10 @@ export default defineConfig({
     claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
     // Package hook delivery is established from Codex 0.153.
     codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
-    // OpenCode's project plugin IS local — `.opencode/plugins/` is read from the
-    // project directory, so there is nothing to install.
+    // Package delivery emits an npm package: a `package.json` with
+    // `exports["./server"]` and the compiled modules beside it. Name the
+    // directory in a project's `opencode.json` `plugin` array; no registry
+    // publication is required.
     opencode: { version: ">=1.18 <2", delivery: "package", output: "./dist/opencode" },
   },
 

@@ -1,0 +1,5 @@
+{
+  "name": "dependency-probe",
+  "version": "1.0.0",
+  "description": "Capture-only plugin dependency probe"
+}

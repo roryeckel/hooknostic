@@ -5,6 +5,7 @@ import {
   type AgentPluginProjectionFile,
   type AgentPluginProjectionPlan,
   type AgentPluginProjector,
+  assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
   hasUnportableCommandPath,
@@ -241,6 +242,7 @@ export async function projectAgentPluginToClaude(
   source: AgentPluginPackage,
   context: Parameters<AgentPluginProjector<TargetSpec>["project"]>[1],
 ): Promise<AgentPluginProjectionPlan> {
+  assertPackageDelivery("claude", context.target.delivery);
   const issues: AgentPluginIssue[] = [];
   const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
   const files = new Map<string, AgentPluginProjectionFile>();

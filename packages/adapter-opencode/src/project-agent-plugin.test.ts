@@ -49,26 +49,36 @@ function source(
   };
 }
 
-const target = { id: "opencode", version: ">=1.18 <2", delivery: "project" as const, output: "dist" };
+// Package delivery, because that is the only delivery this projector
+// serves: the build gates the projection phase on it, and the projector
+// now rejects anything else (assertPackageDelivery).
+const target = { id: "opencode", version: ">=1.18 <2", delivery: "package" as const, output: "dist" };
 const support = resolveAgentPluginProjection(target, opencodeAgentPluginProjector).matrix!;
 
-const project = (pkg: AgentPluginPackage) =>
+/** What `adapter.compile` contributes for package delivery when a config has an `entry`. */
+const HOOK_ARTIFACTS = [
+  { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+  { path: "index.js", contents: "// replaced by the projector\n" },
+  { path: "package.json", contents: "{}\n" },
+];
+
+// Defaults to none: a config may declare `components` without an `entry`, and
+// that shape has to keep working.
+const project = (pkg: AgentPluginPackage, hookArtifacts: { path: string; contents: string }[] = []) =>
   opencodeAgentPluginProjector.project(pkg, {
     target,
-    hookArtifacts: [],
+    hookArtifacts,
     support,
     onUnsupported: "error",
   });
 
 function injector(plan: AgentPluginProjectionPlan): string {
-  const artifact = plan.files.find((candidate) => candidate.path === ".opencode/plugins/hooknostic-agent-plugin.js")!;
+  const artifact = plan.files.find((candidate) => candidate.path === "hooknostic-agent-plugin.js")!;
   return typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
 }
 
 function launcherDocument(plan: AgentPluginProjectionPlan): McpLauncherDocument {
-  const artifact = plan.files.find(
-    (candidate) => candidate.path === ".opencode/plugins/hooknostic-runtime/mcp-servers.json",
-  )!;
+  const artifact = plan.files.find((candidate) => candidate.path === "hooknostic-runtime/mcp-servers.json")!;
   const text = typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
   return JSON.parse(text) as McpLauncherDocument;
 }
@@ -89,7 +99,7 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(evidenced.length).toBeGreaterThan(0);
     expect(evidenced.every((version) => version.startsWith("1.18."))).toBe(true);
 
-    const older = { id: "opencode", version: ">=1.10 <1.18", delivery: "project" as const, output: "d" };
+    const older = { id: "opencode", version: ">=1.10 <1.18", delivery: "package" as const, output: "d" };
     expect(resolveAgentPluginProjection(older, opencodeAgentPluginProjector).matrix).toBeUndefined();
   });
 
@@ -99,14 +109,43 @@ describe("Agent Plugin to OpenCode projection", () => {
   it("ships the whole package, not only its skills", async () => {
     const plan = await project(source({}, ["src/server.mjs", "assets/data.json"]));
     const paths = plan.files.map((candidate) => candidate.path);
-    expect(paths).toContain(".opencode/plugins/package/src/server.mjs");
-    expect(paths).toContain(".opencode/plugins/package/assets/data.json");
-    expect(paths).toContain(".opencode/plugins/package/skills/review/SKILL.md");
+    expect(paths).toContain("package/src/server.mjs");
+    expect(paths).toContain("package/assets/data.json");
+    expect(paths).toContain("package/skills/review/SKILL.md");
     // The portable documents ship too. Codex drops them because a root
     // plugin.json outranks its native manifest; nested here they outrank
     // nothing, and a server may name one with ${PLUGIN_ROOT}.
-    expect(paths).toContain(".opencode/plugins/package/plugin.json");
-    expect(paths).toContain(".opencode/plugins/package/mcp.json");
+    expect(paths).toContain("package/plugin.json");
+    expect(paths).toContain("package/mcp.json");
+  });
+
+  // The generated root manifest declares `type: "module"` for the generated
+  // modules beside it, and Node reads a `.js` file's module system from the
+  // nearest package.json ABOVE it. Without a boundary the copied package
+  // inherits that manifest, and a CommonJS `node ${PLUGIN_ROOT}/server.js`
+  // dies with `require is not defined` -- after being reported emitted.
+  // `package.json` is not mandatory in an Agent Plugin package: only
+  // plugin.json is, so a package with no manifest of its own is valid input.
+  it("keeps a copied package CommonJS when it declares no manifest of its own", async () => {
+    const plan = await project(source({}, ["src/server.js"]));
+    const root = JSON.parse(text(plan, "package.json")) as Record<string, unknown>;
+    expect(root.type).toBe("module");
+
+    expect(JSON.parse(text(plan, "package/package.json"))).toEqual({ type: "commonjs" });
+    // Generated, not copied: the summary reports what the author shipped.
+    expect(plan.summary.copiedPaths).not.toContain("package/package.json");
+  });
+
+  // Their manifest is already the boundary, and whatever module system it
+  // declares is theirs to declare -- a generated one would overwrite it and
+  // take the package's own `type`, `exports` and `imports` with it.
+  it("leaves the author's own manifest as the boundary", async () => {
+    const plan = await project(source({}, ["package.json"]));
+    expect(plan.files.filter((candidate) => candidate.path === "package/package.json")).toHaveLength(1);
+    // `file()` encodes each fixture's own path as its contents, so verbatim
+    // copying is what this compares against.
+    expect(text(plan, "package/package.json")).toBe("package.json");
+    expect(plan.summary.copiedPaths).toContain("package/package.json");
   });
 
   // Under `onInvalid: "warn"` the loader reports an invalid skill and carries
@@ -133,7 +172,7 @@ describe("Agent Plugin to OpenCode projection", () => {
       ],
     });
     const paths = plan.files.map((candidate) => candidate.path);
-    const nested = (path: string) => `.opencode/plugins/package/${path}`;
+    const nested = (path: string) => `package/${path}`;
     // The whole rejected subtree goes, matching Claude and Codex.
     expect(paths).not.toContain(nested("skills/broken/SKILL.md"));
     expect(paths).not.toContain(nested("skills/broken/bin/serve.mjs"));
@@ -153,15 +192,100 @@ describe("Agent Plugin to OpenCode projection", () => {
     });
   });
 
-  it("nests package content below the flat plugin scan", async () => {
+  it("refuses to project for project delivery", async () => {
+    // The projector only ever runs for package delivery: build.ts gates the
+    // projection phase on it, inspect routes a project-delivery query to
+    // projectComponentProfiles, and project delivery itself goes through
+    // adapter.projectComponents. Nothing enforced that at this entry point,
+    // though, so a caller passing "project" silently received package-shaped
+    // output -- which is how a playback cell came to assert a layout no build
+    // produces, and why it only surfaced once the package layout changed.
+    await expect(
+      opencodeAgentPluginProjector.project(source({}), {
+        target: { ...target, delivery: "project" as const },
+        hookArtifacts: [],
+        support,
+        onUnsupported: "error",
+      }),
+    ).rejects.toThrow(/package delivery only/);
+  });
+
+  it("nests package content below the generated package root", async () => {
     const plan = await project(source({}, ["helper.js", "index.ts"]));
-    // OpenCode loads EVERY module directly in .opencode/plugins/ and a
-    // non-function export fails the whole module, so package code must never
-    // land at that level.
-    const topLevel = plan.files
-      .map((candidate) => candidate.path)
-      .filter((path) => /^\.opencode\/plugins\/[^/]+$/.test(path));
-    expect(topLevel).toEqual([".opencode/plugins/hooknostic-agent-plugin.js"]);
+    // Package delivery loads exactly one module -- the entry named by
+    // exports["./server"] -- so the flat-scan rule that shaped project delivery
+    // no longer applies. What still must hold is that the author's files cannot
+    // occupy a generated name at the package root: this package ships an
+    // `index.ts` that would sit beside the generated `index.js` entry.
+    const topLevel = plan.files.map((candidate) => candidate.path).filter((path) => !path.includes("/"));
+    expect(topLevel.sort()).toEqual(["hooknostic-agent-plugin.js", "index.js", "package.json"]);
+    expect(plan.files.map((candidate) => candidate.path)).toContain("package/index.ts");
+  });
+
+  function text(plan: AgentPluginProjectionPlan, path: string): string {
+    const artifact = plan.files.find((candidate) => candidate.path === path);
+    if (artifact === undefined) throw new Error(`plan has no ${path}; got ${plan.files.map((f) => f.path).join(", ")}`);
+    return typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
+  }
+
+  it('declares the plugin entry through exports["./server"]', async () => {
+    const plan = await project(source({}));
+    const manifest = JSON.parse(text(plan, "package.json")) as Record<string, unknown>;
+    // Measured on 1.18.30: exports["./server"] is preferred over `main` when the
+    // two name different files, so it is the field that actually selects the
+    // entry. `main` is emitted too, but it is not what OpenCode reads here.
+    expect(manifest["exports"]).toEqual({ "./server": "./index.js" });
+    expect(manifest["type"]).toBe("module");
+    expect(manifest["name"]).toBe("portable-tools");
+    expect(manifest["version"]).toBe("1.2.3");
+  });
+
+  it("re-exports both plugins from the single entry module", async () => {
+    const plan = await project(source({}), HOOK_ARTIFACTS);
+    const entry = text(plan, "index.js");
+    // One entry, two distinct exported functions: OpenCode loads each exactly
+    // once. Re-exporting a `default` as well would alias HooknosticPlugin and
+    // make correctness depend on the harness de-duplicating them.
+    expect(entry).toContain('export { HooknosticPlugin } from "./hooknostic.js";');
+    expect(entry).toContain('export { default as HooknosticComponents } from "./hooknostic-agent-plugin.js";');
+    expect(entry).not.toContain("export default");
+  });
+
+  it("omits the hook re-export when the config declared no entry", async () => {
+    const plan = await project(source({}));
+    const entry = text(plan, "index.js");
+    // Importing a module the output does not contain fails the WHOLE plugin at
+    // load, so a components-only package would lose its skills and MCP servers
+    // to a hook module nobody asked for.
+    expect(entry).not.toContain("hooknostic.js");
+    expect(entry).toContain("HooknosticComponents");
+    const manifest = JSON.parse(text(plan, "package.json")) as { files: string[] };
+    expect(manifest.files).not.toContain("hooknostic.js");
+  });
+
+  it("replaces the compiler's standalone entry and manifest rather than colliding", async () => {
+    const plan = await project(source({}), HOOK_ARTIFACTS);
+    // The compiler emits these two so a hooks-only package is loadable without
+    // a projector. When one runs it knows strictly more, so its versions win --
+    // exactly once each, not as a duplicate path.
+    expect(plan.files.filter((f) => f.path === "index.js")).toHaveLength(1);
+    expect(plan.files.filter((f) => f.path === "package.json")).toHaveLength(1);
+    expect(text(plan, "package.json")).not.toBe("{}\n");
+    expect(plan.issues.filter((issue) => issue.message.includes("collides"))).toEqual([]);
+  });
+
+  it("refuses a manifest name npm would reject as a package name", async () => {
+    const pkg = source({});
+    const plan = await project({
+      ...pkg,
+      manifest: { ...pkg.manifest, name: "Portable Tools" },
+    });
+    // Coercing the name would publish under something the author never chose.
+    expect(
+      plan.issues.some(
+        (issue) => issue.severity === "error" && issue.path === "package.json" && issue.message.includes("npm"),
+      ),
+    ).toBe(true);
   });
 
   it("points ${PLUGIN_ROOT} at the nested package, not at the module", async () => {
@@ -292,16 +416,18 @@ describe("Agent Plugin to OpenCode projection", () => {
     );
   });
 
-  it("keeps both generated files below the flat plugin scan", async () => {
+  it("keeps the launcher beside the package, not inside it", async () => {
     const plan = await project(source({ srv: { type: "stdio", command: "node" } }));
     const paths = plan.files.map((candidate) => candidate.path);
-    expect(paths).toContain(".opencode/plugins/hooknostic-runtime/mcp-launcher.mjs");
-    expect(paths).toContain(".opencode/plugins/hooknostic-runtime/mcp-servers.json");
-    // OpenCode loads every module directly in .opencode/plugins/ and a
-    // non-function export fails the whole module, so the launcher must not sit
-    // at that level.
-    expect(paths.filter((path) => /^\.opencode\/plugins\/[^/]+$/.test(path))).toEqual([
-      ".opencode/plugins/hooknostic-agent-plugin.js",
+    expect(paths).toContain("hooknostic-runtime/mcp-launcher.mjs");
+    expect(paths).toContain("hooknostic-runtime/mcp-servers.json");
+    // The launcher is generated, so it must stay out of `package/`, which is
+    // the author's namespace and is copied verbatim.
+    expect(paths.filter((path) => path.startsWith("package/"))).not.toContain("package/hooknostic-runtime");
+    expect(paths.filter((path) => !path.includes("/")).sort()).toEqual([
+      "hooknostic-agent-plugin.js",
+      "index.js",
+      "package.json",
     ]);
   });
 
@@ -310,7 +436,7 @@ describe("Agent Plugin to OpenCode projection", () => {
   // never reaches the output and the server cannot start.
   it("carries an empty package directory into the nested package", async () => {
     const plan = await project(source({ worker: { type: "stdio", command: "node", cwd: "./worker" } }, [], ["worker"]));
-    expect(plan.directories).toContain(".opencode/plugins/package/worker");
+    expect(plan.directories).toContain("package/worker");
   });
 
   // Inverted: the refusal existed because package text used to flow through the

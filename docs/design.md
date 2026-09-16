@@ -158,6 +158,7 @@ type HookEventName =
   | "session.start"
   | "session.end"
   | "prompt.before"
+  | "model.request.before"
   | "tool.before"
   | "tool.after"
   | "tool.error"
@@ -172,6 +173,13 @@ type HookEventName =
 Do not add a normalized event merely because one vendor exposes it. Worktree, task,
 notification, file-watcher, message-display, setup, etc. remain vendor extension events
 until at least two harnesses demonstrate a stable shared semantic need.
+
+`model.request.before` is the one standing exception, and ADR-0016 records why: it is
+named for a moment every harness *has* (assembling a request to the model) rather than
+for a vendor feature, and only OpenCode currently exposes a hook at it. The alternative
+was overloading `session.start`, whose once-per-session contract the channel does not
+meet. Treat the exception as narrow: a one-harness event is admissible only when the
+moment is universal and no existing event names it honestly.
 
 ### 6.2 Canonical event envelope
 
@@ -504,22 +512,28 @@ dist/
 │   ├── skills/…
 │   ├── hooks.json
 │   └── hooknostic/hooknostic.mjs
-├── opencode/
-│   └── .opencode/plugins/hooknostic.js
+├── opencode/                           ← delivery: "package"
+│   ├── package.json          ← exports["./server"]
+│   ├── index.js             ← the only module OpenCode loads
+│   ├── hooknostic.js
+│   ├── hooknostic-agent-plugin.js
+│   └── package/…
 └── hooknostic-build.json
 ```
 
 A target's package and its hooks share one `output`. A projection replaces that
 output wholesale, so the projected package is necessarily the harness's hook
 channel: Claude reads `hooks/hooks.json`, Codex its native manifest's `hooks`
-key, OpenCode the generated module in `.opencode/plugins/`. Core verifies this
+key, OpenCode the module its `exports["./server"]` names. Core verifies this
 rather than trusting it — every compiled hook artifact path must appear in the
 returned plan, and a projection that drops one fails the target with HN301. A
 projector may rewrite an artifact's contents (Claude merges its own hooks
 document into the generated one); dropping the path would install a package that
 looks complete and runs nothing, which nothing else in the build would notice.
 
-OpenCode ships local-file mode first; npm-package mode can follow.
+OpenCode supports both project-file delivery (`.opencode/plugins/`) and package
+delivery (`package.json` plus `exports["./server"]`); the emitted shape follows
+`target.delivery`.
 
 ### 8.5 Build report
 

@@ -117,6 +117,9 @@ export function decodeOpenCode(nativeEvent: unknown, invocation: InvocationConte
         .join("\n");
       return { ...base, event: "prompt.before", prompt };
     }
+    case "experimental.chat.system.transform":
+      // input is { sessionID, model }; base already lifts sessionID.
+      return { ...base, event: "model.request.before" };
     case "experimental.session.compacting":
       return { ...base, event: "context.compact.before" };
     case "event": {

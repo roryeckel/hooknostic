@@ -20,6 +20,8 @@ export interface OpenCodeApplication {
     status?: "deny";
     /** experimental.session.compacting: appended to output.context. */
     context?: string[];
+    /** experimental.chat.system.transform: pushed into output.system. */
+    system?: string[];
   };
   /**
    * Deny a permission request through the client reply API
@@ -99,6 +101,12 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
     .map((e) => (e.effect as { context: string }).context);
   if (context.length > 0 && result.event === "context.compact.before") {
     mutations.context = context;
+  }
+  // Same strings, a different output key: model.request.before reaches the model
+  // through output.system on experimental.chat.system.transform, where each entry
+  // becomes its own role:"system" message.
+  if (context.length > 0 && result.event === "model.request.before") {
+    mutations.system = context;
   }
 
   // OpenCode has no notification or stop-prevention callback; both are reached

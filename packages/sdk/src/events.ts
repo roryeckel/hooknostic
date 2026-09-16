@@ -9,6 +9,7 @@ export const HOOK_EVENT_NAMES = [
   "session.start",
   "session.end",
   "prompt.before",
+  "model.request.before",
   "tool.before",
   "tool.after",
   "tool.error",
@@ -74,6 +75,18 @@ export interface PromptBeforeEvent extends BaseHookEvent {
   prompt: string;
 }
 
+/**
+ * Before each request to the model, when the system prompt is being assembled.
+ *
+ * NOT once per session: a single user turn produces several of these (the
+ * assistant step, plus title generation and summarization requests), so a
+ * handler here runs on the latency path of every request. Use `session.start`
+ * for once-per-session work.
+ */
+export interface ModelRequestBeforeEvent extends BaseHookEvent {
+  event: "model.request.before";
+}
+
 export interface ToolBeforeEvent extends BaseHookEvent {
   event: "tool.before";
   tool: ToolInvocation;
@@ -135,6 +148,7 @@ export interface HookEventMap {
   "session.start": SessionStartEvent;
   "session.end": SessionEndEvent;
   "prompt.before": PromptBeforeEvent;
+  "model.request.before": ModelRequestBeforeEvent;
   "tool.before": ToolBeforeEvent;
   "tool.after": ToolAfterEvent;
   "tool.error": ToolErrorEvent;

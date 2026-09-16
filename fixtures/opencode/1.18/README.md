@@ -21,6 +21,28 @@ it. Nothing else was altered: these stay Windows paths with their real drive
 letter, backslash escaping, and structure, because that shape is itself evidence
 about what the harness sends.
 
+**`system-transform.*` is constructed, not captured.** The paragraph above does not
+describe it, so state the difference plainly. Its probe
+(`.capture/opencode-context-channel`, opencode 1.18.30) tees a *summary* of each
+invocation — callback name, call index, session id, `Object.keys(output)`, and
+`output.system` length before and after — rather than the whole envelope, so no
+verbatim record of this callback exists to promote into a fixture.
+
+| Field | Provenance |
+| --- | --- |
+| `hook` | observed (live-probe, 1.18.30) |
+| `input.sessionID` | observed present; **declared optional** in the typings |
+| `output` having exactly the one key `system` | observed (`Object.keys(output)`) |
+| `output.system` being a non-empty `string[]` the harness owns | observed (length 1 before the push, 2 after) |
+| `directory` | **constructed** — the conventional fixture path, not a redacted real one |
+| `input.model` | **constructed** — type-derived from the `Model` parameter; its contents were never recorded |
+| `output.system[0]` text | **constructed** stand-in for the real base prompt, which was never recorded |
+| `model-request-before-context.output.json` | **constructed** — an expected `planOpenCodeApplication` result, as every `*.output.json` here is |
+
+So this fixture pins the decode and apply contract, which is what it is for. It is not
+evidence about the harness: the live-probe record in
+`packages/adapter-opencode/src/profile.ts` and the capture README carry that.
+
 Ground truth notes (1.18.x):
 
 - Local plugins load from `.opencode/plugin/` or `.opencode/plugins/`

@@ -131,7 +131,7 @@ directory per target:
 dist/
 ├── claude/     a complete Claude Code plugin (manifest + hooks.json + bundled runtime)
 ├── codex/      a .codex/ tree to copy into a repo root
-├── opencode/   an .opencode/plugins/ module to copy into a repo root
+├── opencode/   an OpenCode project plugin tree (.opencode/plugins/hooknostic.js)
 └── hooknostic-build.json    ← the build report
 ```
 

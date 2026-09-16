@@ -8,6 +8,7 @@ import type {
 } from "@hooknostic/agent-plugin";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
+  assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
   hasUnportableCommandPath,
@@ -238,12 +239,26 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Not probed. Codex's installer was only observed copying package content; whether it runs a locked npm install like Claude's marketplace is unestablished.",
+            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
         },
       },
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "0.154.0",
+            date: "2026-09-15",
+            method: "live-probe",
+            artifact: ".capture/codex-marketplace-deps",
+            what: 'No npm dependency installation. A plugin declaring is-number@7.0.0 with a package-lock.json and no node_modules installed with both manifests copied verbatim, no node_modules in the installed root, and import("is-number") failing ERR_MODULE_NOT_FOUND from there. Placing node_modules/is-number by hand made the same import succeed and removing it restored the failure, so the negative is the dependency and not a broken probe.',
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-15",
+            method: "live-probe",
+            artifact: ".capture/codex-marketplace-deps",
+            what: "A node_modules directory shipped inside the source package survives installation and resolves from the installed plugin root, so a vendored or bundled dependency closure is a working route where a declared manifest is not.",
+          },
           {
             version: "0.153.2",
             date: "2026-09-07",
@@ -337,6 +352,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     },
   ],
   project: async (source, context): Promise<AgentPluginProjectionPlan> => {
+    assertPackageDelivery("codex", context.target.delivery);
     const issues: AgentPluginIssue[] = [];
     const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
     const files: AgentPluginProjectionFile[] = [];

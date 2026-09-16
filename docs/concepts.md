@@ -24,6 +24,7 @@ Hooknostic defines one normalized vocabulary of lifecycle events:
 
 ```
 session.start   session.end     prompt.before
+model.request.before
 tool.before     tool.after      tool.error
 permission.request
 context.compact.before          context.compact.after

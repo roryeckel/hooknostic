@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+import { packageNameProblem } from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -15,7 +16,12 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyOpenCode } from "./apply.js";
 import { decodeOpenCode } from "./decode.js";
-import { generateOpenCodeArtifacts } from "./generate.js";
+import {
+  generateOpenCodeArtifacts,
+  PACKAGE_ENTRY_PATH,
+  PACKAGE_MANIFEST_PATH,
+  PACKAGE_PLUGIN_PATH,
+} from "./generate.js";
 import { opencodeHarness } from "./harness.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
@@ -118,15 +124,18 @@ export function opencodeAdapter(): HarnessAdapter {
       return generateOpenCodeArtifacts(plugin, target, bundle);
     },
 
-    async validateArtifacts(artifacts, _target) {
+    async validateArtifacts(artifacts, target) {
       const diagnostics = [];
-      const module = artifacts.find((a) => a.path === ".opencode/plugins/hooknostic.js");
-      const moduleText =
-        module === undefined
-          ? undefined
-          : typeof module.contents === "string"
-            ? module.contents
-            : new TextDecoder().decode(module.contents);
+      const read = (path: string): string | undefined => {
+        const artifact = artifacts.find((candidate) => candidate.path === path);
+        if (artifact === undefined) return undefined;
+        return typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
+      };
+      // Package delivery moves the hook module to the package root. Validating
+      // the project path unconditionally would silently pass every package.
+      const isPackage = target.delivery === "package";
+      const modulePath = isPackage ? PACKAGE_PLUGIN_PATH : ".opencode/plugins/hooknostic.js";
+      const moduleText = read(modulePath);
       if (moduleText !== undefined && !moduleText.includes("HooknosticPlugin")) {
         diagnostics.push({
           code: "HN301" as const,
@@ -134,6 +143,59 @@ export function opencodeAdapter(): HarnessAdapter {
           target: "opencode",
           message: "generated plugin module does not export HooknosticPlugin.",
         });
+      }
+      if (isPackage) {
+        const entry = read(PACKAGE_ENTRY_PATH);
+        if (entry === undefined) {
+          diagnostics.push({
+            code: "HN301" as const,
+            severity: "error" as const,
+            target: "opencode",
+            message: `package delivery emitted no ${PACKAGE_ENTRY_PATH}; OpenCode would have no module to load.`,
+          });
+        } else if (entry.includes(`./${PACKAGE_PLUGIN_PATH}`) && moduleText === undefined) {
+          // A config may declare components without an entry, in which case no
+          // hook module is generated. An import of a module the output does not
+          // contain fails the WHOLE plugin at load, taking the package's skills
+          // and MCP servers down with a hook module nobody asked for.
+          diagnostics.push({
+            code: "HN301" as const,
+            severity: "error" as const,
+            target: "opencode",
+            message: `${PACKAGE_ENTRY_PATH} re-exports ${PACKAGE_PLUGIN_PATH}, which the output does not contain.`,
+          });
+        }
+        const manifestText = read(PACKAGE_MANIFEST_PATH);
+        if (manifestText === undefined) {
+          diagnostics.push({
+            code: "HN301" as const,
+            severity: "error" as const,
+            target: "opencode",
+            message: `package delivery emitted no ${PACKAGE_MANIFEST_PATH}; the output is not a loadable package.`,
+          });
+        } else {
+          // Checked here rather than at generation because both paths land in
+          // this one: the Agent Plugin projector takes the name from the package
+          // manifest and rejects a bad one itself, but a hooks-only package
+          // takes it from `PluginSpec.name`, which is only `string().min(1)`.
+          // A name npm refuses produces a directory that cannot be packed or
+          // published, and nothing else would catch it.
+          let name: unknown;
+          try {
+            name = (JSON.parse(manifestText) as { name?: unknown }).name;
+          } catch {
+            name = undefined;
+          }
+          const problem = typeof name === "string" ? packageNameProblem(name) : "manifest declares no name";
+          if (problem !== undefined) {
+            diagnostics.push({
+              code: "HN301" as const,
+              severity: "error" as const,
+              target: "opencode",
+              message: `package delivery emits an npm package, and ${JSON.stringify(name)} is not a valid npm package name: ${problem}.`,
+            });
+          }
+        }
       }
       return diagnostics;
     },

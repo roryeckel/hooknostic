@@ -1,0 +1,16 @@
+{
+  "hook": "experimental.chat.system.transform",
+  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-context-channel",
+  "input": {
+    "sessionID": "ses_8f2a1c",
+    "model": {
+      "providerID": "probe",
+      "modelID": "probe-model"
+    }
+  },
+  "output": {
+    "system": [
+      "You are opencode, a coding agent."
+    ]
+  }
+}

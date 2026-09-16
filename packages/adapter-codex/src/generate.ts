@@ -29,7 +29,7 @@ export const CODEX_NATIVE_TIMEOUT_CEILING_SECONDS: Record<string, number | undef
   SessionEnd: 3,
 };
 
-export const CODEX_NATIVE_EVENT: Partial<Record<HookEventName, string>> = {
+export const CODEX_NATIVE_EVENT: Record<HookEventName, string | undefined> = {
   "session.start": "SessionStart",
   "session.end": "SessionEnd",
   "prompt.before": "UserPromptSubmit",
@@ -41,7 +41,11 @@ export const CODEX_NATIVE_EVENT: Partial<Record<HookEventName, string>> = {
   "agent.start": "SubagentStart",
   "agent.stop": "SubagentStop",
   "turn.stop": "Stop",
-  // tool.error has no Codex equivalent; capability analysis rejects it first.
+  // Neither event exists on Codex; capability analysis rejects a hook on them
+  // first (HN202). Mapped explicitly rather than omitted so the Record stays
+  // total and a future SDK event cannot be forgotten here silently.
+  "tool.error": undefined,
+  "model.request.before": undefined,
 };
 
 const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";

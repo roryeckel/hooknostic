@@ -30,7 +30,7 @@ export const CLAUDE_NATIVE_TIMEOUT_CEILING_SECONDS: Record<string, number | unde
   SessionEnd: 60,
 };
 
-export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string> = {
+export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string | undefined> = {
   "session.start": "SessionStart",
   "session.end": "SessionEnd",
   "prompt.before": "UserPromptSubmit",
@@ -43,6 +43,11 @@ export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string> = {
   "agent.start": "SubagentStart",
   "agent.stop": "SubagentStop",
   "turn.stop": "Stop",
+  // No Claude hook sits between the system prompt being assembled and the model
+  // request. Mapped explicitly to undefined rather than omitted: the Record stays
+  // total, so a future SDK event cannot be forgotten here without a type error.
+  // Capability analysis rejects a hook on it first (HN202).
+  "model.request.before": undefined,
 };
 
 const RUNTIME_PATH = "runtime/hooknostic.mjs";

@@ -65,3 +65,29 @@ export function componentSummary(
   }
   return components;
 }
+
+/**
+ * Guards the one invariant every Agent Plugin projector shares: it runs for
+ * package delivery only.
+ *
+ * `build.ts` enforces this by construction -- the projection phase is gated on
+ * `delivery === "package"` -- and `inspect` routes a project-delivery query to
+ * `projectComponentProfiles` instead. Project delivery goes through
+ * `adapter.projectComponents`, which edits a tree the user owns rather than
+ * emitting one the adapter owns.
+ *
+ * Nothing enforced it at the projector's own entry point, though, and
+ * `project()` takes a `TargetSpec` carrying a `delivery` it otherwise ignores.
+ * A caller passing "project" therefore got package-shaped output and no
+ * complaint -- which is exactly how a playback cell came to assert a layout no
+ * build produces, and stayed plausible until package delivery changed shape
+ * underneath it. Failing here turns that into one legible line at the call
+ * site, before a harness runs.
+ */
+export function assertPackageDelivery(id: string, delivery: string): void {
+  if (delivery === "package") return;
+  throw new Error(
+    `${id}: the Agent Plugin projector runs for package delivery only, got ${JSON.stringify(delivery)}. ` +
+      `Project delivery goes through adapter.projectComponents and adapter.projectComponentProfiles.`,
+  );
+}

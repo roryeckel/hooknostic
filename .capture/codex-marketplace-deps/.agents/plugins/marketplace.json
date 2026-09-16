@@ -1,0 +1,15 @@
+{
+  "name": "hooknostic-codex-dependency-capture",
+  "interface": {
+    "displayName": "Hooknostic capture"
+  },
+  "plugins": [
+    {
+      "name": "dependency-probe",
+      "source": {
+        "source": "local",
+        "path": "./plugins/dependency-probe"
+      }
+    }
+  ]
+}

@@ -71,27 +71,17 @@ for (const adapter of adapters) {
   }
   lines.push("");
   if (adapter.projectComponentProfiles) {
-    const projection = resolveAgentPluginProjection(
+    lines.push("#### Project delivery", "");
+    componentTables(
       { id: adapter.id, version: meta.recommendedRange, delivery: "project", output: "." },
       { profiles: adapter.projectComponentProfiles },
+      "Project delivery validation records:",
     );
-    lines.push("#### Project delivery", "", "| Component | Support | Rationale |", "| --- | --- | --- |");
-    for (const [component, support] of Object.entries(projection.matrix ?? {}))
-      lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
-    lines.push("", "Project delivery validation records:", "");
-    lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
-    for (const profile of projection.profilesUsed) {
-      for (const record of profile.source.validatedOn) {
-        lines.push(
-          `| ${record.version} | ${record.date} | ${record.method} | ` +
-            `${record.artifact ? `\`${record.artifact}\`` : "—"} | ${record.what} |`,
-        );
-      }
-    }
-    lines.push("", "Project support is independent of package projection.", "");
+    lines.push("Project support is independent of package projection.", "");
   }
   if (adapter.agentPluginProjector) {
-    const projection = resolveAgentPluginProjection(
+    lines.push("#### Agent Plugin projection", "");
+    componentTables(
       {
         id: adapter.id,
         version: meta.recommendedRange,
@@ -99,25 +89,63 @@ for (const adapter of adapters) {
         output: ".",
       },
       adapter.agentPluginProjector,
+      "Projection validation records:",
     );
-    lines.push("#### Agent Plugin projection", "");
-    lines.push("| Component | Support | Rationale |", "| --- | --- | --- |");
-    for (const [component, support] of Object.entries(projection.matrix ?? {})) {
-      lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
-    }
-    lines.push("", "Projection validation records:", "");
-    lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
-    for (const profile of projection.profilesUsed) {
-      for (const record of profile.source.validatedOn) {
-        lines.push(
-          `| ${record.version} | ${record.date} | ${record.method} | ` +
-            `${record.artifact ? `\`${record.artifact}\`` : "—"} | ${record.what} |`,
-        );
-      }
-    }
-    lines.push("");
   }
 }
+// One component-support table per profile the requested range touches.
+//
+// A range spanning several profiles resolves to the LEAST capable level for
+// each component -- correct for a build, which must not claim more than the
+// oldest version in its range delivers. Rendering only that collapsed matrix,
+// though, reports `unsupported` for versions where a component is `exact`, and
+// prints it directly above the evidence proving otherwise. Codex is the live
+// case: its recommended range opens below the version plugin hook delivery was
+// established on, so the whole projection read as unsupported while the records
+// beneath it cited live probes of a working plugin.
+//
+// So each profile gets its own table, resolved at its own range, with that
+// profile's records beneath it; the collapsing rule is stated rather than
+// shown. A single-profile section keeps its flat shape.
+function componentTables(target, projector, recordsLabel) {
+  const resolution = resolveAgentPluginProjection(target, projector);
+  const profiles = resolution.profilesUsed;
+  if (profiles.length <= 1) {
+    emitComponentTable(resolution.matrix, profiles, recordsLabel);
+    return;
+  }
+  lines.push(
+    `Support resolves by harness version, and the recommended range \`${target.version}\``,
+    `spans ${profiles.length} profiles. A build targeting one of the ranges below gets that`,
+    "table; a range spanning more than one resolves to the least capable level for",
+    "each component.",
+    "",
+  );
+  for (const profile of profiles) {
+    lines.push(`##### \`${profile.range}\``, "");
+    const scoped = resolveAgentPluginProjection({ ...target, version: profile.range }, projector);
+    emitComponentTable(scoped.matrix, [profile], recordsLabel);
+  }
+}
+
+function emitComponentTable(matrix, profiles, recordsLabel) {
+  lines.push("| Component | Support | Rationale |", "| --- | --- | --- |");
+  for (const [component, support] of Object.entries(matrix ?? {})) {
+    lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
+  }
+  lines.push("", recordsLabel, "");
+  lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
+  for (const profile of profiles) {
+    for (const record of profile.source.validatedOn) {
+      lines.push(
+        `| ${record.version} | ${record.date} | ${record.method} | ` +
+          `${record.artifact ? `\`${record.artifact}\`` : "—"} | ${record.what} |`,
+      );
+    }
+  }
+  lines.push("");
+}
+
 writeFileSync(resolve(ROOT, "docs/harness-support.md"), lines.join("\n") + "\n", "utf8");
 
 console.log("harness-support generated");

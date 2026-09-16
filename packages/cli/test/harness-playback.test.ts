@@ -325,6 +325,33 @@ interface DriveOptions {
    * harness (Codex: `mcp_servers.*`), enabling the MCP-only drive.
    */
   mcpServerPath?: string;
+  /**
+   * opencode-serve lane only: a hook event the drive must observe in the trace
+   * BEFORE it tears the server down.
+   *
+   * The drive's own completion signal is `server.turnCount >= 2`, which for
+   * these scenarios is the model's scripted text completion -- one step BEFORE
+   * the session goes idle. Every observable that lands at idle (`turn.stop`,
+   * and the promptAsync post that stop-prevention and notify depend on) is
+   * therefore produced AFTER the drive would otherwise kill the server, and a
+   * scenario asserting on it is racing teardown by a few hundred milliseconds.
+   * Losing that race is unrecoverable: the later `waitForTraceEvent` polls a
+   * file no live process can still append to, so it burns its whole timeout
+   * and reports the event as absent rather than as late.
+   *
+   * Naming the observable here makes teardown wait for the thing the scenario
+   * is about, instead of for a proxy that happens to precede it.
+   */
+  awaitTraceEvent?: HookEventName;
+  /**
+   * opencode-serve lane only: how many model turns the drive polls for before
+   * it stops waiting. Defaults to 2 -- a scripted tool call and its completion.
+   *
+   * Scenarios whose claim IS an extra turn must raise this. Two turns are what
+   * the script alone produces, so on this lane `turnCount >= 2` is evidence of
+   * nothing beyond the script running.
+   */
+  minTurns?: number;
   /** Captures the raw harness stdout/stderr for scenario-level diagnostics. */
   capture?: (raw: { stdout: string; stderr: string; code: number | null }) => void;
   /**
@@ -621,6 +648,15 @@ async function writeOpenCodeProviderConfig(
     permission?: Record<string, string>;
     mcp?: Record<string, Record<string, unknown>>;
     mcpServerPath?: string;
+    // Package-delivery plugins, named the way a consuming project names them.
+    //
+    // A relative entry resolves against the declaring config file's own
+    // directory -- intended OpenCode behaviour, not a bug
+    // (.capture/opencode-plugin-routes). This helper writes the config at the
+    // project root, so a relative path here would be project-root relative and
+    // would work; the drives pass absolute paths because the package they name
+    // deliberately lives outside the project.
+    plugin?: readonly string[];
   } = {},
 ): Promise<void> {
   const mcp = {
@@ -642,6 +678,7 @@ async function writeOpenCodeProviderConfig(
         $schema: "https://opencode.ai/config.json",
         model: "playback/hooknostic-playback",
         enabled_providers: ["playback"],
+        ...(options.plugin === undefined ? {} : { plugin: [...options.plugin] }),
         ...(options.permission !== undefined ? { permission: options.permission } : {}),
         ...(Object.keys(mcp).length === 0 ? {} : { mcp }),
         provider: {
@@ -815,13 +852,19 @@ async function runOpenCodeServePlayback(
     // the drive can observe both the original tool-call turn and its completion
     // (or the extra turn posted by stop prevention).
     const postedTurns = await (async (): Promise<number> => {
+      const wanted = options.minTurns ?? 2;
       const deadline = Date.now() + 90_000;
       while (Date.now() < deadline) {
-        if (server.turnCount >= 2) return server.turnCount;
+        if (server.turnCount >= wanted) return server.turnCount;
         await new Promise((r) => setTimeout(r, 500));
       }
       return server.turnCount;
     })();
+    // Before teardown, not after: see DriveOptions.awaitTraceEvent. A miss is
+    // left to the scenario's own assertion, which reports the trace it got.
+    if (options.awaitTraceEvent !== undefined) {
+      await waitForTraceEvent(build.tracePath, options.awaitTraceEvent);
+    }
     options.capture?.({
       stdout: `served turns: ${postedTurns}`,
       stderr: serveStderr,
@@ -903,7 +946,15 @@ afterAll(async () => {
       }
     }),
   );
-});
+  // The explicit budget is what makes the paragraph above true. Vitest's
+  // default hook timeout is 10s, and this hook can legitimately need more: the
+  // OpenCode drives leave a scratch directory per cell, each holding two full
+  // `@opencode-ai/plugin` installs, and a recursive delete of that many small
+  // files on Windows is slow before the retry sleeps are counted. Exceeding the
+  // default reported `Failed Suites 1` with every test passing — precisely the
+  // "a leaked scratch dir must not fail a passing drive" outcome this hook
+  // exists to prevent, arrived at through the cleanup rather than the leak.
+}, 120_000);
 
 /** The adapter's resolved level for a cell at its own referenceVersion. */
 function cellLevel(id: string): string | undefined {
@@ -937,6 +988,42 @@ function requestContents(requests: readonly unknown[]): string[] {
   };
   for (const request of requests) walk(request);
   return contents;
+}
+
+// Text of every `role: "system"` message in one recorded request, for the
+// OpenAI-compatible playback path (`messages: [{ role, content }]`, content a
+// string or an array of text parts).
+function systemMessageTexts(request: unknown): string[] {
+  const messages = (request as { messages?: unknown }).messages;
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m): m is { role: string; content: unknown } => (m as { role?: unknown })?.role === "system")
+    .map((m) =>
+      typeof m.content === "string"
+        ? m.content
+        : Array.isArray(m.content)
+          ? m.content
+              .map((part) =>
+                typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "",
+              )
+              .join("")
+          : "",
+    );
+}
+
+// Indices of recorded requests whose SYSTEM MESSAGES do not carry `marker`.
+//
+// Deliberately NOT a recursive string walk over the request. The channel this
+// asserts has an inert twin: writing the same text through chat.params puts it
+// in the request body as a top-level `systemPrompt` field, where no
+// OpenAI-compatible API reads it (.capture/opencode-context-channel). A walk
+// over every string would accept that regression, which is precisely the
+// failure the cell exists to exclude. It also keeps the per-request boundary,
+// which a flat requestContents() over the whole recording loses.
+function requestsWithoutMarker(requests: readonly unknown[], marker: string): number[] {
+  return requests.flatMap((request, index) =>
+    systemMessageTexts(request).some((t) => t.includes(marker)) ? [] : [index],
+  );
 }
 
 // --- pty-approval lane ----------------------------------------------------
@@ -1605,11 +1692,26 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     240_000,
   );
 
-  // The OpenCode half of the same claim. Unlike Codex there is no install step:
-  // `.opencode/plugins/` is read from the project directory, so the projection
-  // is written straight into one.
+  // The OpenCode half of the same claim. Unlike Codex there is no install
+  // command: `delivery: "package"` emits an npm package, and a project names
+  // its DIRECTORY in `opencode.json`'s `plugin` array -- no registry
+  // publication, nothing copied into the repository.
+  //
+  // Driven at `delivery: "package"` because that is the only delivery the
+  // projector ever sees: `build.ts` runs it under
+  // `config.targets[id].delivery === "package"` and nowhere else, project
+  // components going through `adapter.projectComponents` instead (covered by
+  // the repository-local integration drive above). This cell previously passed
+  // `delivery: "project"` and wrote the plan into `.opencode/plugins/`, a
+  // combination no build produces; it only worked while both deliveries
+  // emitted the same project-tree fragment.
+  //
+  // What the package route adds over that fragment, and what this establishes:
+  // OpenCode loads exactly the module `exports["./server"]` names, and the
+  // generated entry re-exports BOTH plugins from it -- so an injector reached
+  // through one re-export still resolves ${PLUGIN_ROOT} to the nested package.
   it.skipIf(adapter?.id !== "opencode")(
-    "starts a projected MCP server through the generated launcher",
+    "loads a projected npm package named by path and starts its MCP server",
     async () => {
       const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-projection-"));
       tempDirs.push(dir);
@@ -1654,7 +1756,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       const target = {
         id: "opencode",
         version: process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
-        delivery: "project" as const,
+        delivery: "package" as const,
         output: ".",
       };
       const plan = await opencodeAgentPluginProjector.project(loaded.package!, {
@@ -1664,13 +1766,30 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         onUnsupported: "error",
       });
       expect(plan.issues).toEqual([]);
+      // Deliberately OUTSIDE the project directory: a package is named by path,
+      // not discovered by a scan, so nothing about this route requires the
+      // output to live in the repository it serves.
+      const packageDir = join(dir, "plugin-package");
       for (const directory of plan.directories ?? []) {
-        await mkdir(join(projectDir, directory), { recursive: true });
+        await mkdir(join(packageDir, directory), { recursive: true });
       }
       for (const artifact of plan.files) {
-        await mkdir(join(projectDir, artifact.path, ".."), { recursive: true });
-        await writeFile(join(projectDir, artifact.path), artifact.contents);
+        await mkdir(join(packageDir, artifact.path, ".."), { recursive: true });
+        await writeFile(join(packageDir, artifact.path), artifact.contents);
       }
+      // The entry OpenCode resolves must be the one the manifest names, and it
+      // must re-export both plugins -- asserted here rather than left implicit
+      // in a passing run, so a regression to a bare module says what broke.
+      const manifest = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
+      expect(manifest.exports["./server"]).toBe("./index.js");
+      const entry = await readFile(join(packageDir, manifest.exports["./server"]), "utf8");
+      expect(entry).toContain("HooknosticComponents");
+      // This drive projects with no hook artifacts, so the hook half must be
+      // ABSENT from the entry. Re-exporting a module the build never produced
+      // throws on import and takes the whole plugin down -- skills and MCP
+      // servers included -- which is the one way this route fails silently
+      // enough to look like "the plugin just did not load".
+      expect(entry).not.toContain("HooknosticPlugin");
 
       const homeDir = join(dir, "home");
       await mkdir(homeDir, { recursive: true });
@@ -1683,7 +1802,11 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           projectDir,
           process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? adapter!.harness.referenceVersion,
         );
-        await writeOpenCodeProviderConfig(projectDir, server.baseUrl);
+        // Absolute because the package sits outside the project, which is the
+        // point: this route names a directory, it does not scan for one.
+        await writeOpenCodeProviderConfig(projectDir, server.baseUrl, {
+          plugin: [packageDir.replaceAll("\\", "/")],
+        });
         const result = await runProcess("opencode", ["run", "hello", "--model", "playback/hooknostic-playback"], {
           cwd: projectDir,
           timeoutMs: 180_000,
@@ -1707,13 +1830,16 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         await server.close();
       }
 
-      const packageRoot = join(projectDir, ".opencode/plugins/package");
+      const packageRoot = join(packageDir, "package");
       const environment = JSON.parse(await readFile(join(packageRoot, "mcp-environment.json"), "utf8"));
-      // The nested package, not the module's own directory, is ${PLUGIN_ROOT}.
+      // The nested author package, not the package root the entry sits in, is
+      // ${PLUGIN_ROOT} -- resolved from the injector's own import.meta.url
+      // after the entry re-exported it.
       expect(normalize(environment.pluginRoot)).toBe(normalize(packageRoot));
-      // A user-level directory, so rebuilding the project output is not an
+      // A user-level directory, so rebuilding the package output is not an
       // "update" that resets a server's state.
       expect(normalize(environment.pluginData)).toBe(normalize(pluginData));
+      expect(environment.pluginData.startsWith(packageDir)).toBe(false);
       expect(environment.pluginData.startsWith(projectDir)).toBe(false);
       expect(environment.argv).toEqual([environment.pluginData]);
       expect(normalize(environment.cwd)).toBe(normalize(join(packageRoot, "mcp-working-dir")));
@@ -2033,6 +2159,35 @@ scenarioDrive(
 );
 
 scenarioDrive(
+  "model-request-before-context-add",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-modelreqctx-${adapter!.id}-`));
+    tempDirs.push(dir);
+    const build = await buildPlaybackArtifact(adapter!, dir);
+    let recordedRequests: readonly unknown[] = [];
+    await runInstalledHarness(build, "rewrite", {
+      effects: ["context-add"],
+      verify: async ({ server }) => {
+        recordedRequests = server.requests;
+      },
+    });
+
+    // Unlike the session.start channel, this one fires per model request, so
+    // the marker must be present in EVERY recorded request rather than merely
+    // somewhere among them -- that per-request presence IS the cell. `some`
+    // would pass when only the title-generation request carried the context
+    // and the agent request did not, which is the failure worth catching.
+    expect(recordedRequests.length, "no model requests were recorded").toBeGreaterThan(0);
+    const without = requestsWithoutMarker(recordedRequests, "hooknostic-context [model.request.before]");
+    expect(
+      without,
+      `${without.length}/${recordedRequests.length} model requests lacked the injected model.request.before context (indices)`,
+    ).toEqual([]);
+  },
+  () => cellLevel("model.request.before.context.add") === undefined,
+);
+
+scenarioDrive(
   "prompt-before-block",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-promptblock-${adapter!.id}-`));
@@ -2133,6 +2288,15 @@ scenarioDrive(
           { kind: "tool", disposition: "rewrite" },
           { kind: "text", text: "Stop hook active; standing down now." },
         ],
+        // Three, not two: the script alone produces the tool call and its
+        // completion, so `>= 2` holds whether or not the stop was ever
+        // prevented. The third turn is the re-prompt prevention posts, and it
+        // is the only served turn that evidences the cell.
+        minTurns: 3,
+        // The prevented stop is published at session.idle, which follows the
+        // scripted text completion. Held until the trace has it so teardown
+        // cannot outrun the observable.
+        awaitTraceEvent: "turn.stop",
         verify: async ({ server }) => {
           servedTurns = server.turnCount;
         },
@@ -2153,15 +2317,21 @@ scenarioDrive(
       });
     }
 
+    // What counts as "another turn" is per-harness, because the scripts differ
+    // in how many turns they produce on their own. On the opencode-serve lane
+    // the script produces two by itself, so only a third evidences prevention.
+    const requiredTurns = adapter!.id === "opencode" ? 3 : 2;
     expect(
       servedTurns,
-      `stop prevention did not produce a second model turn (turns served: ${servedTurns})`,
-    ).toBeGreaterThanOrEqual(2);
+      `stop prevention did not produce an extra model turn (turns served: ${servedTurns}, required: ${requiredTurns})`,
+    ).toBeGreaterThanOrEqual(requiredTurns);
     // OpenCode dispatches plugin event callbacks without awaiting their
     // promises. The loopback server can therefore receive turn 2 before the
     // first session.idle callback finishes writing this trace. Wait for the
     // scenario's actual observable instead of treating request arrival as
-    // plugin completion.
+    // plugin completion. (The serve drive already holds teardown until this
+    // event exists -- see DriveOptions.awaitTraceEvent -- so on that lane this
+    // re-reads a trace that is already complete.)
     expect(await waitForTraceEvent(build.tracePath, "turn.stop")).toContain("turn.stop");
   },
   () => cellLevel("turn.stop.prevent") === undefined,
@@ -2682,6 +2852,38 @@ scenarioDrive(
     return false;
   },
 );
+
+it("requestsWithoutMarker demands a system message, not merely a string in the body", () => {
+  // Two failure modes this pins, both real.
+  //
+  // 1. Per-request boundary: requestContents flattens every string across every
+  //    request, so a flat .some() passes when only one request carried the
+  //    context, and a flat .every() can never pass (tool schemas are strings too).
+  // 2. Model-visibility: the rejected chat.params implementation puts the same
+  //    text in the body as a top-level `systemPrompt` field, which no
+  //    OpenAI-compatible API reads. A recursive string walk accepts it.
+  const asSystemMessage = {
+    messages: [
+      { role: "system", content: "MARK" },
+      { role: "user", content: "hi" },
+    ],
+  };
+  const noMarker = { messages: [{ role: "user", content: "hi" }] };
+  // Exactly the shape captured from the inert channel.
+  const asTopLevelField = { systemPrompt: "MARK", messages: [{ role: "user", content: "hi" }] };
+  const asTextParts = { messages: [{ role: "system", content: [{ type: "text", text: "MARK" }] }] };
+
+  expect(requestsWithoutMarker([asSystemMessage, asSystemMessage], "MARK")).toEqual([]);
+  expect(requestsWithoutMarker([asTextParts], "MARK")).toEqual([]);
+
+  // (1) the per-request boundary
+  expect(requestsWithoutMarker([asSystemMessage, noMarker], "MARK")).toEqual([1]);
+
+  // (2) the inert channel must NOT satisfy the cell
+  expect(requestsWithoutMarker([asTopLevelField], "MARK")).toEqual([0]);
+  expect(JSON.stringify(asTopLevelField)).toContain("MARK");
+  expect(requestContents([asTopLevelField]).some((t) => t.includes("MARK"))).toBe(true);
+});
 
 it("writes declared scheduled-lane inconclusives for the workflow summary", async () => {
   const path = process.env["HOOKNOSTIC_PLAYBACK_INCONCLUSIVE_PATH"];

@@ -69,6 +69,13 @@ function smokePlugin() {
           return addContext("hooknostic compaction note");
         },
       }),
+      hook("model.request.before", {
+        id: "per-request-note",
+        capabilities: { "model.request.before.context.add": "required" },
+        async run() {
+          return addContext("hooknostic per-request note");
+        },
+      }),
       hook("turn.stop", { id: "observe-idle", async run() {} }),
     ],
   });
@@ -114,6 +121,7 @@ describe("createHooknosticHooks", () => {
   it("registers only the callbacks the plugin needs", () => {
     expect(Object.keys(hooks()).sort()).toEqual([
       "event",
+      "experimental.chat.system.transform",
       "experimental.session.compacting",
       "tool.execute.after",
       "tool.execute.before",
@@ -293,6 +301,37 @@ describe("createHooknosticHooks", () => {
     const output = { context: ["existing"] };
     await h["experimental.session.compacting"]!({ sessionID: "s" }, output);
     expect(output.context).toEqual(["existing", "hooknostic compaction note"]);
+  });
+
+  it("pushes per-request context into the SAME output.system array", async () => {
+    const h = hooks();
+    // prepare() passes the same array it goes on to build the request messages
+    // from, so the mutation must land in this very array. (Whether a replacement
+    // array would also be honoured is untested; pushing avoids depending on it.)
+    const system = ["You are opencode."];
+    const output = { system };
+    await h["experimental.chat.system.transform"]!({ sessionID: "s" }, output);
+    expect(output.system).toBe(system);
+    expect(system).toEqual(["You are opencode.", "hooknostic per-request note"]);
+  });
+
+  it("registers the system-transform callback only when a hook uses the event", async () => {
+    const without = createHooknosticHooks(
+      definePlugin({ name: "p", hooks: [hook("turn.stop", { id: "t", async run() {} })] }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+    expect(without["experimental.chat.system.transform"]).toBeUndefined();
+    expect(hooks()["experimental.chat.system.transform"]).toBeDefined();
+  });
+
+  it("does not accumulate across invocations (ADR-0002)", async () => {
+    const h = hooks();
+    for (const _ of [0, 1, 2]) {
+      const output = { system: ["base"] };
+      await h["experimental.chat.system.transform"]!({ sessionID: "s" }, output);
+      expect(output.system).toEqual(["base", "hooknostic per-request note"]);
+    }
   });
 
   it("ignores unmapped bus events without throwing (fail-open)", async () => {

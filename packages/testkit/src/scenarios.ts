@@ -97,6 +97,12 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     driver: "loopback",
   },
   {
+    id: "model-request-before-context-add",
+    title: "per-request injected context reaches the model as a system message in EVERY agent request",
+    covers: ["model.request.before.context.add"],
+    driver: "loopback",
+  },
+  {
     id: "tool-before-block",
     title: "blocking a pending tool call prevents its process from executing",
     covers: ["tool.before.block"],

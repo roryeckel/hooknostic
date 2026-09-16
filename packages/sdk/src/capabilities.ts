@@ -19,6 +19,9 @@ export const ALL_CAPABILITY_IDS = [
   "prompt.before.block",
   "prompt.before.context.add",
 
+  "model.request.before.observe",
+  "model.request.before.context.add",
+
   "tool.before.observe",
   "tool.before.block",
   "tool.before.requestApproval",

@@ -53,6 +53,19 @@ For one harness at a time, CI:
    variables and actual cwd while Claude runs from a separate project directory;
    the stdio launcher must anchor `./mcp-working-dir` inside the plugin. Both remote transports must complete initialization requests,
    and the hook trace must contain `prompt.before`.
+9. For OpenCode Agent Plugin projection, projects the same portable package at
+   `delivery: "package"` — the only delivery `build.ts` ever hands the
+   projector — writes the emitted npm package to a directory **outside** the
+   project, and names that absolute path in the project's `opencode.json`
+   `plugin` array. The manifest's `exports["./server"]` must name the generated
+   entry; the entry must re-export the component injector and, with no hook
+   artifacts projected, must NOT re-export the hook module it would then be
+   unable to import. The stdio process must record `${PLUGIN_ROOT}` resolved to
+   the nested author package and `${PLUGIN_DATA}` to a directory outside both
+   the package and the project, with `./mcp-working-dir` anchored inside the
+   package. The path is absolute because the package deliberately sits outside
+   the project; pointing the entry somewhere the package is not loads nothing
+   while OpenCode still exits `0`, which is what the mutant check flips.
 
 For OpenCode, the driver also redirects `XDG_CONFIG_HOME` into the scratch
 project and preinstalls the harness-matched `@opencode-ai/plugin` dependency

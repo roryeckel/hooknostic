@@ -14,6 +14,8 @@ var ALL_CAPABILITY_IDS = [
   "prompt.before.observe",
   "prompt.before.block",
   "prompt.before.context.add",
+  "model.request.before.observe",
+  "model.request.before.context.add",
   "tool.before.observe",
   "tool.before.block",
   "tool.before.requestApproval",
@@ -93,6 +95,7 @@ var HOOK_EVENT_NAMES = [
   "session.start",
   "session.end",
   "prompt.before",
+  "model.request.before",
   "tool.before",
   "tool.after",
   "tool.error",
@@ -4965,6 +4968,9 @@ function planOpenCodeApplication(result) {
   if (context.length > 0 && result.event === "context.compact.before") {
     mutations.context = context;
   }
+  if (context.length > 0 && result.event === "model.request.before") {
+    mutations.system = context;
+  }
   if (result.event === "turn.stop") {
     const prompts = result.effects.filter((e) => e.effect.kind === "notify").map((e) => ({ text: e.effect.message, reply: false }));
     if (terminal?.kind === "preventStop") {
@@ -5100,6 +5106,8 @@ function decodeOpenCode(nativeEvent, invocation) {
       const prompt = parts.map((p) => typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
       return { ...base, event: "prompt.before", prompt };
     }
+    case "experimental.chat.system.transform":
+      return { ...base, event: "model.request.before" };
     case "experimental.session.compacting":
       return { ...base, event: "context.compact.before" };
     case "event": {
@@ -5208,6 +5216,11 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       if (Array.isArray(context)) context.push(...application.mutations.context);
       else output["context"] = [...application.mutations.context];
     }
+    if (application.mutations?.system !== void 0) {
+      const system = output["system"];
+      if (Array.isArray(system)) system.push(...application.mutations.system);
+      else output["system"] = [...application.mutations.system];
+    }
     const diagnostics = formatHandlerErrors(result);
     if (diagnostics !== void 0) console.error(diagnostics);
     await postPrompts(event, application);
@@ -5286,6 +5299,9 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   if (events.has("context.compact.before")) {
     hooks["experimental.session.compacting"] = callback("experimental.session.compacting");
   }
+  if (events.has("model.request.before")) {
+    hooks["experimental.chat.system.transform"] = callback("experimental.chat.system.transform");
+  }
   if (events.has("session.start") || events.has("session.end") || events.has("turn.stop") || events.has("context.compact.after")) {
     hooks["event"] = callback("event");
   }
@@ -5295,7 +5311,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
 // hooknostic-shim-entry.ts
 var HooknosticPlugin = async (input) => createHooknosticHooks(hooks_default, {
   targetId: "opencode",
-  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
+  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 }, input);

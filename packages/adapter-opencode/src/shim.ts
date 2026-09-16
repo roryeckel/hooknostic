@@ -162,6 +162,16 @@ export function createHooknosticHooks(
       if (Array.isArray(context)) context.push(...application.mutations.context);
       else output["context"] = [...application.mutations.context];
     }
+    if (application.mutations?.system !== undefined) {
+      // Push rather than reassign. prepare() passes the same array it goes on
+      // to build the request messages from, so mutating in place is known to
+      // work (.capture/opencode-context-channel). Whether a replacement array
+      // would also be honoured is NOT established -- pushing avoids the
+      // question, and matches the in-place discipline used for output.args.
+      const system = output["system"];
+      if (Array.isArray(system)) system.push(...application.mutations.system);
+      else output["system"] = [...application.mutations.system];
+    }
     // In-process: no stdout of our own, and a stray write corrupts the TUI's
     // alternate screen mid-turn. console.error is the one channel that does not.
     const diagnostics = formatHandlerErrors(result);
@@ -305,6 +315,9 @@ export function createHooknosticHooks(
   if (events.has("prompt.before")) hooks["chat.message"] = callback("chat.message");
   if (events.has("context.compact.before")) {
     hooks["experimental.session.compacting"] = callback("experimental.session.compacting");
+  }
+  if (events.has("model.request.before")) {
+    hooks["experimental.chat.system.transform"] = callback("experimental.chat.system.transform");
   }
   if (
     events.has("session.start") ||

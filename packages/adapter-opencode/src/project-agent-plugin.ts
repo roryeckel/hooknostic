@@ -6,37 +6,71 @@ import type {
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
 import {
+  assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  packageNameProblem,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
 
+import { PACKAGE_ENTRY_PATH, PACKAGE_MANIFEST_PATH, PACKAGE_PLUGIN_PATH, packageEntrySource } from "./generate.js";
+
 /**
- * OpenCode scans `.opencode/plugins/` for `*.ts` / `*.js` and does NOT recurse,
- * so package content nests safely beneath it while generated modules sit at the
- * top. Both were measured: two sibling modules each took effect, and neither
- * `plugins/sub/probe.js` nor `.opencode/other/probe.js` was loaded.
+ * Package delivery emits an npm package, so every path here is package-root
+ * relative. Nothing scans a package's interior -- OpenCode loads exactly the
+ * one module `exports["./server"]` names -- so the directory scan rules that
+ * shape project delivery do not apply, and generated modules sit at the root
+ * beside the manifest.
+ *
+ * Measured on 1.18.30 (`.capture/opencode-plugin-routes`): `exports["./server"]`
+ * is preferred over `main`; two distinct functions exported from the entry are
+ * both loaded exactly once; and `import.meta.url` resolves to the real file, so
+ * a module can address assets shipped beside it.
  */
-const PLUGIN_DIR = ".opencode/plugins";
-const INJECTOR_PATH = `${PLUGIN_DIR}/hooknostic-agent-plugin.js`;
+// Imported, not restated: the compiler emits an entry and manifest at these
+// paths for a hooks-only package, and this projection replaces them. Two
+// spellings that must agree is exactly the drift that would make the
+// replacement silently become a second, colliding file.
+const MANIFEST_PATH = PACKAGE_MANIFEST_PATH;
+/** The single module OpenCode loads; it re-exports the hook and component plugins. */
+const ENTRY_PATH = PACKAGE_ENTRY_PATH;
+const INJECTOR_PATH = "hooknostic-agent-plugin.js";
 /**
- * The package itself, nested one level so the flat scan never loads its files.
+ * The package itself, nested one level so the author's namespace never collides
+ * with a generated module.
  *
  * Everything the package ships goes here, not just its skills: an MCP server
  * ordinarily names its implementation with `${PLUGIN_ROOT}/...`, and copying
  * only skill trees leaves that argv pointing at a file the output does not
  * contain -- an MCP component reported emitted and exact that cannot start.
  */
-const PACKAGE_DIR = `${PLUGIN_DIR}/package`;
+const PACKAGE_DIR = "package";
+/**
+ * The nested package boundary emitted only when the author shipped none.
+ *
+ * The generated root manifest declares `type: "module"` for the generated
+ * modules beside it, and Node reads a `.js` file's module system from the
+ * nearest `package.json` ABOVE that file. A copied package with no manifest of
+ * its own therefore inherits the generated one, and every `.js` in the author's
+ * namespace silently becomes ESM: a CommonJS stdio server spelled
+ * `node ${PLUGIN_ROOT}/server.js` dies on first launch with `require is not
+ * defined`, having been reported emitted at build time.
+ *
+ * `"commonjs"` is not a preference. It is Node's own default for a `.js` file
+ * with no manifest above it, which is precisely what the source had before
+ * projection -- the boundary restores the semantics, it does not pick them.
+ */
+const PACKAGE_BOUNDARY_PATH = `${PACKAGE_DIR}/package.json`;
+const PACKAGE_BOUNDARY = `${JSON.stringify({ type: "commonjs" }, null, 2)}\n`;
 /**
  * The launcher and its servers document, a sibling of the package rather than
  * inside it: everything under `package/` is the author's namespace, and the
  * example already ships a root `runtime/` directory.
  */
-const LAUNCHER_DIR = `${PLUGIN_DIR}/hooknostic-runtime`;
+const LAUNCHER_DIR = "hooknostic-runtime";
 const LAUNCHER_PATH = `${LAUNCHER_DIR}/${MCP_LAUNCHER_FILE}`;
 const LAUNCHER_SERVERS_PATH = `${LAUNCHER_DIR}/${MCP_SERVERS_FILE}`;
 const PORTABLE_MCP_PATH = "mcp.json";
@@ -152,11 +186,16 @@ export function translateMcp(
 /**
  * Source for the module that contributes the package's components.
  *
- * OpenCode has no manifest for a project plugin, so this file IS the plugin: it
- * declares the servers and the skills directory through the `config` hook, which
- * receives the merged configuration and mutates it. `skills.paths` adds to the
- * default discovery directories rather than replacing them, and a plugin's entry
- * merges with any the project configured -- both measured.
+ * OpenCode reads no component declarations from a package manifest, so this
+ * module is where they live: it declares the servers and the skills directory
+ * through the `config` hook, which receives the merged configuration and mutates
+ * it. `skills.paths` adds to the default discovery directories rather than
+ * replacing them, and a plugin's entry merges with any the project configured --
+ * both measured.
+ *
+ * It is one of the two plugins the generated entry re-exports, not the whole
+ * plugin: identity belongs to `package.json` (ADR-0011, eleventh amendment) and
+ * the compiled hooks are the other export.
  */
 function injectorSource(
   manifest: AgentPluginPackage["manifest"],
@@ -170,13 +209,16 @@ function injectorSource(
   };
   // EVERY export of a plugin module is loaded as a plugin -- a non-function
   // export fails the whole module with "Plugin export is not a function" -- so
-  // the package identity is a comment rather than the named export it wants to
-  // be. OpenCode has no consumer for it either way.
+  // identity is echoed as a comment rather than the named export it wants to be.
+  // The authoritative copy is the emitted package.json, which is why
+  // `agent-plugin.manifest` rates exact here; this echo exists so the generated
+  // module still says where it came from when read on its own. Both are written
+  // from this same manifest in one build, so they cannot disagree.
   return [
     "// Generated by Hooknostic from an Agent Plugins 1.0 package. Do not edit.",
     "//",
-    "// Agent Plugins package identity, which OpenCode's project-plugin model has",
-    "// nowhere to put:",
+    "// Agent Plugins package identity, echoing the emitted package.json, which",
+    "// is where OpenCode actually reads it from:",
     // U+2028 and U+2029 are JavaScript line terminators that JSON.stringify
     // leaves literal, and `description` and `version` are unconstrained strings
     // -- so without escaping them a package's metadata ends the `//` comment and
@@ -202,8 +244,10 @@ function injectorSource(
     "// The walk is structural. A JSON round-trip would corrupt a Windows plugin",
     "// root, whose backslashes are not valid JSON escapes.",
     "//",
-    "// The package sits one level down, out of the flat plugin scan; that",
-    "// directory, not this module's, is what ${PLUGIN_ROOT} means.",
+    "// The package sits one level down so the author's namespace cannot collide",
+    "// with a generated root name such as the entry module; nothing scans a",
+    "// package's interior, so the flat-scan rule that shapes project delivery",
+    "// does not apply here. That directory, not this module's, is ${PLUGIN_ROOT}.",
     "const here = dirname(fileURLToPath(import.meta.url));",
     'const pluginRoot = join(here, "package");',
     `const launcher = join(here, "hooknostic-runtime", ${JSON.stringify(MCP_LAUNCHER_FILE)});`,
@@ -272,6 +316,49 @@ function injectorSource(
  * - The scan is flat: two sibling modules both loaded, while modules one level
  *   deeper and in a neighbouring directory did not.
  */
+/**
+ * The npm manifest that makes the output a package rather than a directory.
+ *
+ * `exports["./server"]` is what selects the entry: measured on 1.18.30 to be
+ * preferred over `main` when the two name different files. `main` is emitted
+ * beside it so the directory is still a well-formed package for tooling that
+ * predates `exports`, and because OpenCode's own manifest reader accepts either.
+ *
+ * `files` is deliberately explicit. A package published from this output should
+ * carry the generated modules, the launcher and the copied package, and nothing
+ * else the author happens to leave in the directory.
+ */
+function packageManifest(
+  manifest: AgentPluginPackage["manifest"],
+  options: { hooks: boolean; launcher: boolean },
+): string {
+  // Every portable identity field has an npm equivalent, so all of them survive
+  // rather than only the three a generated comment could carry. `extensions` is
+  // deliberately absent: it is the client-extension component's concern, which
+  // OpenCode does not read, not the manifest's.
+  const document = {
+    name: manifest.name,
+    ...(manifest.version === undefined ? {} : { version: manifest.version }),
+    ...(manifest.description === undefined ? {} : { description: manifest.description }),
+    ...(manifest.author === undefined ? {} : { author: manifest.author }),
+    ...(manifest.homepage === undefined ? {} : { homepage: manifest.homepage }),
+    ...(manifest.repository === undefined ? {} : { repository: manifest.repository }),
+    ...(manifest.license === undefined ? {} : { license: manifest.license }),
+    ...(manifest.keywords === undefined ? {} : { keywords: manifest.keywords }),
+    type: "module" as const,
+    main: `./${ENTRY_PATH}`,
+    exports: { "./server": `./${ENTRY_PATH}` },
+    files: [
+      ENTRY_PATH,
+      ...(options.hooks ? [PACKAGE_PLUGIN_PATH] : []),
+      INJECTOR_PATH,
+      ...(options.launcher ? [LAUNCHER_DIR] : []),
+      PACKAGE_DIR,
+    ],
+  };
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
 export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // OpenCode reads no reverse-DNS client-extension namespace.
   namespace: "",
@@ -280,11 +367,11 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     {
       range: ">=1.18 <2",
       components: {
-        "agent-plugin.manifest": {
-          level: "emulated",
-          rationale:
-            "A project plugin is resolved by path and has no manifest, so name, version and description survive only as a comment in the generated module. They cannot be a named export: every export of a plugin module is loaded as a plugin, and a non-function one fails the whole module.",
-        },
+        // Package delivery emits an npm manifest, so every portable identity
+        // field has a real home rather than surviving as a comment. The one
+        // manifest member with no npm equivalent, `extensions`, belongs to the
+        // client-extension component, which OpenCode does not read at all.
+        "agent-plugin.manifest": { level: "exact" },
         "agent-plugin.skills": { level: "exact" },
         "agent-plugin.mcp.stdio": {
           level: "emulated",
@@ -304,12 +391,40 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "A project plugin is loaded from disk with no install step, so a declared npm manifest and lockfile have nothing to install them.",
+            "Nothing installs a declared manifest on either route OpenCode offers. A package named by a local path in opencode.json is loaded, not installed, and its declared dependencies do not resolve; a module in .opencode/plugins/ is read from disk with no install step at all. Whether installing a PUBLISHED module by name installs its closure is a third route and is not probed. Ordinary Node resolution does apply, so a node_modules beside the module would resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
         },
       },
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "1.18.31",
+            date: "2026-09-15",
+            method: "live-probe",
+            artifact: ".capture/harness-playback",
+            what: 'What this projector EMITS is an installable unit, not merely the route it targets: a projected package written outside the project and named by absolute path in a root opencode.json loaded through its generated exports["./server"] entry, and the component injector reached through that entry\'s re-export started the stdio server through the generated launcher -- ${PLUGIN_ROOT} resolved to the nested author package, ${PLUGIN_DATA} to a directory outside both the package and the project, and the declared cwd anchored inside the package. The 1.18.30 records below establish that such a directory loads; this establishes that the build produces one.',
+          },
+          {
+            version: "1.18.31",
+            date: "2026-09-15",
+            method: "live-probe",
+            artifact: ".capture/opencode-plugin-routes",
+            what: 'A relative plugin entry resolves against the declaring config file\'s own directory, from a matched pair against a ROOT opencode.json naming "./plugin-package": the package at <project>/plugin-package loaded, the same package at <project>/.opencode/plugin-package did not. This is the same rule the 1.18.30 .opencode/opencode.json observation shows, seen from a config file in a different directory, and upstream closed a report of it as intended (anomalyco/opencode#28384) -- so it is a rule an author writes against, not a defect awaiting a fix.',
+          },
+          {
+            version: "1.18.30",
+            date: "2026-09-15",
+            method: "live-probe",
+            artifact: ".capture/opencode-plugin-routes",
+            what: 'A local directory declaring exports["./server"] loads as a plugin with no registry publication, and that condition is preferred over `main` when the two name different files -- so an emitted npm package is a real installable unit and its manifest is read, not decorative.',
+          },
+          {
+            version: "1.18.30",
+            date: "2026-09-15",
+            method: "live-probe",
+            artifact: ".capture/opencode-plugin-routes",
+            what: "Two distinct functions exported from one entry module are each loaded exactly once, while one function exported as both a named export and `default` is loaded once rather than twice -- which is what lets a single package entry re-export the hook plugin and the component injector.",
+          },
           {
             version: "1.18.29",
             date: "2026-09-08",
@@ -375,6 +490,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     },
   ],
   project: async (source, context): Promise<AgentPluginProjectionPlan> => {
+    assertPackageDelivery("opencode", context.target.delivery);
     const issues: AgentPluginIssue[] = [];
     const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
     const files: AgentPluginProjectionFile[] = [];
@@ -394,6 +510,12 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       const path = `${PACKAGE_DIR}/${file.path}`;
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
+    }
+    // Only when the author shipped no manifest of their own: theirs is already
+    // the boundary, and whatever module system it declares is theirs to declare.
+    const authorsBoundary = copiedPaths.includes(PACKAGE_BOUNDARY_PATH);
+    if (!authorsBoundary) {
+      files.push({ path: PACKAGE_BOUNDARY_PATH, contents: PACKAGE_BOUNDARY });
     }
     // Staging creates parents for emitted files only, so a directory with no
     // files in it -- a server's `cwd`, say -- exists in the package and not in
@@ -420,6 +542,31 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       path: INJECTOR_PATH,
       contents: injectorSource(source.manifest, servers, source.skills.length > 0),
     });
+    // Either half can be absent: a config needs only one of `entry` or
+    // `components`. An entry importing a module the build never produced fails
+    // the whole plugin, so the skills and MCP servers below would go with it.
+    const hasHooks = context.hookArtifacts.some((artifact) => artifact.path === PACKAGE_PLUGIN_PATH);
+    files.push({ path: ENTRY_PATH, contents: packageEntrySource({ hooks: hasHooks, components: true }) });
+    // The package name is the manifest name verbatim. Coercing an invalid one
+    // would publish under a name the author never chose and never sees, so an
+    // Agent Plugins name that npm would reject is an error here rather than a
+    // silent rewrite.
+    const nameProblem = packageNameProblem(source.manifest.name);
+    if (nameProblem !== undefined) {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.manifest",
+        path: MANIFEST_PATH,
+        message:
+          `package delivery emits an npm package, and manifest name ` +
+          `${JSON.stringify(source.manifest.name)} is not a valid npm package name: ${nameProblem}.`,
+      });
+    }
+    files.push({
+      path: MANIFEST_PATH,
+      contents: packageManifest(source.manifest, { hooks: hasHooks, launcher: launcherServers.length > 0 }),
+    });
     if (launcherServers.length > 0) {
       const document: McpLauncherDocument = {
         plugin: source.manifest.name,
@@ -441,8 +588,21 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     }
 
     const copied = new Set(copiedPaths);
-    const generated = new Set([INJECTOR_PATH, LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]);
+    const generated = new Set([
+      INJECTOR_PATH,
+      LAUNCHER_PATH,
+      LAUNCHER_SERVERS_PATH,
+      ...(authorsBoundary ? [] : [PACKAGE_BOUNDARY_PATH]),
+    ]);
+    // The compiler emits a standalone entry and manifest so a hooks-only
+    // package is loadable without a projector. Here one ran, and it knows
+    // strictly more -- the package manifest's identity, and whether an injector
+    // exists -- so its versions replace them. They are not dropped: this
+    // projection already pushed a file at each path, which is what core
+    // verifies.
+    const replaced = new Set([ENTRY_PATH, MANIFEST_PATH]);
     for (const file of context.hookArtifacts) {
+      if (replaced.has(file.path)) continue;
       if (copied.has(file.path) || generated.has(file.path)) {
         issues.push({
           severity: "error",
@@ -469,7 +629,8 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     if (context.runtimePackage !== undefined) {
       omissions.push({
         component: "agent-plugin.runtime-package",
-        reason: "a project plugin is loaded from disk, so nothing installs its npm dependencies",
+        reason:
+          "this projection emits an npm package that is loaded from a local path rather than installed, so nothing acts on its manifest or lockfile; bundle the dependencies instead",
       });
     }
 

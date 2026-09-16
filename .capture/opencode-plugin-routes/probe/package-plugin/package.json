@@ -1,0 +1,12 @@
+{
+  "name": "oc-pkg-probe-plugin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    "./server": "./index.js"
+  },
+  "dependencies": {
+    "is-number": "7.0.0"
+  }
+}
