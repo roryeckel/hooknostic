@@ -13,6 +13,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  materializedRuntimeFiles,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
@@ -521,6 +522,15 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       hoisted.add(path);
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
+    }
+
+    const materialized = materializedRuntimeFiles(context.materializedRuntimes, {
+      claimed: new Set(copiedPaths),
+    });
+    issues.push(...materialized.issues);
+    for (const file of materialized.files) {
+      files.push(file);
+      copiedPaths.push(file.path);
     }
 
     // Carried rather than dropped: a manifest declaring all of these installed

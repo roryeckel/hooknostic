@@ -17,5 +17,6 @@ export * from "./output-layout.js";
 
 export * from "./project-files.js";
 export * from "./project.js";
+export * from "./runtime.js";
 export * from "./project-components.js";
 export * from "./project-mcp-bootstrap.js";

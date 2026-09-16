@@ -10,6 +10,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  materializedRuntimeFiles,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
@@ -322,6 +323,10 @@ export async function projectAgentPluginToClaude(
     files.set(path, { path, contents: file.contents, mode: file.mode });
     copiedPaths.add(path);
   }
+
+  const materialized = materializedRuntimeFiles(context.materializedRuntimes, { claimed: copiedPaths });
+  issues.push(...materialized.issues);
+  for (const file of materialized.files) files.set(file.path, file);
 
   try {
     if (runtimePackage !== undefined) {

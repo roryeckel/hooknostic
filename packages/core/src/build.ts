@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { minimatch } from "minimatch";
@@ -18,6 +19,7 @@ import {
   type McpServerPrerequisites,
   packageComponents,
   type ProjectComponents,
+  type RuntimeDeclaration,
 } from "@hooknostic/agent-plugin";
 import { meetsMinimum, type ProjectMcpTargetOverride, type SupportLevel } from "@hooknostic/sdk";
 
@@ -44,6 +46,13 @@ import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
+import {
+  effectiveRuntimePackage,
+  type MaterializedRuntime,
+  materializeRuntimes,
+  runtimeSpellingProblem,
+  validateRuntimeDeclarations,
+} from "./runtime.js";
 
 export const HOOKNOSTIC_VERSION = "0.1.0";
 
@@ -481,6 +490,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const config = configResult.config;
 
   let components: AgentPluginPackage | undefined;
+  let materializedRuntimes: MaterializedRuntime[] = [];
   if (config.components?.root !== undefined) {
     const agentPluginRoot = resolve(configDir, config.components.root);
     const nativeProjectPaths =
@@ -526,6 +536,29 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       contentDigest: components.contentDigest,
       mcpServers: mcpPrerequisites(components.mcp),
     };
+
+    const spelling = runtimeSpellingProblem(config.components);
+    if (spelling !== undefined) diagnostics.push({ code: "HN501", severity: "error", message: spelling });
+    const declarations = (config.components.runtime ?? []) as RuntimeDeclaration[];
+    for (const problem of await validateRuntimeDeclarations(agentPluginRoot, declarations)) {
+      diagnostics.push({ code: "HN501", severity: "error", message: problem });
+    }
+    if (hasFatal(diagnostics)) return fail();
+
+    // Materialized runtimes are read into memory here and placed by each
+    // projector, never written into the package root: ADR-0011 keeps that root
+    // read-only input.
+    if (declarations.some((declaration) => declaration.delivery === "build-materialized")) {
+      const staging = await mkdtemp(join(tmpdir(), "hooknostic-runtime-"));
+      try {
+        const result = await materializeRuntimes({ root: agentPluginRoot, staging, declarations });
+        for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
+        materializedRuntimes = result.runtimes;
+      } finally {
+        await rm(staging, { recursive: true, force: true });
+      }
+      if (hasFatal(diagnostics)) return fail();
+    }
   }
 
   let componentSource: ProjectComponents | undefined;
@@ -611,7 +644,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         options.registry[config.targets[id]!.adapter ?? id]!,
         spec,
         config.components!.onUnsupported ?? "error",
-        config.components!.runtimePackage,
+        effectiveRuntimePackage(config.components!),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -619,7 +652,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         components,
         resolution,
         options.registry[config.targets[id]!.adapter ?? id]!.agentPluginProjector?.namespace,
-        config.components!.runtimePackage !== undefined,
+        effectiveRuntimePackage(config.components!) !== undefined,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
@@ -747,12 +780,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           // than a silently empty output if that invariant ever slips.
           if (projector === undefined)
             throw new Error(`adapter ${JSON.stringify(adapter.id)} has no Agent Plugin projector`);
+          const runtimePackage = effectiveRuntimePackage(config.components!);
           const plan = await projector.project(components, {
             target: spec,
             hookArtifacts,
-            ...(config.components!.runtimePackage === undefined
-              ? {}
-              : { runtimePackage: config.components!.runtimePackage }),
+            ...(runtimePackage === undefined ? {} : { runtimePackage }),
+            ...(materializedRuntimes.length === 0 ? {} : { materializedRuntimes }),
             support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.components!.onUnsupported ?? "error",
           });
@@ -903,7 +936,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               counted.emitted--;
               counted.skipped++;
             }
-            count("agent-plugin.runtime-package", config.components?.runtimePackage === undefined ? 0 : 1);
+            count(
+              "agent-plugin.runtime-package",
+              config.components === undefined || effectiveRuntimePackage(config.components) === undefined ? 0 : 1,
+            );
             const namespace = adapter.agentPluginProjector?.namespace;
             count(
               "agent-plugin.client-extension.files",

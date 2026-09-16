@@ -11,6 +11,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  materializedRuntimeFiles,
   packageNameProblem,
   packageVersionProblem,
 } from "@hooknostic/agent-plugin";
@@ -543,6 +544,18 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
     }
+    // `${PLUGIN_ROOT}` here is the nested package directory, so a materialized
+    // tree has to land inside it or nothing in mcp.json can name it.
+    const materialized = materializedRuntimeFiles(context.materializedRuntimes, {
+      prefix: `${PACKAGE_DIR}/`,
+      claimed: new Set(copiedPaths),
+    });
+    issues.push(...materialized.issues);
+    for (const file of materialized.files) {
+      files.push(file);
+      copiedPaths.push(file.path);
+    }
+
     // Only when the author shipped no manifest of their own: theirs is already
     // the boundary, and whatever module system it declares is theirs to declare.
     const authorsBoundary = copiedPaths.includes(PACKAGE_BOUNDARY_PATH);

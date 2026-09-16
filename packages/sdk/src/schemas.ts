@@ -171,6 +171,21 @@ export const hooknosticConfigSchema = z
           })
           .strict()
           .optional(),
+        runtime: z
+          .array(
+            z
+              .object({
+                ecosystem: z.string().min(1),
+                manifest: z.string().min(1).optional(),
+                lockfile: z.string().min(1).optional(),
+                delivery: z.enum(["harness-installed", "build-materialized", "author-supplied"]),
+                into: z.string().min(1).optional(),
+                allowInstallScripts: z.array(z.string().min(1)).optional(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
         onUnsupported: z.enum(["error", "warn"]).optional(),
         onInvalid: z.enum(["error", "warn"]).optional(),
       })

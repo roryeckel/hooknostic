@@ -2,6 +2,7 @@ export * from "./component-counts.js";
 export * from "./load.js";
 export * from "./placeholders.js";
 export * from "./prerequisites.js";
+export * from "./runtime/placement.js";
 export * from "./runtime/portability.js";
 export * from "./runtime/providers.js";
 export * from "./runtime-package.js";

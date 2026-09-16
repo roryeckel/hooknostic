@@ -81,6 +81,21 @@ export interface TargetConfig {
  * Source files for a Node.js runtime package. Projectors choose how, or whether,
  * a target can materialize this input.
  */
+/** One declared runtime dependency set; see `ComponentPolicy.runtime`. */
+export interface AgentPluginRuntimeConfig {
+  /** `npm`, `pypi`, `nuget`, `cargo`, `golang`. */
+  ecosystem: string;
+  /** Dependency manifest, relative to the Agent Plugin root. */
+  manifest?: string;
+  /** Lockfile, relative to the Agent Plugin root. */
+  lockfile?: string;
+  delivery: "harness-installed" | "build-materialized" | "author-supplied";
+  /** Where a materialized tree is written, relative to the target output. */
+  into?: string;
+  /** npm only; see `AgentPluginRuntimePackageConfig.allowInstallScripts`. */
+  allowInstallScripts?: string[];
+}
+
 export interface AgentPluginRuntimePackageConfig {
   /** Package manifest, relative to the Agent Plugin root. */
   manifest: string;
@@ -90,7 +105,7 @@ export interface AgentPluginRuntimePackageConfig {
    * Dependency names allowed to declare an npm lifecycle install script.
    *
    * This does not make the script run: the harness installs with scripts
-   * disabled, and Hooknostic never invokes a package manager. It records that
+   * disabled, and Hooknostic performs no npm install of its own. It records that
    * you have verified the named package works without its script — a
    * `postinstall` that only prints, or a build step that falls back to a
    * prebuilt binary shipped in the tarball. Anything that genuinely needs its
@@ -131,6 +146,25 @@ interface ComponentPolicy<TTarget extends string> {
   exclude?: string[];
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
+  /**
+   * What an MCP server needs at run time, declared per ecosystem.
+   *
+   * The generalization of `runtimePackage`, which is the `npm` +
+   * `harness-installed` case and still works as a shorthand for it. Which
+   * deliveries an ecosystem can offer is a property of the ecosystem:
+   *
+   * - `harness-installed` needs a harness that installs. Only Claude does, and
+   *   only for npm (ADR-0012).
+   * - `build-materialized` has Hooknostic run a locked, script-free install at
+   *   build time and commit the result into `into`. Admissible only where the
+   *   produced bytes are the same on every machine, which is verified rather
+   *   than trusted -- an artifact is built once and installed anywhere
+   *   (ADR-0006), so a tree containing a native object is refused.
+   * - `author-supplied` is a vendored tree or prebuilt binary already in the
+   *   package. It is the only delivery a native toolchain such as cargo or go
+   *   can offer, because its output is one platform's.
+   */
+  runtime?: AgentPluginRuntimeConfig[];
   /** Whether a valid but unrepresentable component fails or degrades the build. Default `"error"`. */
   onUnsupported?: "error" | "warn";
   /**

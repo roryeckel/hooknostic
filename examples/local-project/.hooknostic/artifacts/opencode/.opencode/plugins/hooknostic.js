@@ -4456,6 +4456,14 @@ var hooknosticConfigSchema = external_exports.object({
       lockfile: external_exports.string().min(1),
       allowInstallScripts: external_exports.array(external_exports.string().min(1)).optional()
     }).strict().optional(),
+    runtime: external_exports.array(external_exports.object({
+      ecosystem: external_exports.string().min(1),
+      manifest: external_exports.string().min(1).optional(),
+      lockfile: external_exports.string().min(1).optional(),
+      delivery: external_exports.enum(["harness-installed", "build-materialized", "author-supplied"]),
+      into: external_exports.string().min(1).optional(),
+      allowInstallScripts: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict()).min(1).optional(),
     onUnsupported: external_exports.enum(["error", "warn"]).optional(),
     onInvalid: external_exports.enum(["error", "warn"]).optional()
   }).strict().optional()
