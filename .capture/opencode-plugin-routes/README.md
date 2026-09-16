@@ -90,7 +90,11 @@ unversioned, and breaks when the harness changes its own graph.
 |---|---|---|---|
 | Project plugin | file in `.opencode/plugins/` | yes | no install step exists |
 | **Local-path package** | `plugin: ["./dir"]` in `opencode.json` | **yes** | **no** |
-| Registry module | `plugin: ["<name>"]` via `opencode plugin` | not probed | not probed |
+| Registry module | `plugin: ["<name>"]` via `opencode plugin` | not probed here | not probed here |
+
+> The registry route was probed later and behaves differently from both
+> rows above: it loads, and it **does** install the dependency closure.
+> See [`.capture/opencode-npm-publish`](../opencode-npm-publish/README.md).
 
 **`opencode plugin <module>` accepts a local directory path, not only a
 published module.** `opencode plugin ./pkg-probe` reported "Plugin package

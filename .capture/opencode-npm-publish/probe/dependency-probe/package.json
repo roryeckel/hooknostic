@@ -1,0 +1,16 @@
+{
+  "name": "hooknostic-oc-npm-probe",
+  "version": "1.0.0",
+  "description": "Capture-only probe: does an OpenCode plugin installed from a registry resolve its declared dependencies?",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    "./server": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "is-number": "7.0.0"
+  }
+}
