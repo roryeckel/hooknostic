@@ -13,7 +13,7 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
 } from "@hooknostic/agent-plugin";
-import type { McpLauncherDocument } from "@hooknostic/core";
+import type { McpLauncherDocument, TargetSpec } from "@hooknostic/core";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
@@ -64,7 +64,7 @@ const HOOK_ARTIFACTS = [
 
 // Defaults to none: a config may declare `components` without an `entry`, and
 // that shape has to keep working.
-const projectAs = (pkg: AgentPluginPackage, overrides: Partial<typeof target>) =>
+const projectAs = (pkg: AgentPluginPackage, overrides: Partial<TargetSpec>) =>
   opencodeAgentPluginProjector.project(pkg, {
     target: { ...target, ...overrides },
     hookArtifacts: [],

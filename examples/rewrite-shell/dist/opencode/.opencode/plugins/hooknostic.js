@@ -4428,6 +4428,7 @@ var targetConfigSchema = external_exports.object({
   version: external_exports.string().min(1),
   delivery: external_exports.enum(["package", "project"]),
   output: external_exports.string().min(1),
+  npmName: external_exports.string().min(1).optional(),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var projectMcpServerOverrideSchema = external_exports.object({
@@ -4476,6 +4477,15 @@ var hooknosticConfigSchema = external_exports.object({
     if (projectAdapters.has(adapter))
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
     projectAdapters.add(adapter);
+  }
+  for (const [name, target] of Object.entries(config.targets)) {
+    if (target.npmName !== void 0 && target.delivery !== "package") {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["targets", name, "npmName"],
+        message: `npmName requires package delivery`
+      });
+    }
   }
   const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
   if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
