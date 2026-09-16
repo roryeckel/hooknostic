@@ -120,15 +120,71 @@ copied plugin cannot reach files outside its own directory.
 
 ### MCP runtime dependencies
 
-Hooknostic bundles hook runtimes, but an MCP server can have ordinary Node.js
-dependencies. Configure `components.runtimePackage` with a dedicated runtime
-manifest and npm lockfile. Claude projection emits those files as
+Hooknostic bundles hook runtimes, but an MCP server has dependencies of its own,
+in whatever language it is written. Declare them with `components.runtime`, one
+entry per ecosystem, each naming how they reach the machine that runs the
+server — see [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the rule
+that decides which options an ecosystem has.
+
+| Delivery | Who installs | Available to |
+| --- | --- | --- |
+| `harness-installed` | the harness, in its own cache | npm, on Claude only |
+| `build-materialized` | Hooknostic, at build time, committed into the package | any ecosystem whose installed output is the same bytes everywhere |
+| `author-supplied` | nobody — it is already in the package | every ecosystem |
+
+A Python server whose dependencies are pure wheels declares:
+
+```ts
+components: {
+  root: ".",
+  runtime: [
+    {
+      ecosystem: "pypi",
+      delivery: "build-materialized",
+      lockfile: "./runtime/requirements.txt",
+      into: "runtime/pypi",
+    },
+  ],
+}
+```
+
+`runtime/requirements.txt` is a hash-pinned lock — `uv pip compile
+--generate-hashes` produces one. At build time Hooknostic runs the install with
+`--require-hashes` and `--only-binary=:all:` (that second flag is this
+ecosystem's `--ignore-scripts`: a source distribution executes its setup code at
+install time and a wheel does not), then **verifies the result is
+platform-independent before committing it**. A distribution carrying a compiled
+extension is refused with the file named, because an artifact built once and
+installed anywhere (ADR-0006) cannot contain one platform's binary. The
+installer's own console-script launchers are dropped for the same reason.
+
+Point the server at the tree from `mcp.json`, where `${PLUGIN_ROOT}` already
+expands in `env` values:
+
+```json
+{ "command": "python3", "args": ["${PLUGIN_ROOT}/server.py"],
+  "env": { "PYTHONPATH": "${PLUGIN_ROOT}/runtime/pypi" } }
+```
+
+A Rust or Go server cannot use `build-materialized`, because its build output is
+one native binary per target triple. It ships the binaries itself as ordinary
+package content — declared in `components.executableFiles` so they arrive
+executable — or is declared as a runner command such as `docker`. `cargo` and
+`golang` are listed in the provider table with that reason, so a build says so
+rather than reporting an unknown ecosystem.
+
+#### The npm case
+
+`components.runtimePackage` is the shorthand for `npm` + `harness-installed`,
+and still works. Configure it with a dedicated runtime manifest and npm
+lockfile. Claude projection emits those files as
 `dist/claude/package.json` and `dist/claude/package-lock.json`; when it creates
 the marketplace cache entry, Claude runs its own locked `npm ci --ignore-scripts`.
 
 Keep this manifest separate from the project manifest used to build Hooknostic:
 it must contain only MCP runtime dependencies. Do not commit `node_modules` to
-the artifact. This path supports pure-JavaScript npm packages. Dependencies that
+the artifact. This path supports pure-JavaScript npm packages, and only Claude
+honours it — no other harness installs anything. Dependencies that
 need lifecycle scripts or native compilation are outside the contract, as are
 pnpm and Yarn lockfiles. A dependency whose lockfile entry declares
 `hasInstallScript` fails `check`: Claude's install skips lifecycle scripts

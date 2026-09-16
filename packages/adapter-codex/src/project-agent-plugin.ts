@@ -290,7 +290,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
+            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. What replaces it is not npm-shaped: Node code is bundled, a portable ecosystem can declare components.runtime with build-materialized delivery and have its locked install committed into the package, and anything whose output is built for one platform ships as author-supplied content, which is copied verbatim.",
         },
       },
       source: {

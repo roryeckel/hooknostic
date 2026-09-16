@@ -63,6 +63,13 @@ is not configured, or a config with neither `entry` nor `components`, is an edit
 error before it is a build error.
 
 The source package's `package.json` is for building this example. `runtimePackage`
+is the npm case of `components.runtime`, which declares what an MCP server needs at run
+time in whatever ecosystem it belongs to — a Python server materializes a locked,
+verified wheel-only tree into the package at build time, and a Rust or Go one ships its
+prebuilt binaries as package content. See
+[ADR-0017](../decisions/0017-mcp-runtime-dependencies.md) and the
+[MCP runtime dependencies](../installing-artifacts.md#mcp-runtime-dependencies) section.
+For npm, `runtimePackage`
 keeps the MCP server's production dependencies separate: Claude projection writes the
 configured manifest and npm lockfile as `dist/claude/package.json` and
 `dist/claude/package-lock.json`. On marketplace installation, Claude runs the locked,
