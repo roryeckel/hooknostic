@@ -208,6 +208,54 @@ async function validateDirectMcpPaths(
   }
 }
 
+/**
+ * A `./` command must name a file the package ships, with the executable bit.
+ *
+ * Both halves are invisible today. Containment is checked lexically by
+ * `containedPortablePath`, so a command naming no file at all validates and
+ * projects happily, then fails at spawn on the consumer's machine; and
+ * inventory assigns 0644 to everything except the paths
+ * `components.executableFiles` names (ADR-0013), so a server that *is* its own
+ * binary or script ships unable to run.
+ *
+ * A server whose command is an interpreter -- `node`, `python3`, `uvx`,
+ * `docker` -- reaches neither check, because its entry travels as an argument
+ * and an argument needs no permission. That asymmetry is the reason this exists:
+ * it is the one shape where a Node server is structurally safe and a compiled
+ * or scripted one is not.
+ *
+ * Host permissions are deliberately not consulted. ADR-0013 makes the
+ * declaration the source of truth, and a package built on Windows -- where the
+ * bit has no meaning -- must still be refused rather than ship an artifact whose
+ * behaviour depends on where it was built.
+ */
+function checkContainedCommands(
+  config: AgentPluginMcpConfig,
+  files: readonly AgentPluginFile[],
+  issues: AgentPluginIssue[],
+): void {
+  for (const [name, server] of Object.entries(config.mcpServers)) {
+    if (server.type !== "stdio" || !server.command.startsWith("./")) continue;
+    const path = server.command.slice(2);
+    const file = files.find((candidate) => candidate.path === path);
+    const problem =
+      file === undefined
+        ? "which the package does not contain"
+        : (file.mode & 0o111) === 0
+          ? `which is not executable -- add ${JSON.stringify(path)} to components.executableFiles`
+          : undefined;
+    if (problem === undefined) continue;
+    issue(
+      issues,
+      "warn",
+      "mcp",
+      `MCP stdio server ${JSON.stringify(name)} runs ${JSON.stringify(server.command)}, ${problem}. It was skipped.`,
+      `mcp.json#/mcpServers/${name}`,
+    );
+    delete config.mcpServers[name];
+  }
+}
+
 function validHeaders(value: unknown): value is Record<string, string> {
   if (value === undefined) return true;
   if (!object(value)) return false;
@@ -493,9 +541,26 @@ async function inventory(
     logical: string,
     ancestors: ReadonlySet<string>,
   ): Promise<void> => {
-    const resolved = await realpath(physical);
+    let resolved: string;
+    try {
+      resolved = await realpath(physical);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      throw new Error(
+        `${logical || "."} is a broken symbolic link. Remove it, or add it to components.exclude ` +
+          `if it is machine-local state rather than package content.`,
+      );
+    }
     if (!contained(canonicalRoot, resolved)) {
-      throw new Error(`${logical || "."} resolves outside the Agent Plugin root`);
+      // Nearly always a machine-local tree that pins an absolute path: a
+      // virtualenv's interpreter link, a toolchain cache. The default
+      // exclusions cover the names we know, but they cannot know every
+      // ecosystem's, so the remedy is named rather than left to be guessed --
+      // the other reading of this message ("my package is malformed") is wrong.
+      throw new Error(
+        `${logical || "."} resolves outside the Agent Plugin root. Add it to components.exclude ` +
+          `if it is machine-local state rather than package content.`,
+      );
     }
     // Exclusions were matched on the logical name before descending; a link
     // whose target is excluded (`notes.txt -> .env`, `lib -> node_modules/x`)
@@ -558,13 +623,33 @@ function digest(files: readonly AgentPluginFile[]): string {
 
 /**
  * Names never inventoried, at any depth: version control, installed
- * dependencies, and environment/registry secrets. A package that ships
- * `node_modules` or `.env` is never what an author meant to distribute.
+ * dependencies, build caches, and environment/registry secrets. A package that
+ * ships `node_modules` or `.env` is never what an author meant to distribute.
+ *
+ * The non-npm entries are here for the same reason `node_modules` is, and one
+ * more: a virtualenv's `bin/python` is a symlink to the interpreter that built
+ * it, which escapes the package root and makes `inventory` fail the whole
+ * package rather than skip a directory nobody meant to ship.
+ *
+ * `vendor` and `target` are deliberately absent. Go's `vendor/` is meant to be
+ * committed, and a prebuilt binary under `target/` is how a Rust or Go server
+ * supplies its own runtime -- excluding either would break the one delivery
+ * route those ecosystems have. The rule is "machine-local state that pins an
+ * absolute path", not "anything a package manager wrote".
  */
 export const AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES = [
   ".git",
   ".hooknostic",
   "node_modules",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "*.pyc",
+  ".tox",
+  ".nox",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
   ".env",
   ".env.*",
   ".npmrc",
@@ -643,6 +728,10 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
 
   const skills = loadSkills(inventoried, issues);
   const mcp = loadMcp(root, inventoried, issues);
+  // Only the package route: the direct route hands `loadMcp` a synthetic
+  // one-file inventory, and `validateDirectMcpPaths` already resolves its
+  // commands against the real filesystem instead.
+  if (mcp !== undefined) checkContainedCommands(mcp, inventoried.files, issues);
   const files = inventoried.files;
   const directories = [...inventoried.directories].filter((path) => path !== "").sort();
   const source: AgentPluginPackage = {
