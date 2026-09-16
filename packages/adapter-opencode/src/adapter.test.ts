@@ -254,6 +254,25 @@ describe("generateOpenCodeArtifacts", () => {
     expect(artifacts.map((a) => a.path)).toEqual([".opencode/plugins/hooknostic.js"]);
   });
 
+  it("names a hooks-only package by the target's npm coordinate", () => {
+    const manifestOf = (npmName?: string) =>
+      JSON.parse(
+        String(
+          generateOpenCodeArtifacts(
+            exampleIR(),
+            { ...TARGET, delivery: "package", ...(npmName === undefined ? {} : { npmName }) },
+            { code: "export const HooknosticPlugin = async () => ({});" },
+          ).find((artifact) => artifact.path === "package.json")!.contents,
+        ),
+      ) as Record<string, unknown>;
+
+    // A hooks-only package emits its manifest here rather than through the
+    // projector, so the coordinate has to reach both paths or publishing a
+    // plugin without components would silently fall back to the plugin name.
+    expect(manifestOf("@fundview/example-opencode")["name"]).toBe("@fundview/example-opencode");
+    expect(manifestOf()["name"]).toBe(exampleIR().name);
+  });
+
   it("emits a loadable package for package delivery with no components", () => {
     // `components.root` is optional, and without it the Agent Plugin projector
     // never runs. Emitting the bundle alone would leave a bare module at the

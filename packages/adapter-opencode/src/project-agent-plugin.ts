@@ -341,14 +341,14 @@ function unpublishableVersion(version: string | undefined): string | undefined {
  */
 function packageManifest(
   manifest: AgentPluginPackage["manifest"],
-  options: { hooks: boolean; launcher: boolean },
+  options: { name: string; hooks: boolean; launcher: boolean },
 ): string {
   // Every portable identity field has an npm equivalent, so all of them survive
   // rather than only the three a generated comment could carry. `extensions` is
   // deliberately absent: it is the client-extension component's concern, which
   // OpenCode does not read, not the manifest's.
   const document = {
-    name: manifest.name,
+    name: options.name,
     ...(manifest.version === undefined ? {} : { version: manifest.version }),
     ...(manifest.description === undefined ? {} : { description: manifest.description }),
     ...(manifest.author === undefined ? {} : { author: manifest.author }),
@@ -583,7 +583,12 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // would publish under a name the author never chose and never sees, so an
     // Agent Plugins name that npm would reject is an error here rather than a
     // silent rewrite.
-    const nameProblem = packageNameProblem(source.manifest.name);
+    // The target's coordinate when it declares one, because an Agent Plugins
+    // name cannot be scoped and a scoped package is what an organisation
+    // publishes. Whichever is used is the name npm will see, so that is the one
+    // checked.
+    const npmName = context.target.npmName ?? source.manifest.name;
+    const nameProblem = packageNameProblem(npmName);
     if (nameProblem !== undefined) {
       issues.push({
         severity: "error",
@@ -591,8 +596,9 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         component: "agent-plugin.manifest",
         path: MANIFEST_PATH,
         message:
-          `package delivery emits an npm package, and manifest name ` +
-          `${JSON.stringify(source.manifest.name)} is not a valid npm package name: ${nameProblem}.`,
+          `package delivery emits an npm package, and ` +
+          `${context.target.npmName === undefined ? "manifest name" : "npmName"} ` +
+          `${JSON.stringify(npmName)} is not a valid npm package name: ${nameProblem}.`,
       });
     }
     // A version is optional on an Agent Plugins manifest and unconstrained when
@@ -615,7 +621,11 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     }
     files.push({
       path: MANIFEST_PATH,
-      contents: packageManifest(source.manifest, { hooks: hasHooks, launcher: launcherServers.length > 0 }),
+      contents: packageManifest(source.manifest, {
+        name: npmName,
+        hooks: hasHooks,
+        launcher: launcherServers.length > 0,
+      }),
     });
     if (launcherServers.length > 0) {
       const document: McpLauncherDocument = {

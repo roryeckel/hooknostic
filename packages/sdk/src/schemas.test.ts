@@ -171,6 +171,22 @@ describe("canonical schemas", () => {
       },
     };
     expect(hooknosticConfigSchema.parse(config).entry).toBe("./src/hooks.ts");
+    // An npm coordinate the Agent Plugins name grammar cannot spell.
+    expect(
+      hooknosticConfigSchema.parse({
+        ...config,
+        targets: { ...config.targets, claude: { ...config.targets.claude, npmName: "@scope/name" } },
+      }).targets.claude!.npmName,
+    ).toBe("@scope/name");
+    // Project delivery writes into a live repository: there is no package for a
+    // coordinate to name, so accepting it would be accepting a promise.
+    expect(() =>
+      hooknosticConfigSchema.parse({
+        entry: "./src/hooks.ts",
+        project: { root: "." },
+        targets: { claude: { version: ">=2.1 <3", delivery: "project", output: "./dist", npmName: "@scope/name" } },
+      }),
+    ).toThrow(/npmName requires package delivery/);
     expect(() => hooknosticConfigSchema.parse({ ...config, daemon: true })).toThrow();
     expect(() =>
       hooknosticConfigSchema.parse({

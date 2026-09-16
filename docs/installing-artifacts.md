@@ -293,10 +293,27 @@ The third route is publication. `npm publish` the output directory, then
 consumers run `opencode plugin <name>`; the package is fetched on first load
 into `<cache>/opencode/packages/<name>@latest/node_modules/<name>/` and read
 through `exports["./server"]`. Skills and MCP servers arrive with it, resolving
-their own assets at that cache location. Scoped names work — which matters,
-because the Agent Plugins manifest name cannot be one (`@` and `/` are outside
-the permitted character set), so the emitted `package.json` name is unscoped
-unless you rename it before publishing.
+their own assets at that cache location.
+
+**Name the package with `npmName`.** Scoped coordinates work on this route, and
+an Agent Plugins manifest name cannot be one — `@` and `/` are outside the
+grammar the specification permits — so the target declares it instead:
+
+```ts
+opencode: {
+  version: ">=1.18 <2",
+  delivery: "package",
+  output: "./dist/opencode",
+  npmName: "@acme/my-plugin-opencode",
+},
+```
+
+It is per target rather than per plugin because each target's output is a
+different npm package: an OpenCode package and a plugin directory are not
+interchangeable contents, so publishing two means two coordinates. Suffixing the
+harness keeps a plugin's packages together when sorted. Set it on a target whose
+output carries no npm manifest and the build refuses it rather than leaving a
+setting that quietly does nothing.
 
 **This is the only OpenCode route that installs a dependency closure.** A
 published package's declared `dependencies` do resolve, unlike on the local-path

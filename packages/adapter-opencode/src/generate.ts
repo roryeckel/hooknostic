@@ -39,9 +39,11 @@ export function packageEntrySource(options: { hooks: boolean; components: boolea
  * output would be a bare module OpenCode cannot load. Identity comes from the
  * plugin's own IR, which is all such a build has.
  */
-export function hooksOnlyManifest(plugin: PluginIR): string {
+export function hooksOnlyManifest(plugin: PluginIR, npmName?: string): string {
   const document = {
-    name: plugin.name,
+    // The target's coordinate when it has one: an Agent Plugins name cannot be
+    // scoped, so this is the only way a published package carries one.
+    name: npmName ?? plugin.name,
     ...(plugin.version === undefined ? {} : { version: plugin.version }),
     ...(plugin.description === undefined ? {} : { description: plugin.description }),
     type: "module" as const,
@@ -71,6 +73,6 @@ export function generateOpenCodeArtifacts(
   return [
     { path: PACKAGE_PLUGIN_PATH, contents: bundle.code },
     { path: PACKAGE_ENTRY_PATH, contents: packageEntrySource({ hooks: true, components: false }) },
-    { path: PACKAGE_MANIFEST_PATH, contents: hooksOnlyManifest(plugin) },
+    { path: PACKAGE_MANIFEST_PATH, contents: hooksOnlyManifest(plugin, target.npmName) },
   ];
 }

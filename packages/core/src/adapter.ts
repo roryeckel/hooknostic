@@ -28,6 +28,8 @@ export interface TargetSpec {
   version: string;
   delivery: "package" | "project";
   output: string;
+  /** npm coordinate for this target's output; see `TargetConfig.npmName`. */
+  npmName?: string;
 }
 
 export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSpec {
@@ -36,6 +38,7 @@ export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSp
     version: target.version,
     delivery: target.delivery,
     output: target.output,
+    ...(target.npmName === undefined ? {} : { npmName: target.npmName }),
   };
 }
 

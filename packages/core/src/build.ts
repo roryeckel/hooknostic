@@ -447,6 +447,18 @@ async function writeArtifacts(
   return dir;
 }
 
+/** The `name` an emitted npm manifest declares, or `undefined` if it declares none. */
+function npmManifestName(contents: string | Uint8Array): string | undefined {
+  const text = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+  try {
+    const parsed: unknown = JSON.parse(text);
+    const name = (parsed as { name?: unknown })?.name;
+    return typeof name === "string" ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function buildProject(options: BuildOptions): Promise<BuildResult> {
   const configPath = resolve(options.configPath);
   const configDir = dirname(configPath);
@@ -956,6 +968,25 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         phase = "validation";
+        // Checked by effect, not by asking the adapter whether it publishes:
+        // the question that matters is whether the coordinate actually reached
+        // the manifest npm will read. An adapter that gains npm packaging later
+        // satisfies this with no flag to remember to set.
+        if (spec.npmName !== undefined) {
+          const manifest = artifacts.find((artifact) => artifact.path === "package.json");
+          const declared = manifest === undefined ? undefined : npmManifestName(manifest.contents);
+          if (declared !== spec.npmName) {
+            diagnostics.push({
+              code: "HN501",
+              severity: "error",
+              target: id,
+              message:
+                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but its ` +
+                `${adapter.id} output carries no npm manifest under that name`,
+              remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
+            });
+          }
+        }
         const structural = validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories);
         diagnostics.push(...structural);
         if (hasFatal(structural)) {

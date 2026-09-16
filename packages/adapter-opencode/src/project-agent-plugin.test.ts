@@ -64,6 +64,14 @@ const HOOK_ARTIFACTS = [
 
 // Defaults to none: a config may declare `components` without an `entry`, and
 // that shape has to keep working.
+const projectAs = (pkg: AgentPluginPackage, overrides: Partial<typeof target>) =>
+  opencodeAgentPluginProjector.project(pkg, {
+    target: { ...target, ...overrides },
+    hookArtifacts: [],
+    support,
+    onUnsupported: "error",
+  });
+
 const project = (pkg: AgentPluginPackage, hookArtifacts: { path: string; contents: string }[] = []) =>
   opencodeAgentPluginProjector.project(pkg, {
     target,
@@ -340,6 +348,33 @@ describe("Agent Plugin to OpenCode projection", () => {
     // A registry-installed package IS installed, so the old explanation --
     // "loaded from a local path rather than installed" -- is now false.
     expect(omission?.reason).not.toContain("rather than installed");
+  });
+
+  it("publishes under the target's npm coordinate when it declares one", async () => {
+    const plan = await projectAs(source({}), { npmName: "@fundview/portable-tools-opencode" });
+    const manifest = JSON.parse(text(plan, "package.json")) as Record<string, unknown>;
+
+    // The Agent Plugins name grammar admits only [a-z0-9.-], so a scoped
+    // coordinate is unspellable there and this is the only route to one.
+    expect(manifest.name).toBe("@fundview/portable-tools-opencode");
+    // Identity the manifest CAN express is still the manifest's.
+    expect(manifest.version).toBe("1.2.3");
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
+  it("falls back to the manifest name when no coordinate is declared", async () => {
+    const plan = await project(source({}));
+    expect((JSON.parse(text(plan, "package.json")) as Record<string, unknown>).name).toBe("portable-tools");
+  });
+
+  it("checks the coordinate npm will actually see, and says which one it is", async () => {
+    const plan = await projectAs(source({}), { npmName: "@Scope/Not Valid" });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+    // Naming the manifest here would send the author to the wrong file.
+    expect(issue?.message).toContain("npmName");
+    expect(issue?.message).toContain('"@Scope/Not Valid"');
   });
 
   it("stays silent when the manifest carries a version npm would accept", async () => {

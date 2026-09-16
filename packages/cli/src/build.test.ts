@@ -1726,6 +1726,52 @@ ${run.stderr}`,
     expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
   });
 
+  it("refuses an npm coordinate the target's output never carries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-name-"));
+    cleanupDirs.push(dir);
+    const configPath = join(dir, "hooknostic.config.ts");
+    const entryPath = join(dir, "hooks.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          claude: {
+            version: "${claudeHarness.recommendedRange}",
+            delivery: "package",
+            output: "./dist/claude",
+            npmName: "@scope/never-published",
+          },
+        },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      entryPath,
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "named", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: configPath,
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    // Claude's package delivery emits no npm manifest, so the coordinate would
+    // have sat in the config doing nothing. Checked by effect: the question is
+    // whether it reached the manifest npm reads, not whether the adapter
+    // remembered to declare that it publishes.
+    expect(JSON.parse(capture.out()).diagnostics).toEqual([
+      expect.objectContaining({ code: "HN501", target: "claude" }),
+    ]);
+    expect(JSON.parse(capture.out()).diagnostics[0].message).toContain("@scope/never-published");
+  });
+
   it("rejects project-root output without deleting the config or hook source", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-unsafe-output-"));
     cleanupDirs.push(dir);
