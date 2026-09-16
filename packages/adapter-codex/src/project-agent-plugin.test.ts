@@ -16,7 +16,7 @@ import {
 import type { McpLauncherDocument } from "@hooknostic/core";
 import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
 
-import { codexAgentPluginProjector } from "./project-agent-plugin.js";
+import { CODEX_AGENT_PLUGIN_NAMESPACE, codexAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
 const file = (path: string): AgentPluginFile => ({
@@ -343,5 +343,135 @@ describe("Agent Plugin to Codex projection", () => {
       skipped: 0,
     });
     expect(manifestOf(plan)["skills"]).toBe("./skills/");
+  });
+});
+
+describe("Codex client extension", () => {
+  const withFiles = (pkg: AgentPluginPackage, extra: AgentPluginFile[]): AgentPluginPackage => ({
+    ...pkg,
+    files: [...pkg.files, ...extra],
+  });
+  const overlay = (path: string, contents: string): AgentPluginFile => ({
+    path,
+    contents: encoder.encode(contents),
+    mode: 0o644,
+  });
+  // The merge uses the constant, but component DISCOVERY uses the declared
+  // namespace: blank it and the projection still works while the capability
+  // matrix silently stops mentioning the component.
+  it("declares the namespace authors write in their manifest", () => {
+    expect(codexAgentPluginProjector.namespace).toBe(CODEX_AGENT_PLUGIN_NAMESPACE);
+    // Vendor-defined and load-bearing: it is the key in extensions{}.
+    expect(CODEX_AGENT_PLUGIN_NAMESPACE).toBe("com.openai");
+  });
+
+  // The documented form reaches nothing on its own -- 0.154.0 does not read the
+  // map (.capture/codex-client-extension) -- so carrying it into the generated
+  // manifest is the whole point of declaring a namespace here.
+  it("folds extensions[com.openai] into the native manifest", async () => {
+    const plan = await project(
+      source(
+        {},
+        {
+          extensions: {
+            "com.openai": {
+              interface: { displayName: "Portable Tools", brandColor: "#1ABCFE" },
+            },
+          },
+        },
+      ),
+    );
+
+    expect(manifestOf(plan).interface).toEqual({ displayName: "Portable Tools", brandColor: "#1ABCFE" });
+  });
+
+  it("never lets a client extension rewrite the package's identity", async () => {
+    const plan = await project(
+      source({}, { extensions: { "com.openai": { name: "impostor", version: "9.9.9", skills: "./elsewhere/" } } }),
+    );
+
+    // A renamed manifest would disagree with the marketplace entry that
+    // installed it, and the version is the install cache key.
+    const manifest = manifestOf(plan);
+    expect(manifest.name).toBe("portable-tools");
+    expect(manifest.version).toBe("1.2.3");
+    expect(manifest.skills).toBeUndefined();
+  });
+
+  it("hoists a namespace file to the package root", async () => {
+    const plan = await project(withFiles(source(), [file("com.openai/.app.json"), file("com.openai/assets/logo.png")]));
+
+    const paths = plan.files.map((candidate) => candidate.path);
+    expect(paths).toContain(".app.json");
+    expect(paths).toContain("assets/logo.png");
+    // Shipped one level down, nothing would read it.
+    expect(paths.filter((path) => path.startsWith("com.openai/"))).toEqual([]);
+    expect(plan.summary.copiedPaths).toContain(".app.json");
+  });
+
+  it("takes an overlay manifest as the base, under the inline map", async () => {
+    const plan = await project(
+      withFiles(source({}, { extensions: { "com.openai": { interface: { displayName: "from the map" } } } }), [
+        overlay(
+          "com.openai/.codex-plugin/plugin.json",
+          JSON.stringify({ interface: { displayName: "from the overlay" }, apps: "./.app.json" }),
+        ),
+      ]),
+    );
+
+    const manifest = manifestOf(plan);
+    // The inline map is the documented form, so it wins where they overlap...
+    expect(manifest.interface).toEqual({ displayName: "from the map" });
+    // ...and the overlay still supplies what the map does not mention.
+    expect(manifest.apps).toBe("./.app.json");
+    // The overlay is an input, never an emitted file at its hoisted path.
+    expect(plan.files.filter((candidate) => candidate.path.includes("com.openai"))).toEqual([]);
+  });
+
+  it("refuses a package that ships the manifest path this projection generates", async () => {
+    const plan = await project(withFiles(source(), [file(".codex-plugin/plugin.json")]));
+
+    // Always generated, so a copied one is guaranteed to be lost. Silently,
+    // until this check.
+    const issue = plan.issues.find((candidate) => candidate.path === ".codex-plugin/plugin.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("com.openai/.codex-plugin/plugin.json");
+    expect(diagnosticsFromAgentPluginIssues([issue!])[0]?.code).toBe("HN503");
+  });
+
+  it("refuses a hoisted file that lands on package content", async () => {
+    const plan = await project(withFiles(source(), [file("com.openai/src/server.mjs")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/src/server.mjs");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("already ships");
+  });
+
+  it("refuses a malformed overlay manifest rather than guessing at it", async () => {
+    const plan = await project(withFiles(source(), [overlay("com.openai/.codex-plugin/plugin.json", "{ not json")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/.codex-plugin/plugin.json");
+    expect(issue?.severity).toBe("error");
+  });
+
+  it("says out loud that a projection-owned key was ignored", async () => {
+    const plan = await project(
+      source({}, { extensions: { "com.openai": { skills: "./elsewhere/", interface: { displayName: "kept" } } } }),
+    );
+
+    // Dropped silently, an author would see their declaration vanish with no
+    // account of why.
+    const warning = plan.issues.find((candidate) => candidate.message.includes("this projection decides"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.message).toContain('"skills"');
+    expect(warning?.message).not.toContain('"interface"');
+    expect(manifestOf(plan).interface).toEqual({ displayName: "kept" });
+  });
+
+  it("leaves a package with no extension untouched", async () => {
+    const plan = await project(source());
+
+    expect(plan.issues).toEqual([]);
+    expect(manifestOf(plan)).toEqual({ name: "portable-tools", version: "1.2.3" });
   });
 });

@@ -58,23 +58,32 @@ anything read the namespace.
 does not reach the model. Convention cannot explain that row, and the map does
 not rescue it. This is the negative the other three rows needed.
 
-So on 0.154.0 the capability rating is right and its stated reason was wrong:
-not "Codex reads no portable namespace" as a property of the harness, but "the
-namespace the vendor documents is not honoured by the shipped binary, at least
-for the one key that can be observed without a model".
+So on 0.154.0 the measurement is narrow and definite: the namespace the vendor
+documents is not honoured by the shipped binary, for the one key that can be
+observed without a model. That is a fact about the harness. What follows from it
+is a design choice, and it is not the one the old rationale assumed -- see
+Consequences.
 
 ## Consequences
 
-- `agent-plugin.client-extension.files` stays `unsupported`, with a rationale
-  that says what was measured, names the version, and records that the
-  documentation says otherwise. A future release may make this false, which is
-  exactly why the version belongs in the sentence.
+- `agent-plugin.client-extension.files` becomes **`exact`** on Codex -- not
+  because the harness reads the map, but because this is precisely the gap a
+  compiler is for. The projector now declares `com.openai`, folds the map (and
+  an optional `.codex-plugin/plugin.json` overlay) into the native manifest it
+  generates, and hoists namespace files to the package root. An author writes
+  the documented, portable form and it arrives where Codex actually looks.
+- The measurement still belongs in the rationale, with its version: if a future
+  release starts reading the map, a projection that also writes the native
+  manifest is still correct, but the reason recorded here would be stale.
 - Hooknostic's native-manifest form is what the ecosystem actually ships.
   All 180 plugins in Codex's bundled marketplace carry a `.codex-plugin/plugin.json`
   and **none** carries a root `plugin.json` or an `extensions."com.openai"`
   object — so the documented "preferred" form is, for now, used by nothing.
 - Only the `skills` key was probed. Whether `mcpServers` or `hooks` inside the
-  map are read is **not established**, and neither is any other namespace.
+  map are read is **not established**, and neither is any other namespace. The
+  projection does not depend on the answer: it reads the map itself, and those
+  three keys are decided by the projection regardless of what an extension says,
+  because they point at trees the portable loader validated.
 
 ## Not established
 

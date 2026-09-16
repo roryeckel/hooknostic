@@ -24,6 +24,60 @@ const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
+
+/**
+ * Codex's reverse-DNS client-extension namespace.
+ *
+ * Two measured facts make this worth declaring. OpenAI documents
+ * `extensions."com.openai"` in a root `plugin.json` as the home for its own
+ * settings -- presentation, app mappings, hook configuration -- and the shipped
+ * binary does not read it (`.capture/codex-client-extension`). So the portable
+ * form authors are told to write reaches nothing on its own, and something has
+ * to carry it to where Codex actually looks. That is this projection's job: the
+ * map is folded into the generated native manifest, and files under the
+ * namespace are hoisted to the package root.
+ *
+ * The namespace earns its place even though the base tree is copied verbatim.
+ * A root-level `.app.json` or `assets/` reaches every harness, inert everywhere
+ * but here; under the namespace it reaches only Codex.
+ */
+export const CODEX_AGENT_PLUGIN_NAMESPACE = "com.openai";
+const NAMESPACE_PREFIX = `${CODEX_AGENT_PLUGIN_NAMESPACE}/`;
+
+/**
+ * Manifest keys this projection decides, whatever a client extension says.
+ *
+ * Identity comes from the portable manifest, and the three wiring keys point at
+ * trees this projection emitted and validated. Everything else in the extension
+ * passes through untouched -- that is the point of having one.
+ */
+const PROJECTION_OWNED_MANIFEST_KEYS = [
+  "name",
+  "version",
+  "description",
+  "author",
+  "homepage",
+  "repository",
+  "license",
+  "keywords",
+  "skills",
+  "mcpServers",
+  "hooks",
+] as const;
+
+/** Decode an overlay document; a malformed one is reported, never guessed at. */
+function parseOverlayManifest(contents: string | Uint8Array): { value: Record<string, unknown>; error?: string } {
+  const text = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { value: {}, error: "is not a JSON object" };
+    }
+    return { value: parsed as Record<string, unknown> };
+  } catch (error) {
+    return { value: {}, error: error instanceof Error ? error.message : String(error) };
+  }
+}
 const LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
 const LAUNCHER_SERVERS_PATH = `runtime/${MCP_SERVERS_FILE}`;
 
@@ -170,11 +224,7 @@ export function translateMcp(
  *   is why the generated command is anchored with `${PLUGIN_ROOT}`.
  */
 export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
-  // Codex reads no portable client-extension namespace: its native
-  // `.codex-plugin/` directory is not one, and none of its bundled plugins use
-  // the extensions map. Declaring an invented namespace would make the
-  // component discoverable against something nothing reads.
-  namespace: "",
+  namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
   profiles: [
     {
       // Below the range where plugin hook delivery was captured there is no
@@ -232,9 +282,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             "Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one.",
         },
         "agent-plugin.client-extension.files": {
-          level: "unsupported",
+          level: "exact",
           rationale:
-            'Measured on 0.154.0, and the documentation disagrees: OpenAI documents extensions."com.openai" in a root plugin.json as the preferred home for its settings, with .codex-plugin/ as a compatibility fallback -- but a plugin naming a non-conventional skills directory only inside that map had its skill ignored, while a plugin declaring nothing at all had skills/ discovered by convention. So the map is not honoured by the shipped binary, at least for the one key observable without a model. Its native .codex-plugin/ directory is not a portable namespace either, and none of the 180 plugins in the bundled marketplace carries a root plugin.json or that map.',
+            'Emitted rather than read. OpenAI documents extensions."com.openai" in a root plugin.json as the home for its settings, and the shipped binary does not read it (measured on 0.154.0), so this projection carries it: the map and an optional .codex-plugin/plugin.json overlay are folded into the generated native manifest, beneath the portable identity fields, and namespace files are hoisted to the package root where Codex reads native configuration. Exact because nothing is dropped -- the author\'s documented, portable declaration arrives intact at the only place the harness looks.',
         },
         "agent-plugin.runtime-package": {
           level: "unsupported",
@@ -411,16 +461,77 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // beside a native manifest, and an uncaptured shape is declined rather
       // than defaulted, since the plausible reading is a double registration.
       if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
+      // Hoisted below, to the package root, rather than shipped one level down
+      // where nothing would read it.
+      if (file.path.startsWith(NAMESPACE_PREFIX)) continue;
+      if (file.path === NATIVE_MANIFEST_PATH) {
+        // This projection always writes the native manifest, so a copied one is
+        // guaranteed to be lost -- silently, until now. Reported rather than
+        // overwritten, and fatal rather than subject to `onUnsupported`: the
+        // package is claiming an output path, which is not a component Codex
+        // cannot represent.
+        issues.push({
+          severity: "error",
+          scope: "file",
+          path: file.path,
+          message: `Agent Plugin file ${JSON.stringify(file.path)} occupies the path this projection generates; move it to ${JSON.stringify(`${NAMESPACE_PREFIX}${file.path}`)} to declare it as a Codex client extension, or remove it from the package.`,
+        });
+        continue;
+      }
       if (insideRejectedSkill(file.path)) continue;
       files.push({ path: file.path, contents: file.contents, mode: file.mode });
       copiedPaths.push(file.path);
+    }
+
+    // The client extension, hoisted to the root. A `.codex-plugin/plugin.json`
+    // here is an overlay rather than a file: it becomes the base of the
+    // generated manifest, which is the "compatibility overlay" the vendor
+    // documentation describes.
+    let overlayManifest: Record<string, unknown> = {};
+    const hoisted = new Set(copiedPaths);
+    for (const file of source.files) {
+      if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
+      const path = file.path.slice(NAMESPACE_PREFIX.length);
+      if (path === "") continue;
+      if (path === NATIVE_MANIFEST_PATH) {
+        const parsed = parseOverlayManifest(file.contents);
+        if (parsed.error !== undefined) {
+          issues.push({
+            severity: "error",
+            scope: "manifest",
+            component: "agent-plugin.client-extension.files",
+            path: file.path,
+            message: `client extension manifest ${JSON.stringify(file.path)} ${parsed.error}`,
+          });
+          continue;
+        }
+        overlayManifest = parsed.value;
+        continue;
+      }
+      if (hoisted.has(path)) {
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          component: "agent-plugin.client-extension.files",
+          path: file.path,
+          message: `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(path)}, which the package already ships`,
+        });
+        continue;
+      }
+      hoisted.add(path);
+      files.push({ path, contents: file.contents, mode: file.mode });
+      copiedPaths.push(path);
     }
 
     // Carried rather than dropped: a manifest declaring all of these installed
     // and resolved its version normally (`.capture/codex-native-mcp`), so
     // passing them through cannot lose information whether Codex reads them or
     // ignores them -- whereas dropping them certainly does.
-    const manifest: CodexNativeManifest = {
+    // Overlay file < inline map < portable identity. The portable fields win
+    // because they are the package's identity, not a presentation preference,
+    // and a client extension that could rename the plugin would make the
+    // manifest disagree with the marketplace entry that installs it.
+    const generated: CodexNativeManifest = {
       name: source.manifest.name,
       ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
       ...(source.manifest.description === undefined ? {} : { description: source.manifest.description }),
@@ -431,6 +542,32 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
       ...(source.skills.length === 0 ? {} : { skills: "./skills/" }),
     };
+    // Typed where this projection decides the value, free-form where the client
+    // extension does: Codex's presentation surface is large and vendor-owned,
+    // and modelling its field names here would mean a Hooknostic release every
+    // time OpenAI adds one.
+    const extensionEntry = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE] ?? {};
+    const manifest: Record<string, unknown> = { ...overlayManifest, ...extensionEntry, ...generated };
+    // Spreading `generated` last is not enough: it omits a key it has nothing
+    // to say about, and the extension's value would then survive. `skills` is
+    // the dangerous one -- a package with no valid skills that declares
+    // `skills: "./elsewhere/"` would point Codex at a tree the portable loader
+    // never validated, which is the whole thing this projection exists to stop.
+    const claimed: string[] = [];
+    for (const key of PROJECTION_OWNED_MANIFEST_KEYS) {
+      if (!(key in overlayManifest) && !(key in extensionEntry)) continue;
+      claimed.push(key);
+      if (!(key in generated)) delete manifest[key];
+    }
+    if (claimed.length > 0) {
+      issues.push({
+        severity: "warn",
+        scope: "manifest",
+        component: "agent-plugin.client-extension.files",
+        path: NATIVE_MANIFEST_PATH,
+        message: `client extension declares ${claimed.map((key) => JSON.stringify(key)).join(", ")}, which this projection decides from the package itself; the declared value is ignored.`,
+      });
+    }
 
     const { servers, launcherServers, omitted } = translateMcp(source);
     for (const { name, component, reason } of omitted) {
@@ -509,8 +646,6 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       contents: `${JSON.stringify(manifest, null, 2)}\n`,
     });
 
-    // Codex reads no client-extension namespace, so none is declared and the
-    // component is never discovered here.
     // Per-server, not per-transport: a stdio server is dropped only when its own
     // paths cannot be re-anchored, so the count comes from what was omitted.
     const skippedByComponent = new Map<AgentPluginComponentId, number>();
