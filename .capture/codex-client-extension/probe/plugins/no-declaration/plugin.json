@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "no-declaration",
+  "version": "1.0.0",
+  "description": "Negative control: declares nothing about skills at all."
+}

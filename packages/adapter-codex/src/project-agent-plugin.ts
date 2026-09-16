@@ -234,7 +234,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.client-extension.files": {
           level: "unsupported",
           rationale:
-            "Codex reads no portable client-extension namespace; its native .codex-plugin/ directory is not one, and none of its bundled plugins use the extensions map.",
+            'Measured on 0.154.0, and the documentation disagrees: OpenAI documents extensions."com.openai" in a root plugin.json as the preferred home for its settings, with .codex-plugin/ as a compatibility fallback -- but a plugin naming a non-conventional skills directory only inside that map had its skill ignored, while a plugin declaring nothing at all had skills/ discovered by convention. So the map is not honoured by the shipped binary, at least for the one key observable without a model. Its native .codex-plugin/ directory is not a portable namespace either, and none of the 180 plugins in the bundled marketplace carries a root plugin.json or that map.',
         },
         "agent-plugin.runtime-package": {
           level: "unsupported",
@@ -245,6 +245,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "0.154.0",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: 'The reverse-DNS namespace OpenAI documents is not honoured. Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional; one naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, which convention cannot explain. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line.',
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: 'A plugin\'s skills/ directory is discovered with no declaration anywhere -- no native manifest, no skills field, no extensions map. The explicit "skills" pointer this projector writes is therefore belt and braces rather than the mechanism, which is what the 180 plugins in the bundled marketplace also do.',
+          },
           {
             version: "0.154.0",
             date: "2026-09-15",

@@ -1,0 +1,6 @@
+{
+  "name": "control-native",
+  "version": "1.0.0",
+  "description": "Positive control: the form hooknostic emits today.",
+  "skills": "./skills/"
+}

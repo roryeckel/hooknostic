@@ -1,0 +1,36 @@
+{
+  "name": "hooknostic-extensions-probe",
+  "interface": {
+    "displayName": "Hooknostic extensions probe"
+  },
+  "plugins": [
+    {
+      "name": "control-native",
+      "source": {
+        "source": "local",
+        "path": "./plugins/control-native"
+      }
+    },
+    {
+      "name": "probe-extensions",
+      "source": {
+        "source": "local",
+        "path": "./plugins/probe-extensions"
+      }
+    },
+    {
+      "name": "no-declaration",
+      "source": {
+        "source": "local",
+        "path": "./plugins/no-declaration"
+      }
+    },
+    {
+      "name": "custom-path",
+      "source": {
+        "source": "local",
+        "path": "./plugins/custom-path"
+      }
+    }
+  ]
+}

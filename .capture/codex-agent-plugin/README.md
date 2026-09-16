@@ -98,9 +98,11 @@ is what makes the *filtered* package the value hooknostic adds for this target.
 
 - Whether Codex runs a locked npm install for a `runtimePackage`, as Claude's
   marketplace does. Declared `unsupported` rather than assumed.
-- Whether any reverse-DNS client-extension namespace is read. Agent Plugins 1.0
-  registers none, and all 62 plugins in Codex's bundled marketplace express
-  Codex-specific data as top-level fields of a native `.codex-plugin/plugin.json`
-  rather than through the portable `extensions` map, so the projector declares no
-  namespace.
+- ~~Whether any reverse-DNS client-extension namespace is read.~~ **Settled on
+  0.154.0**: OpenAI documents `extensions."com.openai"` in a root `plugin.json`,
+  and the shipped binary does not honour it -- see
+  [`.capture/codex-client-extension`](../codex-client-extension/README.md).
+  That capture also establishes that a `skills/` directory is discovered with no
+  declaration anywhere, which is why the reasoning recorded here (no bundled
+  plugin uses the `extensions` map) was suggestive but not sufficient.
 - Linux and macOS behavior. Windows only.
