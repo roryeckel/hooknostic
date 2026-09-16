@@ -6,10 +6,11 @@ import type {
   AnalysisResult,
   Diagnostic,
   EvaluateOptions,
+  McpServerPrerequisites,
 } from "@hooknostic/core";
 import { buildProject, formatDiagnostics, hasFatal } from "@hooknostic/core";
 
-import { describeProjection } from "./build.js";
+import { describeMcpPrerequisites, describeProjection } from "./build.js";
 
 export interface CommandIO {
   stdout(text: string): void;
@@ -40,6 +41,8 @@ interface CheckReport {
       projection?: AgentPluginTargetReport;
     }
   >;
+  /** What each stdio server needs from the machine it finally runs on. */
+  mcpServers?: McpServerPrerequisites[];
   diagnostics: Diagnostic[];
 }
 
@@ -99,6 +102,9 @@ export async function runCheck(options: CheckOptions): Promise<number> {
           ];
         }),
       ),
+      ...(result.report.components?.mcpServers === undefined
+        ? {}
+        : { mcpServers: result.report.components.mcpServers }),
       diagnostics: result.report.diagnostics,
     };
     options.io.stdout(JSON.stringify(report, null, 2));
@@ -117,6 +123,12 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     );
     const projection = result.report.targets[id]?.projection;
     if (projection !== undefined) options.io.stdout(`      ${describeProjection(projection)}`);
+  }
+  const prerequisites = describeMcpPrerequisites(result.report.components);
+  if (prerequisites.length > 0) {
+    options.io.stdout("");
+    options.io.stdout("MCP servers");
+    for (const line of prerequisites) options.io.stdout(line);
   }
   const failed = hasFatal(result.report.diagnostics);
   options.io.stdout(

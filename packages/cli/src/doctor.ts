@@ -1,12 +1,34 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { delimiter, resolve } from "node:path";
 
 import semver from "semver";
 
-import type { AdapterRegistry } from "@hooknostic/core";
-import { buildProject, loadConfig, type ProjectCommandResult, runProject } from "@hooknostic/core";
+import type { AdapterRegistry, McpServerPrerequisites } from "@hooknostic/core";
+import { buildProject, loadConfig, mcpRequiredCommands, type ProjectCommandResult, runProject } from "@hooknostic/core";
 
 import type { CommandIO } from "./check.js";
+
+/**
+ * Resolve a bare command on PATH the way spawning it would.
+ *
+ * `cross-spawn` does exactly this inside the generated launcher, but its
+ * resolver is not public API, so the two rules are repeated here: PATH entries
+ * in order, and on Windows each PATHEXT suffix as well. The suffix pass is the
+ * load-bearing half -- `npx` and `bun` exist on Windows only as `.cmd`/`.ps1`
+ * shims, so a bare-name check would report them missing when they are not.
+ */
+export function resolveOnPath(command: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const directories = (env["PATH"] ?? env["Path"] ?? "").split(delimiter).filter(Boolean);
+  const suffixes =
+    process.platform === "win32" ? ["", ...(env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)] : [""];
+  for (const directory of directories) {
+    for (const suffix of suffixes) {
+      const candidate = resolve(directory, command + suffix);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
 
 export interface DoctorCommandOptions {
   config?: string;
@@ -127,6 +149,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
 
   let project: ProjectCommandResult | undefined;
   let configurationErrors: string[] = [];
+  let prerequisites: readonly McpServerPrerequisites[] = [];
   if (options.config) {
     if (loaded?.config?.project)
       project = await runProject({
@@ -143,8 +166,18 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
+      prerequisites = checked.report.components?.mcpServers ?? [];
     }
   }
+  // Probed, but deliberately not folded into `ok`: the prerequisite belongs to
+  // the machine the plugin is finally installed on, not the one building it. A
+  // CI runner without `uv` still produces a perfectly good artifact, and
+  // failing it there would teach authors to ignore the check.
+  const mcpProbes = mcpRequiredCommands(prerequisites).map((command) => ({
+    command,
+    path: resolveOnPath(command),
+    servers: prerequisites.filter((entry) => entry.requires.includes(command)).map((entry) => entry.server),
+  }));
   const ok =
     configurationErrors.length === 0 &&
     entries.every((e) => e.status === "ok") &&
@@ -159,6 +192,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           ok,
           harnesses: entries,
           configurationErrors,
+          mcpPrerequisites: mcpProbes,
           runtime: { node: process.version },
           ...(project === undefined
             ? {}
@@ -195,6 +229,15 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
                 : drift
         }`,
     );
+  }
+  if (mcpProbes.length > 0) {
+    options.io.stdout("");
+    options.io.stdout("MCP server prerequisites, on the machine a consumer installs to:");
+    for (const probe of mcpProbes) {
+      const marker = probe.path === undefined ? "MISS" : "OK  ";
+      const where = probe.path ?? "not on this PATH";
+      options.io.stdout(`${marker}  ${probe.command}  ${where}  (${probe.servers.join(", ")})`);
+    }
   }
   for (const message of configurationErrors) options.io.stderr(message);
   if (project) {

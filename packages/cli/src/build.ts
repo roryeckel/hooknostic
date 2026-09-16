@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import type { AdapterRegistry, AgentPluginTargetReport, EvaluateOptions } from "@hooknostic/core";
+import type { AdapterRegistry, AgentPluginTargetReport, BuildReport, EvaluateOptions } from "@hooknostic/core";
 import { buildProject, formatDiagnostics } from "@hooknostic/core";
 
 import type { CommandIO } from "./check.js";
@@ -12,6 +12,26 @@ export function describeProjection(projection: AgentPluginTargetReport): string 
   const omitted = projection.omissions.length;
   const files = projection.copiedFileCount === undefined ? "" : `, ${projection.copiedFileCount} package files copied`;
   return `Agent Plugin projection ${projection.status}: ${emitted} components emitted, ${omitted} omitted${files}`;
+}
+
+/**
+ * What each stdio server needs from the machine it finally runs on.
+ *
+ * Reported because nothing else says it. A server declared `uvx` builds green
+ * on a machine that has never had `uv`, ships, and then dies on the consumer's
+ * with a message about a missing binary rather than a missing plugin. `check`
+ * and `build` state the requirement; `doctor` is what probes it.
+ *
+ * Every projected stdio server additionally needs Node, because the generated
+ * launcher is a Node program. That is a property of the projection rather than
+ * the package, so the adapters report it and this does not repeat it.
+ */
+export function describeMcpPrerequisites(components: BuildReport["components"]): string[] {
+  return (components?.mcpServers ?? []).map((server) =>
+    server.contained
+      ? `  ${server.server}: runs ${server.command}, which the package ships`
+      : `  ${server.server}: needs ${server.requires.join(", ")} on the consumer's PATH`,
+  );
 }
 
 export interface BuildCommandOptions {
@@ -55,6 +75,7 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
     options.io.stdout(
       `\nAgent Plugin ${result.report.components.root} → ${result.report.components.targets.join(", ")}`,
     );
+    for (const line of describeMcpPrerequisites(result.report.components)) options.io.stdout(line);
   }
   options.io.stdout(
     result.ok

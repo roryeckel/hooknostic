@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { type HarnessAdapter, runProject } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
-import { runDoctor } from "./doctor.js";
+import { resolveOnPath, runDoctor } from "./doctor.js";
 
 function fakeIO() {
   const out: string[] = [];
@@ -104,5 +104,58 @@ describe("doctor version comparison", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("resolveOnPath", () => {
+  const separator = process.platform === "win32" ? ";" : ":";
+
+  it("finds a command that is present, and reports one that is not", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-path-"));
+    try {
+      await writeFile(join(root, "present"), "");
+      const env = { PATH: root } as NodeJS.ProcessEnv;
+
+      expect(resolveOnPath("present", env)).toBe(join(root, "present"));
+      expect(resolveOnPath("absent", env)).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("searches PATH entries in order", async () => {
+    const first = await mkdtemp(join(tmpdir(), "hooknostic-path-a-"));
+    const second = await mkdtemp(join(tmpdir(), "hooknostic-path-b-"));
+    try {
+      await writeFile(join(first, "tool"), "");
+      await writeFile(join(second, "tool"), "");
+      const env = { PATH: [first, second].join(separator) } as NodeJS.ProcessEnv;
+
+      expect(resolveOnPath("tool", env)).toBe(join(first, "tool"));
+    } finally {
+      await rm(first, { recursive: true, force: true });
+      await rm(second, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform === "win32")(
+    "resolves a Windows command shim, which is how npx and bun exist there",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "hooknostic-path-shim-"));
+      try {
+        // No `npx.exe` exists on Windows -- only `npx.cmd`. A bare-name check
+        // would call the single most common MCP runner missing.
+        await writeFile(join(root, "shim.CMD"), "");
+        const env = { PATH: root, PATHEXT: ".COM;.EXE;.BAT;.CMD" } as NodeJS.ProcessEnv;
+
+        expect(resolveOnPath("shim", env)).toBe(join(root, "shim.CMD"));
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("reports nothing when PATH is unset rather than throwing", () => {
+    expect(resolveOnPath("anything", {} as NodeJS.ProcessEnv)).toBeUndefined();
   });
 });

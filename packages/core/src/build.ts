@@ -14,6 +14,8 @@ import {
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
+  mcpPrerequisites,
+  type McpServerPrerequisites,
   packageComponents,
   type ProjectComponents,
 } from "@hooknostic/agent-plugin";
@@ -55,6 +57,8 @@ export interface BuildOptions {
   configResult?: Awaited<ReturnType<typeof loadConfig>>;
 }
 
+export { mcpRequiredCommands, type McpServerPrerequisites } from "@hooknostic/agent-plugin";
+
 export interface AgentPluginTargetReport {
   status: "success" | "failed" | "skipped";
   contentDigest?: string;
@@ -95,6 +99,11 @@ export interface BuildReport {
     /** Every inventoried package-relative path, sorted: exactly what projection may ship. */
     sourceFiles: string[];
     contentDigest: string;
+    /**
+     * Each stdio server and what the consumer's machine must supply for it.
+     * Additive: readers keyed on `schemaVersion` 2 are unaffected.
+     */
+    mcpServers?: McpServerPrerequisites[];
   };
   diagnostics: Diagnostic[];
 }
@@ -515,6 +524,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       sourceFileCount: components.files.length,
       sourceFiles: components.files.map((file) => file.path).sort(),
       contentDigest: components.contentDigest,
+      mcpServers: mcpPrerequisites(components.mcp),
     };
   }
 
