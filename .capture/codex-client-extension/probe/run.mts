@@ -52,10 +52,18 @@ const marker = async (path: string) => {
   }
 };
 
-// The three `hooks` forms the documentation permits beyond a single path.
+// The three `hooks` forms the documentation permits beyond a single path, and
+// two plugins carrying a root `hooks.json` their native manifest never names:
+// one with no `hooks` key at all, one declaring an inline document beside it.
 // Whether Codex even installs such a manifest is part of the observation, so
 // their installation is recorded rather than required.
-const FORM_PROBES = ["native-hooks-path-array", "native-hooks-inline-object", "native-hooks-inline-array"] as const;
+const FORM_PROBES = [
+  "native-hooks-path-array",
+  "native-hooks-inline-object",
+  "native-hooks-inline-array",
+  "native-hooks-undeclared-file",
+  "native-hooks-inline-beside-file",
+] as const;
 
 try {
   const versionOutput = (await checked("codex", ["--version"])).stdout.trim();
@@ -120,8 +128,17 @@ try {
     a: await marker(join(pluginRoot("native-hooks-inline-array"), "hooks-a-fired.json")),
     b: await marker(join(pluginRoot("native-hooks-inline-array"), "hooks-b-fired.json")),
   };
+  const undeclaredFile = await marker(join(pluginRoot("native-hooks-undeclared-file"), "hooks-undeclared-fired.json"));
+  const inlineBesideFile = {
+    inline: await marker(join(pluginRoot("native-hooks-inline-beside-file"), "hooks-inline-fired.json")),
+    file: await marker(join(pluginRoot("native-hooks-inline-beside-file"), "hooks-file-fired.json")),
+  };
   process.stdout.write(
-    `${JSON.stringify({ version, installed, inline, native, pathArray, inlineObject, inlineArray }, null, 2)}\n`,
+    `${JSON.stringify(
+      { version, installed, inline, native, pathArray, inlineObject, inlineArray, undeclaredFile, inlineBesideFile },
+      null,
+      2,
+    )}\n`,
   );
 } finally {
   await rm(scratch, { recursive: true, force: true });

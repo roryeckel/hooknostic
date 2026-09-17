@@ -1,6 +1,6 @@
 # Probe inputs
 
-`run.mts` installs five hook probes into an isolated `CODEX_HOME`, drives one
+`run.mts` installs seven hook probes into an isolated `CODEX_HOME`, drives one
 real Codex session against the repository's credential-free loopback model
 server, and compares marker-file effects:
 
@@ -11,8 +11,10 @@ server, and compares marker-file effects:
 | `native-hooks-path-array` | native `hooks` as a two-path array | both markers present |
 | `native-hooks-inline-object` | native `hooks` as one inline document | marker present |
 | `native-hooks-inline-array` | native `hooks` as a two-document array | both markers present |
+| `native-hooks-undeclared-file` | no `hooks` key; root `hooks.json` undeclared | marker absent |
+| `native-hooks-inline-beside-file` | inline document beside an undeclared root `hooks.json` | inline marker present, file marker absent |
 
-The three form probes are installed without failing the run, and their
+The five form probes are installed without failing the run, and their
 `codex plugin add` exit codes are part of the printed result: a manifest Codex
 refused would be an observation, not a broken probe. The version comes from
 `codex --version` rather than a literal.

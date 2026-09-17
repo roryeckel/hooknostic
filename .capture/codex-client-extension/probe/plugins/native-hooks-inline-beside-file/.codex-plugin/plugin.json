@@ -1,0 +1,19 @@
+{
+  "name": "native-hooks-inline-beside-file",
+  "version": "1.0.0",
+  "description": "Does an inline hooks object suppress, or run beside, an undeclared root hooks.json?",
+  "hooks": {
+    "hooks": {
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"${PLUGIN_ROOT}/write-marker.mjs\" inline"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

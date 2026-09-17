@@ -1,0 +1,5 @@
+{
+  "name": "native-hooks-undeclared-file",
+  "version": "1.0.0",
+  "description": "Does Codex run a root hooks.json the native manifest never declares?"
+}

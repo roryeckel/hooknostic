@@ -543,6 +543,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/codex-client-extension",
             what: "The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed.",
           },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "A root hooks.json the native manifest never names is inert: beside a manifest with no hooks key its marker stayed absent, and beside a manifest declaring an inline hook document only the inline marker fired, while the single-path control ran in the same session. So the generated hooks.json this projection must still emit when it inlines the generated document beside an author's inline object is not discovered by convention, and generated hooks do not run twice on that path.",
+          },
         ],
         notes: [
           "Marketplace roots expose plugins through <root>/.agents/plugins/marketplace.json.",
@@ -742,6 +749,14 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         message: `client extension "hooks" must be a path, an array of paths, a hook object, or an array of hook objects (the forms captured on Codex); ${hooksProblem}.`,
       });
     }
+    // When the author inlined their hooks, the generated document is inlined
+    // beside them and the generated hooks.json file is still emitted below,
+    // because core verifies that every hook artifact survives projection. That
+    // file is inert: a root hooks.json the native manifest does not name is not
+    // discovered by convention, beside a manifest with no hooks key or one with
+    // an inline document (`.capture/codex-client-extension`), so the generated
+    // hooks run once on this path rather than from both the manifest and the
+    // file.
     const composedHooks =
       hooksArtifact === undefined
         ? undefined

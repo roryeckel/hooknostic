@@ -66,6 +66,20 @@
         "source": "local",
         "path": "./plugins/native-hooks-inline-array"
       }
+    },
+    {
+      "name": "native-hooks-undeclared-file",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-undeclared-file"
+      }
+    },
+    {
+      "name": "native-hooks-inline-beside-file",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-inline-beside-file"
+      }
     }
   ]
 }
