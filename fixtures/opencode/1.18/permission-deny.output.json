@@ -1,7 +1,4 @@
 {
-  "mutations": {
-    "status": "deny"
-  },
   "permissionReply": {
     "response": "reject"
   }

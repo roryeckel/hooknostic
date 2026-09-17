@@ -169,7 +169,7 @@ describe("planOpenCodeApplication", () => {
     expect(serializeOpenCodeOutput(hostile)).toBe("[hooknostic: unrepresentable output]");
   });
 
-  it("denies permission requests via the reply API plus the legacy status mutation, not a throw", () => {
+  it("denies permission requests through the live reply API, not a callback mutation", () => {
     expect(
       planOpenCodeApplication(
         result({
@@ -334,7 +334,7 @@ describe("validateArtifacts for package delivery", () => {
       [
         { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
         goodEntry,
-        { path: "package.json", contents: '{"name":"My Hooks"}\n' },
+        { path: "package.json", contents: '{"name":"UPPER","version":"1.2.3"}\n' },
       ],
       PKG,
     );

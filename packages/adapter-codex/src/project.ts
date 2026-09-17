@@ -158,7 +158,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       },
       "agent-plugin.mcp.sse": {
         level: "unsupported",
-        rationale: "Legacy SSE project transport is not established; Codex reads url declarations as Streamable HTTP.",
+        rationale: "SSE project transport is not established; Codex reads url declarations as Streamable HTTP.",
       },
     },
     source: {

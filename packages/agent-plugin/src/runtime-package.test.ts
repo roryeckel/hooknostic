@@ -47,26 +47,26 @@ describe("validateNpmRuntimePackage", () => {
         star: "*",
         prerelease: "^1.0.0-beta.1",
         git: "github:example/git#v1",
-        gitUrl: "git+https://github.com/Example/Git-Url.git",
+        "git-url": "git+https://github.com/Example/Git-Url.git",
         pinned: "git+ssh://git@github.com/example/pinned.git#0123456789abcdef0123456789abcdef01234567",
         ranged: "gitlab:example/ranged#semver:^2.0.0",
-        url: "https://example.com/pkg.tgz",
+        "tarball-url": "https://example.com/pkg.tgz",
         shorthand: "example/repo",
         // scp-style hosts are accepted inside `git+ssh://` (npa `fromURL`); the
         // bare `git@host:path` form is a CLI-argument convenience npa applies
         // only in `npa(arg)`, never to package.json specs.
-        scpUrl: "git+ssh://git@github.com:example/scp-url.git",
-        looseVersion: "01.2.3",
+        "scp-url": "git+ssh://git@github.com:example/scp-url.git",
+        "loose-version": "01.2.3",
         // npm-package-arg consults hosted-git-info before the URL check, so a
         // hosted HTTPS URL is a git spec, and GitLab subgroups are hosted paths.
-        hostedHttps: "https://github.com/example/hosted-https.git",
+        "hosted-https": "https://github.com/example/hosted-https.git",
         subgroup: "gitlab:team/platform/repo#v1",
-        selfHosted: "git+https://example.com/pkg.git",
-        selfHostedScp: "git+ssh://git@example.com:pkg.git#v2",
+        "self-hosted": "git+https://example.com/pkg.git",
+        "self-hosted-scp": "git+ssh://git@example.com:pkg.git#v2",
         alias: "npm:other@^1",
-        bareAlias: "npm:other",
-        tagAlias: "npm:other@next",
-        scopedAlias: "npm:@scope/other@~2.1.0",
+        "bare-alias": "npm:other",
+        "tag-alias": "npm:other@next",
+        "scoped-alias": "npm:@scope/other@~2.1.0",
       },
     });
     const registry = (name: string, version: string) => ({
@@ -81,17 +81,23 @@ describe("validateNpmRuntimePackage", () => {
         "node_modules/star": registry("star", "3.0.0-rc.1"),
         "node_modules/prerelease": registry("prerelease", "1.0.0-beta.2"),
         "node_modules/git": { version: "0.0.1", resolved: "git+ssh://git@github.com/example/git.git#abc123" },
-        "node_modules/gitUrl": { version: "0.0.1", resolved: "git+ssh://git@github.com/Example/Git-Url.git#abc123" },
+        "node_modules/git-url": {
+          version: "0.0.1",
+          resolved: "git+ssh://git@github.com/Example/Git-Url.git#abc123",
+        },
         "node_modules/pinned": {
           version: "0.0.1",
           resolved: "git+ssh://git@github.com/example/pinned.git#0123456789abcdef0123456789abcdef01234567",
         },
         "node_modules/ranged": { version: "2.4.0", resolved: "git+ssh://git@gitlab.com/example/ranged.git#def456" },
-        "node_modules/url": { version: "0.0.1", resolved: "https://example.com/pkg.tgz" },
+        "node_modules/tarball-url": { version: "0.0.1", resolved: "https://example.com/pkg.tgz" },
         "node_modules/shorthand": { version: "0.0.1", resolved: "git+ssh://git@github.com/example/repo.git#def456" },
-        "node_modules/scpUrl": { version: "0.0.1", resolved: "git+ssh://git@github.com/example/scp-url.git#abc123" },
-        "node_modules/looseVersion": registry("looseVersion", "1.2.3"),
-        "node_modules/hostedHttps": {
+        "node_modules/scp-url": {
+          version: "0.0.1",
+          resolved: "git+ssh://git@github.com/example/scp-url.git#abc123",
+        },
+        "node_modules/loose-version": registry("loose-version", "1.2.3"),
+        "node_modules/hosted-https": {
           version: "0.0.1",
           resolved: "git+ssh://git@github.com/example/hosted-https.git#abc123",
         },
@@ -99,15 +105,19 @@ describe("validateNpmRuntimePackage", () => {
           version: "0.0.1",
           resolved: "git+ssh://git@gitlab.com/team/platform/repo.git#abc123",
         },
-        "node_modules/selfHosted": { version: "0.0.1", resolved: "git+https://example.com/pkg.git#abc123" },
-        "node_modules/selfHostedScp": { version: "0.0.1", resolved: "git+ssh://git@example.com:pkg.git#abc123" },
+        "node_modules/self-hosted": { version: "0.0.1", resolved: "git+https://example.com/pkg.git#abc123" },
+        "node_modules/self-hosted-scp": {
+          version: "0.0.1",
+          resolved: "git+ssh://git@example.com:pkg.git#abc123",
+        },
         "node_modules/alias": { name: "other", ...registry("other", "1.2.3") },
-        "node_modules/bareAlias": { name: "other", ...registry("other", "4.0.0") },
-        "node_modules/tagAlias": { name: "other", ...registry("other", "5.0.0-beta.1") },
-        "node_modules/scopedAlias": { name: "@scope/other", ...registry("other", "2.1.7") },
+        "node_modules/bare-alias": { name: "other", ...registry("other", "4.0.0") },
+        "node_modules/tag-alias": { name: "other", ...registry("other", "5.0.0-beta.1") },
+        "node_modules/scoped-alias": { name: "@scope/other", ...registry("other", "2.1.7") },
       },
     });
-    expect(validateNpmRuntimePackage(aliased, lock)).toMatchObject({ ok: true });
+    const result = validateNpmRuntimePackage(aliased, lock);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
   });
 
   it.each([
@@ -245,9 +255,9 @@ describe("validateNpmRuntimePackage", () => {
       );
   });
 
-  it("accepts legacy names npm still installs", () => {
+  it("rejects names npm will not accept for a new package", () => {
     for (const name of ["UPPER", "@Scope/Name", "a".repeat(215), "http", "weird~'!()*"]) {
-      expect(packageNameProblem(name), name).toBeUndefined();
+      expect(packageNameProblem(name), name).toBeDefined();
     }
   });
 
