@@ -554,6 +554,15 @@ describe("Codex client extension", () => {
       emitted: 1,
       skipped: 1,
     });
+    // The count alone told an author who edited the overlay nothing about why
+    // the edit never arrived. Every other ignored client-extension input --
+    // claimed canonical keys, reserved hoists -- is reported; so is this one.
+    const warning = plan.issues.find((candidate) => candidate.path === "com.openai/.codex-plugin/plugin.json");
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.scope).toBe("projection");
+    expect(warning?.component).toBe("agent-plugin.client-extension.files");
+    expect(warning?.message).toContain("plugin.json#/extensions/com.openai");
+    expect(warning?.message).toContain("ignored");
   });
 
   it("hoists empty client-extension directories with their namespace", async () => {
@@ -765,7 +774,10 @@ describe("Codex client extension", () => {
       ]),
     );
 
-    expect(plan.issues).toEqual([]);
+    // Not parsed, so not reported as malformed; but not silent either.
+    expect(plan.issues).toEqual([
+      expect.objectContaining({ severity: "warn", path: "com.openai/.codex-plugin/plugin.json" }),
+    ]);
     expect(manifestOf(plan).interface).toEqual({ displayName: "inline" });
   });
 

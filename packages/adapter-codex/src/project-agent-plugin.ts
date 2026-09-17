@@ -814,9 +814,21 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         firstOverlayPath ??= file.path;
         // The documented portable form replaces the compatibility overlay
         // wholesale. An ignored fallback cannot make an otherwise valid inline
-        // declaration fail merely because stale fallback bytes remain beside it.
+        // declaration fail merely because stale fallback bytes remain beside it
+        // -- so it is not even parsed -- but it is said out loud, like every
+        // other client-extension input this projection ignores: edits to this
+        // file reach nothing, and only the summary's skipped count showed it.
         if (inlineExtension !== undefined) {
           ignoredCompatibilityOverlays++;
+          issues.push({
+            severity: "warn",
+            scope: "projection",
+            component: "agent-plugin.client-extension.files",
+            path: file.path,
+            message: `client extension overlay ${JSON.stringify(file.path)} is superseded by ${JSON.stringify(
+              `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}`,
+            )} and ignored; fold its settings into the inline object or remove the file.`,
+          });
           continue;
         }
         const parsed = parseOverlayManifest(file.contents);
