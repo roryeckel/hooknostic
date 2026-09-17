@@ -351,12 +351,12 @@ describe("Agent Plugin to OpenCode projection", () => {
   });
 
   it("publishes under the target's npm coordinate when it declares one", async () => {
-    const plan = await projectAs(source({}), { npmName: "@fundview/portable-tools-opencode" });
+    const plan = await projectAs(source({}), { npmName: "@example/portable-tools-opencode" });
     const manifest = JSON.parse(text(plan, "package.json")) as Record<string, unknown>;
 
     // The Agent Plugins name grammar admits only [a-z0-9.-], so a scoped
     // coordinate is unspellable there and this is the only route to one.
-    expect(manifest.name).toBe("@fundview/portable-tools-opencode");
+    expect(manifest.name).toBe("@example/portable-tools-opencode");
     // Identity the manifest CAN express is still the manifest's.
     expect(manifest.version).toBe("1.2.3");
     expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
