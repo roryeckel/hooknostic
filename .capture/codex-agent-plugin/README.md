@@ -100,9 +100,9 @@ is what makes the *filtered* package the value hooknostic adds for this target.
   marketplace does. Declared `unsupported` rather than assumed.
 - ~~Whether any reverse-DNS client-extension namespace is read.~~ **Settled on
   0.154.0**: OpenAI documents `extensions."com.openai"` in a root `plugin.json`,
-  and the shipped binary does not honour it -- see
+  but a `UserPromptSubmit` hook declared there did not run while the equivalent
+  native-manifest control did -- see
   [`.capture/codex-client-extension`](../codex-client-extension/README.md).
-  That capture also establishes that a `skills/` directory is discovered with no
-  declaration anywhere, which is why the reasoning recorded here (no bundled
-  plugin uses the `extensions` map) was suggestive but not sufficient.
+  The corrected capture also explains why its earlier custom-skills negative was
+  not a valid namespace test: portable skills use the fixed `skills/` directory.
 - Linux and macOS behavior. Windows only.

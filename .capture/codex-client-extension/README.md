@@ -1,98 +1,105 @@
-# Does Codex read a portable client-extension namespace?
+# Does Codex read `extensions.com.openai`?
 
 ## Question
 
-`agent-plugin.client-extension.files` is `unsupported` on Codex, and the
-rationale asserted that "Codex reads no portable client-extension namespace".
-`.capture/codex-agent-plugin` was more careful and listed the same thing under
-**Not established**, reasoning only that Agent Plugins 1.0 registers no
-namespace and that none of Codex's bundled plugins use the `extensions` map.
+OpenAI's plugin documentation assigns presentation, registered app mappings,
+and lifecycle hooks to `extensions.com.openai` in a portable root `plugin.json`.
+It also says the inline object replaces `.codex-plugin/plugin.json`, while root
+identity plus the fixed portable `skills/` and `mcp.json` components remain
+canonical:
 
-OpenAI's plugin documentation now registers one explicitly:
+<https://developers.openai.com/plugins/build/plugins#add-openai-specific-metadata>
 
-> "Put OpenAI-specific presentation, registered MCP server mappings, and hook
-> settings under `extensions.com.openai` in root `plugin.json`. Existing
-> `.codex-plugin/plugin.json` files remain supported as a compatibility
-> fallback."
+Does the shipped Codex CLI implement that documented portable route, or does a
+projector still need to carry the OpenAI object into the native compatibility
+manifest?
 
-So the rationale asserts, as a property of the harness, something a vendor
-document contradicts. This probe settles which is true of the shipped binary.
+## Evidence classes
 
-## Evidence class
+- **Live probe:** `codex-cli` **0.154.0**, **2026-09-17**, native Windows,
+  isolated `CODEX_HOME`, credential-free loopback model server. A
+  `UserPromptSubmit` hook writes a marker file, so the observation is the hook's
+  effect rather than CLI status text.
+- **Doc-derived:** the inline-object/overlay precedence, canonical portable
+  fields, and accepted `hooks` forms come from the official OpenAI documentation
+  linked above. The live binary cannot establish merge precedence for an inline
+  object it does not consume.
 
-`live-probe`. `codex-cli` **0.154.0**, **2026-09-16**, native Windows, under an
-isolated `CODEX_HOME`. No model was called: discovery is observed through
-`codex debug prompt-input`, which renders the model-visible input as JSON
-without starting a session. The contributor's own `~/.codex/config.toml` was
-hashed before and after and is unchanged.
+No model provider or credentials were used. `probe/run.mts` removes API keys
+from the child environment, starts the repository's loopback Responses server,
+and places plugin state and user state under a temporary directory that it
+removes after printing the result.
 
 ## Method
 
-Four plugins in one local marketplace, differing **only** in how the skills
-directory is named. Each ships one skill carrying a unique marker; the marker is
-then looked for in the rendered prompt input. A skill that is discovered reaches
-the model, so this is an effect, not a log line.
+Two plugins are installed from the same local marketplace and enabled in one
+Codex session:
 
-The design is the point. Declaring a path and then finding the skill proves
-nothing on its own, because the path might be conventional — so one plugin
-declares nothing, and one declares a **non-conventional** path that only the
-extensions map could supply.
-
-| Plugin | How skills are named | Discovered |
+| Plugin | Manifest | Hook declaration |
 | --- | --- | --- |
-| `control-native` | `.codex-plugin/plugin.json` → `"skills": "./skills/"` (what Hooknostic emits) | **yes** |
-| `probe-extensions` | root `plugin.json` → `extensions."com.openai".skills = "./skills/"` | yes |
-| `no-declaration` | nothing at all; a `skills/` directory is simply present | **yes** |
-| `custom-path` | `extensions."com.openai".skills = "./custom-skills/"`, no `skills/` directory | **no** |
+| `inline-hooks` | portable root `plugin.json` | `extensions.com.openai.hooks = "./hooks.json"` |
+| `native-hooks-control` | `.codex-plugin/plugin.json` | `hooks = "./hooks.json"` |
 
-## Observations
+Their hook documents and marker scripts are otherwise equivalent. The session
+runs with `--dangerously-bypass-hook-trust` against the loopback model server.
+The native plugin is the positive control: if it fails, the run says nothing
+about the inline object.
 
-**`skills/` is discovered by convention.** `no-declaration` declares no skills
-anywhere — no native manifest, no `skills` field, no extensions map — and its
-skill still reaches the model. That result explains `probe-extensions` entirely:
-its skill was found because it sat at the conventional path, not because
-anything read the namespace.
+Run from the repository root:
 
-**`extensions."com.openai"` is not read.** `custom-path` names
-`./custom-skills/` in the map and ships no conventional directory, and its skill
-does not reach the model. Convention cannot explain that row, and the map does
-not rescue it. This is the negative the other three rows needed.
+```sh
+node --experimental-strip-types .capture/codex-client-extension/probe/run.mts
+```
 
-So on 0.154.0 the measurement is narrow and definite: the namespace the vendor
-documents is not honoured by the shipped binary, for the one key that can be
-observed without a model. That is a fact about the harness. What follows from it
-is a design choice, and it is not the one the old rationale assumed -- see
-Consequences.
+The observed result was:
+
+```json
+{
+  "version": "0.154.0",
+  "inline": null,
+  "native": {
+    "fired": true,
+    "pluginRoot": "<scratch>/codex-home/plugins/cache/hooknostic-extensions-probe/native-hooks-control/1.0.0"
+  }
+}
+```
+
+## Observation
+
+**Codex 0.154.0 does not honour the documented inline `hooks` field.** The
+native control fired in the same process, proving plugin hook delivery, trust
+bypass, the marker command, and the observation channel all worked. The portable
+plugin's marker remained absent.
+
+This supersedes the first version of this probe, which used
+`extensions.com.openai.skills = "./custom-skills/"` as its negative. That was
+not a valid discriminator: the official documentation says portable packages
+always discover skills from the fixed `skills/` directory and that an inline
+`skills` declaration cannot replace it. The earlier run did establish
+conventional `skills/` discovery, but not whether Codex read the OpenAI object.
+Those inputs remain in `probe/plugins/` as a record of the corrected method;
+they no longer support the namespace conclusion.
 
 ## Consequences
 
-- `agent-plugin.client-extension.files` becomes **`exact`** on Codex -- not
-  because the harness reads the map, but because this is precisely the gap a
-  compiler is for. The projector now declares `com.openai`, folds the map (and
-  an optional `.codex-plugin/plugin.json` overlay) into the native manifest it
-  generates, and hoists namespace files to the package root. An author writes
-  the documented, portable form and it arrives where Codex actually looks.
-- The measurement still belongs in the rationale, with its version: if a future
-  release starts reading the map, a projection that also writes the native
-  manifest is still correct, but the reason recorded here would be stale.
-- Hooknostic's native-manifest form is what the ecosystem actually ships.
-  All 180 plugins in Codex's bundled marketplace carry a `.codex-plugin/plugin.json`
-  and **none** carries a root `plugin.json` or an `extensions."com.openai"`
-  object — so the documented "preferred" form is, for now, used by nothing.
-- Only the `skills` key was probed. Whether `mcpServers` or `hooks` inside the
-  map are read is **not established**, and neither is any other namespace. The
-  projection does not depend on the answer: it reads the map itself, and those
-  three keys are decided by the projection regardless of what an extension says,
-  because they point at trees the portable loader validated.
+- The Codex projector declares `com.openai` and translates the selected OpenAI
+  settings into the native manifest that 0.154.0 actually consumes.
+- The inline object replaces the compatibility overlay rather than merging with
+  it, following the official documented precedence.
+- Root identity, portable skills, and portable MCP declarations remain
+  canonical. Inline `skills` and `mcpServers` values do not replace them.
+- Authored `hooks` survive. When Hooknostic also generates a hook document, the
+  projector composes both with the matching documented path-array or
+  inline-object-array form instead of replacing the author's declaration.
+- `agent-plugin.client-extension.files` remains `exact`: the compiler bridges a
+  documented route missing from this CLI build without dropping supported
+  settings.
 
 ## Not established
 
-- The other keys the documentation places in the map (`mcpServers`, `hooks`,
-  presentation). Each needs its own observable; `skills` was chosen because
-  `codex debug prompt-input` shows the result without a model.
-- Whether a root `plugin.json` and a `.codex-plugin/plugin.json` that disagree
-  resolve the way the documentation describes. `.capture/codex-agent-plugin`
-  establishes that a valid root manifest outranks the namespaced ones; the
-  documentation's account of `extensions."com.openai"` replacing the overlay
-  wholesale is untested.
-- Linux and macOS. Windows only.
+- Whether a later Codex release begins consuming `extensions.com.openai`
+  directly.
+- Live precedence between an inline object and compatibility overlay on a build
+  that consumes both. Current precedence is doc-derived.
+- Runtime effects of `apps` or `interface`; the projector carries them unchanged.
+- Linux and macOS behavior. Windows only.

@@ -196,11 +196,14 @@ entire output.
   that combination itself. Anchor generated commands the way an install cache
   requires (`${PLUGIN_ROOT}` for Codex; a relative path resolves against the
   session cwd and finds nothing).
-- **`namespace` only if the harness reads one.** Set it to the reverse-DNS
-  client-extension namespace the harness actually consumes, and to `""`
-  otherwise. Inventing one makes `agent-plugin.client-extension.files`
-  discoverable against something nothing reads, and the build then reports the
-  component as projected.
+- **`namespace` only for a client extension the projector can deliver.** Set it
+  to an evidence-backed reverse-DNS contract that the harness consumes natively
+  or that `project` translates faithfully into the harness's format, and to
+  `""` otherwise. Codex is the bridge case: OpenAI documents `com.openai`, but
+  0.154.0 ignores a supported inline hook declaration, so its projector carries
+  that object into the native manifest. Inventing a namespace still makes
+  `agent-plugin.client-extension.files` discoverable without a contract and
+  falsely reports the component as projected.
 - **`unsupported` means the component must not reach the harness**, not merely
   that it will be ignored. Codex picks an MCP transport from `command` vs `url`
   and ignores the portable `type`, so a passed-through `sse` server becomes a

@@ -4983,9 +4983,7 @@ function planOpenCodeApplication(result) {
   const mutations = {};
   const terminal = result.terminatedBy !== void 0 ? result.effects[result.effects.length - 1]?.effect : void 0;
   if (terminal?.kind === "block") {
-    if (result.event === "permission.request") {
-      mutations.status = "deny";
-    } else {
+    if (result.event !== "permission.request") {
       application.throwMessage = terminal.reason;
     }
   }
@@ -5240,9 +5238,6 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     }
     if (application.mutations?.output !== void 0) {
       output["output"] = application.mutations.output;
-    }
-    if (application.mutations?.status !== void 0) {
-      output["status"] = application.mutations.status;
     }
     if (application.mutations?.context !== void 0) {
       const context = output["context"];
