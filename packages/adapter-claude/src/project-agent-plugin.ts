@@ -10,6 +10,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  isRootNpmManifestPath,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
@@ -24,17 +25,8 @@ const HOOKS_PATH = "hooks/hooks.json";
 // install input for its locked, script-free `npm ci` (ADR-0012), so only the
 // explicitly configured and validated `runtimePackage` may materialize there.
 // Both routes into the root — a plain package file and a Claude
-// client-extension overlay file — are filtered against this. The comparison
-// case-folds for the same reason inventory exclusions do: the package is
-// inventoried on one filesystem and installed on others, so a `Package.json`
-// that Linux distinguishes is npm's install input to a Windows or macOS
-// consumer.
-function isRootNpmManifestPath(path: string): boolean {
-  const name = path.toLowerCase();
-  // npm prefers shrinkwrap over package-lock, so it must not override the
-  // validated runtime lock through either package content or the overlay.
-  return name === "package.json" || name === "package-lock.json" || name === "npm-shrinkwrap.json";
-}
+// client-extension overlay file — are filtered against `isRootNpmManifestPath`,
+// so neither can override the validated runtime lock.
 
 const CLAUDE_METADATA_PREFIX = ".claude-plugin/";
 

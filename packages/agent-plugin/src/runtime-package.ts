@@ -72,6 +72,26 @@ export function packageNameProblem(name: string): string | undefined {
  */
 export const UNPUBLISHABLE_STILL_LOADS = "The result loads from a local path but cannot be published.";
 
+/**
+ * Whether `path` is one of the npm manifests a package root carries.
+ *
+ * A source package root commonly holds the project's own development manifest
+ * and lockfile, which describe how to build the package rather than anything a
+ * harness should install. Copying them into a projection hands the consumer a
+ * manifest that was never validated for that purpose -- `private: true` and
+ * workspace protocol ranges included. Projectors that materialize a manifest of
+ * their own must also keep the source's from overwriting it.
+ *
+ * The comparison case-folds because a package is inventoried on one filesystem
+ * and installed on others: a `Package.json` that Linux distinguishes is npm's
+ * input to a Windows or macOS consumer. npm prefers shrinkwrap over
+ * package-lock, so both lock spellings count.
+ */
+export function isRootNpmManifestPath(path: string): boolean {
+  const name = path.toLowerCase();
+  return name === "package.json" || name === "package-lock.json" || name === "npm-shrinkwrap.json";
+}
+
 /** Why npm would refuse `name` for a newly published package. */
 export function publishablePackageNameProblem(name: string): string | undefined {
   const result = validatePackageName(name);

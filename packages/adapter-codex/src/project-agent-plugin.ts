@@ -13,6 +13,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  isRootNpmManifestPath,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
@@ -524,6 +525,17 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // Hoisted below, to the package root, rather than shipped one level down
       // where nothing would read it.
       if (file.path.startsWith(NAMESPACE_PREFIX)) continue;
+      // The source project's own development manifest and lockfile describe how
+      // to build the package, not anything Codex should install. Copied
+      // verbatim they shipped `private: true` and workspace protocol ranges
+      // into the plugin, and any name they happened to carry stood in for a
+      // published npm coordinate this projection never emits.
+      if (isRootNpmManifestPath(file.path)) continue;
+      // The source project's own development manifest and lockfile describe how
+      // to build the package, not anything Codex should install. Copied
+      // verbatim they shipped `private: true` and workspace protocol ranges
+      // into the plugin, and any name they happened to carry stood in for a
+      // published npm coordinate this projection never emits.
       if (file.path === NATIVE_MANIFEST_PATH) {
         // This projection always writes the native manifest, so a copied one is
         // guaranteed to be lost -- silently, until now. Reported rather than

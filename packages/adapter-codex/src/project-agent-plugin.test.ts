@@ -689,6 +689,24 @@ describe("Codex client extension", () => {
     expect(manifestOf(plan).hooks).toEqual([authored, generated]);
   });
 
+  it.each(["package.json", "package-lock.json", "npm-shrinkwrap.json"])(
+    "leaves the source project's %s out of the projection",
+    async (path) => {
+      // These describe how to build the source project, not anything Codex
+      // installs. Copied verbatim they shipped `private: true` and workspace
+      // protocol ranges into the plugin, and the name they carried stood in for
+      // a published npm coordinate this projection never emits.
+      const pkg = source({});
+      const plan = await codexAgentPluginProjector.project(
+        { ...pkg, files: [...pkg.files, file(path)] },
+        { target, hookArtifacts: [], support, onUnsupported: "error" },
+      );
+
+      expect(plan.files.some((candidate) => candidate.path === path)).toBe(false);
+      expect(plan.issues).toEqual([]);
+    },
+  );
+
   it("says out loud that a projection-owned key was ignored", async () => {
     const plan = await project(
       source({}, { extensions: { "com.openai": { skills: "./elsewhere/", interface: { displayName: "kept" } } } }),

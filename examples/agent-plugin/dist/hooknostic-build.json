@@ -68,8 +68,8 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:71eeddcd9efe62dfd58707c496c3ce29e1d9828e0c9024e7a988ec632b232ff4",
-        "copiedFileCount": 5,
+        "contentDigest": "sha256:721967057db0195c8298b15307b602b28b3e0be4f4aea78198dd19cf2f6b116d",
+        "copiedFileCount": 4,
         "directories": [
           "runtime",
           "skills",
