@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { packageNameProblem, packageVersionProblem, validateNpmRuntimePackage } from "./runtime-package.js";
+import { packageVersionProblem, publishablePackageNameProblem, validateNpmRuntimePackage } from "./runtime-package.js";
 
 const manifest = JSON.stringify({ name: "runtime", dependencies: { left: "1.0.0", right: "^2.0.0" } });
 
@@ -255,9 +255,15 @@ describe("validateNpmRuntimePackage", () => {
       );
   });
 
+  it("accepts an already-published npm name as a dependency", () => {
+    // npm permits existing warning-only names in dependency edges. The output
+    // package is new, but its dependency graph may reference an older package.
+    expect(validateNpmRuntimePackage(...single("1.0.0", { version: "1.0.0" }, {}, "UPPER")).ok).toBe(true);
+  });
+
   it("rejects names npm will not accept for a new package", () => {
     for (const name of ["UPPER", "@Scope/Name", "a".repeat(215), "http", "weird~'!()*"]) {
-      expect(packageNameProblem(name), name).toBeDefined();
+      expect(publishablePackageNameProblem(name), name).toBeDefined();
     }
   });
 

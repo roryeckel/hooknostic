@@ -11,8 +11,8 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
-  packageNameProblem,
   packageVersionProblem,
+  publishablePackageNameProblem,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -594,7 +594,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // publishes. Whichever is used is the name npm will see, so that is the one
     // checked.
     const npmName = context.target.npmName ?? source.manifest.name;
-    const nameProblem = packageNameProblem(npmName);
+    const nameProblem = publishablePackageNameProblem(npmName);
     if (nameProblem !== undefined) {
       issues.push({
         severity: "error",

@@ -57,12 +57,17 @@ function message(error: unknown): string {
 }
 
 /**
- * Why npm would refuse `name` as a package name, or `undefined` when it is
- * acceptable under the rules for a newly published package. Hooknostic has no
- * compatibility contract with previously published package names, so warnings
- * from `validate-npm-package-name` are rejection reasons too.
+ * Why npm would refuse `name` as a dependency or override name, or `undefined`
+ * when npm can install it. Existing published packages may use names that npm
+ * no longer permits for new publication.
  */
 export function packageNameProblem(name: string): string | undefined {
+  const result = validatePackageName(name);
+  return result.validForOldPackages ? undefined : (result.errors ?? ["invalid package name"]).join("; ");
+}
+
+/** Why npm would refuse `name` for a newly published package. */
+export function publishablePackageNameProblem(name: string): string | undefined {
   const result = validatePackageName(name);
   if (result.validForNewPackages) return undefined;
   return [...(result.errors ?? []), ...(result.warnings ?? [])].join("; ") || "invalid package name";

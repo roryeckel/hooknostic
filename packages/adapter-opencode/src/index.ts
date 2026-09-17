@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import { packageNameProblem, packageVersionProblem } from "@hooknostic/agent-plugin";
+import { packageVersionProblem, publishablePackageNameProblem } from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -191,7 +191,7 @@ export function opencodeAdapter(): HarnessAdapter {
             name = undefined;
             version = undefined;
           }
-          const problem = typeof name === "string" ? packageNameProblem(name) : "manifest declares no name";
+          const problem = typeof name === "string" ? publishablePackageNameProblem(name) : "manifest declares no name";
           if (problem !== undefined) {
             diagnostics.push({
               code: "HN301" as const,
