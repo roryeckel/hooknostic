@@ -363,8 +363,13 @@ describe("validateNpmRuntimePackage", () => {
 
   describe("npmManifestCoordinate", () => {
     it("reads name and version from text or bytes, missing fields as undefined", () => {
-      expect(npmManifestCoordinate('{"name":"pkg","version":"1.2.3"}')).toEqual({ name: "pkg", version: "1.2.3" });
+      expect(npmManifestCoordinate('{"name":"pkg","version":"1.2.3"}')).toEqual({
+        ok: true,
+        name: "pkg",
+        version: "1.2.3",
+      });
       expect(npmManifestCoordinate(new TextEncoder().encode('{"version":"1.2.3"}'))).toEqual({
+        ok: true,
         name: undefined,
         version: "1.2.3",
       });
@@ -373,12 +378,20 @@ describe("validateNpmRuntimePackage", () => {
     it("hands non-string values through for the publication check to judge", () => {
       // `npmPublicationProblems` treats a non-string as "declares none"; the
       // reader must not coerce or drop it.
-      expect(npmManifestCoordinate('{"name":7,"version":null}')).toEqual({ name: 7, version: null });
+      expect(npmManifestCoordinate('{"name":7,"version":null}')).toEqual({ ok: true, name: 7, version: null });
     });
 
-    it("reads nothing from a malformed or non-object manifest", () => {
-      expect(npmManifestCoordinate("{ not json")).toEqual({ name: undefined, version: undefined });
-      expect(npmManifestCoordinate('["pkg"]')).toEqual({ name: undefined, version: undefined });
+    it("distinguishes a manifest npm cannot read from one that declares no name", () => {
+      // Flattened to a pair of undefined fields, both callers reported the
+      // missing fields instead of the unreadable file -- OpenCode as two
+      // findings, core inside a diagnostic blaming the adapter for a defect it
+      // then described wrongly.
+      const malformed = npmManifestCoordinate("{ not json");
+      expect(malformed.ok).toBe(false);
+      expect(malformed.ok === false && malformed.error).toContain("is not valid JSON");
+      const array = npmManifestCoordinate('["pkg"]');
+      expect(array.ok).toBe(false);
+      expect(array.ok === false && array.error).toBe("is not a JSON object");
     });
   });
 

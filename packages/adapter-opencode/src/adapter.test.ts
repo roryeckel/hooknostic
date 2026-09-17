@@ -376,6 +376,28 @@ describe("validateArtifacts for package delivery", () => {
     expect(diagnostic?.message).toContain("npmName");
   });
 
+  it.each([
+    ["does not parse", "{ not json\n", "is not valid JSON"],
+    ["is not an object", '["example-plugin"]\n', "is not a JSON object"],
+  ])("says so when a hooks-only package's manifest %s", async (_case, contents, clause) => {
+    // Read as "declares no name" and "declares no version", a manifest npm
+    // cannot read at all sent the author looking for missing fields in a file
+    // that never parsed -- two findings, both about the wrong thing.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents },
+      ],
+      PKG,
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ code: "HN301", severity: "error" });
+    expect(diagnostics[0]?.message).toContain(clause);
+    expect(diagnostics[0]?.message).not.toContain("declares no name");
+    expect(diagnostics[0]?.message).not.toContain("declares no version");
+  });
+
   it("leaves a projected package's manifest to the projector that built it", async () => {
     // The projector reports both of these while constructing its plan, and a
     // projected warning does not stop the build, so checking them again here

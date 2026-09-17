@@ -183,18 +183,27 @@ export function npmPublicationProblems(input: {
   return problems;
 }
 
+export type NpmManifestCoordinate = { ok: true; name: unknown; version: unknown } | { ok: false; error: string };
+
 /**
- * The `name` and `version` an emitted npm manifest declares. Either is
- * `undefined` when the manifest does not parse, is not an object, or omits
- * the field. One reading for both consumers of the emitted manifest -- core
- * confirming an explicit `npmName` against it, and the hooks-only validator
- * handing the pair to `npmPublicationProblems` -- so they cannot disagree
- * about what the file says.
+ * The `name` and `version` an emitted npm manifest declares, or why the file
+ * is not a manifest at all. Either field is `undefined` when the manifest omits
+ * it. One reading for both consumers of the emitted manifest -- core confirming
+ * an explicit `npmName` against it, and the hooks-only validator handing the
+ * pair to `npmPublicationProblems` -- so they cannot disagree about what the
+ * file says.
+ *
+ * The failure is carried rather than flattened into two absent fields. Read as
+ * a pair of `undefined`s, a manifest npm cannot read at all was reported as
+ * declaring no name and no version, sending the author to look for missing
+ * fields in a file that never parsed -- and, in core, inside a diagnostic whose
+ * remediation asks them to report a defect against the adapter. `error` is
+ * `parseJsonObject`'s clause, so a caller spells it after the file's name.
  */
-export function npmManifestCoordinate(contents: string | Uint8Array): { name: unknown; version: unknown } {
+export function npmManifestCoordinate(contents: string | Uint8Array): NpmManifestCoordinate {
   const parsed = parseJsonObject(contents);
-  if (!parsed.ok) return { name: undefined, version: undefined };
-  return { name: parsed.value["name"], version: parsed.value["version"] };
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  return { ok: true, name: parsed.value["name"], version: parsed.value["version"] };
 }
 
 /** Package-manager-specific protocols npm rejects; named here for a clearer message than npa's. */

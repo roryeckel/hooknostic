@@ -967,7 +967,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         if (spec.npmName !== undefined) {
           const manifest = artifacts.find((artifact) => artifact.path === "package.json");
           const coordinate = manifest === undefined ? undefined : npmManifestCoordinate(manifest.contents);
-          const declared = typeof coordinate?.name === "string" ? coordinate.name : undefined;
+          const declared = coordinate?.ok === true && typeof coordinate.name === "string" ? coordinate.name : undefined;
           if (declared !== spec.npmName) {
             diagnostics.push({
               code: "HN501",
@@ -977,9 +977,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
                 (manifest === undefined
                   ? `its ${adapter.id} output emits no package.json`
-                  : declared === undefined
-                    ? `the package.json its ${adapter.id} output emits declares no name`
-                    : `the package.json its ${adapter.id} output emits is named ${JSON.stringify(declared)}`),
+                  : // Said before the missing-name reading, because a manifest
+                    // npm cannot parse has no fields to be missing and the
+                    // remediation below asks for a defect report describing it.
+                    coordinate?.ok === false
+                    ? `the package.json its ${adapter.id} output emits ${coordinate.error}`
+                    : declared === undefined
+                      ? `the package.json its ${adapter.id} output emits declares no name`
+                      : `the package.json its ${adapter.id} output emits is named ${JSON.stringify(declared)}`),
               remediation:
                 `this is a defect in the ${adapter.id} adapter, which declares publishesNpmPackage yet emitted ` +
                 `its manifest under another name; report it against the adapter -- removing npmName would only hide it.`,

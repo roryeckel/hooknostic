@@ -191,16 +191,30 @@ export function opencodeAdapter(): HarnessAdapter {
           // The tiers and their wording live with the helper, so this path and
           // the projector cannot disagree about what npm would refuse -- and
           // the manifest is read the way core reads it to confirm an npmName.
-          for (const problem of npmPublicationProblems({
-            ...npmManifestCoordinate(manifestText),
-            npmNameDeclared: target.npmName !== undefined,
-          })) {
+          const coordinate = npmManifestCoordinate(manifestText);
+          if (!coordinate.ok) {
+            // One finding about the file, not two about the fields it does not
+            // have: npm never gets as far as the name of a manifest it cannot
+            // parse, and neither should the author.
             diagnostics.push({
               code: "HN301" as const,
-              severity: problem.severity,
+              severity: "error" as const,
               target: target.id,
-              message: problem.message,
+              message: `package delivery emits an npm package, and ${PACKAGE_MANIFEST_PATH} ${coordinate.error}, so npm cannot pack or publish it.`,
             });
+          } else {
+            for (const problem of npmPublicationProblems({
+              name: coordinate.name,
+              version: coordinate.version,
+              npmNameDeclared: target.npmName !== undefined,
+            })) {
+              diagnostics.push({
+                code: "HN301" as const,
+                severity: problem.severity,
+                target: target.id,
+                message: problem.message,
+              });
+            }
           }
         }
       }
