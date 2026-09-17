@@ -108,6 +108,10 @@ export function opencodeAdapter(): HarnessAdapter {
       return ["project", "package"] as const;
     },
 
+    // Package delivery emits an npm package: a manifest, an entry, and the
+    // hook module beside it, publishable under the target's coordinate.
+    publishesNpmPackage: true,
+
     shimEntry(options) {
       return opencodeShimEntrySource(options);
     },

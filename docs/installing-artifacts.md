@@ -312,8 +312,10 @@ It is per target rather than per plugin because each target's output is a
 different npm package: an OpenCode package and a plugin directory are not
 interchangeable contents, so publishing two means two coordinates. Suffixing the
 harness keeps a plugin's packages together when sorted. Set it on a target whose
-output carries no npm manifest and the build refuses it rather than leaving a
-setting that quietly does nothing.
+harness does not publish an npm package, and the build refuses it rather than
+leaving a setting that quietly does nothing — the adapter has to say that its
+package delivery publishes under a coordinate, and the emitted manifest has to
+carry the one declared.
 
 **This is the only OpenCode route that installs a dependency closure.** A
 published package's declared `dependencies` do resolve, unlike on the local-path

@@ -118,6 +118,14 @@ profile for a broad range.
   the HN502 main-module-guard warning accurate — the guard can only fire where
   `process.argv[1]` is the artifact itself. Leaving it undeclared silently
   disables that diagnostic for the target.
+- Declare `publishesNpmPackage: true` only if package delivery emits a manifest
+  npm publishes the artifact under. That is what lets a target set `npmName`;
+  undeclared, core refuses the coordinate rather than letting it sit in the
+  config doing nothing. The emitted manifest is still checked afterwards, so
+  both must agree — the declaration exists because emitting a root
+  `package.json` is not the same as publishing one, and adapters that never
+  read `npmName` emit one anyway (a copied source manifest, a
+  `components.runtimePackage` install input).
 - The published CLI cannot resolve workspace packages, so add the adapter's
   `src/shim.ts` to `SHIMS` in `packages/cli/scripts/bundle.mjs`. It ships as
   `dist/shims/<id>.mjs` (runtime inlined, SDK external) and

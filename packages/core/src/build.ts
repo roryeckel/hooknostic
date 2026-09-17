@@ -968,11 +968,29 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         phase = "validation";
-        // Checked by effect, not by asking the adapter whether it publishes:
-        // the question that matters is whether the coordinate actually reached
-        // the manifest npm will read. An adapter that gains npm packaging later
-        // satisfies this with no flag to remember to set.
+        // Two questions, because effect alone answered the wrong one. Whether
+        // the coordinate reached the manifest npm will read is necessary but
+        // not sufficient: adapters that never read `npmName` still emit a root
+        // `package.json` -- Codex copied the source project's until it stopped,
+        // Claude builds one from `components.runtimePackage` -- and a name
+        // matching by coincidence passed a guard that exists precisely to catch
+        // a setting doing nothing. So the adapter must first declare that its
+        // package delivery publishes under the coordinate at all.
         if (spec.npmName !== undefined) {
+          if (adapter.publishesNpmPackage !== true) {
+            diagnostics.push({
+              code: "HN501",
+              severity: "error",
+              target: id,
+              message:
+                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
+                `${adapter.id} package delivery does not emit an npm package to publish under it`,
+              remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
+            });
+            target.status = "failed";
+            if (target.projection) target.projection.status = "failed";
+            continue;
+          }
           const manifest = artifacts.find((artifact) => artifact.path === "package.json");
           const declared = manifest === undefined ? undefined : npmManifestName(manifest.contents);
           if (declared !== spec.npmName) {

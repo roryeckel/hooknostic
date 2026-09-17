@@ -1879,10 +1879,8 @@ ${run.stderr}`,
         evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
       }),
     ).toBe(2);
-    // Claude's package delivery emits no npm manifest, so the coordinate would
-    // have sat in the config doing nothing. Checked by effect: the question is
-    // whether it reached the manifest npm reads, not whether the adapter
-    // remembered to declare that it publishes.
+    // Claude's package delivery emits no npm package, so the coordinate would
+    // have sat in the config doing nothing.
     expect(JSON.parse(capture.out()).diagnostics).toEqual([
       expect.objectContaining({ code: "HN501", target: "claude" }),
     ]);
@@ -1891,6 +1889,49 @@ ${run.stderr}`,
     // successful, and a build must not classify it as merely skipped by another
     // target's failure.
     expect(JSON.parse(capture.out()).targets.claude.status).toBe("failed");
+  });
+
+  it("refuses an npm coordinate an adapter never publishes, however its output is named", async () => {
+    // Checking the emitted manifest alone let a coincidence pass: this
+    // projector copies the package verbatim, so the source project's own
+    // `package.json` lands at the output root, and a name matching the
+    // coordinate satisfied a guard whose entire purpose is to catch a setting
+    // that quietly does nothing. Nothing here publishes anything.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-coincidence-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "coincidence", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "@scope/coincidence", version: "1.0.0" }));
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+          components: { root: ".", targets: ["copy"] },
+          targets: {
+            copy: {
+              version: ">=1.0 <2",
+              delivery: "package",
+              output: "./dist/copy",
+              npmName: "@scope/coincidence",
+            },
+          },
+        };`,
+    );
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: { copy: copyThroughAdapter() },
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "HN501", target: "copy" }));
+    expect(report.targets.copy.status).toBe("failed");
   });
 
   it("rejects project-root output without deleting the config or hook source", async () => {

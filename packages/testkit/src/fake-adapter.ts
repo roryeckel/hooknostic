@@ -19,6 +19,8 @@ export interface FakeAdapterOptions {
   adapterVersion?: string;
   profiles: CapabilityProfile[];
   supportedDeliveries?: readonly TargetSpec["delivery"][];
+  /** Whether package delivery emits an npm package a target may name. */
+  publishesNpmPackage?: boolean;
   /** Override native decode for runtime tests; defaults to identity-ish. */
   decode?(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
   /**
@@ -69,6 +71,8 @@ export function makeFakeAdapter(options: FakeAdapterOptions): HarnessAdapter {
     supportedDeliveries() {
       return options.supportedDeliveries ?? (["package", "project"] as const);
     },
+
+    ...(options.publishesNpmPackage === undefined ? {} : { publishesNpmPackage: options.publishesNpmPackage }),
 
     capabilities(target: TargetSpec) {
       return resolveCapabilityMatrix(options.id, options.profiles, target.version);
