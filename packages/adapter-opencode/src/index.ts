@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import { npmPublicationProblems } from "@hooknostic/agent-plugin";
+import { contentsText, npmManifestCoordinate, npmPublicationProblems } from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -134,7 +134,7 @@ export function opencodeAdapter(): HarnessAdapter {
       const read = (path: string): string | undefined => {
         const artifact = artifacts.find((candidate) => candidate.path === path);
         if (artifact === undefined) return undefined;
-        return typeof artifact.contents === "string" ? artifact.contents : new TextDecoder().decode(artifact.contents);
+        return contentsText(artifact.contents);
       };
       // Package delivery moves the hook module to the package root. Validating
       // the project path unconditionally would silently pass every package.
@@ -188,21 +188,11 @@ export function opencodeAdapter(): HarnessAdapter {
           // only `string().min(1)`, or from the target's npm coordinate, and a
           // name npm refuses produces a directory that cannot be packed or
           // published.
-          let name: unknown;
-          let version: unknown;
-          try {
-            const manifest = JSON.parse(manifestText) as { name?: unknown; version?: unknown };
-            name = manifest.name;
-            version = manifest.version;
-          } catch {
-            name = undefined;
-            version = undefined;
-          }
           // The tiers and their wording live with the helper, so this path and
-          // the projector cannot disagree about what npm would refuse.
+          // the projector cannot disagree about what npm would refuse -- and
+          // the manifest is read the way core reads it to confirm an npmName.
           for (const problem of npmPublicationProblems({
-            name,
-            version,
+            ...npmManifestCoordinate(manifestText),
             npmNameDeclared: target.npmName !== undefined,
           })) {
             diagnostics.push({

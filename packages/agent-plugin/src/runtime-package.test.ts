@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  npmManifestCoordinate,
   npmPublicationProblems,
   packageVersionProblem,
   publishablePackageNameProblem,
@@ -357,6 +358,27 @@ describe("validateNpmRuntimePackage", () => {
       expect(problems.map((problem) => problem.severity)).toEqual(["error", "warn"]);
       expect(problems[0]?.message).toContain("not a valid npm package name");
       expect(problems[1]?.message).toContain('"next"');
+    });
+  });
+
+  describe("npmManifestCoordinate", () => {
+    it("reads name and version from text or bytes, missing fields as undefined", () => {
+      expect(npmManifestCoordinate('{"name":"pkg","version":"1.2.3"}')).toEqual({ name: "pkg", version: "1.2.3" });
+      expect(npmManifestCoordinate(new TextEncoder().encode('{"version":"1.2.3"}'))).toEqual({
+        name: undefined,
+        version: "1.2.3",
+      });
+    });
+
+    it("hands non-string values through for the publication check to judge", () => {
+      // `npmPublicationProblems` treats a non-string as "declares none"; the
+      // reader must not coerce or drop it.
+      expect(npmManifestCoordinate('{"name":7,"version":null}')).toEqual({ name: 7, version: null });
+    });
+
+    it("reads nothing from a malformed or non-object manifest", () => {
+      expect(npmManifestCoordinate("{ not json")).toEqual({ name: undefined, version: undefined });
+      expect(npmManifestCoordinate('["pkg"]')).toEqual({ name: undefined, version: undefined });
     });
   });
 

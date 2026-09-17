@@ -18,6 +18,8 @@ import npa from "npm-package-arg";
 import semver from "semver";
 import validatePackageName from "validate-npm-package-name";
 
+import { contentsText, isJsonObject as object, parseJsonObject } from "./json.js";
+
 export interface NpmRuntimeManifest {
   dependencies: Record<string, string>;
   [key: string]: unknown;
@@ -32,17 +34,9 @@ export interface NpmRuntimeLockfile {
 export type NpmRuntimePackageValidation =
   { ok: true; manifest: NpmRuntimeManifest; lockfile: NpmRuntimeLockfile } | { ok: false; error: string };
 
-function object(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function text(input: string | Uint8Array): string {
-  return typeof input === "string" ? input : new TextDecoder().decode(input);
-}
-
 function parseJson(input: string | Uint8Array, label: string): unknown {
   try {
-    return JSON.parse(text(input)) as unknown;
+    return JSON.parse(contentsText(input)) as unknown;
   } catch (error) {
     throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -187,6 +181,20 @@ export function npmPublicationProblems(input: {
     });
   }
   return problems;
+}
+
+/**
+ * The `name` and `version` an emitted npm manifest declares. Either is
+ * `undefined` when the manifest does not parse, is not an object, or omits
+ * the field. One reading for both consumers of the emitted manifest -- core
+ * confirming an explicit `npmName` against it, and the hooks-only validator
+ * handing the pair to `npmPublicationProblems` -- so they cannot disagree
+ * about what the file says.
+ */
+export function npmManifestCoordinate(contents: string | Uint8Array): { name: unknown; version: unknown } {
+  const parsed = parseJsonObject(contents);
+  if (!parsed.ok) return { name: undefined, version: undefined };
+  return { name: parsed.value["name"], version: parsed.value["version"] };
 }
 
 /** Package-manager-specific protocols npm rejects; named here for a clearer message than npa's. */

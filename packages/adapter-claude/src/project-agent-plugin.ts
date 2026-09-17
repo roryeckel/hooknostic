@@ -9,8 +9,10 @@ import {
   classifyStdioCwd,
   componentSummary,
   hasUnportableCommandPath,
+  isJsonObject as object,
   isRejectedSkillPath,
   isRootNpmManifestPath,
+  parseJsonObject,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
@@ -43,16 +45,11 @@ function isReservedNativePath(path: string): boolean {
   return name.startsWith(CLAUDE_METADATA_PREFIX) || name === MCP_PATH || name === HOOKS_PATH;
 }
 
-function object(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function parseObject(file: AgentPluginProjectionFile | undefined, label: string): Record<string, unknown> {
   if (file === undefined) return {};
-  const text = typeof file.contents === "string" ? file.contents : new TextDecoder().decode(file.contents);
-  const value = JSON.parse(text) as unknown;
-  if (!object(value)) throw new Error(`${label} must contain a JSON object`);
-  return value;
+  const parsed = parseJsonObject(file.contents);
+  if (!parsed.ok) throw new Error(`${label} ${parsed.error}`);
+  return parsed.value;
 }
 
 function stringify(value: unknown): string {

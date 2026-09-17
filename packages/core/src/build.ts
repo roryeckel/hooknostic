@@ -14,6 +14,7 @@ import {
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
+  npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
 } from "@hooknostic/agent-plugin";
@@ -445,18 +446,6 @@ async function writeArtifacts(
     });
   }
   return dir;
-}
-
-/** The `name` an emitted npm manifest declares, or `undefined` if it declares none. */
-function npmManifestName(contents: string | Uint8Array): string | undefined {
-  const text = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
-  try {
-    const parsed: unknown = JSON.parse(text);
-    const name = (parsed as { name?: unknown })?.name;
-    return typeof name === "string" ? name : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export async function buildProject(options: BuildOptions): Promise<BuildResult> {
@@ -977,7 +966,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         // harness that does exactly what this one claims to.
         if (spec.npmName !== undefined) {
           const manifest = artifacts.find((artifact) => artifact.path === "package.json");
-          const declared = manifest === undefined ? undefined : npmManifestName(manifest.contents);
+          const coordinate = manifest === undefined ? undefined : npmManifestCoordinate(manifest.contents);
+          const declared = typeof coordinate?.name === "string" ? coordinate.name : undefined;
           if (declared !== spec.npmName) {
             diagnostics.push({
               code: "HN501",

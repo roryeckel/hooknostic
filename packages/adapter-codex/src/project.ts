@@ -1,5 +1,6 @@
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
+import { contentsText } from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   McpLauncherServer,
@@ -77,9 +78,9 @@ export function projectIntegration(
   const manifest = artifacts.find((a) => a.path === ".codex/hooks.json");
   const entries: ProjectEntry[] = [];
   if (manifest) {
-    const document = JSON.parse(
-      typeof manifest.contents === "string" ? manifest.contents : new TextDecoder().decode(manifest.contents),
-    ) as { hooks: Record<string, { hooks: { command: string; timeout: number }[] }[]> };
+    const document = JSON.parse(contentsText(manifest.contents)) as {
+      hooks: Record<string, { hooks: { command: string; timeout: number }[] }[]>;
+    };
     const command = projectHookBootstrap(`${output}/.codex/hooknostic/hooknostic.mjs`, config);
     for (const [event, groups] of Object.entries(document.hooks)) {
       for (const group of groups) for (const hook of group.hooks) hook.command = command;

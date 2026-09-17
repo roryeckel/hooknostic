@@ -11,9 +11,11 @@ import {
   assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
+  contentsText,
   hasUnportableCommandPath,
   isRejectedSkillPath,
   isRootNpmManifestPath,
+  parseJsonObject,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
@@ -150,6 +152,8 @@ function addAncestorDirectories(path: string, into: Map<string, string>): void {
  */
 export const CODEX_AGENT_PLUGIN_NAMESPACE = "com.openai";
 const NAMESPACE_PREFIX = `${CODEX_AGENT_PLUGIN_NAMESPACE}/`;
+/** Where the inline form of the extension lives in the file the author wrote. */
+const INLINE_EXTENSION_PATH = `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}`;
 
 /**
  * Manifest keys this projection decides, whatever a client extension says.
@@ -241,27 +245,18 @@ function appendHookSource(
   // Hook artifacts are compiler output and already validated by the adapter,
   // so a document that does not parse is a defect upstream -- reported against
   // the artifact rather than thrown out of the projection.
-  const text = typeof generatedContents === "string" ? generatedContents : new TextDecoder().decode(generatedContents);
   try {
-    return { value: [...(entries as Record<string, unknown>[]), JSON.parse(text) as Record<string, unknown>] };
+    return {
+      value: [
+        ...(entries as Record<string, unknown>[]),
+        JSON.parse(contentsText(generatedContents)) as Record<string, unknown>,
+      ],
+    };
   } catch (error) {
     return { value: generatedPath, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-/** Decode an overlay document; a malformed one is reported, never guessed at. */
-function parseOverlayManifest(contents: string | Uint8Array): { value: Record<string, unknown>; error?: string } {
-  const text = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { value: {}, error: "is not a JSON object" };
-    }
-    return { value: parsed as Record<string, unknown> };
-  } catch (error) {
-    return { value: {}, error: error instanceof Error ? error.message : String(error) };
-  }
-}
 const LAUNCHER_PATH = `${RUNTIME_DIR}/${MCP_LAUNCHER_FILE}`;
 const LAUNCHER_SERVERS_PATH = `${RUNTIME_DIR}/${MCP_SERVERS_FILE}`;
 
@@ -826,13 +821,14 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             component: "agent-plugin.client-extension.files",
             path: file.path,
             message: `client extension overlay ${JSON.stringify(file.path)} is superseded by ${JSON.stringify(
-              `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}`,
+              INLINE_EXTENSION_PATH,
             )} and ignored; fold its settings into the inline object or remove the file.`,
           });
           continue;
         }
-        const parsed = parseOverlayManifest(file.contents);
-        if (parsed.error !== undefined) {
+        // Malformed is reported, never guessed at.
+        const parsed = parseJsonObject(file.contents);
+        if (!parsed.ok) {
           issues.push({
             severity: "error",
             scope: "manifest",
@@ -894,15 +890,18 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // and modelling its field names here would mean a Hooknostic release every
     // time OpenAI adds one.
     const extensionEntry = inlineExtension ?? overlayManifest;
-    // Where the author's declaration lives: one of the two files they wrote,
-    // never the manifest this projection generates (see the ignored-key
-    // warning below for why).
-    const declarationPath = (key: string): { path: string } | Record<never, never> =>
-      inlineExtension !== undefined
-        ? { path: `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}/${key}` }
-        : overlaySourcePath === undefined
-          ? {}
-          : { path: `${overlaySourcePath}#/${key}` };
+    // Where the author's declaration lives -- the whole extension, or one key
+    // of it: one of the two files they wrote, never the manifest this
+    // projection generates. Naming that would send them to output they do not
+    // have, and which is a hard error to ship. Only those two files can have
+    // supplied a key, so one of them is always the source.
+    const declarationPath = (key?: string): { path: string } | Record<never, never> => {
+      if (inlineExtension !== undefined) {
+        return { path: key === undefined ? INLINE_EXTENSION_PATH : `${INLINE_EXTENSION_PATH}/${key}` };
+      }
+      if (overlaySourcePath === undefined) return {};
+      return { path: key === undefined ? overlaySourcePath : `${overlaySourcePath}#/${key}` };
+    };
     const hooksProblem = "hooks" in extensionEntry ? hooksDeclarationProblem(extensionEntry["hooks"]) : undefined;
     if (hooksProblem !== undefined) {
       issues.push({
@@ -983,15 +982,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         severity: "warn",
         scope: "projection",
         component: "agent-plugin.client-extension.files",
-        // The declaration lives in one of two files the author wrote. Naming
-        // the manifest this projection generates sends them to output they do
-        // not have, and which is a hard error to ship. Only those two can have
-        // supplied a key, so one of them is always the source here.
-        ...(inlineExtension !== undefined
-          ? { path: `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}` }
-          : overlaySourcePath === undefined
-            ? {}
-            : { path: overlaySourcePath }),
+        ...declarationPath(),
         message: `client extension declares ${claimed.map((key) => JSON.stringify(key)).join(", ")}, which this projection decides from the package itself; the declared value is ignored.`,
       });
     }
