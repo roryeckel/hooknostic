@@ -358,6 +358,55 @@ describe("validateArtifacts for package delivery", () => {
     expect(diagnostic?.severity).toBe("warn");
   });
 
+  it("fails an npm coordinate that only blocks publication, because publishing is why it exists", async () => {
+    // The projector already draws this line. A hooks-only package reaching the
+    // opposite verdict made one declaration pass or fail on whether the config
+    // happened to also list components.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"http","version":"1.2.3"}\n' },
+      ],
+      { ...PKG, npmName: "http" },
+    );
+    const diagnostic = diagnostics.find((d) => d.message.includes("not a valid npm package name"));
+    expect(diagnostic?.severity).toBe("error");
+    // Naming the generated manifest would send the author to the wrong file.
+    expect(diagnostic?.message).toContain("npmName");
+  });
+
+  it("leaves a projected package's manifest to the projector that built it", async () => {
+    // The projector reports both of these while constructing its plan, and a
+    // projected warning does not stop the build, so checking them again here
+    // reached the author as two findings for one declaration.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        { path: "hooknostic-agent-plugin.js", contents: "export const components = {};\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"UPPER","version":"next"}\n' },
+      ],
+      PKG,
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("files its diagnostics against the target that produced them", async () => {
+    // Targets may share an adapter under any id, so hard-coding the adapter id
+    // attributed the finding to a target the config need not even declare.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"_under","version":"1.2.3"}\n' },
+      ],
+      { ...PKG, id: "opencode-registry" },
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.every((d) => d.target === "opencode-registry")).toBe(true);
+  });
+
   it.each([
     ["with no version", '{"name":"example-plugin"}\n'],
     ["with a non-semver version", '{"name":"example-plugin","version":"next"}\n'],

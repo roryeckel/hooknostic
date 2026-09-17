@@ -146,7 +146,7 @@ export function opencodeAdapter(): HarnessAdapter {
         diagnostics.push({
           code: "HN301" as const,
           severity: "error" as const,
-          target: "opencode",
+          target: target.id,
           message: "generated plugin module does not export HooknosticPlugin.",
         });
       }
@@ -156,7 +156,7 @@ export function opencodeAdapter(): HarnessAdapter {
           diagnostics.push({
             code: "HN301" as const,
             severity: "error" as const,
-            target: "opencode",
+            target: target.id,
             message: `package delivery emitted no ${PACKAGE_ENTRY_PATH}; OpenCode would have no module to load.`,
           });
         } else if (entry.includes(`./${PACKAGE_PLUGIN_PATH}`) && moduleText === undefined) {
@@ -167,7 +167,7 @@ export function opencodeAdapter(): HarnessAdapter {
           diagnostics.push({
             code: "HN301" as const,
             severity: "error" as const,
-            target: "opencode",
+            target: target.id,
             message: `${PACKAGE_ENTRY_PATH} re-exports ${PACKAGE_PLUGIN_PATH}, which the output does not contain.`,
           });
         }
@@ -176,16 +176,19 @@ export function opencodeAdapter(): HarnessAdapter {
           diagnostics.push({
             code: "HN301" as const,
             severity: "error" as const,
-            target: "opencode",
+            target: target.id,
             message: `package delivery emitted no ${PACKAGE_MANIFEST_PATH}; the output is not a loadable package.`,
           });
-        } else {
-          // Checked here rather than at generation because both paths land in
-          // this one: the Agent Plugin projector takes the name from the package
-          // manifest and rejects a bad one itself, but a hooks-only package
-          // takes it from `PluginSpec.name`, which is only `string().min(1)`.
-          // A name npm refuses produces a directory that cannot be packed or
-          // published, and nothing else would catch it.
+        } else if (!artifacts.some((artifact) => artifact.path === PACKAGE_COMPONENTS_PATH)) {
+          // Hooks-only packages, and only those. The Agent Plugin projector
+          // takes the manifest it constructs through the same two checks while
+          // building its plan, so reporting a projected package here would
+          // double every finding it already made -- and a projected warning
+          // does not stop the build, so both would reach the author. This path
+          // has no projector: the name comes from `PluginSpec.name`, which is
+          // only `string().min(1)`, or from the target's npm coordinate, and a
+          // name npm refuses produces a directory that cannot be packed or
+          // published.
           let name: unknown;
           let version: unknown;
           try {
@@ -198,38 +201,40 @@ export function opencodeAdapter(): HarnessAdapter {
           }
           const problem = typeof name === "string" ? publishablePackageNameProblem(name) : "manifest declares no name";
           if (problem !== undefined) {
-            // The same two tiers the projected path applies: npm refusing to
-            // install the name at all is fatal, npm refusing to publish it
-            // costs publication only, which is what the version check beside
-            // this one already warns about.
-            const publicationOnly = typeof name === "string" && packageNameProblem(name) === undefined;
+            // The same two tiers, and the same exception, the projected path
+            // applies: npm refusing to install the name at all is fatal, npm
+            // refusing to publish it costs publication only -- except when the
+            // name came from an explicit `npmName`, which exists for no purpose
+            // other than publishing, so a coordinate that cannot be published
+            // is a defeated declaration rather than a survivable one.
+            const publicationOnly =
+              typeof name === "string" && packageNameProblem(name) === undefined && target.npmName === undefined;
             diagnostics.push({
               code: "HN301" as const,
               severity: publicationOnly ? ("warn" as const) : ("error" as const),
-              target: "opencode",
+              target: target.id,
               message:
-                `package delivery emits an npm package, and ${JSON.stringify(name)} is not a valid npm package name: ${problem}.` +
+                // Which of the two declarations supplied it, because naming the
+                // generated manifest would send the author to the wrong file.
+                `package delivery emits an npm package, and ${
+                  typeof name === "string" ? `${target.npmName === undefined ? "manifest name" : "npmName"} ` : ""
+                }${JSON.stringify(name)} is not a valid npm package name: ${problem}.` +
                 (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
             });
           }
-          // A projected Agent Plugin reports this while constructing its plan.
-          // Hooks-only packages bypass that projector, so validate their emitted
-          // manifest here, where both package-generation paths already converge.
-          if (!artifacts.some((artifact) => artifact.path === PACKAGE_COMPONENTS_PATH)) {
-            const versionProblem =
-              typeof version === "string" ? packageVersionProblem(version) : "the manifest declares no version";
-            if (versionProblem !== undefined) {
-              diagnostics.push({
-                code: "HN301" as const,
-                severity: "warn" as const,
-                target: target.id,
-                message: `package delivery emits an npm package and ${
-                  typeof version === "string"
-                    ? `the manifest version ${JSON.stringify(version)} is ${versionProblem}`
-                    : versionProblem
-                }, so the result loads from a local path but cannot be published.`,
-              });
-            }
+          const versionProblem =
+            typeof version === "string" ? packageVersionProblem(version) : "the manifest declares no version";
+          if (versionProblem !== undefined) {
+            diagnostics.push({
+              code: "HN301" as const,
+              severity: "warn" as const,
+              target: target.id,
+              message: `package delivery emits an npm package and ${
+                typeof version === "string"
+                  ? `the manifest version ${JSON.stringify(version)} is ${versionProblem}`
+                  : versionProblem
+              }, so the result loads from a local path but cannot be published.`,
+            });
           }
         }
       }
