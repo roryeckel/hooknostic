@@ -113,6 +113,82 @@ export function packageVersionProblem(version: string): string | undefined {
   return version.trim().length === 0 ? "empty" : "not a semantic version";
 }
 
+/** A finding about the coordinate a package delivery would publish under. */
+export interface NpmPublicationProblem {
+  /**
+   * `error` when npm would refuse to install the result at all, or when an
+   * explicit coordinate is defeated; `warn` when only publication is lost.
+   */
+  severity: "warn" | "error";
+  message: string;
+}
+
+/**
+ * What npm would say about publishing a package under `name` at `version`.
+ *
+ * Two tiers, because npm has two. A name it will not install at all produces a
+ * directory that cannot be packed, which fails the build. A name it still
+ * installs but will no longer publish costs only publication -- the position
+ * the version check takes, with the same consequence -- so it warns. An
+ * explicit `npmName` is the exception: it exists for no purpose other than
+ * publishing, so a coordinate that cannot be published is a defeated
+ * declaration rather than a survivable one.
+ *
+ * Both callers -- a projector composing a manifest and a validator reading an
+ * emitted one -- go through here so the tiers and their wording cannot drift
+ * apart. The name finding, when there is one, comes before the version's.
+ */
+export function npmPublicationProblems(input: {
+  /** The name npm will see. A non-string means the manifest declares none. */
+  name: unknown;
+  /** The version npm will see. A non-string means the manifest declares none. */
+  version: unknown;
+  /** Whether `name` came from an explicit target `npmName` rather than the manifest. */
+  npmNameDeclared: boolean;
+}): NpmPublicationProblem[] {
+  const { name, version, npmNameDeclared } = input;
+  const problems: NpmPublicationProblem[] = [];
+  if (typeof name !== "string") {
+    problems.push({
+      severity: "error",
+      message:
+        "package delivery emits an npm package, and the manifest declares no name, so npm cannot pack or publish it.",
+    });
+  } else {
+    const problem = publishablePackageNameProblem(name);
+    if (problem !== undefined) {
+      const publicationOnly = packageNameProblem(name) === undefined && !npmNameDeclared;
+      problems.push({
+        severity: publicationOnly ? "warn" : "error",
+        // Which of the two declarations supplied it, because naming the
+        // generated manifest would send the author to the wrong file.
+        message:
+          `package delivery emits an npm package, and ${npmNameDeclared ? "npmName" : "manifest name"} ` +
+          `${JSON.stringify(name)} is not a valid npm package name: ${problem}.` +
+          (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
+      });
+    }
+  }
+  let versionClause: string | undefined;
+  if (typeof version !== "string") {
+    versionClause = "the manifest declares no version";
+  } else {
+    const problem = packageVersionProblem(version);
+    if (problem !== undefined) versionClause = `the manifest version ${JSON.stringify(version)} is ${problem}`;
+  }
+  if (versionClause !== undefined) {
+    // An Agent Plugins manifest leaves the version optional and unconstrained,
+    // and the package still loads from a local path either way -- hence a
+    // warning -- but npm does not object until `npm publish`, long after the
+    // build.
+    problems.push({
+      severity: "warn",
+      message: `package delivery emits an npm package and ${versionClause}. ${UNPUBLISHABLE_STILL_LOADS}`,
+    });
+  }
+  return problems;
+}
+
 /** Package-manager-specific protocols npm rejects; named here for a clearer message than npa's. */
 const FOREIGN_PROTOCOLS = new Set(["workspace", "link", "portal", "patch", "catalog", "jsr"]);
 

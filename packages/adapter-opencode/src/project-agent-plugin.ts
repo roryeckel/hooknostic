@@ -11,10 +11,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
-  packageNameProblem,
-  packageVersionProblem,
-  publishablePackageNameProblem,
-  UNPUBLISHABLE_STILL_LOADS,
+  npmPublicationProblems,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -306,16 +303,6 @@ function injectorSource(
 }
 
 /**
- * How to describe a manifest version npm would not publish, or `undefined` when
- * it would. Phrased to slot into the projection warning.
- */
-function unpublishableVersion(version: string | undefined): string | undefined {
-  if (version === undefined) return "the manifest declares no version";
-  const problem = packageVersionProblem(version);
-  return problem === undefined ? undefined : `the manifest version ${JSON.stringify(version)} is ${problem}`;
-}
-
-/**
  * The npm manifest that makes the output a package rather than a directory.
  *
  * `exports["./server"]` is what selects the entry: measured on 1.18.30 to be
@@ -596,44 +583,21 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // publishes. Whichever is used is the name npm will see, so that is the one
     // checked.
     const npmName = context.target.npmName ?? source.manifest.name;
-    const nameProblem = publishablePackageNameProblem(npmName);
-    if (nameProblem !== undefined) {
-      // Two tiers, because npm has two. A name it will not install at all
-      // produces a directory that cannot be packed, which fails the build. A
-      // name it still installs but will no longer publish costs only
-      // publication -- the position the version check below already takes, and
-      // the same consequence -- so it warns. An explicit npmName is the
-      // exception: it exists for no purpose other than publishing, so a
-      // coordinate that cannot be published is a defeated declaration.
-      const publicationOnly = packageNameProblem(npmName) === undefined && context.target.npmName === undefined;
+    // The two tiers -- fatal when npm would not install the name, a warning
+    // when only publication is lost, fatal again for a defeated explicit
+    // npmName -- and their wording live with the helper, shared with the
+    // hooks-only validator so the two paths cannot drift apart.
+    for (const problem of npmPublicationProblems({
+      name: npmName,
+      version: source.manifest.version,
+      npmNameDeclared: context.target.npmName !== undefined,
+    })) {
       issues.push({
-        severity: publicationOnly ? "warn" : "error",
+        severity: problem.severity,
         scope: "projection",
         component: "agent-plugin.manifest",
         path: MANIFEST_PATH,
-        message:
-          `package delivery emits an npm package, and ` +
-          `${context.target.npmName === undefined ? "manifest name" : "npmName"} ` +
-          `${JSON.stringify(npmName)} is not a valid npm package name: ${nameProblem}.` +
-          (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
-      });
-    }
-    // A version is optional on an Agent Plugins manifest and unconstrained when
-    // present, so neither its absence nor its presence says whether npm would
-    // publish the result. The package still loads from a local path either way
-    // -- hence a warning, not an error -- but publication is the only route that
-    // reaches a consumer without the build output on disk, and npm does not
-    // object until `npm publish`, long after the build.
-    const versionProblem = unpublishableVersion(source.manifest.version);
-    if (versionProblem !== undefined) {
-      issues.push({
-        severity: "warn",
-        scope: "projection",
-        component: "agent-plugin.manifest",
-        path: MANIFEST_PATH,
-        message:
-          `package delivery emits an npm package and ${versionProblem}, ` +
-          "so the result loads from a local path but cannot be published.",
+        message: problem.message,
       });
     }
     files.push({

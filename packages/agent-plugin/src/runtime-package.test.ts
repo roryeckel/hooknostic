@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { packageVersionProblem, publishablePackageNameProblem, validateNpmRuntimePackage } from "./runtime-package.js";
+import {
+  npmPublicationProblems,
+  packageVersionProblem,
+  publishablePackageNameProblem,
+  UNPUBLISHABLE_STILL_LOADS,
+  validateNpmRuntimePackage,
+} from "./runtime-package.js";
 
 const manifest = JSON.stringify({ name: "runtime", dependencies: { left: "1.0.0", right: "^2.0.0" } });
 
@@ -282,6 +288,76 @@ describe("validateNpmRuntimePackage", () => {
     ["1.0", "not a semantic version"],
   ])("judges manifest version %j the way npm publish would", (version, problem) => {
     expect(packageVersionProblem(version)).toBe(problem);
+  });
+
+  describe("npmPublicationProblems", () => {
+    const judge = (name: unknown, version: unknown, npmNameDeclared = false) =>
+      npmPublicationProblems({ name, version, npmNameDeclared });
+
+    it.each(["_under", "has space"])("fails a manifest name npm cannot install at all: %s", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain("not a valid npm package name");
+      // Nothing loads from a directory npm cannot pack, so the still-loads
+      // consolation would be false here.
+      expect(problems[0]?.message).not.toContain(UNPUBLISHABLE_STILL_LOADS);
+    });
+
+    it.each(["UPPER", "http"])("warns that manifest name %s cannot be published", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain(`manifest name ${JSON.stringify(name)}`);
+      expect(problems[0]?.message.endsWith(UNPUBLISHABLE_STILL_LOADS)).toBe(true);
+    });
+
+    it("fails an npm coordinate that only blocks publication, because publishing is why it exists", () => {
+      const problems = judge("http", "1.0.0", true);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain('npmName "http"');
+      expect(problems[0]?.message).not.toContain("manifest name");
+      expect(problems[0]?.message).not.toContain(UNPUBLISHABLE_STILL_LOADS);
+    });
+
+    it.each([undefined, 42])("fails a manifest whose name is %j", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain("declares no name");
+    });
+
+    it("warns that a versionless package cannot be published", () => {
+      const problems = judge("fine", undefined);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain("declares no version");
+      expect(problems[0]?.message).toContain("cannot be published");
+    });
+
+    it("names the version npm would refuse", () => {
+      const problems = judge("fine", "next");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain('"next"');
+    });
+
+    it.each([
+      ["my-pkg", "1.2.3"],
+      ["@scope/pkg", "v1.0.0"],
+    ])("stays silent for %s@%s", (name, version) => {
+      expect(judge(name, version)).toEqual([]);
+    });
+
+    it("reports both tiers independently, name first", () => {
+      // Neither finding may hide the other: a fatal name still leaves the
+      // author a version to fix before the next attempt.
+      const problems = judge("_under", "next");
+      expect(problems.map((problem) => problem.severity)).toEqual(["error", "warn"]);
+      expect(problems[0]?.message).toContain("not a valid npm package name");
+      expect(problems[1]?.message).toContain('"next"');
+    });
   });
 
   describe("locked dependency graph", () => {

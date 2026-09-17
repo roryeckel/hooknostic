@@ -1,12 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import {
-  packageNameProblem,
-  packageVersionProblem,
-  publishablePackageNameProblem,
-  UNPUBLISHABLE_STILL_LOADS,
-} from "@hooknostic/agent-plugin";
+import { npmPublicationProblems } from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -203,41 +198,18 @@ export function opencodeAdapter(): HarnessAdapter {
             name = undefined;
             version = undefined;
           }
-          const problem = typeof name === "string" ? publishablePackageNameProblem(name) : "manifest declares no name";
-          if (problem !== undefined) {
-            // The same two tiers, and the same exception, the projected path
-            // applies: npm refusing to install the name at all is fatal, npm
-            // refusing to publish it costs publication only -- except when the
-            // name came from an explicit `npmName`, which exists for no purpose
-            // other than publishing, so a coordinate that cannot be published
-            // is a defeated declaration rather than a survivable one.
-            const publicationOnly =
-              typeof name === "string" && packageNameProblem(name) === undefined && target.npmName === undefined;
+          // The tiers and their wording live with the helper, so this path and
+          // the projector cannot disagree about what npm would refuse.
+          for (const problem of npmPublicationProblems({
+            name,
+            version,
+            npmNameDeclared: target.npmName !== undefined,
+          })) {
             diagnostics.push({
               code: "HN301" as const,
-              severity: publicationOnly ? ("warn" as const) : ("error" as const),
+              severity: problem.severity,
               target: target.id,
-              message:
-                // Which of the two declarations supplied it, because naming the
-                // generated manifest would send the author to the wrong file.
-                `package delivery emits an npm package, and ${
-                  typeof name === "string" ? `${target.npmName === undefined ? "manifest name" : "npmName"} ` : ""
-                }${JSON.stringify(name)} is not a valid npm package name: ${problem}.` +
-                (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
-            });
-          }
-          const versionProblem =
-            typeof version === "string" ? packageVersionProblem(version) : "the manifest declares no version";
-          if (versionProblem !== undefined) {
-            diagnostics.push({
-              code: "HN301" as const,
-              severity: "warn" as const,
-              target: target.id,
-              message: `package delivery emits an npm package and ${
-                typeof version === "string"
-                  ? `the manifest version ${JSON.stringify(version)} is ${versionProblem}`
-                  : versionProblem
-              }, so the result loads from a local path but cannot be published.`,
+              message: problem.message,
             });
           }
         }
