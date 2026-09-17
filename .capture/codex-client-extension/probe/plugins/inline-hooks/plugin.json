@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "inline-hooks",
+  "version": "1.0.0",
+  "description": "Tests whether Codex reads a supported extensions.com.openai field.",
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks.json"
+    }
+  }
+}

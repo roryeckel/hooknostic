@@ -50,10 +50,10 @@ const target = { id: "codex", version: ">=0.153 <1", delivery: "package" as cons
 // tests cannot disagree with the matrix the build reports.
 const support = resolveAgentPluginProjection(target, codexAgentPluginProjector).matrix!;
 
-const project = (pkg: AgentPluginPackage) =>
+const project = (pkg: AgentPluginPackage, hookArtifacts: { path: string; contents: string }[] = []) =>
   codexAgentPluginProjector.project(pkg, {
     target,
-    hookArtifacts: [],
+    hookArtifacts,
     support,
     onUnsupported: "error",
   });
@@ -365,9 +365,9 @@ describe("Codex client extension", () => {
     expect(CODEX_AGENT_PLUGIN_NAMESPACE).toBe("com.openai");
   });
 
-  // The documented form reaches nothing on its own -- 0.154.0 does not read the
-  // map (.capture/codex-client-extension) -- so carrying it into the generated
-  // manifest is the whole point of declaring a namespace here.
+  // This projector removes the portable root manifest because it would outrank
+  // the native manifest that carries Hooknostic hooks. Carrying the documented
+  // OpenAI object into that native replacement preserves the same settings.
   it("folds extensions[com.openai] into the native manifest", async () => {
     const plan = await project(
       source(
@@ -428,7 +428,7 @@ describe("Codex client extension", () => {
     );
   });
 
-  it("takes an overlay manifest as the base, under the inline map", async () => {
+  it("uses the inline map instead of the compatibility overlay", async () => {
     const plan = await project(
       withFiles(source({}, { extensions: { "com.openai": { interface: { displayName: "from the map" } } } }), [
         overlay(
@@ -441,10 +441,26 @@ describe("Codex client extension", () => {
     const manifest = manifestOf(plan);
     // The inline map is the documented form, so it wins where they overlap...
     expect(manifest.interface).toEqual({ displayName: "from the map" });
-    // ...and the overlay still supplies what the map does not mention.
-    expect(manifest.apps).toBe("./.app.json");
+    // ...and replaces the overlay wholesale rather than merging with it.
+    expect(manifest.apps).toBeUndefined();
     // The overlay is an input, never an emitted file at its hoisted path.
     expect(plan.files.filter((candidate) => candidate.path.includes("com.openai"))).toEqual([]);
+  });
+
+  it("uses the compatibility overlay when the inline map is absent", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay(
+          "com.openai/.codex-plugin/plugin.json",
+          JSON.stringify({ interface: { displayName: "from the overlay" }, apps: "./.app.json" }),
+        ),
+      ]),
+    );
+
+    expect(manifestOf(plan)).toMatchObject({
+      interface: { displayName: "from the overlay" },
+      apps: "./.app.json",
+    });
   });
 
   it("refuses a package that ships the manifest path this projection generates", async () => {
@@ -471,6 +487,42 @@ describe("Codex client extension", () => {
 
     const issue = plan.issues.find((candidate) => candidate.path === "com.openai/.codex-plugin/plugin.json");
     expect(issue?.severity).toBe("error");
+  });
+
+  it("ignores a malformed compatibility overlay when the inline map replaces it", async () => {
+    const plan = await project(
+      withFiles(source({}, { extensions: { "com.openai": { interface: { displayName: "inline" } } } }), [
+        overlay("com.openai/.codex-plugin/plugin.json", "{ not json"),
+      ]),
+    );
+
+    expect(plan.issues).toEqual([]);
+    expect(manifestOf(plan).interface).toEqual({ displayName: "inline" });
+  });
+
+  it("preserves documented inline hooks when no Hooknostic hook artifact exists", async () => {
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: "./hooks/author.json" } } }));
+
+    expect(manifestOf(plan).hooks).toBe("./hooks/author.json");
+  });
+
+  it("combines documented inline hooks with the generated Hooknostic hook document", async () => {
+    const plan = await project(
+      source({}, { extensions: { "com.openai": { hooks: ["./hooks/first.json", "./hooks/second.json"] } } }),
+      [{ path: "hooks.json", contents: '{"hooks":{}}\n' }],
+    );
+
+    expect(manifestOf(plan).hooks).toEqual(["./hooks/first.json", "./hooks/second.json", "./hooks.json"]);
+  });
+
+  it("keeps an inline hook object array homogeneous when adding generated hooks", async () => {
+    const authored = { hooks: { SessionStart: [] } };
+    const generated = { hooks: { PreToolUse: [] } };
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: authored } } }), [
+      { path: "hooks.json", contents: `${JSON.stringify(generated)}\n` },
+    ]);
+
+    expect(manifestOf(plan).hooks).toEqual([authored, generated]);
   });
 
   it("says out loud that a projection-owned key was ignored", async () => {

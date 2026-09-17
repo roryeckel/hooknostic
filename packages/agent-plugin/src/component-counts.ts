@@ -7,14 +7,14 @@ import {
 
 export interface ComponentSummaryOptions {
   /**
-   * The reverse-DNS client-extension namespace this harness reads, if any.
+   * The reverse-DNS client-extension namespace this projector supports, if any.
    *
-   * Leave it unset when the harness reads none. Agent Plugins 1.0 registers no
-   * namespaces -- it only says a client SHOULD base one on a domain it controls
-   * -- so a namespace is only real once the harness actually consumes it.
-   * Naming one the harness ignores makes `agent-plugin.client-extension.files`
-   * discoverable against something nothing reads, and the build then reports
-   * the component as projected.
+   * Support may be native or an evidence-backed bridge into the harness's own
+   * format. Leave this unset when neither exists. Agent Plugins 1.0 registers
+   * no namespaces -- it only says a client SHOULD base one on a domain it
+   * controls -- so inventing one still makes
+   * `agent-plugin.client-extension.files` discoverable without a contract the
+   * projector can faithfully deliver.
    */
   namespace?: string;
   hasRuntimePackage?: boolean;

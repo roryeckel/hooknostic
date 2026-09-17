@@ -31,6 +31,20 @@
         "source": "local",
         "path": "./plugins/custom-path"
       }
+    },
+    {
+      "name": "inline-hooks",
+      "source": {
+        "source": "local",
+        "path": "./plugins/inline-hooks"
+      }
+    },
+    {
+      "name": "native-hooks-control",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-control"
+      }
     }
   ]
 }

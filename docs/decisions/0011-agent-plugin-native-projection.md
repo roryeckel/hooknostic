@@ -517,3 +517,32 @@ decided here.
   manifest name becomes the npm package name verbatim, validated with npm's own
   rules. Silently rewriting it would publish under a name the author never chose
   and never sees.
+
+## Amendments — 2026-09-17 (twelfth)
+
+- **A projector namespace may be an evidence-backed bridge, not only a native
+  read path.** The earlier projector guidance said to declare a namespace only
+  when the harness reads it. That made discovery describe the harness while the
+  rest of projection describes what the emitted package delivers. OpenAI's
+  documented `com.openai` extension exposes the mismatch: Codex 0.154.0 did not
+  run a supported inline `hooks` declaration while the equivalent native
+  `.codex-plugin/plugin.json` control fired
+  (`.capture/codex-client-extension`). The Codex projector therefore declares
+  that namespace and translates its settings into the native manifest. This is
+  still `exact`: the documented setting is preserved, and the compiler supplies
+  the missing route without changing its meaning.
+
+- **Inline OpenAI settings replace the compatibility overlay; they do not merge
+  with it.** Official OpenAI documentation defines the
+  `extensions.com.openai` object as replacing `.codex-plugin/plugin.json` when
+  both exist. Root identity and the portable `skills/` and `mcp.json` components
+  remain canonical, so client-extension values for those fields are ignored.
+  Other OpenAI-owned settings pass through without Hooknostic attempting to own
+  the vendor schema.
+
+- **Authored and generated hooks compose.** `hooks` is an OpenAI extension
+  setting rather than a portable component. The projector preserves the
+  selected authored declaration; when Hooknostic also emits a hooks document,
+  it combines both using the corresponding documented path-array or
+  inline-object-array form instead of overwriting the author's hooks. The two
+  forms are never mixed in one array.

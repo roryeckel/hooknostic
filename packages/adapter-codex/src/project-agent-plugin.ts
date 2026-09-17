@@ -32,10 +32,11 @@ const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MC
  * Two measured facts make this worth declaring. OpenAI documents
  * `extensions."com.openai"` in a root `plugin.json` as the home for its own
  * settings -- presentation, app mappings, hook configuration -- and the shipped
- * binary does not read it (`.capture/codex-client-extension`). So the portable
- * form authors are told to write reaches nothing on its own, and something has
- * to carry it to where Codex actually looks. That is this projection's job: the
- * map is folded into the generated native manifest, and files under the
+ * 0.154.0 binary does not honour even its supported `hooks` field
+ * (`.capture/codex-client-extension`). So the portable form authors are told to
+ * write reaches nothing on that build, and something has to carry it to where
+ * Codex actually looks. That is this projection's job: the selected OpenAI
+ * settings are folded into the generated native manifest, and files under the
  * namespace are hoisted to the package root.
  *
  * The namespace earns its place even though the base tree is copied verbatim.
@@ -48,11 +49,11 @@ const NAMESPACE_PREFIX = `${CODEX_AGENT_PLUGIN_NAMESPACE}/`;
 /**
  * Manifest keys this projection decides, whatever a client extension says.
  *
- * Identity comes from the portable manifest, and the three wiring keys point at
+ * Identity comes from the portable manifest, and component wiring points at
  * trees this projection emitted and validated. Everything else in the extension
  * passes through untouched -- that is the point of having one.
  */
-const PROJECTION_OWNED_MANIFEST_KEYS = [
+const PORTABLE_CANONICAL_MANIFEST_KEYS = [
   "name",
   "version",
   "description",
@@ -63,8 +64,20 @@ const PROJECTION_OWNED_MANIFEST_KEYS = [
   "keywords",
   "skills",
   "mcpServers",
-  "hooks",
 ] as const;
+
+/** Add generated hooks while keeping OpenAI's path and inline-object arrays homogeneous. */
+function appendHookSource(authored: unknown, generatedPath: string, generatedContents: string | Uint8Array): unknown {
+  if (authored === undefined) return generatedPath;
+  const entries = Array.isArray(authored) ? authored : [authored];
+  if (entries.every((entry) => typeof entry === "string")) return [...entries, generatedPath];
+
+  // Hook artifacts are compiler output and already validated by the adapter.
+  // Inline the generated document when the author used the other documented
+  // form: OpenAI accepts arrays of paths or arrays of objects, not mixed arrays.
+  const text = typeof generatedContents === "string" ? generatedContents : new TextDecoder().decode(generatedContents);
+  return [...entries, JSON.parse(text) as unknown];
+}
 
 /** Decode an overlay document; a malformed one is reported, never guessed at. */
 function parseOverlayManifest(contents: string | Uint8Array): { value: Record<string, unknown>; error?: string } {
@@ -285,7 +298,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.client-extension.files": {
           level: "exact",
           rationale:
-            'Emitted rather than read. OpenAI documents extensions."com.openai" in a root plugin.json as the home for its settings, and the shipped binary does not read it (measured on 0.154.0), so this projection carries it: the map and an optional .codex-plugin/plugin.json overlay are folded into the generated native manifest, beneath the portable identity fields, and namespace files are hoisted to the package root where Codex reads native configuration. Exact because nothing is dropped -- the author\'s documented, portable declaration arrives intact at the only place the harness looks.',
+            'OpenAI documents extensions."com.openai" in a root plugin.json as the preferred source of OpenAI settings, but 0.154.0 did not run a UserPromptSubmit hook declared there while an equivalent native-manifest control did. This projection bridges that implementation gap: the inline object replaces the compatibility overlay, portable identity/skills/MCP remain canonical, authored hooks are combined with generated hooks, and namespace files are hoisted to the package root. Exact because the documented settings arrive intact at the native surface the harness consumes.',
         },
         "agent-plugin.runtime-package": {
           level: "unsupported",
@@ -408,6 +421,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/codex-hook-command",
             what: "A hook command is parsed with quoting honoured and does NOT accept Claude's exec form: of three spellings on one event, command + args failed while the quoted and bare strings both ran, so the substituted plugin-root path is quoted.",
           },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "Correction and supported-field probe: the earlier custom-skills negative was expected because portable skills/ is canonical and did not test namespace consumption. In one isolated loopback session, extensions.com.openai.hooks failed to run a UserPromptSubmit marker while an equivalent .codex-plugin/plugin.json control fired, establishing that 0.154.0 does not honour the documented inline hooks route.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "doc-derived",
+            artifact: ".capture/codex-client-extension",
+            what: "Official OpenAI plugin documentation defines the inline extensions.com.openai object as replacing the compatibility overlay, keeps root identity plus portable skills/MCP canonical, and permits hooks as a path, path array, inline object, or inline-object array.",
+          },
         ],
         notes: [
           "Marketplace roots expose plugins through <root>/.agents/plugins/marketplace.json.",
@@ -488,6 +515,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // here is an overlay rather than a file: it becomes the base of the
     // generated manifest, which is the "compatibility overlay" the vendor
     // documentation describes.
+    const inlineExtension = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE];
     let overlayManifest: Record<string, unknown> = {};
     const hoisted = new Set(copiedPaths);
     for (const file of source.files) {
@@ -505,6 +533,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         continue;
       }
       if (path === NATIVE_MANIFEST_PATH) {
+        // The documented portable form replaces the compatibility overlay
+        // wholesale. An ignored fallback cannot make an otherwise valid inline
+        // declaration fail merely because stale fallback bytes remain beside it.
+        if (inlineExtension !== undefined) continue;
         const parsed = parseOverlayManifest(file.contents);
         if (parsed.error !== undefined) {
           issues.push({
@@ -538,10 +570,8 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // and resolved its version normally (`.capture/codex-native-mcp`), so
     // passing them through cannot lose information whether Codex reads them or
     // ignores them -- whereas dropping them certainly does.
-    // Overlay file < inline map < portable identity. The portable fields win
-    // because they are the package's identity, not a presentation preference,
-    // and a client extension that could rename the plugin would make the
-    // manifest disagree with the marketplace entry that installs it.
+    // The inline OpenAI object replaces the compatibility overlay; portable
+    // identity and components remain canonical in either case.
     const generated: CodexNativeManifest = {
       name: source.manifest.name,
       ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
@@ -557,16 +587,16 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // extension does: Codex's presentation surface is large and vendor-owned,
     // and modelling its field names here would mean a Hooknostic release every
     // time OpenAI adds one.
-    const extensionEntry = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE] ?? {};
-    const manifest: Record<string, unknown> = { ...overlayManifest, ...extensionEntry, ...generated };
+    const extensionEntry = inlineExtension ?? overlayManifest;
+    const manifest: Record<string, unknown> = { ...extensionEntry, ...generated };
     // Spreading `generated` last is not enough: it omits a key it has nothing
     // to say about, and the extension's value would then survive. `skills` is
     // the dangerous one -- a package with no valid skills that declares
     // `skills: "./elsewhere/"` would point Codex at a tree the portable loader
     // never validated, which is the whole thing this projection exists to stop.
     const claimed: string[] = [];
-    for (const key of PROJECTION_OWNED_MANIFEST_KEYS) {
-      if (!(key in overlayManifest) && !(key in extensionEntry)) continue;
+    for (const key of PORTABLE_CANONICAL_MANIFEST_KEYS) {
+      if (!(key in extensionEntry)) continue;
       claimed.push(key);
       if (!(key in generated)) delete manifest[key];
     }
@@ -648,7 +678,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         });
         continue;
       }
-      if (file.path === CODEX_PLUGIN_HOOKS_PATH) manifest.hooks = `./${CODEX_PLUGIN_HOOKS_PATH}`;
+      if (file.path === CODEX_PLUGIN_HOOKS_PATH) {
+        manifest.hooks = appendHookSource(manifest.hooks, `./${CODEX_PLUGIN_HOOKS_PATH}`, file.contents);
+      }
       files.push({ ...file });
     }
 

@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:06e001f3a63b8098a88b40ffb634bf4088558bc53926df57993cc9204c3e9515",
+        "contentDigest": "sha256:f77a566e1e1da132bccc2c1d8db080f77eb370114a9b4cf5997da5913525c061",
         "copiedFileCount": 7,
         "directories": [
           "package/runtime",
