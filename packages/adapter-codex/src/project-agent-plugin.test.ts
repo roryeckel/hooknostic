@@ -425,6 +425,8 @@ describe("Codex client extension", () => {
     "package-lock.json",
     "npm-shrinkwrap.json",
     "Package.json",
+    "Plugin.json",
+    ".MCP.json",
   ])("refuses to hoist reserved root path %s", async (reserved) => {
     const sourcePath = `com.openai/${reserved}`;
     const plan = await project(withFiles(source(), [file(sourcePath)]));
@@ -451,6 +453,11 @@ describe("Codex client extension", () => {
   it.each([
     ["skills/extra/SKILL.md", "skills"],
     ["runtime/mcp-launcher.mjs", "runtime"],
+    // Inventoried on one filesystem, installed on others: `Skills/` is the
+    // generated `skills/` tree on most of the ones Codex installs onto, and
+    // core's duplicate check folds file paths, not directory prefixes.
+    ["Skills/extra/SKILL.md", "skills"],
+    ["Runtime/mcp-launcher.mjs", "runtime"],
   ])("refuses to hoist %s into the generated %s tree", async (reserved) => {
     const sourcePath = `com.openai/${reserved}`;
     const plan = await project(withFiles(source(), [file(sourcePath)]));
@@ -459,6 +466,21 @@ describe("Codex client extension", () => {
     // generated launcher; a namespace file reaching either arrives without
     // passing the portable loader that validates what goes there.
     expect(plan.files.some((candidate) => candidate.path === reserved)).toBe(false);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+      }),
+    );
+  });
+
+  it.each(["Skills", "Runtime/vendor"])("refuses to hoist directory %s into a generated tree", async (reserved) => {
+    const sourcePath = `com.openai/${reserved}`;
+    const pkg = source();
+    const plan = await project({ ...pkg, directories: ["com.openai", sourcePath] });
+
+    expect(plan.directories ?? []).not.toContain(reserved);
     expect(plan.issues).toContainEqual(
       expect.objectContaining({
         severity: "error",
@@ -738,6 +760,39 @@ describe("Codex client extension", () => {
     ]);
 
     expect(manifestOf(plan).hooks).toEqual([authored, generated]);
+  });
+
+  it.each([
+    ["null", null],
+    ["a number", 7],
+    ["a mixed path/object array", ["./hooks/author.json", { hooks: {} }]],
+    ["an array holding null", [null]],
+  ])("refuses a client extension hooks declaration that is %s", async (_label, authored) => {
+    // Codex ran a path, a path array, an object and an object array
+    // (`.capture/codex-client-extension`); nothing else is captured, and
+    // composing with it would ship a manifest whose `hooks` field is invalid
+    // -- dropping the generated document along with it, silently.
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: authored } } }), [
+      { path: "hooks.json", contents: '{"hooks":{}}\n' },
+    ]);
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "manifest",
+        path: "plugin.json#/extensions/com.openai/hooks",
+      }),
+    );
+    expect(manifestOf(plan).hooks).toBe("./hooks.json");
+  });
+
+  it("refuses an invalid client extension hooks declaration even with no generated hooks", async () => {
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: null } } }));
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", path: "plugin.json#/extensions/com.openai/hooks" }),
+    );
+    expect(manifestOf(plan)).not.toHaveProperty("hooks");
   });
 
   it("reports rather than throws when the generated hook document is not JSON", async () => {

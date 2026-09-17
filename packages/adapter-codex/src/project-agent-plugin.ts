@@ -50,19 +50,34 @@ const RUNTIME_DIR = "runtime";
 const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH, NATIVE_MCP_PATH]);
 const RESERVED_HOISTED_ROOT_DIRECTORIES = new Set([SKILLS_DIR, RUNTIME_DIR]);
 
-/** The reserved path or tree a hoist would occupy, or `undefined` when it is free. */
-function reservedHoistTarget(path: string): string | undefined {
-  if (RESERVED_HOISTED_ROOT_PATHS.has(path) || isRootNpmManifestPath(path)) return path;
-  const top = path.split("/")[0]!;
-  return RESERVED_HOISTED_ROOT_DIRECTORIES.has(top) ? top : undefined;
+type ReservedHoistTarget = { kind: "path" } | { kind: "tree"; tree: string };
+
+/**
+ * The reserved path or tree a hoist would occupy, or `undefined` when it is
+ * free. Folded like every other collision check on generated output: the
+ * package is inventoried on one filesystem and installed on others, and
+ * `Skills/extra/SKILL.md` lands inside the generated `skills/` tree on most of
+ * the ones Codex installs onto. Core's duplicate check folds file paths, not
+ * directory prefixes, so nothing downstream would catch it.
+ */
+function reservedHoistTarget(path: string): ReservedHoistTarget | undefined {
+  const folded = path.toLowerCase();
+  if (RESERVED_HOISTED_ROOT_PATHS.has(folded) || isRootNpmManifestPath(path)) return { kind: "path" };
+  const top = folded.split("/")[0]!;
+  return RESERVED_HOISTED_ROOT_DIRECTORIES.has(top) ? { kind: "tree", tree: top } : undefined;
 }
 
-function reservedHoistMessage(kind: "file" | "directory", sourcePath: string, path: string, reserved: string): string {
+function reservedHoistMessage(
+  kind: "file" | "directory",
+  sourcePath: string,
+  path: string,
+  reserved: ReservedHoistTarget,
+): string {
   const subject = `client extension ${kind} ${JSON.stringify(sourcePath)}`;
-  return reserved === path
+  return reserved.kind === "path"
     ? `${subject} cannot hoist onto reserved root path ${JSON.stringify(path)}`
     : `${subject} cannot hoist to ${JSON.stringify(path)}, inside the ${JSON.stringify(
-        `${reserved}/`,
+        `${reserved.tree}/`,
       )} tree this projection generates and validates`;
 }
 
@@ -114,6 +129,23 @@ const PORTABLE_CANONICAL_MANIFEST_KEYS = [
  * documented one.
  */
 type CodexHooksDeclaration = string | string[] | Record<string, unknown>[];
+
+const isHookObject = (entry: unknown): entry is Record<string, unknown> =>
+  entry !== null && typeof entry === "object" && !Array.isArray(entry);
+
+/**
+ * Why an authored `hooks` value is none of the four captured forms, or
+ * `undefined` when it is one of them. Anything else is declined rather than
+ * composed with: wrapped into the generated array it ships a manifest whose
+ * `hooks` field is invalid, which drops the generated document along with the
+ * author's -- and the build would report success.
+ */
+function hooksDeclarationProblem(authored: unknown): string | undefined {
+  if (typeof authored === "string" || isHookObject(authored)) return undefined;
+  if (!Array.isArray(authored)) return `got ${authored === null ? "null" : typeof authored}`;
+  if (authored.every((entry) => typeof entry === "string") || authored.every(isHookObject)) return undefined;
+  return "got an array that is neither all paths nor all hook objects";
+}
 
 /**
  * Add generated hooks while keeping OpenAI's path and inline-object arrays
@@ -691,10 +723,33 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const hooksArtifact = context.hookArtifacts.find(
       (file) => file.path === CODEX_PLUGIN_HOOKS_PATH && !shippedByFoldedPath.has(file.path.toLowerCase()),
     );
+    // Where the author's declaration lives: one of the two files they wrote,
+    // never the manifest this projection generates (see the ignored-key
+    // warning below for why).
+    const declarationPath = (key: string): { path: string } | Record<never, never> =>
+      inlineExtension !== undefined
+        ? { path: `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}/${key}` }
+        : overlaySourcePath === undefined
+          ? {}
+          : { path: `${overlaySourcePath}#/${key}` };
+    const hooksProblem = "hooks" in extensionEntry ? hooksDeclarationProblem(extensionEntry["hooks"]) : undefined;
+    if (hooksProblem !== undefined) {
+      issues.push({
+        severity: "error",
+        scope: "manifest",
+        component: "agent-plugin.client-extension.files",
+        ...declarationPath("hooks"),
+        message: `client extension "hooks" must be a path, an array of paths, a hook object, or an array of hook objects (the forms captured on Codex); ${hooksProblem}.`,
+      });
+    }
     const composedHooks =
       hooksArtifact === undefined
         ? undefined
-        : appendHookSource(extensionEntry["hooks"], `./${CODEX_PLUGIN_HOOKS_PATH}`, hooksArtifact.contents);
+        : appendHookSource(
+            hooksProblem === undefined ? extensionEntry["hooks"] : undefined,
+            `./${CODEX_PLUGIN_HOOKS_PATH}`,
+            hooksArtifact.contents,
+          );
     if (composedHooks?.error !== undefined) {
       issues.push({
         severity: "error",
@@ -726,6 +781,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(composedHooks === undefined ? {} : { hooks: composedHooks.value }),
     };
     const manifest: Record<string, unknown> = { ...extensionEntry, ...generated };
+    // A declined `hooks` value must not survive the spread either, whether or
+    // not a generated document replaced it.
+    if (hooksProblem !== undefined && !("hooks" in generated)) delete manifest["hooks"];
     // Spreading `generated` last is not enough: it omits a key it has nothing
     // to say about, and the extension's value would then survive. `skills` is
     // the dangerous one -- a package with no valid skills that declares
