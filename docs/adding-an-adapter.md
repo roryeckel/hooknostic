@@ -127,7 +127,8 @@ profile for a broad range.
   the declaration exists because emitting a root
   `package.json` is not the same as publishing one, and adapters that never
   read `npmName` emit one anyway (a copied source manifest, a
-  `components.runtimePackage` install input).
+  `components.runtimePackage` install input). The reasoning is recorded in
+  [Decision 0011](decisions/0011-agent-plugin-native-projection.md).
 - The published CLI cannot resolve workspace packages, so add the adapter's
   `src/shim.ts` to `SHIMS` in `packages/cli/scripts/bundle.mjs`. It ships as
   `dist/shims/<id>.mjs` (runtime inlined, SDK external) and
