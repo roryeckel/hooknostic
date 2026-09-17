@@ -35,6 +35,10 @@ Three further things were measured rather than assumed, and each shaped this dec
 - The same command against `pydantic-core` writes
   `_pydantic_core.cp313-win_amd64.pyd`, which is what a committed artifact must never
   carry.
+- A spawned MCP child keeps the parent's `PATH` on all three harnesses, but **Codex
+  filters the rest of its environment to 22 variables against roughly 104 elsewhere**
+  (`.capture/mcp-child-path`). A runner command is therefore safe everywhere, and a
+  server that reads its configuration from the ambient environment is not.
 
 ## Decision
 
@@ -78,6 +82,12 @@ nobody has written a provider for, and it is also the only thing that would have
 `bin/idna.exe`, which no statement about wheel tags predicts. A PE requires its signature
 at `e_lfanew` rather than a bare `MZ`, because a false reject blocks a build that was
 fine; and a JVM class file is told from the universal Mach-O it shares `0xCAFEBABE` with.
+
+A materialized tree is reached through an `env` value the server declares in `mcp.json`
+— `"PYTHONPATH": "${PLUGIN_ROOT}/runtime/pypi"` — which the launcher expands itself.
+Declaring it is not tidiness: on Codex the ambient environment does not reach the child,
+so a runtime found only through an inherited variable works on two harnesses and silently
+fails on the third.
 
 A `build-materialized` install is locked, offline and script-free. For PyPI that is
 `--require-hashes` and `--only-binary=:all:`, the second being this ecosystem's

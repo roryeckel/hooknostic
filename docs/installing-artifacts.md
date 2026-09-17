@@ -159,7 +159,11 @@ installed anywhere (ADR-0006) cannot contain one platform's binary. The
 installer's own console-script launchers are dropped for the same reason.
 
 Point the server at the tree from `mcp.json`, where `${PLUGIN_ROOT}` already
-expands in `env` values:
+expands in `env` values. Declare it rather than relying on an inherited one:
+Codex hands an MCP child only about 22 environment variables where the other two
+pass roughly 104 through, so an ambient `PYTHONPATH` works on two harnesses and
+silently fails on the third
+([`.capture/mcp-child-path`](../.capture/mcp-child-path/README.md)):
 
 ```json
 { "command": "python3", "args": ["${PLUGIN_ROOT}/server.py"],
