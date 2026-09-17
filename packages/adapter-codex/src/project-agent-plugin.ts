@@ -24,7 +24,39 @@ const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
-const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH]);
+const SKILLS_DIR = "skills";
+const RUNTIME_DIR = "runtime";
+/**
+ * Root paths and trees this projection decides, whatever a client extension
+ * ships under the namespace.
+ *
+ * The manifest keys are pinned by `PORTABLE_CANONICAL_MANIFEST_KEYS` so an
+ * extension cannot point Codex at a tree the portable loader never validated.
+ * Hoisting is the same door from the other side: a namespace file landing in
+ * `skills/` is discovered as a skill without passing that loader, one landing
+ * on `.mcp.json` supplies native MCP configuration this projection otherwise
+ * generates and checks, and one landing in `runtime/` displaces the generated
+ * launcher. No capture records what Codex does with any of those, and an
+ * uncaptured shape is declined rather than defaulted.
+ */
+const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH, NATIVE_MCP_PATH]);
+const RESERVED_HOISTED_ROOT_DIRECTORIES = new Set([SKILLS_DIR, RUNTIME_DIR]);
+
+/** The reserved path or tree a hoist would occupy, or `undefined` when it is free. */
+function reservedHoistTarget(path: string): string | undefined {
+  if (RESERVED_HOISTED_ROOT_PATHS.has(path)) return path;
+  const top = path.split("/")[0]!;
+  return RESERVED_HOISTED_ROOT_DIRECTORIES.has(top) ? top : undefined;
+}
+
+function reservedHoistMessage(kind: "file" | "directory", sourcePath: string, path: string, reserved: string): string {
+  const subject = `client extension ${kind} ${JSON.stringify(sourcePath)}`;
+  return reserved === path
+    ? `${subject} cannot hoist onto reserved root path ${JSON.stringify(path)}`
+    : `${subject} cannot hoist to ${JSON.stringify(path)}, inside the ${JSON.stringify(
+        `${reserved}/`,
+      )} tree this projection generates and validates`;
+}
 
 /**
  * Codex's reverse-DNS client-extension namespace.
@@ -92,8 +124,8 @@ function parseOverlayManifest(contents: string | Uint8Array): { value: Record<st
     return { value: {}, error: error instanceof Error ? error.message : String(error) };
   }
 }
-const LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
-const LAUNCHER_SERVERS_PATH = `runtime/${MCP_SERVERS_FILE}`;
+const LAUNCHER_PATH = `${RUNTIME_DIR}/${MCP_LAUNCHER_FILE}`;
+const LAUNCHER_SERVERS_PATH = `${RUNTIME_DIR}/${MCP_SERVERS_FILE}`;
 
 /** Native stdio server. `type` is absent: `command` is what selects the transport. */
 interface CodexStdioServer {
@@ -523,13 +555,14 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
       const path = file.path.slice(NAMESPACE_PREFIX.length);
       if (path === "") continue;
-      if (RESERVED_HOISTED_ROOT_PATHS.has(path)) {
+      const reserved = reservedHoistTarget(path);
+      if (reserved !== undefined) {
         issues.push({
           severity: "error",
           scope: "projection",
           component: "agent-plugin.client-extension.files",
           path: file.path,
-          message: `client extension file ${JSON.stringify(file.path)} cannot hoist onto reserved root path ${JSON.stringify(path)}`,
+          message: reservedHoistMessage("file", file.path, path, reserved),
         });
         continue;
       }
@@ -585,7 +618,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(source.manifest.repository === undefined ? {} : { repository: source.manifest.repository }),
       ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
       ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
-      ...(source.skills.length === 0 ? {} : { skills: "./skills/" }),
+      ...(source.skills.length === 0 ? {} : { skills: `./${SKILLS_DIR}/` }),
     };
     // Typed where this projection decides the value, free-form where the client
     // extension does: Codex's presentation surface is large and vendor-owned,
@@ -711,6 +744,17 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
               // The output root is created by staging; there is no directory
               // artifact for the portable namespace itself.
               if (outputPath === "") return [];
+              const reserved = reservedHoistTarget(outputPath);
+              if (reserved !== undefined) {
+                issues.push({
+                  severity: "error",
+                  scope: "projection",
+                  component: "agent-plugin.client-extension.files",
+                  path: sourcePath,
+                  message: reservedHoistMessage("directory", sourcePath, outputPath, reserved),
+                });
+                return [];
+              }
               return [{ sourcePath, outputPath }];
             });
     const hoistedDirectories = directoryCandidates?.filter(({ sourcePath }) => sourcePath.startsWith(NAMESPACE_PREFIX));

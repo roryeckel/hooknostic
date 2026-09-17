@@ -326,7 +326,7 @@ describe("validateArtifacts for package delivery", () => {
     expect(diagnostics.some((d) => d.message.includes("package.json"))).toBe(true);
   });
 
-  it("refuses a hooks-only package whose name npm would reject", async () => {
+  it.each(["_under", "has space"])("refuses a hooks-only package named %s, which npm cannot pack", async (name) => {
     // A hooks-only package takes its name from PluginSpec.name, which is only
     // string().min(1) -- the component projection's own check never runs on
     // this path, so without this the build emits a directory npm cannot pack.
@@ -334,11 +334,28 @@ describe("validateArtifacts for package delivery", () => {
       [
         { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
         goodEntry,
-        { path: "package.json", contents: '{"name":"UPPER","version":"1.2.3"}\n' },
+        { path: "package.json", contents: `{"name":${JSON.stringify(name)},"version":"1.2.3"}\n` },
       ],
       PKG,
     );
-    expect(diagnostics.some((d) => d.message.includes("not a valid npm package name"))).toBe(true);
+    const diagnostic = diagnostics.find((d) => d.message.includes("not a valid npm package name"));
+    expect(diagnostic?.severity).toBe("error");
+  });
+
+  it.each(["UPPER", "http"])("warns that a hooks-only package named %s cannot be published", async (name) => {
+    // npm installs these from a local path, which is a supported route, so the
+    // build keeps working and only publication is out of reach -- matched to
+    // the version check rather than escalated past it.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: `{"name":${JSON.stringify(name)},"version":"1.2.3"}\n` },
+      ],
+      PKG,
+    );
+    const diagnostic = diagnostics.find((d) => d.message.includes("not a valid npm package name"));
+    expect(diagnostic?.severity).toBe("warn");
   });
 
   it.each([

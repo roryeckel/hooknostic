@@ -11,8 +11,10 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  packageNameProblem,
   packageVersionProblem,
   publishablePackageNameProblem,
+  UNPUBLISHABLE_STILL_LOADS,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -304,26 +306,6 @@ function injectorSource(
 }
 
 /**
- * Project an Agent Plugins package into OpenCode's project-plugin layout.
- *
- * Unlike Claude and Codex this is not an installable unit: `.opencode/plugins/`
- * is read from the project directory, so the whole projection is inherently
- * project-scoped and needs no install step. The compiled hooks are already a
- * module in that directory, and this adds a second one carrying the package's
- * MCP servers and skills -- OpenCode loads every module in the directory.
- *
- * Measured on `opencode` 1.18.29 through `debug config` and `debug skill`:
- *
- * - A plugin's `config` hook mutation survives into the resolved configuration,
- *   for both `mcp` and `skills.paths`.
- * - `skills.paths` is additive: an injected path did not displace either the
- *   project's own entry or the default discovery directories.
- * - `import.meta.url` resolves to the module's real location, so a plugin can
- *   address files shipped beside it.
- * - The scan is flat: two sibling modules both loaded, while modules one level
- *   deeper and in a neighbouring directory did not.
- */
-/**
  * How to describe a manifest version npm would not publish, or `undefined` when
  * it would. Phrased to slot into the projection warning.
  */
@@ -376,6 +358,26 @@ function packageManifest(
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 
+/**
+ * Project an Agent Plugins package into OpenCode's project-plugin layout.
+ *
+ * Unlike Claude and Codex this is not an installable unit: `.opencode/plugins/`
+ * is read from the project directory, so the whole projection is inherently
+ * project-scoped and needs no install step. The compiled hooks are already a
+ * module in that directory, and this adds a second one carrying the package's
+ * MCP servers and skills -- OpenCode loads every module in the directory.
+ *
+ * Measured on `opencode` 1.18.29 through `debug config` and `debug skill`:
+ *
+ * - A plugin's `config` hook mutation survives into the resolved configuration,
+ *   for both `mcp` and `skills.paths`.
+ * - `skills.paths` is additive: an injected path did not displace either the
+ *   project's own entry or the default discovery directories.
+ * - `import.meta.url` resolves to the module's real location, so a plugin can
+ *   address files shipped beside it.
+ * - The scan is flat: two sibling modules both loaded, while modules one level
+ *   deeper and in a neighbouring directory did not.
+ */
 export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // OpenCode reads no reverse-DNS client-extension namespace.
   namespace: "",
@@ -587,8 +589,8 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     files.push({ path: ENTRY_PATH, contents: packageEntrySource({ hooks: hasHooks, components: true }) });
     // The package name is the manifest name verbatim. Coercing an invalid one
     // would publish under a name the author never chose and never sees, so an
-    // Agent Plugins name that npm would reject is an error here rather than a
-    // silent rewrite.
+    // Agent Plugins name that npm would reject is reported here rather than
+    // silently rewritten.
     // The target's coordinate when it declares one, because an Agent Plugins
     // name cannot be scoped and a scoped package is what an organisation
     // publishes. Whichever is used is the name npm will see, so that is the one
@@ -596,15 +598,24 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const npmName = context.target.npmName ?? source.manifest.name;
     const nameProblem = publishablePackageNameProblem(npmName);
     if (nameProblem !== undefined) {
+      // Two tiers, because npm has two. A name it will not install at all
+      // produces a directory that cannot be packed, which fails the build. A
+      // name it still installs but will no longer publish costs only
+      // publication -- the position the version check below already takes, and
+      // the same consequence -- so it warns. An explicit npmName is the
+      // exception: it exists for no purpose other than publishing, so a
+      // coordinate that cannot be published is a defeated declaration.
+      const publicationOnly = packageNameProblem(npmName) === undefined && context.target.npmName === undefined;
       issues.push({
-        severity: "error",
+        severity: publicationOnly ? "warn" : "error",
         scope: "projection",
         component: "agent-plugin.manifest",
         path: MANIFEST_PATH,
         message:
           `package delivery emits an npm package, and ` +
           `${context.target.npmName === undefined ? "manifest name" : "npmName"} ` +
-          `${JSON.stringify(npmName)} is not a valid npm package name: ${nameProblem}.`,
+          `${JSON.stringify(npmName)} is not a valid npm package name: ${nameProblem}.` +
+          (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
       });
     }
     // A version is optional on an Agent Plugins manifest and unconstrained when

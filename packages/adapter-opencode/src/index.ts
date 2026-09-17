@@ -1,7 +1,12 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import { packageVersionProblem, publishablePackageNameProblem } from "@hooknostic/agent-plugin";
+import {
+  packageNameProblem,
+  packageVersionProblem,
+  publishablePackageNameProblem,
+  UNPUBLISHABLE_STILL_LOADS,
+} from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -193,11 +198,18 @@ export function opencodeAdapter(): HarnessAdapter {
           }
           const problem = typeof name === "string" ? publishablePackageNameProblem(name) : "manifest declares no name";
           if (problem !== undefined) {
+            // The same two tiers the projected path applies: npm refusing to
+            // install the name at all is fatal, npm refusing to publish it
+            // costs publication only, which is what the version check beside
+            // this one already warns about.
+            const publicationOnly = typeof name === "string" && packageNameProblem(name) === undefined;
             diagnostics.push({
               code: "HN301" as const,
-              severity: "error" as const,
+              severity: publicationOnly ? ("warn" as const) : ("error" as const),
               target: "opencode",
-              message: `package delivery emits an npm package, and ${JSON.stringify(name)} is not a valid npm package name: ${problem}.`,
+              message:
+                `package delivery emits an npm package, and ${JSON.stringify(name)} is not a valid npm package name: ${problem}.` +
+                (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
             });
           }
           // A projected Agent Plugin reports this while constructing its plan.

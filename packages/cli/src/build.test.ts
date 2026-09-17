@@ -1567,6 +1567,61 @@ ${run.stderr}`,
     expect(Object.keys(mcp.mcpServers)).toEqual(["good"]);
   });
 
+  it.each([
+    ["codex", "com.openai", CODEX_PLUGIN_MODE_RANGE],
+    ["claude", "com.anthropic.claude-code", claudeHarness.recommendedRange],
+  ])("explains why project delivery drops %s client-extension files", async (id, namespace, range) => {
+    // Project integration has no surface that reads an installed plugin's
+    // client extension, so the files are legitimately dropped. What must not
+    // happen is dropping them behind core's rationale-free fallback: the
+    // author sees a failed target and no reason it could act on.
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-project-extension-${id}-`));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, namespace), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "extension-carrier", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, namespace, "settings.json"), "{}\n");
+    const config = (onUnsupported: string) => `export default {
+        project: { root: "." },
+        components: { root: ".", targets: ["${id}"], onUnsupported: "${onUnsupported}" },
+        targets: { ${id}: { version: "${range}", delivery: "project", output: "./dist/${id}" } },
+      };`;
+    await writeFile(join(dir, "hooknostic.config.ts"), config("error"));
+
+    const strict = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: strict.io,
+      }),
+      strict.out(),
+    ).toBe(2);
+    const report = JSON.parse(strict.out());
+    const omission = report.targets[id].project.omissions.find(
+      (candidate: { component: string }) => candidate.component === "agent-plugin.client-extension.files",
+    );
+    expect(omission?.reason, strict.out()).toContain("installed plugin");
+    expect(omission?.reason).not.toContain("has no project delivery representation");
+
+    // And the policy escape hatch works, which it cannot while the cell is
+    // absent rather than declared unsupported with a reason.
+    await writeFile(join(dir, "hooknostic.config.ts"), config("warn"));
+    const lenient = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: lenient.io,
+      }),
+      lenient.out(),
+    ).toBe(0);
+  });
+
   it("reports a missing direct MCP source in the JSON build result", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-missing-direct-mcp-"));
     cleanupDirs.push(dir);

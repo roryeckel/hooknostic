@@ -14,7 +14,10 @@ package identity, although local skill and MCP sources need no manifest.
 Separate source components from delivery. Targets declare `delivery: project` or
 `delivery: package`; adapters own native formats. Named targets may share an
 adapter, with at most one project target per adapter. Obsolete `mode` and
-`agentPlugin` fields receive migration errors; the unreleased API has one model.
+`agentPlugin` fields are not recognised; the unreleased API has one model. The
+dedicated migration error they once raised has been withdrawn: no release ever
+accepted those names, so there is nothing to migrate from, and the configuration
+schema rejects them on its own.
 
 The compiler's in-memory artifact plan feeds check, build, sync, and verify.
 Adapters contribute generated files, structural edits, component capabilities,

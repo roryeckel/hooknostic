@@ -38,7 +38,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
-| `agent-plugin.client-extension.files` | unsupported | — |
+| `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
 | `agent-plugin.runtime-package` | unsupported | — |
 
 Project delivery validation records:
@@ -95,7 +95,7 @@ Projection validation records:
 | `agent-plugin.mcp.stdio` | emulated | An owned repository-locating Node bootstrap launches the portable server from its declared source root. Node must be on PATH; project trust remains a human prerequisite. |
 | `agent-plugin.mcp.streamable-http` | exact | Native project TOML url and http_headers preserve remote declarations. |
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
-| `agent-plugin.client-extension.files` | unsupported | — |
+| `agent-plugin.client-extension.files` | unsupported | Project integration writes .codex/config.toml and a skills tree. A plugin's extensions."com.openai" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
 | `agent-plugin.runtime-package` | unsupported | — |
 
 Project delivery validation records:

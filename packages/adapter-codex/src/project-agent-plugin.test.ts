@@ -414,7 +414,7 @@ describe("Codex client extension", () => {
     });
   });
 
-  it.each(["plugin.json", "mcp.json"])("refuses to hoist reserved root path %s", async (reserved) => {
+  it.each(["plugin.json", "mcp.json", ".mcp.json"])("refuses to hoist reserved root path %s", async (reserved) => {
     const sourcePath = `com.openai/${reserved}`;
     const plan = await project(withFiles(source(), [file(sourcePath)]));
 
@@ -424,6 +424,62 @@ describe("Codex client extension", () => {
         severity: "error",
         component: "agent-plugin.client-extension.files",
         path: sourcePath,
+      }),
+    );
+  });
+
+  // `.mcp.json` is only written when a server survives translation, so without
+  // a reservation the empty-server case hoists an unvalidated native MCP
+  // document to the root instead of colliding with a generated one.
+  it("refuses to hoist onto .mcp.json even when no server is emitted", async () => {
+    const plan = await project(withFiles(source(), [file("com.openai/.mcp.json")]));
+
+    expect(plan.files.some((candidate) => candidate.path === ".mcp.json")).toBe(false);
+  });
+
+  it.each([
+    ["skills/extra/SKILL.md", "skills"],
+    ["runtime/mcp-launcher.mjs", "runtime"],
+  ])("refuses to hoist %s into the generated %s tree", async (reserved) => {
+    const sourcePath = `com.openai/${reserved}`;
+    const plan = await project(withFiles(source(), [file(sourcePath)]));
+
+    // The manifest points Codex at `skills/`, and `runtime/` carries the
+    // generated launcher; a namespace file reaching either arrives without
+    // passing the portable loader that validates what goes there.
+    expect(plan.files.some((candidate) => candidate.path === reserved)).toBe(false);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+      }),
+    );
+  });
+
+  it("refuses to resurrect a rejected portable skill through the namespace", async () => {
+    // The portable loader saw `skills/broken` and rejected it, so the copy loop
+    // skips it and the path is free. Hoisting a namespace file onto it puts a
+    // skill Codex will discover back into the tree the loader refused.
+    const pkg = withFiles(source(), [file("skills/broken/SKILL.md"), file("com.openai/skills/broken/SKILL.md")]);
+
+    const plan = await project(pkg);
+
+    expect(plan.files.some((candidate) => candidate.path === "skills/broken/SKILL.md")).toBe(false);
+  });
+
+  it("refuses to hoist a client-extension directory into the generated skills tree", async () => {
+    const pkg = source();
+    pkg.directories = ["com.openai", "com.openai/skills", "com.openai/skills/extra"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories ?? []).not.toContain("skills");
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/skills",
       }),
     );
   });

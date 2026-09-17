@@ -66,6 +66,12 @@ export function packageNameProblem(name: string): string | undefined {
   return result.validForOldPackages ? undefined : (result.errors ?? ["invalid package name"]).join("; ");
 }
 
+/**
+ * What a publication-only problem costs, shared by the name and version
+ * reports so the two tiers read the same wherever they surface.
+ */
+export const UNPUBLISHABLE_STILL_LOADS = "The result loads from a local path but cannot be published.";
+
 /** Why npm would refuse `name` for a newly published package. */
 export function publishablePackageNameProblem(name: string): string | undefined {
   const result = validatePackageName(name);

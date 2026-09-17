@@ -160,6 +160,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         level: "unsupported",
         rationale: "SSE project transport is not established; Codex reads url declarations as Streamable HTTP.",
       },
+      // Declared rather than left absent. An absent cell still raises HN205,
+      // but behind core's rationale-free fallback, which tells the author
+      // nothing they can act on. A claim about this projection's own reach, so
+      // it rests on what project integration writes rather than on a capture.
+      "agent-plugin.client-extension.files": {
+        level: "unsupported",
+        rationale:
+          "Project integration writes .codex/config.toml and a skills tree. A plugin's extensions.\"com.openai\" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them.",
+      },
     },
     source: {
       date: "2026-09-11",

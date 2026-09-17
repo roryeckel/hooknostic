@@ -377,6 +377,41 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(issue?.message).toContain('"@Scope/Name"');
   });
 
+  it.each(["http", `a-${"n".repeat(215)}`])(
+    "warns rather than fails when manifest name %s only blocks publication",
+    async (name) => {
+      const pkg = source({});
+      const plan = await project({ ...pkg, manifest: { ...pkg.manifest, name } });
+
+      const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+      // npm still installs a name in this tier from a local path, which is a
+      // supported route; publication is the one it cannot reach -- the same
+      // reasoning the manifest version check beside it already applies.
+      expect(issue?.severity).toBe("warn");
+      expect(plan.issues.filter((candidate) => candidate.severity === "error")).toEqual([]);
+      expect(JSON.parse(text(plan, "package.json")).name).toBe(name);
+    },
+  );
+
+  it.each(["_under", ".leading", "has space"])("fails a manifest name npm cannot install at all: %s", async (name) => {
+    const pkg = source({});
+    const plan = await project({ ...pkg, manifest: { ...pkg.manifest, name } });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+  });
+
+  it("fails an npm coordinate that only blocks publication, because publishing is why it exists", async () => {
+    // A manifest name is the plugin's identity and may never be published; an
+    // npmName is declared for no other purpose, so the publication tier is
+    // fatal here and advisory there.
+    const plan = await projectAs(source({}), { npmName: "http" });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("npmName");
+  });
+
   it("stays silent when the manifest carries a version npm would accept", async () => {
     for (const version of ["1.2.3", "v2.0.0", "1.0.0-rc.1"]) {
       const pkg = source({});

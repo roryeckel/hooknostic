@@ -80,6 +80,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       },
       "agent-plugin.mcp.streamable-http": { level: "exact" },
       "agent-plugin.mcp.sse": { level: "exact" },
+      // Declared rather than left absent. An absent cell still raises HN205,
+      // but behind core's rationale-free fallback, which tells the author
+      // nothing they can act on. A claim about this projection's own reach, so
+      // it rests on what project integration writes rather than on a capture.
+      "agent-plugin.client-extension.files": {
+        level: "unsupported",
+        rationale:
+          "Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it.",
+      },
     },
     source: {
       date: "2026-09-12",
