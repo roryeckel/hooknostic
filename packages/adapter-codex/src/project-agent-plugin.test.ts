@@ -14,7 +14,11 @@ import {
   loadAgentPlugin,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument } from "@hooknostic/core";
-import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
+import {
+  diagnosticsFromAgentPluginIssues,
+  resolveAgentPluginProjection,
+  validateGeneratedArtifacts,
+} from "@hooknostic/core";
 
 import { CODEX_AGENT_PLUGIN_NAMESPACE, codexAgentPluginProjector } from "./project-agent-plugin.js";
 
@@ -926,5 +930,122 @@ describe("Codex client extension", () => {
 
     expect(plan.issues).toEqual([]);
     expect(manifestOf(plan)).toEqual({ name: "portable-tools", version: "1.2.3" });
+  });
+
+  it.each(["Plugin.json", "MCP.json"])(
+    "strips a case-only spelling of the portable %s like the exact one",
+    async (path) => {
+      // Inventoried on a case-sensitive filesystem, `Plugin.json` is a stray
+      // file beside the manifest; installed on the filesystems Codex runs on it
+      // IS the root manifest, which outranks the native one and suppresses every
+      // hook. The exact spelling was already stripped; this one was copied.
+      const plan = await project(withFiles(source(), [file(path)]));
+
+      expect(plan.files.some((candidate) => candidate.path === path)).toBe(false);
+      expect(plan.issues).toEqual([]);
+    },
+  );
+
+  it("refuses to hoist a sibling into Codex's metadata directory", async () => {
+    // The overlay is the one file consumed from `.codex-plugin/`; anything else
+    // there is a shape no capture records.
+    const plan = await project(withFiles(source(), [file("com.openai/.codex-plugin/other.json")]));
+
+    expect(plan.files.some((candidate) => candidate.path === ".codex-plugin/other.json")).toBe(false);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/.codex-plugin/other.json",
+      }),
+    );
+  });
+
+  it.each([
+    ["com.openai/Hooks.json", "hooks.json"],
+    ["com.openai/hooknostic/hooknostic.mjs", "hooknostic/hooknostic.mjs"],
+  ])(
+    "refuses %s against the generated %s, blaming the hoist rather than package content",
+    async (sourcePath, generated) => {
+      const hookArtifacts = [
+        { path: "hooks.json", contents: '{"hooks":{}}\n' },
+        { path: "hooknostic/hooknostic.mjs", contents: "// runtime\n" },
+      ];
+      const plan = await project(withFiles(source(), [file(sourcePath)]), hookArtifacts);
+
+      // Neither path is in the reserved list; the collision is with what this
+      // build actually emits. Before, it surfaced from the hook-artifact loop as
+      // "collides with package content" -- content the author never wrote.
+      const issue = plan.issues.find((candidate) => candidate.path === sourcePath);
+      expect(issue?.severity).toBe("error");
+      expect(issue?.component).toBe("agent-plugin.client-extension.files");
+      expect(issue?.message).toContain(JSON.stringify(generated));
+      expect(issue?.message).toContain("this projection generates");
+      expect(plan.issues.filter((candidate) => candidate.message.includes("collides with package content"))).toEqual(
+        [],
+      );
+      expect(plan.files.filter((candidate) => candidate.path.toLowerCase() === generated)).toEqual([
+        expect.objectContaining({ path: generated }),
+      ]);
+      expect(manifestOf(plan).hooks).toBe("./hooks.json");
+    },
+  );
+
+  it("refuses a hoisted file that lands on a directory the package ships", async () => {
+    // `shippedByFoldedPath` holds files only, so this passed the projector and
+    // failed in core as an artifact that "is also a directory of another
+    // artifact" -- without the client-extension source path.
+    const plan = await project(withFiles(source(), [file("assets/logo.png"), file("com.openai/assets")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/assets");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"assets"');
+    expect(issue?.message).toContain("directory");
+    expect(plan.files.some((candidate) => candidate.path === "assets")).toBe(false);
+  });
+
+  it("refuses a hoisted file that lands beneath a file the package ships", async () => {
+    const plan = await project(withFiles(source(), [file("assets"), file("com.openai/assets/extension.png")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/assets/extension.png");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"assets"');
+    expect(issue?.message).toContain("emitted as a file");
+    expect(plan.files.some((candidate) => candidate.path === "assets/extension.png")).toBe(false);
+  });
+
+  it("refuses a second spelling of the compatibility overlay instead of taking the last one", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay("com.openai/.codex-plugin/plugin.json", JSON.stringify({ interface: { displayName: "first" } })),
+        overlay("com.openai/.Codex-Plugin/plugin.json", JSON.stringify({ interface: { displayName: "second" } })),
+      ]),
+    );
+
+    // Both fold to the manifest path this projection generates; every other
+    // hoist gets the case-collision error, and last-wins would have
+    // `overlaySourcePath` blame a file whose contents were not the ones used.
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/.Codex-Plugin/plugin.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"com.openai/.codex-plugin/plugin.json"');
+    expect(manifestOf(plan).interface).toEqual({ displayName: "first" });
+  });
+
+  it("keeps two ordinary case-variant directories apart after a hoisted one took the slot", async () => {
+    const pkg = source();
+    pkg.directories = ["com.openai", "com.openai/Assets", "assets", "Assets"];
+
+    const plan = await project(pkg);
+
+    // The hoisted `Assets` is coalesced into the package's own `assets`; the
+    // package's own `Assets` is a second ordinary directory and stays for
+    // core's duplicate check, which the comment above the merge promises.
+    expect(plan.directories).toEqual(["assets", "Assets"]);
+    const diagnostics = validateGeneratedArtifacts(
+      plan.files.map(({ path, contents }) => ({ path, contents })),
+      { adapterId: "codex", target: "codex" },
+      plan.directories ?? [],
+    );
+    expect(diagnostics.some((diagnostic) => diagnostic.message.includes("duplicate directory path"))).toBe(true);
   });
 });

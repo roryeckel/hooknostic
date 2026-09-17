@@ -31,33 +31,44 @@ const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
  * naming the manifest this projection emits -- a path the author never wrote.
  */
 const isNativeManifestPath = (path: string): boolean => path.toLowerCase() === NATIVE_MANIFEST_PATH;
+/** The directory Codex reads its own plugin metadata from; the native manifest lives in it. */
+const NATIVE_METADATA_DIR = ".codex-plugin";
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
 const SKILLS_DIR = "skills";
 const RUNTIME_DIR = "runtime";
 /**
- * Root paths and trees this projection decides, whatever a client extension
- * ships under the namespace.
+ * Root paths and trees a client extension may not hoist onto, as a matter of
+ * policy -- whether or not this build happens to generate anything there.
  *
- * The manifest keys are pinned by `PORTABLE_CANONICAL_MANIFEST_KEYS` so an
- * extension cannot point Codex at a tree the portable loader never validated.
- * Hoisting is the same door from the other side: a namespace file landing in
- * `skills/` is discovered as a skill without passing that loader, one landing
- * on `.mcp.json` supplies native MCP configuration this projection otherwise
- * generates and checks, and one landing in `runtime/` displaces the generated
- * launcher. No capture records what Codex does with any of those, and an
- * uncaptured shape is declined rather than defaulted.
+ * This list is NOT how collisions with generated output are caught. Every path
+ * the projection emits is collected into a folded map before hoisting and a
+ * hoist landing on one is refused by that check, so a newly generated file
+ * needs no entry here. What the list adds is the paths that are dangerous even
+ * when empty:
  *
- * The root npm manifest and lockfiles are reserved for the same reason the
- * copy loop strips them: a `package.json` reaching the root stands in for a
- * published npm coordinate this projection never emits, and Codex installs no
- * dependencies for it (`.capture/codex-marketplace-deps`). The check goes
- * through `isRootNpmManifestPath` rather than the exact-match set because npm
- * reads those names case-insensitively on the filesystems it installs onto.
+ * - `skills/` is where the manifest points Codex for discovery, so a namespace
+ *   file landing there is discovered as a skill without passing the portable
+ *   loader; `runtime/` carries the generated launcher when there is one, and
+ *   `.mcp.json` the native MCP configuration -- a hoist into either when
+ *   nothing is generated ships an unvalidated document at the path Codex reads.
+ *   The manifest keys are pinned by `PORTABLE_CANONICAL_MANIFEST_KEYS` for the
+ *   same reason; hoisting is the same door from the other side.
+ * - `.codex-plugin/` is Codex's own metadata directory. The manifest in it is
+ *   the compatibility overlay and is consumed, never copied; anything else
+ *   there is a shape no capture records, and an uncaptured shape is declined
+ *   rather than defaulted.
+ * - The portable root manifests are stripped by the copy loop because a root
+ *   `plugin.json` outranks the native one and suppresses hooks; a hoist must
+ *   not put one back. The npm manifests and lockfiles are stripped because a
+ *   root `package.json` stands in for a published coordinate this projection
+ *   never emits, and Codex installs no dependencies for it
+ *   (`.capture/codex-marketplace-deps`). That check goes through
+ *   `isRootNpmManifestPath` because npm reads those names case-insensitively.
  */
 const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH, NATIVE_MCP_PATH]);
-const RESERVED_HOISTED_ROOT_DIRECTORIES = new Set([SKILLS_DIR, RUNTIME_DIR]);
+const RESERVED_HOISTED_ROOT_DIRECTORIES = new Set([SKILLS_DIR, RUNTIME_DIR, NATIVE_METADATA_DIR]);
 
 type ReservedHoistTarget = { kind: "path" } | { kind: "tree"; tree: string };
 
@@ -88,6 +99,36 @@ function reservedHoistMessage(
     : `${subject} cannot hoist to ${JSON.stringify(path)}, inside the ${JSON.stringify(
         `${reserved.tree}/`,
       )} tree this projection generates and validates`;
+}
+
+/**
+ * The emitted file that `foldedPath` or one of its ancestors names, or
+ * `undefined` when none does. A path collides with a file at its own position
+ * or at any ancestor -- `assets/x` cannot exist beside a file `assets` -- so
+ * the ancestors are walked rather than every emitted file.
+ */
+function occupyingFile(foldedPath: string, byFoldedPath: ReadonlyMap<string, string>): string | undefined {
+  for (let prefix = foldedPath; ;) {
+    const occupied = byFoldedPath.get(prefix);
+    if (occupied !== undefined) return occupied;
+    const cut = prefix.lastIndexOf("/");
+    if (cut < 0) return undefined;
+    prefix = prefix.slice(0, cut);
+  }
+}
+
+/**
+ * Record every proper ancestor of `path` as an occupied directory, keyed by its
+ * folded spelling and valued by the spelling the path actually carries, so a
+ * diagnostic can name the directory the author can find.
+ */
+function addAncestorDirectories(path: string, into: Map<string, string>): void {
+  const segments = path.split("/");
+  for (let depth = 1; depth < segments.length; depth += 1) {
+    const directory = segments.slice(0, depth).join("/");
+    const folded = directory.toLowerCase();
+    if (!into.has(folded)) into.set(folded, directory);
+  }
 }
 
 /**
@@ -638,7 +679,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // for a weaker reason -- no capture record says what a root one does
       // beside a native manifest, and an uncaptured shape is declined rather
       // than defaulted, since the plausible reading is a double registration.
-      if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
+      // Folded like every other check on the output layout: a `Plugin.json`
+      // Linux distinguishes is the root manifest on the filesystems Codex
+      // installs onto, and copied it suppressed every hook the same way.
+      const folded = file.path.toLowerCase();
+      if (folded === PORTABLE_MANIFEST_PATH || folded === PORTABLE_MCP_PATH) continue;
       // Hoisted below, to the package root, rather than shipped one level down
       // where nothing would read it.
       if (file.path.startsWith(NAMESPACE_PREFIX)) continue;
@@ -667,81 +712,12 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       copiedPaths.push(file.path);
     }
 
-    // The client extension, hoisted to the root. A `.codex-plugin/plugin.json`
-    // here is an overlay rather than a file: it becomes the base of the
-    // generated manifest, which is the "compatibility overlay" the vendor
-    // documentation describes.
-    const inlineExtension = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE];
-    let overlayManifest: Record<string, unknown> = {};
-    // Kept so a diagnostic about the overlay's contents can name the file the
-    // author actually wrote, rather than the manifest this projection emits.
-    let overlaySourcePath: string | undefined;
-    let ignoredCompatibilityOverlays = 0;
     // Keyed case-insensitively, like every other collision check on generated
     // output: the package is inventoried on one filesystem and installed on
     // others, and `Assets/logo.png` beside `assets/Logo.png` is one file on
     // most of them. The value keeps the spelling the package shipped so the
     // diagnostic can name it.
     const shippedByFoldedPath = new Map(copiedPaths.map((path) => [path.toLowerCase(), path]));
-    for (const file of source.files) {
-      if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
-      const path = file.path.slice(NAMESPACE_PREFIX.length);
-      if (path === "") continue;
-      const reserved = reservedHoistTarget(path);
-      if (reserved !== undefined) {
-        issues.push({
-          severity: "error",
-          scope: "projection",
-          component: "agent-plugin.client-extension.files",
-          path: file.path,
-          message: reservedHoistMessage("file", file.path, path, reserved),
-        });
-        continue;
-      }
-      if (isNativeManifestPath(path)) {
-        // The documented portable form replaces the compatibility overlay
-        // wholesale. An ignored fallback cannot make an otherwise valid inline
-        // declaration fail merely because stale fallback bytes remain beside it.
-        if (inlineExtension !== undefined) {
-          ignoredCompatibilityOverlays++;
-          continue;
-        }
-        const parsed = parseOverlayManifest(file.contents);
-        if (parsed.error !== undefined) {
-          issues.push({
-            severity: "error",
-            scope: "manifest",
-            component: "agent-plugin.client-extension.files",
-            path: file.path,
-            message: `client extension manifest ${JSON.stringify(file.path)} ${parsed.error}`,
-          });
-          continue;
-        }
-        overlayManifest = parsed.value;
-        overlaySourcePath = file.path;
-        continue;
-      }
-      const shipped = shippedByFoldedPath.get(path.toLowerCase());
-      if (shipped !== undefined) {
-        issues.push({
-          severity: "error",
-          scope: "projection",
-          component: "agent-plugin.client-extension.files",
-          path: file.path,
-          message: `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(shipped)}, which the package already ships`,
-        });
-        continue;
-      }
-      shippedByFoldedPath.set(path.toLowerCase(), path);
-      files.push({ path, contents: file.contents, mode: file.mode });
-      copiedPaths.push(path);
-    }
-
-    // Typed where this projection decides the value, free-form where the client
-    // extension does: Codex's presentation surface is large and vendor-owned,
-    // and modelling its field names here would mean a Hooknostic release every
-    // time OpenAI adds one.
-    const extensionEntry = inlineExtension ?? overlayManifest;
 
     const { servers, launcherServers, omitted } = translateMcp(source);
     for (const { name, component, reason } of omitted) {
@@ -765,6 +741,147 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const hooksArtifact = context.hookArtifacts.find(
       (file) => file.path === CODEX_PLUGIN_HOOKS_PATH && !shippedByFoldedPath.has(file.path.toLowerCase()),
     );
+
+    // Every path this build generates, known before anything is hoisted, so a
+    // hoist landing on one is refused here with the source path named. Checked
+    // against what is actually emitted rather than a hand-kept list: the list
+    // above states policy, and a generated file it forgot would otherwise be
+    // hoistable until someone remembered to add it -- or surface later as a
+    // collision blamed on "package content" the author never wrote.
+    const generatedByFoldedPath = new Map<string, string>([[NATIVE_MANIFEST_PATH, NATIVE_MANIFEST_PATH]]);
+    if (Object.keys(servers).length > 0) generatedByFoldedPath.set(NATIVE_MCP_PATH, NATIVE_MCP_PATH);
+    if (launcherServers.length > 0) {
+      for (const path of [LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]) generatedByFoldedPath.set(path.toLowerCase(), path);
+    }
+    for (const file of context.hookArtifacts) {
+      if (file.path !== NATIVE_MANIFEST_PATH) generatedByFoldedPath.set(file.path.toLowerCase(), file.path);
+    }
+    // Directories the output already has, from shipped files, generated files
+    // and the package's own directory inventory. A hoisted FILE landing on one
+    // is the mirror of the hoisted-directory-onto-file check below, and without
+    // it the collision surfaced in core as an EISDIR-style duplicate that never
+    // mentioned the namespace source.
+    const occupiedDirectories = new Map<string, string>();
+    for (const path of copiedPaths) addAncestorDirectories(path, occupiedDirectories);
+    for (const path of generatedByFoldedPath.values()) addAncestorDirectories(path, occupiedDirectories);
+    for (const directory of source.directories ?? []) {
+      if (directory === CODEX_AGENT_PLUGIN_NAMESPACE || directory.startsWith(NAMESPACE_PREFIX)) continue;
+      if (insideRejectedSkill(`${directory}/`)) continue;
+      const folded = directory.toLowerCase();
+      if (!occupiedDirectories.has(folded)) occupiedDirectories.set(folded, directory);
+    }
+
+    // The client extension, hoisted to the root. A `.codex-plugin/plugin.json`
+    // here is an overlay rather than a file: it becomes the base of the
+    // generated manifest, which is the "compatibility overlay" the vendor
+    // documentation describes.
+    const inlineExtension = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE];
+    let overlayManifest: Record<string, unknown> = {};
+    // Kept so a diagnostic about the overlay's contents can name the file the
+    // author actually wrote, rather than the manifest this projection emits.
+    let overlaySourcePath: string | undefined;
+    // The first overlay seen, accepted or not, so a second spelling of the same
+    // path is reported instead of silently replacing it.
+    let firstOverlayPath: string | undefined;
+    let ignoredCompatibilityOverlays = 0;
+    const refuseHoist = (sourcePath: string, message: string): void => {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+        message,
+      });
+    };
+    for (const file of source.files) {
+      if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
+      const path = file.path.slice(NAMESPACE_PREFIX.length);
+      if (path === "") continue;
+      const folded = path.toLowerCase();
+      // Before the reserved-tree check: the overlay lives inside the reserved
+      // `.codex-plugin/` tree and is the one thing there that is consumed.
+      if (isNativeManifestPath(path)) {
+        if (firstOverlayPath !== undefined && inlineExtension === undefined) {
+          // Two spellings that are one path on the filesystems Codex installs
+          // onto. Last-wins would leave `overlaySourcePath` blaming a file whose
+          // contents may not be the ones the author meant.
+          refuseHoist(
+            file.path,
+            `client extension manifest ${JSON.stringify(file.path)} duplicates ${JSON.stringify(firstOverlayPath)}; the two are one path on a case-insensitive filesystem, so only one compatibility overlay can be declared`,
+          );
+          continue;
+        }
+        firstOverlayPath ??= file.path;
+        // The documented portable form replaces the compatibility overlay
+        // wholesale. An ignored fallback cannot make an otherwise valid inline
+        // declaration fail merely because stale fallback bytes remain beside it.
+        if (inlineExtension !== undefined) {
+          ignoredCompatibilityOverlays++;
+          continue;
+        }
+        const parsed = parseOverlayManifest(file.contents);
+        if (parsed.error !== undefined) {
+          issues.push({
+            severity: "error",
+            scope: "manifest",
+            component: "agent-plugin.client-extension.files",
+            path: file.path,
+            message: `client extension manifest ${JSON.stringify(file.path)} ${parsed.error}`,
+          });
+          continue;
+        }
+        overlayManifest = parsed.value;
+        overlaySourcePath = file.path;
+        continue;
+      }
+      const reserved = reservedHoistTarget(path);
+      if (reserved !== undefined) {
+        refuseHoist(file.path, reservedHoistMessage("file", file.path, path, reserved));
+        continue;
+      }
+      const generated = generatedByFoldedPath.get(folded);
+      if (generated !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(generated)}, which this projection generates`,
+        );
+        continue;
+      }
+      const shipped = shippedByFoldedPath.get(folded);
+      if (shipped !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(shipped)}, which the package already ships`,
+        );
+        continue;
+      }
+      const occupiedDirectory = occupiedDirectories.get(folded);
+      if (occupiedDirectory !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(occupiedDirectory)}, which is a directory of the output`,
+        );
+        continue;
+      }
+      const occupiedFile = occupyingFile(folded, shippedByFoldedPath) ?? occupyingFile(folded, generatedByFoldedPath);
+      if (occupiedFile !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists inside ${JSON.stringify(occupiedFile)}, which is emitted as a file`,
+        );
+        continue;
+      }
+      shippedByFoldedPath.set(folded, path);
+      addAncestorDirectories(path, occupiedDirectories);
+      files.push({ path, contents: file.contents, mode: file.mode });
+      copiedPaths.push(path);
+    }
+
+    // Typed where this projection decides the value, free-form where the client
+    // extension does: Codex's presentation surface is large and vendor-owned,
+    // and modelling its field names here would mean a Hooknostic release every
+    // time OpenAI adds one.
+    const extensionEntry = inlineExtension ?? overlayManifest;
     // Where the author's declaration lives: one of the two files they wrote,
     // never the manifest this projection generates (see the ignored-key
     // warning below for why).
@@ -943,6 +1060,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
               // The output root is created by staging; there is no directory
               // artifact for the portable namespace itself.
               if (outputPath === "") return [];
+              // The overlay's own directory: every package carrying an overlay
+              // inventories it, and staging creates it for the generated
+              // manifest anyway. Anything beneath it is reserved.
+              if (outputPath.toLowerCase() === NATIVE_METADATA_DIR) return [];
               const reserved = reservedHoistTarget(outputPath);
               if (reserved !== undefined) {
                 issues.push({
@@ -985,8 +1106,14 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
               // coexist on a case-insensitive filesystem. The package's own
               // spelling is the one retained, whichever the inventory listed
               // first: on a case-sensitive filesystem that is the directory
-              // its unhoisted files land in.
-              if (!hoistedHere) retained[previous.index] = outputPath;
+              // its unhoisted files land in. Once the package's spelling holds
+              // the slot, the entry records that, so a second ordinary
+              // spelling is kept beside it for core's duplicate check rather
+              // than overwriting it and hiding the pair.
+              if (!hoistedHere) {
+                retained[previous.index] = outputPath;
+                previous.sourcePath = sourcePath;
+              }
             }
             return retained;
           })();
@@ -995,16 +1122,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // the former on case-insensitive filesystems.
     const emittedByFoldedPath = new Map(files.map((file) => [file.path.toLowerCase(), file.path]));
     for (const { sourcePath, outputPath } of hoistedDirectories ?? []) {
-      // A directory collides with a file at its own path or at any ancestor,
-      // so walk the ancestors rather than every emitted file.
-      let occupiedFile: string | undefined;
-      for (let prefix = outputPath.toLowerCase(); ;) {
-        occupiedFile = emittedByFoldedPath.get(prefix);
-        if (occupiedFile !== undefined) break;
-        const cut = prefix.lastIndexOf("/");
-        if (cut < 0) break;
-        prefix = prefix.slice(0, cut);
-      }
+      const occupiedFile = occupyingFile(outputPath.toLowerCase(), emittedByFoldedPath);
       if (occupiedFile === undefined) continue;
       // Staging creates retained directories before writing artifacts. Letting
       // either input claim the same path would therefore turn this into an
