@@ -82,12 +82,17 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "agent-plugin.mcp.sse": { level: "exact" },
       // Declared rather than left absent. An absent cell still raises HN205,
       // but behind core's rationale-free fallback, which tells the author
-      // nothing they can act on. A claim about this projection's own reach, so
-      // it rests on what project integration writes rather than on a capture.
+      // nothing they can act on. Claims about this projection's own reach, so
+      // they rest on what project integration writes rather than on a capture.
       "agent-plugin.client-extension.files": {
         level: "unsupported",
         rationale:
           "Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it.",
+      },
+      "agent-plugin.runtime-package": {
+        level: "unsupported",
+        rationale:
+          "The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly.",
       },
     },
     source: {

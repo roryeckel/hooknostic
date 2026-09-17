@@ -162,12 +162,17 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       },
       // Declared rather than left absent. An absent cell still raises HN205,
       // but behind core's rationale-free fallback, which tells the author
-      // nothing they can act on. A claim about this projection's own reach, so
-      // it rests on what project integration writes rather than on a capture.
+      // nothing they can act on. Claims about this projection's own reach, so
+      // they rest on what project integration writes rather than on a capture.
       "agent-plugin.client-extension.files": {
         level: "unsupported",
         rationale:
           "Project integration writes .codex/config.toml and a skills tree. A plugin's extensions.\"com.openai\" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them.",
+      },
+      "agent-plugin.runtime-package": {
+        level: "unsupported",
+        rationale:
+          "Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead.",
       },
     },
     source: {

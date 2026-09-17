@@ -1622,6 +1622,68 @@ ${run.stderr}`,
     ).toBe(0);
   });
 
+  it.each([
+    ["codex", CODEX_PLUGIN_MODE_RANGE],
+    ["claude", claudeHarness.recommendedRange],
+    ["opencode", opencodeHarness.recommendedRange],
+  ])("explains why project delivery drops a %s runtime package", async (id, range) => {
+    // `runtimePackage` is one config-level setting shared by every configured
+    // component target, so a package target that installs one puts it in front
+    // of every project target beside it. Reporting that is right; reporting it
+    // behind core's rationale-free fallback is not.
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-project-runtime-${id}-`));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "runtime"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "runtime-carrier", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "runtime/package.json"), JSON.stringify({ name: "carrier-runtime", version: "1.0.0" }));
+    await writeFile(
+      join(dir, "runtime/package-lock.json"),
+      JSON.stringify({ name: "carrier-runtime", version: "1.0.0", lockfileVersion: 3, packages: {} }),
+    );
+    const config = (onUnsupported: string) => `export default {
+        project: { root: "." },
+        components: {
+          root: ".",
+          targets: ["${id}"],
+          onUnsupported: "${onUnsupported}",
+          runtimePackage: { manifest: "./runtime/package.json", lockfile: "./runtime/package-lock.json" },
+        },
+        targets: { ${id}: { version: "${range}", delivery: "project", output: "./dist/${id}" } },
+      };`;
+    await writeFile(join(dir, "hooknostic.config.ts"), config("error"));
+
+    const strict = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: strict.io,
+      }),
+      strict.out(),
+    ).toBe(2);
+    const omission = JSON.parse(strict.out()).targets[id].project.omissions.find(
+      (candidate: { component: string }) => candidate.component === "agent-plugin.runtime-package",
+    );
+    expect(omission?.reason, strict.out()).not.toContain("has no project delivery representation");
+    expect(omission?.reason).toContain("node_modules");
+
+    await writeFile(join(dir, "hooknostic.config.ts"), config("warn"));
+    const lenient = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: lenient.io,
+      }),
+      lenient.out(),
+    ).toBe(0);
+  });
+
   it("reports a missing direct MCP source in the JSON build result", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-missing-direct-mcp-"));
     cleanupDirs.push(dir);
