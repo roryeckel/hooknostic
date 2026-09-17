@@ -120,9 +120,11 @@ profile for a broad range.
   disables that diagnostic for the target.
 - Declare `publishesNpmPackage: true` only if package delivery emits a manifest
   npm publishes the artifact under. That is what lets a target set `npmName`;
-  undeclared, core refuses the coordinate rather than letting it sit in the
-  config doing nothing. The emitted manifest is still checked afterwards, so
-  both must agree — the declaration exists because emitting a root
+  undeclared, core refuses the coordinate at analysis, before anything is
+  bundled, rather than letting it sit in the config doing nothing. The emitted
+  manifest is still checked after generation, and a mismatch there is reported
+  as an adapter defect rather than a configuration one, so both must agree —
+  the declaration exists because emitting a root
   `package.json` is not the same as publishing one, and adapters that never
   read `npmName` emit one anyway (a copied source manifest, a
   `components.runtimePackage` install input).

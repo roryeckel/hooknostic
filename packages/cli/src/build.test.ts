@@ -1934,6 +1934,59 @@ ${run.stderr}`,
     expect(report.targets.copy.status).toBe("failed");
   });
 
+  it("blames the adapter when it claims to publish under npmName but emits another name", async () => {
+    // Analysis already refused adapters that never publish; what reaches the
+    // build is one that declared it does. A manifest under a different name is
+    // therefore the adapter breaking its own declaration, and telling the
+    // author to remove npmName or pick another harness would hide that.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-renamed-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          pub: { version: ">=1.0 <2", delivery: "package", output: "./dist/pub", npmName: "@scope/mine" },
+        },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "named", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const renaming = makeFakeAdapter({
+      id: "pub",
+      profiles: [
+        { range: ">=1.0 <2", source: syntheticSource(), matrix: { "session.start.observe": { level: "exact" } } },
+      ],
+      shimEntry: "export {};",
+      publishesNpmPackage: true,
+      compile: () => [{ path: "package.json", contents: JSON.stringify({ name: "someone-else", version: "1.0.0" }) }],
+    });
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: { pub: renaming },
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    const diagnostic = report.diagnostics.find((candidate: { code: string }) => candidate.code === "HN501");
+    expect(diagnostic).toMatchObject({ target: "pub" });
+    expect(diagnostic.message).toContain("@scope/mine");
+    expect(diagnostic.message).toContain("someone-else");
+    expect(diagnostic.remediation).toContain("adapter");
+    expect(diagnostic.remediation).not.toContain("target a harness");
+    expect(report.targets.pub.status).toBe("failed");
+  });
+
   it("rejects project-root output without deleting the config or hook source", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-unsafe-output-"));
     cleanupDirs.push(dir);

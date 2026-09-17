@@ -968,29 +968,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         phase = "validation";
-        // Two questions, because effect alone answered the wrong one. Whether
-        // the coordinate reached the manifest npm will read is necessary but
-        // not sufficient: adapters that never read `npmName` still emit a root
-        // `package.json` -- Codex copied the source project's until it stopped,
-        // Claude builds one from `components.runtimePackage` -- and a name
-        // matching by coincidence passed a guard that exists precisely to catch
-        // a setting doing nothing. So the adapter must first declare that its
-        // package delivery publishes under the coordinate at all.
+        // Analysis already failed any target whose adapter does not declare
+        // `publishesNpmPackage`, so an npmName reaching this point belongs to
+        // an adapter that claims to publish under it. This confirms the claim
+        // against what was actually emitted: a mismatch here is the adapter
+        // breaking its own declaration, not a configuration problem, and the
+        // remediation says so rather than sending the author to a different
+        // harness that does exactly what this one claims to.
         if (spec.npmName !== undefined) {
-          if (adapter.publishesNpmPackage !== true) {
-            diagnostics.push({
-              code: "HN501",
-              severity: "error",
-              target: id,
-              message:
-                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
-                `${adapter.id} package delivery does not emit an npm package to publish under it`,
-              remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
-            });
-            target.status = "failed";
-            if (target.projection) target.projection.status = "failed";
-            continue;
-          }
           const manifest = artifacts.find((artifact) => artifact.path === "package.json");
           const declared = manifest === undefined ? undefined : npmManifestName(manifest.contents);
           if (declared !== spec.npmName) {
@@ -999,9 +984,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               severity: "error",
               target: id,
               message:
-                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but its ` +
-                `${adapter.id} output carries no npm manifest under that name`,
-              remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
+                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
+                (manifest === undefined
+                  ? `its ${adapter.id} output emits no package.json`
+                  : declared === undefined
+                    ? `the package.json its ${adapter.id} output emits declares no name`
+                    : `the package.json its ${adapter.id} output emits is named ${JSON.stringify(declared)}`),
+              remediation:
+                `this is a defect in the ${adapter.id} adapter, which declares publishesNpmPackage yet emitted ` +
+                `its manifest under another name; report it against the adapter -- removing npmName would only hide it.`,
             });
             target.status = "failed";
             if (target.projection) target.projection.status = "failed";
