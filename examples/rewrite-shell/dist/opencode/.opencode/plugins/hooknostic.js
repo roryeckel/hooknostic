@@ -4428,6 +4428,7 @@ var targetConfigSchema = external_exports.object({
   version: external_exports.string().min(1),
   delivery: external_exports.enum(["package", "project"]),
   output: external_exports.string().min(1),
+  npmName: external_exports.string().min(1).optional(),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var projectMcpServerOverrideSchema = external_exports.object({
@@ -4476,6 +4477,15 @@ var hooknosticConfigSchema = external_exports.object({
     if (projectAdapters.has(adapter))
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
     projectAdapters.add(adapter);
+  }
+  for (const [name, target] of Object.entries(config.targets)) {
+    if (target.npmName !== void 0 && target.delivery !== "package") {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["targets", name, "npmName"],
+        message: `npmName requires package delivery`
+      });
+    }
   }
   const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
   if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
@@ -4965,9 +4975,7 @@ function planOpenCodeApplication(result) {
   const mutations = {};
   const terminal = result.terminatedBy !== void 0 ? result.effects[result.effects.length - 1]?.effect : void 0;
   if (terminal?.kind === "block") {
-    if (result.event === "permission.request") {
-      mutations.status = "deny";
-    } else {
+    if (result.event !== "permission.request") {
       application.throwMessage = terminal.reason;
     }
   }
@@ -5222,9 +5230,6 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     }
     if (application.mutations?.output !== void 0) {
       output["output"] = application.mutations.output;
-    }
-    if (application.mutations?.status !== void 0) {
-      output["status"] = application.mutations.status;
     }
     if (application.mutations?.context !== void 0) {
       const context = output["context"];

@@ -124,6 +124,7 @@ export const targetConfigSchema = z
     version: z.string().min(1),
     delivery: z.enum(["package", "project"]),
     output: z.string().min(1),
+    npmName: z.string().min(1).optional(),
     compatibility: compatibilityPolicySchema.optional(),
   })
   .strict();
@@ -191,6 +192,17 @@ export const hooknosticConfigSchema = z
       if (projectAdapters.has(adapter))
         context.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });
       projectAdapters.add(adapter);
+    }
+    for (const [name, target] of Object.entries(config.targets)) {
+      // Project delivery writes into a live repository; there is no package for
+      // a coordinate to name, so the setting could only read as a promise.
+      if (target.npmName !== undefined && target.delivery !== "package") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targets", name, "npmName"],
+          message: `npmName requires package delivery`,
+        });
+      }
     }
     const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
     if (

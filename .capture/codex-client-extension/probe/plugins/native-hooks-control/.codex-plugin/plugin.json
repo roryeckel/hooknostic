@@ -1,0 +1,6 @@
+{
+  "name": "native-hooks-control",
+  "version": "1.0.0",
+  "description": "Positive control for the inline OpenAI hooks probe.",
+  "hooks": "./hooks.json"
+}

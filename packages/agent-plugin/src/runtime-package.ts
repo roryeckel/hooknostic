@@ -18,6 +18,8 @@ import npa from "npm-package-arg";
 import semver from "semver";
 import validatePackageName from "validate-npm-package-name";
 
+import { contentsText, isJsonObject as object, parseJsonObject } from "./json.js";
+
 export interface NpmRuntimeManifest {
   dependencies: Record<string, string>;
   [key: string]: unknown;
@@ -32,17 +34,9 @@ export interface NpmRuntimeLockfile {
 export type NpmRuntimePackageValidation =
   { ok: true; manifest: NpmRuntimeManifest; lockfile: NpmRuntimeLockfile } | { ok: false; error: string };
 
-function object(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function text(input: string | Uint8Array): string {
-  return typeof input === "string" ? input : new TextDecoder().decode(input);
-}
-
 function parseJson(input: string | Uint8Array, label: string): unknown {
   try {
-    return JSON.parse(text(input)) as unknown;
+    return JSON.parse(contentsText(input)) as unknown;
   } catch (error) {
     throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -57,14 +51,159 @@ function message(error: unknown): string {
 }
 
 /**
- * Why npm would refuse `name` as a package name, or `undefined` when it is
- * acceptable: the error (not warning) rules of `validate-npm-package-name`,
- * which is what `npm-package-arg` applies to every dependency edge, so legacy
- * names npm still installs are accepted.
+ * Why npm would refuse `name` as a dependency or override name, or `undefined`
+ * when npm can install it. Existing published packages may use names that npm
+ * no longer permits for new publication.
  */
 export function packageNameProblem(name: string): string | undefined {
   const result = validatePackageName(name);
   return result.validForOldPackages ? undefined : (result.errors ?? ["invalid package name"]).join("; ");
+}
+
+/**
+ * What a publication-only problem costs, shared by the name and version
+ * reports so the two tiers read the same wherever they surface.
+ */
+export const UNPUBLISHABLE_STILL_LOADS = "The result loads from a local path but cannot be published.";
+
+/**
+ * Whether `path` is one of the npm manifests a package root carries.
+ *
+ * A source package root commonly holds the project's own development manifest
+ * and lockfile, which describe how to build the package rather than anything a
+ * harness should install. Copying them into a projection hands the consumer a
+ * manifest that was never validated for that purpose -- `private: true` and
+ * workspace protocol ranges included. Projectors that materialize a manifest of
+ * their own must also keep the source's from overwriting it.
+ *
+ * The comparison case-folds because a package is inventoried on one filesystem
+ * and installed on others: a `Package.json` that Linux distinguishes is npm's
+ * input to a Windows or macOS consumer. npm prefers shrinkwrap over
+ * package-lock, so both lock spellings count.
+ */
+export function isRootNpmManifestPath(path: string): boolean {
+  const name = path.toLowerCase();
+  return name === "package.json" || name === "package-lock.json" || name === "npm-shrinkwrap.json";
+}
+
+/** Why npm would refuse `name` for a newly published package. */
+export function publishablePackageNameProblem(name: string): string | undefined {
+  const result = validatePackageName(name);
+  if (result.validForNewPackages) return undefined;
+  return [...(result.errors ?? []), ...(result.warnings ?? [])].join("; ") || "invalid package name";
+}
+
+/**
+ * Why npm would refuse `version` in a manifest it publishes, or `undefined`
+ * when it is acceptable.
+ *
+ * An Agent Plugins manifest accepts any string here, so a projector that emits
+ * an npm package cannot infer publishability from the field's presence: npm
+ * wants one exact semantic version, not a range and not a dist-tag. `semver`
+ * normalises a leading `v`, which npm also accepts.
+ */
+export function packageVersionProblem(version: string): string | undefined {
+  if (semver.valid(version) !== null) return undefined;
+  return version.trim().length === 0 ? "empty" : "not a semantic version";
+}
+
+/** A finding about the coordinate a package delivery would publish under. */
+export interface NpmPublicationProblem {
+  /**
+   * `error` when npm would refuse to install the result at all, or when an
+   * explicit coordinate is defeated; `warn` when only publication is lost.
+   */
+  severity: "warn" | "error";
+  message: string;
+}
+
+/**
+ * What npm would say about publishing a package under `name` at `version`.
+ *
+ * Two tiers, because npm has two. A name it will not install at all produces a
+ * directory that cannot be packed, which fails the build. A name it still
+ * installs but will no longer publish costs only publication -- the position
+ * the version check takes, with the same consequence -- so it warns. An
+ * explicit `npmName` is the exception: it exists for no purpose other than
+ * publishing, so a coordinate that cannot be published is a defeated
+ * declaration rather than a survivable one.
+ *
+ * Both callers -- a projector composing a manifest and a validator reading an
+ * emitted one -- go through here so the tiers and their wording cannot drift
+ * apart. The name finding, when there is one, comes before the version's.
+ */
+export function npmPublicationProblems(input: {
+  /** The name npm will see. A non-string means the manifest declares none. */
+  name: unknown;
+  /** The version npm will see. A non-string means the manifest declares none. */
+  version: unknown;
+  /** Whether `name` came from an explicit target `npmName` rather than the manifest. */
+  npmNameDeclared: boolean;
+}): NpmPublicationProblem[] {
+  const { name, version, npmNameDeclared } = input;
+  const problems: NpmPublicationProblem[] = [];
+  if (typeof name !== "string") {
+    problems.push({
+      severity: "error",
+      message:
+        "package delivery emits an npm package, and the manifest declares no name, so npm cannot pack or publish it.",
+    });
+  } else {
+    const problem = publishablePackageNameProblem(name);
+    if (problem !== undefined) {
+      const publicationOnly = packageNameProblem(name) === undefined && !npmNameDeclared;
+      problems.push({
+        severity: publicationOnly ? "warn" : "error",
+        // Which of the two declarations supplied it, because naming the
+        // generated manifest would send the author to the wrong file.
+        message:
+          `package delivery emits an npm package, and ${npmNameDeclared ? "npmName" : "manifest name"} ` +
+          `${JSON.stringify(name)} is not a valid npm package name: ${problem}.` +
+          (publicationOnly ? ` ${UNPUBLISHABLE_STILL_LOADS}` : ""),
+      });
+    }
+  }
+  let versionClause: string | undefined;
+  if (typeof version !== "string") {
+    versionClause = "the manifest declares no version";
+  } else {
+    const problem = packageVersionProblem(version);
+    if (problem !== undefined) versionClause = `the manifest version ${JSON.stringify(version)} is ${problem}`;
+  }
+  if (versionClause !== undefined) {
+    // An Agent Plugins manifest leaves the version optional and unconstrained,
+    // and the package still loads from a local path either way -- hence a
+    // warning -- but npm does not object until `npm publish`, long after the
+    // build.
+    problems.push({
+      severity: "warn",
+      message: `package delivery emits an npm package and ${versionClause}. ${UNPUBLISHABLE_STILL_LOADS}`,
+    });
+  }
+  return problems;
+}
+
+export type NpmManifestCoordinate = { ok: true; name: unknown; version: unknown } | { ok: false; error: string };
+
+/**
+ * The `name` and `version` an emitted npm manifest declares, or why the file
+ * is not a manifest at all. Either field is `undefined` when the manifest omits
+ * it. One reading for both consumers of the emitted manifest -- core confirming
+ * an explicit `npmName` against it, and the hooks-only validator handing the
+ * pair to `npmPublicationProblems` -- so they cannot disagree about what the
+ * file says.
+ *
+ * The failure is carried rather than flattened into two absent fields. Read as
+ * a pair of `undefined`s, a manifest npm cannot read at all was reported as
+ * declaring no name and no version, sending the author to look for missing
+ * fields in a file that never parsed -- and, in core, inside a diagnostic whose
+ * remediation asks them to report a defect against the adapter. `error` is
+ * `parseJsonObject`'s clause, so a caller spells it after the file's name.
+ */
+export function npmManifestCoordinate(contents: string | Uint8Array): NpmManifestCoordinate {
+  const parsed = parseJsonObject(contents);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  return { ok: true, name: parsed.value["name"], version: parsed.value["version"] };
 }
 
 /** Package-manager-specific protocols npm rejects; named here for a clearer message than npa's. */

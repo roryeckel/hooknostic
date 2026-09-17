@@ -13,7 +13,7 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
 } from "@hooknostic/agent-plugin";
-import type { McpLauncherDocument } from "@hooknostic/core";
+import type { McpLauncherDocument, TargetSpec } from "@hooknostic/core";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
@@ -64,6 +64,14 @@ const HOOK_ARTIFACTS = [
 
 // Defaults to none: a config may declare `components` without an `entry`, and
 // that shape has to keep working.
+const projectAs = (pkg: AgentPluginPackage, overrides: Partial<TargetSpec>) =>
+  opencodeAgentPluginProjector.project(pkg, {
+    target: { ...target, ...overrides },
+    hookArtifacts: [],
+    support,
+    onUnsupported: "error",
+  });
+
 const project = (pkg: AgentPluginPackage, hookArtifacts: { path: string; contents: string }[] = []) =>
   opencodeAgentPluginProjector.project(pkg, {
     target,
@@ -286,6 +294,135 @@ describe("Agent Plugin to OpenCode projection", () => {
         (issue) => issue.severity === "error" && issue.path === "package.json" && issue.message.includes("npm"),
       ),
     ).toBe(true);
+  });
+
+  it("warns that a versionless package cannot be published, but still emits it", async () => {
+    const pkg = source({});
+    const { version: _dropped, ...manifest } = pkg.manifest;
+    const plan = await project({ ...pkg, manifest });
+
+    // A warning rather than an error: the package still loads from a local
+    // path, which is a supported route. Publication is the one it cannot reach,
+    // and npm only says so at `npm publish` -- long after the build.
+    const warning = plan.issues.find((issue) => issue.message.includes("cannot be published"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.path).toBe("package.json");
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(JSON.parse(text(plan, "package.json")).version).toBeUndefined();
+  });
+
+  // The manifest loader accepts any string here, so presence is not
+  // publishability: a dist-tag or a range reaches the projector intact and npm
+  // would refuse every one of them.
+  it.each([
+    ["next", "next"],
+    ["^1.0.0", "^1.0.0"],
+    ["1.0", "1.0"],
+    ["", ""],
+  ])("warns that a package versioned %j cannot be published", async (version) => {
+    const pkg = source({});
+    const plan = await project({ ...pkg, manifest: { ...pkg.manifest, version } });
+
+    const warning = plan.issues.find((issue) => issue.message.includes("cannot be published"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.message).toContain(JSON.stringify(version));
+    // Still emitted: the local-path route does not care, and refusing here
+    // would break a supported way to ship.
+    expect(JSON.parse(text(plan, "package.json")).version).toBe(version);
+  });
+
+  // No route on this harness reads the component's manifest, so the omission is
+  // permanent -- but its stated reason has to describe the real obstacle, and it
+  // survived one round of being wrong because nothing exercised it.
+  it("explains the runtime-package omission by what no route reads", async () => {
+    const plan = await opencodeAgentPluginProjector.project(source({}), {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+      runtimePackage: { manifest: "runtime/package.json", lockfile: "runtime/package-lock.json" },
+    });
+
+    const omission = plan.summary.omissions.find((candidate) => candidate.component === "agent-plugin.runtime-package");
+    expect(omission?.reason).toContain("generated root manifest");
+    // A registry-installed package IS installed, so the old explanation --
+    // "loaded from a local path rather than installed" -- is now false.
+    expect(omission?.reason).not.toContain("rather than installed");
+  });
+
+  it("publishes under the target's npm coordinate when it declares one", async () => {
+    const plan = await projectAs(source({}), { npmName: "@example/portable-tools-opencode" });
+    const manifest = JSON.parse(text(plan, "package.json")) as Record<string, unknown>;
+
+    // The Agent Plugins name grammar admits only [a-z0-9.-], so a scoped
+    // coordinate is unspellable there and this is the only route to one.
+    expect(manifest.name).toBe("@example/portable-tools-opencode");
+    // Identity the manifest CAN express is still the manifest's.
+    expect(manifest.version).toBe("1.2.3");
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
+  it("falls back to the manifest name when no coordinate is declared", async () => {
+    const plan = await project(source({}));
+    expect((JSON.parse(text(plan, "package.json")) as Record<string, unknown>).name).toBe("portable-tools");
+  });
+
+  it("checks the coordinate npm will actually see, and says which one it is", async () => {
+    const plan = await projectAs(source({}), { npmName: "@Scope/Name" });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+    // Naming the manifest here would send the author to the wrong file.
+    expect(issue?.message).toContain("npmName");
+    expect(issue?.message).toContain('"@Scope/Name"');
+  });
+
+  it.each(["http", `a-${"n".repeat(215)}`])(
+    "warns rather than fails when manifest name %s only blocks publication",
+    async (name) => {
+      const pkg = source({});
+      const plan = await project({ ...pkg, manifest: { ...pkg.manifest, name } });
+
+      const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+      // npm still installs a name in this tier from a local path, which is a
+      // supported route; publication is the one it cannot reach -- the same
+      // reasoning the manifest version check beside it already applies.
+      expect(issue?.severity).toBe("warn");
+      expect(plan.issues.filter((candidate) => candidate.severity === "error")).toEqual([]);
+      expect(JSON.parse(text(plan, "package.json")).name).toBe(name);
+    },
+  );
+
+  it.each(["_under", ".leading", "has space"])("fails a manifest name npm cannot install at all: %s", async (name) => {
+    const pkg = source({});
+    const plan = await project({ ...pkg, manifest: { ...pkg.manifest, name } });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+  });
+
+  it("fails an npm coordinate that only blocks publication, because publishing is why it exists", async () => {
+    // A manifest name is the plugin's identity and may never be published; an
+    // npmName is declared for no other purpose, so the publication tier is
+    // fatal here and advisory there.
+    const plan = await projectAs(source({}), { npmName: "http" });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("npmName");
+  });
+
+  it("stays silent when the manifest carries a version npm would accept", async () => {
+    for (const version of ["1.2.3", "v2.0.0", "1.0.0-rc.1"]) {
+      const pkg = source({});
+      const plan = await project({ ...pkg, manifest: { ...pkg.manifest, version } });
+
+      expect(
+        plan.issues.filter((issue) => issue.message.includes("cannot be published")),
+        version,
+      ).toEqual([]);
+      expect(JSON.parse(text(plan, "package.json")).version).toBe(version);
+    }
   });
 
   it("points ${PLUGIN_ROOT} at the nested package, not at the module", async () => {

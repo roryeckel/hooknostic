@@ -28,6 +28,8 @@ export interface TargetSpec {
   version: string;
   delivery: "package" | "project";
   output: string;
+  /** npm coordinate for this target's output; see `TargetConfig.npmName`. */
+  npmName?: string;
 }
 
 export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSpec {
@@ -36,6 +38,7 @@ export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSp
     version: target.version,
     delivery: target.delivery,
     output: target.output,
+    ...(target.npmName === undefined ? {} : { npmName: target.npmName }),
   };
 }
 
@@ -223,6 +226,23 @@ export interface HarnessAdapter {
 
   /** Artifact modes this adapter can emit for its validated implementation. */
   supportedDeliveries(): readonly TargetSpec["delivery"][];
+
+  /**
+   * Whether this adapter's package delivery emits a manifest npm publishes the
+   * artifact under, which is what makes {@link TargetSpec.npmName} mean
+   * anything. Undeclared reads as no.
+   *
+   * Checking the emitted artifacts alone cannot answer this: two adapters that
+   * never read `npmName` still write a root `package.json` -- one copied from
+   * the source project, one built from `components.runtimePackage` -- and
+   * either name could match a declared coordinate by coincidence, passing a
+   * guard whose whole purpose is to catch a setting that quietly does nothing.
+   * So the declaration gates the check and the emitted manifest confirms it.
+   * Failing closed is deliberate: an adapter that gains npm packaging later
+   * refuses the coordinate loudly until it says so here, which is the safe
+   * direction for a field that decides where a package is published.
+   */
+  readonly publishesNpmPackage?: boolean;
 
   /**
    * Source of the per-target shim entry module that the build pipeline

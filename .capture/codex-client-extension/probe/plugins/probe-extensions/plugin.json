@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "probe-extensions",
+  "version": "1.0.0",
+  "description": "Does Codex read extensions.com.openai from a root plugin.json?",
+  "extensions": {
+    "com.openai": {
+      "skills": "./skills/"
+    }
+  }
+}

@@ -14,6 +14,7 @@ import {
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
+  npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
 } from "@hooknostic/agent-plugin";
@@ -956,6 +957,43 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         phase = "validation";
+        // Analysis already failed any target whose adapter does not declare
+        // `publishesNpmPackage`, so an npmName reaching this point belongs to
+        // an adapter that claims to publish under it. This confirms the claim
+        // against what was actually emitted: a mismatch here is the adapter
+        // breaking its own declaration, not a configuration problem, and the
+        // remediation says so rather than sending the author to a different
+        // harness that does exactly what this one claims to.
+        if (spec.npmName !== undefined) {
+          const manifest = artifacts.find((artifact) => artifact.path === "package.json");
+          const coordinate = manifest === undefined ? undefined : npmManifestCoordinate(manifest.contents);
+          const declared = coordinate?.ok === true && typeof coordinate.name === "string" ? coordinate.name : undefined;
+          if (declared !== spec.npmName) {
+            diagnostics.push({
+              code: "HN501",
+              severity: "error",
+              target: id,
+              message:
+                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
+                (manifest === undefined
+                  ? `its ${adapter.id} output emits no package.json`
+                  : // Said before the missing-name reading, because a manifest
+                    // npm cannot parse has no fields to be missing and the
+                    // remediation below asks for a defect report describing it.
+                    coordinate?.ok === false
+                    ? `the package.json its ${adapter.id} output emits ${coordinate.error}`
+                    : declared === undefined
+                      ? `the package.json its ${adapter.id} output emits declares no name`
+                      : `the package.json its ${adapter.id} output emits is named ${JSON.stringify(declared)}`),
+              remediation:
+                `this is a defect in the ${adapter.id} adapter, which declares publishesNpmPackage yet emitted ` +
+                `its manifest under another name; report it against the adapter -- removing npmName would only hide it.`,
+            });
+            target.status = "failed";
+            if (target.projection) target.projection.status = "failed";
+            continue;
+          }
+        }
         const structural = validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories);
         diagnostics.push(...structural);
         if (hasFatal(structural)) {

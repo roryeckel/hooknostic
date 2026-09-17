@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "custom-path",
+  "version": "1.0.0",
+  "description": "Decisive: a non-conventional skills path named ONLY inside extensions.com.openai.",
+  "extensions": {
+    "com.openai": {
+      "skills": "./custom-skills/"
+    }
+  }
+}

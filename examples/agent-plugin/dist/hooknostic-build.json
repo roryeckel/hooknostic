@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:67ff46ac5b3b108e9a0a604b95e54d65949abf1d33ac973b13889c7ac5ae54a7",
+        "contentDigest": "sha256:b4b706d9280f93cce974a9d6ae6c4bb483825c7e1c9d7336943d79140b396230",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -68,8 +68,8 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:4ebda217ec2170adec956166581f2436a65e1833eceb3b174c7b1c79192ca3c1",
-        "copiedFileCount": 5,
+        "contentDigest": "sha256:721967057db0195c8298b15307b602b28b3e0be4f4aea78198dd19cf2f6b116d",
+        "copiedFileCount": 4,
         "directories": [
           "runtime",
           "skills",
@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:01c63eea4ab44729928171bda397dd6bef9b0d44b51a43945fc6bdd0c6ee8730",
+        "contentDigest": "sha256:f77a566e1e1da132bccc2c1d8db080f77eb370114a9b4cf5997da5913525c061",
         "copiedFileCount": 7,
         "directories": [
           "package/runtime",
@@ -168,7 +168,7 @@
         "omissions": [
           {
             "component": "agent-plugin.runtime-package",
-            "reason": "this projection emits an npm package that is loaded from a local path rather than installed, so nothing acts on its manifest or lockfile; bundle the dependencies instead"
+            "reason": "the generated root manifest is the only one any OpenCode route reads, and this component's manifest and lockfile are copied into the nested author package, where nothing merges or installs them; bundle the dependencies instead"
           }
         ]
       },
@@ -198,7 +198,7 @@
       "target": "opencode",
       "component": "agent-plugin.runtime-package",
       "support": "unsupported",
-      "rationale": "Nothing installs a declared manifest on either route OpenCode offers. A package named by a local path in opencode.json is loaded, not installed, and its declared dependencies do not resolve; a module in .opencode/plugins/ is read from disk with no install step at all. Whether installing a PUBLISHED module by name installs its closure is a third route and is not probed. Ordinary Node resolution does apply, so a node_modules beside the module would resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
+      "rationale": "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so vendoring is not reachable through this build either.",
       "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"opencode\"."
     }
   ],

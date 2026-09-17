@@ -11,8 +11,11 @@ import {
   assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
+  contentsText,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  isRootNpmManifestPath,
+  parseJsonObject,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
@@ -21,11 +24,273 @@ import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js"
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
 const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
+/**
+ * Folded like every other collision check on generated output: the package is
+ * inventoried on one filesystem and installed on others, and a
+ * `.Codex-Plugin/plugin.json` occupies the generated manifest's path on most
+ * of the ones Codex installs onto. Matched exactly, it was hoisted as a plain
+ * file and the build then failed in core on a case-insensitive duplicate
+ * naming the manifest this projection emits -- a path the author never wrote.
+ */
+const isNativeManifestPath = (path: string): boolean => path.toLowerCase() === NATIVE_MANIFEST_PATH;
+/** The directory Codex reads its own plugin metadata from; the native manifest lives in it. */
+const NATIVE_METADATA_DIR = ".codex-plugin";
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
-const LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
-const LAUNCHER_SERVERS_PATH = `runtime/${MCP_SERVERS_FILE}`;
+const SKILLS_DIR = "skills";
+const RUNTIME_DIR = "runtime";
+
+/**
+ * Whether a package-root path is claiming a path Codex reads as its own
+ * configuration, rather than shipping package content.
+ *
+ * The output half of the package boundary (ADR-0011), and the same rule the
+ * Claude projector applies through its own `isReservedNativePath`. A copied
+ * `.mcp.json` is a native MCP document that never passed `translateMcp`,
+ * reaching Codex's configuration without the validation portable `mcp.json`
+ * servers receive; beside a build that generates one it was emitted twice, and
+ * the only complaint was core's duplicate-artifact-path error blaming this
+ * adapter for a file the package wrote. Under `.codex-plugin/`, only the
+ * manifest is consumed -- checked above, with its own remediation -- and
+ * anything else there is a shape no capture records, which is declined rather
+ * than defaulted.
+ *
+ * The paths deliberately NOT reserved here are where this parts company with
+ * `RESERVED_HOISTED_ROOT_PATHS`, and the asymmetry is the point rather than an
+ * omission to complete later. `skills/` is the portable tree this copy loop
+ * exists to copy. `runtime/` is inert package content, and an exact collision
+ * with the generated launcher is reported where the launcher is emitted. A root
+ * `hooks.json` the native manifest never names is inert too -- measured on
+ * 0.154.0 (`.capture/codex-client-extension`) -- and a real collision with a
+ * generated hook artifact is reported where those are emitted. What makes all
+ * three dangerous under hoisting is the rewrite, not the path.
+ *
+ * Folded like every other check on the output layout.
+ */
+function isReservedNativePath(path: string): boolean {
+  const folded = path.toLowerCase();
+  return folded === NATIVE_MCP_PATH || folded.startsWith(`${NATIVE_METADATA_DIR}/`);
+}
+/**
+ * Root paths and trees a client extension may not hoist onto, as a matter of
+ * policy -- whether or not this build happens to generate anything there.
+ *
+ * This list is NOT how collisions with generated output are caught. Every path
+ * the projection emits is collected into a folded map before hoisting and a
+ * hoist landing on one is refused by that check, so a newly generated file
+ * needs no entry here. What the list adds is the paths that are dangerous even
+ * when empty:
+ *
+ * - `skills/` is where the manifest points Codex for discovery, so a namespace
+ *   file landing there is discovered as a skill without passing the portable
+ *   loader; `runtime/` carries the generated launcher when there is one, and
+ *   `.mcp.json` the native MCP configuration -- a hoist into either when
+ *   nothing is generated ships an unvalidated document at the path Codex reads.
+ *   The manifest keys are pinned by `PORTABLE_CANONICAL_MANIFEST_KEYS` for the
+ *   same reason; hoisting is the same door from the other side.
+ * - `.codex-plugin/` is Codex's own metadata directory. The manifest in it is
+ *   the compatibility overlay and is consumed, never copied; anything else
+ *   there is a shape no capture records, and an uncaptured shape is declined
+ *   rather than defaulted.
+ * - The portable root manifests are stripped by the copy loop because a root
+ *   `plugin.json` outranks the native one and suppresses hooks; a hoist must
+ *   not put one back. The npm manifests and lockfiles are stripped because a
+ *   root `package.json` stands in for a published coordinate this projection
+ *   never emits, and Codex installs no dependencies for it
+ *   (`.capture/codex-marketplace-deps`). That check goes through
+ *   `isRootNpmManifestPath` because npm reads those names case-insensitively.
+ */
+const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH, NATIVE_MCP_PATH]);
+const RESERVED_HOISTED_ROOT_DIRECTORIES = new Set([SKILLS_DIR, RUNTIME_DIR, NATIVE_METADATA_DIR]);
+
+type ReservedHoistTarget = { kind: "path" } | { kind: "tree"; tree: string };
+
+/**
+ * The reserved path or tree a hoist would occupy, or `undefined` when it is
+ * free. Folded like every other collision check on generated output: the
+ * package is inventoried on one filesystem and installed on others, and
+ * `Skills/extra/SKILL.md` lands inside the generated `skills/` tree on most of
+ * the ones Codex installs onto. Core's duplicate check folds file paths, not
+ * directory prefixes, so nothing downstream would catch it.
+ */
+function reservedHoistTarget(path: string): ReservedHoistTarget | undefined {
+  const folded = path.toLowerCase();
+  if (RESERVED_HOISTED_ROOT_PATHS.has(folded) || isRootNpmManifestPath(path)) return { kind: "path" };
+  const top = folded.split("/")[0]!;
+  return RESERVED_HOISTED_ROOT_DIRECTORIES.has(top) ? { kind: "tree", tree: top } : undefined;
+}
+
+function reservedHoistMessage(
+  kind: "file" | "directory",
+  sourcePath: string,
+  path: string,
+  reserved: ReservedHoistTarget,
+): string {
+  const subject = `client extension ${kind} ${JSON.stringify(sourcePath)}`;
+  return reserved.kind === "path"
+    ? `${subject} cannot hoist onto reserved root path ${JSON.stringify(path)}`
+    : `${subject} cannot hoist to ${JSON.stringify(path)}, inside the ${JSON.stringify(
+        `${reserved.tree}/`,
+      )} tree this projection generates and validates`;
+}
+
+/**
+ * The emitted file that `foldedPath` or one of its ancestors names, or
+ * `undefined` when none does. A path collides with a file at its own position
+ * or at any ancestor -- `assets/x` cannot exist beside a file `assets` -- so
+ * the ancestors are walked rather than every emitted file.
+ */
+function occupyingFile(foldedPath: string, byFoldedPath: ReadonlyMap<string, string>): string | undefined {
+  for (let prefix = foldedPath; ;) {
+    const occupied = byFoldedPath.get(prefix);
+    if (occupied !== undefined) return occupied;
+    const cut = prefix.lastIndexOf("/");
+    if (cut < 0) return undefined;
+    prefix = prefix.slice(0, cut);
+  }
+}
+
+/**
+ * Record every proper ancestor of `path` as an occupied directory, keyed by its
+ * folded spelling and valued by the spelling the path actually carries, so a
+ * diagnostic can name the directory the author can find.
+ */
+function addAncestorDirectories(path: string, into: Map<string, string>): void {
+  const segments = path.split("/");
+  for (let depth = 1; depth < segments.length; depth += 1) {
+    const directory = segments.slice(0, depth).join("/");
+    const folded = directory.toLowerCase();
+    if (!into.has(folded)) into.set(folded, directory);
+  }
+}
+
+/**
+ * Codex's reverse-DNS client-extension namespace.
+ *
+ * Two measured facts make this worth declaring. OpenAI documents
+ * `extensions."com.openai"` in a root `plugin.json` as the home for its own
+ * settings -- presentation, app mappings, hook configuration -- and the shipped
+ * 0.154.0 binary does not honour even its supported `hooks` field
+ * (`.capture/codex-client-extension`). So the portable form authors are told to
+ * write reaches nothing on that build, and something has to carry it to where
+ * Codex actually looks. That is this projection's job: the selected OpenAI
+ * settings are folded into the generated native manifest, and files under the
+ * namespace are hoisted to the package root.
+ *
+ * The namespace earns its place even though the base tree is copied verbatim.
+ * A root-level `.app.json` or `assets/` reaches every harness, inert everywhere
+ * but here; under the namespace it reaches only Codex.
+ */
+export const CODEX_AGENT_PLUGIN_NAMESPACE = "com.openai";
+const NAMESPACE_PREFIX = `${CODEX_AGENT_PLUGIN_NAMESPACE}/`;
+/** Where the inline form of the extension lives in the file the author wrote. */
+const INLINE_EXTENSION_PATH = `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}`;
+
+/**
+ * Manifest keys this projection decides, whatever a client extension says.
+ *
+ * Identity comes from the portable manifest, and component wiring points at
+ * trees this projection emitted and validated. Everything else in the extension
+ * passes through untouched -- that is the point of having one.
+ */
+const PORTABLE_CANONICAL_MANIFEST_KEYS = [
+  "name",
+  "version",
+  "description",
+  "author",
+  "homepage",
+  "repository",
+  "license",
+  "keywords",
+  "skills",
+  "mcpServers",
+] as const;
+
+/**
+ * The `hooks` forms the native manifest accepts: a path, a path array, an
+ * inline hook document, or an array of them. All four ran their markers on
+ * 0.154.0 in one session (`.capture/codex-client-extension`), so composing an
+ * author's declaration with the generated document is a captured shape, not a
+ * documented one.
+ */
+type CodexHooksDeclaration = string | string[] | Record<string, unknown>[];
+
+const isHookObject = (entry: unknown): entry is Record<string, unknown> =>
+  entry !== null && typeof entry === "object" && !Array.isArray(entry);
+
+/**
+ * Why an authored `hooks` value is none of the four captured forms, or
+ * `undefined` when it is one of them. Anything else is declined rather than
+ * composed with: wrapped into the generated array it ships a manifest whose
+ * `hooks` field is invalid, which drops the generated document along with the
+ * author's -- and the build would report success.
+ */
+function hooksDeclarationProblem(authored: unknown): string | undefined {
+  if (typeof authored === "string" || isHookObject(authored)) return undefined;
+  if (!Array.isArray(authored)) return `got ${authored === null ? "null" : typeof authored}`;
+  if (authored.every((entry) => typeof entry === "string") || authored.every(isHookObject)) return undefined;
+  return "got an array that is neither all paths nor all hook objects";
+}
+
+/**
+ * Whether an authored hook path names the document this projection generates.
+ * The vendor documentation's own example is `hooks: "./hooks.json"`, which is
+ * exactly that document, so the comparison ignores the `./` anchor and folds
+ * case: on the filesystems Codex installs onto, `Hooks.json` is the generated
+ * file too.
+ */
+const namesGeneratedHookDocument = (entry: string, generatedPath: string): boolean =>
+  entry.replace(/^(\.\/)+/, "").toLowerCase() === generatedPath.replace(/^(\.\/)+/, "").toLowerCase();
+
+/**
+ * Add generated hooks while keeping OpenAI's path and inline-object arrays
+ * homogeneous: the documentation permits arrays of paths or arrays of objects,
+ * not a mix, so the generated document is inlined when the author inlined
+ * theirs.
+ *
+ * An authored path that already names the generated document is replaced by
+ * the generated spelling in place rather than appended to: a path array runs
+ * every entry (`.capture/codex-client-extension`), so `["./hooks.json",
+ * "./hooks.json"]` fired every generated hook twice.
+ */
+function appendHookSource(
+  authored: unknown,
+  generatedPath: string,
+  generatedContents: string | Uint8Array,
+): { value: CodexHooksDeclaration; error?: string } {
+  if (authored === undefined) return { value: generatedPath };
+  const entries: unknown[] = Array.isArray(authored) ? authored : [authored];
+  if (entries.every((entry) => typeof entry === "string")) {
+    const paths = entries as string[];
+    if (!paths.some((entry) => namesGeneratedHookDocument(entry, generatedPath))) {
+      return { value: [...paths, generatedPath] };
+    }
+    const deduplicated: string[] = [];
+    for (const entry of paths) {
+      const named = namesGeneratedHookDocument(entry, generatedPath) ? generatedPath : entry;
+      if (named !== generatedPath || !deduplicated.includes(generatedPath)) deduplicated.push(named);
+    }
+    return { value: Array.isArray(authored) ? deduplicated : generatedPath };
+  }
+
+  // Hook artifacts are compiler output and already validated by the adapter,
+  // so a document that does not parse is a defect upstream -- reported against
+  // the artifact rather than thrown out of the projection.
+  try {
+    return {
+      value: [
+        ...(entries as Record<string, unknown>[]),
+        JSON.parse(contentsText(generatedContents)) as Record<string, unknown>,
+      ],
+    };
+  } catch (error) {
+    return { value: generatedPath, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const LAUNCHER_PATH = `${RUNTIME_DIR}/${MCP_LAUNCHER_FILE}`;
+const LAUNCHER_SERVERS_PATH = `${RUNTIME_DIR}/${MCP_SERVERS_FILE}`;
 
 /** Native stdio server. `type` is absent: `command` is what selects the transport. */
 interface CodexStdioServer {
@@ -52,7 +317,7 @@ interface CodexNativeManifest {
   keywords?: string[];
   skills?: string;
   mcpServers?: string;
-  hooks?: string;
+  hooks?: CodexHooksDeclaration;
 }
 
 /**
@@ -170,11 +435,7 @@ export function translateMcp(
  *   is why the generated command is anchored with `${PLUGIN_ROOT}`.
  */
 export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
-  // Codex reads no portable client-extension namespace: its native
-  // `.codex-plugin/` directory is not one, and none of its bundled plugins use
-  // the extensions map. Declaring an invented namespace would make the
-  // component discoverable against something nothing reads.
-  namespace: "",
+  namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
   profiles: [
     {
       // Below the range where plugin hook delivery was captured there is no
@@ -232,9 +493,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             "Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one.",
         },
         "agent-plugin.client-extension.files": {
-          level: "unsupported",
+          level: "exact",
           rationale:
-            "Codex reads no portable client-extension namespace; its native .codex-plugin/ directory is not one, and none of its bundled plugins use the extensions map.",
+            'OpenAI documents extensions."com.openai" in a root plugin.json as the preferred source of OpenAI settings, but 0.154.0 did not run a UserPromptSubmit hook declared there while an equivalent native-manifest control did. This projection bridges that implementation gap: the inline object replaces the compatibility overlay, portable identity/skills/MCP remain canonical, authored hooks are combined with generated hooks, and namespace files are hoisted to the package root. Exact because the documented settings arrive intact at the native surface the harness consumes.',
         },
         "agent-plugin.runtime-package": {
           level: "unsupported",
@@ -245,6 +506,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "0.154.0",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: 'Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional. One naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, but that negative was expected -- portable skills/ is canonical and an inline skills value cannot replace it -- so this run says nothing about whether the namespace is read; the 2026-09-17 records below carry the corrected probe. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line.',
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: 'A plugin\'s skills/ directory is discovered with no declaration anywhere -- no native manifest, no skills field, no extensions map. The explicit "skills" pointer this projector writes is therefore belt and braces rather than the mechanism, which is what the 180 plugins in the bundled marketplace also do.',
+          },
           {
             version: "0.154.0",
             date: "2026-09-15",
@@ -343,6 +618,41 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             artifact: ".capture/codex-hook-command",
             what: "A hook command is parsed with quoting honoured and does NOT accept Claude's exec form: of three spellings on one event, command + args failed while the quoted and bare strings both ran, so the substituted plugin-root path is quoted.",
           },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "Correction and supported-field probe: the earlier custom-skills negative was expected because portable skills/ is canonical and did not test namespace consumption. In one isolated loopback session, extensions.com.openai.hooks failed to run a UserPromptSubmit marker while an equivalent .codex-plugin/plugin.json control fired, establishing that 0.154.0 does not honour the documented inline hooks route.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "doc-derived",
+            artifact: ".capture/codex-client-extension",
+            what: "Official OpenAI plugin documentation defines the inline extensions.com.openai object as replacing the compatibility overlay, keeps root identity plus portable skills/MCP canonical, and permits hooks as a path, path array, inline object, or inline-object array.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "A native .codex-plugin/plugin.json declaring hooks as a two-path array ran both documents' UserPromptSubmit markers in one isolated loopback session, beside the single-path control. The path-array form this projection emits when an author declares a path is consumed, not merely documented.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "A root hooks.json the native manifest never names is inert: beside a manifest with no hooks key its marker stayed absent, and beside a manifest declaring an inline hook document only the inline marker fired, while the single-path control ran in the same session. So the generated hooks.json this projection must still emit when it inlines the generated document beside an author's inline object is not discovered by convention, and generated hooks do not run twice on that path.",
+          },
         ],
         notes: [
           "Marketplace roots expose plugins through <root>/.agents/plugins/marketplace.json.",
@@ -396,27 +706,62 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // for a weaker reason -- no capture record says what a root one does
       // beside a native manifest, and an uncaptured shape is declined rather
       // than defaulted, since the plausible reading is a double registration.
-      if (file.path === PORTABLE_MANIFEST_PATH || file.path === PORTABLE_MCP_PATH) continue;
+      // Folded like every other check on the output layout: a `Plugin.json`
+      // Linux distinguishes is the root manifest on the filesystems Codex
+      // installs onto, and copied it suppressed every hook the same way.
+      const folded = file.path.toLowerCase();
+      if (folded === PORTABLE_MANIFEST_PATH || folded === PORTABLE_MCP_PATH) continue;
+      // Hoisted below, to the package root, rather than shipped one level down
+      // where nothing would read it.
+      if (file.path.startsWith(NAMESPACE_PREFIX)) continue;
+      // The source project's own development manifest and lockfile describe how
+      // to build the package, not anything Codex should install. Copied
+      // verbatim they shipped `private: true` and workspace protocol ranges
+      // into the plugin, and any name they happened to carry stood in for a
+      // published npm coordinate this projection never emits.
+      if (isRootNpmManifestPath(file.path)) continue;
+      if (isNativeManifestPath(file.path)) {
+        // This projection always writes the native manifest, so a copied one is
+        // guaranteed to be lost -- silently, until now. Reported rather than
+        // overwritten, and fatal rather than subject to `onUnsupported`: the
+        // package is claiming an output path, which is not a component Codex
+        // cannot represent.
+        issues.push({
+          severity: "error",
+          scope: "file",
+          path: file.path,
+          message: `Agent Plugin file ${JSON.stringify(file.path)} occupies the path this projection generates; move it to ${JSON.stringify(`${NAMESPACE_PREFIX}${file.path}`)} to declare it as a Codex client extension, or remove it from the package.`,
+        });
+        continue;
+      }
+      if (isReservedNativePath(file.path)) {
+        // Fatal for the reason the manifest above is, and not subject to
+        // `onUnsupported`: the package is claiming an output path, which is not
+        // a component Codex cannot represent. Neither path has a
+        // `com.openai/` route either -- `reservedHoistTarget` refuses both --
+        // so each remediation names something the author can actually do.
+        issues.push({
+          severity: "error",
+          scope: "file",
+          path: file.path,
+          message:
+            file.path.toLowerCase() === NATIVE_MCP_PATH
+              ? `Agent Plugin file ${JSON.stringify(file.path)} occupies the native MCP configuration this projection generates from ${JSON.stringify(PORTABLE_MCP_PATH)}; declare the servers there instead, or remove the file from the package.`
+              : `Agent Plugin file ${JSON.stringify(file.path)} is inside ${JSON.stringify(`${NATIVE_METADATA_DIR}/`)}, which Codex reads its own plugin metadata from and where only ${JSON.stringify(NATIVE_MANIFEST_PATH)} is consumed; move it elsewhere in the package, or remove it.`,
+        });
+        continue;
+      }
       if (insideRejectedSkill(file.path)) continue;
       files.push({ path: file.path, contents: file.contents, mode: file.mode });
       copiedPaths.push(file.path);
     }
 
-    // Carried rather than dropped: a manifest declaring all of these installed
-    // and resolved its version normally (`.capture/codex-native-mcp`), so
-    // passing them through cannot lose information whether Codex reads them or
-    // ignores them -- whereas dropping them certainly does.
-    const manifest: CodexNativeManifest = {
-      name: source.manifest.name,
-      ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
-      ...(source.manifest.description === undefined ? {} : { description: source.manifest.description }),
-      ...(source.manifest.author === undefined ? {} : { author: source.manifest.author }),
-      ...(source.manifest.homepage === undefined ? {} : { homepage: source.manifest.homepage }),
-      ...(source.manifest.repository === undefined ? {} : { repository: source.manifest.repository }),
-      ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
-      ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
-      ...(source.skills.length === 0 ? {} : { skills: "./skills/" }),
-    };
+    // Keyed case-insensitively, like every other collision check on generated
+    // output: the package is inventoried on one filesystem and installed on
+    // others, and `Assets/logo.png` beside `assets/Logo.png` is one file on
+    // most of them. The value keeps the spelling the package shipped so the
+    // diagnostic can name it.
+    const shippedByFoldedPath = new Map(copiedPaths.map((path) => [path.toLowerCase(), path]));
 
     const { servers, launcherServers, omitted } = translateMcp(source);
     for (const { name, component, reason } of omitted) {
@@ -434,8 +779,264 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
       });
     }
+
+    // A hook document colliding with package content is reported below and
+    // not emitted, so the manifest must not point at it either.
+    const hooksArtifact = context.hookArtifacts.find(
+      (file) => file.path === CODEX_PLUGIN_HOOKS_PATH && !shippedByFoldedPath.has(file.path.toLowerCase()),
+    );
+
+    // Every path this build generates, known before anything is hoisted, so a
+    // hoist landing on one is refused here with the source path named. Checked
+    // against what is actually emitted rather than a hand-kept list: the list
+    // above states policy, and a generated file it forgot would otherwise be
+    // hoistable until someone remembered to add it -- or surface later as a
+    // collision blamed on "package content" the author never wrote.
+    const generatedByFoldedPath = new Map<string, string>([[NATIVE_MANIFEST_PATH, NATIVE_MANIFEST_PATH]]);
+    if (Object.keys(servers).length > 0) generatedByFoldedPath.set(NATIVE_MCP_PATH, NATIVE_MCP_PATH);
+    if (launcherServers.length > 0) {
+      for (const path of [LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]) generatedByFoldedPath.set(path.toLowerCase(), path);
+    }
+    for (const file of context.hookArtifacts) {
+      if (file.path !== NATIVE_MANIFEST_PATH) generatedByFoldedPath.set(file.path.toLowerCase(), file.path);
+    }
+    // Directories the output already has, from shipped files, generated files
+    // and the package's own directory inventory. A hoisted FILE landing on one
+    // is the mirror of the hoisted-directory-onto-file check below, and without
+    // it the collision surfaced in core as an EISDIR-style duplicate that never
+    // mentioned the namespace source.
+    const occupiedDirectories = new Map<string, string>();
+    for (const path of copiedPaths) addAncestorDirectories(path, occupiedDirectories);
+    for (const path of generatedByFoldedPath.values()) addAncestorDirectories(path, occupiedDirectories);
+    for (const directory of source.directories ?? []) {
+      if (directory === CODEX_AGENT_PLUGIN_NAMESPACE || directory.startsWith(NAMESPACE_PREFIX)) continue;
+      if (insideRejectedSkill(`${directory}/`)) continue;
+      const folded = directory.toLowerCase();
+      if (!occupiedDirectories.has(folded)) occupiedDirectories.set(folded, directory);
+    }
+
+    // The client extension, hoisted to the root. A `.codex-plugin/plugin.json`
+    // here is an overlay rather than a file: it becomes the base of the
+    // generated manifest, which is the "compatibility overlay" the vendor
+    // documentation describes.
+    const inlineExtension = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE];
+    let overlayManifest: Record<string, unknown> = {};
+    // Kept so a diagnostic about the overlay's contents can name the file the
+    // author actually wrote, rather than the manifest this projection emits.
+    let overlaySourcePath: string | undefined;
+    // The first overlay seen, accepted or not, so a second spelling of the same
+    // path is reported instead of silently replacing it.
+    let firstOverlayPath: string | undefined;
+    let ignoredCompatibilityOverlays = 0;
+    const refuseHoist = (sourcePath: string, message: string): void => {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+        message,
+      });
+    };
+    for (const file of source.files) {
+      if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
+      const path = file.path.slice(NAMESPACE_PREFIX.length);
+      if (path === "") continue;
+      const folded = path.toLowerCase();
+      // Before the reserved-tree check: the overlay lives inside the reserved
+      // `.codex-plugin/` tree and is the one thing there that is consumed.
+      if (isNativeManifestPath(path)) {
+        if (firstOverlayPath !== undefined && inlineExtension === undefined) {
+          // Two spellings that are one path on the filesystems Codex installs
+          // onto. Last-wins would leave `overlaySourcePath` blaming a file whose
+          // contents may not be the ones the author meant.
+          refuseHoist(
+            file.path,
+            `client extension manifest ${JSON.stringify(file.path)} duplicates ${JSON.stringify(firstOverlayPath)}; the two are one path on a case-insensitive filesystem, so only one compatibility overlay can be declared`,
+          );
+          continue;
+        }
+        firstOverlayPath ??= file.path;
+        // The documented portable form replaces the compatibility overlay
+        // wholesale. An ignored fallback cannot make an otherwise valid inline
+        // declaration fail merely because stale fallback bytes remain beside it
+        // -- so it is not even parsed -- but it is said out loud, like every
+        // other client-extension input this projection ignores: edits to this
+        // file reach nothing, and only the summary's skipped count showed it.
+        if (inlineExtension !== undefined) {
+          ignoredCompatibilityOverlays++;
+          issues.push({
+            severity: "warn",
+            scope: "projection",
+            component: "agent-plugin.client-extension.files",
+            path: file.path,
+            message: `client extension overlay ${JSON.stringify(file.path)} is superseded by ${JSON.stringify(
+              INLINE_EXTENSION_PATH,
+            )} and ignored; fold its settings into the inline object or remove the file.`,
+          });
+          continue;
+        }
+        // Malformed is reported, never guessed at.
+        const parsed = parseJsonObject(file.contents);
+        if (!parsed.ok) {
+          issues.push({
+            severity: "error",
+            scope: "manifest",
+            component: "agent-plugin.client-extension.files",
+            path: file.path,
+            message: `client extension manifest ${JSON.stringify(file.path)} ${parsed.error}`,
+          });
+          continue;
+        }
+        overlayManifest = parsed.value;
+        overlaySourcePath = file.path;
+        continue;
+      }
+      const reserved = reservedHoistTarget(path);
+      if (reserved !== undefined) {
+        refuseHoist(file.path, reservedHoistMessage("file", file.path, path, reserved));
+        continue;
+      }
+      const generated = generatedByFoldedPath.get(folded);
+      if (generated !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(generated)}, which this projection generates`,
+        );
+        continue;
+      }
+      const shipped = shippedByFoldedPath.get(folded);
+      if (shipped !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(shipped)}, which the package already ships`,
+        );
+        continue;
+      }
+      const occupiedDirectory = occupiedDirectories.get(folded);
+      if (occupiedDirectory !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(occupiedDirectory)}, which is a directory of the output`,
+        );
+        continue;
+      }
+      const occupiedFile = occupyingFile(folded, shippedByFoldedPath) ?? occupyingFile(folded, generatedByFoldedPath);
+      if (occupiedFile !== undefined) {
+        refuseHoist(
+          file.path,
+          `client extension file ${JSON.stringify(file.path)} hoists inside ${JSON.stringify(occupiedFile)}, which is emitted as a file`,
+        );
+        continue;
+      }
+      shippedByFoldedPath.set(folded, path);
+      addAncestorDirectories(path, occupiedDirectories);
+      files.push({ path, contents: file.contents, mode: file.mode });
+      copiedPaths.push(path);
+    }
+
+    // Typed where this projection decides the value, free-form where the client
+    // extension does: Codex's presentation surface is large and vendor-owned,
+    // and modelling its field names here would mean a Hooknostic release every
+    // time OpenAI adds one.
+    const extensionEntry = inlineExtension ?? overlayManifest;
+    // Where the author's declaration lives -- the whole extension, or one key
+    // of it: one of the two files they wrote, never the manifest this
+    // projection generates. Naming that would send them to output they do not
+    // have, and which is a hard error to ship. Only those two files can have
+    // supplied a key, so one of them is always the source.
+    const declarationPath = (key?: string): { path: string } | Record<never, never> => {
+      if (inlineExtension !== undefined) {
+        return { path: key === undefined ? INLINE_EXTENSION_PATH : `${INLINE_EXTENSION_PATH}/${key}` };
+      }
+      if (overlaySourcePath === undefined) return {};
+      return { path: key === undefined ? overlaySourcePath : `${overlaySourcePath}#/${key}` };
+    };
+    const hooksProblem = "hooks" in extensionEntry ? hooksDeclarationProblem(extensionEntry["hooks"]) : undefined;
+    if (hooksProblem !== undefined) {
+      issues.push({
+        severity: "error",
+        scope: "manifest",
+        component: "agent-plugin.client-extension.files",
+        ...declarationPath("hooks"),
+        message: `client extension "hooks" must be a path, an array of paths, a hook object, or an array of hook objects (the forms captured on Codex); ${hooksProblem}.`,
+      });
+    }
+    // When the author inlined their hooks, the generated document is inlined
+    // beside them and the generated hooks.json file is still emitted below,
+    // because core verifies that every hook artifact survives projection. That
+    // file is inert: a root hooks.json the native manifest does not name is not
+    // discovered by convention, beside a manifest with no hooks key or one with
+    // an inline document (`.capture/codex-client-extension`), so the generated
+    // hooks run once on this path rather than from both the manifest and the
+    // file.
+    const composedHooks =
+      hooksArtifact === undefined
+        ? undefined
+        : appendHookSource(
+            hooksProblem === undefined ? extensionEntry["hooks"] : undefined,
+            `./${CODEX_PLUGIN_HOOKS_PATH}`,
+            hooksArtifact.contents,
+          );
+    if (composedHooks?.error !== undefined) {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        path: CODEX_PLUGIN_HOOKS_PATH,
+        message: `generated hook document ${JSON.stringify(CODEX_PLUGIN_HOOKS_PATH)} is not JSON, so it cannot be inlined beside the client extension's hook object: ${composedHooks.error}`,
+      });
+    }
+
+    // Carried rather than dropped: a manifest declaring all of these installed
+    // and resolved its version normally (`.capture/codex-native-mcp`), so
+    // passing them through cannot lose information whether Codex reads them or
+    // ignores them -- whereas dropping them certainly does.
+    // The inline OpenAI object replaces the compatibility overlay; portable
+    // identity and components remain canonical in either case. Component
+    // pointers come last, `mcpServers` before `hooks`: the committed example's
+    // manifest is byte-compared in CI, so key order is part of the output.
+    const generated: CodexNativeManifest = {
+      name: source.manifest.name,
+      ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
+      ...(source.manifest.description === undefined ? {} : { description: source.manifest.description }),
+      ...(source.manifest.author === undefined ? {} : { author: source.manifest.author }),
+      ...(source.manifest.homepage === undefined ? {} : { homepage: source.manifest.homepage }),
+      ...(source.manifest.repository === undefined ? {} : { repository: source.manifest.repository }),
+      ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
+      ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
+      ...(source.skills.length === 0 ? {} : { skills: `./${SKILLS_DIR}/` }),
+      ...(Object.keys(servers).length === 0 ? {} : { mcpServers: `./${NATIVE_MCP_PATH}` }),
+      ...(composedHooks === undefined ? {} : { hooks: composedHooks.value }),
+    };
+    const manifest: Record<string, unknown> = { ...extensionEntry, ...generated };
+    // A declined `hooks` value must not survive the spread either, whether or
+    // not a generated document replaced it.
+    if (hooksProblem !== undefined && !("hooks" in generated)) delete manifest["hooks"];
+    // Spreading `generated` last is not enough: it omits a key it has nothing
+    // to say about, and the extension's value would then survive. `skills` is
+    // the dangerous one -- a package with no valid skills that declares
+    // `skills: "./elsewhere/"` would point Codex at a tree the portable loader
+    // never validated, which is the whole thing this projection exists to stop.
+    const claimed: string[] = [];
+    for (const key of PORTABLE_CANONICAL_MANIFEST_KEYS) {
+      if (!(key in extensionEntry)) continue;
+      claimed.push(key);
+      if (!(key in generated)) delete manifest[key];
+    }
+    if (claimed.length > 0) {
+      issues.push({
+        // The package is valid; this projection decided to ignore part of it.
+        // `scope: "manifest"` would file that as invalid Agent Plugin input,
+        // blaming the author for a choice made here -- the same misfiling the
+        // MCP omission below is careful to avoid.
+        severity: "warn",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        ...declarationPath(),
+        message: `client extension declares ${claimed.map((key) => JSON.stringify(key)).join(", ")}, which this projection decides from the package itself; the declared value is ignored.`,
+      });
+    }
+
     if (Object.keys(servers).length > 0) {
-      manifest.mcpServers = `./${NATIVE_MCP_PATH}`;
       files.push({
         path: NATIVE_MCP_PATH,
         contents: `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`,
@@ -445,7 +1046,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // A better diagnostic than the duplicate-path failure core would raise
       // anyway (`artifacts.ts`), naming the colliding path and why it is taken.
       for (const path of [LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]) {
-        if (!copiedPaths.includes(path)) continue;
+        if (!shippedByFoldedPath.has(path.toLowerCase())) continue;
         issues.push({
           severity: "error",
           scope: "projection",
@@ -471,13 +1072,12 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       });
     }
 
-    const copied = new Set(copiedPaths);
     for (const file of context.hookArtifacts) {
       // Generation emits a hooks-only manifest so that an unprojected
       // plugin-mode target is still installable; the fuller one written below
       // replaces it at the same path.
       if (file.path === NATIVE_MANIFEST_PATH) continue;
-      if (copied.has(file.path)) {
+      if (shippedByFoldedPath.has(file.path.toLowerCase())) {
         issues.push({
           severity: "error",
           scope: "projection",
@@ -486,7 +1086,6 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         });
         continue;
       }
-      if (file.path === CODEX_PLUGIN_HOOKS_PATH) manifest.hooks = `./${CODEX_PLUGIN_HOOKS_PATH}`;
       files.push({ ...file });
     }
 
@@ -495,18 +1094,109 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       contents: `${JSON.stringify(manifest, null, 2)}\n`,
     });
 
-    // Codex reads no client-extension namespace, so none is declared and the
-    // component is never discovered here.
     // Per-server, not per-transport: a stdio server is dropped only when its own
     // paths cannot be re-anchored, so the count comes from what was omitted.
     const skippedByComponent = new Map<AgentPluginComponentId, number>();
     for (const { component } of omitted) {
       skippedByComponent.set(component, (skippedByComponent.get(component) ?? 0) + 1);
     }
+    const directoryCandidates =
+      source.directories === undefined
+        ? undefined
+        : source.directories
+            .filter((sourcePath) => !insideRejectedSkill(`${sourcePath}/`))
+            .flatMap((sourcePath) => {
+              if (sourcePath === CODEX_AGENT_PLUGIN_NAMESPACE) return [];
+              if (!sourcePath.startsWith(NAMESPACE_PREFIX)) return [{ sourcePath, outputPath: sourcePath }];
+              const outputPath = sourcePath.slice(NAMESPACE_PREFIX.length);
+              // The output root is created by staging; there is no directory
+              // artifact for the portable namespace itself.
+              if (outputPath === "") return [];
+              // The overlay's own directory: every package carrying an overlay
+              // inventories it, and staging creates it for the generated
+              // manifest anyway. Anything beneath it is reserved.
+              if (outputPath.toLowerCase() === NATIVE_METADATA_DIR) return [];
+              const reserved = reservedHoistTarget(outputPath);
+              if (reserved !== undefined) {
+                issues.push({
+                  severity: "error",
+                  scope: "projection",
+                  component: "agent-plugin.client-extension.files",
+                  path: sourcePath,
+                  message: reservedHoistMessage("directory", sourcePath, outputPath, reserved),
+                });
+                return [];
+              }
+              return [{ sourcePath, outputPath }];
+            });
+    const hoistedDirectories = directoryCandidates?.filter(({ sourcePath }) => sourcePath.startsWith(NAMESPACE_PREFIX));
+    const directories =
+      directoryCandidates === undefined
+        ? undefined
+        : (() => {
+            const retained: string[] = [];
+            const firstByCaseFoldedOutput = new Map<string, { sourcePath: string; index: number }>();
+            for (const { sourcePath, outputPath } of directoryCandidates) {
+              const caseFoldedOutput = outputPath.toLowerCase();
+              const previous = firstByCaseFoldedOutput.get(caseFoldedOutput);
+              if (previous === undefined) {
+                firstByCaseFoldedOutput.set(caseFoldedOutput, { sourcePath, index: retained.length });
+                retained.push(outputPath);
+                continue;
+              }
+              const hoistedHere = sourcePath.startsWith(NAMESPACE_PREFIX);
+              // Two ordinary source directories remain for core's general
+              // path validation. A namespace directory maps to the same
+              // physical output directory after hoisting, so coalesce it.
+              if (!hoistedHere && !previous.sourcePath.startsWith(NAMESPACE_PREFIX)) {
+                retained.push(outputPath);
+                continue;
+              }
+              // A directory is mergeable: its non-conflicting files already
+              // hoist independently, so retain one output directory and let
+              // the file collision checks reject only a path that cannot
+              // coexist on a case-insensitive filesystem. The package's own
+              // spelling is the one retained, whichever the inventory listed
+              // first: on a case-sensitive filesystem that is the directory
+              // its unhoisted files land in. Once the package's spelling holds
+              // the slot, the entry records that, so a second ordinary
+              // spelling is kept beside it for core's duplicate check rather
+              // than overwriting it and hiding the pair.
+              if (!hoistedHere) {
+                retained[previous.index] = outputPath;
+                previous.sourcePath = sourcePath;
+              }
+            }
+            return retained;
+          })();
+    // Generated paths are case-insensitive: a package can carry `assets` at
+    // its root and `com.openai/Assets` side by side, but the latter hoists onto
+    // the former on case-insensitive filesystems.
+    const emittedByFoldedPath = new Map(files.map((file) => [file.path.toLowerCase(), file.path]));
+    for (const { sourcePath, outputPath } of hoistedDirectories ?? []) {
+      const occupiedFile = occupyingFile(outputPath.toLowerCase(), emittedByFoldedPath);
+      if (occupiedFile === undefined) continue;
+      // Staging creates retained directories before writing artifacts. Letting
+      // either input claim the same path would therefore turn this into an
+      // opaque EISDIR error instead of identifying the two conflicting inputs.
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+        message: `client extension directory ${JSON.stringify(sourcePath)} hoists onto or inside ${JSON.stringify(occupiedFile)}, which is emitted as a file`,
+      });
+    }
+
     const counts = componentSummary(source, {
+      namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component === "agent-plugin.runtime-package" ? discovered : (skippedByComponent.get(component) ?? 0),
+        component === "agent-plugin.runtime-package"
+          ? discovered
+          : component === "agent-plugin.client-extension.files"
+            ? ignoredCompatibilityOverlays
+            : (skippedByComponent.get(component) ?? 0),
     });
     if (context.runtimePackage !== undefined) {
       omissions.push({
@@ -518,12 +1208,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     return {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
       // Filtered too, or a rejected skill still materializes as an empty
-      // directory bearing its name.
-      ...(source.directories === undefined
-        ? {}
-        : {
-            directories: source.directories.filter((directory) => !insideRejectedSkill(`${directory}/`)),
-          }),
+      // directory bearing its name. Client-extension directories are hoisted
+      // to the package root along with their files.
+      ...(directories === undefined ? {} : { directories }),
       issues,
       summary: {
         components: counts,

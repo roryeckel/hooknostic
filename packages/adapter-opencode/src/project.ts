@@ -115,6 +115,19 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       },
       "agent-plugin.mcp.streamable-http": { level: "exact" },
       "agent-plugin.mcp.sse": { level: "exact" },
+      // Declared rather than left absent. An absent cell still raises HN205,
+      // but behind core's rationale-free fallback, which tells the author
+      // nothing they can act on. Claims about this projection's own reach, so
+      // they rest on what project integration writes rather than on a capture.
+      "agent-plugin.client-extension.files": {
+        level: "unsupported",
+        rationale: "OpenCode reads no portable client-extension namespace, at project scope or any other.",
+      },
+      "agent-plugin.runtime-package": {
+        level: "unsupported",
+        rationale:
+          "Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route.",
+      },
     },
     source: {
       date: "2026-09-11",

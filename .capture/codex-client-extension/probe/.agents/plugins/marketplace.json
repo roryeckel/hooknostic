@@ -1,0 +1,85 @@
+{
+  "name": "hooknostic-extensions-probe",
+  "interface": {
+    "displayName": "Hooknostic extensions probe"
+  },
+  "plugins": [
+    {
+      "name": "control-native",
+      "source": {
+        "source": "local",
+        "path": "./plugins/control-native"
+      }
+    },
+    {
+      "name": "probe-extensions",
+      "source": {
+        "source": "local",
+        "path": "./plugins/probe-extensions"
+      }
+    },
+    {
+      "name": "no-declaration",
+      "source": {
+        "source": "local",
+        "path": "./plugins/no-declaration"
+      }
+    },
+    {
+      "name": "custom-path",
+      "source": {
+        "source": "local",
+        "path": "./plugins/custom-path"
+      }
+    },
+    {
+      "name": "inline-hooks",
+      "source": {
+        "source": "local",
+        "path": "./plugins/inline-hooks"
+      }
+    },
+    {
+      "name": "native-hooks-control",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-control"
+      }
+    },
+    {
+      "name": "native-hooks-path-array",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-path-array"
+      }
+    },
+    {
+      "name": "native-hooks-inline-object",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-inline-object"
+      }
+    },
+    {
+      "name": "native-hooks-inline-array",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-inline-array"
+      }
+    },
+    {
+      "name": "native-hooks-undeclared-file",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-undeclared-file"
+      }
+    },
+    {
+      "name": "native-hooks-inline-beside-file",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-inline-beside-file"
+      }
+    }
+  ]
+}

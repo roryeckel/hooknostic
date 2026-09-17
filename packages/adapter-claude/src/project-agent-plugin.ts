@@ -9,7 +9,10 @@ import {
   classifyStdioCwd,
   componentSummary,
   hasUnportableCommandPath,
+  isJsonObject as object,
   isRejectedSkillPath,
+  isRootNpmManifestPath,
+  parseJsonObject,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
@@ -24,17 +27,8 @@ const HOOKS_PATH = "hooks/hooks.json";
 // install input for its locked, script-free `npm ci` (ADR-0012), so only the
 // explicitly configured and validated `runtimePackage` may materialize there.
 // Both routes into the root — a plain package file and a Claude
-// client-extension overlay file — are filtered against this. The comparison
-// case-folds for the same reason inventory exclusions do: the package is
-// inventoried on one filesystem and installed on others, so a `Package.json`
-// that Linux distinguishes is npm's install input to a Windows or macOS
-// consumer.
-function isRootNpmManifestPath(path: string): boolean {
-  const name = path.toLowerCase();
-  // npm prefers shrinkwrap over package-lock, so it must not override the
-  // validated runtime lock through either package content or the overlay.
-  return name === "package.json" || name === "package-lock.json" || name === "npm-shrinkwrap.json";
-}
+// client-extension overlay file — are filtered against `isRootNpmManifestPath`,
+// so neither can override the validated runtime lock.
 
 const CLAUDE_METADATA_PREFIX = ".claude-plugin/";
 
@@ -51,16 +45,11 @@ function isReservedNativePath(path: string): boolean {
   return name.startsWith(CLAUDE_METADATA_PREFIX) || name === MCP_PATH || name === HOOKS_PATH;
 }
 
-function object(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function parseObject(file: AgentPluginProjectionFile | undefined, label: string): Record<string, unknown> {
   if (file === undefined) return {};
-  const text = typeof file.contents === "string" ? file.contents : new TextDecoder().decode(file.contents);
-  const value = JSON.parse(text) as unknown;
-  if (!object(value)) throw new Error(`${label} must contain a JSON object`);
-  return value;
+  const parsed = parseJsonObject(file.contents);
+  if (!parsed.ok) throw new Error(`${label} ${parsed.error}`);
+  return parsed.value;
 }
 
 function stringify(value: unknown): string {
@@ -351,11 +340,20 @@ export async function projectAgentPluginToClaude(
       (!object(author) || typeof author["name"] !== "string" || author["name"].length === 0)
     ) {
       const reason = "Claude requires author.name to be a non-empty string";
+      // The three places an author can be declared, in the precedence resolved
+      // just above. Naming the manifest this projection generates would send
+      // the author to output they do not have.
+      const declaredAt =
+        source.manifest.author !== undefined
+          ? "plugin.json#/author"
+          : "author" in manifestExtension
+            ? `plugin.json#/extensions/${CLAUDE_AGENT_PLUGIN_NAMESPACE}/author`
+            : `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/${MANIFEST_PATH}#/author`;
       issues.push({
         severity: context.onUnsupported,
         scope: "projection",
         component: "agent-plugin.manifest",
-        path: `${MANIFEST_PATH}#/author`,
+        path: declaredAt,
         message: `Author metadata cannot be projected: ${reason}; supply a name or use onUnsupported: "warn" to omit the author.`,
       });
       omissions.push({ component: "agent-plugin.manifest", name: "author", reason });

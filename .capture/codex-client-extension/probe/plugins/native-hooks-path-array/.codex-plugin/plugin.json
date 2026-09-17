@@ -1,0 +1,6 @@
+{
+  "name": "native-hooks-path-array",
+  "version": "1.0.0",
+  "description": "Does the native manifest accept the documented path-array form of hooks?",
+  "hooks": ["./hooks-a.json", "./hooks-b.json"]
+}

@@ -115,28 +115,6 @@ describe("loadConfig", () => {
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501", severity: "error" });
   });
 
-  it("maps projected OpenCode targets to package delivery in legacy configuration guidance", async () => {
-    const dir = await fixtureDir();
-    const file = join(dir, "hooknostic.config.ts");
-    await writeFile(
-      file,
-      `export default {
-        entry: "./hooks.ts",
-        agentPlugin: { root: ".", targets: ["opencode"] },
-        targets: { opencode: { version: ">=1.18 <2", mode: "local", output: "./dist/opencode" } },
-      };`,
-      "utf8",
-    );
-
-    const result = await loadConfig(file, OPTIONS);
-
-    expect(result.config).toBeUndefined();
-    expect(result.diagnostics[0]?.message).toContain(
-      'targets listed in agentPlugin.targets should use delivery: "package"',
-    );
-    expect(result.diagnostics[0]?.message).not.toContain("local → project");
-  });
-
   it("reports an empty target set as HN501", async () => {
     const dir = await fixtureDir();
     const file = join(dir, "hooknostic.config.ts");

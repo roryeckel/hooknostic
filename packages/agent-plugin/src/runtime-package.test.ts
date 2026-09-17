@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { packageNameProblem, validateNpmRuntimePackage } from "./runtime-package.js";
+import {
+  npmManifestCoordinate,
+  npmPublicationProblems,
+  packageVersionProblem,
+  publishablePackageNameProblem,
+  UNPUBLISHABLE_STILL_LOADS,
+  validateNpmRuntimePackage,
+} from "./runtime-package.js";
 
 const manifest = JSON.stringify({ name: "runtime", dependencies: { left: "1.0.0", right: "^2.0.0" } });
 
@@ -47,26 +54,26 @@ describe("validateNpmRuntimePackage", () => {
         star: "*",
         prerelease: "^1.0.0-beta.1",
         git: "github:example/git#v1",
-        gitUrl: "git+https://github.com/Example/Git-Url.git",
+        "git-url": "git+https://github.com/Example/Git-Url.git",
         pinned: "git+ssh://git@github.com/example/pinned.git#0123456789abcdef0123456789abcdef01234567",
         ranged: "gitlab:example/ranged#semver:^2.0.0",
-        url: "https://example.com/pkg.tgz",
+        "tarball-url": "https://example.com/pkg.tgz",
         shorthand: "example/repo",
         // scp-style hosts are accepted inside `git+ssh://` (npa `fromURL`); the
         // bare `git@host:path` form is a CLI-argument convenience npa applies
         // only in `npa(arg)`, never to package.json specs.
-        scpUrl: "git+ssh://git@github.com:example/scp-url.git",
-        looseVersion: "01.2.3",
+        "scp-url": "git+ssh://git@github.com:example/scp-url.git",
+        "loose-version": "01.2.3",
         // npm-package-arg consults hosted-git-info before the URL check, so a
         // hosted HTTPS URL is a git spec, and GitLab subgroups are hosted paths.
-        hostedHttps: "https://github.com/example/hosted-https.git",
+        "hosted-https": "https://github.com/example/hosted-https.git",
         subgroup: "gitlab:team/platform/repo#v1",
-        selfHosted: "git+https://example.com/pkg.git",
-        selfHostedScp: "git+ssh://git@example.com:pkg.git#v2",
+        "self-hosted": "git+https://example.com/pkg.git",
+        "self-hosted-scp": "git+ssh://git@example.com:pkg.git#v2",
         alias: "npm:other@^1",
-        bareAlias: "npm:other",
-        tagAlias: "npm:other@next",
-        scopedAlias: "npm:@scope/other@~2.1.0",
+        "bare-alias": "npm:other",
+        "tag-alias": "npm:other@next",
+        "scoped-alias": "npm:@scope/other@~2.1.0",
       },
     });
     const registry = (name: string, version: string) => ({
@@ -81,17 +88,23 @@ describe("validateNpmRuntimePackage", () => {
         "node_modules/star": registry("star", "3.0.0-rc.1"),
         "node_modules/prerelease": registry("prerelease", "1.0.0-beta.2"),
         "node_modules/git": { version: "0.0.1", resolved: "git+ssh://git@github.com/example/git.git#abc123" },
-        "node_modules/gitUrl": { version: "0.0.1", resolved: "git+ssh://git@github.com/Example/Git-Url.git#abc123" },
+        "node_modules/git-url": {
+          version: "0.0.1",
+          resolved: "git+ssh://git@github.com/Example/Git-Url.git#abc123",
+        },
         "node_modules/pinned": {
           version: "0.0.1",
           resolved: "git+ssh://git@github.com/example/pinned.git#0123456789abcdef0123456789abcdef01234567",
         },
         "node_modules/ranged": { version: "2.4.0", resolved: "git+ssh://git@gitlab.com/example/ranged.git#def456" },
-        "node_modules/url": { version: "0.0.1", resolved: "https://example.com/pkg.tgz" },
+        "node_modules/tarball-url": { version: "0.0.1", resolved: "https://example.com/pkg.tgz" },
         "node_modules/shorthand": { version: "0.0.1", resolved: "git+ssh://git@github.com/example/repo.git#def456" },
-        "node_modules/scpUrl": { version: "0.0.1", resolved: "git+ssh://git@github.com/example/scp-url.git#abc123" },
-        "node_modules/looseVersion": registry("looseVersion", "1.2.3"),
-        "node_modules/hostedHttps": {
+        "node_modules/scp-url": {
+          version: "0.0.1",
+          resolved: "git+ssh://git@github.com/example/scp-url.git#abc123",
+        },
+        "node_modules/loose-version": registry("loose-version", "1.2.3"),
+        "node_modules/hosted-https": {
           version: "0.0.1",
           resolved: "git+ssh://git@github.com/example/hosted-https.git#abc123",
         },
@@ -99,15 +112,19 @@ describe("validateNpmRuntimePackage", () => {
           version: "0.0.1",
           resolved: "git+ssh://git@gitlab.com/team/platform/repo.git#abc123",
         },
-        "node_modules/selfHosted": { version: "0.0.1", resolved: "git+https://example.com/pkg.git#abc123" },
-        "node_modules/selfHostedScp": { version: "0.0.1", resolved: "git+ssh://git@example.com:pkg.git#abc123" },
+        "node_modules/self-hosted": { version: "0.0.1", resolved: "git+https://example.com/pkg.git#abc123" },
+        "node_modules/self-hosted-scp": {
+          version: "0.0.1",
+          resolved: "git+ssh://git@example.com:pkg.git#abc123",
+        },
         "node_modules/alias": { name: "other", ...registry("other", "1.2.3") },
-        "node_modules/bareAlias": { name: "other", ...registry("other", "4.0.0") },
-        "node_modules/tagAlias": { name: "other", ...registry("other", "5.0.0-beta.1") },
-        "node_modules/scopedAlias": { name: "@scope/other", ...registry("other", "2.1.7") },
+        "node_modules/bare-alias": { name: "other", ...registry("other", "4.0.0") },
+        "node_modules/tag-alias": { name: "other", ...registry("other", "5.0.0-beta.1") },
+        "node_modules/scoped-alias": { name: "@scope/other", ...registry("other", "2.1.7") },
       },
     });
-    expect(validateNpmRuntimePackage(aliased, lock)).toMatchObject({ ok: true });
+    const result = validateNpmRuntimePackage(aliased, lock);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
   });
 
   it.each([
@@ -245,10 +262,137 @@ describe("validateNpmRuntimePackage", () => {
       );
   });
 
-  it("accepts legacy names npm still installs", () => {
+  it("accepts an already-published npm name as a dependency", () => {
+    // npm permits existing warning-only names in dependency edges. The output
+    // package is new, but its dependency graph may reference an older package.
+    expect(validateNpmRuntimePackage(...single("1.0.0", { version: "1.0.0" }, {}, "UPPER")).ok).toBe(true);
+  });
+
+  it("rejects names npm will not accept for a new package", () => {
     for (const name of ["UPPER", "@Scope/Name", "a".repeat(215), "http", "weird~'!()*"]) {
-      expect(packageNameProblem(name), name).toBeUndefined();
+      expect(publishablePackageNameProblem(name), name).toBeDefined();
     }
+  });
+
+  it.each([
+    ["1.0.0", undefined],
+    // npm normalises a leading v, so refusing it would be stricter than npm.
+    ["v2.3.4", undefined],
+    ["1.0.0-rc.1+build.5", undefined],
+    ["", "empty"],
+    ["   ", "empty"],
+    // A dist-tag is what a consumer installs by, never what a manifest declares.
+    ["next", "not a semantic version"],
+    ["latest", "not a semantic version"],
+    // A range is legal in a dependency edge and illegal as a version.
+    ["^1.0.0", "not a semantic version"],
+    ["1.0", "not a semantic version"],
+  ])("judges manifest version %j the way npm publish would", (version, problem) => {
+    expect(packageVersionProblem(version)).toBe(problem);
+  });
+
+  describe("npmPublicationProblems", () => {
+    const judge = (name: unknown, version: unknown, npmNameDeclared = false) =>
+      npmPublicationProblems({ name, version, npmNameDeclared });
+
+    it.each(["_under", "has space"])("fails a manifest name npm cannot install at all: %s", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain("not a valid npm package name");
+      // Nothing loads from a directory npm cannot pack, so the still-loads
+      // consolation would be false here.
+      expect(problems[0]?.message).not.toContain(UNPUBLISHABLE_STILL_LOADS);
+    });
+
+    it.each(["UPPER", "http"])("warns that manifest name %s cannot be published", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain(`manifest name ${JSON.stringify(name)}`);
+      expect(problems[0]?.message.endsWith(UNPUBLISHABLE_STILL_LOADS)).toBe(true);
+    });
+
+    it("fails an npm coordinate that only blocks publication, because publishing is why it exists", () => {
+      const problems = judge("http", "1.0.0", true);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain('npmName "http"');
+      expect(problems[0]?.message).not.toContain("manifest name");
+      expect(problems[0]?.message).not.toContain(UNPUBLISHABLE_STILL_LOADS);
+    });
+
+    it.each([undefined, 42])("fails a manifest whose name is %j", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain("declares no name");
+    });
+
+    it("warns that a versionless package cannot be published", () => {
+      const problems = judge("fine", undefined);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain("declares no version");
+      expect(problems[0]?.message).toContain("cannot be published");
+    });
+
+    it("names the version npm would refuse", () => {
+      const problems = judge("fine", "next");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain('"next"');
+    });
+
+    it.each([
+      ["my-pkg", "1.2.3"],
+      ["@scope/pkg", "v1.0.0"],
+    ])("stays silent for %s@%s", (name, version) => {
+      expect(judge(name, version)).toEqual([]);
+    });
+
+    it("reports both tiers independently, name first", () => {
+      // Neither finding may hide the other: a fatal name still leaves the
+      // author a version to fix before the next attempt.
+      const problems = judge("_under", "next");
+      expect(problems.map((problem) => problem.severity)).toEqual(["error", "warn"]);
+      expect(problems[0]?.message).toContain("not a valid npm package name");
+      expect(problems[1]?.message).toContain('"next"');
+    });
+  });
+
+  describe("npmManifestCoordinate", () => {
+    it("reads name and version from text or bytes, missing fields as undefined", () => {
+      expect(npmManifestCoordinate('{"name":"pkg","version":"1.2.3"}')).toEqual({
+        ok: true,
+        name: "pkg",
+        version: "1.2.3",
+      });
+      expect(npmManifestCoordinate(new TextEncoder().encode('{"version":"1.2.3"}'))).toEqual({
+        ok: true,
+        name: undefined,
+        version: "1.2.3",
+      });
+    });
+
+    it("hands non-string values through for the publication check to judge", () => {
+      // `npmPublicationProblems` treats a non-string as "declares none"; the
+      // reader must not coerce or drop it.
+      expect(npmManifestCoordinate('{"name":7,"version":null}')).toEqual({ ok: true, name: 7, version: null });
+    });
+
+    it("distinguishes a manifest npm cannot read from one that declares no name", () => {
+      // Flattened to a pair of undefined fields, both callers reported the
+      // missing fields instead of the unreadable file -- OpenCode as two
+      // findings, core inside a diagnostic blaming the adapter for a defect it
+      // then described wrongly.
+      const malformed = npmManifestCoordinate("{ not json");
+      expect(malformed.ok).toBe(false);
+      expect(malformed.ok === false && malformed.error).toContain("is not valid JSON");
+      const array = npmManifestCoordinate('["pkg"]');
+      expect(array.ok).toBe(false);
+      expect(array.ok === false && array.error).toBe("is not a JSON object");
+    });
   });
 
   describe("locked dependency graph", () => {

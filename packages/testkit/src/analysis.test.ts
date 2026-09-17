@@ -396,6 +396,48 @@ describe("analyzeCapabilities", () => {
     });
   });
 
+  it("refuses npmName on an adapter whose package delivery publishes nothing", () => {
+    // Only the config and a static adapter flag are needed to answer this, so
+    // it is answered before anything is bundled or projected; a `check` run
+    // reports it without generating output.
+    const adapters = { quiet: makeFakeAdapter({ id: "quiet", profiles: [richProfile] }) };
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "s", async run() {} })]),
+      config({
+        targets: {
+          quiet: { version: ">=1.0 <2", delivery: "package", output: "./dist", npmName: "@scope/quiet" },
+        },
+      }),
+      adapters,
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.targets.quiet?.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN501",
+        severity: "error",
+        target: "quiet",
+        message: expect.stringContaining("@scope/quiet"),
+      }),
+    );
+  });
+
+  it("accepts npmName on an adapter that declares publishesNpmPackage", () => {
+    const adapters = {
+      loud: makeFakeAdapter({ id: "loud", profiles: [richProfile], publishesNpmPackage: true }),
+    };
+    const analysis = analyzeCapabilities(
+      ir([hook("session.start", { id: "s", async run() {} })]),
+      config({
+        targets: {
+          loud: { version: ">=1.0 <2", delivery: "package", output: "./dist", npmName: "@scope/loud" },
+        },
+      }),
+      adapters,
+    );
+    expect(analysis.ok).toBe(true);
+    expect(analysis.targets.loud?.diagnostics.filter((diagnostic) => diagnostic.code === "HN501")).toEqual([]);
+  });
+
   it("rejects a directly supplied empty target selection", () => {
     const analysis = analyzeCapabilities(
       ir([hook("session.start", { id: "s", async run() {} })]),

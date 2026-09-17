@@ -57,6 +57,23 @@ export interface TargetConfig {
   delivery: "package" | "project";
   /** Output directory for this target's self-contained artifact. */
   output: string;
+  /**
+   * The npm coordinate this target's output is published under.
+   *
+   * An Agent Plugins manifest name cannot be one: the specification's name
+   * grammar admits only `[a-z0-9.-]`, so `@scope/name` is unspellable there,
+   * and the generated npm manifest takes its name from the manifest. This is
+   * the only way to publish a scoped package.
+   *
+   * Per target, not per plugin, because each target's output is a different npm
+   * package -- an OpenCode package and a plugin directory are not
+   * interchangeable contents, so publishing two means two coordinates.
+   *
+   * Only meaningful where the projection emits an npm manifest. Set on a target
+   * whose output carries no such manifest, it is a configuration error rather
+   * than a setting that quietly does nothing.
+   */
+  npmName?: string;
   compatibility?: CompatibilityPolicy;
 }
 

@@ -1567,6 +1567,123 @@ ${run.stderr}`,
     expect(Object.keys(mcp.mcpServers)).toEqual(["good"]);
   });
 
+  it.each([
+    ["codex", "com.openai", CODEX_PLUGIN_MODE_RANGE],
+    ["claude", "com.anthropic.claude-code", claudeHarness.recommendedRange],
+  ])("explains why project delivery drops %s client-extension files", async (id, namespace, range) => {
+    // Project integration has no surface that reads an installed plugin's
+    // client extension, so the files are legitimately dropped. What must not
+    // happen is dropping them behind core's rationale-free fallback: the
+    // author sees a failed target and no reason it could act on.
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-project-extension-${id}-`));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, namespace), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "extension-carrier", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, namespace, "settings.json"), "{}\n");
+    const config = (onUnsupported: string) => `export default {
+        project: { root: "." },
+        components: { root: ".", targets: ["${id}"], onUnsupported: "${onUnsupported}" },
+        targets: { ${id}: { version: "${range}", delivery: "project", output: "./dist/${id}" } },
+      };`;
+    await writeFile(join(dir, "hooknostic.config.ts"), config("error"));
+
+    const strict = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: strict.io,
+      }),
+      strict.out(),
+    ).toBe(2);
+    const report = JSON.parse(strict.out());
+    const omission = report.targets[id].project.omissions.find(
+      (candidate: { component: string }) => candidate.component === "agent-plugin.client-extension.files",
+    );
+    expect(omission?.reason, strict.out()).toContain("installed plugin");
+    expect(omission?.reason).not.toContain("has no project delivery representation");
+
+    // And the policy escape hatch works, which it cannot while the cell is
+    // absent rather than declared unsupported with a reason.
+    await writeFile(join(dir, "hooknostic.config.ts"), config("warn"));
+    const lenient = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: lenient.io,
+      }),
+      lenient.out(),
+    ).toBe(0);
+  });
+
+  it.each([
+    ["codex", CODEX_PLUGIN_MODE_RANGE],
+    ["claude", claudeHarness.recommendedRange],
+    ["opencode", opencodeHarness.recommendedRange],
+  ])("explains why project delivery drops a %s runtime package", async (id, range) => {
+    // `runtimePackage` is one config-level setting shared by every configured
+    // component target, so a package target that installs one puts it in front
+    // of every project target beside it. Reporting that is right; reporting it
+    // behind core's rationale-free fallback is not.
+    const dir = await mkdtemp(join(tmpdir(), `hooknostic-project-runtime-${id}-`));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "runtime"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "runtime-carrier", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "runtime/package.json"), JSON.stringify({ name: "carrier-runtime", version: "1.0.0" }));
+    await writeFile(
+      join(dir, "runtime/package-lock.json"),
+      JSON.stringify({ name: "carrier-runtime", version: "1.0.0", lockfileVersion: 3, packages: {} }),
+    );
+    const config = (onUnsupported: string) => `export default {
+        project: { root: "." },
+        components: {
+          root: ".",
+          targets: ["${id}"],
+          onUnsupported: "${onUnsupported}",
+          runtimePackage: { manifest: "./runtime/package.json", lockfile: "./runtime/package-lock.json" },
+        },
+        targets: { ${id}: { version: "${range}", delivery: "project", output: "./dist/${id}" } },
+      };`;
+    await writeFile(join(dir, "hooknostic.config.ts"), config("error"));
+
+    const strict = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: strict.io,
+      }),
+      strict.out(),
+    ).toBe(2);
+    const omission = JSON.parse(strict.out()).targets[id].project.omissions.find(
+      (candidate: { component: string }) => candidate.component === "agent-plugin.runtime-package",
+    );
+    expect(omission?.reason, strict.out()).not.toContain("has no project delivery representation");
+    expect(omission?.reason).toContain("node_modules");
+
+    await writeFile(join(dir, "hooknostic.config.ts"), config("warn"));
+    const lenient = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: lenient.io,
+      }),
+      lenient.out(),
+    ).toBe(0);
+  });
+
   it("reports a missing direct MCP source in the JSON build result", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-missing-direct-mcp-"));
     cleanupDirs.push(dir);
@@ -1724,6 +1841,200 @@ ${run.stderr}`,
     // Atomicity: the passing target's artifacts were NOT committed either.
     expect(existsSync(join(dir, "dist"))).toBe(false);
     expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
+  });
+
+  it("refuses an npm coordinate the target's output never carries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-name-"));
+    cleanupDirs.push(dir);
+    const configPath = join(dir, "hooknostic.config.ts");
+    const entryPath = join(dir, "hooks.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          claude: {
+            version: "${claudeHarness.recommendedRange}",
+            delivery: "package",
+            output: "./dist/claude",
+            npmName: "@scope/never-published",
+          },
+        },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      entryPath,
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "named", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: configPath,
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    // Claude's package delivery emits no npm package, so the coordinate would
+    // have sat in the config doing nothing.
+    expect(JSON.parse(capture.out()).diagnostics).toEqual([
+      expect.objectContaining({ code: "HN501", target: "claude" }),
+    ]);
+    expect(JSON.parse(capture.out()).diagnostics[0].message).toContain("@scope/never-published");
+    // The target owns this validation failure. A dry run must not report it as
+    // successful, and a build must not classify it as merely skipped by another
+    // target's failure.
+    expect(JSON.parse(capture.out()).targets.claude.status).toBe("failed");
+  });
+
+  it("refuses an npm coordinate an adapter never publishes, however its output is named", async () => {
+    // Checking the emitted manifest alone let a coincidence pass: this
+    // projector copies the package verbatim, so the source project's own
+    // `package.json` lands at the output root, and a name matching the
+    // coordinate satisfied a guard whose entire purpose is to catch a setting
+    // that quietly does nothing. Nothing here publishes anything.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-coincidence-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "coincidence", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "@scope/coincidence", version: "1.0.0" }));
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+          components: { root: ".", targets: ["copy"] },
+          targets: {
+            copy: {
+              version: ">=1.0 <2",
+              delivery: "package",
+              output: "./dist/copy",
+              npmName: "@scope/coincidence",
+            },
+          },
+        };`,
+    );
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: { copy: copyThroughAdapter() },
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "HN501", target: "copy" }));
+    expect(report.targets.copy.status).toBe("failed");
+  });
+
+  it("blames the adapter when it claims to publish under npmName but emits another name", async () => {
+    // Analysis already refused adapters that never publish; what reaches the
+    // build is one that declared it does. A manifest under a different name is
+    // therefore the adapter breaking its own declaration, and telling the
+    // author to remove npmName or pick another harness would hide that.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-renamed-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          pub: { version: ">=1.0 <2", delivery: "package", output: "./dist/pub", npmName: "@scope/mine" },
+        },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "named", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const renaming = makeFakeAdapter({
+      id: "pub",
+      profiles: [
+        { range: ">=1.0 <2", source: syntheticSource(), matrix: { "session.start.observe": { level: "exact" } } },
+      ],
+      shimEntry: "export {};",
+      publishesNpmPackage: true,
+      compile: () => [{ path: "package.json", contents: JSON.stringify({ name: "someone-else", version: "1.0.0" }) }],
+    });
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: { pub: renaming },
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    const diagnostic = report.diagnostics.find((candidate: { code: string }) => candidate.code === "HN501");
+    expect(diagnostic).toMatchObject({ target: "pub" });
+    expect(diagnostic.message).toContain("@scope/mine");
+    expect(diagnostic.message).toContain("someone-else");
+    expect(diagnostic.remediation).toContain("adapter");
+    expect(diagnostic.remediation).not.toContain("target a harness");
+    expect(report.targets.pub.status).toBe("failed");
+  });
+
+  it("says an adapter's manifest does not parse rather than that it declares no name", async () => {
+    // The remediation on this diagnostic tells the reader to report a defect
+    // against the adapter, so the sentence above it has to describe the defect.
+    // "declares no name" sends them looking for a missing field in a file npm
+    // cannot read at all.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-npm-malformed-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        targets: {
+          pub: { version: ">=1.0 <2", delivery: "package", output: "./dist/pub", npmName: "@scope/mine" },
+        },
+      };`,
+      "utf8",
+    );
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "named", hooks: [hook("session.start", { id: "s", async run() {} })] });`,
+      "utf8",
+    );
+    const malformed = makeFakeAdapter({
+      id: "pub",
+      profiles: [
+        { range: ">=1.0 <2", source: syntheticSource(), matrix: { "session.start.observe": { level: "exact" } } },
+      ],
+      shimEntry: "export {};",
+      publishesNpmPackage: true,
+      compile: () => [{ path: "package.json", contents: "{ not json" }],
+    });
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: { pub: malformed },
+        io: capture.io,
+        evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    const diagnostic = report.diagnostics.find((candidate: { code: string }) => candidate.code === "HN501");
+    expect(diagnostic.message).toContain("is not valid JSON");
+    expect(diagnostic.message).not.toContain("declares no name");
+    expect(diagnostic.remediation).toContain("adapter");
   });
 
   it("rejects project-root output without deleting the config or hook source", async () => {

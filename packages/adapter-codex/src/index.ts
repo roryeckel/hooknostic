@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+import { contentsText } from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -123,9 +124,7 @@ export function codexAdapter(): HarnessAdapter {
       const hooksJson = artifacts.find((a) => a.path === ".codex/hooks.json");
       if (hooksJson) {
         try {
-          const parsed = JSON.parse(
-            typeof hooksJson.contents === "string" ? hooksJson.contents : new TextDecoder().decode(hooksJson.contents),
-          ) as {
+          const parsed = JSON.parse(contentsText(hooksJson.contents)) as {
             hooks?: Record<string, unknown>;
           };
           const validNames = new Set(Object.values(CODEX_NATIVE_EVENT));
