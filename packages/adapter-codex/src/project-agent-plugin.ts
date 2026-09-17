@@ -106,17 +106,39 @@ const PORTABLE_CANONICAL_MANIFEST_KEYS = [
   "mcpServers",
 ] as const;
 
-/** Add generated hooks while keeping OpenAI's path and inline-object arrays homogeneous. */
-function appendHookSource(authored: unknown, generatedPath: string, generatedContents: string | Uint8Array): unknown {
-  if (authored === undefined) return generatedPath;
-  const entries = Array.isArray(authored) ? authored : [authored];
-  if (entries.every((entry) => typeof entry === "string")) return [...entries, generatedPath];
+/**
+ * The `hooks` forms the native manifest accepts: a path, a path array, an
+ * inline hook document, or an array of them. All four ran their markers on
+ * 0.154.0 in one session (`.capture/codex-client-extension`), so composing an
+ * author's declaration with the generated document is a captured shape, not a
+ * documented one.
+ */
+type CodexHooksDeclaration = string | string[] | Record<string, unknown>[];
 
-  // Hook artifacts are compiler output and already validated by the adapter.
-  // Inline the generated document when the author used the other documented
-  // form: OpenAI accepts arrays of paths or arrays of objects, not mixed arrays.
+/**
+ * Add generated hooks while keeping OpenAI's path and inline-object arrays
+ * homogeneous: the documentation permits arrays of paths or arrays of objects,
+ * not a mix, so the generated document is inlined when the author inlined
+ * theirs.
+ */
+function appendHookSource(
+  authored: unknown,
+  generatedPath: string,
+  generatedContents: string | Uint8Array,
+): { value: CodexHooksDeclaration; error?: string } {
+  if (authored === undefined) return { value: generatedPath };
+  const entries: unknown[] = Array.isArray(authored) ? authored : [authored];
+  if (entries.every((entry) => typeof entry === "string")) return { value: [...(entries as string[]), generatedPath] };
+
+  // Hook artifacts are compiler output and already validated by the adapter,
+  // so a document that does not parse is a defect upstream -- reported against
+  // the artifact rather than thrown out of the projection.
   const text = typeof generatedContents === "string" ? generatedContents : new TextDecoder().decode(generatedContents);
-  return [...entries, JSON.parse(text) as unknown];
+  try {
+    return { value: [...(entries as Record<string, unknown>[]), JSON.parse(text) as Record<string, unknown>] };
+  } catch (error) {
+    return { value: generatedPath, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** Decode an overlay document; a malformed one is reported, never guessed at. */
@@ -160,7 +182,7 @@ interface CodexNativeManifest {
   keywords?: string[];
   skills?: string;
   mcpServers?: string;
-  hooks?: string;
+  hooks?: CodexHooksDeclaration;
 }
 
 /**
@@ -354,7 +376,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-16",
             method: "live-probe",
             artifact: ".capture/codex-client-extension",
-            what: 'The reverse-DNS namespace OpenAI documents is not honoured. Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional; one naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, which convention cannot explain. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line.',
+            what: 'Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional. One naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, but that negative was expected -- portable skills/ is canonical and an inline skills value cannot replace it -- so this run says nothing about whether the namespace is read; the 2026-09-17 records below carry the corrected probe. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line.',
           },
           {
             version: "0.154.0",
@@ -474,6 +496,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "doc-derived",
             artifact: ".capture/codex-client-extension",
             what: "Official OpenAI plugin documentation defines the inline extensions.com.openai object as replacing the compatibility overlay, keeps root identity plus portable skills/MCP canonical, and permits hooks as a path, path array, inline object, or inline-object array.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "A native .codex-plugin/plugin.json declaring hooks as a two-path array ran both documents' UserPromptSubmit markers in one isolated loopback session, beside the single-path control. The path-array form this projection emits when an author declares a path is consumed, not merely documented.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-17",
+            method: "live-probe",
+            artifact: ".capture/codex-client-extension",
+            what: "The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed.",
           },
         ],
         notes: [
@@ -627,12 +663,55 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       copiedPaths.push(path);
     }
 
+    // Typed where this projection decides the value, free-form where the client
+    // extension does: Codex's presentation surface is large and vendor-owned,
+    // and modelling its field names here would mean a Hooknostic release every
+    // time OpenAI adds one.
+    const extensionEntry = inlineExtension ?? overlayManifest;
+
+    const { servers, launcherServers, omitted } = translateMcp(source);
+    for (const { name, component, reason } of omitted) {
+      omissions.push({ component, name, reason });
+      issues.push({
+        severity: context.onUnsupported,
+        // "projection", not "mcp": this reports a component the TARGET cannot
+        // represent, which core codes HN205. Under "mcp" it reads as HN503
+        // "invalid Agent Plugin package", blaming a package that is valid --
+        // and for a component whose level is not `unsupported`, that misfiled
+        // code is the only diagnostic the omission produces.
+        scope: "projection",
+        component,
+        path: `${PORTABLE_MCP_PATH}#${name}`,
+        message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
+      });
+    }
+
+    // A hook document colliding with package content is reported below and
+    // not emitted, so the manifest must not point at it either.
+    const hooksArtifact = context.hookArtifacts.find(
+      (file) => file.path === CODEX_PLUGIN_HOOKS_PATH && !shippedByFoldedPath.has(file.path.toLowerCase()),
+    );
+    const composedHooks =
+      hooksArtifact === undefined
+        ? undefined
+        : appendHookSource(extensionEntry["hooks"], `./${CODEX_PLUGIN_HOOKS_PATH}`, hooksArtifact.contents);
+    if (composedHooks?.error !== undefined) {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        path: CODEX_PLUGIN_HOOKS_PATH,
+        message: `generated hook document ${JSON.stringify(CODEX_PLUGIN_HOOKS_PATH)} is not JSON, so it cannot be inlined beside the client extension's hook object: ${composedHooks.error}`,
+      });
+    }
+
     // Carried rather than dropped: a manifest declaring all of these installed
     // and resolved its version normally (`.capture/codex-native-mcp`), so
     // passing them through cannot lose information whether Codex reads them or
     // ignores them -- whereas dropping them certainly does.
     // The inline OpenAI object replaces the compatibility overlay; portable
-    // identity and components remain canonical in either case.
+    // identity and components remain canonical in either case. Component
+    // pointers come last, `mcpServers` before `hooks`: the committed example's
+    // manifest is byte-compared in CI, so key order is part of the output.
     const generated: CodexNativeManifest = {
       name: source.manifest.name,
       ...(source.manifest.version === undefined ? {} : { version: source.manifest.version }),
@@ -643,12 +722,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(source.manifest.license === undefined ? {} : { license: source.manifest.license }),
       ...(source.manifest.keywords === undefined ? {} : { keywords: [...source.manifest.keywords] }),
       ...(source.skills.length === 0 ? {} : { skills: `./${SKILLS_DIR}/` }),
+      ...(Object.keys(servers).length === 0 ? {} : { mcpServers: `./${NATIVE_MCP_PATH}` }),
+      ...(composedHooks === undefined ? {} : { hooks: composedHooks.value }),
     };
-    // Typed where this projection decides the value, free-form where the client
-    // extension does: Codex's presentation surface is large and vendor-owned,
-    // and modelling its field names here would mean a Hooknostic release every
-    // time OpenAI adds one.
-    const extensionEntry = inlineExtension ?? overlayManifest;
     const manifest: Record<string, unknown> = { ...extensionEntry, ...generated };
     // Spreading `generated` last is not enough: it omits a key it has nothing
     // to say about, and the extension's value would then survive. `skills` is
@@ -683,24 +759,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       });
     }
 
-    const { servers, launcherServers, omitted } = translateMcp(source);
-    for (const { name, component, reason } of omitted) {
-      omissions.push({ component, name, reason });
-      issues.push({
-        severity: context.onUnsupported,
-        // "projection", not "mcp": this reports a component the TARGET cannot
-        // represent, which core codes HN205. Under "mcp" it reads as HN503
-        // "invalid Agent Plugin package", blaming a package that is valid --
-        // and for a component whose level is not `unsupported`, that misfiled
-        // code is the only diagnostic the omission produces.
-        scope: "projection",
-        component,
-        path: `${PORTABLE_MCP_PATH}#${name}`,
-        message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
-      });
-    }
     if (Object.keys(servers).length > 0) {
-      manifest.mcpServers = `./${NATIVE_MCP_PATH}`;
       files.push({
         path: NATIVE_MCP_PATH,
         contents: `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`,
@@ -749,9 +808,6 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           message: `generated Hooknostic path ${JSON.stringify(file.path)} collides with package content`,
         });
         continue;
-      }
-      if (file.path === CODEX_PLUGIN_HOOKS_PATH) {
-        manifest.hooks = appendHookSource(manifest.hooks, `./${CODEX_PLUGIN_HOOKS_PATH}`, file.contents);
       }
       files.push({ ...file });
     }

@@ -1,0 +1,19 @@
+{
+  "name": "native-hooks-inline-object",
+  "version": "1.0.0",
+  "description": "Does the native manifest accept the documented inline-object form of hooks?",
+  "hooks": {
+    "hooks": {
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node \"${PLUGIN_ROOT}/write-marker.mjs\""
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

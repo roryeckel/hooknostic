@@ -33,16 +33,42 @@ const environment = {
   USERPROFILE: userHome,
 };
 const toml = (value: string) => `'${value.replaceAll("'", "''")}'`;
+const run = (command: string, args: string[]) =>
+  runProcess(command, args, { cwd: project, env: environment, timeoutMs: 120_000 });
 const checked = async (command: string, args: string[]) => {
-  const result = await runProcess(command, args, { cwd: project, env: environment, timeoutMs: 120_000 });
+  const result = await run(command, args);
   if (result.code !== 0) throw new Error(`${command} exited ${result.code}\n${result.stdout}\n${result.stderr}`);
   return result;
 };
 
+const MARKETPLACE = "hooknostic-extensions-probe";
+const pluginRoot = (name: string) => join(codexHome, "plugins/cache", MARKETPLACE, name, "1.0.0");
+const marker = async (path: string) => {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+};
+
+// The three `hooks` forms the documentation permits beyond a single path.
+// Whether Codex even installs such a manifest is part of the observation, so
+// their installation is recorded rather than required.
+const FORM_PROBES = ["native-hooks-path-array", "native-hooks-inline-object", "native-hooks-inline-array"] as const;
+
 try {
+  const versionOutput = (await checked("codex", ["--version"])).stdout.trim();
+  const version = versionOutput.split(/\s+/).at(-1) ?? versionOutput;
+
   await checked("codex", ["plugin", "marketplace", "add", here]);
-  await checked("codex", ["plugin", "add", "inline-hooks@hooknostic-extensions-probe"]);
-  await checked("codex", ["plugin", "add", "native-hooks-control@hooknostic-extensions-probe"]);
+  await checked("codex", ["plugin", "add", `inline-hooks@${MARKETPLACE}`]);
+  await checked("codex", ["plugin", "add", `native-hooks-control@${MARKETPLACE}`]);
+  const installed: Record<string, { code: number | null; stderr: string }> = {};
+  for (const name of FORM_PROBES) {
+    const result = await run("codex", ["plugin", "add", `${name}@${MARKETPLACE}`]);
+    installed[name] = { code: result.code, stderr: result.stderr.trim() };
+  }
 
   const server = await startModelPlayback("openai-responses", "rewrite", [{ kind: "text", text: "done" }]);
   let sessionOutput = "";
@@ -82,26 +108,21 @@ try {
     await server.close();
   }
 
-  const inlineRoot = join(
-    codexHome,
-    "plugins/cache/hooknostic-extensions-probe/inline-hooks/1.0.0",
-  );
-  const nativeRoot = join(
-    codexHome,
-    "plugins/cache/hooknostic-extensions-probe/native-hooks-control/1.0.0",
-  );
-  const marker = async (path: string) => {
-    try {
-      return JSON.parse(await readFile(path, "utf8"));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
-    }
-  };
-  const inline = await marker(join(inlineRoot, "inline-hooks-fired.json"));
-  const native = await marker(join(nativeRoot, "native-hooks-fired.json"));
+  const inline = await marker(join(pluginRoot("inline-hooks"), "inline-hooks-fired.json"));
+  const native = await marker(join(pluginRoot("native-hooks-control"), "native-hooks-fired.json"));
   if (native === null) throw new Error(`native hook control did not fire\n${sessionOutput}`);
-  process.stdout.write(`${JSON.stringify({ version: "0.154.0", inline, native }, null, 2)}\n`);
+  const pathArray = {
+    a: await marker(join(pluginRoot("native-hooks-path-array"), "hooks-a-fired.json")),
+    b: await marker(join(pluginRoot("native-hooks-path-array"), "hooks-b-fired.json")),
+  };
+  const inlineObject = await marker(join(pluginRoot("native-hooks-inline-object"), "inline-object-fired.json"));
+  const inlineArray = {
+    a: await marker(join(pluginRoot("native-hooks-inline-array"), "hooks-a-fired.json")),
+    b: await marker(join(pluginRoot("native-hooks-inline-array"), "hooks-b-fired.json")),
+  };
+  process.stdout.write(
+    `${JSON.stringify({ version, installed, inline, native, pathArray, inlineObject, inlineArray }, null, 2)}\n`,
+  );
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }

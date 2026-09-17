@@ -740,6 +740,33 @@ describe("Codex client extension", () => {
     expect(manifestOf(plan).hooks).toEqual([authored, generated]);
   });
 
+  it("reports rather than throws when the generated hook document is not JSON", async () => {
+    // Inlining the document beside an authored hook object needs to parse it;
+    // a compiler defect there should surface as a diagnostic against the
+    // artifact, not as a rejected projection.
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: { hooks: {} } } } }), [
+      { path: "hooks.json", contents: "{ not json" },
+    ]);
+
+    const issue = plan.issues.find((candidate) => candidate.path === "hooks.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.scope).toBe("projection");
+  });
+
+  it("points the native manifest at the generated hook document, after mcpServers", async () => {
+    const plan = await project(source({ srv: { type: "stdio", command: "node" } }), [
+      { path: "hooks.json", contents: '{"hooks":{}}\n' },
+    ]);
+
+    const manifest = manifestOf(plan);
+    expect(manifest.hooks).toBe("./hooks.json");
+    // The committed example's manifest is byte-compared in CI, so where the
+    // component pointers land is part of the output, not an accident.
+    const keys = Object.keys(manifest);
+    expect(keys.indexOf("hooks")).toBe(keys.indexOf("mcpServers") + 1);
+    expect(keys.indexOf("hooks")).toBe(keys.length - 1);
+  });
+
   it.each(["package.json", "package-lock.json", "npm-shrinkwrap.json"])(
     "leaves the source project's %s out of the projection",
     async (path) => {

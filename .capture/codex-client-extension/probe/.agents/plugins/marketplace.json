@@ -45,6 +45,27 @@
         "source": "local",
         "path": "./plugins/native-hooks-control"
       }
+    },
+    {
+      "name": "native-hooks-path-array",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-path-array"
+      }
+    },
+    {
+      "name": "native-hooks-inline-object",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-inline-object"
+      }
+    },
+    {
+      "name": "native-hooks-inline-array",
+      "source": {
+        "source": "local",
+        "path": "./plugins/native-hooks-inline-array"
+      }
     }
   ]
 }
