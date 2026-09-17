@@ -24,6 +24,7 @@ const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
+const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH]);
 
 /**
  * Codex's reverse-DNS client-extension namespace.
@@ -493,6 +494,16 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
       const path = file.path.slice(NAMESPACE_PREFIX.length);
       if (path === "") continue;
+      if (RESERVED_HOISTED_ROOT_PATHS.has(path)) {
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          component: "agent-plugin.client-extension.files",
+          path: file.path,
+          message: `client extension file ${JSON.stringify(file.path)} cannot hoist onto reserved root path ${JSON.stringify(path)}`,
+        });
+        continue;
+      }
       if (path === NATIVE_MANIFEST_PATH) {
         const parsed = parseOverlayManifest(file.contents);
         if (parsed.error !== undefined) {
@@ -653,6 +664,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       skippedByComponent.set(component, (skippedByComponent.get(component) ?? 0) + 1);
     }
     const counts = componentSummary(source, {
+      namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
         component === "agent-plugin.runtime-package" ? discovered : (skippedByComponent.get(component) ?? 0),

@@ -46,7 +46,7 @@ owned copies retain skill-relative resources. Project component capability
 profiles are independent from package projection and hook effects. Unverified
 surfaces remain unsupported. Codex project MCP now uses format-aware TOML
 ownership and a repository-locating stdio bootstrap, with Streamable HTTP native
-projection; legacy SSE is still declined. See `.capture/codex-project-mcp` for
+projection; SSE is still declined. See `.capture/codex-project-mcp` for
 configuration layering, trust, working-directory, and diagnostic boundaries.
 Direct-source exclusions are evaluated relative to each configured skill root.
 Per-target MCP overrides exist only for direct project sources: core validates

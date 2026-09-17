@@ -368,13 +368,13 @@ describe("Agent Plugin to OpenCode projection", () => {
   });
 
   it("checks the coordinate npm will actually see, and says which one it is", async () => {
-    const plan = await projectAs(source({}), { npmName: "@Scope/Not Valid" });
+    const plan = await projectAs(source({}), { npmName: "@Scope/Name" });
 
     const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
     expect(issue?.severity).toBe("error");
     // Naming the manifest here would send the author to the wrong file.
     expect(issue?.message).toContain("npmName");
-    expect(issue?.message).toContain('"@Scope/Not Valid"');
+    expect(issue?.message).toContain('"@Scope/Name"');
   });
 
   it("stays silent when the manifest carries a version npm would accept", async () => {

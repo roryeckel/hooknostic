@@ -16,8 +16,6 @@ export interface OpenCodeApplication {
     args?: unknown;
     /** tool.execute.after: replaces output.output (string-coerced). */
     output?: string;
-    /** permission.ask (callback surface): sets output.status. */
-    status?: "deny";
     /** experimental.session.compacting: appended to output.context. */
     context?: string[];
     /** experimental.chat.system.transform: pushed into output.system. */
@@ -74,12 +72,7 @@ export function planOpenCodeApplication(result: HookResult): OpenCodeApplication
   const terminal = result.terminatedBy !== undefined ? result.effects[result.effects.length - 1]?.effect : undefined;
 
   if (terminal?.kind === "block") {
-    if (result.event === "permission.request") {
-      // The reply API is the live deny channel (see permissionReply above).
-      // The legacy output.status mutation is kept for the callback surface,
-      // which never fires on 1.18.x but costs nothing to keep correct.
-      mutations.status = "deny";
-    } else {
+    if (result.event !== "permission.request") {
       application.throwMessage = terminal.reason;
     }
   }

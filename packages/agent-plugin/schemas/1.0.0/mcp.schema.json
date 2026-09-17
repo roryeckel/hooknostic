@@ -57,7 +57,7 @@
       "additionalProperties": false
     },
     "sseServer": {
-      "title": "Legacy HTTP+SSE MCP server",
+      "title": "HTTP+SSE MCP server",
       "type": "object",
       "properties": {
         "type": { "const": "sse" },

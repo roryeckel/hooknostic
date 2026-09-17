@@ -154,9 +154,6 @@ export function createHooknosticHooks(
     if (application.mutations?.output !== undefined) {
       output["output"] = application.mutations.output;
     }
-    if (application.mutations?.status !== undefined) {
-      output["status"] = application.mutations.status;
-    }
     if (application.mutations?.context !== undefined) {
       const context = output["context"];
       if (Array.isArray(context)) context.push(...application.mutations.context);

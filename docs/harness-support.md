@@ -94,7 +94,7 @@ Projection validation records:
 | `agent-plugin.skills` | exact | — |
 | `agent-plugin.mcp.stdio` | emulated | An owned repository-locating Node bootstrap launches the portable server from its declared source root. Node must be on PATH; project trust remains a human prerequisite. |
 | `agent-plugin.mcp.streamable-http` | exact | Native project TOML url and http_headers preserve remote declarations. |
-| `agent-plugin.mcp.sse` | unsupported | Legacy SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
+| `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | — |
 | `agent-plugin.runtime-package` | unsupported | — |
 

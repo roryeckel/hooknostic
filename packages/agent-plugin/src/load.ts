@@ -368,7 +368,7 @@ function loadMcp(
     if (valid !== undefined) serverEntries.push([name, valid]);
   }
   // Object.fromEntries defines own data properties, including `__proto__`.
-  // Assignment to a normal object would invoke Object.prototype's legacy
+  // Assignment to a normal object would invoke Object.prototype's inherited
   // setter and silently omit that schema-valid server name.
   const servers = Object.fromEntries(serverEntries) as Record<string, AgentPluginMcpServer>;
   return { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers: servers };

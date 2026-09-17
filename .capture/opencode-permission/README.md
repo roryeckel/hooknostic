@@ -61,8 +61,7 @@ it via `client.postSessionIdPermissionsPermissionId`.
   (callback envelope from the published 1.18.19 Hooks type definitions);
   its README row says so. `permission-asked` is **captured**.
 - The adapter's shim registers `permission.request` on the generic `event`
-  callback and denies via the reply API; the legacy `output.status` mutation
-  is kept for the (unreachable) callback surface and recorded in
-  `permission-deny.output.json`.
+  callback and denies via the reply API. The unreachable `permission.ask`
+  callback surface is not represented in `permission-deny.output.json`.
 - If a future opencode version starts triggering `permission.ask`, this
   capture record and the profile rationales must be revisited.

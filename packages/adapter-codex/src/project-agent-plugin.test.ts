@@ -407,6 +407,25 @@ describe("Codex client extension", () => {
     // Shipped one level down, nothing would read it.
     expect(paths.filter((path) => path.startsWith("com.openai/"))).toEqual([]);
     expect(plan.summary.copiedPaths).toContain(".app.json");
+    expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
+      discovered: 2,
+      emitted: 2,
+      skipped: 0,
+    });
+  });
+
+  it.each(["plugin.json", "mcp.json"])("refuses to hoist reserved root path %s", async (reserved) => {
+    const sourcePath = `com.openai/${reserved}`;
+    const plan = await project(withFiles(source(), [file(sourcePath)]));
+
+    expect(plan.files.some((candidate) => candidate.path === reserved)).toBe(false);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+      }),
+    );
   });
 
   it("takes an overlay manifest as the base, under the inline map", async () => {

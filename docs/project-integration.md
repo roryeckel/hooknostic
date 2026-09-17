@@ -112,7 +112,7 @@ remote URL or mixed with other header text, so those configurations fail with a
 targeted diagnostic. OpenCode resolves direct remote URL and header references in
 its generated project module because its own interpolation runs before plugin
 configuration hooks. Project declarations replace same-named inherited servers
-while unrelated entries remain. Legacy SSE remains
+while unrelated entries remain. SSE remains
 unsupported; opt into `onUnsupported: "warn"` only when omissions are acceptable.
 
 `mcpOverrides` is direct-project-only and keyed by target. A target-level

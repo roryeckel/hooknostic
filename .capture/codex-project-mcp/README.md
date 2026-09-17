@@ -51,7 +51,7 @@ probe is not a claim that the harness performs no other network traffic.
   `env_http_headers` reads a synthetic environment variable at runtime and sends
   the resulting header. The reference is not expanded during generation.
 - `type = "sse"` is accepted in TOML but read back as streamable_http. This does
-  not establish legacy SSE support; no legacy SSE session was exercised.
+  not establish SSE support; no SSE session was exercised.
 - `codex mcp list --json` does not start the stdio fixture, but does send HTTP GET
   requests to the MCP URL and an OAuth protected-resource discovery URL, including
   the configured synthetic header. It is unsuitable for a no-server-contact doctor.
@@ -78,7 +78,7 @@ to isolate cwd behavior; that absolute path is not a proposed portable artifact.
    nested projects and worktrees explicitly, and fail closed when no matching root
    exists. The generated bootstrap is validated by the follow-up below.
 4. Project streamable HTTP natively, preserving header environment references.
-   Keep legacy SSE unsupported unless a separate evidenced translation is added.
+   Keep SSE unsupported unless a separate evidenced translation is added.
 5. Keep generation independent of installed versions and personal configuration.
    Doctor should inspect configuration files without native MCP list/get calls;
    report trust prerequisites and known same-name layer interactions without
@@ -112,7 +112,7 @@ Mutation records are beside these notes.
 ## Limits
 
 Native harness playback was measured on Windows at Codex 0.153.2. POSIX native
-harness behavior and legacy SSE remain unestablished by this capture. Codex's
+harness behavior and SSE remain unestablished by this capture. Codex's
 same-name cross-layer merging remains an activation prerequisite to review;
 Hooknostic owns project entries and does not edit personal configuration.
 Streamable HTTP header text is preserved through the existing native translator;

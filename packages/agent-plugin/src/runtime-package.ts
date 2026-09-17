@@ -58,13 +58,14 @@ function message(error: unknown): string {
 
 /**
  * Why npm would refuse `name` as a package name, or `undefined` when it is
- * acceptable: the error (not warning) rules of `validate-npm-package-name`,
- * which is what `npm-package-arg` applies to every dependency edge, so legacy
- * names npm still installs are accepted.
+ * acceptable under the rules for a newly published package. Hooknostic has no
+ * compatibility contract with previously published package names, so warnings
+ * from `validate-npm-package-name` are rejection reasons too.
  */
 export function packageNameProblem(name: string): string | undefined {
   const result = validatePackageName(name);
-  return result.validForOldPackages ? undefined : (result.errors ?? ["invalid package name"]).join("; ");
+  if (result.validForNewPackages) return undefined;
+  return [...(result.errors ?? []), ...(result.warnings ?? [])].join("; ") || "invalid package name";
 }
 
 /**

@@ -223,7 +223,7 @@ describe("loadAgentPlugin", () => {
   it("preserves schema-valid MCP server names that shadow Object.prototype", async () => {
     const root = await packageRoot();
     // JSON.parse creates an own `__proto__` key; an assignment into `{}` would
-    // instead invoke Object.prototype's legacy setter and lose this server.
+    // instead invoke Object.prototype's inherited setter and lose this server.
     await writeFile(
       join(root, "mcp.json"),
       `{"$schema":"${AGENT_PLUGIN_MCP_SCHEMA}","mcpServers":{"__proto__":{"type":"stdio","command":"node"}}}`,
