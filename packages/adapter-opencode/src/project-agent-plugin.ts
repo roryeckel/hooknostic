@@ -18,7 +18,13 @@ import {
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
 
-import { PACKAGE_ENTRY_PATH, PACKAGE_MANIFEST_PATH, PACKAGE_PLUGIN_PATH, packageEntrySource } from "./generate.js";
+import {
+  PACKAGE_COMPONENTS_PATH,
+  PACKAGE_ENTRY_PATH,
+  PACKAGE_MANIFEST_PATH,
+  PACKAGE_PLUGIN_PATH,
+  packageEntrySource,
+} from "./generate.js";
 
 /**
  * Package delivery emits an npm package, so every path here is package-root
@@ -39,7 +45,7 @@ import { PACKAGE_ENTRY_PATH, PACKAGE_MANIFEST_PATH, PACKAGE_PLUGIN_PATH, package
 const MANIFEST_PATH = PACKAGE_MANIFEST_PATH;
 /** The single module OpenCode loads; it re-exports the hook and component plugins. */
 const ENTRY_PATH = PACKAGE_ENTRY_PATH;
-const INJECTOR_PATH = "hooknostic-agent-plugin.js";
+const INJECTOR_PATH = PACKAGE_COMPONENTS_PATH;
 /**
  * The package itself, nested one level so the author's namespace never collides
  * with a generated module.

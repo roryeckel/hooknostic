@@ -269,7 +269,7 @@ describe("generateOpenCodeArtifacts", () => {
     // A hooks-only package emits its manifest here rather than through the
     // projector, so the coordinate has to reach both paths or publishing a
     // plugin without components would silently fall back to the plugin name.
-    expect(manifestOf("@fundview/example-opencode")["name"]).toBe("@fundview/example-opencode");
+    expect(manifestOf("@example/example-opencode")["name"]).toBe("@example/example-opencode");
     expect(manifestOf()["name"]).toBe(exampleIR().name);
   });
 
@@ -302,7 +302,7 @@ describe("generateOpenCodeArtifacts", () => {
 describe("validateArtifacts for package delivery", () => {
   const adapter = opencodeAdapter();
   const PKG = { id: "opencode", version: ">=1.18 <2", delivery: "package" as const, output: "dist" };
-  const manifest = { path: "package.json", contents: '{"name":"example-plugin"}\n' };
+  const manifest = { path: "package.json", contents: '{"name":"example-plugin","version":"1.2.3"}\n' };
   const goodEntry = { path: "index.js", contents: 'export { HooknosticPlugin } from "./hooknostic.js";\n' };
 
   it("validates the package-root module rather than the project path", async () => {
@@ -339,6 +339,23 @@ describe("validateArtifacts for package delivery", () => {
       PKG,
     );
     expect(diagnostics.some((d) => d.message.includes("not a valid npm package name"))).toBe(true);
+  });
+
+  it.each([
+    ["with no version", '{"name":"example-plugin"}\n'],
+    ["with a non-semver version", '{"name":"example-plugin","version":"next"}\n'],
+  ])("warns when a hooks-only package %s cannot be published", async (_case, contents) => {
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents },
+      ],
+      PKG,
+    );
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ severity: "warn", message: expect.stringContaining("cannot be published") }),
+    );
   });
 
   it("accepts a well-formed package", async () => {

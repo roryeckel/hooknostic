@@ -1770,6 +1770,10 @@ ${run.stderr}`,
       expect.objectContaining({ code: "HN501", target: "claude" }),
     ]);
     expect(JSON.parse(capture.out()).diagnostics[0].message).toContain("@scope/never-published");
+    // The target owns this validation failure. A dry run must not report it as
+    // successful, and a build must not classify it as merely skipped by another
+    // target's failure.
+    expect(JSON.parse(capture.out()).targets.claude.status).toBe("failed");
   });
 
   it("rejects project-root output without deleting the config or hook source", async () => {

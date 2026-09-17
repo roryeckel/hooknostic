@@ -1031,6 +1031,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 `${adapter.id} output carries no npm manifest under that name`,
               remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
             });
+            target.status = "failed";
+            if (target.projection) target.projection.status = "failed";
+            continue;
           }
         }
         const structural = validateGeneratedArtifacts(artifacts, { adapterId: adapter.id, target: id }, directories);
