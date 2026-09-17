@@ -447,6 +447,114 @@ describe("Codex client extension", () => {
     expect(plan.files.filter((candidate) => candidate.path.includes("com.openai"))).toEqual([]);
   });
 
+  it("counts a compatibility overlay superseded by an inline extension as skipped", async () => {
+    const plan = await project(
+      withFiles(source({}, { extensions: { "com.openai": { interface: { displayName: "inline" } } } }), [
+        overlay("com.openai/.codex-plugin/plugin.json", JSON.stringify({ interface: { displayName: "overlay" } })),
+      ]),
+    );
+
+    // The documented inline object replaces this overlay, so it is discovered
+    // from the source package but must not be reported as delivered.
+    expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
+      discovered: 2,
+      emitted: 1,
+      skipped: 1,
+    });
+  });
+
+  it("hoists empty client-extension directories with their namespace", async () => {
+    const pkg = source();
+    pkg.directories = ["com.openai", "com.openai/assets", "empty"];
+
+    const plan = await project(pkg);
+
+    // `com.openai` is the portable namespace, not part of the generated
+    // package layout; an extension setting referring to ./assets needs the
+    // empty directory at that root-relative location.
+    expect(plan.directories).toEqual(["assets", "empty"]);
+  });
+
+  it("refuses an empty client-extension directory that hoists onto a file", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets")];
+    pkg.directories = ["com.openai", "com.openai/assets"];
+
+    const plan = await project(pkg);
+
+    // Staging creates directories before files, so emitting both would fail
+    // with EISDIR instead of reporting the conflicting source paths.
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/assets",
+      }),
+    );
+  });
+
+  it("refuses a client-extension directory that hoists onto a case-only file match", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets")];
+    // These paths can coexist in the portable package, but become the same
+    // output path on a case-insensitive filesystem once the namespace lifts.
+    pkg.directories = ["com.openai", "com.openai/Assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/Assets",
+      }),
+    );
+  });
+
+  it("merges a client-extension directory with a case-only root directory", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets/root.png"), file("com.openai/Assets/extension.png")];
+    pkg.directories = ["assets", "com.openai", "com.openai/Assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories).toEqual(["assets"]);
+    expect(plan.files.map((candidate) => candidate.path)).toEqual(
+      expect.arrayContaining(["assets/root.png", "Assets/extension.png"]),
+    );
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("merges a client-extension directory with an exact root directory", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets/root.png"), file("com.openai/assets/extension.png")];
+    pkg.directories = ["assets", "com.openai", "com.openai/assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories).toEqual(["assets"]);
+    expect(plan.files.map((candidate) => candidate.path)).toEqual(
+      expect.arrayContaining(["assets/root.png", "assets/extension.png"]),
+    );
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("refuses a client-extension directory that hoists inside a file", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets")];
+    pkg.directories = ["com.openai", "com.openai/assets/cache"];
+
+    const plan = await project(pkg);
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/assets/cache",
+      }),
+    );
+  });
+
   it("uses the compatibility overlay when the inline map is absent", async () => {
     const plan = await project(
       withFiles(source(), [

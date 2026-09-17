@@ -517,6 +517,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // documentation describes.
     const inlineExtension = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE];
     let overlayManifest: Record<string, unknown> = {};
+    let ignoredCompatibilityOverlays = 0;
     const hoisted = new Set(copiedPaths);
     for (const file of source.files) {
       if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
@@ -536,7 +537,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         // The documented portable form replaces the compatibility overlay
         // wholesale. An ignored fallback cannot make an otherwise valid inline
         // declaration fail merely because stale fallback bytes remain beside it.
-        if (inlineExtension !== undefined) continue;
+        if (inlineExtension !== undefined) {
+          ignoredCompatibilityOverlays++;
+          continue;
+        }
         const parsed = parseOverlayManifest(file.contents);
         if (parsed.error !== undefined) {
           issues.push({
@@ -695,11 +699,85 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     for (const { component } of omitted) {
       skippedByComponent.set(component, (skippedByComponent.get(component) ?? 0) + 1);
     }
+    const directoryCandidates =
+      source.directories === undefined
+        ? undefined
+        : source.directories
+            .filter((sourcePath) => !insideRejectedSkill(`${sourcePath}/`))
+            .flatMap((sourcePath) => {
+              if (sourcePath === CODEX_AGENT_PLUGIN_NAMESPACE) return [];
+              if (!sourcePath.startsWith(NAMESPACE_PREFIX)) return [{ sourcePath, outputPath: sourcePath }];
+              const outputPath = sourcePath.slice(NAMESPACE_PREFIX.length);
+              // The output root is created by staging; there is no directory
+              // artifact for the portable namespace itself.
+              if (outputPath === "") return [];
+              return [{ sourcePath, outputPath }];
+            });
+    const hoistedDirectories = directoryCandidates?.filter(({ sourcePath }) => sourcePath.startsWith(NAMESPACE_PREFIX));
+    const directories =
+      directoryCandidates === undefined
+        ? undefined
+        : (() => {
+            const retained: string[] = [];
+            const sourcePathsByCaseFoldedOutput = new Map<string, string>();
+            for (const { sourcePath, outputPath } of directoryCandidates) {
+              const caseFoldedOutput = outputPath.toLowerCase();
+              const previousSourcePath = sourcePathsByCaseFoldedOutput.get(caseFoldedOutput);
+              if (previousSourcePath === undefined) {
+                sourcePathsByCaseFoldedOutput.set(caseFoldedOutput, sourcePath);
+                retained.push(outputPath);
+                continue;
+              }
+              const extensionSourcePath = sourcePath.startsWith(NAMESPACE_PREFIX)
+                ? sourcePath
+                : previousSourcePath.startsWith(NAMESPACE_PREFIX)
+                  ? previousSourcePath
+                  : undefined;
+              // Two ordinary source directories remain for core's general
+              // path validation. A namespace directory maps to the same
+              // physical output directory after hoisting, so coalesce it.
+              if (extensionSourcePath === undefined) {
+                retained.push(outputPath);
+                continue;
+              }
+              // A directory is mergeable: its non-conflicting files already
+              // hoist independently, so retain one output directory and let
+              // the file collision checks reject only a path that cannot
+              // coexist on a case-insensitive filesystem.
+            }
+            return retained;
+          })();
+    // Generated paths are case-insensitive: a package can carry `assets` at
+    // its root and `com.openai/Assets` side by side, but the latter hoists onto
+    // the former on case-insensitive filesystems.
+    const emittedPaths = new Set(files.map((file) => file.path.toLowerCase()));
+    for (const { sourcePath, outputPath } of hoistedDirectories ?? []) {
+      const hoistedPath = outputPath.toLowerCase();
+      const occupiedFile = [...emittedPaths].find(
+        (emittedPath) => hoistedPath === emittedPath || hoistedPath.startsWith(`${emittedPath}/`),
+      );
+      if (occupiedFile === undefined) continue;
+      // Staging creates retained directories before writing artifacts. Letting
+      // either input claim the same path would therefore turn this into an
+      // opaque EISDIR error instead of identifying the two conflicting inputs.
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+        message: `client extension directory ${JSON.stringify(sourcePath)} hoists onto or inside ${JSON.stringify(occupiedFile)}, which is emitted as a file`,
+      });
+    }
+
     const counts = componentSummary(source, {
       namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component === "agent-plugin.runtime-package" ? discovered : (skippedByComponent.get(component) ?? 0),
+        component === "agent-plugin.runtime-package"
+          ? discovered
+          : component === "agent-plugin.client-extension.files"
+            ? ignoredCompatibilityOverlays
+            : (skippedByComponent.get(component) ?? 0),
     });
     if (context.runtimePackage !== undefined) {
       omissions.push({
@@ -711,12 +789,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     return {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
       // Filtered too, or a rejected skill still materializes as an empty
-      // directory bearing its name.
-      ...(source.directories === undefined
-        ? {}
-        : {
-            directories: source.directories.filter((directory) => !insideRejectedSkill(`${directory}/`)),
-          }),
+      // directory bearing its name. Client-extension directories are hoisted
+      // to the package root along with their files.
+      ...(directories === undefined ? {} : { directories }),
       issues,
       summary: {
         components: counts,
