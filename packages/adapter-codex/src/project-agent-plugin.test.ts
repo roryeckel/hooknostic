@@ -414,7 +414,18 @@ describe("Codex client extension", () => {
     });
   });
 
-  it.each(["plugin.json", "mcp.json", ".mcp.json"])("refuses to hoist reserved root path %s", async (reserved) => {
+  // The npm manifest names are refused for the reason the copy loop strips
+  // them: hoisted to the root they stand in for a coordinate this projection
+  // never publishes, and npm reads the names case-insensitively.
+  it.each([
+    "plugin.json",
+    "mcp.json",
+    ".mcp.json",
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "Package.json",
+  ])("refuses to hoist reserved root path %s", async (reserved) => {
     const sourcePath = `com.openai/${reserved}`;
     const plan = await project(withFiles(source(), [file(sourcePath)]));
 
@@ -595,6 +606,20 @@ describe("Codex client extension", () => {
     expect(plan.issues).toEqual([]);
   });
 
+  it("prefers the package's own directory spelling whichever is listed first", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets/root.png"), file("com.openai/Assets/extension.png")];
+    // The inventory lists the namespace spelling first. On a case-sensitive
+    // filesystem the retained spelling is the directory that gets created, and
+    // `assets/root.png` needs `assets`, not `Assets`.
+    pkg.directories = ["com.openai", "com.openai/Assets", "assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories).toEqual(["assets"]);
+    expect(plan.issues).toEqual([]);
+  });
+
   it("refuses a client-extension directory that hoists inside a file", async () => {
     const pkg = source();
     pkg.files = [...pkg.files, file("assets")];
@@ -609,6 +634,19 @@ describe("Codex client extension", () => {
         path: "com.openai/assets/cache",
       }),
     );
+  });
+
+  it("names the occupying file in its own spelling", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("Assets")];
+    pkg.directories = ["com.openai", "com.openai/assets/cache"];
+
+    const plan = await project(pkg);
+
+    // The comparison folds case; the message should still point at the file
+    // the author can find in their package.
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/assets/cache");
+    expect(issue?.message).toContain('"Assets"');
   });
 
   it("uses the compatibility overlay when the inline map is absent", async () => {
@@ -644,6 +682,19 @@ describe("Codex client extension", () => {
     const issue = plan.issues.find((candidate) => candidate.path === "com.openai/src/server.mjs");
     expect(issue?.severity).toBe("error");
     expect(issue?.message).toContain("already ships");
+  });
+
+  it("refuses a hoisted file that lands on a case-only match of package content", async () => {
+    const plan = await project(withFiles(source(), [file("com.openai/src/Server.mjs")]));
+
+    // Both paths exist in the portable package; on the filesystems Codex
+    // installs onto they are one file, and the directory check already folds
+    // case. Without this the collision surfaced later as core's generic
+    // duplicate, with no mention of the namespace source.
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/src/Server.mjs");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"src/server.mjs"');
+    expect(plan.files.some((candidate) => candidate.path === "src/Server.mjs")).toBe(false);
   });
 
   it("refuses a malformed overlay manifest rather than guessing at it", async () => {

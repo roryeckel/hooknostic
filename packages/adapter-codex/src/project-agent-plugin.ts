@@ -39,13 +39,20 @@ const RUNTIME_DIR = "runtime";
  * generates and checks, and one landing in `runtime/` displaces the generated
  * launcher. No capture records what Codex does with any of those, and an
  * uncaptured shape is declined rather than defaulted.
+ *
+ * The root npm manifest and lockfiles are reserved for the same reason the
+ * copy loop strips them: a `package.json` reaching the root stands in for a
+ * published npm coordinate this projection never emits, and Codex installs no
+ * dependencies for it (`.capture/codex-marketplace-deps`). The check goes
+ * through `isRootNpmManifestPath` rather than the exact-match set because npm
+ * reads those names case-insensitively on the filesystems it installs onto.
  */
 const RESERVED_HOISTED_ROOT_PATHS = new Set([PORTABLE_MANIFEST_PATH, PORTABLE_MCP_PATH, NATIVE_MCP_PATH]);
 const RESERVED_HOISTED_ROOT_DIRECTORIES = new Set([SKILLS_DIR, RUNTIME_DIR]);
 
 /** The reserved path or tree a hoist would occupy, or `undefined` when it is free. */
 function reservedHoistTarget(path: string): string | undefined {
-  if (RESERVED_HOISTED_ROOT_PATHS.has(path)) return path;
+  if (RESERVED_HOISTED_ROOT_PATHS.has(path) || isRootNpmManifestPath(path)) return path;
   const top = path.split("/")[0]!;
   return RESERVED_HOISTED_ROOT_DIRECTORIES.has(top) ? top : undefined;
 }
@@ -531,11 +538,6 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // into the plugin, and any name they happened to carry stood in for a
       // published npm coordinate this projection never emits.
       if (isRootNpmManifestPath(file.path)) continue;
-      // The source project's own development manifest and lockfile describe how
-      // to build the package, not anything Codex should install. Copied
-      // verbatim they shipped `private: true` and workspace protocol ranges
-      // into the plugin, and any name they happened to carry stood in for a
-      // published npm coordinate this projection never emits.
       if (file.path === NATIVE_MANIFEST_PATH) {
         // This projection always writes the native manifest, so a copied one is
         // guaranteed to be lost -- silently, until now. Reported rather than
@@ -565,7 +567,12 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // author actually wrote, rather than the manifest this projection emits.
     let overlaySourcePath: string | undefined;
     let ignoredCompatibilityOverlays = 0;
-    const hoisted = new Set(copiedPaths);
+    // Keyed case-insensitively, like every other collision check on generated
+    // output: the package is inventoried on one filesystem and installed on
+    // others, and `Assets/logo.png` beside `assets/Logo.png` is one file on
+    // most of them. The value keeps the spelling the package shipped so the
+    // diagnostic can name it.
+    const shippedByFoldedPath = new Map(copiedPaths.map((path) => [path.toLowerCase(), path]));
     for (const file of source.files) {
       if (!file.path.startsWith(NAMESPACE_PREFIX)) continue;
       const path = file.path.slice(NAMESPACE_PREFIX.length);
@@ -604,17 +611,18 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         overlaySourcePath = file.path;
         continue;
       }
-      if (hoisted.has(path)) {
+      const shipped = shippedByFoldedPath.get(path.toLowerCase());
+      if (shipped !== undefined) {
         issues.push({
           severity: "error",
           scope: "projection",
           component: "agent-plugin.client-extension.files",
           path: file.path,
-          message: `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(path)}, which the package already ships`,
+          message: `client extension file ${JSON.stringify(file.path)} hoists onto ${JSON.stringify(shipped)}, which the package already ships`,
         });
         continue;
       }
-      hoisted.add(path);
+      shippedByFoldedPath.set(path.toLowerCase(), path);
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
     }
@@ -702,7 +710,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // A better diagnostic than the duplicate-path failure core would raise
       // anyway (`artifacts.ts`), naming the colliding path and why it is taken.
       for (const path of [LAUNCHER_PATH, LAUNCHER_SERVERS_PATH]) {
-        if (!copiedPaths.includes(path)) continue;
+        if (!shippedByFoldedPath.has(path.toLowerCase())) continue;
         issues.push({
           severity: "error",
           scope: "projection",
@@ -728,13 +736,12 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       });
     }
 
-    const copied = new Set(copiedPaths);
     for (const file of context.hookArtifacts) {
       // Generation emits a hooks-only manifest so that an unprojected
       // plugin-mode target is still installable; the fuller one written below
       // replaces it at the same path.
       if (file.path === NATIVE_MANIFEST_PATH) continue;
-      if (copied.has(file.path)) {
+      if (shippedByFoldedPath.has(file.path.toLowerCase())) {
         issues.push({
           severity: "error",
           scope: "projection",
@@ -791,43 +798,49 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         ? undefined
         : (() => {
             const retained: string[] = [];
-            const sourcePathsByCaseFoldedOutput = new Map<string, string>();
+            const firstByCaseFoldedOutput = new Map<string, { sourcePath: string; index: number }>();
             for (const { sourcePath, outputPath } of directoryCandidates) {
               const caseFoldedOutput = outputPath.toLowerCase();
-              const previousSourcePath = sourcePathsByCaseFoldedOutput.get(caseFoldedOutput);
-              if (previousSourcePath === undefined) {
-                sourcePathsByCaseFoldedOutput.set(caseFoldedOutput, sourcePath);
+              const previous = firstByCaseFoldedOutput.get(caseFoldedOutput);
+              if (previous === undefined) {
+                firstByCaseFoldedOutput.set(caseFoldedOutput, { sourcePath, index: retained.length });
                 retained.push(outputPath);
                 continue;
               }
-              const extensionSourcePath = sourcePath.startsWith(NAMESPACE_PREFIX)
-                ? sourcePath
-                : previousSourcePath.startsWith(NAMESPACE_PREFIX)
-                  ? previousSourcePath
-                  : undefined;
+              const hoistedHere = sourcePath.startsWith(NAMESPACE_PREFIX);
               // Two ordinary source directories remain for core's general
               // path validation. A namespace directory maps to the same
               // physical output directory after hoisting, so coalesce it.
-              if (extensionSourcePath === undefined) {
+              if (!hoistedHere && !previous.sourcePath.startsWith(NAMESPACE_PREFIX)) {
                 retained.push(outputPath);
                 continue;
               }
               // A directory is mergeable: its non-conflicting files already
               // hoist independently, so retain one output directory and let
               // the file collision checks reject only a path that cannot
-              // coexist on a case-insensitive filesystem.
+              // coexist on a case-insensitive filesystem. The package's own
+              // spelling is the one retained, whichever the inventory listed
+              // first: on a case-sensitive filesystem that is the directory
+              // its unhoisted files land in.
+              if (!hoistedHere) retained[previous.index] = outputPath;
             }
             return retained;
           })();
     // Generated paths are case-insensitive: a package can carry `assets` at
     // its root and `com.openai/Assets` side by side, but the latter hoists onto
     // the former on case-insensitive filesystems.
-    const emittedPaths = new Set(files.map((file) => file.path.toLowerCase()));
+    const emittedByFoldedPath = new Map(files.map((file) => [file.path.toLowerCase(), file.path]));
     for (const { sourcePath, outputPath } of hoistedDirectories ?? []) {
-      const hoistedPath = outputPath.toLowerCase();
-      const occupiedFile = [...emittedPaths].find(
-        (emittedPath) => hoistedPath === emittedPath || hoistedPath.startsWith(`${emittedPath}/`),
-      );
+      // A directory collides with a file at its own path or at any ancestor,
+      // so walk the ancestors rather than every emitted file.
+      let occupiedFile: string | undefined;
+      for (let prefix = outputPath.toLowerCase(); ;) {
+        occupiedFile = emittedByFoldedPath.get(prefix);
+        if (occupiedFile !== undefined) break;
+        const cut = prefix.lastIndexOf("/");
+        if (cut < 0) break;
+        prefix = prefix.slice(0, cut);
+      }
       if (occupiedFile === undefined) continue;
       // Staging creates retained directories before writing artifacts. Letting
       // either input claim the same path would therefore turn this into an
