@@ -22,6 +22,15 @@ import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js"
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
 const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
+/**
+ * Folded like every other collision check on generated output: the package is
+ * inventoried on one filesystem and installed on others, and a
+ * `.Codex-Plugin/plugin.json` occupies the generated manifest's path on most
+ * of the ones Codex installs onto. Matched exactly, it was hoisted as a plain
+ * file and the build then failed in core on a case-insensitive duplicate
+ * naming the manifest this projection emits -- a path the author never wrote.
+ */
+const isNativeManifestPath = (path: string): boolean => path.toLowerCase() === NATIVE_MANIFEST_PATH;
 const NATIVE_MCP_PATH = ".mcp.json";
 const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
@@ -148,10 +157,25 @@ function hooksDeclarationProblem(authored: unknown): string | undefined {
 }
 
 /**
+ * Whether an authored hook path names the document this projection generates.
+ * The vendor documentation's own example is `hooks: "./hooks.json"`, which is
+ * exactly that document, so the comparison ignores the `./` anchor and folds
+ * case: on the filesystems Codex installs onto, `Hooks.json` is the generated
+ * file too.
+ */
+const namesGeneratedHookDocument = (entry: string, generatedPath: string): boolean =>
+  entry.replace(/^(\.\/)+/, "").toLowerCase() === generatedPath.replace(/^(\.\/)+/, "").toLowerCase();
+
+/**
  * Add generated hooks while keeping OpenAI's path and inline-object arrays
  * homogeneous: the documentation permits arrays of paths or arrays of objects,
  * not a mix, so the generated document is inlined when the author inlined
  * theirs.
+ *
+ * An authored path that already names the generated document is replaced by
+ * the generated spelling in place rather than appended to: a path array runs
+ * every entry (`.capture/codex-client-extension`), so `["./hooks.json",
+ * "./hooks.json"]` fired every generated hook twice.
  */
 function appendHookSource(
   authored: unknown,
@@ -160,7 +184,18 @@ function appendHookSource(
 ): { value: CodexHooksDeclaration; error?: string } {
   if (authored === undefined) return { value: generatedPath };
   const entries: unknown[] = Array.isArray(authored) ? authored : [authored];
-  if (entries.every((entry) => typeof entry === "string")) return { value: [...(entries as string[]), generatedPath] };
+  if (entries.every((entry) => typeof entry === "string")) {
+    const paths = entries as string[];
+    if (!paths.some((entry) => namesGeneratedHookDocument(entry, generatedPath))) {
+      return { value: [...paths, generatedPath] };
+    }
+    const deduplicated: string[] = [];
+    for (const entry of paths) {
+      const named = namesGeneratedHookDocument(entry, generatedPath) ? generatedPath : entry;
+      if (named !== generatedPath || !deduplicated.includes(generatedPath)) deduplicated.push(named);
+    }
+    return { value: Array.isArray(authored) ? deduplicated : generatedPath };
+  }
 
   // Hook artifacts are compiler output and already validated by the adapter,
   // so a document that does not parse is a defect upstream -- reported against
@@ -613,7 +648,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // into the plugin, and any name they happened to carry stood in for a
       // published npm coordinate this projection never emits.
       if (isRootNpmManifestPath(file.path)) continue;
-      if (file.path === NATIVE_MANIFEST_PATH) {
+      if (isNativeManifestPath(file.path)) {
         // This projection always writes the native manifest, so a copied one is
         // guaranteed to be lost -- silently, until now. Reported rather than
         // overwritten, and fatal rather than subject to `onUnsupported`: the
@@ -663,7 +698,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         });
         continue;
       }
-      if (path === NATIVE_MANIFEST_PATH) {
+      if (isNativeManifestPath(path)) {
         // The documented portable form replaces the compatibility overlay
         // wholesale. An ignored fallback cannot make an otherwise valid inline
         // declaration fail merely because stale fallback bytes remain beside it.

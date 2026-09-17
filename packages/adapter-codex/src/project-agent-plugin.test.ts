@@ -687,6 +687,34 @@ describe("Codex client extension", () => {
     });
   });
 
+  it("recognises the compatibility overlay whatever case the package spelled it in", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay("com.openai/.Codex-Plugin/Plugin.json", JSON.stringify({ interface: { displayName: "folded" } })),
+      ]),
+    );
+
+    // Every other collision check here folds case, because the package is
+    // inventoried on one filesystem and installed on others. An exact match
+    // hoisted this as a plain file instead, and the build then failed in core
+    // on a case-insensitive duplicate that named the generated manifest -- a
+    // path the author never wrote.
+    expect(plan.issues).toEqual([]);
+    expect(manifestOf(plan).interface).toEqual({ displayName: "folded" });
+    expect(plan.files.filter((candidate) => candidate.path.toLowerCase() === ".codex-plugin/plugin.json")).toHaveLength(
+      1,
+    );
+  });
+
+  it("refuses a case-only spelling of the manifest path this projection generates", async () => {
+    const plan = await project(withFiles(source(), [file(".Codex-Plugin/plugin.json")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === ".Codex-Plugin/plugin.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("com.openai/.Codex-Plugin/plugin.json");
+    expect(plan.files.some((candidate) => candidate.path === ".Codex-Plugin/plugin.json")).toBe(false);
+  });
+
   it("refuses a package that ships the manifest path this projection generates", async () => {
     const plan = await project(withFiles(source(), [file(".codex-plugin/plugin.json")]));
 
@@ -750,6 +778,27 @@ describe("Codex client extension", () => {
     );
 
     expect(manifestOf(plan).hooks).toEqual(["./hooks/first.json", "./hooks/second.json", "./hooks.json"]);
+  });
+
+  it("does not list the generated hook document twice when the author already names it", async () => {
+    // The vendor documentation's own example is `hooks: "./hooks.json"`, which
+    // is exactly the document this projection generates. Appended blindly the
+    // manifest read ["./hooks.json", "./hooks.json"], and a path array runs
+    // every entry (`.capture/codex-client-extension`), so every generated hook
+    // fired twice.
+    const single = await project(source({}, { extensions: { "com.openai": { hooks: "./hooks.json" } } }), [
+      { path: "hooks.json", contents: '{"hooks":{}}\n' },
+    ]);
+    expect(manifestOf(single).hooks).toBe("./hooks.json");
+
+    const array = await project(
+      source({}, { extensions: { "com.openai": { hooks: ["./hooks/first.json", "hooks.json", "./Hooks.json"] } } }),
+      [{ path: "hooks.json", contents: '{"hooks":{}}\n' }],
+    );
+    // The author's spelling is replaced by the one the projection emits: the
+    // two resolve to the same file on the filesystems Codex installs onto,
+    // and only the emitted spelling is a captured form.
+    expect(manifestOf(array).hooks).toEqual(["./hooks/first.json", "./hooks.json"]);
   });
 
   it("keeps an inline hook object array homogeneous when adding generated hooks", async () => {
