@@ -546,3 +546,29 @@ decided here.
   it combines both using the corresponding documented path-array or
   inline-object-array form instead of overwriting the author's hooks. The two
   forms are never mixed in one array.
+
+## Amendments — 2026-09-17 (thirteenth)
+
+- **The output-path reservation applies to Codex, not only to Claude.** The
+  2026-09-07 amendment stated the rule — a projector's own output paths are
+  reserved against the package root — and the Claude projector implemented it.
+  The Codex projector implemented a third of it: `.codex-plugin/plugin.json` was
+  refused, while a package-root `.mcp.json` or any other `.codex-plugin/` file
+  was copied verbatim. A copied `.mcp.json` reached Codex's native MCP
+  configuration without passing `translateMcp`, and beside a build that
+  generates one the path was emitted twice — the only complaint being core's
+  duplicate-artifact-path error, which blames the adapter for a file the package
+  wrote. Both are now a fatal `HN503` naming the path, fatal for the reason
+  already recorded for Claude: the package is claiming the projector's output,
+  which is not a valid component the harness cannot represent.
+- **Reserved against a hoist is not the same set as reserved against the package
+  root.** `skills/`, `runtime/` and `hooks.json` are refused as hoist targets and
+  deliberately not as package-root paths. `skills/` is the portable tree the copy
+  loop exists to copy; `runtime/` is inert package content whose one real
+  collision — the generated launcher — is already reported where the launcher is
+  emitted; a root `hooks.json` the native manifest never names is inert on
+  0.154.0 (`.capture/codex-client-extension`), and a collision with a generated
+  hook artifact is likewise already reported. What makes those three dangerous
+  under hoisting is the rewrite, not the path, so completing the two lists into
+  one would newly reject packages with nothing wrong in them — the test the
+  tenth amendment applied to OpenCode's reserved-marker refusal.

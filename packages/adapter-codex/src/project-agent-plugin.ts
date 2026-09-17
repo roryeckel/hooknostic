@@ -40,6 +40,38 @@ const PORTABLE_MANIFEST_PATH = "plugin.json";
 const PORTABLE_MCP_PATH = "mcp.json";
 const SKILLS_DIR = "skills";
 const RUNTIME_DIR = "runtime";
+
+/**
+ * Whether a package-root path is claiming a path Codex reads as its own
+ * configuration, rather than shipping package content.
+ *
+ * The output half of the package boundary (ADR-0011), and the same rule the
+ * Claude projector applies through its own `isReservedNativePath`. A copied
+ * `.mcp.json` is a native MCP document that never passed `translateMcp`,
+ * reaching Codex's configuration without the validation portable `mcp.json`
+ * servers receive; beside a build that generates one it was emitted twice, and
+ * the only complaint was core's duplicate-artifact-path error blaming this
+ * adapter for a file the package wrote. Under `.codex-plugin/`, only the
+ * manifest is consumed -- checked above, with its own remediation -- and
+ * anything else there is a shape no capture records, which is declined rather
+ * than defaulted.
+ *
+ * The paths deliberately NOT reserved here are where this parts company with
+ * `RESERVED_HOISTED_ROOT_PATHS`, and the asymmetry is the point rather than an
+ * omission to complete later. `skills/` is the portable tree this copy loop
+ * exists to copy. `runtime/` is inert package content, and an exact collision
+ * with the generated launcher is reported where the launcher is emitted. A root
+ * `hooks.json` the native manifest never names is inert too -- measured on
+ * 0.154.0 (`.capture/codex-client-extension`) -- and a real collision with a
+ * generated hook artifact is reported where those are emitted. What makes all
+ * three dangerous under hoisting is the rewrite, not the path.
+ *
+ * Folded like every other check on the output layout.
+ */
+function isReservedNativePath(path: string): boolean {
+  const folded = path.toLowerCase();
+  return folded === NATIVE_MCP_PATH || folded.startsWith(`${NATIVE_METADATA_DIR}/`);
+}
 /**
  * Root paths and trees a client extension may not hoist onto, as a matter of
  * policy -- whether or not this build happens to generate anything there.
@@ -699,6 +731,23 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           scope: "file",
           path: file.path,
           message: `Agent Plugin file ${JSON.stringify(file.path)} occupies the path this projection generates; move it to ${JSON.stringify(`${NAMESPACE_PREFIX}${file.path}`)} to declare it as a Codex client extension, or remove it from the package.`,
+        });
+        continue;
+      }
+      if (isReservedNativePath(file.path)) {
+        // Fatal for the reason the manifest above is, and not subject to
+        // `onUnsupported`: the package is claiming an output path, which is not
+        // a component Codex cannot represent. Neither path has a
+        // `com.openai/` route either -- `reservedHoistTarget` refuses both --
+        // so each remediation names something the author can actually do.
+        issues.push({
+          severity: "error",
+          scope: "file",
+          path: file.path,
+          message:
+            file.path.toLowerCase() === NATIVE_MCP_PATH
+              ? `Agent Plugin file ${JSON.stringify(file.path)} occupies the native MCP configuration this projection generates from ${JSON.stringify(PORTABLE_MCP_PATH)}; declare the servers there instead, or remove the file from the package.`
+              : `Agent Plugin file ${JSON.stringify(file.path)} is inside ${JSON.stringify(`${NATIVE_METADATA_DIR}/`)}, which Codex reads its own plugin metadata from and where only ${JSON.stringify(NATIVE_MANIFEST_PATH)} is consumed; move it elsewhere in the package, or remove it.`,
         });
         continue;
       }

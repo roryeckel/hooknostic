@@ -739,6 +739,41 @@ describe("Codex client extension", () => {
     expect(diagnosticsFromAgentPluginIssues([issue!])[0]?.code).toBe("HN503");
   });
 
+  // The output half of the package boundary, on the door the hoist checks do
+  // not cover. `RESERVED_HOISTED_ROOT_PATHS` refuses a hoisted
+  // `com.openai/.mcp.json` because a document arriving at a path Codex reads
+  // without passing the portable loader is dangerous whether or not this build
+  // generates one there -- and the package root is the same document arriving
+  // by the shorter route.
+  it.each([".mcp.json", ".MCP.json", ".codex-plugin/other.json", ".Codex-Plugin/other.json"])(
+    "refuses a package that ships the native read path %s",
+    async (reserved) => {
+      const plan = await project(withFiles(source(), [file(reserved)]));
+
+      expect(plan.files.some((candidate) => candidate.path === reserved)).toBe(false);
+      expect(plan.summary.copiedPaths).not.toContain(reserved);
+      const issue = plan.issues.find((candidate) => candidate.path === reserved);
+      expect(issue?.severity).toBe("error");
+      expect(diagnosticsFromAgentPluginIssues([issue!])[0]?.code).toBe("HN503");
+    },
+  );
+
+  it("emits one .mcp.json when the package ships its own beside a server that generates it", async () => {
+    const plan = await project(
+      withFiles(source({ streamed: { type: "streamable-http", url: "https://example.invalid/mcp" } }), [
+        file(".mcp.json"),
+      ]),
+    );
+
+    // Copied and then generated, the path was emitted twice and the build
+    // failed in core on a duplicate artifact path blamed on this adapter --
+    // which is the diagnostic the launcher and hook collision checks exist to
+    // avoid. Refused here, the surviving document is the generated one.
+    expect(plan.files.filter((candidate) => candidate.path === ".mcp.json")).toHaveLength(1);
+    expect(nativeMcp(plan)["streamed"]).toEqual({ url: "https://example.invalid/mcp" });
+    expect(plan.issues.find((candidate) => candidate.path === ".mcp.json")?.severity).toBe("error");
+  });
+
   it("refuses a hoisted file that lands on package content", async () => {
     const plan = await project(withFiles(source(), [file("com.openai/src/server.mjs")]));
 
