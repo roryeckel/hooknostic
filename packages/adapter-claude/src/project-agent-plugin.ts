@@ -343,11 +343,20 @@ export async function projectAgentPluginToClaude(
       (!object(author) || typeof author["name"] !== "string" || author["name"].length === 0)
     ) {
       const reason = "Claude requires author.name to be a non-empty string";
+      // The three places an author can be declared, in the precedence resolved
+      // just above. Naming the manifest this projection generates would send
+      // the author to output they do not have.
+      const declaredAt =
+        source.manifest.author !== undefined
+          ? "plugin.json#/author"
+          : "author" in manifestExtension
+            ? `plugin.json#/extensions/${CLAUDE_AGENT_PLUGIN_NAMESPACE}/author`
+            : `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/${MANIFEST_PATH}#/author`;
       issues.push({
         severity: context.onUnsupported,
         scope: "projection",
         component: "agent-plugin.manifest",
-        path: `${MANIFEST_PATH}#/author`,
+        path: declaredAt,
         message: `Author metadata cannot be projected: ${reason}; supply a name or use onUnsupported: "warn" to omit the author.`,
       });
       omissions.push({ component: "agent-plugin.manifest", name: "author", reason });

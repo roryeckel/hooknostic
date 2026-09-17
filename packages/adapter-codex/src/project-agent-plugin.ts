@@ -561,6 +561,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // documentation describes.
     const inlineExtension = source.manifest.extensions?.[CODEX_AGENT_PLUGIN_NAMESPACE];
     let overlayManifest: Record<string, unknown> = {};
+    // Kept so a diagnostic about the overlay's contents can name the file the
+    // author actually wrote, rather than the manifest this projection emits.
+    let overlaySourcePath: string | undefined;
     let ignoredCompatibilityOverlays = 0;
     const hoisted = new Set(copiedPaths);
     for (const file of source.files) {
@@ -598,6 +601,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           continue;
         }
         overlayManifest = parsed.value;
+        overlaySourcePath = file.path;
         continue;
       }
       if (hoisted.has(path)) {
@@ -651,10 +655,22 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     }
     if (claimed.length > 0) {
       issues.push({
+        // The package is valid; this projection decided to ignore part of it.
+        // `scope: "manifest"` would file that as invalid Agent Plugin input,
+        // blaming the author for a choice made here -- the same misfiling the
+        // MCP omission below is careful to avoid.
         severity: "warn",
-        scope: "manifest",
+        scope: "projection",
         component: "agent-plugin.client-extension.files",
-        path: NATIVE_MANIFEST_PATH,
+        // The declaration lives in one of two files the author wrote. Naming
+        // the manifest this projection generates sends them to output they do
+        // not have, and which is a hard error to ship. Only those two can have
+        // supplied a key, so one of them is always the source here.
+        ...(inlineExtension !== undefined
+          ? { path: `${PORTABLE_MANIFEST_PATH}#/extensions/${CODEX_AGENT_PLUGIN_NAMESPACE}` }
+          : overlaySourcePath === undefined
+            ? {}
+            : { path: overlaySourcePath }),
         message: `client extension declares ${claimed.map((key) => JSON.stringify(key)).join(", ")}, which this projection decides from the package itself; the declared value is ignored.`,
       });
     }

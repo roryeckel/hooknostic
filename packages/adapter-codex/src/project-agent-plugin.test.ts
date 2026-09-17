@@ -719,6 +719,24 @@ describe("Codex client extension", () => {
     expect(warning?.message).toContain('"skills"');
     expect(warning?.message).not.toContain('"interface"');
     expect(manifestOf(plan).interface).toEqual({ displayName: "kept" });
+    // Named the generated manifest before, which is a file the author does not
+    // have -- and shipping one is a hard error here.
+    expect(warning?.path).toBe("plugin.json#/extensions/com.openai");
+    // The package is valid; this projection made the choice. Scoping it to the
+    // manifest filed it as invalid Agent Plugin input.
+    expect(warning?.scope).toBe("projection");
+  });
+
+  it("names the compatibility overlay when that is where the ignored key was declared", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay("com.openai/.codex-plugin/plugin.json", JSON.stringify({ skills: "./elsewhere/" })),
+      ]),
+    );
+
+    const warning = plan.issues.find((candidate) => candidate.message.includes("this projection decides"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.path).toBe("com.openai/.codex-plugin/plugin.json");
   });
 
   it("leaves a package with no extension untouched", async () => {

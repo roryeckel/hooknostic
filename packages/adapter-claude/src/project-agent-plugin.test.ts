@@ -398,6 +398,9 @@ describe("Agent Plugin to Claude projection", () => {
             severity: onUnsupported,
             component: "agent-plugin.manifest",
             message: expect.stringContaining("author.name"),
+            // Where the author wrote it. Naming the generated manifest sent
+            // them to a file they do not have.
+            path: "plugin.json#/author",
           }),
         ]);
         expect(parsed(plan, ".claude-plugin/plugin.json")).not.toHaveProperty("author");
@@ -411,6 +414,29 @@ describe("Agent Plugin to Claude projection", () => {
       }
     },
   );
+
+  it("names the client extension when the unrepresentable author came from there", async () => {
+    // Portable identity wins when it exists, so with no root author the
+    // declaration the projection rejected is the extension's own.
+    const portable = source();
+    delete portable.mcp;
+    delete portable.manifest.author;
+    portable.manifest.extensions = { "com.anthropic.claude-code": { author: { name: "" } } };
+
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+    });
+
+    expect(plan.issues).toEqual([
+      expect.objectContaining({
+        path: "plugin.json#/extensions/com.anthropic.claude-code/author",
+        message: expect.stringContaining("author.name"),
+      }),
+    ]);
+  });
 
   it("preserves a representable author without tightening Claude's name rule", async () => {
     const portable = source();
