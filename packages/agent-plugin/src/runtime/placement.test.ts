@@ -51,6 +51,19 @@ describe("materializedRuntimeFiles", () => {
     expect(issues[0]?.path).toBe("runtime/clash.py");
   });
 
+  it("refuses overlapping runtime trees that materialize the same file", () => {
+    const { files, issues } = materializedRuntimeFiles(
+      [runtime("runtime", ["pypi/idna/core.py"]), runtime("runtime/pypi", ["idna/core.py"])],
+      { claimed: new Set() },
+    );
+
+    expect(files.map((file) => file.path)).toEqual(["runtime/pypi/idna/core.py"]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.severity).toBe("error");
+    expect(issues[0]?.message).toContain("another materialized runtime");
+    expect(issues[0]?.path).toBe("runtime/pypi/idna/core.py");
+  });
+
   it("emits nothing when no runtime was materialized", () => {
     expect(materializedRuntimeFiles(undefined, { claimed: new Set() })).toEqual({ files: [], issues: [] });
     expect(materializedRuntimeFiles([], { claimed: new Set() })).toEqual({ files: [], issues: [] });

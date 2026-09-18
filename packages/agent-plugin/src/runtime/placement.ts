@@ -27,6 +27,7 @@ export function materializedRuntimeFiles(
   const files: AgentPluginProjectionFile[] = [];
   const issues: AgentPluginIssue[] = [];
   const prefix = options.prefix ?? "";
+  const materializedPaths = new Set<string>();
 
   for (const runtime of runtimes ?? []) {
     const base = `${prefix}${runtime.into.replace(/^\.\//, "").replace(/\/+$/, "")}`;
@@ -43,6 +44,18 @@ export function materializedRuntimeFiles(
         });
         continue;
       }
+      if (materializedPaths.has(path)) {
+        issues.push({
+          severity: "error",
+          scope: "file",
+          message:
+            `the ${runtime.ecosystem} runtime materializes over ${JSON.stringify(path)}, which another ` +
+            `materialized runtime already provides. Point its "into" at a directory the other runtime does not use.`,
+          path,
+        });
+        continue;
+      }
+      materializedPaths.add(path);
       files.push({ path, contents: Buffer.from(file.contents) });
     }
   }
