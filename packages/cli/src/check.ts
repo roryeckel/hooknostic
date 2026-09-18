@@ -102,9 +102,7 @@ export async function runCheck(options: CheckOptions): Promise<number> {
           ];
         }),
       ),
-      ...(result.report.components?.mcpServers === undefined
-        ? {}
-        : { mcpServers: result.report.components.mcpServers }),
+      ...(result.report.mcpServers === undefined ? {} : { mcpServers: result.report.mcpServers }),
       diagnostics: result.report.diagnostics,
     };
     options.io.stdout(JSON.stringify(report, null, 2));
@@ -124,7 +122,7 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     const projection = result.report.targets[id]?.projection;
     if (projection !== undefined) options.io.stdout(`      ${describeProjection(projection)}`);
   }
-  const prerequisites = describeMcpPrerequisites(result.report.components);
+  const prerequisites = describeMcpPrerequisites(result.report.mcpServers);
   if (prerequisites.length > 0) {
     options.io.stdout("");
     options.io.stdout("MCP servers");

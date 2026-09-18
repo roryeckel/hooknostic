@@ -20,6 +20,38 @@ const VERSIONED_SHARED_OBJECT = /\.so(\.\d+)+$/;
 /** Java's class-file magic collides with Mach-O's fat magic, and is portable. */
 const JVM_EXTENSIONS = new Set([".class", ".jar"]);
 
+/** Metadata retained by every installed wheel. */
+const WHEEL_METADATA_PATH = /(?:^|\/)[^/]+\.dist-info\/WHEEL$/i;
+
+/**
+ * Why installed wheel metadata does not prove an ABI- and platform-neutral
+ * distribution, or `undefined` when every declared tag does.
+ *
+ * Native-object scanning remains necessary because installers generate files
+ * that wheel tags do not describe. The reverse is necessary too: a wheel may
+ * be platform-tagged while carrying only Python or data files, whose bytes do
+ * not reveal that the installer selected a platform-specific distribution.
+ */
+function wheelMetadataProblem(contents: Buffer): string | undefined {
+  const tags: string[] = [];
+  for (const line of contents.toString("utf8").split(/\r?\n/)) {
+    const match = /^Tag:\s*(\S+)\s*$/i.exec(line);
+    if (match !== null) tags.push(match[1]!);
+  }
+  if (tags.length === 0) return "wheel metadata declares no Tag records";
+  for (const tag of tags) {
+    const parts = tag.split("-");
+    if (parts.length !== 3 || parts.some((part) => part.length === 0 || !/^[A-Za-z0-9_.]+$/.test(part))) {
+      return `wheel metadata declares malformed tag ${JSON.stringify(tag)}`;
+    }
+    const [, abi, platform] = parts;
+    if (abi !== "none" || platform !== "any") {
+      return `wheel tag ${JSON.stringify(tag)} is not ABI- and platform-neutral (expected *-none-any)`;
+    }
+  }
+  return undefined;
+}
+
 function extensionOf(path: string): string {
   const name = path.slice(path.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
@@ -87,6 +119,11 @@ export function nativeObjectFormat(contents: Buffer, path = ""): string | undefi
 export function verifyPortableTree(files: readonly { path: string; contents: Buffer }[]): PortabilityProblem[] {
   const problems: PortabilityProblem[] = [];
   for (const file of files) {
+    if (WHEEL_METADATA_PATH.test(file.path)) {
+      const reason = wheelMetadataProblem(file.contents);
+      if (reason !== undefined) problems.push({ path: file.path, reason });
+      continue;
+    }
     const extension = extensionOf(file.path);
     if (NATIVE_EXTENSIONS.has(extension) || VERSIONED_SHARED_OBJECT.test(file.path.toLowerCase())) {
       problems.push({ path: file.path, reason: `${extension || "a shared object"} is built for one platform` });

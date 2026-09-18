@@ -2125,6 +2125,59 @@ describe("hooknostic doctor", () => {
       expect(harness.validatedRanges.length).toBeGreaterThan(0);
     }
   }, 60_000);
+
+  it("probes direct MCP prerequisites for a project-enabled config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-doctor-project-mcp-"));
+    cleanupDirs.push(dir);
+    const registry = defaultAdapterRegistry();
+    const codex = registry.codex!;
+    registry.codex = {
+      ...codex,
+      detect: async () => ({ installed: true, version: codex.harness.referenceVersion }),
+    };
+    await writeFile(join(dir, "hooks.ts"), 'export default { name: "doctor-project", hooks: [] };');
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          missing: { type: "stdio", command: "hooknostic-definitely-missing-runtime" },
+        },
+      }),
+    );
+    const configPath = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        project: { root: "." },
+        entry: "./hooks.ts",
+        components: { mcp: "./mcp.json", targets: ["codex"] },
+        targets: {
+          codex: {
+            version: ${JSON.stringify(codex.harness.recommendedRange)},
+            delivery: "project",
+            output: ".hooknostic/artifacts/codex",
+          },
+        },
+      };`,
+    );
+
+    const json = captureIO();
+    expect(await runDoctor({ config: configPath, json: true, registry, io: json.io })).toBe(2);
+    const report = JSON.parse(json.out());
+    expect(report.mcpPrerequisites).toEqual([
+      {
+        command: "hooknostic-definitely-missing-runtime",
+        servers: ["missing"],
+      },
+    ]);
+    expect(report.project).not.toHaveProperty("mcpServers");
+
+    const human = captureIO();
+    await runDoctor({ config: configPath, registry, io: human.io });
+    expect(human.out()).toContain("MISS  hooknostic-definitely-missing-runtime");
+    expect(human.out()).toContain("(missing)");
+  });
 });
 
 describe("hooknostic inspect", () => {

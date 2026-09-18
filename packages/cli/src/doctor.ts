@@ -159,14 +159,15 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   let configurationErrors: string[] = [];
   let prerequisites: readonly McpServerPrerequisites[] = [];
   if (options.config) {
-    if (loaded?.config?.project)
+    if (loaded?.config?.project) {
       project = await runProject({
         command: "verify",
         configPath: resolve(options.config),
         registry: options.registry,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
-    else {
+      prerequisites = project.mcpServers;
+    } else {
       const checked = await buildProject({
         configPath: resolve(options.config),
         registry: options.registry,
@@ -174,7 +175,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
-      prerequisites = checked.report.components?.mcpServers ?? [];
+      prerequisites = checked.report.mcpServers ?? [];
     }
   }
   // Probed, but deliberately not folded into `ok`: the prerequisite belongs to
@@ -190,6 +191,13 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     configurationErrors.length === 0 &&
     entries.every((e) => e.status === "ok") &&
     (project === undefined || project.ok);
+  const projectReport =
+    project === undefined
+      ? undefined
+      : (() => {
+          const { mcpServers: _mcpServers, ...visible } = project;
+          return visible;
+        })();
 
   if (options.json) {
     options.io.stdout(
@@ -202,9 +210,9 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           configurationErrors,
           mcpPrerequisites: mcpProbes,
           runtime: { node: process.version },
-          ...(project === undefined
+          ...(projectReport === undefined
             ? {}
-            : { project: { ...project, execution: "not-observed", trust: "not-inspected" } }),
+            : { project: { ...projectReport, execution: "not-observed", trust: "not-inspected" } }),
         },
         null,
         2,

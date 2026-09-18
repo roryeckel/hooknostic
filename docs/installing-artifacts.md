@@ -153,10 +153,12 @@ components: {
 `--require-hashes` and `--only-binary=:all:` (that second flag is this
 ecosystem's `--ignore-scripts`: a source distribution executes its setup code at
 install time and a wheel does not), then **verifies the result is
-platform-independent before committing it**. A distribution carrying a compiled
-extension is refused with the file named, because an artifact built once and
-installed anywhere (ADR-0006) cannot contain one platform's binary. The
-installer's own console-script launchers are dropped for the same reason. The
+platform-independent before committing it**. Every installed `.dist-info/WHEEL`
+must declare only `*-none-any` tags; missing, malformed, mixed or platform-specific
+tags are refused even when the distribution contains no recognizable native object.
+A distribution carrying a compiled extension is also refused with the file named,
+because an artifact built once and installed anywhere (ADR-0006) cannot contain one
+platform's binary. The installer's own console-script launchers are dropped for the same reason. The
 installer may download wheels from its configured index; `--require-hashes`
 authenticates those bytes, but the build is not promised to work offline.
 The lockfile must be flattened: active `-r`/`--requirement` and

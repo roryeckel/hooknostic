@@ -1,6 +1,6 @@
 import { dirname, relative, resolve } from "node:path";
 
-import { type BuildOptions, buildProject } from "./build.js";
+import { type BuildOptions, buildProject, type McpServerPrerequisites } from "./build.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { loadConfig } from "./load.js";
 import { applyProject, type ProjectIntegration, reconcileProject, recoverProject } from "./project-files.js";
@@ -12,6 +12,8 @@ export interface ProjectCommandResult {
   guidance: string[];
   errors: string[];
   diagnostics: Diagnostic[];
+  /** What each stdio server needs from the machine it finally runs on. */
+  mcpServers: McpServerPrerequisites[];
 }
 export async function runProject(
   options: BuildOptions & { command: "sync" | "verify" | "recover" },
@@ -23,6 +25,7 @@ export async function runProject(
     guidance: [],
     errors: [],
     diagnostics: [],
+    mcpServers: [],
   };
   try {
     if (options.targets !== undefined) throw new Error("project commands do not support partial target selection");
@@ -40,6 +43,7 @@ export async function runProject(
     }
     const built = await buildProject({ ...options, configResult: loaded, dryRun: true });
     result.diagnostics = built.report.diagnostics;
+    result.mcpServers = built.report.mcpServers ?? [];
     if (!built.ok) throw new Error(built.report.diagnostics.map((d) => d.message).join("\n"));
     const integration: ProjectIntegration = {
       files: [

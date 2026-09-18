@@ -220,17 +220,17 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:0f02b0c32ac8de8939cdf4b2fe60977d5f8122d719a92b62b2ab8cac990c32b9",
-    "mcpServers": [
-      {
-        "server": "greeter",
-        "command": "node",
-        "contained": false,
-        "requires": [
-          "node"
-        ]
-      }
-    ]
+    "contentDigest": "sha256:0f02b0c32ac8de8939cdf4b2fe60977d5f8122d719a92b62b2ab8cac990c32b9"
   },
+  "mcpServers": [
+    {
+      "server": "greeter",
+      "command": "node",
+      "contained": false,
+      "requires": [
+        "node"
+      ]
+    }
+  ],
   "source": "./src/hooks.ts"
 }

@@ -34,6 +34,46 @@ describe("verifyPortableTree", () => {
     ).toEqual([]);
   });
 
+  it("refuses a platform-tagged wheel even when it contains no native object", () => {
+    const problems = verifyPortableTree([
+      text("platform_only/__init__.py"),
+      text(
+        "platform_only-1.0.0.dist-info/WHEEL",
+        "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: cp313-cp313-win_amd64\n",
+      ),
+    ]);
+
+    expect(problems).toEqual([
+      {
+        path: "platform_only-1.0.0.dist-info/WHEEL",
+        reason: expect.stringContaining("cp313-cp313-win_amd64"),
+      },
+    ]);
+  });
+
+  it("refuses wheel metadata when any tag is platform-specific", () => {
+    const problems = verifyPortableTree([
+      text(
+        "mixed-1.0.0.dist-info/WHEEL",
+        "Wheel-Version: 1.0\nTag: py3-none-any\nTag: cp313-cp313-manylinux_2_28_x86_64\n",
+      ),
+    ]);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.reason).toContain("cp313-cp313-manylinux_2_28_x86_64");
+  });
+
+  it.each([
+    ["missing", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\n"],
+    ["malformed", "Wheel-Version: 1.0\nTag: not-a-wheel-tag-extra\n"],
+  ])("refuses %s wheel tag metadata", (_case, metadata) => {
+    const problems = verifyPortableTree([text("broken-1.0.0.dist-info/WHEEL", metadata)]);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.path).toBe("broken-1.0.0.dist-info/WHEEL");
+    expect(problems[0]?.reason).toContain("wheel");
+  });
+
   it("refuses a compiled extension module on its name alone", () => {
     // Deliberately inert content: the extension rule has to stand on its own,
     // or the magic scan silently covers for it. It earns its place -- a GNU

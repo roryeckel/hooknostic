@@ -75,13 +75,16 @@ gets `author-supplied` — prebuilt binaries the author ships per platform, copi
 provider table with its reason, so an author reaching for one is told the answer instead
 of inferring it from an unknown-ecosystem error.
 
-**Portability is checked, not trusted, and checked over the bytes rather than the
-ecosystem's promises** — ELF, Mach-O and PE headers, and the extensions that only ever
-name a compiled object. Reading the bytes is what makes the rule hold for ecosystems
-nobody has written a provider for, and it is also the only thing that would have caught
-`bin/idna.exe`, which no statement about wheel tags predicts. A PE requires its signature
-at `e_lfanew` rather than a bare `MZ`, because a false reject blocks a build that was
-fine; and a JVM class file is told from the universal Mach-O it shares `0xCAFEBABE` with.
+**Portability is checked, not trusted.** The generic check reads the produced bytes for
+ELF, Mach-O and PE headers, and rejects extensions that only ever name a compiled object.
+The PyPI provider also reads every installed distribution's `.dist-info/WHEEL` metadata
+and admits only `*-none-any` tags. Both halves are necessary: reading the bytes is the
+only thing that catches installer-generated `bin/idna.exe`, which wheel tags do not
+describe, while a platform-tagged wheel can contain only Python or data files whose bytes
+carry no native signature. A missing, malformed or mixed portable/platform tag set fails
+closed. A PE requires its signature at `e_lfanew` rather than a bare `MZ`, because a false
+reject blocks a build that was fine; and a JVM class file is told from the universal
+Mach-O it shares `0xCAFEBABE` with.
 
 A materialized tree is reached through an `env` value the server declares in `mcp.json`
 — `"PYTHONPATH": "${PLUGIN_ROOT}/runtime/pypi"` — which the launcher expands itself.

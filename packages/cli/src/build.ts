@@ -26,8 +26,8 @@ export function describeProjection(projection: AgentPluginTargetReport): string 
  * launcher is a Node program. That is a property of the projection rather than
  * the package, so the adapters report it and this does not repeat it.
  */
-export function describeMcpPrerequisites(components: BuildReport["components"]): string[] {
-  return (components?.mcpServers ?? []).map((server) =>
+export function describeMcpPrerequisites(mcpServers: BuildReport["mcpServers"]): string[] {
+  return (mcpServers ?? []).map((server) =>
     server.contained
       ? `  ${server.server}: runs ${server.command}, which the package ships`
       : `  ${server.server}: needs ${server.requires.join(", ")} on the consumer's PATH`,
@@ -75,8 +75,10 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
     options.io.stdout(
       `\nAgent Plugin ${result.report.components.root} → ${result.report.components.targets.join(", ")}`,
     );
-    for (const line of describeMcpPrerequisites(result.report.components)) options.io.stdout(line);
   }
+  const prerequisites = describeMcpPrerequisites(result.report.mcpServers);
+  if (prerequisites.length > 0 && result.report.components === undefined) options.io.stdout("\nMCP servers");
+  for (const line of prerequisites) options.io.stdout(line);
   options.io.stdout(
     result.ok
       ? `\nbuild succeeded${result.reportPath ? `; report written to ${result.reportPath}` : ""}`

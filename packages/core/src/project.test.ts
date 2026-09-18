@@ -146,6 +146,47 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".claude/skills/.gitattributes"), "utf8")).toBe("** -text\n");
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
+
+  it("carries direct MCP prerequisites through build and project reports", async () => {
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: { mcp: "./mcp.json", targets: ["codex"] },
+      targets: {
+        codex: {
+          adapter: "codex",
+          version: codex.harness.recommendedRange,
+          delivery: "project",
+          output: ".hooknostic/artifacts/codex",
+        },
+      },
+    });
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          local: { type: "stdio", command: "hooknostic-missing-runtime" },
+          shipped: { type: "stdio", command: "./bin/server" },
+          remote: { type: "streamable-http", url: "https://example.test/mcp" },
+        },
+      }),
+    );
+
+    const built = await buildProject({ ...options, dryRun: true });
+    const expected = [
+      {
+        server: "local",
+        command: "hooknostic-missing-runtime",
+        contained: false,
+        requires: ["hooknostic-missing-runtime"],
+      },
+      { server: "shipped", command: "./bin/server", contained: true, requires: [] },
+    ];
+    expect((built.report as typeof built.report & { mcpServers?: unknown }).mcpServers).toEqual(expected);
+
+    const projected = await runProject({ ...options, command: "sync", dryRun: true });
+    expect((projected as typeof projected & { mcpServers?: unknown }).mcpServers).toEqual(expected);
+  });
   it("relinquishes copied skills when their native destination becomes the source", async () => {
     const codex = registry.codex!;
     const { root, config, options } = await fixture({

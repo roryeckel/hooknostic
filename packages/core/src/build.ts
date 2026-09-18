@@ -101,6 +101,8 @@ export interface BuildReport {
   hooknosticVersion: string;
   source?: string;
   targets: Record<string, BuildTargetReport>;
+  /** What each stdio server needs from the machine it finally runs on. */
+  mcpServers?: McpServerPrerequisites[];
   components?: {
     root: string;
     specVersion: "1.0.0";
@@ -109,11 +111,6 @@ export interface BuildReport {
     /** Every inventoried package-relative path, sorted: exactly what projection may ship. */
     sourceFiles: string[];
     contentDigest: string;
-    /**
-     * Each stdio server and what the consumer's machine must supply for it.
-     * Additive: readers keyed on `schemaVersion` 2 are unaffected.
-     */
-    mcpServers?: McpServerPrerequisites[];
   };
   diagnostics: Diagnostic[];
 }
@@ -529,7 +526,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       sourceFileCount: components.files.length,
       sourceFiles: components.files.map((file) => file.path).sort(),
       contentDigest: components.contentDigest,
-      mcpServers: mcpPrerequisites(components.mcp),
     };
 
     if (selectedPackageProjection) {
@@ -560,6 +556,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
+  if (componentSource !== undefined) report.mcpServers = mcpPrerequisites(componentSource.mcp?.config);
   if (
     config.components?.root === undefined &&
     componentSource &&
