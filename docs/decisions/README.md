@@ -25,7 +25,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0014 — First publication bootstrap](0014-first-publication-bootstrap.md) | How does a package reach npm the first time, when trusted publishing requires it to exist already? |
 | [0015 — First-class repository-local integration](0015-project-integration.md) | Who wires generated artifacts into a project — the consumer, or Hooknostic? |
 | [0016 — A portable model.request.before event](0016-model-request-before-event.md) | Why does a moment only OpenCode exposes a hook at get its own normalized event? |
-| [0017 — MCP runtime dependencies are language-neutral](0017-mcp-runtime-dependencies.md) | How does an MCP server written in Python, Go, Rust or C# say what it needs at run time? |
+| [0017 — Package materialization is provider-owned and component-neutral](0017-mcp-runtime-dependencies.md) | How can a build produce portable package content without teaching Hooknostic each ecosystem? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

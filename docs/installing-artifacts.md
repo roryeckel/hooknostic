@@ -118,78 +118,99 @@ Copy-mode is safe for these artifacts: everything the hooks need — the manifes
 `hooks/hooks.json`, and the bundled runtime — lives inside `dist/claude`, and a
 copied plugin cannot reach files outside its own directory.
 
-### MCP runtime dependencies
+### Build-time package materialization
 
-Hooknostic bundles hook runtimes, but an MCP server has dependencies of its own,
-in whatever language it is written. Declare them with `components.runtime`, one
-entry per ecosystem, each naming how they reach the machine that runs the
-server — see [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the rule
-that decides which options an ecosystem has.
+An Agent Plugin package may need generated files committed into each native package
+projection. `components.materialize` handles that without teaching Hooknostic any
+package manager or language. You import a trusted Node provider into
+`hooknostic.config.ts`; the provider validates its named inputs, returns one command to
+run, and may normalize or validate the resulting opaque file tree.
 
-| Delivery | Who installs | Available to |
-| --- | --- | --- |
-| `harness-installed` | the harness, in its own cache | npm, on Claude only |
-| `build-materialized` | Hooknostic, at build time, committed into the package | any ecosystem whose installed output is the same bytes everywhere |
-| `author-supplied` | nobody — it is already in the package | every ecosystem |
-
-A Python server whose dependencies are pure wheels declares:
+For example, a local provider can wrap an installer owned by your project:
 
 ```ts
-components: {
-  root: ".",
-  runtime: [
-    {
-      ecosystem: "pypi",
-      delivery: "build-materialized",
-      lockfile: "runtime/requirements.txt",
-      into: "runtime/pypi",
-    },
-  ],
-}
+// build/package-materializer.ts
+import { definePackageMaterializer } from "@hooknostic/sdk";
+
+export const packageMaterializer = definePackageMaterializer({
+  id: "project-packages",
+  validate({ inputs }) {
+    return inputs.lock === undefined ? ["a lock input is required"] : [];
+  },
+  plan({ inputs, outputDir }) {
+    return {
+      command: "project-package-tool",
+      args: ["install", "--locked", inputs.lock!.absolutePath, "--output", outputDir],
+    };
+  },
+});
 ```
 
-`runtime/requirements.txt` is a hash-pinned lock — `uv pip compile
---generate-hashes` produces one. At build time Hooknostic runs the install with
-`--require-hashes` and `--only-binary=:all:` (that second flag is this
-ecosystem's `--ignore-scripts`: a source distribution executes its setup code at
-install time and a wheel does not), then **verifies the result is
-platform-independent before committing it**. Every installed `.dist-info/WHEEL`
-must declare only `*-none-any` tags; missing, malformed, mixed or platform-specific
-tags are refused even when the distribution contains no recognizable native object.
-A distribution carrying a compiled extension is also refused with the file named,
-because an artifact built once and installed anywhere (ADR-0006) cannot contain one
-platform's binary. The installer's own console-script launchers are dropped for the same reason. The
-installer may download wheels from its configured index; `--require-hashes`
-authenticates those bytes, but the build is not promised to work offline.
-The lockfile must be flattened: active `-r`/`--requirement` and
-`-c`/`--constraint` directives are refused rather than followed, so every
-dependency line is validated before installation.
+```ts
+// hooknostic.config.ts
+import { defineConfig } from "@hooknostic/sdk";
+import { packageMaterializer } from "./build/package-materializer.js";
 
-Point the server at the tree from `mcp.json`, where `${PLUGIN_ROOT}` already
-expands in `env` values. Declare it rather than relying on an inherited one:
-Codex hands an MCP child only about 22 environment variables where the other two
-pass roughly 104 through, so an ambient `PYTHONPATH` works on two harnesses and
-silently fails on the third
-([`.capture/mcp-child-path`](../.capture/mcp-child-path/README.md)):
-
-```json
-{ "command": "python3", "args": ["${PLUGIN_ROOT}/server.py"],
-  "env": { "PYTHONPATH": "${PLUGIN_ROOT}/runtime/pypi" } }
+export default defineConfig({
+  components: {
+    root: ".",
+    materialize: [
+      {
+        provider: packageMaterializer,
+        inputs: { lock: "runtime/packages.lock" },
+        into: "runtime/packages",
+      },
+    ],
+  },
+  // targets: ...
+});
 ```
 
-A Rust or Go server cannot use `build-materialized`, because its build output is
-one native binary per target triple. It ships the binaries itself as ordinary
-package content — declared in `components.executableFiles` so they arrive
-executable — and may declare `delivery: "author-supplied"` without a manifest or
-lockfile, or is declared as a runner command such as `docker`. Install-only fields
-are rejected on an author-supplied declaration. `cargo` and `golang` are listed in
-the provider table with that reason, so a build says so rather than reporting an
-unknown ecosystem.
+Providers are executable build code and must be reviewed like the configuration that
+imports them. Hooknostic ships no built-in providers and does not own lockfile parsing,
+installer flags, network or cache behavior, generated-file cleanup, or ecosystem
+metadata. Put those rules in the provider. Its `postprocess(files, context)` hook can
+return a replacement tree plus provider-specific problems when installer output needs
+normalization.
 
-#### The npm case
+Hooknostic owns the safe, component-neutral boundary around the provider:
 
-`components.runtimePackage` is the shorthand for `npm` + `harness-installed`,
-and still works. Configure it with a dedicated runtime manifest and npm
+- named inputs must be package-relative regular files whose real paths remain inside
+  `components.root`;
+- the provider command is invoked directly, without a shell, in the package root and
+  receives a fresh output directory;
+- `into` is a relative POSIX path; a leading `./` and one trailing `/` are canonicalized,
+  while absolute or drive-qualified paths, backslashes, colons, control characters,
+  empty segments, and `.` or `..` segments fail with HN501 before the provider runs;
+- output must contain only regular files with contained, unique POSIX paths and cannot
+  overwrite source files, generated files, or another provider's output; and
+- files whose bytes identify ELF, Mach-O, universal Mach-O, or PE objects are rejected,
+  because an artifact built once and installed elsewhere cannot contain one host's
+  native object.
+
+Filename extensions and ecosystem metadata are not generic portability evidence. A
+provider must apply any stronger rule its output needs. Materialization runs once after
+analysis succeeds, and the same bytes are placed into every selected package projection.
+It does not run for project delivery, which references files where they already live.
+See [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the full boundary.
+
+### MCP command reporting
+
+Build and check reports describe only how each declared stdio command is resolved. A
+`./server` command is shipped by the package; a bare command is looked up on the
+consumer's `PATH`. `doctor` probes PATH-looked-up commands on the current machine, but
+those probes are advisory and never change its exit status.
+
+Hooknostic does not parse shebangs or infer interpreters, dynamic libraries, daemons, or
+other transitive runtime dependencies. Remote servers have no launched command to
+report. Materialization is package content and is not inferred from MCP declarations;
+if an MCP server uses a materialized tree, its own command, arguments, or environment
+must point at that content.
+
+### The npm case
+
+`components.runtimePackage` remains the separate harness-owned npm contract.
+Configure it with a dedicated runtime manifest and npm
 lockfile. Claude projection emits those files as
 `dist/claude/package.json` and `dist/claude/package-lock.json`; when it creates
 the marketplace cache entry, Claude runs its own locked `npm ci --ignore-scripts`.

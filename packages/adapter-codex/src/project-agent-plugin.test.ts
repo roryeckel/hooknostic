@@ -1115,31 +1115,31 @@ describe("Codex client extension", () => {
     expect(diagnostics.some((diagnostic) => diagnostic.message.includes("duplicate directory path"))).toBe(true);
   });
 
-  it("places a materialized runtime at the package root without calling it copied", async () => {
+  it("places a materialized package tree at the package root without calling it copied", async () => {
     const pkg = source({ srv: { type: "stdio", command: "node" } });
     const plan = await codexAgentPluginProjector.project(pkg, {
       target,
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedRuntimes: [
+      materializedTrees: [
         {
-          ecosystem: "pypi",
-          into: "runtime/pypi",
-          files: [{ path: "idna/core.py", contents: encoder.encode("idna") }],
+          provider: "fixture",
+          into: "generated/dependencies",
+          files: [{ path: "library/data.bin", contents: encoder.encode("materialized") }],
         },
       ],
     });
 
     // Codex reads from the output root, so `into` needs no prefix.
-    expect(plan.files.some((candidate) => candidate.path === "runtime/pypi/idna/core.py")).toBe(true);
+    expect(plan.files.some((candidate) => candidate.path === "generated/dependencies/library/data.bin")).toBe(true);
     expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
     // The bytes came from an installer, not the package: the summary's
     // "copied byte-for-byte" list must not claim them.
-    expect(plan.summary.copiedPaths).not.toContain("runtime/pypi/idna/core.py");
+    expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
   });
 
-  it("refuses a materialized runtime that lands on generated output", async () => {
+  it("refuses a materialized package tree that lands on generated output", async () => {
     // `into: "runtime"` is where the generated launcher goes, so the tree
     // would silently replace a file this projection emits.
     const pkg = source({ srv: { type: "stdio", command: "node" } });
@@ -1148,9 +1148,9 @@ describe("Codex client extension", () => {
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedRuntimes: [
+      materializedTrees: [
         {
-          ecosystem: "pypi",
+          provider: "fixture",
           into: "runtime",
           files: [{ path: "mcp-launcher.mjs", contents: encoder.encode("not the launcher") }],
         },
@@ -1161,34 +1161,34 @@ describe("Codex client extension", () => {
     expect(issue?.severity).toBe("error");
     expect(issue?.message).toContain("already carries");
     // The generated launcher still wins: the plan the build writes keeps the
-    // bytes this projection emitted, not the ones the runtime brought.
+    // bytes this projection emitted, not the ones the materializer brought.
     const launcher = plan.files.find((candidate) => candidate.path === "runtime/mcp-launcher.mjs")!;
     expect(launcher.contents.toString()).not.toBe("not the launcher");
   });
 
-  it("refuses a namespace hoist that lands on materialized runtime output", async () => {
+  it("refuses a namespace hoist that lands on materialized package output", async () => {
     // `vendor/` is not one of the reserved trees, so this is not caught by that
     // policy: without the materialized tree joining `generatedByFoldedPath`
-    // before the hoist loop, the namespace file would win and the runtime bytes
+    // before the hoist loop, the namespace file would win and the materialized bytes
     // would be silently replaced.
-    const pkg = withFiles(source(), [overlay("com.openai/vendor/pypi/idna/core.py", "replacement")]);
+    const pkg = withFiles(source(), [overlay("com.openai/generated/shared/data.bin", "replacement")]);
     const plan = await codexAgentPluginProjector.project(pkg, {
       target,
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedRuntimes: [
+      materializedTrees: [
         {
-          ecosystem: "pypi",
-          into: "vendor/pypi",
-          files: [{ path: "idna/core.py", contents: encoder.encode("idna") }],
+          provider: "fixture",
+          into: "generated/shared",
+          files: [{ path: "data.bin", contents: encoder.encode("materialized") }],
         },
       ],
     });
 
-    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/vendor/pypi/idna/core.py");
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/generated/shared/data.bin");
     expect(issue?.severity).toBe("error");
     expect(issue?.message).toContain("which this projection generates");
-    expect(plan.files.some((candidate) => candidate.path === "vendor/pypi/idna/core.py")).toBe(true);
+    expect(plan.files.some((candidate) => candidate.path === "generated/shared/data.bin")).toBe(true);
   });
 });

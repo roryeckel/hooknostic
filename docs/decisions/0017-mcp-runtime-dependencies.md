@@ -1,139 +1,105 @@
-# Decision 0017 — MCP server runtime dependencies are language-neutral
+# Decision 0017 — Package materialization is provider-owned and component-neutral
 
-**Status:** Accepted — 2026-09-16 · Referenced from code and docs as **ADR-0017** · Generalizes [ADR-0012](0012-claude-plugin-runtime-dependencies.md)
+**Status:** Accepted — 2026-09-16; amended — 2026-09-18 · Referenced from code and docs as **ADR-0017** · Complements [ADR-0012](0012-claude-plugin-runtime-dependencies.md)
 
-**In short:** What an MCP server needs at run time is declared per ecosystem, and which
-deliveries an ecosystem may use is decided by one rule — whether its materialized output
-is the same bytes on every machine. Hooknostic will perform a locked, script-free install
-at build time for an ecosystem that passes that test, and refuses to for one that does
-not, whatever language it is.
+**In short:** An Agent Plugin build may opt into a trusted, author-supplied Node
+provider that materializes an opaque package tree. Hooknostic owns containment,
+execution, placement, collision detection, and generic native-object screening. It
+contains no registry of ecosystems or package-manager policy.
 
 ## Context
 
-Hooknostic has always **accepted** MCP servers in any language. The `mcp.json` command
-grammar has no whitelist and no interpreter sniffing; the generated launcher is
-`cross-spawn` with `stdio: "inherit"`, with no module resolution and no `NODE_OPTIONS`;
-`uvx` has been a projection fixture since before this decision.
+Some portable packages need generated content that should be committed into every
+native package projection: dependency trees are one example, but the need is not
+specific to MCP or to any language. Treating each package manager as a Hooknostic
+feature would put ecosystem lockfile grammars, installer flags, and metadata rewriting
+inside the compiler. That policy changes independently of harness projection and cannot
+be complete: every new language would require a core release.
 
-What it did not have was any way to say what such a server *needs*. The single mechanism,
-`components.runtimePackage`, is an npm manifest and an npm lockfile — pnpm and Yarn locks
-are refused by name — and it is honoured by Claude alone, because Claude is the only
-harness that installs anything (ADR-0012). Both other adapters' capability rationales
-therefore told the author to "bundle the dependencies instead", and the bundler is
-esbuild. A Python, Go, Rust or .NET server was left with no declared answer at all, and
-the answer it was given in prose was one only JavaScript can take.
+The earlier form of this decision attempted exactly that for one ecosystem. Although it
+could make one installer output reproducible, it coupled the package projection model to
+one language and implied that Hooknostic could classify arbitrary MCP runtime
+dependencies. It cannot. A server command does not reveal its transitive runtime
+requirements.
 
-Three further things were measured rather than assumed, and each shaped this decision:
+There are still important invariants Hooknostic can enforce without knowing an
+ecosystem:
 
-- A virtualenv's `bin/python` is a symlink to the interpreter that built it, so
-  `inventory` resolved outside the package root and failed the **whole package**.
-  `node_modules` never hit this because it is excluded by name; `.venv` was not.
-- `uv pip install --target` of `idna` — `py3-none-any` throughout, with no compiled code
-  anywhere in it — still writes `bin/idna.exe`. The *installer* generates platform-native
-  console-script launchers, so a `--target` tree is platform-specific even when every
-  wheel in it is pure.
-- The same command against `pydantic-core` writes
-  `_pydantic_core.cp313-win_amd64.pyd`, which is what a committed artifact must never
-  carry.
-- A spawned MCP child keeps the parent's `PATH` on all three harnesses, but **Codex
-  filters the rest of its environment to 22 variables against roughly 104 elsewhere**
-  (`.capture/mcp-child-path`). A runner command is therefore safe everywhere, and a
-  server that reads its configuration from the ambient environment is not.
+- source inputs remain inside the Agent Plugin root;
+- provider commands run without a shell and receive a fresh staging directory for output;
+- destinations and produced paths cannot escape a projected package;
+- materialized files cannot overwrite source or generated package files; and
+- a build-once artifact must not accidentally contain a native object for one host.
 
 ## Decision
 
-`components.runtime` declares runtime dependencies as a list of per-ecosystem entries.
-`components.runtimePackage` remains the shorthand for its `npm` + `harness-installed`
-case; both spellings converge before any projector sees them, and declaring both at once
-is a configuration error rather than a silent preference.
+`components.materialize` is a list of explicit package-materialization declarations.
+Each declaration supplies a trusted `PackageMaterializer` object imported by
+`hooknostic.config.ts`, a map of named package-relative input files, and an `into`
+destination relative to the projected plugin root. Hooknostic ships no built-in
+providers.
 
-Each ecosystem declares which of three deliveries it can offer:
+The provider API has three operations:
 
-| Delivery | Who installs | Available to |
-| --- | --- | --- |
-| `harness-installed` | the harness, in its own cache | npm, on Claude only (ADR-0012) |
-| `build-materialized` | Hooknostic, at build time, committed | any ecosystem whose output is portable |
-| `author-supplied` | nobody — it is already in the package | every ecosystem |
+- optional `validate(context)` checks provider-owned input semantics;
+- `plan({ ...context, outputDir })` returns one executable and argument vector; and
+- optional `postprocess(files, context)` validates or normalizes the produced opaque
+  tree in memory.
 
-**The rule that decides which is the portability of the produced bytes, not the identity
-of the package manager.** A Hooknostic artifact is built once and committed (ADR-0006),
-then installed on whatever machine a consumer has. So a materialized tree is admissible
-only when it means the same thing everywhere:
+Providers own all ecosystem knowledge: lockfile parsing, installer flags, network and
+cache behavior, generated-file removal, metadata repair, and any stronger portability
+rule. A provider is trusted build code, just like the TypeScript configuration that
+imports it. Hooknostic never discovers or selects a provider from package data.
 
-| Ecosystem | Materialized output | Portable |
-| --- | --- | --- |
-| npm, pure JavaScript | `node_modules` | yes |
-| PyPI, `py3-none-any` wheels | a `--target` tree | yes |
-| NuGet, framework-dependent | IL assemblies | yes |
-| npm with native addons, non-`any` wheels, self-contained .NET | platform binaries | no |
-| Cargo, Go | one native binary per target triple | no, by construction |
+Core owns the boundary around that code:
 
-This is the whole answer to "what about Rust, or Go, or .NET". They are not special cases
-and not omissions: they are the same rule applied to different bytes. A native toolchain
-gets `author-supplied` — prebuilt binaries the author ships per platform, copied verbatim
-— or the server is declared as a runner command such as `docker`. Each is listed in the
-provider table with its reason, so an author reaching for one is told the answer instead
-of inferring it from an unknown-ecosystem error.
+1. Every declared input is a strict POSIX path to a regular file whose real path stays
+   inside `components.root`. Providers receive its declared path, canonical absolute
+   path, and bytes.
+2. The `into` value accepts a leading `./` and one trailing `/`, canonicalizing both
+   away. Absolute and drive-qualified paths, backslashes, colons, control characters,
+   empty segments, and `.` or `..` segments fail with HN501 before any provider method
+   or external command runs. Duplicate destinations compare the canonical value.
+3. Core creates a fresh output directory and invokes the returned command and arguments
+   directly, never through a shell. Missing commands, nonzero exits, and provider
+   exceptions are HN501 build failures.
+4. Core inventories only regular files. Symlinks, escaping or duplicate provider paths,
+   source-file collisions, generated-file collisions, and collisions between providers
+   fail the projection.
+5. Core examines bytes for ELF, Mach-O, universal Mach-O, and PE object formats. A match
+   is rejected because an ADR-0006 artifact is built once and installed elsewhere.
+   Filename extensions and ecosystem metadata are not generic evidence; providers must
+   enforce any additional restrictions their output format requires.
 
-**Portability is checked, not trusted.** The generic check reads the produced bytes for
-ELF, Mach-O and PE headers, and rejects extensions that only ever name a compiled object.
-The PyPI provider also reads every installed distribution's `.dist-info/WHEEL` metadata
-and admits only `*-none-any` tags. Both halves are necessary: reading the bytes is the
-only thing that catches installer-generated `bin/idna.exe`, which wheel tags do not
-describe, while a platform-tagged wheel can contain only Python or data files whose bytes
-carry no native signature. A missing, malformed or mixed portable/platform tag set fails
-closed. A PE requires its signature at `e_lfanew` rather than a bare `MZ`, because a false
-reject blocks a build that was fine; and a JVM class file is told from the universal
-Mach-O it shares `0xCAFEBABE` with.
+Materialization runs once per build after capability and layout analysis succeeds. The
+resulting bytes are reused by every selected package projector, which places them relative
+to its own plugin root. Project delivery has no package to receive the tree, so a
+configuration must select at least one package-delivery component target. Narrowing a
+mixed build to project-only targets skips materialization.
 
-A materialized tree is reached through an `env` value the server declares in `mcp.json`
-— `"PYTHONPATH": "${PLUGIN_ROOT}/runtime/pypi"` — which the launcher expands itself.
-Declaring it is not tidiness: on Codex the ambient environment does not reach the child,
-so a runtime found only through an inherited variable works on two harnesses and silently
-fails on the third.
+`components.runtimePackage` is intentionally separate. It is the existing
+harness-owned npm installation contract from ADR-0012, not a materializer alias, and
+Hooknostic still does not perform that npm install.
 
-A `build-materialized` install is locked, hash-verified and script-free. For PyPI that is
-`--require-hashes` and `--only-binary=:all:`, the second being this ecosystem's
-`--ignore-scripts`: a source distribution executes its own setup code at install time and
-a wheel does not. The installer may download wheels from its configured index; the
-required hashes authenticate the exact downloaded bytes, so this is not an offline-build
-guarantee. Validation refuses an unpinned or unhashed requirement, an environment marker,
-an editable requirement, a `--no-binary` directive, and active nested requirement or
-constraint-file directives, before any install is attempted. The lockfile is therefore
-flattened and every dependency line is validated before materialization.
-
-### On ADR-0012
-
-ADR-0012 says *"Claude owns the subsequent locked install in its cache; Hooknostic neither
-invokes a package manager nor writes `node_modules`."* That sentence is the back half of a
-contrast about **who performs the `runtimePackage` install on Claude**; its Context assumes
-*"an MCP server implemented with ordinary Node.js imports"*, and the decisions index frames
-the record as *"How can projected Claude MCP servers resolve Node dependencies?"*
-
-It was read as a project-wide prohibition, and that reading is what kept every non-npm
-ecosystem out. It is not one. Hooknostic still performs no npm install of its own — that
-half is unchanged and remains true — but it will invoke an ecosystem's installer for a
-`build-materialized` declaration that asked for it, under the constraints above.
-ADR-0012's npm contract is otherwise untouched and is now one provider among several.
+MCP command reporting is also separate. For each stdio declaration Hooknostic reports
+only whether the declared command is a contained `./` path shipped by the package or a
+bare command looked up on `PATH`. `doctor` may probe a PATH command on the current
+machine, but the probe is advisory and does not change its exit status. Hooknostic does
+not parse shebangs or claim to discover interpreters, dynamic libraries, daemons, or
+transitive runtime dependencies. Remote servers have no command to report.
 
 ## Consequences
 
-- A non-Node MCP server has a declared, validated answer for its dependencies, and what
-  it needs from the consumer's machine is reported by `check` and probed by `doctor`.
-- Hooknostic gains a build-time dependency on an ecosystem's installer, but only for a
-  declaration that opted in. A missing tool is a build error naming the tool and the
-  `author-supplied` alternative, never a silent skip.
-- The portability verifier can be wrong in both directions. It is written to prefer a
-  false reject, and both directions are tested.
-- A `build-materialized` tree enlarges every target's output, and ADR-0006's drift gate
-  makes that visible on the next build, which is the intended way to find out.
-- `.venv`, `__pycache__`, `.tox` and friends join the default exclusions. `vendor` and
-  `target` deliberately do **not**: Go's `vendor/` is meant to be committed, and a
-  prebuilt binary is how a native toolchain supplies its runtime — excluding either would
-  break the one delivery those ecosystems have.
-
-## Status of what this does not do
-
-Bundling Node MCP servers, so that an npm runtime stops depending on Claude's install, is
-a separate change. Under this decision it is the npm/`build-materialized` cell of the same
-table rather than a new concept.
+- Adding support for an ecosystem does not change Hooknostic. Authors or separate
+  packages can publish typed providers on their own release cadence.
+- Materialization is an explicit scope exception to “projection is not dependency
+  installation.” It runs only when configuration imports a provider and declares it;
+  there is no implicit install, provider lookup, or runtime service.
+- Reproducibility beyond the generic boundary is the provider's responsibility. A
+  provider that invokes a nondeterministic installer produces nondeterministic artifacts,
+  which committed-output drift will expose but Hooknostic cannot prevent in general.
+- Generic native-object screening deliberately does not infer meaning from names such as
+  `.so` or from ecosystem metadata. This avoids language coupling and false claims, while
+  providers remain free to fail closed more aggressively.
+- A materialized tree enlarges every selected package output. ADR-0006's committed
+  artifact comparison makes that change reviewable.

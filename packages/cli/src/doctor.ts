@@ -3,8 +3,8 @@ import { delimiter, resolve } from "node:path";
 
 import semver from "semver";
 
-import type { AdapterRegistry, McpServerPrerequisites } from "@hooknostic/core";
-import { buildProject, loadConfig, mcpRequiredCommands, type ProjectCommandResult, runProject } from "@hooknostic/core";
+import type { AdapterRegistry, McpServerCommand } from "@hooknostic/core";
+import { buildProject, loadConfig, mcpPathCommands, type ProjectCommandResult, runProject } from "@hooknostic/core";
 
 import type { CommandIO } from "./check.js";
 
@@ -157,7 +157,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
 
   let project: ProjectCommandResult | undefined;
   let configurationErrors: string[] = [];
-  let prerequisites: readonly McpServerPrerequisites[] = [];
+  let commands: readonly McpServerCommand[] = [];
   if (options.config) {
     if (loaded?.config?.project) {
       project = await runProject({
@@ -166,7 +166,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         registry: options.registry,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
-      prerequisites = project.mcpServers;
+      commands = project.mcpServers;
     } else {
       const checked = await buildProject({
         configPath: resolve(options.config),
@@ -175,17 +175,17 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
-      prerequisites = checked.report.mcpServers ?? [];
+      commands = checked.report.mcpServers ?? [];
     }
   }
-  // Probed, but deliberately not folded into `ok`: the prerequisite belongs to
-  // the machine the plugin is finally installed on, not the one building it. A
-  // CI runner without `uv` still produces a perfectly good artifact, and
+  // Probed, but deliberately not folded into `ok`: the command belongs to
+  // the machine the plugin is finally installed on, not the one building it.
+  // A builder without an optional runner still produces a valid artifact, and
   // failing it there would teach authors to ignore the check.
-  const mcpProbes = mcpRequiredCommands(prerequisites).map((command) => ({
-    command,
-    path: resolveOnPath(command),
-    servers: prerequisites.filter((entry) => entry.requires.includes(command)).map((entry) => entry.server),
+  const resolvedPathCommands = new Map(mcpPathCommands(commands).map((command) => [command, resolveOnPath(command)]));
+  const mcpCommands = commands.map((entry) => ({
+    ...entry,
+    ...(entry.resolution === "path-lookup" ? { path: resolvedPathCommands.get(entry.command) } : {}),
   }));
   const ok =
     configurationErrors.length === 0 &&
@@ -208,7 +208,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           ok,
           harnesses: entries,
           configurationErrors,
-          mcpPrerequisites: mcpProbes,
+          mcpCommands,
           runtime: { node: process.version },
           ...(projectReport === undefined
             ? {}
@@ -246,13 +246,19 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         }`,
     );
   }
-  if (mcpProbes.length > 0) {
+  if (mcpCommands.length > 0) {
     options.io.stdout("");
-    options.io.stdout("MCP server prerequisites, on the machine a consumer installs to:");
-    for (const probe of mcpProbes) {
-      const marker = probe.path === undefined ? "MISS" : "OK  ";
-      const where = probe.path ?? "not on this PATH";
-      options.io.stdout(`${marker}  ${probe.command}  ${where}  (${probe.servers.join(", ")})`);
+    options.io.stdout("Declared MCP command resolution (PATH checks are advisory):");
+    for (const command of mcpCommands) {
+      if (command.resolution === "package") {
+        options.io.stdout(`INFO  ${command.server}: command ${command.command} is shipped by the package`);
+      } else {
+        const marker = command.path === undefined ? "MISS" : "OK  ";
+        const where = command.path ?? "not on this PATH";
+        options.io.stdout(
+          `${marker}  ${command.server}: command ${command.command} is looked up on the consumer's PATH — ${where}`,
+        );
+      }
     }
   }
   for (const message of configurationErrors) options.io.stderr(message);

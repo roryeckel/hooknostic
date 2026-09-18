@@ -11,7 +11,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
-  materializedRuntimeFiles,
+  materializedPackageFiles,
   npmPublicationProblems,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
@@ -398,7 +398,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Other ecosystems are not limited to it: components.runtime materializes a portable locked install into the package at build time, and content the author supplies is copied verbatim -- neither depends on a harness performing an install.",
+            "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim.",
         },
       },
       source: {
@@ -555,9 +555,9 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // Its paths are generated, not copied: their bytes came from an installer,
     // so they stay out of `copiedPaths`, which answers both the summary's
     // "copied byte-for-byte" list and whether the AUTHOR declared the package
-    // boundary. A runtime tree is this projection's output and must not be
+    // boundary. A materialized tree is this projection's output and must not be
     // able to answer either question.
-    const materialized = materializedRuntimeFiles(context.materializedRuntimes, {
+    const materialized = materializedPackageFiles(context.materializedTrees, {
       prefix: `${PACKAGE_DIR}/`,
       claimed: new Set(copiedPaths),
     });
@@ -683,7 +683,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           severity: "error",
           scope: "projection",
           path: file.path,
-          message: `generated Hooknostic path ${JSON.stringify(file.path)} collides with the materialized runtime at the same path; point its "into" at a directory the output does not use`,
+          message: `generated Hooknostic path ${JSON.stringify(file.path)} collides with a materialized package tree at the same path; point its "into" at a directory the output does not use`,
         });
         continue;
       }

@@ -12,7 +12,7 @@ import {
   isJsonObject as object,
   isRejectedSkillPath,
   isRootNpmManifestPath,
-  materializedRuntimeFiles,
+  materializedPackageFiles,
   parseJsonObject,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
@@ -313,9 +313,9 @@ export async function projectAgentPluginToClaude(
     copiedPaths.add(path);
   }
 
-  const materialized = materializedRuntimeFiles(context.materializedRuntimes, { claimed: copiedPaths });
+  const materialized = materializedPackageFiles(context.materializedTrees, { claimed: copiedPaths });
   issues.push(...materialized.issues);
-  // A runtime tree landing on a path this projection generates is a collision
+  // A materialized tree landing on a path this projection generates is a collision
   // between two of its own outputs, not package content, and the later
   // `files.set` at each generated path would silently drop the runtime.
   // `isReservedNativePath` covers all of them: the manifest, `.mcp.json` and
@@ -329,7 +329,7 @@ export async function projectAgentPluginToClaude(
         scope: "projection",
         component: "agent-plugin.client-extension.files",
         path: file.path,
-        message: `the materialized runtime lands on ${JSON.stringify(file.path)}, a path this projection generates or Claude reads as native configuration; point its "into" at a directory the output does not use`,
+        message: `a materialized package tree lands on ${JSON.stringify(file.path)}, a path this projection generates or Claude reads as native configuration; point its "into" at a directory the output does not use`,
       });
       continue;
     }
@@ -426,7 +426,7 @@ export async function projectAgentPluginToClaude(
       }
       if (materializedPaths.has(MCP_LAUNCHER_PATH)) {
         throw new Error(
-          `generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with the materialized runtime; point its "into" at a directory the output does not use`,
+          `generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with a materialized package tree; point its "into" at a directory the output does not use`,
         );
       }
       if (files.has(MCP_LAUNCHER_PATH)) {
@@ -470,7 +470,7 @@ export async function projectAgentPluginToClaude(
           severity: "error",
           scope: "projection",
           path: hookFile.path,
-          message: `generated Hooknostic path ${JSON.stringify(hookFile.path)} collides with the materialized runtime at the same path; point its "into" at a directory the output does not use`,
+          message: `generated Hooknostic path ${JSON.stringify(hookFile.path)} collides with a materialized package tree at the same path; point its "into" at a directory the output does not use`,
         });
         continue;
       }

@@ -218,11 +218,10 @@ async function validateDirectMcpPaths(
  * `components.executableFiles` names (ADR-0013), so a server that *is* its own
  * binary or script ships unable to run.
  *
- * A server whose command is an interpreter -- `node`, `python3`, `uvx`,
- * `docker` -- reaches neither check, because its entry travels as an argument
- * and an argument needs no permission. That asymmetry is the reason this exists:
- * it is the one shape where a Node server is structurally safe and a compiled
- * or scripted one is not.
+ * A server whose command is a bare executable name reaches neither check,
+ * because its entry travels as an argument and an argument needs no permission.
+ * That asymmetry is the reason this exists: it is the one command shape where
+ * the package itself must supply an executable file.
  *
  * Host permissions are deliberately not consulted. ADR-0013 makes the
  * declaration the source of truth, and a package built on Windows -- where the
@@ -623,33 +622,13 @@ function digest(files: readonly AgentPluginFile[]): string {
 
 /**
  * Names never inventoried, at any depth: version control, installed
- * dependencies, build caches, and environment/registry secrets. A package that
- * ships `node_modules` or `.env` is never what an author meant to distribute.
- *
- * The non-npm entries are here for the same reason `node_modules` is, and one
- * more: a virtualenv's `bin/python` is a symlink to the interpreter that built
- * it, which escapes the package root and makes `inventory` fail the whole
- * package rather than skip a directory nobody meant to ship.
- *
- * `vendor` and `target` are deliberately absent. Go's `vendor/` is meant to be
- * committed, and a prebuilt binary under `target/` is how a Rust or Go server
- * supplies its own runtime -- excluding either would break the one delivery
- * route those ecosystems have. The rule is "machine-local state that pins an
- * absolute path", not "anything a package manager wrote".
+ * dependencies, and environment/registry secrets. A package that ships
+ * `node_modules` or `.env` is never what an author meant to distribute.
  */
 export const AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES = [
   ".git",
   ".hooknostic",
   "node_modules",
-  ".venv",
-  "venv",
-  "__pycache__",
-  "*.pyc",
-  ".tox",
-  ".nox",
-  ".mypy_cache",
-  ".pytest_cache",
-  ".ruff_cache",
   ".env",
   ".env.*",
   ".npmrc",

@@ -77,23 +77,64 @@ export interface TargetConfig {
   compatibility?: CompatibilityPolicy;
 }
 
-/**
- * Source files for a Node.js runtime package. Projectors choose how, or whether,
- * a target can materialize this input.
- */
-/** One declared runtime dependency set; see `ComponentPolicy.runtime`. */
-export interface AgentPluginRuntimeConfig {
-  /** `npm`, `pypi`, `nuget`, `cargo`, `golang`. */
-  ecosystem: string;
-  /** Installed runtimes only: dependency manifest, relative to the Agent Plugin root. */
-  manifest?: string;
-  /** Installed runtimes only: lockfile, relative to the Agent Plugin root. */
-  lockfile?: string;
-  delivery: "harness-installed" | "build-materialized" | "author-supplied";
-  /** Where a materialized tree is written, relative to the target output. */
-  into?: string;
-  /** npm + `harness-installed` only; see `AgentPluginRuntimePackageConfig`. */
-  allowInstallScripts?: string[];
+export interface PackageMaterializerFile {
+  path: string;
+  contents: Uint8Array;
+}
+
+export interface PackageMaterializerInput {
+  /** The package-relative path declared in `components.materialize`. */
+  path: string;
+  /** Canonical absolute path, proven to remain inside the package root. */
+  absolutePath: string;
+  contents: Uint8Array;
+}
+
+export interface PackageMaterializerContext {
+  /** Canonical absolute Agent Plugin package root. */
+  root: string;
+  inputs: Readonly<Record<string, PackageMaterializerInput>>;
+}
+
+export interface PackageMaterializationPlan {
+  /** Executable name or path. Hooknostic invokes it without a shell. */
+  command: string;
+  args: readonly string[];
+}
+
+export interface PackageMaterializationResult {
+  files: readonly PackageMaterializerFile[];
+  problems: readonly string[];
+}
+
+export interface PackageMaterializer {
+  /** Stable, human-readable identity used in diagnostics. */
+  id: string;
+  /** Provider-owned input validation performed before any command is run. */
+  validate?(context: PackageMaterializerContext): readonly string[] | Promise<readonly string[]>;
+  /** Plan an install or generation into `outputDir`. */
+  plan(
+    context: PackageMaterializerContext & { outputDir: string },
+  ): PackageMaterializationPlan | Promise<PackageMaterializationPlan>;
+  /** Normalize or validate the produced opaque tree before Hooknostic places it. */
+  postprocess?(
+    files: readonly PackageMaterializerFile[],
+    context: PackageMaterializerContext,
+  ): PackageMaterializationResult | Promise<PackageMaterializationResult>;
+}
+
+/** Identity helper that preserves a materializer's concrete TypeScript shape. */
+export function definePackageMaterializer<const T extends PackageMaterializer>(materializer: T): T {
+  return materializer;
+}
+
+export interface PackageMaterializationConfig {
+  /** Trusted provider imported by `hooknostic.config.ts`. */
+  provider: PackageMaterializer;
+  /** Provider-named package-relative regular-file inputs. */
+  inputs: Record<string, string>;
+  /** Portable POSIX destination relative to each projected plugin root. */
+  into: string;
 }
 
 export interface AgentPluginRuntimePackageConfig {
@@ -147,24 +188,12 @@ interface ComponentPolicy<TTarget extends string> {
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
   /**
-   * What an MCP server needs at run time, declared per ecosystem.
-   *
-   * The generalization of `runtimePackage`, which is the `npm` +
-   * `harness-installed` case and still works as a shorthand for it. Which
-   * deliveries an ecosystem can offer is a property of the ecosystem:
-   *
-   * - `harness-installed` needs a harness that installs. Only Claude does, and
-   *   only for npm (ADR-0012).
-   * - `build-materialized` has Hooknostic run a locked, script-free install at
-   *   build time and commit the result into `into`. Admissible only where the
-   *   produced bytes are the same on every machine, which is verified rather
-   *   than trusted -- an artifact is built once and installed anywhere
-   *   (ADR-0006), so a tree containing a native object is refused.
-   * - `author-supplied` is a vendored tree or prebuilt binary already in the
-   *   package. It is the only delivery a native toolchain such as cargo or go
-   *   can offer, because its output is one platform's.
+   * Opaque package trees produced by trusted, author-supplied Node providers.
+   * Materializers are package content, not MCP declarations: Hooknostic knows
+   * how to stage and place their output but carries no ecosystem-specific
+   * installer policy of its own (ADR-0017).
    */
-  runtime?: AgentPluginRuntimeConfig[];
+  materialize?: PackageMaterializationConfig[];
   /** Whether a valid but unrepresentable component fails or degrades the build. Default `"error"`. */
   onUnsupported?: "error" | "warn";
   /**
@@ -191,8 +220,20 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
       }
-    | ({ root?: never; skills: string[]; mcp?: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
-    | ({ root?: never; skills?: string[]; mcp: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
+    | ({
+        root?: never;
+        skills: string[];
+        mcp?: string;
+        executableFiles?: never;
+        materialize?: never;
+      } & DirectComponentPolicy<TTarget>)
+    | ({
+        root?: never;
+        skills?: string[];
+        mcp: string;
+        executableFiles?: never;
+        materialize?: never;
+      } & DirectComponentPolicy<TTarget>)
   );
 
 export type TargetsConfig = Record<string, TargetConfig>;

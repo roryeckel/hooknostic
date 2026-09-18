@@ -229,18 +229,19 @@ describe("canonical schemas", () => {
     ).toBe(false);
   });
 
-  it("requires components.runtime to have a package-delivery component target", () => {
+  it("accepts a structural package materializer and requires a rooted package-delivery target", () => {
+    const provider = { id: "fixture", plan: () => ({ command: "fixture", args: [] }) };
     const projectOnly = {
       project: { root: "." },
       components: {
         root: ".",
-        runtime: [{ ecosystem: "pypi", delivery: "build-materialized", lockfile: "requirements.txt", into: "lib" }],
+        materialize: [{ provider, inputs: { lock: "dependencies.lock" }, into: "generated" }],
       },
       targets: { claude: { version: ">=2.1 <3", delivery: "project" as const, output: "./dist/claude" } },
     };
 
     expect(() => hooknosticConfigSchema.parse(projectOnly)).toThrow(
-      /components\.runtime requires at least one package-delivery component target/,
+      /components\.materialize requires at least one package-delivery component target/,
     );
     expect(
       hooknosticConfigSchema.safeParse({
@@ -251,6 +252,22 @@ describe("canonical schemas", () => {
         },
       }).success,
     ).toBe(true);
+
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...projectOnly,
+        components: { skills: ["skills"], materialize: projectOnly.components.materialize },
+      }).success,
+    ).toBe(false);
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...projectOnly,
+        components: {
+          root: ".",
+          materialize: [{ provider: { id: "broken" }, inputs: {}, into: "generated" }],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("scopes component delivery invariants to selected targets", () => {

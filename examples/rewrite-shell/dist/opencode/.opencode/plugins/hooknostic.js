@@ -4358,6 +4358,12 @@ var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
 var MAX_TIMER_DELAY_MS = 2147483647;
+var packageMaterializerSchema = external_exports.custom((value) => {
+  if (typeof value !== "object" || value === null)
+    return false;
+  const materializer = value;
+  return typeof materializer.id === "string" && materializer.id.length > 0 && typeof materializer.plan === "function" && (materializer.validate === void 0 || typeof materializer.validate === "function") && (materializer.postprocess === void 0 || typeof materializer.postprocess === "function");
+}, { message: "must be a PackageMaterializer with a non-empty id and plan function" });
 var toolInvocationSchema = external_exports.object({
   kind: toolKindSchema,
   nativeName: external_exports.string(),
@@ -4459,13 +4465,10 @@ var hooknosticConfigSchema = external_exports.object({
       lockfile: external_exports.string().min(1),
       allowInstallScripts: external_exports.array(external_exports.string().min(1)).optional()
     }).strict().optional(),
-    runtime: external_exports.array(external_exports.object({
-      ecosystem: external_exports.string().min(1),
-      manifest: external_exports.string().min(1).optional(),
-      lockfile: external_exports.string().min(1).optional(),
-      delivery: external_exports.enum(["harness-installed", "build-materialized", "author-supplied"]),
-      into: external_exports.string().min(1).optional(),
-      allowInstallScripts: external_exports.array(external_exports.string().min(1)).optional()
+    materialize: external_exports.array(external_exports.object({
+      provider: packageMaterializerSchema,
+      inputs: external_exports.record(external_exports.string(), external_exports.string().min(1)),
+      into: external_exports.string().min(1)
     }).strict()).min(1).optional(),
     onUnsupported: external_exports.enum(["error", "warn"]).optional(),
     onInvalid: external_exports.enum(["error", "warn"]).optional()
@@ -4565,11 +4568,18 @@ var hooknosticConfigSchema = external_exports.object({
         });
       }
     }
-    if (config.components.runtime !== void 0 && ![...componentTargets].some((target) => config.targets[target]?.delivery === "package")) {
+    if (config.components.materialize !== void 0 && config.components.root === void 0) {
       context.addIssue({
         code: external_exports.ZodIssueCode.custom,
-        path: ["components", "runtime"],
-        message: "components.runtime requires at least one package-delivery component target"
+        path: ["components", "materialize"],
+        message: "components.materialize requires components.root"
+      });
+    }
+    if (config.components.materialize !== void 0 && ![...componentTargets].some((target) => config.targets[target]?.delivery === "package")) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["components", "materialize"],
+        message: "components.materialize requires at least one package-delivery component target"
       });
     }
     if (config.entry === void 0) {

@@ -11,7 +11,12 @@ for its own sake — they are what keeps the project's central promise affordabl
 
 A compiler with optional project reconciliation. Portable hooks, direct skills/MCP, or an Agent Plugins package go in;
 native per-harness artifacts come out. Projection is a packaging transform, not an
-dependency installer, marketplace, or runtime service. Explicit `sync` reconciles project files; it never changes harness trust or installs dependencies. See [repository-local integration](docs/project-integration.md) and [ADR-0015](docs/decisions/0015-project-integration.md).
+implicit dependency installer, marketplace, or runtime service. A package build may
+explicitly run trusted, author-supplied `components.materialize` providers, but core owns
+no ecosystem or package-manager policy ([ADR-0017](docs/decisions/0017-mcp-runtime-dependencies.md)).
+Explicit `sync` reconciles project files; it never changes harness trust or installs
+dependencies. See [repository-local integration](docs/project-integration.md) and
+[ADR-0015](docs/decisions/0015-project-integration.md).
 
 Its actual product is **honest capability information**. Coding agents differ in
 what a hook is allowed to *do* — block a call, rewrite tool input, add

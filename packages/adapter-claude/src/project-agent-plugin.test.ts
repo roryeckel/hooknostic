@@ -873,38 +873,38 @@ describe("Agent Plugin to Claude projection", () => {
     expect(plan.issues).toHaveLength(3);
   });
 
-  const projectWithRuntime = (pkg: AgentPluginPackage, into: string, path: string) =>
+  const projectWithMaterializedTree = (pkg: AgentPluginPackage, into: string, path: string) =>
     projectAgentPluginToClaude(pkg, {
       target,
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedRuntimes: [{ ecosystem: "pypi", into, files: [{ path, contents: encoder.encode(path) }] }],
+      materializedTrees: [{ provider: "fixture", into, files: [{ path, contents: encoder.encode(path) }] }],
     });
 
-  it("places a materialized runtime at the plugin root without calling it copied", async () => {
-    const plan = await projectWithRuntime(source(), "runtime/pypi", "idna/core.py");
+  it("places a materialized package tree at the plugin root without calling it copied", async () => {
+    const plan = await projectWithMaterializedTree(source(), "generated/dependencies", "library/data.bin");
 
-    expect(plan.files.some((candidate) => candidate.path === "runtime/pypi/idna/core.py")).toBe(true);
+    expect(plan.files.some((candidate) => candidate.path === "generated/dependencies/library/data.bin")).toBe(true);
     expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
     // The bytes came from an installer, not the package: the summary's
     // "copied byte-for-byte" list must not claim them.
-    expect(plan.summary.copiedPaths).not.toContain("runtime/pypi/idna/core.py");
+    expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
   });
 
-  it("refuses a materialized runtime that lands on a generated or native path", async () => {
+  it("refuses a materialized package tree that lands on a generated or native path", async () => {
     // Without this the later `files.set` at each generated path silently drops
     // the runtime, and `runtime/mcp-launcher.mjs` would blame package content.
     // The launcher is reported through the projector's throw path, so the
     // message rather than a `path` field carries the destination.
-    const hooks = await projectWithRuntime(source(), "hooks", "hooks.json");
+    const hooks = await projectWithMaterializedTree(source(), "hooks", "hooks.json");
     expect(hooks.issues).toContainEqual(expect.objectContaining({ severity: "error", path: "hooks/hooks.json" }));
 
-    const launcher = await projectWithRuntime(source(), "runtime", "mcp-launcher.mjs");
+    const launcher = await projectWithMaterializedTree(source(), "runtime", "mcp-launcher.mjs");
     expect(launcher.issues).toContainEqual(
       expect.objectContaining({
         severity: "error",
-        message: expect.stringContaining("collides with the materialized runtime"),
+        message: expect.stringContaining("collides with a materialized package tree"),
       }),
     );
   });

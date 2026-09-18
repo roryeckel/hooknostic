@@ -110,7 +110,7 @@ async function fixtureProject(): Promise<string> {
 }
 
 describe("hooknostic check", () => {
-  it("does not validate or materialize a package runtime when narrowed to a project target", async () => {
+  it("does not validate or materialize package content when narrowed to a project target", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-project-runtime-"));
     tempDirs.push(dir);
     await writeFile(
@@ -124,11 +124,10 @@ describe("hooknostic check", () => {
         components: {
           root: ".",
           targets: ["claude", "opencode"],
-          runtime: [{
-            ecosystem: "pypi",
-            delivery: "build-materialized",
-            lockfile: "./missing-requirements.txt",
-            into: "runtime/pypi",
+          materialize: [{
+            provider: { id: "fixture", plan() { throw new Error("provider was invoked"); } },
+            inputs: { lock: "missing.lock" },
+            into: "generated/dependencies",
           }],
         },
         targets: {
@@ -152,14 +151,14 @@ describe("hooknostic check", () => {
     expect(JSON.parse(capture.out()).diagnostics).toEqual([]);
   });
 
-  it("does not invoke a package manager before capability analysis succeeds", async () => {
+  it("does not invoke a materializer before capability analysis succeeds", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-runtime-analysis-"));
     tempDirs.push(dir);
     await writeFile(
       join(dir, "plugin.json"),
       JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "runtime-analysis-probe" }),
     );
-    await writeFile(join(dir, "requirements.txt"), "idna==3.19 --hash=sha256:abc\n");
+    await writeFile(join(dir, "packages.lock"), "locked fixture\n");
     await writeFile(
       join(dir, "hooks.ts"),
       `import { definePlugin, hook, preventStop } from "@hooknostic/sdk";
@@ -178,11 +177,10 @@ describe("hooknostic check", () => {
         entry: "./hooks.ts",
         components: {
           root: ".",
-          runtime: [{
-            ecosystem: "pypi",
-            delivery: "build-materialized",
-            lockfile: "requirements.txt",
-            into: "runtime/pypi",
+          materialize: [{
+            provider: { id: "fixture", plan() { throw new Error("provider was invoked"); } },
+            inputs: { lock: "packages.lock" },
+            into: "runtime/dependencies",
           }],
         },
         targets: {
@@ -191,47 +189,40 @@ describe("hooknostic check", () => {
       };`,
     );
     const capture = captureIO();
-    const originalPath = process.env["PATH"];
-    process.env["PATH"] = "";
-    try {
-      expect(
-        await runCheck({
-          config: join(dir, "hooknostic.config.ts"),
-          json: true,
-          registry: defaultAdapterRegistry(),
-          io: capture.io,
-          evaluate: EVALUATE,
-        }),
-      ).toBe(2);
-    } finally {
-      process.env["PATH"] = originalPath;
-    }
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(2);
 
     const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string; message: string }[];
     expect(diagnostics.some((diagnostic) => diagnostic.code === "HN201")).toBe(true);
     expect(diagnostics.some((diagnostic) => diagnostic.code === "HN501")).toBe(false);
   });
 
-  it("marks targets unsuccessful when runtime materialization fails", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-runtime-install-"));
+  it("marks targets unsuccessful when package materialization fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-materialize-"));
     tempDirs.push(dir);
     await writeFile(
       join(dir, "plugin.json"),
-      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "runtime-install-probe" }),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "materialize-probe" }),
     );
-    await writeFile(join(dir, "requirements.txt"), "idna==3.19 --hash=sha256:abc\n");
-    await writeFile(join(dir, "hooks.ts"), `export default { name: "runtime-install-probe", hooks: [] };`);
+    await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "materialize-probe", hooks: [] };`);
     await writeFile(
       join(dir, "hooknostic.config.ts"),
       `export default {
         entry: "./hooks.ts",
         components: {
           root: ".",
-          runtime: [{
-            ecosystem: "pypi",
-            delivery: "build-materialized",
-            lockfile: "requirements.txt",
-            into: "runtime/pypi",
+          materialize: [{
+            provider: { id: "fixture", plan() { return { command: "hooknostic-missing-materializer", args: [] }; } },
+            inputs: { lock: "packages.lock" },
+            into: "runtime/dependencies",
           }],
         },
         targets: {
@@ -240,37 +231,31 @@ describe("hooknostic check", () => {
       };`,
     );
 
-    const originalPath = process.env["PATH"];
-    process.env["PATH"] = "";
-    try {
-      const checkCapture = captureIO();
-      expect(
-        await runCheck({
-          config: join(dir, "hooknostic.config.ts"),
-          json: true,
-          registry: defaultAdapterRegistry(),
-          io: checkCapture.io,
-          evaluate: EVALUATE,
-        }),
-      ).toBe(2);
-      const checkReport = JSON.parse(checkCapture.out());
-      expect(checkReport.targets.opencode.ok).toBe(false);
-      expect(checkReport.diagnostics).toContainEqual(expect.objectContaining({ code: "HN501" }));
+    const checkCapture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: checkCapture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(2);
+    const checkReport = JSON.parse(checkCapture.out());
+    expect(checkReport.targets.opencode.ok).toBe(false);
+    expect(checkReport.diagnostics).toContainEqual(expect.objectContaining({ code: "HN501" }));
 
-      const buildCapture = captureIO();
-      expect(
-        await runBuild({
-          config: join(dir, "hooknostic.config.ts"),
-          registry: defaultAdapterRegistry(),
-          io: buildCapture.io,
-          evaluate: EVALUATE,
-        }),
-      ).toBe(2);
-      expect(buildCapture.out()).toMatch(/FAIL\s+opencode/);
-      expect(buildCapture.out()).not.toContain("BUILT  opencode");
-    } finally {
-      process.env["PATH"] = originalPath;
-    }
+    const buildCapture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        registry: defaultAdapterRegistry(),
+        io: buildCapture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(2);
+    expect(buildCapture.out()).toMatch(/FAIL\s+opencode/);
+    expect(buildCapture.out()).not.toContain("BUILT  opencode");
   });
 
   it("reports an excluded direct MCP source as HN503", async () => {

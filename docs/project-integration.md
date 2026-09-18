@@ -99,10 +99,12 @@ Hooknostic omits an affected package-origin remote server and reports HN205;
 literal package remotes without references are emitted normally. Direct Claude
 project declarations retain the harness's native runtime expansion.
 `${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves to
-ignored project-local `.hooknostic/data`. Dependencies must already be installed: project delivery references a server where it already lives rather than copying it, so `components.runtime` does not apply here — the project supplies its own.
-Accordingly, configuring `components.runtime` requires at least one package-delivery
-component target. When a mixed configuration is narrowed to project targets, package
-runtime validation and materialization are skipped.
+ignored project-local `.hooknostic/data`. Dependencies must already be installed:
+project delivery references a server where it already lives rather than copying it, so
+`components.materialize` does not apply here — the project supplies its own. Accordingly,
+configuring materialization requires at least one package-delivery component target.
+When a mixed configuration is narrowed to project targets, provider validation and
+materialization are skipped.
 Codex project MCP uses owned server entries in `.codex/config.toml`. Stdio uses
 an inline Node bootstrap that locates the nearest integration from the invocation
 directory, checks its owner and generated-file hashes, then imports the launcher.

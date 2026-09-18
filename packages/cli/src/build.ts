@@ -15,22 +15,22 @@ export function describeProjection(projection: AgentPluginTargetReport): string 
 }
 
 /**
- * What each stdio server needs from the machine it finally runs on.
+ * How each stdio server's declared command is resolved.
  *
- * Reported because nothing else says it. A server declared `uvx` builds green
- * on a machine that has never had `uv`, ships, and then dies on the consumer's
- * with a message about a missing binary rather than a missing plugin. `check`
- * and `build` state the requirement; `doctor` is what probes it.
+ * Hooknostic can prove whether the declared command is shipped by the package
+ * or looked up on PATH. It does not inspect the command for interpreters,
+ * libraries, daemons, or other transitive dependencies. `doctor` probes only
+ * the PATH-looked-up command and keeps that result advisory.
  *
  * Every projected stdio server additionally needs Node, because the generated
  * launcher is a Node program. That is a property of the projection rather than
  * the package, so the adapters report it and this does not repeat it.
  */
-export function describeMcpPrerequisites(mcpServers: BuildReport["mcpServers"]): string[] {
+export function describeMcpCommands(mcpServers: BuildReport["mcpServers"]): string[] {
   return (mcpServers ?? []).map((server) =>
-    server.contained
-      ? `  ${server.server}: runs ${server.command}, which the package ships`
-      : `  ${server.server}: needs ${server.requires.join(", ")} on the consumer's PATH`,
+    server.resolution === "package"
+      ? `  ${server.server}: command ${server.command} is shipped by the package`
+      : `  ${server.server}: command ${server.command} is looked up on the consumer's PATH`,
   );
 }
 
@@ -76,9 +76,9 @@ export async function runBuild(options: BuildCommandOptions): Promise<number> {
       `\nAgent Plugin ${result.report.components.root} → ${result.report.components.targets.join(", ")}`,
     );
   }
-  const prerequisites = describeMcpPrerequisites(result.report.mcpServers);
-  if (prerequisites.length > 0 && result.report.components === undefined) options.io.stdout("\nMCP servers");
-  for (const line of prerequisites) options.io.stdout(line);
+  const commands = describeMcpCommands(result.report.mcpServers);
+  if (commands.length > 0 && result.report.components === undefined) options.io.stdout("\nMCP commands");
+  for (const line of commands) options.io.stdout(line);
   options.io.stdout(
     result.ok
       ? `\nbuild succeeded${result.reportPath ? `; report written to ${result.reportPath}` : ""}`

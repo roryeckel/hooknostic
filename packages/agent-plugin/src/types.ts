@@ -172,15 +172,15 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
   hookArtifacts: readonly AgentPluginProjectionFile[];
   runtimePackage?: AgentPluginRuntimePackage;
   /**
-   * Runtimes Hooknostic installed at build time, for this projector to place.
+   * Opaque package trees author-supplied providers produced for this projector.
    *
    * Handed over as bytes rather than a path because the package root is
    * read-only input (ADR-0011) and because where a tree has to land differs by
    * adapter: it must be reachable from that harness's own plugin root, which
    * for OpenCode is the nested `package/` directory rather than the output.
    */
-  materializedRuntimes?: readonly {
-    ecosystem: string;
+  materializedTrees?: readonly {
+    provider: string;
     /** Destination relative to this projector's plugin root. */
     into: string;
     files: readonly { path: string; contents: Uint8Array }[];

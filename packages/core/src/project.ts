@@ -1,6 +1,6 @@
 import { dirname, relative, resolve } from "node:path";
 
-import { type BuildOptions, buildProject, type McpServerPrerequisites } from "./build.js";
+import { type BuildOptions, buildProject, type McpServerCommand } from "./build.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { loadConfig } from "./load.js";
 import { applyProject, type ProjectIntegration, reconcileProject, recoverProject } from "./project-files.js";
@@ -12,8 +12,8 @@ export interface ProjectCommandResult {
   guidance: string[];
   errors: string[];
   diagnostics: Diagnostic[];
-  /** What each stdio server needs from the machine it finally runs on. */
-  mcpServers: McpServerPrerequisites[];
+  /** How each stdio server's declared command is resolved. */
+  mcpServers: McpServerCommand[];
 }
 export async function runProject(
   options: BuildOptions & { command: "sync" | "verify" | "recover" },

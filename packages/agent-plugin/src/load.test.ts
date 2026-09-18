@@ -295,7 +295,7 @@ describe("loadAgentPlugin", () => {
   it("skips a contained command that was never declared executable, and names the remedy", async () => {
     const root = await packageRoot();
     await mkdir(join(root, "bin"), { recursive: true });
-    await writeFile(join(root, "bin", "server"), "exec python3");
+    await writeFile(join(root, "bin", "server"), "exec external-runner");
     await writeFile(
       join(root, "mcp.json"),
       JSON.stringify({
@@ -322,24 +322,6 @@ describe("loadAgentPlugin", () => {
     const declared = await loadAgentPlugin({ root, executableFiles: ["bin/server"] });
     expect(Object.keys(declared.package?.mcp?.mcpServers ?? {})).toEqual(["scripted"]);
     expect(declared.issues).toEqual([]);
-  });
-
-  it("never inventories a virtualenv, whose interpreter link escapes the package root", async () => {
-    const root = await packageRoot();
-    const outside = await mkdtemp(join(tmpdir(), "hooknostic-agent-plugin-interpreter-"));
-    roots.push(outside);
-    await writeFile(join(outside, "python3"), "interpreter");
-    await mkdir(join(root, ".venv"), { recursive: true });
-    // A real virtualenv links its interpreter to the one that built it. Before
-    // `.venv` was excluded this aborted the whole package rather than a
-    // directory nobody meant to distribute.
-    await symlink(outside, join(root, ".venv", "bin"), process.platform === "win32" ? "junction" : "dir");
-    await writeFile(join(root, "server.py"), "print(1)");
-
-    const loaded = await loadAgentPlugin({ root });
-
-    expect(loaded.issues).toEqual([]);
-    expect(loaded.package?.files.map((file) => file.path)).toEqual(["plugin.json", "server.py"]);
   });
 
   it("names components.exclude when a link escapes the package root", async () => {

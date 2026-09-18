@@ -15,14 +15,18 @@ import {
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
-  mcpPrerequisites,
-  type McpServerPrerequisites,
+  type McpServerCommand,
+  mcpServerCommands,
   npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
-  type RuntimeDeclaration,
 } from "@hooknostic/agent-plugin";
-import { meetsMinimum, type ProjectMcpTargetOverride, type SupportLevel } from "@hooknostic/sdk";
+import {
+  meetsMinimum,
+  type PackageMaterializationConfig,
+  type ProjectMcpTargetOverride,
+  type SupportLevel,
+} from "@hooknostic/sdk";
 
 import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, TargetSpec } from "./adapter.js";
 import { targetSpecFromConfig } from "./adapter.js";
@@ -43,17 +47,16 @@ import type { PluginIR } from "./ir.js";
 import { buildPluginIR } from "./ir.js";
 import type { EvaluateOptions } from "./load.js";
 import { loadConfig, loadPluginSource } from "./load.js";
+import {
+  effectiveRuntimePackage,
+  type MaterializedPackageTree,
+  materializePackages,
+  validateMaterializationDeclarations,
+} from "./materialize.js";
 import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
-import {
-  effectiveRuntimePackage,
-  type MaterializedRuntime,
-  materializeRuntimes,
-  runtimeSpellingProblem,
-  validateRuntimeDeclarations,
-} from "./runtime.js";
 
 export const HOOKNOSTIC_VERSION = "0.1.0";
 
@@ -67,7 +70,7 @@ export interface BuildOptions {
   configResult?: Awaited<ReturnType<typeof loadConfig>>;
 }
 
-export { mcpRequiredCommands, type McpServerPrerequisites } from "@hooknostic/agent-plugin";
+export { mcpPathCommands, type McpServerCommand } from "@hooknostic/agent-plugin";
 
 export interface AgentPluginTargetReport {
   status: "success" | "failed" | "skipped";
@@ -101,8 +104,8 @@ export interface BuildReport {
   hooknosticVersion: string;
   source?: string;
   targets: Record<string, BuildTargetReport>;
-  /** What each stdio server needs from the machine it finally runs on. */
-  mcpServers?: McpServerPrerequisites[];
+  /** How each stdio server's declared command is resolved. */
+  mcpServers?: McpServerCommand[];
   components?: {
     root: string;
     specVersion: "1.0.0";
@@ -481,8 +484,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   );
 
   let components: AgentPluginPackage | undefined;
-  let materializedRuntimes: MaterializedRuntime[] = [];
-  let runtimeDeclarations: RuntimeDeclaration[] = [];
+  let materializedTrees: MaterializedPackageTree[] = [];
+  let materializationDeclarations: PackageMaterializationConfig[] = [];
   if (config.components?.root !== undefined) {
     const agentPluginRoot = resolve(configDir, config.components.root);
     const nativeProjectPaths =
@@ -529,10 +532,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     };
 
     if (selectedPackageProjection) {
-      const spelling = runtimeSpellingProblem(config.components);
-      if (spelling !== undefined) diagnostics.push({ code: "HN501", severity: "error", message: spelling });
-      runtimeDeclarations = (config.components.runtime ?? []) as RuntimeDeclaration[];
-      for (const problem of await validateRuntimeDeclarations(agentPluginRoot, runtimeDeclarations)) {
+      materializationDeclarations = config.components.materialize ?? [];
+      for (const problem of await validateMaterializationDeclarations(agentPluginRoot, materializationDeclarations)) {
         diagnostics.push({ code: "HN501", severity: "error", message: problem });
       }
     }
@@ -556,7 +557,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
-  if (componentSource !== undefined) report.mcpServers = mcpPrerequisites(componentSource.mcp?.config);
+  if (componentSource !== undefined) report.mcpServers = mcpServerCommands(componentSource.mcp?.config);
   if (
     config.components?.root === undefined &&
     componentSource &&
@@ -671,18 +672,22 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     }
   };
 
-  // A package manager is the one side effect of a dry-run build. Run it only
+  // A configured materializer is the one side effect of a dry-run build. Run it only
   // after analysis and layout validation have established that a selected
   // package projection can consume the result. The installed bytes stay in
   // memory and are placed by each projector; the package root remains read-only
   // input (ADR-0011).
-  if (runtimeDeclarations.some((declaration) => declaration.delivery === "build-materialized")) {
+  if (materializationDeclarations.length > 0) {
     const agentPluginRoot = resolve(configDir, config.components!.root!);
-    const staging = await mkdtemp(join(tmpdir(), "hooknostic-runtime-"));
+    const staging = await mkdtemp(join(tmpdir(), "hooknostic-materialize-"));
     try {
-      const result = await materializeRuntimes({ root: agentPluginRoot, staging, declarations: runtimeDeclarations });
+      const result = await materializePackages({
+        root: agentPluginRoot,
+        staging,
+        declarations: materializationDeclarations,
+      });
       for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
-      materializedRuntimes = result.runtimes;
+      materializedTrees = result.trees;
     } finally {
       await rm(staging, { recursive: true, force: true });
     }
@@ -695,8 +700,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   // A dry run (`hooknostic check`) performs every generation step — bundling,
   // compilation, Agent Plugin projection, artifact validation — in memory so
   // that anything `build` would reject before touching its outputs is reported
-  // now. Only output staging and the commit are skipped; runtime materialization
-  // may still use a package manager's network and cache. A write the target
+  // now. Only output staging and the commit are skipped; package materialization
+  // may still use a provider command's network and cache. A write the target
   // filesystem itself refuses (path length, reserved names) is the one failure
   // only `build` can report.
   const dryRun = options.dryRun === true;
@@ -789,7 +794,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             target: spec,
             hookArtifacts,
             ...(runtimePackage === undefined ? {} : { runtimePackage }),
-            ...(materializedRuntimes.length === 0 ? {} : { materializedRuntimes }),
+            ...(materializedTrees.length === 0 ? {} : { materializedTrees }),
             support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.components!.onUnsupported ?? "error",
           });

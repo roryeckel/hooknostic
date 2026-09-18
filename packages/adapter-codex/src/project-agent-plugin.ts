@@ -15,7 +15,7 @@ import {
   hasUnportableCommandPath,
   isRejectedSkillPath,
   isRootNpmManifestPath,
-  materializedRuntimeFiles,
+  materializedPackageFiles,
   parseJsonObject,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
@@ -501,7 +501,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. What replaces it is not npm-shaped: Node code is bundled, a portable ecosystem can declare components.runtime with build-materialized delivery and have its locked install committed into the package, and anything whose output is built for one platform ships as author-supplied content, which is copied verbatim.",
+            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
         },
       },
       source: {
@@ -808,13 +808,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     for (const file of context.hookArtifacts) {
       if (file.path !== NATIVE_MANIFEST_PATH) generatedByFoldedPath.set(file.path.toLowerCase(), file.path);
     }
-    // The runtimes core materialized are emitted output like any other, so a
+    // Provider-materialized package trees are emitted output like any other, so a
     // hoist landing in one is refused before it happens rather than surfacing
     // later as a collision blamed on "package content" the author never wrote.
     // They join `generatedByFoldedPath` rather than `copiedPaths`: their bytes
     // came from an installer, not from the package, so the summary's "copied
     // byte-for-byte" list must not claim them.
-    const materialized = materializedRuntimeFiles(context.materializedRuntimes, {
+    const materialized = materializedPackageFiles(context.materializedTrees, {
       claimed: new Set(copiedPaths),
     });
     issues.push(...materialized.issues);
@@ -829,7 +829,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           severity: "error",
           scope: "projection",
           path: file.path,
-          message: `the materialized runtime lands on or inside ${JSON.stringify(occupied)}, which the output already carries; point its "into" at a directory nothing else uses`,
+          message: `a materialized package tree lands on or inside ${JSON.stringify(occupied)}, which the output already carries; point its "into" at a directory nothing else uses`,
         });
         continue;
       }

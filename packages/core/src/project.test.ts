@@ -147,7 +147,7 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
 
-  it("carries direct MCP prerequisites through build and project reports", async () => {
+  it("carries declared MCP command resolution through build and project reports", async () => {
     const codex = registry.codex!;
     const { root, options } = await fixture({
       components: { mcp: "./mcp.json", targets: ["codex"] },
@@ -177,10 +177,9 @@ describe("complete project integration", () => {
       {
         server: "local",
         command: "hooknostic-missing-runtime",
-        contained: false,
-        requires: ["hooknostic-missing-runtime"],
+        resolution: "path-lookup",
       },
-      { server: "shipped", command: "./bin/server", contained: true, requires: [] },
+      { server: "shipped", command: "./bin/server", resolution: "package" },
     ];
     expect((built.report as typeof built.report & { mcpServers?: unknown }).mcpServers).toEqual(expected);
 

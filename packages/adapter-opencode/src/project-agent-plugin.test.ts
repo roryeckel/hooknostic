@@ -681,46 +681,48 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(injector(plan)).toContain("Object.defineProperty(config.mcp, name, {");
   });
 
-  const projectWithRuntime = (pkg: AgentPluginPackage, into: string, path: string) =>
+  const projectWithMaterializedTree = (pkg: AgentPluginPackage, into: string, path: string) =>
     opencodeAgentPluginProjector.project(pkg, {
       target,
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedRuntimes: [{ ecosystem: "pypi", into, files: [{ path, contents: encoder.encode(path) }] }],
+      materializedTrees: [{ provider: "fixture", into, files: [{ path, contents: encoder.encode(path) }] }],
     });
 
-  it("places a materialized runtime inside the nested package, not beside it", async () => {
-    const plan = await projectWithRuntime(source(), "runtime/pypi", "idna/core.py");
+  it("places a materialized package tree inside the nested package, not beside it", async () => {
+    const plan = await projectWithMaterializedTree(source(), "generated/dependencies", "library/data.bin");
 
     // OpenCode's ${PLUGIN_ROOT} is the nested package directory, so a
     // root-level tree would be unreachable from the mcp.json naming it.
-    expect(plan.files.some((candidate) => candidate.path === "package/runtime/pypi/idna/core.py")).toBe(true);
+    expect(plan.files.some((candidate) => candidate.path === "package/generated/dependencies/library/data.bin")).toBe(
+      true,
+    );
     expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
     // The bytes came from an installer, not the package: the summary's
     // "copied byte-for-byte" list must not claim them.
-    expect(plan.summary.copiedPaths).not.toContain("package/runtime/pypi/idna/core.py");
+    expect(plan.summary.copiedPaths).not.toContain("package/generated/dependencies/library/data.bin");
   });
 
-  it("refuses a hook artifact that collides with a materialized runtime", async () => {
+  it("refuses a hook artifact that collides with a materialized package tree", async () => {
     // Both are output this projector emits, so the collision is named by the
-    // runtime's destination rather than as a bare duplicate in core.
+    // materializer's destination rather than as a bare duplicate in core.
     const plan = await opencodeAgentPluginProjector.project(source(), {
       target,
-      hookArtifacts: [{ path: "package/vendor/pypi/idna/core.py", contents: "// hook" }],
+      hookArtifacts: [{ path: "package/generated/shared/data.bin", contents: "// hook" }],
       support,
       onUnsupported: "error",
-      materializedRuntimes: [
+      materializedTrees: [
         {
-          ecosystem: "pypi",
-          into: "vendor/pypi",
-          files: [{ path: "idna/core.py", contents: encoder.encode("idna") }],
+          provider: "fixture",
+          into: "generated/shared",
+          files: [{ path: "data.bin", contents: encoder.encode("materialized") }],
         },
       ],
     });
 
-    const issue = plan.issues.find((candidate) => candidate.path === "package/vendor/pypi/idna/core.py");
+    const issue = plan.issues.find((candidate) => candidate.path === "package/generated/shared/data.bin");
     expect(issue?.severity).toBe("error");
-    expect(issue?.message).toContain("collides with the materialized runtime");
+    expect(issue?.message).toContain("collides with a materialized package tree");
   });
 });
