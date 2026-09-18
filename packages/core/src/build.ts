@@ -17,6 +17,7 @@ import {
   loadProjectComponents,
   mcpPrerequisites,
   type McpServerPrerequisites,
+  npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
   type RuntimeDeclaration,
@@ -463,18 +464,6 @@ async function writeArtifacts(
     });
   }
   return dir;
-}
-
-/** The `name` an emitted npm manifest declares, or `undefined` if it declares none. */
-function npmManifestName(contents: string | Uint8Array): string | undefined {
-  const text = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
-  try {
-    const parsed: unknown = JSON.parse(text);
-    const name = (parsed as { name?: unknown })?.name;
-    return typeof name === "string" ? name : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export async function buildProject(options: BuildOptions): Promise<BuildResult> {
@@ -1014,22 +1003,37 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         }
 
         phase = "validation";
-        // Checked by effect, not by asking the adapter whether it publishes:
-        // the question that matters is whether the coordinate actually reached
-        // the manifest npm will read. An adapter that gains npm packaging later
-        // satisfies this with no flag to remember to set.
+        // Analysis already failed any target whose adapter does not declare
+        // `publishesNpmPackage`, so an npmName reaching this point belongs to
+        // an adapter that claims to publish under it. This confirms the claim
+        // against what was actually emitted: a mismatch here is the adapter
+        // breaking its own declaration, not a configuration problem, and the
+        // remediation says so rather than sending the author to a different
+        // harness that does exactly what this one claims to.
         if (spec.npmName !== undefined) {
           const manifest = artifacts.find((artifact) => artifact.path === "package.json");
-          const declared = manifest === undefined ? undefined : npmManifestName(manifest.contents);
+          const coordinate = manifest === undefined ? undefined : npmManifestCoordinate(manifest.contents);
+          const declared = coordinate?.ok === true && typeof coordinate.name === "string" ? coordinate.name : undefined;
           if (declared !== spec.npmName) {
             diagnostics.push({
               code: "HN501",
               severity: "error",
               target: id,
               message:
-                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but its ` +
-                `${adapter.id} output carries no npm manifest under that name`,
-              remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
+                `target ${JSON.stringify(id)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
+                (manifest === undefined
+                  ? `its ${adapter.id} output emits no package.json`
+                  : // Said before the missing-name reading, because a manifest
+                    // npm cannot parse has no fields to be missing and the
+                    // remediation below asks for a defect report describing it.
+                    coordinate?.ok === false
+                    ? `the package.json its ${adapter.id} output emits ${coordinate.error}`
+                    : declared === undefined
+                      ? `the package.json its ${adapter.id} output emits declares no name`
+                      : `the package.json its ${adapter.id} output emits is named ${JSON.stringify(declared)}`),
+              remediation:
+                `this is a defect in the ${adapter.id} adapter, which declares publishesNpmPackage yet emitted ` +
+                `its manifest under another name; report it against the adapter -- removing npmName would only hide it.`,
             });
             target.status = "failed";
             if (target.projection) target.projection.status = "failed";

@@ -438,6 +438,9 @@ describe("Agent Plugin to Claude projection", () => {
             severity: onUnsupported,
             component: "agent-plugin.manifest",
             message: expect.stringContaining("author.name"),
+            // Where the author wrote it. Naming the generated manifest sent
+            // them to a file they do not have.
+            path: "plugin.json#/author",
           }),
         ]);
         expect(parsed(plan, ".claude-plugin/plugin.json")).not.toHaveProperty("author");
@@ -451,6 +454,29 @@ describe("Agent Plugin to Claude projection", () => {
       }
     },
   );
+
+  it("names the client extension when the unrepresentable author came from there", async () => {
+    // Portable identity wins when it exists, so with no root author the
+    // declaration the projection rejected is the extension's own.
+    const portable = source();
+    delete portable.mcp;
+    delete portable.manifest.author;
+    portable.manifest.extensions = { "com.anthropic.claude-code": { author: { name: "" } } };
+
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+    });
+
+    expect(plan.issues).toEqual([
+      expect.objectContaining({
+        path: "plugin.json#/extensions/com.anthropic.claude-code/author",
+        message: expect.stringContaining("author.name"),
+      }),
+    ]);
+  });
 
   it("preserves a representable author without tightening Claude's name rule", async () => {
     const portable = source();
@@ -845,5 +871,41 @@ describe("Agent Plugin to Claude projection", () => {
       ),
     ).toEqual(["hooknostic"]);
     expect(plan.issues).toHaveLength(3);
+  });
+
+  const projectWithRuntime = (pkg: AgentPluginPackage, into: string, path: string) =>
+    projectAgentPluginToClaude(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedRuntimes: [{ ecosystem: "pypi", into, files: [{ path, contents: encoder.encode(path) }] }],
+    });
+
+  it("places a materialized runtime at the plugin root without calling it copied", async () => {
+    const plan = await projectWithRuntime(source(), "runtime/pypi", "idna/core.py");
+
+    expect(plan.files.some((candidate) => candidate.path === "runtime/pypi/idna/core.py")).toBe(true);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    // The bytes came from an installer, not the package: the summary's
+    // "copied byte-for-byte" list must not claim them.
+    expect(plan.summary.copiedPaths).not.toContain("runtime/pypi/idna/core.py");
+  });
+
+  it("refuses a materialized runtime that lands on a generated or native path", async () => {
+    // Without this the later `files.set` at each generated path silently drops
+    // the runtime, and `runtime/mcp-launcher.mjs` would blame package content.
+    // The launcher is reported through the projector's throw path, so the
+    // message rather than a `path` field carries the destination.
+    const hooks = await projectWithRuntime(source(), "hooks", "hooks.json");
+    expect(hooks.issues).toContainEqual(expect.objectContaining({ severity: "error", path: "hooks/hooks.json" }));
+
+    const launcher = await projectWithRuntime(source(), "runtime", "mcp-launcher.mjs");
+    expect(launcher.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: expect.stringContaining("collides with the materialized runtime"),
+      }),
+    );
   });
 });

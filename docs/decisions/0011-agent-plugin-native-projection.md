@@ -546,3 +546,72 @@ decided here.
   it combines both using the corresponding documented path-array or
   inline-object-array form instead of overwriting the author's hooks. The two
   forms are never mixed in one array.
+
+## Amendments — 2026-09-17 (thirteenth)
+
+- **The output-path reservation applies to Codex, not only to Claude.** The
+  2026-09-07 amendment stated the rule — a projector's own output paths are
+  reserved against the package root — and the Claude projector implemented it.
+  The Codex projector implemented a third of it: `.codex-plugin/plugin.json` was
+  refused, while a package-root `.mcp.json` or any other `.codex-plugin/` file
+  was copied verbatim. A copied `.mcp.json` reached Codex's native MCP
+  configuration without passing `translateMcp`, and beside a build that
+  generates one the path was emitted twice — the only complaint being core's
+  duplicate-artifact-path error, which blames the adapter for a file the package
+  wrote. Both are now a fatal `HN503` naming the path, fatal for the reason
+  already recorded for Claude: the package is claiming the projector's output,
+  which is not a valid component the harness cannot represent.
+- **Reserved against a hoist is not the same set as reserved against the package
+  root.** `skills/`, `runtime/` and `hooks.json` are refused as hoist targets and
+  deliberately not as package-root paths. `skills/` is the portable tree the copy
+  loop exists to copy; `runtime/` is inert package content whose one real
+  collision — the generated launcher — is already reported where the launcher is
+  emitted; a root `hooks.json` the native manifest never names is inert on
+  0.154.0 (`.capture/codex-client-extension`), and a collision with a generated
+  hook artifact is likewise already reported. What makes those three dangerous
+  under hoisting is the rewrite, not the path, so completing the two lists into
+  one would newly reject packages with nothing wrong in them — the test the
+  tenth amendment applied to OpenCode's reserved-marker refusal.
+
+## Amendments — 2026-09-17 (fourteenth)
+
+- **An unpublishable package name is two different verdicts.** The eleventh
+  amendment made an invalid name an error rather than a coercion, reading npm's
+  rules as one gate. They are two: a name npm will not install produces a
+  directory that cannot be packed, and stays an error; a name npm installs but
+  will not publish — `MyPlugin`, `http`, anything past 214 characters — costs
+  only publication, and warns. `PluginSpec.name` is `string().min(1)`, so those
+  names are reachable, and they built and loaded before this branch. The
+  distinction matches the sibling version check, which was left a warning for
+  exactly this reason: the package still loads from a local path, and npm does
+  not object until `npm publish`, long after the build. The coercion refusal is
+  unchanged in both tiers — neither rewrites the author's name.
+
+- **A target may name the npm coordinate its output publishes under.** The
+  Agent Plugins name grammar admits only `[a-z0-9.-]`, so `@scope/name` is
+  unspellable in a manifest, and the generated npm manifest takes its name from
+  the manifest. `TargetConfig.npmName` is the only route to a scoped package. It
+  sits on the target rather than the plugin because each target's output is a
+  different npm package — an OpenCode package and a plugin directory are not
+  interchangeable contents, so publishing two means two coordinates. It is also
+  the one place the tier split above does not apply: a coordinate that exists for
+  no purpose other than publishing is fatal when npm would refuse to publish it.
+
+- **`npmName` is gated by an adapter declaration, and confirmed against the
+  emitted manifest.** Asking only whether the coordinate reached a
+  `package.json` in the output answers the wrong question: emitting a root
+  manifest is not publishing one, and two adapters that never read `npmName`
+  emit one anyway — Codex copied the source project's until this branch stopped
+  it, Claude builds one from `components.runtimePackage` — so either name
+  matching by coincidence passed a guard whose whole purpose is catching a
+  setting that quietly does nothing. An adapter now declares
+  `publishesNpmPackage`. That question needs only the config and a static flag,
+  so it is answered in `analyzeCapabilities` beside the other declarative
+  refusals: `check` reports it without generating anything, and `build` never
+  bundles a target it is about to fail. The emitted manifest is still confirmed
+  afterwards, because the two answer different questions — a mismatch there is
+  the adapter breaking its own declaration, and the remediation says so rather
+  than sending the author to a different harness. Undeclared reads as no, so an
+  adapter that gains npm packaging later refuses the coordinate loudly until it
+  says otherwise; for a field that decides where a package is published, failing
+  closed is the safe direction.

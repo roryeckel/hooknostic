@@ -38,8 +38,8 @@ contract suite in `@hooknostic/testkit` audits every row.
 | `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
-| `agent-plugin.client-extension.files` | unsupported | — |
-| `agent-plugin.runtime-package` | unsupported | — |
+| `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
+| `agent-plugin.runtime-package` | unsupported | The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly. |
 
 Project delivery validation records:
 
@@ -95,8 +95,8 @@ Projection validation records:
 | `agent-plugin.mcp.stdio` | emulated | An owned repository-locating Node bootstrap launches the portable server from its declared source root. Node must be on PATH; project trust remains a human prerequisite. |
 | `agent-plugin.mcp.streamable-http` | exact | Native project TOML url and http_headers preserve remote declarations. |
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
-| `agent-plugin.client-extension.files` | unsupported | — |
-| `agent-plugin.runtime-package` | unsupported | — |
+| `agent-plugin.client-extension.files` | unsupported | Project integration writes .codex/config.toml and a skills tree. A plugin's extensions."com.openai" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
+| `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead. |
 
 Project delivery validation records:
 
@@ -150,7 +150,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | The reverse-DNS namespace OpenAI documents is not honoured. Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional; one naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, which convention cannot explain. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line. |
+| 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional. One naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, but that negative was expected -- portable skills/ is canonical and an inline skills value cannot replace it -- so this run says nothing about whether the namespace is read; the 2026-09-17 records below carry the corrected probe. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line. |
 | 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | A plugin's skills/ directory is discovered with no declaration anywhere -- no native manifest, no skills field, no extensions map. The explicit "skills" pointer this projector writes is therefore belt and braces rather than the mechanism, which is what the 180 plugins in the bundled marketplace also do. |
 | 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | No npm dependency installation. A plugin declaring is-number@7.0.0 with a package-lock.json and no node_modules installed with both manifests copied verbatim, no node_modules in the installed root, and import("is-number") failing ERR_MODULE_NOT_FOUND from there. Placing node_modules/is-number by hand made the same import succeed and removing it restored the failure, so the negative is the dependency and not a broken probe. |
 | 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | A node_modules directory shipped inside the source package survives installation and resolves from the installed plugin root, so a vendored or bundled dependency closure is a working route where a declared manifest is not. |
@@ -168,6 +168,9 @@ Projection validation records:
 | 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-hook-command` | A hook command is parsed with quoting honoured and does NOT accept Claude's exec form: of three spellings on one event, command + args failed while the quoted and bare strings both ran, so the substituted plugin-root path is quoted. |
 | 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | Correction and supported-field probe: the earlier custom-skills negative was expected because portable skills/ is canonical and did not test namespace consumption. In one isolated loopback session, extensions.com.openai.hooks failed to run a UserPromptSubmit marker while an equivalent .codex-plugin/plugin.json control fired, establishing that 0.154.0 does not honour the documented inline hooks route. |
 | 0.154.0 | 2026-09-17 | doc-derived | `.capture/codex-client-extension` | Official OpenAI plugin documentation defines the inline extensions.com.openai object as replacing the compatibility overlay, keeps root identity plus portable skills/MCP canonical, and permits hooks as a path, path array, inline object, or inline-object array. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A native .codex-plugin/plugin.json declaring hooks as a two-path array ran both documents' UserPromptSubmit markers in one isolated loopback session, beside the single-path control. The path-array form this projection emits when an author declares a path is consumed, not merely documented. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A root hooks.json the native manifest never names is inert: beside a manifest with no hooks key its marker stayed absent, and beside a manifest declaring an inline hook document only the inline marker fired, while the single-path control ran in the same session. So the generated hooks.json this projection must still emit when it inlines the generated document beside an author's inline object is not discovered by convention, and generated hooks do not run twice on that path. |
 
 ### OpenCode
 
@@ -192,8 +195,8 @@ Projection validation records:
 | `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
-| `agent-plugin.client-extension.files` | unsupported | — |
-| `agent-plugin.runtime-package` | unsupported | — |
+| `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace, at project scope or any other. |
+| `agent-plugin.runtime-package` | unsupported | Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route. |
 
 Project delivery validation records:
 

@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+import { contentsText, isJsonObject } from "@hooknostic/agent-plugin";
 import type {
   DetectionResult,
   GeneratedArtifact,
@@ -124,12 +125,8 @@ export function claudeAdapter(): HarnessAdapter {
       const hooksJson = artifacts.find((a) => a.path === "hooks/hooks.json");
       if (hooksJson) {
         try {
-          const parsed = JSON.parse(
-            typeof hooksJson.contents === "string" ? hooksJson.contents : new TextDecoder().decode(hooksJson.contents),
-          ) as unknown;
-          const object = (value: unknown): value is Record<string, unknown> =>
-            typeof value === "object" && value !== null && !Array.isArray(value);
-          if (!object(parsed) || !object(parsed["hooks"])) {
+          const parsed = JSON.parse(contentsText(hooksJson.contents)) as unknown;
+          if (!isJsonObject(parsed) || !isJsonObject(parsed["hooks"])) {
             throw new Error("document and hooks field must be objects");
           }
           for (const [eventName, entries] of Object.entries(parsed["hooks"])) {

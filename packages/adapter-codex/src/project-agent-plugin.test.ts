@@ -14,7 +14,11 @@ import {
   loadAgentPlugin,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument } from "@hooknostic/core";
-import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
+import {
+  diagnosticsFromAgentPluginIssues,
+  resolveAgentPluginProjection,
+  validateGeneratedArtifacts,
+} from "@hooknostic/core";
 
 import { CODEX_AGENT_PLUGIN_NAMESPACE, codexAgentPluginProjector } from "./project-agent-plugin.js";
 
@@ -433,7 +437,20 @@ describe("Codex client extension", () => {
     });
   });
 
-  it.each(["plugin.json", "mcp.json"])("refuses to hoist reserved root path %s", async (reserved) => {
+  // The npm manifest names are refused for the reason the copy loop strips
+  // them: hoisted to the root they stand in for a coordinate this projection
+  // never publishes, and npm reads the names case-insensitively.
+  it.each([
+    "plugin.json",
+    "mcp.json",
+    ".mcp.json",
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "Package.json",
+    "Plugin.json",
+    ".MCP.json",
+  ])("refuses to hoist reserved root path %s", async (reserved) => {
     const sourcePath = `com.openai/${reserved}`;
     const plan = await project(withFiles(source(), [file(sourcePath)]));
 
@@ -443,6 +460,82 @@ describe("Codex client extension", () => {
         severity: "error",
         component: "agent-plugin.client-extension.files",
         path: sourcePath,
+      }),
+    );
+  });
+
+  // `.mcp.json` is only written when a server survives translation, so without
+  // a reservation the empty-server case hoists an unvalidated native MCP
+  // document to the root instead of colliding with a generated one.
+  it("refuses to hoist onto .mcp.json even when no server is emitted", async () => {
+    const plan = await project(withFiles(source(), [file("com.openai/.mcp.json")]));
+
+    expect(plan.files.some((candidate) => candidate.path === ".mcp.json")).toBe(false);
+  });
+
+  it.each([
+    ["skills/extra/SKILL.md", "skills"],
+    ["runtime/mcp-launcher.mjs", "runtime"],
+    // Inventoried on one filesystem, installed on others: `Skills/` is the
+    // generated `skills/` tree on most of the ones Codex installs onto, and
+    // core's duplicate check folds file paths, not directory prefixes.
+    ["Skills/extra/SKILL.md", "skills"],
+    ["Runtime/mcp-launcher.mjs", "runtime"],
+  ])("refuses to hoist %s into the generated %s tree", async (reserved) => {
+    const sourcePath = `com.openai/${reserved}`;
+    const plan = await project(withFiles(source(), [file(sourcePath)]));
+
+    // The manifest points Codex at `skills/`, and `runtime/` carries the
+    // generated launcher; a namespace file reaching either arrives without
+    // passing the portable loader that validates what goes there.
+    expect(plan.files.some((candidate) => candidate.path === reserved)).toBe(false);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+      }),
+    );
+  });
+
+  it.each(["Skills", "Runtime/vendor"])("refuses to hoist directory %s into a generated tree", async (reserved) => {
+    const sourcePath = `com.openai/${reserved}`;
+    const pkg = source();
+    const plan = await project({ ...pkg, directories: ["com.openai", sourcePath] });
+
+    expect(plan.directories ?? []).not.toContain(reserved);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: sourcePath,
+      }),
+    );
+  });
+
+  it("refuses to resurrect a rejected portable skill through the namespace", async () => {
+    // The portable loader saw `skills/broken` and rejected it, so the copy loop
+    // skips it and the path is free. Hoisting a namespace file onto it puts a
+    // skill Codex will discover back into the tree the loader refused.
+    const pkg = withFiles(source(), [file("skills/broken/SKILL.md"), file("com.openai/skills/broken/SKILL.md")]);
+
+    const plan = await project(pkg);
+
+    expect(plan.files.some((candidate) => candidate.path === "skills/broken/SKILL.md")).toBe(false);
+  });
+
+  it("refuses to hoist a client-extension directory into the generated skills tree", async () => {
+    const pkg = source();
+    pkg.directories = ["com.openai", "com.openai/skills", "com.openai/skills/extra"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories ?? []).not.toContain("skills");
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/skills",
       }),
     );
   });
@@ -466,6 +559,150 @@ describe("Codex client extension", () => {
     expect(plan.files.filter((candidate) => candidate.path.includes("com.openai"))).toEqual([]);
   });
 
+  it("counts a compatibility overlay superseded by an inline extension as skipped", async () => {
+    const plan = await project(
+      withFiles(source({}, { extensions: { "com.openai": { interface: { displayName: "inline" } } } }), [
+        overlay("com.openai/.codex-plugin/plugin.json", JSON.stringify({ interface: { displayName: "overlay" } })),
+      ]),
+    );
+
+    // The documented inline object replaces this overlay, so it is discovered
+    // from the source package but must not be reported as delivered.
+    expect(plan.summary.components["agent-plugin.client-extension.files"]).toEqual({
+      discovered: 2,
+      emitted: 1,
+      skipped: 1,
+    });
+    // The count alone told an author who edited the overlay nothing about why
+    // the edit never arrived. Every other ignored client-extension input --
+    // claimed canonical keys, reserved hoists -- is reported; so is this one.
+    const warning = plan.issues.find((candidate) => candidate.path === "com.openai/.codex-plugin/plugin.json");
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.scope).toBe("projection");
+    expect(warning?.component).toBe("agent-plugin.client-extension.files");
+    expect(warning?.message).toContain("plugin.json#/extensions/com.openai");
+    expect(warning?.message).toContain("ignored");
+  });
+
+  it("hoists empty client-extension directories with their namespace", async () => {
+    const pkg = source();
+    pkg.directories = ["com.openai", "com.openai/assets", "empty"];
+
+    const plan = await project(pkg);
+
+    // `com.openai` is the portable namespace, not part of the generated
+    // package layout; an extension setting referring to ./assets needs the
+    // empty directory at that root-relative location.
+    expect(plan.directories).toEqual(["assets", "empty"]);
+  });
+
+  it("refuses an empty client-extension directory that hoists onto a file", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets")];
+    pkg.directories = ["com.openai", "com.openai/assets"];
+
+    const plan = await project(pkg);
+
+    // Staging creates directories before files, so emitting both would fail
+    // with EISDIR instead of reporting the conflicting source paths.
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/assets",
+      }),
+    );
+  });
+
+  it("refuses a client-extension directory that hoists onto a case-only file match", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets")];
+    // These paths can coexist in the portable package, but become the same
+    // output path on a case-insensitive filesystem once the namespace lifts.
+    pkg.directories = ["com.openai", "com.openai/Assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/Assets",
+      }),
+    );
+  });
+
+  it("merges a client-extension directory with a case-only root directory", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets/root.png"), file("com.openai/Assets/extension.png")];
+    pkg.directories = ["assets", "com.openai", "com.openai/Assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories).toEqual(["assets"]);
+    expect(plan.files.map((candidate) => candidate.path)).toEqual(
+      expect.arrayContaining(["assets/root.png", "Assets/extension.png"]),
+    );
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("merges a client-extension directory with an exact root directory", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets/root.png"), file("com.openai/assets/extension.png")];
+    pkg.directories = ["assets", "com.openai", "com.openai/assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories).toEqual(["assets"]);
+    expect(plan.files.map((candidate) => candidate.path)).toEqual(
+      expect.arrayContaining(["assets/root.png", "assets/extension.png"]),
+    );
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("prefers the package's own directory spelling whichever is listed first", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets/root.png"), file("com.openai/Assets/extension.png")];
+    // The inventory lists the namespace spelling first. On a case-sensitive
+    // filesystem the retained spelling is the directory that gets created, and
+    // `assets/root.png` needs `assets`, not `Assets`.
+    pkg.directories = ["com.openai", "com.openai/Assets", "assets"];
+
+    const plan = await project(pkg);
+
+    expect(plan.directories).toEqual(["assets"]);
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("refuses a client-extension directory that hoists inside a file", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("assets")];
+    pkg.directories = ["com.openai", "com.openai/assets/cache"];
+
+    const plan = await project(pkg);
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/assets/cache",
+      }),
+    );
+  });
+
+  it("names the occupying file in its own spelling", async () => {
+    const pkg = source();
+    pkg.files = [...pkg.files, file("Assets")];
+    pkg.directories = ["com.openai", "com.openai/assets/cache"];
+
+    const plan = await project(pkg);
+
+    // The comparison folds case; the message should still point at the file
+    // the author can find in their package.
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/assets/cache");
+    expect(issue?.message).toContain('"Assets"');
+  });
+
   it("uses the compatibility overlay when the inline map is absent", async () => {
     const plan = await project(
       withFiles(source(), [
@@ -482,6 +719,34 @@ describe("Codex client extension", () => {
     });
   });
 
+  it("recognises the compatibility overlay whatever case the package spelled it in", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay("com.openai/.Codex-Plugin/Plugin.json", JSON.stringify({ interface: { displayName: "folded" } })),
+      ]),
+    );
+
+    // Every other collision check here folds case, because the package is
+    // inventoried on one filesystem and installed on others. An exact match
+    // hoisted this as a plain file instead, and the build then failed in core
+    // on a case-insensitive duplicate that named the generated manifest -- a
+    // path the author never wrote.
+    expect(plan.issues).toEqual([]);
+    expect(manifestOf(plan).interface).toEqual({ displayName: "folded" });
+    expect(plan.files.filter((candidate) => candidate.path.toLowerCase() === ".codex-plugin/plugin.json")).toHaveLength(
+      1,
+    );
+  });
+
+  it("refuses a case-only spelling of the manifest path this projection generates", async () => {
+    const plan = await project(withFiles(source(), [file(".Codex-Plugin/plugin.json")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === ".Codex-Plugin/plugin.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("com.openai/.Codex-Plugin/plugin.json");
+    expect(plan.files.some((candidate) => candidate.path === ".Codex-Plugin/plugin.json")).toBe(false);
+  });
+
   it("refuses a package that ships the manifest path this projection generates", async () => {
     const plan = await project(withFiles(source(), [file(".codex-plugin/plugin.json")]));
 
@@ -493,12 +758,60 @@ describe("Codex client extension", () => {
     expect(diagnosticsFromAgentPluginIssues([issue!])[0]?.code).toBe("HN503");
   });
 
+  // The output half of the package boundary, on the door the hoist checks do
+  // not cover. `RESERVED_HOISTED_ROOT_PATHS` refuses a hoisted
+  // `com.openai/.mcp.json` because a document arriving at a path Codex reads
+  // without passing the portable loader is dangerous whether or not this build
+  // generates one there -- and the package root is the same document arriving
+  // by the shorter route.
+  it.each([".mcp.json", ".MCP.json", ".codex-plugin/other.json", ".Codex-Plugin/other.json"])(
+    "refuses a package that ships the native read path %s",
+    async (reserved) => {
+      const plan = await project(withFiles(source(), [file(reserved)]));
+
+      expect(plan.files.some((candidate) => candidate.path === reserved)).toBe(false);
+      expect(plan.summary.copiedPaths).not.toContain(reserved);
+      const issue = plan.issues.find((candidate) => candidate.path === reserved);
+      expect(issue?.severity).toBe("error");
+      expect(diagnosticsFromAgentPluginIssues([issue!])[0]?.code).toBe("HN503");
+    },
+  );
+
+  it("emits one .mcp.json when the package ships its own beside a server that generates it", async () => {
+    const plan = await project(
+      withFiles(source({ streamed: { type: "streamable-http", url: "https://example.invalid/mcp" } }), [
+        file(".mcp.json"),
+      ]),
+    );
+
+    // Copied and then generated, the path was emitted twice and the build
+    // failed in core on a duplicate artifact path blamed on this adapter --
+    // which is the diagnostic the launcher and hook collision checks exist to
+    // avoid. Refused here, the surviving document is the generated one.
+    expect(plan.files.filter((candidate) => candidate.path === ".mcp.json")).toHaveLength(1);
+    expect(nativeMcp(plan)["streamed"]).toEqual({ url: "https://example.invalid/mcp" });
+    expect(plan.issues.find((candidate) => candidate.path === ".mcp.json")?.severity).toBe("error");
+  });
+
   it("refuses a hoisted file that lands on package content", async () => {
     const plan = await project(withFiles(source(), [file("com.openai/src/server.mjs")]));
 
     const issue = plan.issues.find((candidate) => candidate.path === "com.openai/src/server.mjs");
     expect(issue?.severity).toBe("error");
     expect(issue?.message).toContain("already ships");
+  });
+
+  it("refuses a hoisted file that lands on a case-only match of package content", async () => {
+    const plan = await project(withFiles(source(), [file("com.openai/src/Server.mjs")]));
+
+    // Both paths exist in the portable package; on the filesystems Codex
+    // installs onto they are one file, and the directory check already folds
+    // case. Without this the collision surfaced later as core's generic
+    // duplicate, with no mention of the namespace source.
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/src/Server.mjs");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"src/server.mjs"');
+    expect(plan.files.some((candidate) => candidate.path === "src/Server.mjs")).toBe(false);
   });
 
   it("refuses a malformed overlay manifest rather than guessing at it", async () => {
@@ -515,7 +828,10 @@ describe("Codex client extension", () => {
       ]),
     );
 
-    expect(plan.issues).toEqual([]);
+    // Not parsed, so not reported as malformed; but not silent either.
+    expect(plan.issues).toEqual([
+      expect.objectContaining({ severity: "warn", path: "com.openai/.codex-plugin/plugin.json" }),
+    ]);
     expect(manifestOf(plan).interface).toEqual({ displayName: "inline" });
   });
 
@@ -534,6 +850,27 @@ describe("Codex client extension", () => {
     expect(manifestOf(plan).hooks).toEqual(["./hooks/first.json", "./hooks/second.json", "./hooks.json"]);
   });
 
+  it("does not list the generated hook document twice when the author already names it", async () => {
+    // The vendor documentation's own example is `hooks: "./hooks.json"`, which
+    // is exactly the document this projection generates. Appended blindly the
+    // manifest read ["./hooks.json", "./hooks.json"], and a path array runs
+    // every entry (`.capture/codex-client-extension`), so every generated hook
+    // fired twice.
+    const single = await project(source({}, { extensions: { "com.openai": { hooks: "./hooks.json" } } }), [
+      { path: "hooks.json", contents: '{"hooks":{}}\n' },
+    ]);
+    expect(manifestOf(single).hooks).toBe("./hooks.json");
+
+    const array = await project(
+      source({}, { extensions: { "com.openai": { hooks: ["./hooks/first.json", "hooks.json", "./Hooks.json"] } } }),
+      [{ path: "hooks.json", contents: '{"hooks":{}}\n' }],
+    );
+    // The author's spelling is replaced by the one the projection emits: the
+    // two resolve to the same file on the filesystems Codex installs onto,
+    // and only the emitted spelling is a captured form.
+    expect(manifestOf(array).hooks).toEqual(["./hooks/first.json", "./hooks.json"]);
+  });
+
   it("keeps an inline hook object array homogeneous when adding generated hooks", async () => {
     const authored = { hooks: { SessionStart: [] } };
     const generated = { hooks: { PreToolUse: [] } };
@@ -543,6 +880,84 @@ describe("Codex client extension", () => {
 
     expect(manifestOf(plan).hooks).toEqual([authored, generated]);
   });
+
+  it.each([
+    ["null", null],
+    ["a number", 7],
+    ["a mixed path/object array", ["./hooks/author.json", { hooks: {} }]],
+    ["an array holding null", [null]],
+  ])("refuses a client extension hooks declaration that is %s", async (_label, authored) => {
+    // Codex ran a path, a path array, an object and an object array
+    // (`.capture/codex-client-extension`); nothing else is captured, and
+    // composing with it would ship a manifest whose `hooks` field is invalid
+    // -- dropping the generated document along with it, silently.
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: authored } } }), [
+      { path: "hooks.json", contents: '{"hooks":{}}\n' },
+    ]);
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "manifest",
+        path: "plugin.json#/extensions/com.openai/hooks",
+      }),
+    );
+    expect(manifestOf(plan).hooks).toBe("./hooks.json");
+  });
+
+  it("refuses an invalid client extension hooks declaration even with no generated hooks", async () => {
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: null } } }));
+
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", path: "plugin.json#/extensions/com.openai/hooks" }),
+    );
+    expect(manifestOf(plan)).not.toHaveProperty("hooks");
+  });
+
+  it("reports rather than throws when the generated hook document is not JSON", async () => {
+    // Inlining the document beside an authored hook object needs to parse it;
+    // a compiler defect there should surface as a diagnostic against the
+    // artifact, not as a rejected projection.
+    const plan = await project(source({}, { extensions: { "com.openai": { hooks: { hooks: {} } } } }), [
+      { path: "hooks.json", contents: "{ not json" },
+    ]);
+
+    const issue = plan.issues.find((candidate) => candidate.path === "hooks.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.scope).toBe("projection");
+  });
+
+  it("points the native manifest at the generated hook document, after mcpServers", async () => {
+    const plan = await project(source({ srv: { type: "stdio", command: "node" } }), [
+      { path: "hooks.json", contents: '{"hooks":{}}\n' },
+    ]);
+
+    const manifest = manifestOf(plan);
+    expect(manifest.hooks).toBe("./hooks.json");
+    // The committed example's manifest is byte-compared in CI, so where the
+    // component pointers land is part of the output, not an accident.
+    const keys = Object.keys(manifest);
+    expect(keys.indexOf("hooks")).toBe(keys.indexOf("mcpServers") + 1);
+    expect(keys.indexOf("hooks")).toBe(keys.length - 1);
+  });
+
+  it.each(["package.json", "package-lock.json", "npm-shrinkwrap.json"])(
+    "leaves the source project's %s out of the projection",
+    async (path) => {
+      // These describe how to build the source project, not anything Codex
+      // installs. Copied verbatim they shipped `private: true` and workspace
+      // protocol ranges into the plugin, and the name they carried stood in for
+      // a published npm coordinate this projection never emits.
+      const pkg = source({});
+      const plan = await codexAgentPluginProjector.project(
+        { ...pkg, files: [...pkg.files, file(path)] },
+        { target, hookArtifacts: [], support, onUnsupported: "error" },
+      );
+
+      expect(plan.files.some((candidate) => candidate.path === path)).toBe(false);
+      expect(plan.issues).toEqual([]);
+    },
+  );
 
   it("says out loud that a projection-owned key was ignored", async () => {
     const plan = await project(
@@ -556,6 +971,24 @@ describe("Codex client extension", () => {
     expect(warning?.message).toContain('"skills"');
     expect(warning?.message).not.toContain('"interface"');
     expect(manifestOf(plan).interface).toEqual({ displayName: "kept" });
+    // Named the generated manifest before, which is a file the author does not
+    // have -- and shipping one is a hard error here.
+    expect(warning?.path).toBe("plugin.json#/extensions/com.openai");
+    // The package is valid; this projection made the choice. Scoping it to the
+    // manifest filed it as invalid Agent Plugin input.
+    expect(warning?.scope).toBe("projection");
+  });
+
+  it("names the compatibility overlay when that is where the ignored key was declared", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay("com.openai/.codex-plugin/plugin.json", JSON.stringify({ skills: "./elsewhere/" })),
+      ]),
+    );
+
+    const warning = plan.issues.find((candidate) => candidate.message.includes("this projection decides"));
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.path).toBe("com.openai/.codex-plugin/plugin.json");
   });
 
   it("leaves a package with no extension untouched", async () => {
@@ -563,5 +996,199 @@ describe("Codex client extension", () => {
 
     expect(plan.issues).toEqual([]);
     expect(manifestOf(plan)).toEqual({ name: "portable-tools", version: "1.2.3" });
+  });
+
+  it.each(["Plugin.json", "MCP.json"])(
+    "strips a case-only spelling of the portable %s like the exact one",
+    async (path) => {
+      // Inventoried on a case-sensitive filesystem, `Plugin.json` is a stray
+      // file beside the manifest; installed on the filesystems Codex runs on it
+      // IS the root manifest, which outranks the native one and suppresses every
+      // hook. The exact spelling was already stripped; this one was copied.
+      const plan = await project(withFiles(source(), [file(path)]));
+
+      expect(plan.files.some((candidate) => candidate.path === path)).toBe(false);
+      expect(plan.issues).toEqual([]);
+    },
+  );
+
+  it("refuses to hoist a sibling into Codex's metadata directory", async () => {
+    // The overlay is the one file consumed from `.codex-plugin/`; anything else
+    // there is a shape no capture records.
+    const plan = await project(withFiles(source(), [file("com.openai/.codex-plugin/other.json")]));
+
+    expect(plan.files.some((candidate) => candidate.path === ".codex-plugin/other.json")).toBe(false);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        component: "agent-plugin.client-extension.files",
+        path: "com.openai/.codex-plugin/other.json",
+      }),
+    );
+  });
+
+  it.each([
+    ["com.openai/Hooks.json", "hooks.json"],
+    ["com.openai/hooknostic/hooknostic.mjs", "hooknostic/hooknostic.mjs"],
+  ])(
+    "refuses %s against the generated %s, blaming the hoist rather than package content",
+    async (sourcePath, generated) => {
+      const hookArtifacts = [
+        { path: "hooks.json", contents: '{"hooks":{}}\n' },
+        { path: "hooknostic/hooknostic.mjs", contents: "// runtime\n" },
+      ];
+      const plan = await project(withFiles(source(), [file(sourcePath)]), hookArtifacts);
+
+      // Neither path is in the reserved list; the collision is with what this
+      // build actually emits. Before, it surfaced from the hook-artifact loop as
+      // "collides with package content" -- content the author never wrote.
+      const issue = plan.issues.find((candidate) => candidate.path === sourcePath);
+      expect(issue?.severity).toBe("error");
+      expect(issue?.component).toBe("agent-plugin.client-extension.files");
+      expect(issue?.message).toContain(JSON.stringify(generated));
+      expect(issue?.message).toContain("this projection generates");
+      expect(plan.issues.filter((candidate) => candidate.message.includes("collides with package content"))).toEqual(
+        [],
+      );
+      expect(plan.files.filter((candidate) => candidate.path.toLowerCase() === generated)).toEqual([
+        expect.objectContaining({ path: generated }),
+      ]);
+      expect(manifestOf(plan).hooks).toBe("./hooks.json");
+    },
+  );
+
+  it("refuses a hoisted file that lands on a directory the package ships", async () => {
+    // `shippedByFoldedPath` holds files only, so this passed the projector and
+    // failed in core as an artifact that "is also a directory of another
+    // artifact" -- without the client-extension source path.
+    const plan = await project(withFiles(source(), [file("assets/logo.png"), file("com.openai/assets")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/assets");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"assets"');
+    expect(issue?.message).toContain("directory");
+    expect(plan.files.some((candidate) => candidate.path === "assets")).toBe(false);
+  });
+
+  it("refuses a hoisted file that lands beneath a file the package ships", async () => {
+    const plan = await project(withFiles(source(), [file("assets"), file("com.openai/assets/extension.png")]));
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/assets/extension.png");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"assets"');
+    expect(issue?.message).toContain("emitted as a file");
+    expect(plan.files.some((candidate) => candidate.path === "assets/extension.png")).toBe(false);
+  });
+
+  it("refuses a second spelling of the compatibility overlay instead of taking the last one", async () => {
+    const plan = await project(
+      withFiles(source(), [
+        overlay("com.openai/.codex-plugin/plugin.json", JSON.stringify({ interface: { displayName: "first" } })),
+        overlay("com.openai/.Codex-Plugin/plugin.json", JSON.stringify({ interface: { displayName: "second" } })),
+      ]),
+    );
+
+    // Both fold to the manifest path this projection generates; every other
+    // hoist gets the case-collision error, and last-wins would have
+    // `overlaySourcePath` blame a file whose contents were not the ones used.
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/.Codex-Plugin/plugin.json");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain('"com.openai/.codex-plugin/plugin.json"');
+    expect(manifestOf(plan).interface).toEqual({ displayName: "first" });
+  });
+
+  it("keeps two ordinary case-variant directories apart after a hoisted one took the slot", async () => {
+    const pkg = source();
+    pkg.directories = ["com.openai", "com.openai/Assets", "assets", "Assets"];
+
+    const plan = await project(pkg);
+
+    // The hoisted `Assets` is coalesced into the package's own `assets`; the
+    // package's own `Assets` is a second ordinary directory and stays for
+    // core's duplicate check, which the comment above the merge promises.
+    expect(plan.directories).toEqual(["assets", "Assets"]);
+    const diagnostics = validateGeneratedArtifacts(
+      plan.files.map(({ path, contents }) => ({ path, contents })),
+      { adapterId: "codex", target: "codex" },
+      plan.directories ?? [],
+    );
+    expect(diagnostics.some((diagnostic) => diagnostic.message.includes("duplicate directory path"))).toBe(true);
+  });
+
+  it("places a materialized runtime at the package root without calling it copied", async () => {
+    const pkg = source({ srv: { type: "stdio", command: "node" } });
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedRuntimes: [
+        {
+          ecosystem: "pypi",
+          into: "runtime/pypi",
+          files: [{ path: "idna/core.py", contents: encoder.encode("idna") }],
+        },
+      ],
+    });
+
+    // Codex reads from the output root, so `into` needs no prefix.
+    expect(plan.files.some((candidate) => candidate.path === "runtime/pypi/idna/core.py")).toBe(true);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    // The bytes came from an installer, not the package: the summary's
+    // "copied byte-for-byte" list must not claim them.
+    expect(plan.summary.copiedPaths).not.toContain("runtime/pypi/idna/core.py");
+  });
+
+  it("refuses a materialized runtime that lands on generated output", async () => {
+    // `into: "runtime"` is where the generated launcher goes, so the tree
+    // would silently replace a file this projection emits.
+    const pkg = source({ srv: { type: "stdio", command: "node" } });
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedRuntimes: [
+        {
+          ecosystem: "pypi",
+          into: "runtime",
+          files: [{ path: "mcp-launcher.mjs", contents: encoder.encode("not the launcher") }],
+        },
+      ],
+    });
+
+    const issue = plan.issues.find((candidate) => candidate.path === "runtime/mcp-launcher.mjs");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("already carries");
+    // The generated launcher still wins: the plan the build writes keeps the
+    // bytes this projection emitted, not the ones the runtime brought.
+    const launcher = plan.files.find((candidate) => candidate.path === "runtime/mcp-launcher.mjs")!;
+    expect(launcher.contents.toString()).not.toBe("not the launcher");
+  });
+
+  it("refuses a namespace hoist that lands on materialized runtime output", async () => {
+    // `vendor/` is not one of the reserved trees, so this is not caught by that
+    // policy: without the materialized tree joining `generatedByFoldedPath`
+    // before the hoist loop, the namespace file would win and the runtime bytes
+    // would be silently replaced.
+    const pkg = withFiles(source(), [overlay("com.openai/vendor/pypi/idna/core.py", "replacement")]);
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedRuntimes: [
+        {
+          ecosystem: "pypi",
+          into: "vendor/pypi",
+          files: [{ path: "idna/core.py", contents: encoder.encode("idna") }],
+        },
+      ],
+    });
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/vendor/pypi/idna/core.py");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("which this projection generates");
+    expect(plan.files.some((candidate) => candidate.path === "vendor/pypi/idna/core.py")).toBe(true);
   });
 });

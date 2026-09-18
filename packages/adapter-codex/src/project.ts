@@ -1,5 +1,6 @@
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
+import { contentsText } from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   McpLauncherServer,
@@ -77,9 +78,9 @@ export function projectIntegration(
   const manifest = artifacts.find((a) => a.path === ".codex/hooks.json");
   const entries: ProjectEntry[] = [];
   if (manifest) {
-    const document = JSON.parse(
-      typeof manifest.contents === "string" ? manifest.contents : new TextDecoder().decode(manifest.contents),
-    ) as { hooks: Record<string, { hooks: { command: string; timeout: number }[] }[]> };
+    const document = JSON.parse(contentsText(manifest.contents)) as {
+      hooks: Record<string, { hooks: { command: string; timeout: number }[] }[]>;
+    };
     const command = projectHookBootstrap(`${output}/.codex/hooknostic/hooknostic.mjs`, config);
     for (const [event, groups] of Object.entries(document.hooks)) {
       for (const group of groups) for (const hook of group.hooks) hook.command = command;
@@ -159,6 +160,20 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "agent-plugin.mcp.sse": {
         level: "unsupported",
         rationale: "SSE project transport is not established; Codex reads url declarations as Streamable HTTP.",
+      },
+      // Declared rather than left absent. An absent cell still raises HN205,
+      // but behind core's rationale-free fallback, which tells the author
+      // nothing they can act on. Claims about this projection's own reach, so
+      // they rest on what project integration writes rather than on a capture.
+      "agent-plugin.client-extension.files": {
+        level: "unsupported",
+        rationale:
+          "Project integration writes .codex/config.toml and a skills tree. A plugin's extensions.\"com.openai\" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them.",
+      },
+      "agent-plugin.runtime-package": {
+        level: "unsupported",
+        rationale:
+          "Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead.",
       },
     },
     source: {

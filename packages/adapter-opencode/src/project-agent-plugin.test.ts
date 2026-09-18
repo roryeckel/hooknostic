@@ -396,6 +396,41 @@ describe("Agent Plugin to OpenCode projection", () => {
     expect(issue?.message).toContain('"@Scope/Name"');
   });
 
+  it.each(["http", `a-${"n".repeat(215)}`])(
+    "warns rather than fails when manifest name %s only blocks publication",
+    async (name) => {
+      const pkg = source({});
+      const plan = await project({ ...pkg, manifest: { ...pkg.manifest, name } });
+
+      const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+      // npm still installs a name in this tier from a local path, which is a
+      // supported route; publication is the one it cannot reach -- the same
+      // reasoning the manifest version check beside it already applies.
+      expect(issue?.severity).toBe("warn");
+      expect(plan.issues.filter((candidate) => candidate.severity === "error")).toEqual([]);
+      expect(JSON.parse(text(plan, "package.json")).name).toBe(name);
+    },
+  );
+
+  it.each(["_under", ".leading", "has space"])("fails a manifest name npm cannot install at all: %s", async (name) => {
+    const pkg = source({});
+    const plan = await project({ ...pkg, manifest: { ...pkg.manifest, name } });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+  });
+
+  it("fails an npm coordinate that only blocks publication, because publishing is why it exists", async () => {
+    // A manifest name is the plugin's identity and may never be published; an
+    // npmName is declared for no other purpose, so the publication tier is
+    // fatal here and advisory there.
+    const plan = await projectAs(source({}), { npmName: "http" });
+
+    const issue = plan.issues.find((candidate) => candidate.message.includes("not a valid npm package name"));
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("npmName");
+  });
+
   it("stays silent when the manifest carries a version npm would accept", async () => {
     for (const version of ["1.2.3", "v2.0.0", "1.0.0-rc.1"]) {
       const pkg = source({});
@@ -644,5 +679,48 @@ describe("Agent Plugin to OpenCode projection", () => {
     // module is emitted as JSON text and parsed at load time instead.
     expect(Object.keys(embeddedServers(plan))).toEqual(["__proto__"]);
     expect(injector(plan)).toContain("Object.defineProperty(config.mcp, name, {");
+  });
+
+  const projectWithRuntime = (pkg: AgentPluginPackage, into: string, path: string) =>
+    opencodeAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedRuntimes: [{ ecosystem: "pypi", into, files: [{ path, contents: encoder.encode(path) }] }],
+    });
+
+  it("places a materialized runtime inside the nested package, not beside it", async () => {
+    const plan = await projectWithRuntime(source(), "runtime/pypi", "idna/core.py");
+
+    // OpenCode's ${PLUGIN_ROOT} is the nested package directory, so a
+    // root-level tree would be unreachable from the mcp.json naming it.
+    expect(plan.files.some((candidate) => candidate.path === "package/runtime/pypi/idna/core.py")).toBe(true);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    // The bytes came from an installer, not the package: the summary's
+    // "copied byte-for-byte" list must not claim them.
+    expect(plan.summary.copiedPaths).not.toContain("package/runtime/pypi/idna/core.py");
+  });
+
+  it("refuses a hook artifact that collides with a materialized runtime", async () => {
+    // Both are output this projector emits, so the collision is named by the
+    // runtime's destination rather than as a bare duplicate in core.
+    const plan = await opencodeAgentPluginProjector.project(source(), {
+      target,
+      hookArtifacts: [{ path: "package/vendor/pypi/idna/core.py", contents: "// hook" }],
+      support,
+      onUnsupported: "error",
+      materializedRuntimes: [
+        {
+          ecosystem: "pypi",
+          into: "vendor/pypi",
+          files: [{ path: "idna/core.py", contents: encoder.encode("idna") }],
+        },
+      ],
+    });
+
+    const issue = plan.issues.find((candidate) => candidate.path === "package/vendor/pypi/idna/core.py");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("collides with the materialized runtime");
   });
 });

@@ -326,7 +326,7 @@ describe("validateArtifacts for package delivery", () => {
     expect(diagnostics.some((d) => d.message.includes("package.json"))).toBe(true);
   });
 
-  it("refuses a hooks-only package whose name npm would reject", async () => {
+  it.each(["_under", "has space"])("refuses a hooks-only package named %s, which npm cannot pack", async (name) => {
     // A hooks-only package takes its name from PluginSpec.name, which is only
     // string().min(1) -- the component projection's own check never runs on
     // this path, so without this the build emits a directory npm cannot pack.
@@ -334,11 +334,99 @@ describe("validateArtifacts for package delivery", () => {
       [
         { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
         goodEntry,
-        { path: "package.json", contents: '{"name":"UPPER","version":"1.2.3"}\n' },
+        { path: "package.json", contents: `{"name":${JSON.stringify(name)},"version":"1.2.3"}\n` },
       ],
       PKG,
     );
-    expect(diagnostics.some((d) => d.message.includes("not a valid npm package name"))).toBe(true);
+    const diagnostic = diagnostics.find((d) => d.message.includes("not a valid npm package name"));
+    expect(diagnostic?.severity).toBe("error");
+  });
+
+  it.each(["UPPER", "http"])("warns that a hooks-only package named %s cannot be published", async (name) => {
+    // npm installs these from a local path, which is a supported route, so the
+    // build keeps working and only publication is out of reach -- matched to
+    // the version check rather than escalated past it.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: `{"name":${JSON.stringify(name)},"version":"1.2.3"}\n` },
+      ],
+      PKG,
+    );
+    const diagnostic = diagnostics.find((d) => d.message.includes("not a valid npm package name"));
+    expect(diagnostic?.severity).toBe("warn");
+  });
+
+  it("fails an npm coordinate that only blocks publication, because publishing is why it exists", async () => {
+    // The projector already draws this line. A hooks-only package reaching the
+    // opposite verdict made one declaration pass or fail on whether the config
+    // happened to also list components.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"http","version":"1.2.3"}\n' },
+      ],
+      { ...PKG, npmName: "http" },
+    );
+    const diagnostic = diagnostics.find((d) => d.message.includes("not a valid npm package name"));
+    expect(diagnostic?.severity).toBe("error");
+    // Naming the generated manifest would send the author to the wrong file.
+    expect(diagnostic?.message).toContain("npmName");
+  });
+
+  it.each([
+    ["does not parse", "{ not json\n", "is not valid JSON"],
+    ["is not an object", '["example-plugin"]\n', "is not a JSON object"],
+  ])("says so when a hooks-only package's manifest %s", async (_case, contents, clause) => {
+    // Read as "declares no name" and "declares no version", a manifest npm
+    // cannot read at all sent the author looking for missing fields in a file
+    // that never parsed -- two findings, both about the wrong thing.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents },
+      ],
+      PKG,
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ code: "HN301", severity: "error" });
+    expect(diagnostics[0]?.message).toContain(clause);
+    expect(diagnostics[0]?.message).not.toContain("declares no name");
+    expect(diagnostics[0]?.message).not.toContain("declares no version");
+  });
+
+  it("leaves a projected package's manifest to the projector that built it", async () => {
+    // The projector reports both of these while constructing its plan, and a
+    // projected warning does not stop the build, so checking them again here
+    // reached the author as two findings for one declaration.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        { path: "hooknostic-agent-plugin.js", contents: "export const components = {};\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"UPPER","version":"next"}\n' },
+      ],
+      PKG,
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("files its diagnostics against the target that produced them", async () => {
+    // Targets may share an adapter under any id, so hard-coding the adapter id
+    // attributed the finding to a target the config need not even declare.
+    const diagnostics = await adapter.validateArtifacts!(
+      [
+        { path: "hooknostic.js", contents: "export const HooknosticPlugin = async () => ({});\n" },
+        goodEntry,
+        { path: "package.json", contents: '{"name":"_under","version":"1.2.3"}\n' },
+      ],
+      { ...PKG, id: "opencode-registry" },
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.every((d) => d.target === "opencode-registry")).toBe(true);
   });
 
   it.each([

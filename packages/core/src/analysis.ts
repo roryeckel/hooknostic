@@ -194,6 +194,27 @@ export function analyzeCapabilities(
         remediation: `use one of the supported deliveries: ${adapter.supportedDeliveries().join(", ")}.`,
       });
     }
+    // Two questions about an npm coordinate, because effect alone answered the
+    // wrong one. Whether it reached the manifest npm will read is necessary
+    // but not sufficient: adapters that never read `npmName` still emit a root
+    // `package.json` -- Codex copied the source project's until it stopped,
+    // Claude builds one from `components.runtimePackage` -- and a name matching
+    // by coincidence passed a guard that exists precisely to catch a setting
+    // doing nothing. So the adapter must first declare that its package
+    // delivery publishes under the coordinate at all. That question needs only
+    // the config and the adapter, so it is answered here, before anything is
+    // bundled; the build confirms the emitted manifest afterwards.
+    if (spec.npmName !== undefined && adapter.publishesNpmPackage !== true) {
+      targetDiagnostics.push({
+        code: "HN501",
+        severity: "error",
+        target: targetId,
+        message:
+          `target ${JSON.stringify(targetId)} declares npmName ${JSON.stringify(spec.npmName)}, but ` +
+          `${adapter.id} package delivery does not emit an npm package to publish under it`,
+        remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
+      });
+    }
     const resolved = adapter.capabilities(spec);
     targetDiagnostics.push(...resolved.diagnostics);
 

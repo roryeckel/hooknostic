@@ -12,8 +12,7 @@ import {
   hasUnportableCommandPath,
   isRejectedSkillPath,
   materializedRuntimeFiles,
-  packageNameProblem,
-  packageVersionProblem,
+  npmPublicationProblems,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -305,36 +304,6 @@ function injectorSource(
 }
 
 /**
- * Project an Agent Plugins package into OpenCode's project-plugin layout.
- *
- * Unlike Claude and Codex this is not an installable unit: `.opencode/plugins/`
- * is read from the project directory, so the whole projection is inherently
- * project-scoped and needs no install step. The compiled hooks are already a
- * module in that directory, and this adds a second one carrying the package's
- * MCP servers and skills -- OpenCode loads every module in the directory.
- *
- * Measured on `opencode` 1.18.29 through `debug config` and `debug skill`:
- *
- * - A plugin's `config` hook mutation survives into the resolved configuration,
- *   for both `mcp` and `skills.paths`.
- * - `skills.paths` is additive: an injected path did not displace either the
- *   project's own entry or the default discovery directories.
- * - `import.meta.url` resolves to the module's real location, so a plugin can
- *   address files shipped beside it.
- * - The scan is flat: two sibling modules both loaded, while modules one level
- *   deeper and in a neighbouring directory did not.
- */
-/**
- * How to describe a manifest version npm would not publish, or `undefined` when
- * it would. Phrased to slot into the projection warning.
- */
-function unpublishableVersion(version: string | undefined): string | undefined {
-  if (version === undefined) return "the manifest declares no version";
-  const problem = packageVersionProblem(version);
-  return problem === undefined ? undefined : `the manifest version ${JSON.stringify(version)} is ${problem}`;
-}
-
-/**
  * The npm manifest that makes the output a package rather than a directory.
  *
  * `exports["./server"]` is what selects the entry: measured on 1.18.30 to be
@@ -377,6 +346,26 @@ function packageManifest(
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 
+/**
+ * Project an Agent Plugins package into OpenCode's project-plugin layout.
+ *
+ * Unlike Claude and Codex this is not an installable unit: `.opencode/plugins/`
+ * is read from the project directory, so the whole projection is inherently
+ * project-scoped and needs no install step. The compiled hooks are already a
+ * module in that directory, and this adds a second one carrying the package's
+ * MCP servers and skills -- OpenCode loads every module in the directory.
+ *
+ * Measured on `opencode` 1.18.29 through `debug config` and `debug skill`:
+ *
+ * - A plugin's `config` hook mutation survives into the resolved configuration,
+ *   for both `mcp` and `skills.paths`.
+ * - `skills.paths` is additive: an injected path did not displace either the
+ *   project's own entry or the default discovery directories.
+ * - `import.meta.url` resolves to the module's real location, so a plugin can
+ *   address files shipped beside it.
+ * - The scan is flat: two sibling modules both loaded, while modules one level
+ *   deeper and in a neighbouring directory did not.
+ */
 export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // OpenCode reads no reverse-DNS client-extension namespace.
   namespace: "",
@@ -551,15 +540,25 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       copiedPaths.push(path);
     }
     // `${PLUGIN_ROOT}` here is the nested package directory, so a materialized
-    // tree has to land inside it or nothing in mcp.json can name it.
+    // tree has to land inside it or nothing in mcp.json can name it. That
+    // prefix is also what keeps it away from every other generated path: the
+    // entry, manifest, injector and launcher sit at the output root, which no
+    // `into` can reach once `package/` is prepended.
+    //
+    // Its paths are generated, not copied: their bytes came from an installer,
+    // so they stay out of `copiedPaths`, which answers both the summary's
+    // "copied byte-for-byte" list and whether the AUTHOR declared the package
+    // boundary. A runtime tree is this projection's output and must not be
+    // able to answer either question.
     const materialized = materializedRuntimeFiles(context.materializedRuntimes, {
       prefix: `${PACKAGE_DIR}/`,
       claimed: new Set(copiedPaths),
     });
     issues.push(...materialized.issues);
+    const materializedPaths = new Set<string>();
     for (const file of materialized.files) {
+      materializedPaths.add(file.path);
       files.push(file);
-      copiedPaths.push(file.path);
     }
 
     // Only when the author shipped no manifest of their own: theirs is already
@@ -600,42 +599,28 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     files.push({ path: ENTRY_PATH, contents: packageEntrySource({ hooks: hasHooks, components: true }) });
     // The package name is the manifest name verbatim. Coercing an invalid one
     // would publish under a name the author never chose and never sees, so an
-    // Agent Plugins name that npm would reject is an error here rather than a
-    // silent rewrite.
+    // Agent Plugins name that npm would reject is reported here rather than
+    // silently rewritten.
     // The target's coordinate when it declares one, because an Agent Plugins
     // name cannot be scoped and a scoped package is what an organisation
     // publishes. Whichever is used is the name npm will see, so that is the one
     // checked.
     const npmName = context.target.npmName ?? source.manifest.name;
-    const nameProblem = packageNameProblem(npmName);
-    if (nameProblem !== undefined) {
+    // The two tiers -- fatal when npm would not install the name, a warning
+    // when only publication is lost, fatal again for a defeated explicit
+    // npmName -- and their wording live with the helper, shared with the
+    // hooks-only validator so the two paths cannot drift apart.
+    for (const problem of npmPublicationProblems({
+      name: npmName,
+      version: source.manifest.version,
+      npmNameDeclared: context.target.npmName !== undefined,
+    })) {
       issues.push({
-        severity: "error",
+        severity: problem.severity,
         scope: "projection",
         component: "agent-plugin.manifest",
         path: MANIFEST_PATH,
-        message:
-          `package delivery emits an npm package, and ` +
-          `${context.target.npmName === undefined ? "manifest name" : "npmName"} ` +
-          `${JSON.stringify(npmName)} is not a valid npm package name: ${nameProblem}.`,
-      });
-    }
-    // A version is optional on an Agent Plugins manifest and unconstrained when
-    // present, so neither its absence nor its presence says whether npm would
-    // publish the result. The package still loads from a local path either way
-    // -- hence a warning, not an error -- but publication is the only route that
-    // reaches a consumer without the build output on disk, and npm does not
-    // object until `npm publish`, long after the build.
-    const versionProblem = unpublishableVersion(source.manifest.version);
-    if (versionProblem !== undefined) {
-      issues.push({
-        severity: "warn",
-        scope: "projection",
-        component: "agent-plugin.manifest",
-        path: MANIFEST_PATH,
-        message:
-          `package delivery emits an npm package and ${versionProblem}, ` +
-          "so the result loads from a local path but cannot be published.",
+        message: problem.message,
       });
     }
     files.push({
@@ -672,6 +657,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       LAUNCHER_PATH,
       LAUNCHER_SERVERS_PATH,
       ...(authorsBoundary ? [] : [PACKAGE_BOUNDARY_PATH]),
+      ...materializedPaths,
     ]);
     // The compiler emits a standalone entry and manifest so a hooks-only
     // package is loadable without a projector. Here one ran, and it knows
@@ -682,6 +668,18 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const replaced = new Set([ENTRY_PATH, MANIFEST_PATH]);
     for (const file of context.hookArtifacts) {
       if (replaced.has(file.path)) continue;
+      if (materializedPaths.has(file.path)) {
+        // A hook artifact is generated output too, so this is a collision
+        // between two things this projector emits -- named by the runtime's
+        // destination rather than as a bare duplicate in core.
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          path: file.path,
+          message: `generated Hooknostic path ${JSON.stringify(file.path)} collides with the materialized runtime at the same path; point its "into" at a directory the output does not use`,
+        });
+        continue;
+      }
       if (copied.has(file.path) || generated.has(file.path)) {
         issues.push({
           severity: "error",

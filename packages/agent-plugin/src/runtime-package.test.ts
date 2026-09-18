@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { packageNameProblem, packageVersionProblem, validateNpmRuntimePackage } from "./runtime-package.js";
+import {
+  npmManifestCoordinate,
+  npmPublicationProblems,
+  packageVersionProblem,
+  publishablePackageNameProblem,
+  UNPUBLISHABLE_STILL_LOADS,
+  validateNpmRuntimePackage,
+} from "./runtime-package.js";
 
 const manifest = JSON.stringify({ name: "runtime", dependencies: { left: "1.0.0", right: "^2.0.0" } });
 
@@ -255,9 +262,15 @@ describe("validateNpmRuntimePackage", () => {
       );
   });
 
+  it("accepts an already-published npm name as a dependency", () => {
+    // npm permits existing warning-only names in dependency edges. The output
+    // package is new, but its dependency graph may reference an older package.
+    expect(validateNpmRuntimePackage(...single("1.0.0", { version: "1.0.0" }, {}, "UPPER")).ok).toBe(true);
+  });
+
   it("rejects names npm will not accept for a new package", () => {
     for (const name of ["UPPER", "@Scope/Name", "a".repeat(215), "http", "weird~'!()*"]) {
-      expect(packageNameProblem(name), name).toBeDefined();
+      expect(publishablePackageNameProblem(name), name).toBeDefined();
     }
   });
 
@@ -276,6 +289,110 @@ describe("validateNpmRuntimePackage", () => {
     ["1.0", "not a semantic version"],
   ])("judges manifest version %j the way npm publish would", (version, problem) => {
     expect(packageVersionProblem(version)).toBe(problem);
+  });
+
+  describe("npmPublicationProblems", () => {
+    const judge = (name: unknown, version: unknown, npmNameDeclared = false) =>
+      npmPublicationProblems({ name, version, npmNameDeclared });
+
+    it.each(["_under", "has space"])("fails a manifest name npm cannot install at all: %s", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain("not a valid npm package name");
+      // Nothing loads from a directory npm cannot pack, so the still-loads
+      // consolation would be false here.
+      expect(problems[0]?.message).not.toContain(UNPUBLISHABLE_STILL_LOADS);
+    });
+
+    it.each(["UPPER", "http"])("warns that manifest name %s cannot be published", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain(`manifest name ${JSON.stringify(name)}`);
+      expect(problems[0]?.message.endsWith(UNPUBLISHABLE_STILL_LOADS)).toBe(true);
+    });
+
+    it("fails an npm coordinate that only blocks publication, because publishing is why it exists", () => {
+      const problems = judge("http", "1.0.0", true);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain('npmName "http"');
+      expect(problems[0]?.message).not.toContain("manifest name");
+      expect(problems[0]?.message).not.toContain(UNPUBLISHABLE_STILL_LOADS);
+    });
+
+    it.each([undefined, 42])("fails a manifest whose name is %j", (name) => {
+      const problems = judge(name, "1.0.0");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("error");
+      expect(problems[0]?.message).toContain("declares no name");
+    });
+
+    it("warns that a versionless package cannot be published", () => {
+      const problems = judge("fine", undefined);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain("declares no version");
+      expect(problems[0]?.message).toContain("cannot be published");
+    });
+
+    it("names the version npm would refuse", () => {
+      const problems = judge("fine", "next");
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.severity).toBe("warn");
+      expect(problems[0]?.message).toContain('"next"');
+    });
+
+    it.each([
+      ["my-pkg", "1.2.3"],
+      ["@scope/pkg", "v1.0.0"],
+    ])("stays silent for %s@%s", (name, version) => {
+      expect(judge(name, version)).toEqual([]);
+    });
+
+    it("reports both tiers independently, name first", () => {
+      // Neither finding may hide the other: a fatal name still leaves the
+      // author a version to fix before the next attempt.
+      const problems = judge("_under", "next");
+      expect(problems.map((problem) => problem.severity)).toEqual(["error", "warn"]);
+      expect(problems[0]?.message).toContain("not a valid npm package name");
+      expect(problems[1]?.message).toContain('"next"');
+    });
+  });
+
+  describe("npmManifestCoordinate", () => {
+    it("reads name and version from text or bytes, missing fields as undefined", () => {
+      expect(npmManifestCoordinate('{"name":"pkg","version":"1.2.3"}')).toEqual({
+        ok: true,
+        name: "pkg",
+        version: "1.2.3",
+      });
+      expect(npmManifestCoordinate(new TextEncoder().encode('{"version":"1.2.3"}'))).toEqual({
+        ok: true,
+        name: undefined,
+        version: "1.2.3",
+      });
+    });
+
+    it("hands non-string values through for the publication check to judge", () => {
+      // `npmPublicationProblems` treats a non-string as "declares none"; the
+      // reader must not coerce or drop it.
+      expect(npmManifestCoordinate('{"name":7,"version":null}')).toEqual({ ok: true, name: 7, version: null });
+    });
+
+    it("distinguishes a manifest npm cannot read from one that declares no name", () => {
+      // Flattened to a pair of undefined fields, both callers reported the
+      // missing fields instead of the unreadable file -- OpenCode as two
+      // findings, core inside a diagnostic blaming the adapter for a defect it
+      // then described wrongly.
+      const malformed = npmManifestCoordinate("{ not json");
+      expect(malformed.ok).toBe(false);
+      expect(malformed.ok === false && malformed.error).toContain("is not valid JSON");
+      const array = npmManifestCoordinate('["pkg"]');
+      expect(array.ok).toBe(false);
+      expect(array.ok === false && array.error).toBe("is not a JSON object");
+    });
   });
 
   describe("locked dependency graph", () => {
