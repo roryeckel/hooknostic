@@ -9,18 +9,24 @@ import { buildProject, loadConfig, mcpPathCommands, type ProjectCommandResult, r
 import type { CommandIO } from "./check.js";
 
 /**
- * Resolve a bare command on PATH the way spawning it would.
+ * Advisory probe for a bare command on this process's PATH.
  *
- * `cross-spawn` does exactly this inside the generated launcher, but its
- * resolver is not public API, so the two rules are repeated here: PATH entries
- * in order, and on Windows each PATHEXT suffix as well. The suffix pass is the
- * load-bearing half -- `npx` and `bun` exist on Windows only as `.cmd`/`.ps1`
- * shims, so a bare-name check would report them missing when they are not.
+ * This intentionally does not claim to reproduce a generated launcher's
+ * complete resolution: the launcher can run from a different working
+ * directory. It preserves PATH order, quoted Windows entries, empty entries
+ * (the current directory), and Windows PATHEXT suffixes.
  */
 export function resolveOnPath(command: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const directories = (env["PATH"] ?? env["Path"] ?? "").split(delimiter).filter(Boolean);
   const windows = process.platform === "win32";
-  const pathExt = (env["PATHEXT"] ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean);
+  const environmentValue = (name: string): string | undefined => {
+    if (!windows) return env[name];
+    const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+    return key === undefined ? undefined : env[key];
+  };
+  const path = environmentValue("PATH");
+  if (path === undefined) return undefined;
+  const directories = path.split(delimiter).map((entry) => (windows ? entry.replace(/^"(.*)"$/, "$1") : entry));
+  const pathExt = (environmentValue("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean);
   const suffixes = windows ? (command.includes(".") ? ["", ...pathExt] : pathExt) : [""];
   for (const directory of directories) {
     for (const suffix of suffixes) {
@@ -30,8 +36,7 @@ export function resolveOnPath(command: string, env: NodeJS.ProcessEnv = process.
         if (!windows) accessSync(candidate, constants.X_OK);
         return candidate;
       } catch {
-        // A missing, unreadable or non-executable candidate is not spawnable;
-        // keep searching later PATH entries and PATHEXT forms.
+        // Keep searching later PATH entries and PATHEXT forms.
       }
     }
   }
@@ -164,6 +169,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         command: "verify",
         configPath: resolve(options.config),
         registry: options.registry,
+        executeMaterializers: false,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       commands = project.mcpServers;
@@ -172,6 +178,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         configPath: resolve(options.config),
         registry: options.registry,
         dryRun: true,
+        executeMaterializers: false,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
@@ -248,10 +255,14 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
   }
   if (mcpCommands.length > 0) {
     options.io.stdout("");
-    options.io.stdout("Declared MCP command resolution (PATH checks are advisory):");
+    options.io.stdout("Declared MCP command resolution (PATH checks are advisory; launcher cwd may differ):");
     for (const command of mcpCommands) {
       if (command.resolution === "package") {
         options.io.stdout(`INFO  ${command.server}: command ${command.command} is shipped by the package`);
+      } else if (command.resolution === "project") {
+        options.io.stdout(
+          `INFO  ${command.server}: command ${command.command} is resolved relative to the project MCP source`,
+        );
       } else {
         const marker = command.path === undefined ? "MISS" : "OK  ";
         const where = command.path ?? "not on this PATH";

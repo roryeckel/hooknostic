@@ -47,12 +47,12 @@ configured skill collection root. They do not change the canonical MCP document.
 | Command | Effect |
 | --- | --- |
 | `init --local` | Create missing config/hook scaffolding without overwrite, installation, or activation |
-| `check` | Validate and generate in memory; no writes |
+| `check` | Validate and generate in memory; no target artifacts are written. Trusted materializers may use network or persistent caches. |
 | `build` | Write compiler artifacts only |
 | `sync --dry-run` | Show planned changes and conflicts; no writes |
 | `sync` | Generate, reconcile, and remove obsolete owned integration |
 | `verify` | Regenerate in isolated compiler storage and compare without project writes |
-| `doctor` | Read installed versions, runtime availability, wiring, and activation guidance |
+| `doctor` | Read installed versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
 | `recover` | Restore interrupted transaction preimages when preconditions still match |
 
 Commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for

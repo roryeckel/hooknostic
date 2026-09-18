@@ -439,7 +439,7 @@ describe("hooknostic check", () => {
     expect(lockfile.out()).toContain("root dependencies do not match the manifest");
     expect(lockfile.out()).toContain("FAIL  claude");
 
-    // check writes nothing, even on the success path.
+    // check writes no target artifacts, even on the success path.
     await rm(join(dir, "runtime.package.json"));
     await rm(join(dir, "runtime.package-lock.json"));
     await writeFile(join(dir, "hooknostic.config.ts"), config(""));

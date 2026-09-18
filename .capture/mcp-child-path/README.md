@@ -54,9 +54,11 @@ like:
 | Codex | 50 | **22** | **superset** (+2) | bound | installed plugin root |
 | OpenCode | 48 | 109 | **identical** | bound | nested `package/` |
 
-**`PATH` survives on all three, so a runner command is safe everywhere.**
-`uvx`, `uv`, `npx`, `docker` and `node` resolved in every one of the four
-environments. Claude and OpenCode pass the parent's `PATH` through byte for
+**On native Windows in the captured Claude Code 2.1.273, Codex 0.154.0, and
+OpenCode 1.18.31 probes, `PATH` survives to the child process.** This does not
+establish the same behavior on POSIX or for other versions.
+`uvx`, `uv`, `npx`, `docker` and `node` resolved in every one of these four
+Windows captures. Claude and OpenCode pass the parent's `PATH` through byte for
 byte. Codex passes a **superset**: all 48 parent entries plus two of its own —
 an `arg0` shim directory and its vendored `codex-path`.
 

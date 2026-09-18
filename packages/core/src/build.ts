@@ -66,6 +66,11 @@ export interface BuildOptions {
   targets?: string[];
   evaluate?: EvaluateOptions;
   dryRun?: boolean;
+  /**
+   * Run configured package materializers. Build-faithful callers leave this
+   * enabled; diagnostics that must not invoke providers disable it.
+   */
+  executeMaterializers?: boolean;
   /** Reuse the already evaluated configuration inside a project command. */
   configResult?: Awaited<ReturnType<typeof loadConfig>>;
 }
@@ -557,7 +562,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
-  if (componentSource !== undefined) report.mcpServers = mcpServerCommands(componentSource.mcp?.config);
+  if (componentSource !== undefined)
+    report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
   if (
     config.components?.root === undefined &&
     componentSource &&
@@ -672,12 +678,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     }
   };
 
-  // A configured materializer is the one side effect of a dry-run build. Run it only
-  // after analysis and layout validation have established that a selected
-  // package projection can consume the result. The installed bytes stay in
-  // memory and are placed by each projector; the package root remains read-only
-  // input (ADR-0011).
-  if (materializationDeclarations.length > 0) {
+  // A configured materializer is the one build-faithful side effect of a
+  // dry-run build. Diagnostic callers can disable provider execution; otherwise
+  // run it only after analysis and layout validation have established that a
+  // selected package projection can consume the result. The installed bytes stay
+  // in memory and are placed by each projector; the package root remains
+  // read-only input (ADR-0011).
+  if ((options.executeMaterializers ?? true) && materializationDeclarations.length > 0) {
     const agentPluginRoot = resolve(configDir, config.components!.root!);
     const staging = await mkdtemp(join(tmpdir(), "hooknostic-materialize-"));
     try {

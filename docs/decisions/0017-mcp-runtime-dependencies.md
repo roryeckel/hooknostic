@@ -71,22 +71,24 @@ Core owns the boundary around that code:
    Filename extensions and ecosystem metadata are not generic evidence; providers must
    enforce any additional restrictions their output format requires.
 
-Materialization runs once per build after capability and layout analysis succeeds. The
-resulting bytes are reused by every selected package projector, which places them relative
-to its own plugin root. Project delivery has no package to receive the tree, so a
-configuration must select at least one package-delivery component target. Narrowing a
-mixed build to project-only targets skips materialization.
+Materialization runs once per build or check after capability and layout analysis
+succeeds. The resulting bytes are reused by every selected package projector, which
+places them relative to its own plugin root. Project delivery has no package to receive
+the tree, so a configuration must select at least one package-delivery component target.
+Narrowing a mixed build to project-only targets skips materialization. Doctor deliberately
+skips materializer providers while retaining generic declaration and input validation.
 
 `components.runtimePackage` is intentionally separate. It is the existing
 harness-owned npm installation contract from ADR-0012, not a materializer alias, and
 Hooknostic still does not perform that npm install.
 
 MCP command reporting is also separate. For each stdio declaration Hooknostic reports
-only whether the declared command is a contained `./` path shipped by the package or a
-bare command looked up on `PATH`. `doctor` may probe a PATH command on the current
-machine, but the probe is advisory and does not change its exit status. Hooknostic does
-not parse shebangs or claim to discover interpreters, dynamic libraries, daemons, or
-transitive runtime dependencies. Remote servers have no command to report.
+whether a `./` command comes from the package or direct project source, or whether a
+bare command is looked up on `PATH`. `doctor` may probe a bare command on the current
+machine, but the probe is advisory because the generated launcher can use a different
+working directory; it does not change the exit status. Hooknostic does not parse
+shebangs or claim to discover interpreters, dynamic libraries, daemons, or transitive
+runtime dependencies. Remote servers have no command to report.
 
 ## Consequences
 

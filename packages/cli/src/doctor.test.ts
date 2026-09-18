@@ -143,6 +143,21 @@ describe("resolveOnPath", () => {
     }
   });
 
+  it("treats an empty PATH entry as the current directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-path-current-"));
+    const previous = process.cwd();
+    try {
+      await makeExecutable(join(root, executableName("from-current-directory")));
+      process.chdir(root);
+      expect(resolveOnPath("from-current-directory", { PATH: "" } as NodeJS.ProcessEnv)).toBe(
+        join(root, executableName("from-current-directory")),
+      );
+    } finally {
+      process.chdir(previous);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(process.platform === "win32")(
     "resolves a Windows command shim, which is how npx and bun exist there",
     async () => {
@@ -154,6 +169,21 @@ describe("resolveOnPath", () => {
         const env = { PATH: root, PATHEXT: ".COM;.EXE;.BAT;.CMD" } as NodeJS.ProcessEnv;
 
         expect(resolveOnPath("shim", env)).toBe(join(root, "shim.CMD"));
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "honors quoted PATH entries and case-insensitive PATH and PATHEXT keys",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "hooknostic-path-quoted-"));
+      try {
+        await writeFile(join(root, "quoted.CMD"), "");
+        const env = { path: `"${root}"`, pathext: ".CMD" } as NodeJS.ProcessEnv;
+
+        expect(resolveOnPath("quoted", env)).toBe(join(root, "quoted.CMD"));
       } finally {
         await rm(root, { recursive: true, force: true });
       }

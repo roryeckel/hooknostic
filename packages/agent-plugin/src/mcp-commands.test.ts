@@ -24,9 +24,12 @@ describe("mcpServerCommands", () => {
     ]);
   });
 
-  it("reports that a contained command is shipped by the package", () => {
+  it("reports whether a contained command comes from a package or direct project source", () => {
     expect(mcpServerCommands(config({ compiled: { type: "stdio", command: "./bin/server" } }))).toEqual([
       { server: "compiled", command: "./bin/server", resolution: "package" },
+    ]);
+    expect(mcpServerCommands(config({ local: { type: "stdio", command: "./bin/server" } }), "direct")).toEqual([
+      { server: "local", command: "./bin/server", resolution: "project" },
     ]);
   });
 

@@ -179,7 +179,7 @@ describe("complete project integration", () => {
         command: "hooknostic-missing-runtime",
         resolution: "path-lookup",
       },
-      { server: "shipped", command: "./bin/server", resolution: "package" },
+      { server: "shipped", command: "./bin/server", resolution: "project" },
     ];
     expect((built.report as typeof built.report & { mcpServers?: unknown }).mcpServers).toEqual(expected);
 

@@ -17,10 +17,10 @@ export function describeProjection(projection: AgentPluginTargetReport): string 
 /**
  * How each stdio server's declared command is resolved.
  *
- * Hooknostic can prove whether the declared command is shipped by the package
- * or looked up on PATH. It does not inspect the command for interpreters,
- * libraries, daemons, or other transitive dependencies. `doctor` probes only
- * the PATH-looked-up command and keeps that result advisory.
+ * Hooknostic can report whether the declared command comes from a package,
+ * direct project source, or PATH. It does not inspect the command for
+ * interpreters, libraries, daemons, or other transitive dependencies.
+ * `doctor` probes only PATH-looked-up commands and keeps that result advisory.
  *
  * Every projected stdio server additionally needs Node, because the generated
  * launcher is a Node program. That is a property of the projection rather than
@@ -30,7 +30,9 @@ export function describeMcpCommands(mcpServers: BuildReport["mcpServers"]): stri
   return (mcpServers ?? []).map((server) =>
     server.resolution === "package"
       ? `  ${server.server}: command ${server.command} is shipped by the package`
-      : `  ${server.server}: command ${server.command} is looked up on the consumer's PATH`,
+      : server.resolution === "project"
+        ? `  ${server.server}: command ${server.command} is resolved relative to the project MCP source`
+        : `  ${server.server}: command ${server.command} is looked up on the consumer's PATH`,
   );
 }
 

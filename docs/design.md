@@ -643,7 +643,7 @@ parser is available to the published CLI to make the check structural.
 
 | Command | Question answered |
 | --- | --- |
-| `hooknostic check` | Would `build` succeed? Runs analysis, bundling, projection, and artifact validation in memory; writes nothing. |
+| `hooknostic check` | Would `build` succeed? Runs analysis, bundling, projection, and artifact validation in memory; writes no target artifacts. Trusted materializers still run and may use network or persistent caches. |
 | `hooknostic build` | Check + stage + atomically commit target artifacts. |
 | `hooknostic doctor` | Are installed harness versions detected and within validated ranges? |
 | `hooknostic inspect <target>` | Why does this adapter map a capability/event the way it does? |

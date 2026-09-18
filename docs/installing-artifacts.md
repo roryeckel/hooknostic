@@ -197,9 +197,11 @@ See [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the full boundary
 ### MCP command reporting
 
 Build and check reports describe only how each declared stdio command is resolved. A
-`./server` command is shipped by the package; a bare command is looked up on the
-consumer's `PATH`. `doctor` probes PATH-looked-up commands on the current machine, but
-those probes are advisory and never change its exit status.
+`./server` command from a package source is shipped by the package; one from a
+direct project source is resolved relative to that MCP source; a bare command is
+looked up on the consumer's `PATH`. `doctor` probes only bare commands on its own
+PATH as an advisory: the eventual consumer machine and the generated launcher's
+working directory may differ.
 
 Hooknostic does not parse shebangs or infer interpreters, dynamic libraries, daemons, or
 other transitive runtime dependencies. Remote servers have no launched command to

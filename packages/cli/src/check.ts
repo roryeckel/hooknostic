@@ -36,7 +36,7 @@ interface CheckReport {
   targets: Record<
     string,
     Pick<AnalysisResult["targets"][string], "ok" | "adapter" | "requestedVersion" | "counts" | "resolutions"> & {
-      /** Paths `build` would generate for this target (nothing is written by `check`). */
+      /** Paths `build` would generate for this target (no target artifacts are written by `check`). */
       artifacts?: string[];
       projection?: AgentPluginTargetReport;
     }
@@ -64,9 +64,11 @@ function emitFailure(options: CheckOptions, diagnostics: Diagnostic[]): number {
 
 /**
  * `hooknostic check` — the full build pipeline (analysis, bundling, Agent
- * Plugin projection, artifact validation) without writing anything. Whatever
- * `build` would reject before touching the filesystem, `check` rejects; only
- * a write the filesystem itself refuses is left for `build` to report.
+ * Plugin projection, artifact validation) without writing target artifacts.
+ * Whatever `build` would reject before touching target outputs, `check`
+ * rejects; only a target write the filesystem itself refuses is left for
+ * `build` to report. Trusted materializers still run and may use the network
+ * or persistent caches.
  */
 export async function runCheck(options: CheckOptions): Promise<number> {
   const configPath = resolve(options.config ?? "hooknostic.config.ts");
@@ -132,7 +134,7 @@ export async function runCheck(options: CheckOptions): Promise<number> {
   options.io.stdout(
     failed
       ? "\ncheck failed: fix the errors above or adjust the target set."
-      : "\ncheck passed: every selected target generates cleanly; nothing was written.",
+      : "\ncheck passed: every selected target generates cleanly; no target artifacts were written (trusted materializers may use network or persistent caches).",
   );
   return failed ? 2 : 0;
 }
