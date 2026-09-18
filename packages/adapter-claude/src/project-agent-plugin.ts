@@ -529,6 +529,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         date: "2026-09-04",
         validatedOn: [
           {
+            version: "2.1.273",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable.",
+          },
+          {
             version: "2.1.260",
             date: "2026-09-04",
             method: "live-probe",

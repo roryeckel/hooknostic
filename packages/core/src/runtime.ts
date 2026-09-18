@@ -91,8 +91,14 @@ export async function validateRuntimeDeclarations(
   declarations: readonly RuntimeDeclaration[],
 ): Promise<string[]> {
   const problems: string[] = [];
+  const ecosystems = new Set<string>();
   const destinations = new Set<string>();
   for (const declaration of declarations) {
+    if (ecosystems.has(declaration.ecosystem)) {
+      problems.push(
+        `runtime ecosystem ${JSON.stringify(declaration.ecosystem)} is declared more than once; keep one entry per ecosystem`,
+      );
+    } else ecosystems.add(declaration.ecosystem);
     const shape = runtimeDeclarationProblem(declaration);
     if (shape !== undefined) {
       problems.push(shape);

@@ -131,6 +131,17 @@ describe("validateRuntimeDeclarations", () => {
     expect(problems.some((problem) => problem.includes("both materialize into"))).toBe(true);
   });
 
+  it("refuses more than one declaration for an ecosystem", async () => {
+    const root = await scratch("hooknostic-runtime-duplicate-ecosystem-");
+
+    const problems = await validateRuntimeDeclarations(root, [
+      { ecosystem: "npm", delivery: "author-supplied" },
+      { ecosystem: "npm", delivery: "author-supplied" },
+    ]);
+
+    expect(problems).toEqual(['runtime ecosystem "npm" is declared more than once; keep one entry per ecosystem']);
+  });
+
   it("accepts author-supplied content without installer inputs", async () => {
     const root = await scratch("hooknostic-runtime-vendored-");
 

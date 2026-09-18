@@ -10,7 +10,7 @@ export default defineConfig({
     root: ".",
     targets: ["claude", "codex", "opencode"],
     runtime: [
-      { ecosystem: "pypi", delivery: "build-materialized", lockfile: "./runtime/requirements.txt", into: "runtime/pypi" },
+      { ecosystem: "pypi", delivery: "build-materialized", lockfile: "runtime/requirements.txt", into: "runtime/pypi" },
     ],
   },
 });

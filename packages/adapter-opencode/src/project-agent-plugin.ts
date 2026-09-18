@@ -405,6 +405,13 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         date: "2026-09-08",
         validatedOn: [
           {
+            version: "1.18.31",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT to the nested package and supplied PLUGIN_DATA; bare runner commands remained resolvable.",
+          },
+          {
             version: "1.18.30",
             date: "2026-09-16",
             method: "live-probe",

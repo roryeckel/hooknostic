@@ -511,6 +511,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             version: "0.154.0",
             date: "2026-09-16",
             method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-16",
+            method: "live-probe",
             artifact: ".capture/codex-client-extension",
             what: 'Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional. One naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, but that negative was expected -- portable skills/ is canonical and an inline skills value cannot replace it -- so this run says nothing about whether the namespace is read; the 2026-09-17 records below carry the corrected probe. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line.',
           },
