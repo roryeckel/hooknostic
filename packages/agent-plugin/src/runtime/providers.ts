@@ -22,14 +22,14 @@ export type RuntimeDelivery = "harness-installed" | "build-materialized" | "auth
 /** One declared runtime in `components.runtime`. */
 export interface RuntimeDeclaration {
   ecosystem: string;
-  /** Package-relative path to the ecosystem's dependency manifest. */
+  /** Installed runtimes only: package-relative dependency manifest. */
   manifest?: string;
-  /** Package-relative path to its lockfile. */
+  /** Installed runtimes only: package-relative lockfile. */
   lockfile?: string;
   delivery: RuntimeDelivery;
   /** Where a materialized tree is emitted, relative to the target output. */
   into?: string;
-  /** npm only: packages whose install script the author verified is not needed. */
+  /** npm + `harness-installed` only: verified unnecessary install scripts. */
   allowInstallScripts?: string[];
 }
 
@@ -38,7 +38,7 @@ export interface RuntimeValidation {
   error?: string;
 }
 
-/** The locked, offline, script-free install a `build-materialized` runtime runs. */
+/** The locked, hash-verified, script-free install a `build-materialized` runtime runs. */
 export interface MaterializeCommand {
   command: string;
   args: string[];
@@ -119,6 +119,19 @@ const pypi: RuntimeProvider = {
     for (const raw of logical) {
       const line = raw.split(" #")[0]!.trim();
       if (line === "" || line.startsWith("#")) continue;
+      const option = line.split(/\s|=/)[0]!;
+      if (
+        (line.startsWith("-r") && !line.startsWith("--")) ||
+        (line.startsWith("-c") && !line.startsWith("--")) ||
+        option === "--requirement" ||
+        option === "--constraint"
+      ) {
+        return {
+          ok: false,
+          error:
+            "nested requirement or constraint files are not supported; flatten the lockfile before materialization",
+        };
+      }
       if (line.startsWith("-e ") || line.startsWith("--editable")) {
         return { ok: false, error: "an editable requirement resolves outside the package and cannot be installed" };
       }
@@ -129,6 +142,14 @@ const pypi: RuntimeProvider = {
       requirements += 1;
       if (!PINNED_REQUIREMENT.test(line)) {
         return { ok: false, error: `requirement ${JSON.stringify(line.split(/\s/)[0])} is not pinned with ==` };
+      }
+      if (line.includes(";")) {
+        return {
+          ok: false,
+          error:
+            `requirement ${JSON.stringify(line.split("==")[0])} has an environment marker; ` +
+            "a materialized runtime must contain the same dependency closure on every build machine",
+        };
       }
       if (!line.includes("--hash=")) {
         return { ok: false, error: `requirement ${JSON.stringify(line.split("==")[0])} carries no --hash` };
@@ -224,6 +245,26 @@ export function runtimeDeclarationProblem(declaration: RuntimeDeclaration): stri
       `${declaration.ecosystem} does not support ${declaration.delivery} delivery ` +
       `(it offers ${provider.deliveries.join(", ")}). ${provider.rationale}`
     );
+  }
+  if (declaration.delivery === "author-supplied") {
+    const unused = [
+      ...(declaration.manifest === undefined ? [] : ["manifest"]),
+      ...(declaration.lockfile === undefined ? [] : ["lockfile"]),
+      ...(declaration.allowInstallScripts === undefined ? [] : ["allowInstallScripts"]),
+    ];
+    if (unused.length > 0) {
+      return (
+        `${unused.map((field) => JSON.stringify(field)).join(", ")} ` +
+        `${unused.length === 1 ? "applies" : "apply"} only to installed runtimes; ` +
+        "author-supplied dependencies are already package content"
+      );
+    }
+  }
+  if (
+    declaration.allowInstallScripts !== undefined &&
+    !(declaration.ecosystem === "npm" && declaration.delivery === "harness-installed")
+  ) {
+    return '"allowInstallScripts" applies only to an npm harness-installed runtime';
   }
   if (declaration.delivery === "build-materialized") {
     if (provider.portability === "platform-specific") {

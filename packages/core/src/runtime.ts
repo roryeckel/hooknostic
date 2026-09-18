@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { readdir, readFile, rm, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { readdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
 
 import {
   type RuntimeDeclaration,
@@ -16,6 +16,33 @@ export interface MaterializedRuntime {
   /** Destination relative to the target output, as declared by `into`. */
   into: string;
   files: { path: string; contents: Buffer }[];
+}
+
+type ResolvedRuntimeInput = { ok: true; path: string } | { ok: false; error: string };
+
+/** Resolve a declared package-relative input without letting a link escape the package root. */
+async function resolveRuntimeInput(root: string, declared: string): Promise<ResolvedRuntimeInput> {
+  const normalized = declared;
+  if (
+    normalized === "" ||
+    normalized.includes("\\") ||
+    normalized.includes(":") ||
+    posix.isAbsolute(declared) ||
+    win32.isAbsolute(declared) ||
+    normalized.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    return { ok: false, error: "must be a package-relative POSIX path without empty, . or .. segments" };
+  }
+  try {
+    const [canonicalRoot, canonicalInput] = await Promise.all([realpath(root), realpath(resolve(root, normalized))]);
+    const rel = relative(canonicalRoot, canonicalInput);
+    if (rel === "" || isAbsolute(rel) || rel === ".." || rel.startsWith("../") || rel.startsWith("..\\")) {
+      return { ok: false, error: "resolves outside the Agent Plugin root" };
+    }
+    return { ok: true, path: canonicalInput };
+  } catch {
+    return { ok: false, error: "could not be read" };
+  }
 }
 
 /**
@@ -78,14 +105,24 @@ export async function validateRuntimeDeclarations(
       }
       destinations.add(declaration.into);
     }
+    // No installer consumes an author-supplied declaration. Its dependencies
+    // are ordinary package content, and the shape check above rejects fields
+    // that would otherwise look meaningful while doing nothing.
+    if (declaration.delivery === "author-supplied") continue;
     const provider = runtimeProvider(declaration.ecosystem)!;
     const files: { manifest?: Uint8Array; lockfile?: Uint8Array } = {};
     let unreadable = false;
     for (const key of ["manifest", "lockfile"] as const) {
       const declared = declaration[key];
       if (declared === undefined) continue;
+      const resolved = await resolveRuntimeInput(root, declared);
+      if (!resolved.ok) {
+        problems.push(`${declaration.ecosystem} runtime ${key} ${JSON.stringify(declared)} ${resolved.error}`);
+        unreadable = true;
+        continue;
+      }
       try {
-        files[key] = await readFile(resolve(root, declared));
+        files[key] = await readFile(resolved.path);
       } catch {
         problems.push(`${declaration.ecosystem} runtime ${key} ${JSON.stringify(declared)} could not be read`);
         unreadable = true;
@@ -118,7 +155,7 @@ async function readTree(root: string, dir = root, out: { path: string; contents:
  *
  * Hooknostic invokes a package manager here, and only here. That is deliberate
  * and narrow: it happens solely for a declaration that asked for it, the
- * install is locked and offline and refuses to execute package code, and the
+ * install is locked, hash-verified and refuses to execute package code, and the
  * result is checked to be platform-independent before it may be committed. The
  * install is NOT trusted to have been portable merely because the ecosystem
  * says its packages are -- the bytes are read.
@@ -139,10 +176,18 @@ export async function materializeRuntimes(options: {
     const provider = runtimeProvider(declaration.ecosystem);
     if (provider?.materializeCommand === undefined || declaration.lockfile === undefined) continue;
 
+    const lockfile = await resolveRuntimeInput(options.root, declaration.lockfile);
+    if (!lockfile.ok) {
+      problems.push(
+        `${declaration.ecosystem} runtime lockfile ${JSON.stringify(declaration.lockfile)} ${lockfile.error}`,
+      );
+      continue;
+    }
+
     const into = join(options.staging, declaration.ecosystem);
     await rm(into, { recursive: true, force: true });
     const { command, args } = provider.materializeCommand({
-      lockfile: resolve(options.root, declaration.lockfile),
+      lockfile: lockfile.path,
       into,
     });
 

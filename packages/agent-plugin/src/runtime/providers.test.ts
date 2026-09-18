@@ -34,11 +34,35 @@ describe("the pypi provider", () => {
     expect(result.error).toContain("--hash");
   });
 
+  it("refuses environment markers that would select a build-machine-specific closure", () => {
+    const result = pypi.validate({
+      lockfile: 'colorama==0.4.6; sys_platform == "win32" --hash=sha256:aa\n',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("environment marker");
+    expect(result.error).toContain("every build machine");
+  });
+
   it("refuses an editable requirement, which resolves outside the package", () => {
     const result = pypi.validate({ lockfile: "-e ./local-thing\n" });
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain("outside the package");
+  });
+
+  it("refuses nested requirement and constraint files", () => {
+    for (const directive of [
+      "-r ../outside.txt",
+      "--requirement=../outside.txt",
+      "-c ../outside.txt",
+      "--constraint=../outside.txt",
+    ]) {
+      const result = pypi.validate({ lockfile: `${directive}\nidna==3.19 --hash=sha256:aa\n` });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("nested requirement or constraint files");
+    }
   });
 
   it("refuses --no-binary, which would run a source distribution's setup code", () => {
@@ -53,7 +77,7 @@ describe("the pypi provider", () => {
     expect(pypi.validate({}).ok).toBe(false);
   });
 
-  it("installs offline from the lock, wheels only", () => {
+  it("installs a hash-verified locked closure from wheels only", () => {
     const { command, args } = pypi.materializeCommand!({ lockfile: "req.txt", into: "out" });
 
     expect(command).toBe("uv");
@@ -106,6 +130,25 @@ describe("runtimeDeclarationProblem", () => {
     expect(runtimeDeclarationProblem({ ecosystem: "pypi", delivery: "author-supplied", into: "x" })).toContain(
       "applies only to build-materialized",
     );
+  });
+
+  it("rejects installer-only fields on deliveries that cannot consume them", () => {
+    expect(
+      runtimeDeclarationProblem({
+        ecosystem: "pypi",
+        delivery: "author-supplied",
+        lockfile: "requirements.txt",
+      }),
+    ).toContain("author-supplied dependencies are already package content");
+    expect(
+      runtimeDeclarationProblem({
+        ecosystem: "pypi",
+        delivery: "build-materialized",
+        lockfile: "requirements.txt",
+        into: "runtime/pypi",
+        allowInstallScripts: ["unused"],
+      }),
+    ).toContain("npm harness-installed runtime");
   });
 
   it("admits the shapes that are meant to work", () => {

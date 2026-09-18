@@ -4562,6 +4562,13 @@ var hooknosticConfigSchema = external_exports.object({
         });
       }
     }
+    if (config.components.runtime !== void 0 && ![...componentTargets].some((target) => config.targets[target]?.delivery === "package")) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["components", "runtime"],
+        message: "components.runtime requires at least one package-delivery component target"
+      });
+    }
     if (config.entry === void 0) {
       const projected = new Set(config.components.targets ?? Object.keys(config.targets));
       for (const target of configured) {

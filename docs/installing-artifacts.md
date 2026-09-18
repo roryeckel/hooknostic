@@ -141,7 +141,7 @@ components: {
     {
       ecosystem: "pypi",
       delivery: "build-materialized",
-      lockfile: "./runtime/requirements.txt",
+      lockfile: "runtime/requirements.txt",
       into: "runtime/pypi",
     },
   ],
@@ -156,7 +156,12 @@ install time and a wheel does not), then **verifies the result is
 platform-independent before committing it**. A distribution carrying a compiled
 extension is refused with the file named, because an artifact built once and
 installed anywhere (ADR-0006) cannot contain one platform's binary. The
-installer's own console-script launchers are dropped for the same reason.
+installer's own console-script launchers are dropped for the same reason. The
+installer may download wheels from its configured index; `--require-hashes`
+authenticates those bytes, but the build is not promised to work offline.
+The lockfile must be flattened: active `-r`/`--requirement` and
+`-c`/`--constraint` directives are refused rather than followed, so every
+dependency line is validated before installation.
 
 Point the server at the tree from `mcp.json`, where `${PLUGIN_ROOT}` already
 expands in `env` values. Declare it rather than relying on an inherited one:
@@ -173,9 +178,11 @@ silently fails on the third
 A Rust or Go server cannot use `build-materialized`, because its build output is
 one native binary per target triple. It ships the binaries itself as ordinary
 package content — declared in `components.executableFiles` so they arrive
-executable — or is declared as a runner command such as `docker`. `cargo` and
-`golang` are listed in the provider table with that reason, so a build says so
-rather than reporting an unknown ecosystem.
+executable — and may declare `delivery: "author-supplied"` without a manifest or
+lockfile, or is declared as a runner command such as `docker`. Install-only fields
+are rejected on an author-supplied declaration. `cargo` and `golang` are listed in
+the provider table with that reason, so a build says so rather than reporting an
+unknown ecosystem.
 
 #### The npm case
 

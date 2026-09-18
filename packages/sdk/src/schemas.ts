@@ -302,6 +302,16 @@ export const hooknosticConfigSchema = z
           });
         }
       }
+      if (
+        config.components.runtime !== undefined &&
+        ![...componentTargets].some((target) => config.targets[target]?.delivery === "package")
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "runtime"],
+          message: "components.runtime requires at least one package-delivery component target",
+        });
+      }
       if (config.entry === undefined) {
         const projected = new Set(config.components.targets ?? Object.keys(config.targets));
         for (const target of configured) {

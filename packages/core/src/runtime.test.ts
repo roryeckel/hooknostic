@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -129,6 +129,59 @@ describe("validateRuntimeDeclarations", () => {
     ]);
 
     expect(problems.some((problem) => problem.includes("both materialize into"))).toBe(true);
+  });
+
+  it("accepts author-supplied content without installer inputs", async () => {
+    const root = await scratch("hooknostic-runtime-vendored-");
+
+    expect(
+      await validateRuntimeDeclarations(root, [
+        { ecosystem: "pypi", delivery: "author-supplied" },
+        { ecosystem: "npm", delivery: "author-supplied" },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("rejects installer inputs on an author-supplied runtime", async () => {
+    const root = await scratch("hooknostic-runtime-vendored-input-");
+
+    const problems = await validateRuntimeDeclarations(root, [
+      { ecosystem: "pypi", delivery: "author-supplied", lockfile: "requirements.txt" },
+    ]);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("author-supplied dependencies are already package content");
+  });
+
+  it.each([
+    "./requirements.txt",
+    "../requirements.txt",
+    "/outside/requirements.txt",
+    "C:/outside/requirements.txt",
+    "runtime\\requirements.txt",
+  ])("rejects runtime input path %s outside the portable package namespace", async (lockfile) => {
+    const root = await scratch("hooknostic-runtime-path-");
+
+    const problems = await validateRuntimeDeclarations(root, [
+      { ecosystem: "pypi", delivery: "build-materialized", lockfile, into: "runtime/pypi" },
+    ]);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("package-relative POSIX path");
+  });
+
+  it("rejects a package-relative runtime input that escapes through a symlink", async () => {
+    const root = await scratch("hooknostic-runtime-link-root-");
+    const outside = await scratch("hooknostic-runtime-link-outside-");
+    await writeFile(join(outside, "requirements.txt"), "idna==3.19 --hash=sha256:abc\n");
+    await symlink(join(outside, "requirements.txt"), join(root, "requirements.txt"), "file");
+
+    const problems = await validateRuntimeDeclarations(root, [
+      { ecosystem: "pypi", delivery: "build-materialized", lockfile: "requirements.txt", into: "runtime/pypi" },
+    ]);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("resolves outside the Agent Plugin root");
   });
 });
 

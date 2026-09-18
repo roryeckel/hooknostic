@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
 
 import semver from "semver";
@@ -19,12 +19,20 @@ import type { CommandIO } from "./check.js";
  */
 export function resolveOnPath(command: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
   const directories = (env["PATH"] ?? env["Path"] ?? "").split(delimiter).filter(Boolean);
-  const suffixes =
-    process.platform === "win32" ? ["", ...(env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)] : [""];
+  const windows = process.platform === "win32";
+  const pathExt = (env["PATHEXT"] ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean);
+  const suffixes = windows ? (command.includes(".") ? ["", ...pathExt] : pathExt) : [""];
   for (const directory of directories) {
     for (const suffix of suffixes) {
       const candidate = resolve(directory, command + suffix);
-      if (existsSync(candidate)) return candidate;
+      try {
+        if (!statSync(candidate).isFile()) continue;
+        if (!windows) accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // A missing, unreadable or non-executable candidate is not spawnable;
+        // keep searching later PATH entries and PATHEXT forms.
+      }
     }
   }
   return undefined;

@@ -89,11 +89,15 @@ Declaring it is not tidiness: on Codex the ambient environment does not reach th
 so a runtime found only through an inherited variable works on two harnesses and silently
 fails on the third.
 
-A `build-materialized` install is locked, offline and script-free. For PyPI that is
+A `build-materialized` install is locked, hash-verified and script-free. For PyPI that is
 `--require-hashes` and `--only-binary=:all:`, the second being this ecosystem's
 `--ignore-scripts`: a source distribution executes its own setup code at install time and
-a wheel does not. Validation refuses an unpinned or unhashed requirement, an editable
-requirement, and a `--no-binary` directive, before any install is attempted.
+a wheel does not. The installer may download wheels from its configured index; the
+required hashes authenticate the exact downloaded bytes, so this is not an offline-build
+guarantee. Validation refuses an unpinned or unhashed requirement, an environment marker,
+an editable requirement, a `--no-binary` directive, and active nested requirement or
+constraint-file directives, before any install is attempted. The lockfile is therefore
+flattened and every dependency line is validated before materialization.
 
 ### On ADR-0012
 

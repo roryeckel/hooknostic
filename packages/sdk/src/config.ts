@@ -85,14 +85,14 @@ export interface TargetConfig {
 export interface AgentPluginRuntimeConfig {
   /** `npm`, `pypi`, `nuget`, `cargo`, `golang`. */
   ecosystem: string;
-  /** Dependency manifest, relative to the Agent Plugin root. */
+  /** Installed runtimes only: dependency manifest, relative to the Agent Plugin root. */
   manifest?: string;
-  /** Lockfile, relative to the Agent Plugin root. */
+  /** Installed runtimes only: lockfile, relative to the Agent Plugin root. */
   lockfile?: string;
   delivery: "harness-installed" | "build-materialized" | "author-supplied";
   /** Where a materialized tree is written, relative to the target output. */
   into?: string;
-  /** npm only; see `AgentPluginRuntimePackageConfig.allowInstallScripts`. */
+  /** npm + `harness-installed` only; see `AgentPluginRuntimePackageConfig`. */
   allowInstallScripts?: string[];
 }
 

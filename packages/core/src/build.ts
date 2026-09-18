@@ -477,9 +477,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   diagnostics.push(...configResult.diagnostics);
   if (!configResult.config) return fail();
   const config = configResult.config;
+  const componentTargetIds = new Set(config.components?.targets ?? Object.keys(config.targets));
+  const selectedTargetIds = new Set(options.targets ?? Object.keys(config.targets));
+  const selectedPackageProjection = Object.entries(config.targets).some(
+    ([id, target]) => selectedTargetIds.has(id) && componentTargetIds.has(id) && target.delivery === "package",
+  );
 
   let components: AgentPluginPackage | undefined;
   let materializedRuntimes: MaterializedRuntime[] = [];
+  let runtimeDeclarations: RuntimeDeclaration[] = [];
   if (config.components?.root !== undefined) {
     const agentPluginRoot = resolve(configDir, config.components.root);
     const nativeProjectPaths =
@@ -526,28 +532,15 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       mcpServers: mcpPrerequisites(components.mcp),
     };
 
-    const spelling = runtimeSpellingProblem(config.components);
-    if (spelling !== undefined) diagnostics.push({ code: "HN501", severity: "error", message: spelling });
-    const declarations = (config.components.runtime ?? []) as RuntimeDeclaration[];
-    for (const problem of await validateRuntimeDeclarations(agentPluginRoot, declarations)) {
-      diagnostics.push({ code: "HN501", severity: "error", message: problem });
+    if (selectedPackageProjection) {
+      const spelling = runtimeSpellingProblem(config.components);
+      if (spelling !== undefined) diagnostics.push({ code: "HN501", severity: "error", message: spelling });
+      runtimeDeclarations = (config.components.runtime ?? []) as RuntimeDeclaration[];
+      for (const problem of await validateRuntimeDeclarations(agentPluginRoot, runtimeDeclarations)) {
+        diagnostics.push({ code: "HN501", severity: "error", message: problem });
+      }
     }
     if (hasFatal(diagnostics)) return fail();
-
-    // Materialized runtimes are read into memory here and placed by each
-    // projector, never written into the package root: ADR-0011 keeps that root
-    // read-only input.
-    if (declarations.some((declaration) => declaration.delivery === "build-materialized")) {
-      const staging = await mkdtemp(join(tmpdir(), "hooknostic-runtime-"));
-      try {
-        const result = await materializeRuntimes({ root: agentPluginRoot, staging, declarations });
-        for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
-        materializedRuntimes = result.runtimes;
-      } finally {
-        await rm(staging, { recursive: true, force: true });
-      }
-      if (hasFatal(diagnostics)) return fail();
-    }
   }
 
   let componentSource: ProjectComponents | undefined;
@@ -567,7 +560,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
-  const componentTargetIds = new Set(config.components?.targets ?? Object.keys(config.targets));
   if (
     config.components?.root === undefined &&
     componentSource &&
@@ -675,12 +667,41 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
   if (!analysis.ok || hasFatal(diagnostics)) return { ok: false, report, analysis };
 
+  const markUnbuilt = (status: "failed" | "skipped") => {
+    for (const target of Object.values(report.targets)) {
+      if (target.status === "success") target.status = status;
+      if (target.projection?.status === "success") target.projection.status = status;
+    }
+  };
+
+  // A package manager is the one side effect of a dry-run build. Run it only
+  // after analysis and layout validation have established that a selected
+  // package projection can consume the result. The installed bytes stay in
+  // memory and are placed by each projector; the package root remains read-only
+  // input (ADR-0011).
+  if (runtimeDeclarations.some((declaration) => declaration.delivery === "build-materialized")) {
+    const agentPluginRoot = resolve(configDir, config.components!.root!);
+    const staging = await mkdtemp(join(tmpdir(), "hooknostic-runtime-"));
+    try {
+      const result = await materializeRuntimes({ root: agentPluginRoot, staging, declarations: runtimeDeclarations });
+      for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
+      materializedRuntimes = result.runtimes;
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+    if (hasFatal(diagnostics)) {
+      markUnbuilt("failed");
+      return { ok: false, report, analysis };
+    }
+  }
+
   // A dry run (`hooknostic check`) performs every generation step — bundling,
   // compilation, Agent Plugin projection, artifact validation — in memory so
-  // that anything `build` would reject before touching the filesystem is
-  // reported now. Only staging and the commit are skipped; nothing is written,
-  // so a write the target filesystem itself refuses (path length, reserved
-  // names) is the one failure only `build` can report.
+  // that anything `build` would reject before touching its outputs is reported
+  // now. Only output staging and the commit are skipped; runtime materialization
+  // may still use a package manager's network and cache. A write the target
+  // filesystem itself refuses (path length, reserved names) is the one failure
+  // only `build` can report.
   const dryRun = options.dryRun === true;
   const runtimePolicy = effectiveRuntime(config);
   const projectSdk = config.entry === undefined ? undefined : resolveProjectSdk(configDir);
@@ -693,10 +714,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     // Under a dry run nothing would have been committed anyway; leave each
     // target's own verdict intact so `check` reports per-target results.
     if (dryRun) return { ok: false, report, analysis };
-    for (const target of Object.values(report.targets)) {
-      if (target.status === "success") target.status = "skipped";
-      if (target.projection?.status === "success") target.projection.status = "skipped";
-    }
+    markUnbuilt("skipped");
     return { ok: false, report, analysis };
   };
 

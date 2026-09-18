@@ -229,6 +229,30 @@ describe("canonical schemas", () => {
     ).toBe(false);
   });
 
+  it("requires components.runtime to have a package-delivery component target", () => {
+    const projectOnly = {
+      project: { root: "." },
+      components: {
+        root: ".",
+        runtime: [{ ecosystem: "pypi", delivery: "build-materialized", lockfile: "requirements.txt", into: "lib" }],
+      },
+      targets: { claude: { version: ">=2.1 <3", delivery: "project" as const, output: "./dist/claude" } },
+    };
+
+    expect(() => hooknosticConfigSchema.parse(projectOnly)).toThrow(
+      /components\.runtime requires at least one package-delivery component target/,
+    );
+    expect(
+      hooknosticConfigSchema.safeParse({
+        ...projectOnly,
+        targets: {
+          ...projectOnly.targets,
+          opencode: { version: ">=1.18 <2", delivery: "package" as const, output: "./dist/opencode" },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("scopes component delivery invariants to selected targets", () => {
     const entry = "./src/hooks.ts";
     const packageTarget = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/package" };
