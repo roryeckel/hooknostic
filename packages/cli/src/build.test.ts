@@ -2426,7 +2426,7 @@ describe("hooknostic doctor", () => {
     }
   });
 
-  it("still reports structural materializer declaration errors without invoking the provider", async () => {
+  it("reports package-only materializer declaration errors in a mixed project without invoking the provider", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-doctor-materializer-invalid-"));
     cleanupDirs.push(dir);
     const callKey = `HOOKNOSTIC_DOCTOR_MATERIALIZER_INVALID_${basename(dir).replaceAll("-", "_")}`;
@@ -2436,14 +2436,18 @@ describe("hooknostic doctor", () => {
       JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "doctor-materializer-invalid" }),
     );
     await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+    await writeFile(join(dir, "hooks.ts"), 'export default { name: "doctor-mixed", hooks: [] };');
     const configPath = join(dir, "hooknostic.config.ts");
     await writeFile(
       configPath,
       `const provider = {
         id: "fixture",
+        validate() { process.env[${JSON.stringify(callKey)}] = "validated"; return []; },
         plan() { process.env[${JSON.stringify(callKey)}] = "planned"; return { command: "ignored", args: [] }; },
       };
       export default {
+        project: { root: "." },
+        entry: "./hooks.ts",
         components: {
           root: ".",
           targets: ["claude"],
@@ -2454,6 +2458,11 @@ describe("hooknostic doctor", () => {
             version: ${JSON.stringify(claudeHarness.recommendedRange)},
             delivery: "package",
             output: "dist/claude",
+          },
+          codex: {
+            version: ${JSON.stringify(CODEX_PLUGIN_MODE_RANGE)},
+            delivery: "project",
+            output: ".hooknostic/artifacts/codex",
           },
         },
       };`,
@@ -2472,6 +2481,126 @@ describe("hooknostic doctor", () => {
       expect.stringContaining('"into" "../outside"'),
     );
     expect(process.env[callKey]).toBeUndefined();
+  });
+
+  it("reports commands owned only by a package target in a mixed project", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-doctor-mixed-package-mcp-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "bin"));
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "doctor-mixed-package-mcp" }),
+    );
+    await writeFile(join(dir, "hooks.ts"), 'export default { name: "doctor-mixed-package-mcp", hooks: [] };');
+    await writeFile(join(dir, "bin/server"), "fixture server\n");
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          ambient: { type: "stdio", command: "hooknostic-definitely-missing-runtime" },
+          packaged: { type: "stdio", command: "./bin/server" },
+        },
+      }),
+    );
+    const configPath = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        project: { root: "." },
+        entry: "./hooks.ts",
+        components: { root: ".", targets: ["claude"], executableFiles: ["bin/server"] },
+        targets: {
+          claude: {
+            version: ${JSON.stringify(claudeHarness.recommendedRange)},
+            delivery: "package",
+            output: "dist/claude",
+          },
+          codex: {
+            version: ${JSON.stringify(CODEX_PLUGIN_MODE_RANGE)},
+            delivery: "project",
+            output: ".hooknostic/artifacts/codex",
+          },
+        },
+      };`,
+    );
+    const registry = defaultAdapterRegistry();
+    for (const [id, adapter] of Object.entries(registry)) {
+      registry[id] = {
+        ...adapter,
+        detect: async () => ({ installed: true, version: adapter.harness.referenceVersion }),
+      };
+    }
+
+    const capture = captureIO();
+    await runDoctor({ config: configPath, json: true, registry, io: capture.io });
+    expect(JSON.parse(capture.out()).mcpCommands).toEqual([
+      {
+        server: "ambient",
+        command: "hooknostic-definitely-missing-runtime",
+        resolution: "ambient",
+        lookupOrder: process.platform === "win32" ? "cwd-then-path" : "path",
+        pathProbe: { cwd: process.cwd() },
+      },
+      { server: "packaged", command: "./bin/server", resolution: "package" },
+    ]);
+  });
+
+  it("deduplicates commands reported by both package and project diagnostics", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-doctor-mixed-shared-mcp-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "doctor-mixed-shared-mcp" }),
+    );
+    await writeFile(join(dir, "hooks.ts"), 'export default { name: "doctor-mixed-shared-mcp", hooks: [] };');
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { shared: { type: "stdio", command: "hooknostic-definitely-missing-runtime" } },
+      }),
+    );
+    const configPath = join(dir, "hooknostic.config.ts");
+    await writeFile(
+      configPath,
+      `export default {
+        project: { root: "." },
+        entry: "./hooks.ts",
+        components: { root: ".", targets: ["claude", "codex"] },
+        targets: {
+          claude: {
+            version: ${JSON.stringify(claudeHarness.recommendedRange)},
+            delivery: "package",
+            output: "dist/claude",
+          },
+          codex: {
+            version: ${JSON.stringify(CODEX_PLUGIN_MODE_RANGE)},
+            delivery: "project",
+            output: ".hooknostic/artifacts/codex",
+          },
+        },
+      };`,
+    );
+    const registry = defaultAdapterRegistry();
+    for (const [id, adapter] of Object.entries(registry)) {
+      registry[id] = {
+        ...adapter,
+        detect: async () => ({ installed: true, version: adapter.harness.referenceVersion }),
+      };
+    }
+
+    const capture = captureIO();
+    await runDoctor({ config: configPath, json: true, registry, io: capture.io });
+    expect(JSON.parse(capture.out()).mcpCommands).toEqual([
+      {
+        server: "shared",
+        command: "hooknostic-definitely-missing-runtime",
+        resolution: "ambient",
+        lookupOrder: process.platform === "win32" ? "cwd-then-path" : "path",
+        pathProbe: { cwd: process.cwd() },
+      },
+    ]);
   });
 
   it("reports both command resolutions and probes the PATH portion of ambient lookups", async () => {

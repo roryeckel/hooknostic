@@ -53,6 +53,22 @@ export function resolveOnPath(command: string, env: NodeJS.ProcessEnv = process.
   return undefined;
 }
 
+function mergeMcpCommands(...groups: readonly (readonly McpServerCommand[])[]): McpServerCommand[] {
+  const commands = new Map<string, McpServerCommand>();
+  for (const group of groups) {
+    for (const command of group) {
+      const key = JSON.stringify([command.server, command.command, command.resolution]);
+      if (!commands.has(key)) commands.set(key, command);
+    }
+  }
+  return [...commands.values()].sort(
+    (a, b) =>
+      a.server.localeCompare(b.server) ||
+      a.command.localeCompare(b.command) ||
+      a.resolution.localeCompare(b.resolution),
+  );
+}
+
 export interface DoctorCommandOptions {
   config?: string;
   json?: boolean;
@@ -182,7 +198,24 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         executeMaterializers: false,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
-      commands = project.mcpServers;
+      commands = mergeMcpCommands(commands, project.mcpServers);
+      const packageTargets = Object.entries(loaded.config.targets)
+        .filter(([, target]) => target.delivery === "package")
+        .map(([name]) => name);
+      if (packageTargets.length > 0) {
+        const checked = await buildProject({
+          configPath: resolve(options.config),
+          registry: options.registry,
+          targets: packageTargets,
+          dryRun: true,
+          executeMaterializers: false,
+          configResult: loaded,
+        });
+        configurationErrors.push(
+          ...checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message),
+        );
+        commands = mergeMcpCommands(commands, checked.report.mcpServers ?? []);
+      }
     } else {
       const checked = await buildProject({
         configPath: resolve(options.config),
@@ -192,7 +225,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
-      commands = checked.report.mcpServers ?? [];
+      commands = mergeMcpCommands(checked.report.mcpServers ?? []);
     }
   }
   // Probed, but deliberately not folded into `ok`: the command belongs to
