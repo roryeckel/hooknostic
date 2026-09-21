@@ -417,9 +417,17 @@ jobs:
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EOF
           )"
-          EXISTING="$(gh pr view "$BRANCH" --json url --jq '.url // ""' 2>/dev/null || true)"
+          # Scoped to open PRs, because `gh pr view <branch>` also resolves a
+          # CLOSED one -- and closing these is a normal outcome: the record is
+          # rolling (ADR-0009), so a stale row gets closed rather than merged.
+          # With the unscoped lookup the next run force-pushed the branch and
+          # then edited the closed PR's title and body, which `gh pr edit`
+          # accepts, so a fresh validation landed with nothing open to surface
+          # it. Reopening would be wrong too: a close is a human decision about
+          # that version, and this run is carrying a different one.
+          EXISTING="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // ""' 2>/dev/null || true)"
           if [ -n "$EXISTING" ]; then
-            gh pr edit "$BRANCH" --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
+            gh pr edit "$EXISTING" --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
           else
             gh pr create --base master --head "$BRANCH" --label harness-watch \
               --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
