@@ -15,6 +15,7 @@ import {
   hasUnportableCommandPath,
   isRejectedSkillPath,
   isRootNpmManifestPath,
+  materializedPackageFiles,
   parseJsonObject,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
@@ -500,12 +501,19 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
+            "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
         },
       },
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "0.154.0",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables.",
+          },
           {
             version: "0.154.0",
             date: "2026-09-16",
@@ -799,6 +807,34 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     }
     for (const file of context.hookArtifacts) {
       if (file.path !== NATIVE_MANIFEST_PATH) generatedByFoldedPath.set(file.path.toLowerCase(), file.path);
+    }
+    // Provider-materialized package trees are emitted output like any other, so a
+    // hoist landing in one is refused before it happens rather than surfacing
+    // later as a collision blamed on "package content" the author never wrote.
+    // They join `generatedByFoldedPath` rather than `copiedPaths`: their bytes
+    // came from an installer, not from the package, so the summary's "copied
+    // byte-for-byte" list must not claim them.
+    const materialized = materializedPackageFiles(context.materializedTrees, {
+      claimed: new Set(copiedPaths),
+    });
+    issues.push(...materialized.issues);
+    for (const file of materialized.files) {
+      const folded = file.path.toLowerCase();
+      // The same two readings the hoist loop makes below, because a runtime
+      // landing on an emitted file or beneath one is the same defect from the
+      // other side: `into` was pointed at output rather than at free space.
+      const occupied = occupyingFile(folded, generatedByFoldedPath) ?? occupyingFile(folded, shippedByFoldedPath);
+      if (occupied !== undefined) {
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          path: file.path,
+          message: `a materialized package tree lands on or inside ${JSON.stringify(occupied)}, which the output already carries; point its "into" at a directory nothing else uses`,
+        });
+        continue;
+      }
+      generatedByFoldedPath.set(folded, file.path);
+      files.push(file);
     }
     // Directories the output already has, from shipped files, generated files
     // and the package's own directory inventory. A hoisted FILE landing on one

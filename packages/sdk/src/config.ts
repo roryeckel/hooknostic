@@ -77,10 +77,68 @@ export interface TargetConfig {
   compatibility?: CompatibilityPolicy;
 }
 
-/**
- * Source files for a Node.js runtime package. Projectors choose how, or whether,
- * a target can materialize this input.
- */
+export interface PackageMaterializerFile {
+  path: string;
+  contents: Uint8Array;
+  /** Canonical portable mode. Host filesystem permission bits are never inferred. */
+  mode: 0o644 | 0o755;
+}
+
+export interface PackageMaterializerInput {
+  /** The package-relative path declared in `components.materialize`. */
+  path: string;
+  /** Canonical absolute path, proven to remain inside the package root. */
+  absolutePath: string;
+  contents: Uint8Array;
+}
+
+export interface PackageMaterializerContext {
+  /** Canonical absolute Agent Plugin package root. */
+  root: string;
+  inputs: Readonly<Record<string, PackageMaterializerInput>>;
+}
+
+export interface PackageMaterializationPlan {
+  /** Executable name or path. Hooknostic invokes it without a shell. */
+  command: string;
+  args: readonly string[];
+}
+
+export interface PackageMaterializationResult {
+  files: readonly PackageMaterializerFile[];
+  problems: readonly string[];
+}
+
+export interface PackageMaterializer {
+  /** Stable, human-readable identity used in diagnostics. */
+  id: string;
+  /** Provider-owned input validation performed before any command is run. */
+  validate?(context: PackageMaterializerContext): readonly string[] | Promise<readonly string[]>;
+  /** Plan an install or generation into `outputDir`. */
+  plan(
+    context: PackageMaterializerContext & { outputDir: string },
+  ): PackageMaterializationPlan | Promise<PackageMaterializationPlan>;
+  /** Normalize or validate the produced opaque tree, including provider-owned portability rules. */
+  postprocess?(
+    files: readonly PackageMaterializerFile[],
+    context: PackageMaterializerContext,
+  ): PackageMaterializationResult | Promise<PackageMaterializationResult>;
+}
+
+/** Identity helper that preserves a materializer's concrete TypeScript shape. */
+export function definePackageMaterializer<const T extends PackageMaterializer>(materializer: T): T {
+  return materializer;
+}
+
+export interface PackageMaterializationConfig {
+  /** Trusted provider imported by `hooknostic.config.ts`. */
+  provider: PackageMaterializer;
+  /** Provider-named package-relative regular-file inputs. */
+  inputs: Record<string, string>;
+  /** Portable POSIX destination relative to each projected plugin root. */
+  into: string;
+}
+
 export interface AgentPluginRuntimePackageConfig {
   /** Package manifest, relative to the Agent Plugin root. */
   manifest: string;
@@ -90,7 +148,7 @@ export interface AgentPluginRuntimePackageConfig {
    * Dependency names allowed to declare an npm lifecycle install script.
    *
    * This does not make the script run: the harness installs with scripts
-   * disabled, and Hooknostic never invokes a package manager. It records that
+   * disabled, and Hooknostic performs no npm install of its own. It records that
    * you have verified the named package works without its script — a
    * `postinstall` that only prints, or a build step that falls back to a
    * prebuilt binary shipped in the tarball. Anything that genuinely needs its
@@ -131,6 +189,13 @@ interface ComponentPolicy<TTarget extends string> {
   exclude?: string[];
   /** Optional runtime dependency input for projectors that support it. */
   runtimePackage?: AgentPluginRuntimePackageConfig;
+  /**
+   * Opaque package trees produced by trusted, author-supplied Node providers.
+   * Materializers are package content, not MCP declarations: Hooknostic knows
+   * how to stage and place their output but carries no ecosystem-specific
+   * installer policy of its own (ADR-0017).
+   */
+  materialize?: PackageMaterializationConfig[];
   /** Whether a valid but unrepresentable component fails or degrades the build. Default `"error"`. */
   onUnsupported?: "error" | "warn";
   /**
@@ -157,8 +222,20 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
       }
-    | ({ root?: never; skills: string[]; mcp?: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
-    | ({ root?: never; skills?: string[]; mcp: string; executableFiles?: never } & DirectComponentPolicy<TTarget>)
+    | ({
+        root?: never;
+        skills: string[];
+        mcp?: string;
+        executableFiles?: never;
+        materialize?: never;
+      } & DirectComponentPolicy<TTarget>)
+    | ({
+        root?: never;
+        skills?: string[];
+        mcp: string;
+        executableFiles?: never;
+        materialize?: never;
+      } & DirectComponentPolicy<TTarget>)
   );
 
 export type TargetsConfig = Record<string, TargetConfig>;

@@ -65,9 +65,11 @@ export function hasAmbiguousSeparator(value: string): boolean {
 /**
  * The same hazard for a `command`, which only `./` forms carry.
  *
- * A bare executable name has no path semantics -- the loader already forbids a
- * separator in one -- and an absolute command is the caller's own, not a
- * package-relative path this projection has to keep contained.
+ * A bare executable name has no path semantics, and the loader admits nothing
+ * else: a command that does not start with `./` is rejected outright if it
+ * contains any separator (`commandValid` in `load.ts`), so an absolute command
+ * never reaches this function. Only the contained `./` form has to stay
+ * contained on both platforms.
  */
 export function hasUnportableCommandPath(command: string): boolean {
   return command.startsWith("./") && hasAmbiguousSeparator(command);

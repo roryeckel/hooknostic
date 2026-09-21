@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "path-recorder",
+  "version": "1.0.0",
+  "description": "Records the environment an MCP stdio child is spawned with",
+  "license": "MIT"
+}

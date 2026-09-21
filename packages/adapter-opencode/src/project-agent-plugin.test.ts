@@ -100,6 +100,25 @@ describe("Agent Plugin to OpenCode projection", () => {
   // Every validatedOn record for this projection is 1.18.29. A profile reaching
   // below that would let a build claim exact/emulated support for a config hook,
   // a skills.paths merge and an MCP shape nothing has watched on those releases.
+  it("carries a runner command through untouched, whatever language it launches", async () => {
+    // The dominant real-world shape: of 24 stdio servers configured on one
+    // developer machine, every third-party one was a runner (`npx`, `bun`,
+    // `uvx`, `docker`, `php`) rather than an interpreter plus a bundled entry.
+    const plan = await project(
+      source({
+        python: { type: "stdio", command: "uvx", args: ["mcp-server-git", "--repository", "${PLUGIN_ROOT}"] },
+        container: { type: "stdio", command: "docker", args: ["run", "-i", "--rm", "example/mcp"] },
+      }),
+    );
+
+    const servers = launcherDocument(plan).servers;
+    expect(servers.map((server) => server.command)).toEqual(["uvx", "docker"]);
+    // The placeholder survives: the launcher expands it at spawn, and rewriting
+    // it here would bake in the build machine's path.
+    expect(servers[0]?.args).toEqual(["mcp-server-git", "--repository", "${PLUGIN_ROOT}"]);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
   it("declines versions below the ones its evidence covers", () => {
     const evidenced = opencodeAgentPluginProjector.profiles.flatMap((profile) =>
       (profile.source?.validatedOn ?? []).map((record) => record.version),
@@ -660,5 +679,52 @@ describe("Agent Plugin to OpenCode projection", () => {
     // module is emitted as JSON text and parsed at load time instead.
     expect(Object.keys(embeddedServers(plan))).toEqual(["__proto__"]);
     expect(injector(plan)).toContain("Object.defineProperty(config.mcp, name, {");
+  });
+
+  const projectWithMaterializedTree = (pkg: AgentPluginPackage, into: string, path: string) =>
+    opencodeAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        { provider: "fixture", into, files: [{ path, contents: encoder.encode(path), mode: 0o644 }] },
+      ],
+    });
+
+  it("places a materialized package tree inside the nested package, not beside it", async () => {
+    const plan = await projectWithMaterializedTree(source(), "generated/dependencies", "library/data.bin");
+
+    // OpenCode's ${PLUGIN_ROOT} is the nested package directory, so a
+    // root-level tree would be unreachable from the mcp.json naming it.
+    expect(plan.files.some((candidate) => candidate.path === "package/generated/dependencies/library/data.bin")).toBe(
+      true,
+    );
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    // The bytes came from an installer, not the package: the summary's
+    // "copied byte-for-byte" list must not claim them.
+    expect(plan.summary.copiedPaths).not.toContain("package/generated/dependencies/library/data.bin");
+  });
+
+  it("refuses a hook artifact that collides with a materialized package tree", async () => {
+    // Both are output this projector emits, so the collision is named by the
+    // materializer's destination rather than as a bare duplicate in core.
+    const plan = await opencodeAgentPluginProjector.project(source(), {
+      target,
+      hookArtifacts: [{ path: "package/generated/shared/data.bin", contents: "// hook" }],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        {
+          provider: "fixture",
+          into: "generated/shared",
+          files: [{ path: "data.bin", contents: encoder.encode("materialized"), mode: 0o644 }],
+        },
+      ],
+    });
+
+    const issue = plan.issues.find((candidate) => candidate.path === "package/generated/shared/data.bin");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("collides with a materialized package tree");
   });
 });

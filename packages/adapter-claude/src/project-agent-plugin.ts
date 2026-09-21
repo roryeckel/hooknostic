@@ -12,6 +12,7 @@ import {
   isJsonObject as object,
   isRejectedSkillPath,
   isRootNpmManifestPath,
+  materializedPackageFiles,
   parseJsonObject,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
@@ -312,6 +313,30 @@ export async function projectAgentPluginToClaude(
     copiedPaths.add(path);
   }
 
+  const materialized = materializedPackageFiles(context.materializedTrees, { claimed: copiedPaths });
+  issues.push(...materialized.issues);
+  // A materialized tree landing on a path this projection generates is a collision
+  // between two of its own outputs, not package content, and the later
+  // `files.set` at each generated path would silently drop the runtime.
+  // `isReservedNativePath` covers all of them: the manifest, `.mcp.json` and
+  // `hooks/hooks.json` are exactly the paths Claude reads as its own
+  // configuration, which is why the generator writes them there.
+  const materializedPaths = new Set<string>();
+  for (const file of materialized.files) {
+    if (isReservedNativePath(file.path)) {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        component: "agent-plugin.client-extension.files",
+        path: file.path,
+        message: `a materialized package tree lands on ${JSON.stringify(file.path)}, a path this projection generates or Claude reads as native configuration; point its "into" at a directory the output does not use`,
+      });
+      continue;
+    }
+    materializedPaths.add(file.path);
+    files.set(file.path, file);
+  }
+
   try {
     if (runtimePackage !== undefined) {
       files.set("package.json", runtimePackage.manifest);
@@ -394,7 +419,17 @@ export async function projectAgentPluginToClaude(
     // unused launcher would still take the generated path, and its collision
     // check would then fail a build that onUnsupported: "warn" should pass.
     if (emittedStdio > 0) {
-      if (files.has(MCP_LAUNCHER_PATH) || context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
+      if (context.hookArtifacts.some((file) => file.path === MCP_LAUNCHER_PATH)) {
+        throw new Error(
+          `generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with a compiled hook artifact`,
+        );
+      }
+      if (materializedPaths.has(MCP_LAUNCHER_PATH)) {
+        throw new Error(
+          `generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with a materialized package tree; point its "into" at a directory the output does not use`,
+        );
+      }
+      if (files.has(MCP_LAUNCHER_PATH)) {
         throw new Error(
           `generated MCP launcher path ${JSON.stringify(MCP_LAUNCHER_PATH)} collides with package content`,
         );
@@ -427,6 +462,18 @@ export async function projectAgentPluginToClaude(
     }
     for (const hookFile of context.hookArtifacts) {
       if (hookFile.path === MANIFEST_PATH || hookFile.path === HOOKS_PATH) continue;
+      if (materializedPaths.has(hookFile.path)) {
+        // Both are output this projection emits, so the collision is named by
+        // the runtime's destination rather than as package content the author
+        // never wrote.
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          path: hookFile.path,
+          message: `generated Hooknostic path ${JSON.stringify(hookFile.path)} collides with a materialized package tree at the same path; point its "into" at a directory the output does not use`,
+        });
+        continue;
+      }
       if (files.has(hookFile.path)) {
         throw new Error(`generated Hooknostic path ${JSON.stringify(hookFile.path)} collides with package content`);
       }
@@ -481,6 +528,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-04",
         validatedOn: [
+          {
+            version: "2.1.273",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable.",
+          },
           {
             version: "2.1.260",
             date: "2026-09-04",

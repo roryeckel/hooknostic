@@ -240,6 +240,11 @@ describe("loadAgentPlugin", () => {
 
   it("rejects placeholders in MCP commands while retaining valid sibling servers", async () => {
     const root = await packageRoot();
+    // A `./` command has to name a file the package ships, declared executable
+    // -- otherwise `checkContainedCommands` skips it and this test would be
+    // asserting the survival of a server that cannot start.
+    await mkdir(join(root, "bin"), { recursive: true });
+    await writeFile(join(root, "bin", "server"), "exec cat");
     await writeFile(
       join(root, "mcp.json"),
       JSON.stringify({
@@ -253,7 +258,7 @@ describe("loadAgentPlugin", () => {
       }),
     );
 
-    const loaded = await loadAgentPlugin({ root });
+    const loaded = await loadAgentPlugin({ root, executableFiles: ["bin/server"] });
     expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["executable", "relative"]);
     expect(loaded.issues).toContainEqual(
       expect.objectContaining({
@@ -262,6 +267,103 @@ describe("loadAgentPlugin", () => {
         path: "mcp.json#/mcpServers/placeholder",
       }),
     );
+  });
+
+  it("skips a contained command the package does not ship", async () => {
+    const root = await packageRoot();
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { ghost: { type: "stdio", command: "./bin/server" } },
+      }),
+    );
+
+    const loaded = await loadAgentPlugin({ root });
+
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual([]);
+    expect(loaded.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "warn",
+        scope: "mcp",
+        path: "mcp.json#/mcpServers/ghost",
+        message: expect.stringContaining("does not contain"),
+      }),
+    );
+  });
+
+  it("normalizes a contained POSIX command before matching the package inventory", async () => {
+    const root = await packageRoot();
+    await writeFile(join(root, "server"), "exec external-runner");
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { normalized: { type: "stdio", command: "./bin/../server" } },
+      }),
+    );
+
+    const loaded = await loadAgentPlugin({ root, executableFiles: ["server"] });
+
+    expect(loaded.issues).toEqual([]);
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["normalized"]);
+  });
+
+  it("skips a contained command that was never declared executable, and names the remedy", async () => {
+    const root = await packageRoot();
+    await mkdir(join(root, "bin"), { recursive: true });
+    await writeFile(join(root, "bin", "server"), "exec external-runner");
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { scripted: { type: "stdio", command: "./bin/server" } },
+      }),
+    );
+
+    // Host permissions are deliberately not consulted (ADR-0013), so making the
+    // file executable on disk must not rescue it -- only the declaration does.
+    await chmod(join(root, "bin", "server"), 0o755);
+    const loaded = await loadAgentPlugin({ root });
+
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual([]);
+    expect(loaded.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "warn",
+        scope: "mcp",
+        path: "mcp.json#/mcpServers/scripted",
+        message: expect.stringContaining("components.executableFiles"),
+      }),
+    );
+
+    const declared = await loadAgentPlugin({ root, executableFiles: ["bin/server"] });
+    expect(Object.keys(declared.package?.mcp?.mcpServers ?? {})).toEqual(["scripted"]);
+    expect(declared.issues).toEqual([]);
+  });
+
+  it("names components.exclude when a link escapes the package root", async () => {
+    const root = await packageRoot();
+    const outside = await mkdtemp(join(tmpdir(), "hooknostic-agent-plugin-escape-"));
+    roots.push(outside);
+    await writeFile(join(outside, "payload"), "outside");
+    await mkdir(join(root, "toolchain"), { recursive: true });
+    await symlink(outside, join(root, "toolchain", "linked"), process.platform === "win32" ? "junction" : "dir");
+
+    const loaded = await loadAgentPlugin({ root });
+
+    expect(loaded.package).toBeUndefined();
+    expect(loaded.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "file",
+        message: expect.stringContaining("components.exclude"),
+      }),
+    );
+    // The remedy is only useful if the message says what to exclude.
+    expect(loaded.issues[0]?.message).toContain("toolchain/linked");
+
+    const excluded = await loadAgentPlugin({ root, exclude: ["toolchain/**"] });
+    expect(excluded.issues).toEqual([]);
   });
 
   it("never inventories version control, installed dependencies, or environment secrets", async () => {

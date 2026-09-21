@@ -11,6 +11,7 @@ import {
   componentSummary,
   hasUnportableCommandPath,
   isRejectedSkillPath,
+  materializedPackageFiles,
   npmPublicationProblems,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
@@ -397,12 +398,19 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so vendoring is not reachable through this build either.",
+            "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim.",
         },
       },
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "1.18.31",
+            date: "2026-09-16",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT to the nested package and supplied PLUGIN_DATA; bare runner commands remained resolvable.",
+          },
           {
             version: "1.18.30",
             date: "2026-09-16",
@@ -538,6 +546,28 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       files.push({ path, contents: file.contents, mode: file.mode });
       copiedPaths.push(path);
     }
+    // `${PLUGIN_ROOT}` here is the nested package directory, so a materialized
+    // tree has to land inside it or nothing in mcp.json can name it. That
+    // prefix is also what keeps it away from every other generated path: the
+    // entry, manifest, injector and launcher sit at the output root, which no
+    // `into` can reach once `package/` is prepended.
+    //
+    // Its paths are generated, not copied: their bytes came from an installer,
+    // so they stay out of `copiedPaths`, which answers both the summary's
+    // "copied byte-for-byte" list and whether the AUTHOR declared the package
+    // boundary. A materialized tree is this projection's output and must not be
+    // able to answer either question.
+    const materialized = materializedPackageFiles(context.materializedTrees, {
+      prefix: `${PACKAGE_DIR}/`,
+      claimed: new Set(copiedPaths),
+    });
+    issues.push(...materialized.issues);
+    const materializedPaths = new Set<string>();
+    for (const file of materialized.files) {
+      materializedPaths.add(file.path);
+      files.push(file);
+    }
+
     // Only when the author shipped no manifest of their own: theirs is already
     // the boundary, and whatever module system it declares is theirs to declare.
     const authorsBoundary = copiedPaths.includes(PACKAGE_BOUNDARY_PATH);
@@ -634,6 +664,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       LAUNCHER_PATH,
       LAUNCHER_SERVERS_PATH,
       ...(authorsBoundary ? [] : [PACKAGE_BOUNDARY_PATH]),
+      ...materializedPaths,
     ]);
     // The compiler emits a standalone entry and manifest so a hooks-only
     // package is loadable without a projector. Here one ran, and it knows
@@ -644,6 +675,18 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const replaced = new Set([ENTRY_PATH, MANIFEST_PATH]);
     for (const file of context.hookArtifacts) {
       if (replaced.has(file.path)) continue;
+      if (materializedPaths.has(file.path)) {
+        // A hook artifact is generated output too, so this is a collision
+        // between two things this projector emits -- named by the runtime's
+        // destination rather than as a bare duplicate in core.
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          path: file.path,
+          message: `generated Hooknostic path ${JSON.stringify(file.path)} collides with a materialized package tree at the same path; point its "into" at a directory the output does not use`,
+        });
+        continue;
+      }
       if (copied.has(file.path) || generated.has(file.path)) {
         issues.push({
           severity: "error",

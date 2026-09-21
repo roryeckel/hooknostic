@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { type HarnessAdapter, runProject } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
-import { runDoctor } from "./doctor.js";
+import { resolveOnPath, runDoctor } from "./doctor.js";
 
 function fakeIO() {
   const out: string[] = [];
@@ -104,5 +104,114 @@ describe("doctor version comparison", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("resolveOnPath", () => {
+  const separator = process.platform === "win32" ? ";" : ":";
+  const executableName = (name: string) => (process.platform === "win32" ? `${name}.EXE` : name);
+  const makeExecutable = async (path: string) => {
+    await writeFile(path, "");
+    if (process.platform !== "win32") await chmod(path, 0o755);
+  };
+
+  it("finds a command that is present, and reports one that is not", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-path-"));
+    try {
+      await makeExecutable(join(root, executableName("present")));
+      const env = { PATH: root } as NodeJS.ProcessEnv;
+
+      expect(resolveOnPath("present", env)).toBe(join(root, executableName("present")));
+      expect(resolveOnPath("absent", env)).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("searches PATH entries in order", async () => {
+    const first = await mkdtemp(join(tmpdir(), "hooknostic-path-a-"));
+    const second = await mkdtemp(join(tmpdir(), "hooknostic-path-b-"));
+    try {
+      await makeExecutable(join(first, executableName("tool")));
+      await makeExecutable(join(second, executableName("tool")));
+      const env = { PATH: [first, second].join(separator) } as NodeJS.ProcessEnv;
+
+      expect(resolveOnPath("tool", env)).toBe(join(first, executableName("tool")));
+    } finally {
+      await rm(first, { recursive: true, force: true });
+      await rm(second, { recursive: true, force: true });
+    }
+  });
+
+  it("treats an empty PATH entry as the current directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-path-current-"));
+    const previous = process.cwd();
+    try {
+      await makeExecutable(join(root, executableName("from-current-directory")));
+      process.chdir(root);
+      expect(resolveOnPath("from-current-directory", { PATH: "" } as NodeJS.ProcessEnv)).toBe(
+        join(root, executableName("from-current-directory")),
+      );
+    } finally {
+      process.chdir(previous);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform === "win32")(
+    "resolves a Windows command shim, which is how npx and bun exist there",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "hooknostic-path-shim-"));
+      try {
+        // No `npx.exe` exists on Windows -- only `npx.cmd`. A bare-name check
+        // would call the single most common MCP runner missing.
+        await writeFile(join(root, "shim.CMD"), "");
+        const env = { PATH: root, PATHEXT: ".COM;.EXE;.BAT;.CMD" } as NodeJS.ProcessEnv;
+
+        expect(resolveOnPath("shim", env)).toBe(join(root, "shim.CMD"));
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "honors quoted PATH entries and case-insensitive PATH and PATHEXT keys",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "hooknostic-path-quoted-"));
+      try {
+        await writeFile(join(root, "quoted.CMD"), "");
+        const env = { path: `"${root}"`, pathext: ".CMD" } as NodeJS.ProcessEnv;
+
+        expect(resolveOnPath("quoted", env)).toBe(join(root, "quoted.CMD"));
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not report a directory as a command", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-path-directory-"));
+    try {
+      await mkdir(join(root, executableName("folder")));
+      expect(resolveOnPath("folder", { PATH: root } as NodeJS.ProcessEnv)).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform !== "win32")("does not report a non-executable file as a command", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-path-mode-"));
+    try {
+      await writeFile(join(root, "plain"), "");
+      await chmod(join(root, "plain"), 0o644);
+      expect(resolveOnPath("plain", { PATH: root } as NodeJS.ProcessEnv)).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports nothing when PATH is unset rather than throwing", () => {
+    expect(resolveOnPath("anything", {} as NodeJS.ProcessEnv)).toBeUndefined();
   });
 });

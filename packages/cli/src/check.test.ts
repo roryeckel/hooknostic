@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
-import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 import type { CapabilityProfile } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
@@ -110,6 +110,205 @@ async function fixtureProject(): Promise<string> {
 }
 
 describe("hooknostic check", () => {
+  it("does not validate or materialize package content when narrowed to a project target", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-project-runtime-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "project-runtime-probe" }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        project: { root: "." },
+        components: {
+          root: ".",
+          targets: ["claude", "opencode"],
+          materialize: [{
+            provider: { id: "fixture", plan() { throw new Error("provider was invoked"); } },
+            inputs: { lock: "missing.lock" },
+            into: "generated/dependencies",
+          }],
+        },
+        targets: {
+          claude: { version: "${claudeHarness.recommendedRange}", delivery: "project", output: ".hooknostic/artifacts/claude" },
+          opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "dist/opencode" },
+        },
+      };`,
+    );
+    const capture = captureIO();
+
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        targets: ["claude"],
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+      capture.out(),
+    ).toBe(0);
+    expect(JSON.parse(capture.out()).diagnostics).toEqual([]);
+  });
+
+  it("does not defer a materialized command when the same components also use project delivery", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-mixed-materialized-command-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mixed-materialized-command" }),
+    );
+    await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { generated: { type: "stdio", command: "./generated/bin/server" } },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        project: { root: "." },
+        components: {
+          root: ".",
+          targets: ["claude", "opencode"],
+          materialize: [{
+            provider: { id: "fixture", plan() { throw new Error("provider was invoked"); } },
+            inputs: { lock: "packages.lock" },
+            into: "generated",
+          }],
+        },
+        targets: {
+          claude: { version: "${claudeHarness.recommendedRange}", delivery: "project", output: ".hooknostic/artifacts/claude" },
+          opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "dist/opencode" },
+        },
+      };`,
+    );
+    const capture = captureIO();
+
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "HN503", severity: "error" }));
+    expect(report.diagnostics.map((diagnostic: { message: string }) => diagnostic.message).join("\n")).not.toContain(
+      "provider was invoked",
+    );
+  });
+
+  it("does not invoke a materializer before capability analysis succeeds", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-runtime-analysis-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "runtime-analysis-probe" }),
+    );
+    await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook, preventStop } from "@hooknostic/sdk";
+       export default definePlugin({
+         name: "runtime-analysis-probe",
+         hooks: [hook("turn.stop", {
+           id: "keep-going",
+           capabilities: { "turn.stop.prevent": "required" },
+           async run() { return preventStop("more to do"); },
+         })],
+       });`,
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        components: {
+          root: ".",
+          materialize: [{
+            provider: { id: "fixture", plan() { throw new Error("provider was invoked"); } },
+            inputs: { lock: "packages.lock" },
+            into: "runtime/dependencies",
+          }],
+        },
+        targets: {
+          opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "dist/opencode" },
+        },
+      };`,
+    );
+    const capture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(2);
+
+    const diagnostics = JSON.parse(capture.out()).diagnostics as { code: string; message: string }[];
+    expect(diagnostics.some((diagnostic) => diagnostic.code === "HN201")).toBe(true);
+    expect(diagnostics.some((diagnostic) => diagnostic.code === "HN501")).toBe(false);
+  });
+
+  it("marks targets unsuccessful when package materialization fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-materialize-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "materialize-probe" }),
+    );
+    await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+    await writeFile(join(dir, "hooks.ts"), `export default { name: "materialize-probe", hooks: [] };`);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        components: {
+          root: ".",
+          materialize: [{
+            provider: { id: "fixture", plan() { return { command: "hooknostic-missing-materializer", args: [] }; } },
+            inputs: { lock: "packages.lock" },
+            into: "runtime/dependencies",
+          }],
+        },
+        targets: {
+          opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "dist/opencode" },
+        },
+      };`,
+    );
+
+    const checkCapture = captureIO();
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: checkCapture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(2);
+    const checkReport = JSON.parse(checkCapture.out());
+    expect(checkReport.targets.opencode.ok).toBe(false);
+    expect(checkReport.diagnostics).toContainEqual(expect.objectContaining({ code: "HN501" }));
+
+    const buildCapture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        registry: defaultAdapterRegistry(),
+        io: buildCapture.io,
+        evaluate: EVALUATE,
+      }),
+    ).toBe(2);
+    expect(buildCapture.out()).toMatch(/FAIL\s+opencode/);
+    expect(buildCapture.out()).not.toContain("BUILT  opencode");
+  });
+
   it("reports an excluded direct MCP source as HN503", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-excluded-mcp-"));
     tempDirs.push(dir);
@@ -291,7 +490,7 @@ describe("hooknostic check", () => {
     expect(lockfile.out()).toContain("root dependencies do not match the manifest");
     expect(lockfile.out()).toContain("FAIL  claude");
 
-    // check writes nothing, even on the success path.
+    // check writes no target artifacts, even on the success path.
     await rm(join(dir, "runtime.package.json"));
     await rm(join(dir, "runtime.package-lock.json"));
     await writeFile(join(dir, "hooknostic.config.ts"), config(""));

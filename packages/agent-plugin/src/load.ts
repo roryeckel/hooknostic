@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 
 import { minimatch } from "minimatch";
 import { parseDocument } from "yaml";
@@ -206,6 +206,66 @@ async function validateDirectMcpPaths(
     );
     delete config.mcpServers[name];
   }
+}
+
+/**
+ * A `./` command must name a file the package ships, with the executable bit.
+ *
+ * Both halves are invisible today. Containment is checked lexically by
+ * `containedPortablePath`, so a command naming no file at all validates and
+ * projects happily, then fails at spawn on the consumer's machine; and
+ * inventory assigns 0644 to everything except the paths
+ * `components.executableFiles` names (ADR-0013), so a server that *is* its own
+ * binary or script ships unable to run.
+ *
+ * A server whose command is a bare executable name reaches neither check,
+ * because its entry travels as an argument and an argument needs no permission.
+ * That asymmetry is the reason this exists: it is the one command shape where
+ * the package itself must supply an executable file.
+ *
+ * Host permissions are deliberately not consulted. ADR-0013 makes the
+ * declaration the source of truth, and a package built on Windows -- where the
+ * bit has no meaning -- must still be refused rather than ship an artifact whose
+ * behaviour depends on where it was built.
+ */
+export function validateContainedCommands(
+  config: AgentPluginMcpConfig,
+  files: readonly AgentPluginFile[],
+  options: {
+    deferredRoots?: readonly string[];
+    materializedPaths?: ReadonlySet<string>;
+  } = {},
+): AgentPluginIssue[] {
+  const issues: AgentPluginIssue[] = [];
+  for (const [name, server] of Object.entries(config.mcpServers)) {
+    if (server.type !== "stdio" || !server.command.startsWith("./")) continue;
+    // Validation above already proves containment and excludes backslashes;
+    // normalize with POSIX semantics so the lookup is deterministic on every
+    // build host and spellings such as ./bin/../server name the shipped file.
+    const path = posix.normalize(server.command.slice(2));
+    const file = files.find((candidate) => candidate.path === path);
+    if (file === undefined && (options.deferredRoots ?? []).some((root) => path.startsWith(`${root}/`))) {
+      continue;
+    }
+    const problem =
+      file === undefined
+        ? "which the package does not contain"
+        : (file.mode & 0o111) === 0
+          ? options.materializedPaths?.has(path)
+            ? "which is not executable -- return it with mode 0755 from the materializer postprocess hook"
+            : `which is not executable -- add ${JSON.stringify(path)} to components.executableFiles`
+          : undefined;
+    if (problem === undefined) continue;
+    issue(
+      issues,
+      "warn",
+      "mcp",
+      `MCP stdio server ${JSON.stringify(name)} runs ${JSON.stringify(server.command)}, ${problem}. It was skipped.`,
+      `mcp.json#/mcpServers/${name}`,
+    );
+    delete config.mcpServers[name];
+  }
+  return issues;
 }
 
 function validHeaders(value: unknown): value is Record<string, string> {
@@ -493,9 +553,26 @@ async function inventory(
     logical: string,
     ancestors: ReadonlySet<string>,
   ): Promise<void> => {
-    const resolved = await realpath(physical);
+    let resolved: string;
+    try {
+      resolved = await realpath(physical);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      throw new Error(
+        `${logical || "."} is a broken symbolic link. Remove it, or add it to components.exclude ` +
+          `if it is machine-local state rather than package content.`,
+      );
+    }
     if (!contained(canonicalRoot, resolved)) {
-      throw new Error(`${logical || "."} resolves outside the Agent Plugin root`);
+      // Nearly always a machine-local tree that pins an absolute path: a
+      // virtualenv's interpreter link, a toolchain cache. The default
+      // exclusions cover the names we know, but they cannot know every
+      // ecosystem's, so the remedy is named rather than left to be guessed --
+      // the other reading of this message ("my package is malformed") is wrong.
+      throw new Error(
+        `${logical || "."} resolves outside the Agent Plugin root. Add it to components.exclude ` +
+          `if it is machine-local state rather than package content.`,
+      );
     }
     // Exclusions were matched on the logical name before descending; a link
     // whose target is excluded (`notes.txt -> .env`, `lib -> node_modules/x`)
@@ -643,6 +720,16 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
 
   const skills = loadSkills(inventoried, issues);
   const mcp = loadMcp(root, inventoried, issues);
+  // Only the package route: the direct route hands `loadMcp` a synthetic
+  // one-file inventory, and `validateDirectMcpPaths` already resolves its
+  // commands against the real filesystem instead.
+  if (mcp !== undefined) {
+    issues.push(
+      ...validateContainedCommands(mcp, inventoried.files, {
+        ...(options.deferredCommandRoots === undefined ? {} : { deferredRoots: options.deferredCommandRoots }),
+      }),
+    );
+  }
   const files = inventoried.files;
   const directories = [...inventoried.directories].filter((path) => path !== "").sort();
   const source: AgentPluginPackage = {

@@ -118,17 +118,128 @@ Copy-mode is safe for these artifacts: everything the hooks need — the manifes
 `hooks/hooks.json`, and the bundled runtime — lives inside `dist/claude`, and a
 copied plugin cannot reach files outside its own directory.
 
-### MCP runtime dependencies
+### Build-time package materialization
 
-Hooknostic bundles hook runtimes, but an MCP server can have ordinary Node.js
-dependencies. Configure `components.runtimePackage` with a dedicated runtime
-manifest and npm lockfile. Claude projection emits those files as
+An Agent Plugin package may need generated files committed into each native package
+projection. `components.materialize` handles that without teaching Hooknostic any
+package manager or language. You import a trusted Node provider into
+`hooknostic.config.ts`; the provider validates its named inputs, returns one command to
+run, and may normalize or validate the resulting opaque file tree.
+
+For example, a local provider can wrap an installer owned by your project:
+
+```ts
+// build/package-materializer.ts
+import { definePackageMaterializer } from "@hooknostic/sdk";
+
+export const packageMaterializer = definePackageMaterializer({
+  id: "project-packages",
+  validate({ inputs }) {
+    return inputs.lock === undefined ? ["a lock input is required"] : [];
+  },
+  plan({ inputs, outputDir }) {
+    return {
+      command: "project-package-tool",
+      args: ["install", "--locked", inputs.lock!.absolutePath, "--output", outputDir],
+    };
+  },
+  postprocess(files) {
+    return {
+      files: files.map((file) =>
+        file.path === "bin/project-server" ? { ...file, mode: 0o755 } : file,
+      ),
+      problems: [],
+    };
+  },
+});
+```
+
+```ts
+// hooknostic.config.ts
+import { defineConfig } from "@hooknostic/sdk";
+import { packageMaterializer } from "./build/package-materializer.js";
+
+export default defineConfig({
+  components: {
+    root: ".",
+    materialize: [
+      {
+        provider: packageMaterializer,
+        inputs: { lock: "runtime/packages.lock" },
+        into: "runtime/packages",
+      },
+    ],
+  },
+  // targets: ...
+});
+```
+
+Providers are executable build code and must be reviewed like the configuration that
+imports them. Hooknostic ships no built-in providers and does not own lockfile parsing,
+installer flags, network or cache behavior, generated-file cleanup, or ecosystem
+metadata. Put those rules in the provider. Its `postprocess(files, context)` hook can
+return a replacement tree plus provider-specific problems when installer output needs
+normalization or is not portable across consumer machines. Successful command stdout is
+discarded; on failure Hooknostic reports the final bounded tail of stderr, so providers
+should return validation detail as problems rather than use stdout as an API.
+
+Hooknostic owns the safe, component-neutral boundary around the provider:
+
+- named inputs must be package-relative regular files whose real paths remain inside
+  `components.root`;
+- the provider command is invoked directly, without a shell, in the package root and
+  receives a fresh output directory;
+- `into` is a relative POSIX path; a leading `./` and one trailing `/` are canonicalized,
+  while absolute or drive-qualified paths, backslashes, colons, control characters,
+  empty segments, and `.` or `..` segments fail with HN501 before the provider runs;
+- output must contain only regular files with contained, unique POSIX paths and cannot
+  overwrite source files, generated files, or another provider's output.
+
+Materialized files start with canonical mode `0644`; Hooknostic deliberately ignores
+the staging filesystem's permission bits so a Windows and POSIX build cannot disagree.
+When provider-owned metadata says a file is executable, return it from `postprocess`
+with `mode: 0o755`. Those are the only two accepted modes, and each projector preserves
+the selected mode in its output.
+
+Core does not infer portability from filenames or byte signatures: neither can prove
+what arbitrary package content means, and maintaining a partial executable-format list
+would create false confidence. The trusted provider must reject host-specific or
+nondeterministic output using its ecosystem's metadata and semantics. Materialization
+runs once after analysis succeeds, and the same bytes are placed into every selected
+package projection. It does not run for project delivery, which references files where
+they already live. See [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the full
+boundary.
+
+### MCP command reporting
+
+Build and check reports describe only how each declared stdio command is resolved. A
+`./server` command from a package source is shipped by the package; one from a
+direct project source is resolved relative to that MCP source; a bare command uses
+ambient platform lookup. On Windows the generated launcher searches its current
+working directory before `PATH`; on other platforms it uses the platform's `PATH`
+rules. `doctor` reports that order and probes only the `PATH` portion on its own
+machine. It labels a result as a PATH candidate, not the resolved executable, and
+treats a missing candidate as advisory because the eventual consumer can have a
+different working directory and environment.
+
+Hooknostic does not parse shebangs or infer interpreters, dynamic libraries, daemons, or
+other transitive runtime dependencies. Remote servers have no launched command to
+report. Materialization is package content and is not inferred from MCP declarations;
+if an MCP server uses a materialized tree, its own command, arguments, or environment
+must point at that content.
+
+### The npm case
+
+`components.runtimePackage` remains the separate harness-owned npm contract.
+Configure it with a dedicated runtime manifest and npm
+lockfile. Claude projection emits those files as
 `dist/claude/package.json` and `dist/claude/package-lock.json`; when it creates
 the marketplace cache entry, Claude runs its own locked `npm ci --ignore-scripts`.
 
 Keep this manifest separate from the project manifest used to build Hooknostic:
 it must contain only MCP runtime dependencies. Do not commit `node_modules` to
-the artifact. This path supports pure-JavaScript npm packages. Dependencies that
+the artifact. This path supports pure-JavaScript npm packages, and only Claude
+honours it — no other harness installs anything. Dependencies that
 need lifecycle scripts or native compilation are outside the contract, as are
 pnpm and Yarn lockfiles. A dependency whose lockfile entry declares
 `hasInstallScript` fails `check`: Claude's install skips lifecycle scripts

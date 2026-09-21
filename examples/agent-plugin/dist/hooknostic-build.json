@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:b4b706d9280f93cce974a9d6ae6c4bb483825c7e1c9d7336943d79140b396230",
+        "contentDigest": "sha256:91c0a7dbfcfc0a194380e6e2e5c1ec93b05e24f954c82b826d9903dad059545e",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -68,7 +68,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:721967057db0195c8298b15307b602b28b3e0be4f4aea78198dd19cf2f6b116d",
+        "contentDigest": "sha256:7448a14a334e4ad1865075a67ef8abdfe857ccab868c83bb9e22a4dd58c2c66f",
         "copiedFileCount": 4,
         "directories": [
           "runtime",
@@ -131,7 +131,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:f77a566e1e1da132bccc2c1d8db080f77eb370114a9b4cf5997da5913525c061",
+        "contentDigest": "sha256:a6867ccc0d45110a965cf9ac32d3aafc414e230e1132a7a3a11f4b7439405b57",
         "copiedFileCount": 7,
         "directories": [
           "package/runtime",
@@ -189,7 +189,7 @@
       "target": "codex",
       "component": "agent-plugin.runtime-package",
       "support": "unsupported",
-      "rationale": "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package -- so bundling is the route available through this build.",
+      "rationale": "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
       "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"codex\"."
     },
     {
@@ -198,7 +198,7 @@
       "target": "opencode",
       "component": "agent-plugin.runtime-package",
       "support": "unsupported",
-      "rationale": "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so vendoring is not reachable through this build either.",
+      "rationale": "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim.",
       "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"opencode\"."
     }
   ],
@@ -222,5 +222,12 @@
     ],
     "contentDigest": "sha256:0f02b0c32ac8de8939cdf4b2fe60977d5f8122d719a92b62b2ab8cac990c32b9"
   },
+  "mcpServers": [
+    {
+      "server": "greeter",
+      "command": "node",
+      "resolution": "ambient"
+    }
+  ],
   "source": "./src/hooks.ts"
 }

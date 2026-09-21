@@ -6,10 +6,11 @@ import type {
   AnalysisResult,
   Diagnostic,
   EvaluateOptions,
+  McpServerCommand,
 } from "@hooknostic/core";
 import { buildProject, formatDiagnostics, hasFatal } from "@hooknostic/core";
 
-import { describeProjection } from "./build.js";
+import { describeMcpCommands, describeProjection } from "./build.js";
 
 export interface CommandIO {
   stdout(text: string): void;
@@ -35,11 +36,13 @@ interface CheckReport {
   targets: Record<
     string,
     Pick<AnalysisResult["targets"][string], "ok" | "adapter" | "requestedVersion" | "counts" | "resolutions"> & {
-      /** Paths `build` would generate for this target (nothing is written by `check`). */
+      /** Paths `build` would generate for this target (no target artifacts are written by `check`). */
       artifacts?: string[];
       projection?: AgentPluginTargetReport;
     }
   >;
+  /** How each stdio server's declared command is resolved. */
+  mcpServers?: McpServerCommand[];
   diagnostics: Diagnostic[];
 }
 
@@ -61,9 +64,11 @@ function emitFailure(options: CheckOptions, diagnostics: Diagnostic[]): number {
 
 /**
  * `hooknostic check` — the full build pipeline (analysis, bundling, Agent
- * Plugin projection, artifact validation) without writing anything. Whatever
- * `build` would reject before touching the filesystem, `check` rejects; only
- * a write the filesystem itself refuses is left for `build` to report.
+ * Plugin projection, artifact validation) without writing target artifacts.
+ * Whatever `build` would reject before touching target outputs, `check`
+ * rejects; only a target write the filesystem itself refuses is left for
+ * `build` to report. Trusted materializers still run and may use the network
+ * or persistent caches.
  */
 export async function runCheck(options: CheckOptions): Promise<number> {
   const configPath = resolve(options.config ?? "hooknostic.config.ts");
@@ -99,6 +104,7 @@ export async function runCheck(options: CheckOptions): Promise<number> {
           ];
         }),
       ),
+      ...(result.report.mcpServers === undefined ? {} : { mcpServers: result.report.mcpServers }),
       diagnostics: result.report.diagnostics,
     };
     options.io.stdout(JSON.stringify(report, null, 2));
@@ -118,11 +124,17 @@ export async function runCheck(options: CheckOptions): Promise<number> {
     const projection = result.report.targets[id]?.projection;
     if (projection !== undefined) options.io.stdout(`      ${describeProjection(projection)}`);
   }
+  const commands = describeMcpCommands(result.report.mcpServers);
+  if (commands.length > 0) {
+    options.io.stdout("");
+    options.io.stdout("MCP commands");
+    for (const line of commands) options.io.stdout(line);
+  }
   const failed = hasFatal(result.report.diagnostics);
   options.io.stdout(
     failed
       ? "\ncheck failed: fix the errors above or adjust the target set."
-      : "\ncheck passed: every selected target generates cleanly; nothing was written.",
+      : "\ncheck passed: every selected target generates cleanly; no target artifacts were written (trusted materializers may use network or persistent caches).",
   );
   return failed ? 2 : 0;
 }

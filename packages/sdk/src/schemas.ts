@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
+import type { PackageMaterializer } from "./config.js";
 import { HOOK_EVENT_NAMES } from "./events.js";
 import { findNonJsonPath } from "./json.js";
 import { SUPPORT_LEVELS } from "./support.js";
@@ -21,6 +22,21 @@ export const toolKindSchema = z.enum(TOOL_KINDS);
 
 // Node clamps longer delays to 1 ms, causing hooks to time out immediately.
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+const packageMaterializerSchema = z.custom<PackageMaterializer>(
+  (value) => {
+    if (typeof value !== "object" || value === null) return false;
+    const materializer = value as Partial<PackageMaterializer>;
+    return (
+      typeof materializer.id === "string" &&
+      materializer.id.length > 0 &&
+      typeof materializer.plan === "function" &&
+      (materializer.validate === undefined || typeof materializer.validate === "function") &&
+      (materializer.postprocess === undefined || typeof materializer.postprocess === "function")
+    );
+  },
+  { message: "must be a PackageMaterializer with a non-empty id and plan function" },
+);
 
 export const toolInvocationSchema = z
   .object({
@@ -171,6 +187,18 @@ export const hooknosticConfigSchema = z
           })
           .strict()
           .optional(),
+        materialize: z
+          .array(
+            z
+              .object({
+                provider: packageMaterializerSchema,
+                inputs: z.record(z.string(), z.string().min(1)),
+                into: z.string().min(1),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
         onUnsupported: z.enum(["error", "warn"]).optional(),
         onInvalid: z.enum(["error", "warn"]).optional(),
       })
@@ -286,6 +314,23 @@ export const hooknosticConfigSchema = z
             message: `MCP override target ${JSON.stringify(target)} must use project delivery`,
           });
         }
+      }
+      if (config.components.materialize !== undefined && config.components.root === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "materialize"],
+          message: "components.materialize requires components.root",
+        });
+      }
+      if (
+        config.components.materialize !== undefined &&
+        ![...componentTargets].some((target) => config.targets[target]?.delivery === "package")
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "materialize"],
+          message: "components.materialize requires at least one package-delivery component target",
+        });
       }
       if (config.entry === undefined) {
         const projected = new Set(config.components.targets ?? Object.keys(config.targets));

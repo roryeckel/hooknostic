@@ -118,6 +118,25 @@ describe("Agent Plugin to Codex projection", () => {
     expect(plan.files.some((candidate) => candidate.path === "runtime/mcp-launcher.mjs")).toBe(true);
   });
 
+  it("carries a runner command through untouched, whatever language it launches", async () => {
+    // The dominant real-world shape: of 24 stdio servers configured on one
+    // developer machine, every third-party one was a runner (`npx`, `bun`,
+    // `uvx`, `docker`, `php`) rather than an interpreter plus a bundled entry.
+    const plan = await project(
+      source({
+        python: { type: "stdio", command: "uvx", args: ["mcp-server-git", "--repository", "${PLUGIN_ROOT}"] },
+        container: { type: "stdio", command: "docker", args: ["run", "-i", "--rm", "example/mcp"] },
+      }),
+    );
+
+    const servers = launcherDocument(plan).servers;
+    expect(servers.map((server) => server.command)).toEqual(["uvx", "docker"]);
+    // The argument keeps its placeholder: the launcher expands it at spawn, and
+    // rewriting it here would bake in the build machine's path.
+    expect(servers[0]?.args).toEqual(["mcp-server-git", "--repository", "${PLUGIN_ROOT}"]);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
   it("omits a working directory that climbs out of the directory it is anchored on", async () => {
     for (const cwd of ["${PLUGIN_ROOT}/../escape", "${PLUGIN_DATA}/../escape"]) {
       const plan = await project(source({ srv: { type: "stdio", command: "node", cwd } }));
@@ -1094,5 +1113,82 @@ describe("Codex client extension", () => {
       plan.directories ?? [],
     );
     expect(diagnostics.some((diagnostic) => diagnostic.message.includes("duplicate directory path"))).toBe(true);
+  });
+
+  it("places a materialized package tree at the package root without calling it copied", async () => {
+    const pkg = source({ srv: { type: "stdio", command: "node" } });
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        {
+          provider: "fixture",
+          into: "generated/dependencies",
+          files: [{ path: "library/data.bin", contents: encoder.encode("materialized"), mode: 0o644 }],
+        },
+      ],
+    });
+
+    // Codex reads from the output root, so `into` needs no prefix.
+    expect(plan.files.some((candidate) => candidate.path === "generated/dependencies/library/data.bin")).toBe(true);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    // The bytes came from an installer, not the package: the summary's
+    // "copied byte-for-byte" list must not claim them.
+    expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
+  });
+
+  it("refuses a materialized package tree that lands on generated output", async () => {
+    // `into: "runtime"` is where the generated launcher goes, so the tree
+    // would silently replace a file this projection emits.
+    const pkg = source({ srv: { type: "stdio", command: "node" } });
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        {
+          provider: "fixture",
+          into: "runtime",
+          files: [{ path: "mcp-launcher.mjs", contents: encoder.encode("not the launcher"), mode: 0o644 }],
+        },
+      ],
+    });
+
+    const issue = plan.issues.find((candidate) => candidate.path === "runtime/mcp-launcher.mjs");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("already carries");
+    // The generated launcher still wins: the plan the build writes keeps the
+    // bytes this projection emitted, not the ones the materializer brought.
+    const launcher = plan.files.find((candidate) => candidate.path === "runtime/mcp-launcher.mjs")!;
+    expect(launcher.contents.toString()).not.toBe("not the launcher");
+  });
+
+  it("refuses a namespace hoist that lands on materialized package output", async () => {
+    // `vendor/` is not one of the reserved trees, so this is not caught by that
+    // policy: without the materialized tree joining `generatedByFoldedPath`
+    // before the hoist loop, the namespace file would win and the materialized bytes
+    // would be silently replaced.
+    const pkg = withFiles(source(), [overlay("com.openai/generated/shared/data.bin", "replacement")]);
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        {
+          provider: "fixture",
+          into: "generated/shared",
+          files: [{ path: "data.bin", contents: encoder.encode("materialized"), mode: 0o644 }],
+        },
+      ],
+    });
+
+    const issue = plan.issues.find((candidate) => candidate.path === "com.openai/generated/shared/data.bin");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("which this projection generates");
+    expect(plan.files.some((candidate) => candidate.path === "generated/shared/data.bin")).toBe(true);
   });
 });

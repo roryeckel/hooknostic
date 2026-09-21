@@ -63,6 +63,13 @@ is not configured, or a config with neither `entry` nor `components`, is an edit
 error before it is a build error.
 
 The source package's `package.json` is for building this example. `runtimePackage`
+is the separate, harness-owned npm contract from
+[ADR-0012](../decisions/0012-claude-plugin-runtime-dependencies.md). Generic generated
+package content instead comes from an explicit, author-supplied
+`components.materialize` provider; Hooknostic ships no ecosystem-specific providers.
+See [ADR-0017](../decisions/0017-mcp-runtime-dependencies.md) and
+[build-time package materialization](../installing-artifacts.md#build-time-package-materialization).
+Here, `runtimePackage`
 keeps the MCP server's production dependencies separate: Claude projection writes the
 configured manifest and npm lockfile as `dist/claude/package.json` and
 `dist/claude/package-lock.json`. On marketplace installation, Claude runs the locked,

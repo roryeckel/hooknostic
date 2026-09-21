@@ -47,12 +47,12 @@ configured skill collection root. They do not change the canonical MCP document.
 | Command | Effect |
 | --- | --- |
 | `init --local` | Create missing config/hook scaffolding without overwrite, installation, or activation |
-| `check` | Validate and generate in memory; no writes |
+| `check` | Validate and generate in memory; no target artifacts are written. Trusted materializers may use network or persistent caches. |
 | `build` | Write compiler artifacts only |
 | `sync --dry-run` | Show planned changes and conflicts; no writes |
 | `sync` | Generate, reconcile, and remove obsolete owned integration |
 | `verify` | Regenerate in isolated compiler storage and compare without project writes |
-| `doctor` | Read installed versions, runtime availability, wiring, and activation guidance |
+| `doctor` | Read installed versions, runtime availability, wiring, and activation guidance; skips configured materializers (config evaluation remains executable code). |
 | `recover` | Restore interrupted transaction preimages when preconditions still match |
 
 Commands accept `--config` and `--json`. Exit codes are 0 for success, 1 for
@@ -99,7 +99,12 @@ Hooknostic omits an affected package-origin remote server and reports HN205;
 literal package remotes without references are emitted normally. Direct Claude
 project declarations retain the harness's native runtime expansion.
 `${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves to
-ignored project-local `.hooknostic/data`. Dependencies must already be installed.
+ignored project-local `.hooknostic/data`. Dependencies must already be installed:
+project delivery references a server where it already lives rather than copying it, so
+`components.materialize` does not apply here — the project supplies its own. Accordingly,
+configuring materialization requires at least one package-delivery component target.
+When a mixed configuration is narrowed to project targets, provider validation and
+materialization are skipped.
 Codex project MCP uses owned server entries in `.codex/config.toml`. Stdio uses
 an inline Node bootstrap that locates the nearest integration from the invocation
 directory, checks its owner and generated-file hashes, then imports the launcher.

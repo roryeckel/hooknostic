@@ -1,12 +1,73 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
+import { delimiter, resolve } from "node:path";
 
 import semver from "semver";
 
-import type { AdapterRegistry } from "@hooknostic/core";
-import { buildProject, loadConfig, type ProjectCommandResult, runProject } from "@hooknostic/core";
+import type { AdapterRegistry, McpServerCommand } from "@hooknostic/core";
+import { buildProject, loadConfig, mcpAmbientCommands, type ProjectCommandResult, runProject } from "@hooknostic/core";
 
 import type { CommandIO } from "./check.js";
+
+type DoctorMcpCommand =
+  | (Omit<McpServerCommand, "resolution"> & { resolution: "package" })
+  | (Omit<McpServerCommand, "resolution"> & { resolution: "project" })
+  | (Omit<McpServerCommand, "resolution"> & {
+      resolution: "ambient";
+      lookupOrder: "cwd-then-path" | "path";
+      pathProbe: { cwd: string; pathCandidate?: string };
+    });
+
+/**
+ * Advisory probe for the PATH portion of a bare command's ambient lookup.
+ *
+ * This intentionally does not claim to reproduce a generated launcher's
+ * complete resolution: Windows searches the launcher cwd first, and relative
+ * or empty PATH entries resolve from a cwd that may differ from this process's.
+ * The probe preserves PATH order, quoted Windows entries, empty entries (the
+ * current directory), and Windows PATHEXT suffixes.
+ */
+export function resolveOnPath(command: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const windows = process.platform === "win32";
+  const environmentValue = (name: string): string | undefined => {
+    if (!windows) return env[name];
+    const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+    return key === undefined ? undefined : env[key];
+  };
+  const path = environmentValue("PATH");
+  if (path === undefined) return undefined;
+  const directories = path.split(delimiter).map((entry) => (windows ? entry.replace(/^"(.*)"$/, "$1") : entry));
+  const pathExt = (environmentValue("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean);
+  const suffixes = windows ? (command.includes(".") ? ["", ...pathExt] : pathExt) : [""];
+  for (const directory of directories) {
+    for (const suffix of suffixes) {
+      const candidate = resolve(directory, command + suffix);
+      try {
+        if (!statSync(candidate).isFile()) continue;
+        if (!windows) accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // Keep searching later PATH entries and PATHEXT forms.
+      }
+    }
+  }
+  return undefined;
+}
+
+function mergeMcpCommands(...groups: readonly (readonly McpServerCommand[])[]): McpServerCommand[] {
+  const commands = new Map<string, McpServerCommand>();
+  for (const group of groups) {
+    for (const command of group) {
+      const key = JSON.stringify([command.server, command.command, command.resolution]);
+      if (!commands.has(key)) commands.set(key, command);
+    }
+  }
+  return [...commands.values()].sort(
+    (a, b) =>
+      a.server.localeCompare(b.server) ||
+      a.command.localeCompare(b.command) ||
+      a.resolution.localeCompare(b.resolution),
+  );
+}
 
 export interface DoctorCommandOptions {
   config?: string;
@@ -127,28 +188,76 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
 
   let project: ProjectCommandResult | undefined;
   let configurationErrors: string[] = [];
+  let commands: readonly McpServerCommand[] = [];
   if (options.config) {
-    if (loaded?.config?.project)
+    if (loaded?.config?.project) {
       project = await runProject({
         command: "verify",
         configPath: resolve(options.config),
         registry: options.registry,
+        executeMaterializers: false,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
-    else {
+      commands = mergeMcpCommands(commands, project.mcpServers);
+      const packageTargets = Object.entries(loaded.config.targets)
+        .filter(([, target]) => target.delivery === "package")
+        .map(([name]) => name);
+      if (packageTargets.length > 0) {
+        const checked = await buildProject({
+          configPath: resolve(options.config),
+          registry: options.registry,
+          targets: packageTargets,
+          dryRun: true,
+          executeMaterializers: false,
+          configResult: loaded,
+        });
+        configurationErrors.push(
+          ...checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message),
+        );
+        commands = mergeMcpCommands(commands, checked.report.mcpServers ?? []);
+      }
+    } else {
       const checked = await buildProject({
         configPath: resolve(options.config),
         registry: options.registry,
         dryRun: true,
+        executeMaterializers: false,
         ...(loaded === undefined ? {} : { configResult: loaded }),
       });
       configurationErrors = checked.report.diagnostics.filter((d) => d.severity === "error").map((d) => d.message);
+      commands = mergeMcpCommands(checked.report.mcpServers ?? []);
     }
   }
+  // Probed, but deliberately not folded into `ok`: the command belongs to
+  // the machine the plugin is finally installed on, not the one building it.
+  // A builder without an optional runner still produces a valid artifact, and
+  // failing it there would teach authors to ignore the check.
+  const pathCandidates = new Map(mcpAmbientCommands(commands).map((command) => [command, resolveOnPath(command)]));
+  const lookupOrder = process.platform === "win32" ? "cwd-then-path" : "path";
+  const mcpCommands: DoctorMcpCommand[] = commands.map((entry): DoctorMcpCommand => {
+    if (entry.resolution === "package") return { ...entry, resolution: "package" };
+    if (entry.resolution === "project") return { ...entry, resolution: "project" };
+    const candidate = pathCandidates.get(entry.command);
+    return {
+      ...entry,
+      lookupOrder,
+      pathProbe: {
+        cwd: process.cwd(),
+        ...(candidate === undefined ? {} : { pathCandidate: candidate }),
+      },
+    };
+  });
   const ok =
     configurationErrors.length === 0 &&
     entries.every((e) => e.status === "ok") &&
     (project === undefined || project.ok);
+  const projectReport =
+    project === undefined
+      ? undefined
+      : (() => {
+          const { mcpServers: _mcpServers, ...visible } = project;
+          return visible;
+        })();
 
   if (options.json) {
     options.io.stdout(
@@ -159,10 +268,11 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
           ok,
           harnesses: entries,
           configurationErrors,
+          mcpCommands,
           runtime: { node: process.version },
-          ...(project === undefined
+          ...(projectReport === undefined
             ? {}
-            : { project: { ...project, execution: "not-observed", trust: "not-inspected" } }),
+            : { project: { ...projectReport, execution: "not-observed", trust: "not-inspected" } }),
         },
         null,
         2,
@@ -195,6 +305,26 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
                 : drift
         }`,
     );
+  }
+  if (mcpCommands.length > 0) {
+    options.io.stdout("");
+    options.io.stdout("Declared MCP command resolution (ambient probes are advisory; launcher cwd may differ):");
+    for (const command of mcpCommands) {
+      if (command.resolution === "package") {
+        options.io.stdout(`INFO  ${command.server}: command ${command.command} is shipped by the package`);
+      } else if (command.resolution === "project") {
+        options.io.stdout(
+          `INFO  ${command.server}: command ${command.command} is resolved relative to the project MCP source`,
+        );
+      } else {
+        const marker = command.pathProbe.pathCandidate === undefined ? "MISS" : "OK  ";
+        const where = command.pathProbe.pathCandidate ?? "no candidate on this PATH";
+        const order = command.lookupOrder === "cwd-then-path" ? "launcher cwd, then PATH" : "PATH";
+        options.io.stdout(
+          `${marker}  ${command.server}: command ${command.command} uses ambient lookup (${order}); PATH probe — ${where}`,
+        );
+      }
+    }
   }
   for (const message of configurationErrors) options.io.stderr(message);
   if (project) {

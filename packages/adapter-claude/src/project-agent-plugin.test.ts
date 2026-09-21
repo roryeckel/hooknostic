@@ -90,6 +90,46 @@ describe("Agent Plugin to Claude projection", () => {
     expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
   });
 
+  it("carries a runner command through untouched, whatever language it launches", async () => {
+    // The dominant real-world shape: of 24 stdio servers configured on one
+    // developer machine, every third-party one was a runner (`npx`, `bun`,
+    // `uvx`, `docker`, `php`) rather than an interpreter plus a bundled entry.
+    const portable = source();
+    portable.mcp = {
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        python: { type: "stdio", command: "uvx", args: ["mcp-server-git", "--repository", "${PLUGIN_ROOT}"] },
+      },
+    };
+
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      support,
+      onUnsupported: "error",
+      hookArtifacts: [],
+    });
+
+    // Claude spells the real command inline in the launcher's own argv, and
+    // ${PLUGIN_ROOT} becomes Claude's variable rather than a build-time path.
+    expect(parsed(plan, ".mcp.json").mcpServers.python).toEqual({
+      type: "stdio",
+      command: "node",
+      args: [
+        "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "uvx",
+        "mcp-server-git",
+        "--repository",
+        "${CLAUDE_PLUGIN_ROOT}",
+      ],
+      // Claude does not honour a declared cwd itself (.capture/claude-mcp-cwd),
+      // so the launcher is handed the plugin root and both bindings.
+      cwd: "${CLAUDE_PLUGIN_ROOT}",
+      env: { PLUGIN_ROOT: "${CLAUDE_PLUGIN_ROOT}", PLUGIN_DATA: "${CLAUDE_PLUGIN_DATA}" },
+    });
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
   it.each([null, [], {}, { hooks: null }, { hooks: [] }, { hooks: { Notification: {} } }])(
     "rejects malformed final hook documents: %j",
     async (document) => {
@@ -831,5 +871,43 @@ describe("Agent Plugin to Claude projection", () => {
       ),
     ).toEqual(["hooknostic"]);
     expect(plan.issues).toHaveLength(3);
+  });
+
+  const projectWithMaterializedTree = (pkg: AgentPluginPackage, into: string, path: string) =>
+    projectAgentPluginToClaude(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        { provider: "fixture", into, files: [{ path, contents: encoder.encode(path), mode: 0o644 }] },
+      ],
+    });
+
+  it("places a materialized package tree at the plugin root without calling it copied", async () => {
+    const plan = await projectWithMaterializedTree(source(), "generated/dependencies", "library/data.bin");
+
+    expect(plan.files.some((candidate) => candidate.path === "generated/dependencies/library/data.bin")).toBe(true);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    // The bytes came from an installer, not the package: the summary's
+    // "copied byte-for-byte" list must not claim them.
+    expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
+  });
+
+  it("refuses a materialized package tree that lands on a generated or native path", async () => {
+    // Without this the later `files.set` at each generated path silently drops
+    // the runtime, and `runtime/mcp-launcher.mjs` would blame package content.
+    // The launcher is reported through the projector's throw path, so the
+    // message rather than a `path` field carries the destination.
+    const hooks = await projectWithMaterializedTree(source(), "hooks", "hooks.json");
+    expect(hooks.issues).toContainEqual(expect.objectContaining({ severity: "error", path: "hooks/hooks.json" }));
+
+    const launcher = await projectWithMaterializedTree(source(), "runtime", "mcp-launcher.mjs");
+    expect(launcher.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: expect.stringContaining("collides with a materialized package tree"),
+      }),
+    );
   });
 });
