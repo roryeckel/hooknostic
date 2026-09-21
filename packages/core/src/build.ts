@@ -280,8 +280,17 @@ function materializedSourceCollisionProblems(
       const materializedPath = `${tree.into}/${file.path}`;
       const sourcePath = sourceByFoldedPath.get(materializedPath.toLowerCase());
       if (sourcePath === undefined) continue;
+      // Only name the filesystem when the fold is doing the work. Told that
+      // an identical path collides "on case-insensitive filesystems", an
+      // author on Linux reasonably concludes the build is warning about
+      // somewhere else and that their own tree is fine — when in fact the two
+      // paths are the same everywhere. Phrased to match the same distinction
+      // in `materializedPackageFiles`.
+      const where =
+        sourcePath === materializedPath ? "" : ` as ${JSON.stringify(sourcePath)} on case-insensitive filesystems`;
       problems.push(
-        `materializer ${JSON.stringify(tree.provider)} writes ${JSON.stringify(materializedPath)}, which collides with source file ${JSON.stringify(sourcePath)} on case-insensitive filesystems; point its "into" at a directory the source package does not use`,
+        `materializer ${JSON.stringify(tree.provider)} writes ${JSON.stringify(materializedPath)}, which the ` +
+          `source package already ships${where}; point its "into" at a directory the source package does not use`,
       );
     }
   }

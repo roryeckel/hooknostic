@@ -471,12 +471,17 @@ describe("hooknostic build end-to-end", () => {
 
       const checked = captureIO();
       expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: checked.io })).toBe(2);
+      // The two arms are not the same collision and must not read alike. An
+      // identical path collides on every filesystem; only the case-variant one
+      // depends on the fold, and saying so for both would tell an author on
+      // Linux that the warning is about someone else's machine.
+      const expected =
+        materializedName === "SKILL.md"
+          ? 'writes "skills/broken/SKILL.md", which the source package already ships;'
+          : 'writes "skills/broken/skill.md", which the source package already ships as ' +
+            '"skills/broken/SKILL.md" on case-insensitive filesystems;';
       expect(JSON.parse(checked.out()).diagnostics).toContainEqual(
-        expect.objectContaining({
-          code: "HN501",
-          severity: "error",
-          message: expect.stringContaining("skills/broken/SKILL.md"),
-        }),
+        expect.objectContaining({ code: "HN501", severity: "error", message: expect.stringContaining(expected) }),
       );
 
       const built = captureIO();
