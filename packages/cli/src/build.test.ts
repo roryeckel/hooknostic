@@ -426,6 +426,65 @@ describe("hooknostic build end-to-end", () => {
     }
   });
 
+  it.each(["SKILL.md", "skill.md"])(
+    "rejects materialized output that case-insensitively collides with rejected source file %s",
+    async (materializedName) => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-materialize-rejected-skill-"));
+      cleanupDirs.push(dir);
+      await writeFile(
+        join(dir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "materialize-rejected-skill" }),
+      );
+      await mkdir(join(dir, "skills/broken"), { recursive: true });
+      await writeFile(
+        join(dir, "skills/broken/SKILL.md"),
+        "---\nname: wrong-name\ndescription: rejected source skill\n---\n",
+      );
+      const config = join(dir, "hooknostic.config.ts");
+      const script =
+        "const fs=require('node:fs'),p=require('node:path');" +
+        `fs.writeFileSync(p.join(process.argv[1],${JSON.stringify(materializedName)}),'---\\nname: broken\\ndescription: generated skill\\n---\\n')`;
+      await writeFile(
+        config,
+        `const provider = {
+          id: "fixture",
+          plan({ outputDir }) {
+            return { command: process.execPath, args: ["-e", ${JSON.stringify(script)}, outputDir] };
+          },
+        };
+        export default {
+          components: {
+            root: ".",
+            onInvalid: "warn",
+            materialize: [{ provider, inputs: {}, into: "skills/broken" }],
+            targets: ["claude"],
+          },
+          targets: {
+            claude: {
+              version: ${JSON.stringify(claudeHarness.recommendedRange)},
+              delivery: "package",
+              output: "dist/claude",
+            },
+          },
+        };`,
+      );
+
+      const checked = captureIO();
+      expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: checked.io })).toBe(2);
+      expect(JSON.parse(checked.out()).diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "HN501",
+          severity: "error",
+          message: expect.stringContaining("skills/broken/SKILL.md"),
+        }),
+      );
+
+      const built = captureIO();
+      expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: built.io })).toBe(2);
+      expect(existsSync(join(dir, "dist/claude"))).toBe(false);
+    },
+  );
+
   it.each(["missing", "non-executable"] as const)(
     "applies onInvalid after final materialized command validation: %s",
     async (problem) => {

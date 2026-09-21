@@ -76,6 +76,19 @@ describe("normalizeMaterializationDestination", () => {
 });
 
 describe("validateMaterializationDeclarations", () => {
+  it("reports an unreadable package root for a zero-input provider instead of rejecting", async () => {
+    const parent = await scratch("hooknostic-materialize-missing-root-");
+    const missing = join(parent, "missing");
+    const provider = definePackageMaterializer({
+      id: "zero-input",
+      plan: () => ({ command: process.execPath, args: [] }),
+    });
+
+    await expect(
+      validateMaterializationDeclarations(missing, [{ provider, inputs: {}, into: "generated" }]),
+    ).resolves.toEqual([expect.stringContaining('materializer "zero-input"')]);
+  });
+
   it("canonicalizes destinations before duplicate detection", async () => {
     const root = await scratch("hooknostic-materialize-collision-");
     await writeFile(join(root, "input"), "data");

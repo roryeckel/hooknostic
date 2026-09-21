@@ -263,6 +263,31 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function materializedSourceCollisionProblems(
+  trees: readonly MaterializedPackageTree[],
+  sourceFiles: readonly AgentPluginFile[],
+): string[] {
+  // The loader deliberately leaves a rejected skill's files in the inventory
+  // under `onInvalid: "warn"`; projectors omit those files so the invalid
+  // component cannot reach a harness. Compare against that complete inventory,
+  // not a projector's copied paths, or materialization could restore the
+  // rejected component. Fold paths because one build may be installed on a
+  // case-insensitive filesystem even when it was produced on a sensitive one.
+  const sourceByFoldedPath = new Map(sourceFiles.map((file) => [file.path.toLowerCase(), file.path]));
+  const problems: string[] = [];
+  for (const tree of trees) {
+    for (const file of tree.files) {
+      const materializedPath = `${tree.into}/${file.path}`;
+      const sourcePath = sourceByFoldedPath.get(materializedPath.toLowerCase());
+      if (sourcePath === undefined) continue;
+      problems.push(
+        `materializer ${JSON.stringify(tree.provider)} writes ${JSON.stringify(materializedPath)}, which collides with source file ${JSON.stringify(sourcePath)} on case-insensitive filesystems; point its "into" at a directory the source package does not use`,
+      );
+    }
+  }
+  return problems;
+}
+
 function resolveProjectSdk(configDir: string): string | undefined {
   try {
     return createRequire(join(configDir, "package.json")).resolve("@hooknostic/sdk");
@@ -711,6 +736,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       });
       for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
       materializedTrees = result.trees;
+      for (const problem of materializedSourceCollisionProblems(materializedTrees, components?.files ?? [])) {
+        diagnostics.push({ code: "HN501", severity: "error", message: problem });
+      }
     } catch (error) {
       diagnostics.push({
         code: "HN301",

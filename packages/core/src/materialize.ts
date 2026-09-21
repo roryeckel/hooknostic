@@ -94,7 +94,14 @@ async function contextFor(
     } else inputs[name] = resolved.input;
   }
   if (problems.length > 0) return { problems };
-  return { context: { root: await realpath(root), inputs }, problems };
+  try {
+    return { context: { root: await realpath(root), inputs }, problems };
+  } catch {
+    problems.push(
+      `materializer ${JSON.stringify(declaration.provider.id)} Agent Plugin root ${JSON.stringify(root)} could not be read`,
+    );
+    return { problems };
+  }
 }
 
 /** Validate generic declaration and input invariants without invoking a provider or tool. */
