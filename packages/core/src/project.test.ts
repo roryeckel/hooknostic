@@ -177,7 +177,7 @@ describe("complete project integration", () => {
       {
         server: "local",
         command: "hooknostic-missing-runtime",
-        resolution: "path-lookup",
+        resolution: "ambient",
       },
       { server: "shipped", command: "./bin/server", resolution: "project" },
     ];
@@ -257,6 +257,80 @@ describe("complete project integration", () => {
     const result = await runProject({ ...options, command: "sync" });
     expect(result.errors).toEqual([]);
     expect(await readFile(join(root, ".claude/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
+  });
+  it("does not validate, report, or materialize components owned only by a package target", async () => {
+    const claude = registry.claude!;
+    const opencode = registry.opencode!;
+    const { root, options } = await fixture();
+    const callKey = `HOOKNOSTIC_PROJECT_MATERIALIZER_${root.replace(/[^A-Za-z0-9]/g, "_")}`;
+    delete process.env[callKey];
+    await writeFile(join(root, "plugin.json"), "{ deliberately invalid package-only JSON");
+    await writeFile(join(root, "packages.lock"), "locked\n");
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { packageOnly: { type: "stdio", command: "package-runner" } },
+      }),
+    );
+    await writeFile(
+      options.configPath,
+      `export default {
+        project: { root: "." },
+        entry: "./hooks.ts",
+        components: {
+          root: ".",
+          targets: ["bundle"],
+          materialize: [{
+            provider: {
+              id: "must-not-run",
+              validate() {
+                process.env[${JSON.stringify(callKey)}] = "validate";
+                return [];
+              },
+              plan() {
+                process.env[${JSON.stringify(callKey)}] = "plan";
+                throw new Error("package materializer ran during a project command");
+              },
+            },
+            inputs: { lock: "packages.lock" },
+            into: "generated",
+          }],
+        },
+        targets: {
+          local: {
+            adapter: "claude",
+            version: ${JSON.stringify(claude.harness.recommendedRange)},
+            delivery: "project",
+            output: ".hooknostic/artifacts/local",
+          },
+          bundle: {
+            adapter: "opencode",
+            version: ${JSON.stringify(opencode.harness.recommendedRange)},
+            delivery: "package",
+            output: "dist/bundle",
+          },
+        },
+      };`,
+    );
+
+    try {
+      const dry = await runProject({ ...options, command: "sync", dryRun: true });
+      expect(dry.errors).toEqual([]);
+      expect(dry.mcpServers).toEqual([]);
+      expect(process.env[callKey]).toBeUndefined();
+
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      expect(process.env[callKey]).toBeUndefined();
+
+      const verified = await runProject({ ...options, command: "verify" });
+      expect(verified.ok).toBe(true);
+      expect(verified.mcpServers).toEqual([]);
+      expect(process.env[callKey]).toBeUndefined();
+    } finally {
+      delete process.env[callKey];
+    }
   });
   it("keeps synchronized project wiring out of package component sources", async () => {
     const claude = registry.claude!;

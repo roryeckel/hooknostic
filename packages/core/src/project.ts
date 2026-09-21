@@ -41,10 +41,22 @@ export async function runProject(
       await recoverProject(root, owner);
       return { ...result, ok: true };
     }
-    const built = await buildProject({ ...options, configResult: loaded, dryRun: true });
-    result.diagnostics = built.report.diagnostics;
-    result.mcpServers = built.report.mcpServers ?? [];
-    if (!built.ok) throw new Error(built.report.diagnostics.map((d) => d.message).join("\n"));
+    // Project commands reconcile the complete project target set, but package
+    // targets are unrelated work: generating them can run materializers and
+    // perform package-only validation even though none of their output enters
+    // the integration transaction.
+    const projectTargets = Object.entries(config.targets)
+      .filter(([, target]) => target.delivery === "project")
+      .map(([name]) => name);
+    const built =
+      projectTargets.length === 0
+        ? undefined
+        : await buildProject({ ...options, targets: projectTargets, configResult: loaded, dryRun: true });
+    if (built !== undefined) {
+      result.diagnostics = built.report.diagnostics;
+      result.mcpServers = built.report.mcpServers ?? [];
+      if (!built.ok) throw new Error(built.report.diagnostics.map((d) => d.message).join("\n"));
+    }
     const integration: ProjectIntegration = {
       files: [
         { path: ".hooknostic/.gitattributes", contents: "** -text\n" },
@@ -56,7 +68,7 @@ export async function runProject(
       entries: [],
       guidance: [],
     };
-    for (const target of built.plan ?? []) {
+    for (const target of built?.plan ?? []) {
       const configured = config.targets[target.target]!;
       if (configured.delivery !== "project") continue;
       const adapter = options.registry[configured.adapter ?? target.target];

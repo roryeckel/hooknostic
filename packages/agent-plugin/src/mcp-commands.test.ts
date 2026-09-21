@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mcpPathCommands, mcpServerCommands } from "./mcp-commands.js";
+import { mcpAmbientCommands, mcpServerCommands } from "./mcp-commands.js";
 import type { AgentPluginMcpConfig } from "./types.js";
 import { AGENT_PLUGIN_MCP_SCHEMA } from "./types.js";
 
@@ -19,8 +19,8 @@ describe("mcpServerCommands", () => {
     );
 
     expect(entries.map((entry) => [entry.server, entry.command, entry.resolution])).toEqual([
-      ["first", "alpha", "path-lookup"],
-      ["second", "beta", "path-lookup"],
+      ["first", "alpha", "ambient"],
+      ["second", "beta", "ambient"],
     ]);
   });
 
@@ -50,6 +50,6 @@ describe("mcpServerCommands", () => {
       }),
     );
 
-    expect(mcpPathCommands(entries)).toEqual(["alpha", "zeta"]);
+    expect(mcpAmbientCommands(entries)).toEqual(["alpha", "zeta"]);
   });
 });

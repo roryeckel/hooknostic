@@ -268,17 +268,17 @@ function partialProjectorAdapter() {
 }
 
 describe("MCP command descriptions", () => {
-  it("states whether the declared command is packaged, project-relative, or looked up on PATH", () => {
+  it("states whether the declared command is packaged, project-relative, or resolved ambiently", () => {
     expect(
       describeMcpCommands([
         { server: "contained", command: "./bin/server", resolution: "package" },
         { server: "local", command: "./bin/server", resolution: "project" },
-        { server: "bare", command: "external-runner", resolution: "path-lookup" },
+        { server: "bare", command: "external-runner", resolution: "ambient" },
       ]),
     ).toEqual([
       "  contained: command ./bin/server is shipped by the package",
       "  local: command ./bin/server is resolved relative to the project MCP source",
-      "  bare: command external-runner is looked up on the consumer's PATH",
+      "  bare: command external-runner uses ambient executable lookup (Windows launcher cwd before PATH; otherwise PATH)",
     ]);
   });
 });
@@ -2474,7 +2474,7 @@ describe("hooknostic doctor", () => {
     expect(process.env[callKey]).toBeUndefined();
   });
 
-  it("reports both command resolutions and probes only PATH lookups", async () => {
+  it("reports both command resolutions and probes the PATH portion of ambient lookups", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-doctor-project-mcp-"));
     cleanupDirs.push(dir);
     const registry = defaultAdapterRegistry();
@@ -2515,11 +2515,14 @@ describe("hooknostic doctor", () => {
     const json = captureIO();
     expect(await runDoctor({ config: configPath, json: true, registry, io: json.io })).toBe(2);
     const report = JSON.parse(json.out());
+    const lookupOrder = process.platform === "win32" ? "cwd-then-path" : "path";
     expect(report.mcpCommands).toEqual([
       {
         server: "missing",
         command: "hooknostic-definitely-missing-runtime",
-        resolution: "path-lookup",
+        resolution: "ambient",
+        lookupOrder,
+        pathProbe: { cwd: process.cwd() },
       },
       {
         server: "project",
@@ -2533,12 +2536,12 @@ describe("hooknostic doctor", () => {
     await runDoctor({ config: configPath, registry, io: human.io });
     expect(human.out()).toContain("Declared MCP command resolution");
     expect(human.out()).toContain(
-      "MISS  missing: command hooknostic-definitely-missing-runtime is looked up on the consumer's PATH",
+      `MISS  missing: command hooknostic-definitely-missing-runtime uses ambient lookup (${lookupOrder === "cwd-then-path" ? "launcher cwd, then PATH" : "PATH"}); PATH probe — no candidate on this PATH`,
     );
     expect(human.out()).toContain("INFO  project: command ./bin/server is resolved relative to the project MCP source");
   });
 
-  it("keeps a missing PATH command advisory", async () => {
+  it("keeps a missing ambient command advisory", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-doctor-advisory-mcp-"));
     cleanupDirs.push(dir);
     await writeFile(
@@ -2580,7 +2583,9 @@ describe("hooknostic doctor", () => {
       {
         server: "missing",
         command: "hooknostic-definitely-missing-runtime",
-        resolution: "path-lookup",
+        resolution: "ambient",
+        lookupOrder: process.platform === "win32" ? "cwd-then-path" : "path",
+        pathProbe: { cwd: process.cwd() },
       },
     ]);
   });

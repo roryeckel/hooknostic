@@ -78,7 +78,7 @@ export interface BuildOptions {
   configResult?: Awaited<ReturnType<typeof loadConfig>>;
 }
 
-export { mcpPathCommands, type McpServerCommand } from "@hooknostic/agent-plugin";
+export { mcpAmbientCommands, type McpServerCommand } from "@hooknostic/agent-plugin";
 
 export interface AgentPluginTargetReport {
   status: "success" | "failed" | "skipped";
@@ -498,7 +498,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   let materializedTrees: MaterializedPackageTree[] = [];
   let materializationDeclarations: PackageMaterializationConfig[] = [];
   let materializationRoots: string[] = [];
-  if (config.components?.root !== undefined) {
+  if (config.components?.root !== undefined && (selectedPackageProjection || selectedProjectProjection)) {
     const agentPluginRoot = resolve(configDir, config.components.root);
     if (selectedPackageProjection) {
       materializationDeclarations = config.components.materialize ?? [];
@@ -562,7 +562,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
 
   let componentSource: ProjectComponents | undefined;
   if (components) componentSource = packageComponents(components);
-  else if (config.components) {
+  else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
     const loaded = await loadProjectComponents({
       ...(config.components.skills === undefined
         ? {}
@@ -577,13 +577,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
-  if (componentSource !== undefined)
+  if (componentSource !== undefined && (selectedPackageProjection || selectedProjectProjection))
     report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
-  if (
-    config.components?.root === undefined &&
-    componentSource &&
-    Object.entries(config.targets).some(([id, target]) => componentTargetIds.has(id) && target.delivery === "package")
-  ) {
+  if (config.components?.root === undefined && componentSource && selectedPackageProjection) {
     diagnostics.push({
       code: "HN501",
       severity: "error",
@@ -703,8 +699,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   // read-only input (ADR-0011).
   if ((options.executeMaterializers ?? true) && materializationDeclarations.length > 0) {
     const agentPluginRoot = resolve(configDir, config.components!.root!);
-    const staging = await mkdtemp(join(tmpdir(), "hooknostic-materialize-"));
+    let staging: string | undefined;
+    let materializationPhase = "temporary staging setup";
     try {
+      staging = await mkdtemp(join(tmpdir(), "hooknostic-materialize-"));
+      materializationPhase = "execution";
       const result = await materializePackages({
         root: agentPluginRoot,
         staging,
@@ -712,8 +711,31 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       });
       for (const problem of result.problems) diagnostics.push({ code: "HN501", severity: "error", message: problem });
       materializedTrees = result.trees;
+    } catch (error) {
+      diagnostics.push({
+        code: "HN301",
+        severity: "error",
+        message: `package materialization ${materializationPhase} failed: ${errorMessage(error)}`,
+        remediation:
+          materializationPhase === "temporary staging setup"
+            ? "check permissions and free space in the system temporary directory."
+            : "check the materializer provider and the system temporary directory, then retry.",
+      });
+      markUnbuilt("failed");
+      return { ok: false, report, analysis };
     } finally {
-      await rm(staging, { recursive: true, force: true });
+      if (staging !== undefined) {
+        try {
+          await rm(staging, { recursive: true, force: true });
+        } catch (error) {
+          diagnostics.push({
+            code: "HN301",
+            severity: "warn",
+            message: `could not remove temporary materialization directory ${JSON.stringify(staging)}: ${errorMessage(error)}`,
+            remediation: "remove the temporary directory manually when it is no longer in use.",
+          });
+        }
+      }
     }
     if (hasFatal(diagnostics)) {
       markUnbuilt("failed");

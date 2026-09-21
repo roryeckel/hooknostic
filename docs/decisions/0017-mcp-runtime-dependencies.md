@@ -91,11 +91,14 @@ Hooknostic still does not perform that npm install.
 
 MCP command reporting is also separate. For each stdio declaration Hooknostic reports
 whether a `./` command comes from the package or direct project source, or whether a
-bare command is looked up on `PATH`. `doctor` may probe a bare command on the current
-machine, but the probe is advisory because the generated launcher can use a different
-working directory; it does not change the exit status. Hooknostic does not parse
-shebangs or claim to discover interpreters, dynamic libraries, daemons, or transitive
-runtime dependencies. Remote servers have no command to report.
+bare command uses ambient platform lookup. On Windows the generated launcher searches
+its current working directory before `PATH`; on other platforms it uses the platform's
+`PATH` rules. `doctor` reports that lookup order and may probe the `PATH` portion on the
+current machine, but labels any result as a candidate rather than a resolved executable:
+the generated launcher can use a different working directory and environment. The probe
+is advisory and does not change the exit status. Hooknostic does not parse shebangs or
+claim to discover interpreters, dynamic libraries, daemons, or transitive runtime
+dependencies. Remote servers have no command to report.
 
 ## Consequences
 

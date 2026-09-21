@@ -18,9 +18,9 @@ export function describeProjection(projection: AgentPluginTargetReport): string 
  * How each stdio server's declared command is resolved.
  *
  * Hooknostic can report whether the declared command comes from a package,
- * direct project source, or PATH. It does not inspect the command for
+ * direct project source, or ambient executable lookup. It does not inspect the command for
  * interpreters, libraries, daemons, or other transitive dependencies.
- * `doctor` probes only PATH-looked-up commands and keeps that result advisory.
+ * `doctor` probes only the PATH portion of ambient lookup and keeps that result advisory.
  *
  * Every projected stdio server additionally needs Node, because the generated
  * launcher is a Node program. That is a property of the projection rather than
@@ -32,7 +32,7 @@ export function describeMcpCommands(mcpServers: BuildReport["mcpServers"]): stri
       ? `  ${server.server}: command ${server.command} is shipped by the package`
       : server.resolution === "project"
         ? `  ${server.server}: command ${server.command} is resolved relative to the project MCP source`
-        : `  ${server.server}: command ${server.command} is looked up on the consumer's PATH`,
+        : `  ${server.server}: command ${server.command} uses ambient executable lookup (Windows launcher cwd before PATH; otherwise PATH)`,
   );
 }
 

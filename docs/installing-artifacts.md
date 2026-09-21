@@ -214,10 +214,13 @@ boundary.
 
 Build and check reports describe only how each declared stdio command is resolved. A
 `./server` command from a package source is shipped by the package; one from a
-direct project source is resolved relative to that MCP source; a bare command is
-looked up on the consumer's `PATH`. `doctor` probes only bare commands on its own
-PATH as an advisory: the eventual consumer machine and the generated launcher's
-working directory may differ.
+direct project source is resolved relative to that MCP source; a bare command uses
+ambient platform lookup. On Windows the generated launcher searches its current
+working directory before `PATH`; on other platforms it uses the platform's `PATH`
+rules. `doctor` reports that order and probes only the `PATH` portion on its own
+machine. It labels a result as a PATH candidate, not the resolved executable, and
+treats a missing candidate as advisory because the eventual consumer can have a
+different working directory and environment.
 
 Hooknostic does not parse shebangs or infer interpreters, dynamic libraries, daemons, or
 other transitive runtime dependencies. Remote servers have no launched command to

@@ -226,7 +226,7 @@
     {
       "server": "greeter",
       "command": "node",
-      "resolution": "path-lookup"
+      "resolution": "ambient"
     }
   ],
   "source": "./src/hooks.ts"

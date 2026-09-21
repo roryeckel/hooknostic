@@ -11,8 +11,10 @@ costs nothing.
 stdio servers configured on one developer machine, all 17 third-party ones were
 **runner commands** — `npx` ×9, `bun` ×4, `uvx` ×2, `docker`, `php` — rather
 than an interpreter plus a bundled entry. A runner command is a bare executable
-name, so it is a `PATH` lookup **on the consumer's machine, inside whatever
-environment the harness hands the child**.
+name, so it uses ambient platform lookup **on the consumer's machine, inside
+whatever environment the harness hands the child**. This capture tests whether
+the `PATH` portion of that lookup remains available; it does not establish lookup
+precedence.
 
 Nothing had ever measured that environment. `PATH` appears twice in all of
 `.capture` and neither mention is about an MCP spawn. So: does a spawned MCP
@@ -24,8 +26,8 @@ child get the parent's `PATH`? And does the rest of the environment survive?
 ${PLUGIN_ROOT}/record.mjs`. The recorder writes a JSON line —
 `PATH`, its entry count, the total environment key count, `PATHEXT`,
 `PLUGIN_ROOT`/`PLUGIN_DATA`, `cwd`, and whether `node`, `npx`, `uvx`, `uv`,
-`docker`, `python3` and `python` resolve under the same two rules `hooknostic
-doctor` uses — and then answers `initialize` so the harness completes its
+`docker`, `python3` and `python` have a candidate on `PATH` using `PATH` order
+and `PATHEXT` — and then answers `initialize` so the harness completes its
 handshake rather than reporting a failed connection. The record is written
 first, so a failed handshake still leaves the measurement.
 
@@ -57,10 +59,10 @@ like:
 **On native Windows in the captured Claude Code 2.1.273, Codex 0.154.0, and
 OpenCode 1.18.31 probes, `PATH` survives to the child process.** This does not
 establish the same behavior on POSIX or for other versions.
-`uvx`, `uv`, `npx`, `docker` and `node` resolved in every one of these four
-Windows captures. Claude and OpenCode pass the parent's `PATH` through byte for
-byte. Codex passes a **superset**: all 48 parent entries plus two of its own —
-an `arg0` shim directory and its vendored `codex-path`.
+`uvx`, `uv`, `npx`, `docker` and `node` had a PATH probe candidate in every one
+of these four Windows captures. Claude and OpenCode pass the parent's `PATH`
+through byte for byte. Codex passes a **superset**: all 48 parent entries plus
+two of its own — an `arg0` shim directory and its vendored `codex-path`.
 
 **Codex filters the rest of the environment to 22 variables, against ~104
 elsewhere.** This is the finding that matters. `.capture/codex-project-mcp`
@@ -86,11 +88,15 @@ materialized tree has to be placed inside it.
 
 ## Not measured
 
+- **Ambient lookup precedence or cwd shadowing.** The recorder searched only
+  `PATH` plus `PATHEXT`; it did not test whether the launcher checks its working
+  directory first. Hooknostic's Windows cwd-before-PATH behavior is established
+  by its `cross-spawn` launcher implementation and unit tests, not this capture.
 - **Which 22 variables Codex keeps.** The recorder captured the count, not the
   names. Knowing the survivors would let a server be told precisely what it may
   rely on; it needs one more Codex session.
-- **A Windows shim launched through a harness.** `npx` *resolved* on all three
-  PATHs, which is the half this probe covers. Whether `cross-spawn` then
+- **A Windows shim launched through a harness.** `npx` had a candidate on all
+  three PATHs, which is the half this probe covers. Whether `cross-spawn` then
   launches a `.cmd` correctly under a harness is still only unit-tested
   (`mcp-launcher.test.ts`), not observed end to end.
 - **POSIX.** Windows only, and the `PATH`/`PATHEXT` split is the most

@@ -13,7 +13,7 @@ import { delimiter, join, resolve } from "node:path";
 // depend on having been given anything.
 const OUT = process.env["PATH_RECORDER_OUT"] ?? join(tmpdir(), "hooknostic-path-recorder.jsonl");
 
-/** The same two rules `hooknostic doctor` uses: PATH order, then PATHEXT. */
+/** PATH-only approximation: PATH order plus PATHEXT, without launcher-cwd precedence. */
 function resolveOnPath(command, env) {
   const directories = (env["PATH"] ?? env["Path"] ?? "").split(delimiter).filter(Boolean);
   const suffixes =
