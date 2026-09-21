@@ -507,8 +507,39 @@ describe("loadAgentPlugin", () => {
     await symlink(join(outside, "escape.txt"), join(root, "escape.txt"), "file");
     const escaped = await loadAgentPlugin({ root });
     expect(escaped.package).toBeUndefined();
+    // Pinned to the whole sentence, not the word "outside". An escaping link is
+    // nearly always machine-local state -- a virtualenv interpreter, a
+    // toolchain cache -- and core deliberately carries no list of those names
+    // (ADR-0017), so naming the path and the one line that fixes it IS the
+    // feature. Asserting a substring the generic inventory wrapper also
+    // contains would pass just as happily against the message that does not.
     expect(escaped.issues).toContainEqual(
-      expect.objectContaining({ severity: "error", scope: "file", message: expect.stringContaining("outside") }),
+      expect.objectContaining({
+        severity: "error",
+        scope: "file",
+        message: expect.stringContaining(
+          "escape.txt resolves outside the Agent Plugin root. Add it to components.exclude",
+        ),
+      }),
+    );
+  });
+
+  it("names a broken link and the line that fixes it", async () => {
+    const root = await packageRoot();
+    // The `realpath` ENOENT branch, which nothing reached: no test in the
+    // repository builds a dangling link. It is what a machine-local tree
+    // leaves behind once its absolute target moves, so it lands on authors
+    // who never chose to ship a link at all.
+    await symlink(join(root, "gone.txt"), join(root, "dangling.txt"), "file");
+
+    const loaded = await loadAgentPlugin({ root });
+    expect(loaded.package).toBeUndefined();
+    expect(loaded.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        scope: "file",
+        message: expect.stringContaining("dangling.txt is a broken symbolic link. Remove it, or add it to"),
+      }),
     );
   });
 
@@ -552,7 +583,7 @@ describe("loadAgentPlugin", () => {
       expect.objectContaining({
         severity: "error",
         scope: "file",
-        message: expect.stringContaining("outside"),
+        message: expect.stringContaining("skills/escape/SKILL.md resolves outside the Agent Plugin root."),
       }),
     ]);
     expect(loaded.issues.some((problem) => problem.scope === "skill")).toBe(false);
