@@ -292,6 +292,23 @@ describe("loadAgentPlugin", () => {
     );
   });
 
+  it("normalizes a contained POSIX command before matching the package inventory", async () => {
+    const root = await packageRoot();
+    await writeFile(join(root, "server"), "exec external-runner");
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { normalized: { type: "stdio", command: "./bin/../server" } },
+      }),
+    );
+
+    const loaded = await loadAgentPlugin({ root, executableFiles: ["server"] });
+
+    expect(loaded.issues).toEqual([]);
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["normalized"]);
+  });
+
   it("skips a contained command that was never declared executable, and names the remedy", async () => {
     const root = await packageRoot();
     await mkdir(join(root, "bin"), { recursive: true });

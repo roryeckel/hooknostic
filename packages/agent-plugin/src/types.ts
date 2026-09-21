@@ -84,6 +84,12 @@ export interface LoadAgentPluginOptions {
   /** Exact, case-sensitive POSIX paths of included files to emit as 0755; others use 0644. */
   executableFiles?: string[];
   /**
+   * Canonical package-relative roots whose files will be supplied after package
+   * inventory. Missing contained MCP commands beneath one of these roots are
+   * retained for a later final-tree validation.
+   */
+  deferredCommandRoots?: readonly string[];
+  /**
    * POSIX-style package-relative exclusion globs, added to the built-in set
    * (`.git`, `node_modules`, `.env`, `.env.*`, `.npmrc` at any depth; see
    * `AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES`). Patterns match case-insensitively
@@ -183,7 +189,7 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
     provider: string;
     /** Destination relative to this projector's plugin root. */
     into: string;
-    files: readonly { path: string; contents: Uint8Array }[];
+    files: readonly { path: string; contents: Uint8Array; mode: 0o644 | 0o755 }[];
   }[];
   /**
    * This projector's own `profiles`, resolved against the target's version

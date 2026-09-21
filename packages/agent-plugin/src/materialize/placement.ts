@@ -3,7 +3,7 @@ import type { AgentPluginIssue, AgentPluginProjectionFile } from "../types.js";
 interface MaterializedPackageTree {
   provider: string;
   into: string;
-  files: readonly { path: string; contents: Uint8Array }[];
+  files: readonly { path: string; contents: Uint8Array; mode: 0o644 | 0o755 }[];
 }
 
 /** Place provider output relative to a projector's plugin root without overwriting other package content. */
@@ -43,7 +43,7 @@ export function materializedPackageFiles(
         continue;
       }
       materializedPaths.add(path);
-      files.push({ path, contents: Buffer.from(file.contents) });
+      files.push({ path, contents: Buffer.from(file.contents), mode: file.mode });
     }
   }
   return { files, issues };

@@ -137,7 +137,10 @@ async function readTree(
     } else if (info.isDirectory()) {
       await readTree(root, full, out, problems);
     } else if (info.isFile()) {
-      out.push({ path, contents: await readFile(full) });
+      // ADR-0013: host permission bits are not portable. Providers may make a
+      // file explicitly executable in postprocess after applying their own
+      // ecosystem-specific rules.
+      out.push({ path, contents: await readFile(full), mode: 0o644 });
     } else {
       problems.push(`${path} is not a regular file`);
     }
@@ -155,6 +158,12 @@ function treeProblems(files: readonly PackageMaterializerFile[]): string[] {
     }
     if (paths.has(file.path)) problems.push(`provider returned duplicate output path ${JSON.stringify(file.path)}`);
     paths.add(file.path);
+    if (file.mode !== 0o644 && file.mode !== 0o755) {
+      problems.push(
+        `provider returned invalid output mode ${String(file.mode)} for ${JSON.stringify(file.path)}; ` +
+          `materialized files must use canonical mode 0644 or 0755`,
+      );
+    }
   }
   return problems;
 }

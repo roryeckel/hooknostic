@@ -1126,7 +1126,7 @@ describe("Codex client extension", () => {
         {
           provider: "fixture",
           into: "generated/dependencies",
-          files: [{ path: "library/data.bin", contents: encoder.encode("materialized") }],
+          files: [{ path: "library/data.bin", contents: encoder.encode("materialized"), mode: 0o644 }],
         },
       ],
     });
@@ -1152,7 +1152,7 @@ describe("Codex client extension", () => {
         {
           provider: "fixture",
           into: "runtime",
-          files: [{ path: "mcp-launcher.mjs", contents: encoder.encode("not the launcher") }],
+          files: [{ path: "mcp-launcher.mjs", contents: encoder.encode("not the launcher"), mode: 0o644 }],
         },
       ],
     });
@@ -1181,7 +1181,7 @@ describe("Codex client extension", () => {
         {
           provider: "fixture",
           into: "generated/shared",
-          files: [{ path: "data.bin", contents: encoder.encode("materialized") }],
+          files: [{ path: "data.bin", contents: encoder.encode("materialized"), mode: 0o644 }],
         },
       ],
     });

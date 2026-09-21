@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
-import { AGENT_PLUGIN_MANIFEST_SCHEMA } from "@hooknostic/agent-plugin";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 import type { CapabilityProfile } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
@@ -149,6 +149,57 @@ describe("hooknostic check", () => {
       capture.out(),
     ).toBe(0);
     expect(JSON.parse(capture.out()).diagnostics).toEqual([]);
+  });
+
+  it("does not defer a materialized command when the same components also use project delivery", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-cli-mixed-materialized-command-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mixed-materialized-command" }),
+    );
+    await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { generated: { type: "stdio", command: "./generated/bin/server" } },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        project: { root: "." },
+        components: {
+          root: ".",
+          targets: ["claude", "opencode"],
+          materialize: [{
+            provider: { id: "fixture", plan() { throw new Error("provider was invoked"); } },
+            inputs: { lock: "packages.lock" },
+            into: "generated",
+          }],
+        },
+        targets: {
+          claude: { version: "${claudeHarness.recommendedRange}", delivery: "project", output: ".hooknostic/artifacts/claude" },
+          opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "package", output: "dist/opencode" },
+        },
+      };`,
+    );
+    const capture = captureIO();
+
+    expect(
+      await runCheck({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+    ).toBe(2);
+    const report = JSON.parse(capture.out());
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "HN503", severity: "error" }));
+    expect(report.diagnostics.map((diagnostic: { message: string }) => diagnostic.message).join("\n")).not.toContain(
+      "provider was invoked",
+    );
   });
 
   it("does not invoke a materializer before capability analysis succeeds", async () => {

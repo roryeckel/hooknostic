@@ -687,7 +687,9 @@ describe("Agent Plugin to OpenCode projection", () => {
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedTrees: [{ provider: "fixture", into, files: [{ path, contents: encoder.encode(path) }] }],
+      materializedTrees: [
+        { provider: "fixture", into, files: [{ path, contents: encoder.encode(path), mode: 0o644 }] },
+      ],
     });
 
   it("places a materialized package tree inside the nested package, not beside it", async () => {
@@ -716,7 +718,7 @@ describe("Agent Plugin to OpenCode projection", () => {
         {
           provider: "fixture",
           into: "generated/shared",
-          files: [{ path: "data.bin", contents: encoder.encode("materialized") }],
+          files: [{ path: "data.bin", contents: encoder.encode("materialized"), mode: 0o644 }],
         },
       ],
     });

@@ -331,6 +331,15 @@ describe("hooknostic build end-to-end", () => {
       join(dir, "plugin.json"),
       JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "materialize-reuse" }),
     );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          generated: { type: "stdio", command: "./generated/dependencies/bin/server" },
+        },
+      }),
+    );
     await writeFile(join(dir, "packages.lock"), "locked fixture\n");
     const callKey = `HOOKNOSTIC_MATERIALIZER_CALLS_${basename(dir).replaceAll("-", "_")}`;
     delete process.env[callKey];
@@ -338,7 +347,9 @@ describe("hooknostic build end-to-end", () => {
     const script =
       "const fs=require('node:fs'),p=require('node:path');" +
       "fs.mkdirSync(p.join(process.argv[1],'library'),{recursive:true});" +
-      "fs.writeFileSync(p.join(process.argv[1],'library','data.bin'),'portable');";
+      "fs.mkdirSync(p.join(process.argv[1],'bin'),{recursive:true});" +
+      "fs.writeFileSync(p.join(process.argv[1],'library','data.bin'),'portable');" +
+      "fs.writeFileSync(p.join(process.argv[1],'bin','server'),'#!/usr/bin/env node\\n');";
     await writeFile(
       config,
       `const provider = {
@@ -347,12 +358,18 @@ describe("hooknostic build end-to-end", () => {
           process.env[${JSON.stringify(callKey)}] = String(Number(process.env[${JSON.stringify(callKey)}] ?? "0") + 1);
           return { command: process.execPath, args: ["-e", ${JSON.stringify(script)}, outputDir] };
         },
+        postprocess(files) {
+          return {
+            files: files.map((file) => file.path === "bin/server" ? { ...file, mode: 0o755 } : file),
+            problems: [],
+          };
+        },
       };
       export default {
         components: {
           root: ".",
           materialize: [{ provider, inputs: { lock: "packages.lock" }, into: "generated/dependencies" }],
-          targets: ["claude", "codex"],
+          targets: ["claude", "codex", "opencode"],
         },
         targets: {
           claude: {
@@ -364,6 +381,11 @@ describe("hooknostic build end-to-end", () => {
             version: ${JSON.stringify(CODEX_PLUGIN_MODE_RANGE)},
             delivery: "package",
             output: "dist/codex",
+          },
+          opencode: {
+            version: ${JSON.stringify(opencodeHarness.recommendedRange)},
+            delivery: "package",
+            output: "dist/opencode",
           },
         },
       };`,
@@ -378,12 +400,96 @@ describe("hooknostic build end-to-end", () => {
       const capture = captureIO();
       expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io })).toBe(0);
       expect(process.env[callKey]).toBe("2");
+      const report = JSON.parse(capture.out());
+      for (const target of ["claude", "codex", "opencode"]) {
+        expect(report.targets[target].projection.components["agent-plugin.mcp.stdio"]).toMatchObject({
+          discovered: 1,
+          emitted: 1,
+          skipped: 0,
+        });
+      }
       expect(await readFile(join(dir, "dist/claude/generated/dependencies/library/data.bin"), "utf8")).toBe("portable");
       expect(await readFile(join(dir, "dist/codex/generated/dependencies/library/data.bin"), "utf8")).toBe("portable");
+      expect(await readFile(join(dir, "dist/opencode/package/generated/dependencies/library/data.bin"), "utf8")).toBe(
+        "portable",
+      );
+      for (const server of [
+        "dist/claude/generated/dependencies/bin/server",
+        "dist/codex/generated/dependencies/bin/server",
+        "dist/opencode/package/generated/dependencies/bin/server",
+      ]) {
+        expect(existsSync(join(dir, server))).toBe(true);
+        if (process.platform !== "win32") expect((await stat(join(dir, server))).mode & 0o777).toBe(0o755);
+      }
     } finally {
       delete process.env[callKey];
     }
   });
+
+  it.each(["missing", "non-executable"] as const)(
+    "applies onInvalid after final materialized command validation: %s",
+    async (problem) => {
+      const dir = await mkdtemp(join(tmpdir(), `hooknostic-materialized-command-${problem}-`));
+      cleanupDirs.push(dir);
+      await writeFile(
+        join(dir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: `materialized-command-${problem}` }),
+      );
+      await writeFile(join(dir, "packages.lock"), "locked fixture\n");
+      await writeFile(
+        join(dir, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: { generated: { type: "stdio", command: "./generated/bin/server" } },
+        }),
+      );
+      const script =
+        problem === "missing"
+          ? "require('node:fs').writeFileSync(require('node:path').join(process.argv[1], 'data'), 'ok')"
+          : "const fs=require('node:fs'),p=require('node:path');fs.mkdirSync(p.join(process.argv[1],'bin'),{recursive:true});fs.writeFileSync(p.join(process.argv[1],'bin','server'),'server')";
+      const config = join(dir, "hooknostic.config.ts");
+      const writeConfig = async (onInvalid?: "warn") =>
+        writeFile(
+          config,
+          `const provider = {
+            id: "fixture",
+            plan({ outputDir }) {
+              return { command: process.execPath, args: ["-e", ${JSON.stringify(script)}, outputDir] };
+            },
+          };
+          export default {
+            components: {
+              root: ".",
+              ${onInvalid === undefined ? "" : `onInvalid: ${JSON.stringify(onInvalid)},`}
+              materialize: [{ provider, inputs: { lock: "packages.lock" }, into: "generated" }],
+              targets: ["claude"],
+            },
+            targets: {
+              claude: {
+                version: ${JSON.stringify(claudeHarness.recommendedRange)},
+                delivery: "package",
+                output: "dist/claude",
+              },
+            },
+          };`,
+        );
+
+      await writeConfig();
+      const strict = captureIO();
+      expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: strict.io })).toBe(2);
+      expect(JSON.parse(strict.out()).diagnostics).toContainEqual(
+        expect.objectContaining({ code: "HN503", severity: "error" }),
+      );
+
+      await writeConfig("warn");
+      const degraded = captureIO();
+      expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: degraded.io })).toBe(0);
+      const report = JSON.parse(degraded.out());
+      expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "HN503", severity: "warn" }));
+      expect(report.mcpServers).toEqual([]);
+      expect(report.targets.claude.projection.components).not.toHaveProperty("agent-plugin.mcp.stdio");
+    },
+  );
 
   it("rejects nameless author metadata in check and build unless explicitly omitted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-author-"));

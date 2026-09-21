@@ -879,7 +879,9 @@ describe("Agent Plugin to Claude projection", () => {
       hookArtifacts: [],
       support,
       onUnsupported: "error",
-      materializedTrees: [{ provider: "fixture", into, files: [{ path, contents: encoder.encode(path) }] }],
+      materializedTrees: [
+        { provider: "fixture", into, files: [{ path, contents: encoder.encode(path), mode: 0o644 }] },
+      ],
     });
 
   it("places a materialized package tree at the plugin root without calling it copied", async () => {

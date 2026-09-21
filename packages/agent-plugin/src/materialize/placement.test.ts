@@ -5,7 +5,7 @@ import { materializedPackageFiles } from "./placement.js";
 const tree = (into: string, paths: string[], provider = "fixture") => ({
   provider,
   into,
-  files: paths.map((path) => ({ path, contents: Buffer.from(path) })),
+  files: paths.map((path) => ({ path, contents: Buffer.from(path), mode: 0o644 as 0o644 | 0o755 })),
 });
 
 describe("materializedPackageFiles", () => {
@@ -16,15 +16,18 @@ describe("materializedPackageFiles", () => {
 
     expect(issues).toEqual([]);
     expect(files.map((file) => file.path)).toEqual(["generated/assets/index.dat", "generated/assets/data/table.bin"]);
+    expect(files.map((file) => file.mode)).toEqual([0o644, 0o644]);
   });
 
   it("places trees under a projector's nested plugin root", () => {
-    const { files } = materializedPackageFiles([tree("generated", ["index.dat"])], {
+    const executable = tree("generated", ["bin/server"]);
+    executable.files[0]!.mode = 0o755;
+    const { files } = materializedPackageFiles([executable], {
       prefix: "package/",
       claimed: new Set(),
     });
 
-    expect(files.map((file) => file.path)).toEqual(["package/generated/index.dat"]);
+    expect(files).toEqual([expect.objectContaining({ path: "package/generated/bin/server", mode: 0o755 })]);
   });
 
   it("refuses to overwrite author package content", () => {

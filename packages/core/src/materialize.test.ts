@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { definePackageMaterializer, type PackageMaterializer } from "@hooknostic/sdk";
+import { definePackageMaterializer, type PackageMaterializer, type PackageMaterializerFile } from "@hooknostic/sdk";
 
 import {
   effectiveRuntimePackage,
@@ -152,7 +152,7 @@ describe("materializePackages", () => {
         plans += 1;
         return base.plan(context);
       },
-      postprocess(files: readonly { path: string; contents: Uint8Array }[]) {
+      postprocess(files: readonly PackageMaterializerFile[]) {
         return { files: files.map((file) => ({ ...file, path: `normalized/${file.path}` })), problems: [] };
       },
     });
@@ -168,9 +168,31 @@ describe("materializePackages", () => {
       expect.objectContaining({
         provider: "fixture-copy",
         into: "generated",
-        files: [expect.objectContaining({ path: "normalized/copied.dat" })],
+        files: [expect.objectContaining({ path: "normalized/copied.dat", mode: 0o644 })],
       }),
     ]);
+  });
+
+  it("uses canonical modes and lets postprocess mark an executable explicitly", async () => {
+    const root = await scratch("hooknostic-materialize-mode-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "portable data");
+    const provider = definePackageMaterializer({
+      ...copyingProvider(),
+      postprocess: (files: readonly PackageMaterializerFile[]) => ({
+        files: files.map((file) => ({ ...file, mode: 0o755 as const })),
+        problems: [],
+      }),
+    });
+
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    expect(result.problems).toEqual([]);
+    expect(result.trees[0]?.files).toEqual([expect.objectContaining({ path: "copied.dat", mode: 0o755 })]);
   });
 
   it("reports provider validation without planning a command", async () => {
@@ -315,9 +337,9 @@ describe("materializePackages", () => {
       ...copyingProvider(),
       postprocess: () => ({
         files: [
-          { path: "../escape", contents: new Uint8Array() },
-          { path: "same", contents: new Uint8Array() },
-          { path: "same", contents: new Uint8Array() },
+          { path: "../escape", contents: new Uint8Array(), mode: 0o644 },
+          { path: "same", contents: new Uint8Array(), mode: 0o644 },
+          { path: "same", contents: new Uint8Array(), mode: 0o644 },
         ],
         problems: [],
       }),
@@ -333,6 +355,34 @@ describe("materializePackages", () => {
     ]);
   });
 
+  it("rejects provider-returned modes outside the canonical pair", async () => {
+    const root = await scratch("hooknostic-materialize-invalid-mode-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      ...copyingProvider(),
+      postprocess: () => ({
+        files: [
+          {
+            path: "private",
+            contents: new Uint8Array(),
+            mode: 0o600,
+          } as unknown as PackageMaterializerFile,
+        ],
+        problems: [],
+      }),
+    });
+
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    expect(result.trees).toEqual([]);
+    expect(result.problems).toEqual([expect.stringContaining("canonical mode 0644 or 0755")]);
+  });
+
   it("treats produced bytes as opaque after structural validation", async () => {
     const root = await scratch("hooknostic-materialize-opaque-");
     const staging = await scratch("hooknostic-materialize-staging-");
@@ -340,7 +390,7 @@ describe("materializePackages", () => {
     const provider = definePackageMaterializer({
       ...copyingProvider(),
       postprocess: () => ({
-        files: [{ path: "opaque", contents: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) }],
+        files: [{ path: "opaque", contents: Buffer.from([0x7f, 0x45, 0x4c, 0x46]), mode: 0o644 }],
         problems: [],
       }),
     });
@@ -361,7 +411,7 @@ describe("materializePackages", () => {
     await writeFile(join(root, "input"), "data");
     const provider = definePackageMaterializer({
       ...copyingProvider(),
-      postprocess: (files: readonly { path: string; contents: Uint8Array }[]) => ({
+      postprocess: (files: readonly PackageMaterializerFile[]) => ({
         files,
         problems: ["locked dependency resolves to a host-specific native binary"],
       }),

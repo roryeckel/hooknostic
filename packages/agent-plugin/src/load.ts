@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 
 import { minimatch } from "minimatch";
 import { parseDocument } from "yaml";
@@ -228,20 +228,32 @@ async function validateDirectMcpPaths(
  * bit has no meaning -- must still be refused rather than ship an artifact whose
  * behaviour depends on where it was built.
  */
-function checkContainedCommands(
+export function validateContainedCommands(
   config: AgentPluginMcpConfig,
   files: readonly AgentPluginFile[],
-  issues: AgentPluginIssue[],
-): void {
+  options: {
+    deferredRoots?: readonly string[];
+    materializedPaths?: ReadonlySet<string>;
+  } = {},
+): AgentPluginIssue[] {
+  const issues: AgentPluginIssue[] = [];
   for (const [name, server] of Object.entries(config.mcpServers)) {
     if (server.type !== "stdio" || !server.command.startsWith("./")) continue;
-    const path = server.command.slice(2);
+    // Validation above already proves containment and excludes backslashes;
+    // normalize with POSIX semantics so the lookup is deterministic on every
+    // build host and spellings such as ./bin/../server name the shipped file.
+    const path = posix.normalize(server.command.slice(2));
     const file = files.find((candidate) => candidate.path === path);
+    if (file === undefined && (options.deferredRoots ?? []).some((root) => path.startsWith(`${root}/`))) {
+      continue;
+    }
     const problem =
       file === undefined
         ? "which the package does not contain"
         : (file.mode & 0o111) === 0
-          ? `which is not executable -- add ${JSON.stringify(path)} to components.executableFiles`
+          ? options.materializedPaths?.has(path)
+            ? "which is not executable -- return it with mode 0755 from the materializer postprocess hook"
+            : `which is not executable -- add ${JSON.stringify(path)} to components.executableFiles`
           : undefined;
     if (problem === undefined) continue;
     issue(
@@ -253,6 +265,7 @@ function checkContainedCommands(
     );
     delete config.mcpServers[name];
   }
+  return issues;
 }
 
 function validHeaders(value: unknown): value is Record<string, string> {
@@ -710,7 +723,13 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
   // Only the package route: the direct route hands `loadMcp` a synthetic
   // one-file inventory, and `validateDirectMcpPaths` already resolves its
   // commands against the real filesystem instead.
-  if (mcp !== undefined) checkContainedCommands(mcp, inventoried.files, issues);
+  if (mcp !== undefined) {
+    issues.push(
+      ...validateContainedCommands(mcp, inventoried.files, {
+        ...(options.deferredCommandRoots === undefined ? {} : { deferredRoots: options.deferredCommandRoots }),
+      }),
+    );
+  }
   const files = inventoried.files;
   const directories = [...inventoried.directories].filter((path) => path !== "").sort();
   const source: AgentPluginPackage = {

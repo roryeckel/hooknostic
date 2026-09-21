@@ -8,6 +8,7 @@ import { minimatch } from "minimatch";
 
 import {
   type AgentPluginComponentId,
+  type AgentPluginFile,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
   type AgentPluginProjectionSummary,
@@ -20,6 +21,7 @@ import {
   npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
+  validateContainedCommands,
 } from "@hooknostic/agent-plugin";
 import {
   meetsMinimum,
@@ -51,6 +53,7 @@ import {
   effectiveRuntimePackage,
   type MaterializedPackageTree,
   materializePackages,
+  normalizeMaterializationDestination,
   validateMaterializationDeclarations,
 } from "./materialize.js";
 import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
@@ -487,12 +490,27 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const selectedPackageProjection = Object.entries(config.targets).some(
     ([id, target]) => selectedTargetIds.has(id) && componentTargetIds.has(id) && target.delivery === "package",
   );
+  const selectedProjectProjection = Object.entries(config.targets).some(
+    ([id, target]) => selectedTargetIds.has(id) && componentTargetIds.has(id) && target.delivery === "project",
+  );
 
   let components: AgentPluginPackage | undefined;
   let materializedTrees: MaterializedPackageTree[] = [];
   let materializationDeclarations: PackageMaterializationConfig[] = [];
+  let materializationRoots: string[] = [];
   if (config.components?.root !== undefined) {
     const agentPluginRoot = resolve(configDir, config.components.root);
+    if (selectedPackageProjection) {
+      materializationDeclarations = config.components.materialize ?? [];
+      for (const problem of await validateMaterializationDeclarations(agentPluginRoot, materializationDeclarations)) {
+        diagnostics.push({ code: "HN501", severity: "error", message: problem });
+      }
+      materializationRoots = materializationDeclarations.flatMap((declaration) => {
+        const destination = normalizeMaterializationDestination(declaration.into);
+        return destination.ok ? [destination.path] : [];
+      });
+      if (hasFatal(diagnostics)) return fail();
+    }
     const nativeProjectPaths =
       config.project === undefined
         ? []
@@ -508,6 +526,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       ...(config.components.executableFiles === undefined
         ? {}
         : { executableFiles: config.components.executableFiles }),
+      ...(materializationRoots.length === 0 || selectedProjectProjection
+        ? {}
+        : { deferredCommandRoots: materializationRoots }),
       exclude: await projectionExcludes(
         agentPluginRoot,
         configPath,
@@ -536,12 +557,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       contentDigest: components.contentDigest,
     };
 
-    if (selectedPackageProjection) {
-      materializationDeclarations = config.components.materialize ?? [];
-      for (const problem of await validateMaterializationDeclarations(agentPluginRoot, materializationDeclarations)) {
-        diagnostics.push({ code: "HN501", severity: "error", message: problem });
-      }
-    }
     if (hasFatal(diagnostics)) return fail();
   }
 
@@ -632,14 +647,16 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!),
       );
       projectionResolutions.set(id, resolution);
-      diagnostics.push(...resolution.diagnostics);
       report.targets[id]!.projection = analyzedProjectionReport(
         components,
         resolution,
         options.registry[config.targets[id]!.adapter ?? id]!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
       );
-      if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
+      if (hasFatal(resolution.diagnostics)) {
+        diagnostics.push(...resolution.diagnostics);
+        report.targets[id]!.status = "failed";
+      }
     }
   }
 
@@ -702,7 +719,65 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       markUnbuilt("failed");
       return { ok: false, report, analysis };
     }
+
+    if (components?.mcp !== undefined) {
+      const materializedFiles: AgentPluginFile[] = materializedTrees.flatMap((tree) =>
+        tree.files.map((file) => ({
+          path: `${tree.into}/${file.path}`,
+          contents: file.contents,
+          mode: file.mode,
+        })),
+      );
+      const materializedPaths = new Set(materializedFiles.map((file) => file.path));
+      const commandIssues = validateContainedCommands(components.mcp, [...components.files, ...materializedFiles], {
+        materializedPaths,
+      });
+      diagnostics.push(
+        ...diagnosticsFromAgentPluginIssues(commandIssues, {
+          onInvalid: config.components?.onInvalid ?? "error",
+        }),
+      );
+      report.mcpServers = mcpServerCommands(components.mcp, "package");
+      if (hasFatal(diagnostics)) {
+        markUnbuilt("failed");
+        return { ok: false, report, analysis };
+      }
+    }
   }
+
+  // The first pass above is a side-effect gate: it prevents a provider from
+  // running for an invalid target. Finalize projection diagnostics and counts
+  // only after deferred commands have been checked against the materialized
+  // tree, so warn-policy omissions cannot leave stale component reports.
+  if (components !== undefined) {
+    for (const [id] of Object.entries(analysis.targets)) {
+      if (
+        config.targets[id]!.delivery !== "package" ||
+        !(config.components!.targets ?? Object.keys(config.targets)).includes(id) ||
+        report.targets[id]!.status !== "success"
+      ) {
+        continue;
+      }
+      const spec = targetSpecFromConfig(id, config.targets[id]!);
+      const resolution = analyzeAgentPluginProjection(
+        components,
+        options.registry[config.targets[id]!.adapter ?? id]!,
+        spec,
+        config.components!.onUnsupported ?? "error",
+        effectiveRuntimePackage(config.components!),
+      );
+      projectionResolutions.set(id, resolution);
+      diagnostics.push(...resolution.diagnostics);
+      report.targets[id]!.projection = analyzedProjectionReport(
+        components,
+        resolution,
+        options.registry[config.targets[id]!.adapter ?? id]!.agentPluginProjector?.namespace,
+        effectiveRuntimePackage(config.components!) !== undefined,
+      );
+      if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
+    }
+  }
+  if (hasFatal(diagnostics)) return { ok: false, report, analysis };
 
   // A dry run (`hooknostic check`) performs every generation step — bundling,
   // compilation, Agent Plugin projection, artifact validation — in memory so

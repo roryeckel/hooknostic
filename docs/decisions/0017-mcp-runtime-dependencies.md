@@ -71,9 +71,12 @@ Core owns the boundary around that code:
    drained with a bounded tail retained for failure diagnostics. Missing commands,
    spawn failures, signals, nonzero exits, and provider exceptions are HN501 build
    failures.
-4. Core inventories only regular files. Symlinks, escaping or duplicate provider paths,
-   source-file collisions, generated-file collisions, and collisions between providers
-   fail the projection.
+4. Core inventories only regular files and assigns canonical mode `0644`, ignoring host
+   permission bits as required by ADR-0013. A provider may return mode `0755` from
+   `postprocess` for files its ecosystem defines as executable; every other mode fails
+   materialization. Symlinks, escaping or duplicate provider paths, source-file
+   collisions, generated-file collisions, and collisions between providers fail the
+   projection.
 
 Materialization runs once per build or check after capability and layout analysis
 succeeds. The resulting bytes are reused by every selected package projector, which
@@ -107,5 +110,8 @@ runtime dependencies. Remote servers have no command to report.
 - Core deliberately makes no portability claim about opaque output bytes. A provider
   must reject host-specific output using the metadata and semantics of its own ecosystem;
   returning a problem from `postprocess` fails materialization before projection.
+- Executability is provider-owned metadata, not an observed host property. Providers
+  that emit commands or shims mark them `0755` in `postprocess`; all other materialized
+  files remain `0644`, so identical inputs produce identical modes on Windows and POSIX.
 - A materialized tree enlarges every selected package output. ADR-0006's committed
   artifact comparison makes that change reviewable.

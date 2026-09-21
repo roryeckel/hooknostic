@@ -143,6 +143,14 @@ export const packageMaterializer = definePackageMaterializer({
       args: ["install", "--locked", inputs.lock!.absolutePath, "--output", outputDir],
     };
   },
+  postprocess(files) {
+    return {
+      files: files.map((file) =>
+        file.path === "bin/project-server" ? { ...file, mode: 0o755 } : file,
+      ),
+      problems: [],
+    };
+  },
 });
 ```
 
@@ -186,6 +194,12 @@ Hooknostic owns the safe, component-neutral boundary around the provider:
   empty segments, and `.` or `..` segments fail with HN501 before the provider runs;
 - output must contain only regular files with contained, unique POSIX paths and cannot
   overwrite source files, generated files, or another provider's output.
+
+Materialized files start with canonical mode `0644`; Hooknostic deliberately ignores
+the staging filesystem's permission bits so a Windows and POSIX build cannot disagree.
+When provider-owned metadata says a file is executable, return it from `postprocess`
+with `mode: 0o755`. Those are the only two accepted modes, and each projector preserves
+the selected mode in its output.
 
 Core does not infer portability from filenames or byte signatures: neither can prove
 what arbitrary package content means, and maintaining a partial executable-format list

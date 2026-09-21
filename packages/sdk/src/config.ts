@@ -80,6 +80,8 @@ export interface TargetConfig {
 export interface PackageMaterializerFile {
   path: string;
   contents: Uint8Array;
+  /** Canonical portable mode. Host filesystem permission bits are never inferred. */
+  mode: 0o644 | 0o755;
 }
 
 export interface PackageMaterializerInput {
