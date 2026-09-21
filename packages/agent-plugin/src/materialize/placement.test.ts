@@ -53,6 +53,37 @@ describe("materializedPackageFiles", () => {
     ]);
   });
 
+  it("refuses trees that differ from author content only in case", () => {
+    const { files, issues } = materializedPackageFiles([tree("runtime", ["LIB.so"])], {
+      claimed: new Set(["Runtime/lib.SO"]),
+    });
+
+    expect(files).toEqual([]);
+    expect(issues).toEqual([
+      expect.objectContaining({
+        path: "runtime/LIB.so",
+        message: expect.stringContaining('already ships as "Runtime/lib.SO" on case-insensitive filesystems'),
+      }),
+    ]);
+  });
+
+  it("refuses two trees whose destinations differ only in case", () => {
+    const { files, issues } = materializedPackageFiles(
+      [tree("runtime", ["lib.so"], "first"), tree("Runtime", ["LIB.SO"], "second")],
+      { claimed: new Set() },
+    );
+
+    // One file, not two: a case-insensitive install would collapse them and the
+    // projection would no longer describe what is on disk.
+    expect(files.map((file) => file.path)).toEqual(["runtime/lib.so"]);
+    expect(issues).toEqual([
+      expect.objectContaining({
+        path: "Runtime/LIB.SO",
+        message: expect.stringContaining('already provides as "runtime/lib.so" on case-insensitive filesystems'),
+      }),
+    ]);
+  });
+
   it("emits nothing when no tree was materialized", () => {
     expect(materializedPackageFiles(undefined, { claimed: new Set() })).toEqual({ files: [], issues: [] });
     expect(materializedPackageFiles([], { claimed: new Set() })).toEqual({ files: [], issues: [] });

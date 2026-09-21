@@ -110,7 +110,11 @@ export async function validateMaterializationDeclarations(
   declarations: readonly PackageMaterializationConfig[],
 ): Promise<string[]> {
   const problems: string[] = [];
-  const destinations = new Set<string>();
+  // Folded, because one build may be installed on a case-insensitive filesystem
+  // even when it was produced on a sensitive one: "runtime" and "Runtime" are
+  // two destinations on Linux and one on Windows, so accepting both would make
+  // the emitted tree — and ADR-0006's digest of it — disagree across platforms.
+  const destinations = new Map<string, string>();
   for (const declaration of declarations) {
     const destination = normalizeMaterializationDestination(declaration.into);
     if (!destination.ok) {
@@ -119,11 +123,17 @@ export async function validateMaterializationDeclarations(
       );
       continue;
     }
-    if (destinations.has(destination.path)) {
-      problems.push(`two materializers both write into ${JSON.stringify(destination.path)}`);
+    const claimed = destinations.get(destination.path.toLowerCase());
+    if (claimed !== undefined) {
+      problems.push(
+        claimed === destination.path
+          ? `two materializers both write into ${JSON.stringify(destination.path)}`
+          : `two materializers both write into ${JSON.stringify(destination.path)}, which collides with ` +
+              `${JSON.stringify(claimed)} on case-insensitive filesystems`,
+      );
       continue;
     }
-    destinations.add(destination.path);
+    destinations.set(destination.path.toLowerCase(), destination.path);
     problems.push(...(await contextFor(root, declaration)).problems);
   }
   return problems;
@@ -157,14 +167,24 @@ async function readTree(
 
 function treeProblems(files: readonly PackageMaterializerFile[]): string[] {
   const problems: string[] = [];
-  const paths = new Set<string>();
+  // Folded for the same reason destinations are: two paths a provider considers
+  // distinct are one file wherever the artifact is installed case-insensitively.
+  const paths = new Map<string, string>();
   for (const file of files) {
     if (!portableInputPath(file.path)) {
       problems.push(`provider returned invalid output path ${JSON.stringify(file.path)}`);
       continue;
     }
-    if (paths.has(file.path)) problems.push(`provider returned duplicate output path ${JSON.stringify(file.path)}`);
-    paths.add(file.path);
+    const taken = paths.get(file.path.toLowerCase());
+    if (taken !== undefined) {
+      problems.push(
+        taken === file.path
+          ? `provider returned duplicate output path ${JSON.stringify(file.path)}`
+          : `provider returned output path ${JSON.stringify(file.path)}, which collides with ` +
+              `${JSON.stringify(taken)} on case-insensitive filesystems`,
+      );
+    }
+    paths.set(file.path.toLowerCase(), file.path);
     if (file.mode !== 0o644 && file.mode !== 0o755) {
       problems.push(
         `provider returned invalid output mode ${String(file.mode)} for ${JSON.stringify(file.path)}; ` +

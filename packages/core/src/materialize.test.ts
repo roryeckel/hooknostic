@@ -101,6 +101,22 @@ describe("validateMaterializationDeclarations", () => {
     expect(problems).toContain('two materializers both write into "generated"');
   });
 
+  it("rejects destinations that differ from each other only in case", async () => {
+    const root = await scratch("hooknostic-materialize-case-");
+    await writeFile(join(root, "input"), "data");
+    const provider = copyingProvider();
+    const problems = await validateMaterializationDeclarations(root, [
+      { provider, inputs: { source: "input" }, into: "generated" },
+      { provider, inputs: { source: "input" }, into: "Generated" },
+    ]);
+
+    // Two destinations on a case-sensitive filesystem, one on Windows or macOS.
+    // Accepting both would make the committed tree depend on the build machine.
+    expect(problems).toContain(
+      'two materializers both write into "Generated", which collides with "generated" on case-insensitive filesystems',
+    );
+  });
+
   it.each(["./input", "../input", "/input", "C:/input", "nested\\input", "nested//input"])(
     "rejects non-portable input path %s",
     async (input) => {
@@ -366,6 +382,35 @@ describe("materializePackages", () => {
       expect.stringContaining("invalid output path"),
       expect.stringContaining("duplicate output path"),
     ]);
+  });
+
+  it("rejects provider-returned paths that differ from each other only in case", async () => {
+    const root = await scratch("hooknostic-materialize-fold-");
+    const staging = await scratch("hooknostic-materialize-fold-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      ...copyingProvider(),
+      postprocess: () => ({
+        files: [
+          { path: "lib/native.so", contents: new Uint8Array(), mode: 0o644 },
+          { path: "lib/NATIVE.SO", contents: new Uint8Array(), mode: 0o644 },
+        ],
+        problems: [],
+      }),
+    });
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    // Distinct to the provider, one file once installed on Windows or macOS.
+    expect(result.problems).toEqual([
+      expect.stringContaining(
+        'output path "lib/NATIVE.SO", which collides with "lib/native.so" on case-insensitive filesystems',
+      ),
+    ]);
+    expect(result.trees).toEqual([]);
   });
 
   it("rejects provider-returned modes outside the canonical pair", async () => {
