@@ -2652,7 +2652,17 @@ scenarioDrive(
       await server.close();
     }
   },
-  () => adapter?.id !== "claude" || !ptyApprovable() || cellLevel("permission.request.block") === undefined,
+  // Two drivers, two preconditions. Claude takes the pty-approval lane, which
+  // needs node-pty and a platform it builds on. OpenCode takes the serve lane
+  // (`driverByHarness` in the scenario record), which attaches no terminal and
+  // so must not inherit the pty requirement — the earlier single predicate
+  // demanded `id === "claude"` and skipped the OpenCode branch this drive
+  // opens with, silently, on every run.
+  () => {
+    if (cellLevel("permission.request.block") === undefined) return true;
+    if (adapter?.id === "opencode") return false;
+    return adapter?.id !== "claude" || !ptyApprovable();
+  },
 );
 
 scenarioDrive(
