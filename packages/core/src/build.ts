@@ -1120,6 +1120,25 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),
               ...(projectCwdServers.length === 0 ? {} : { mcpProjectCwdServers: projectCwdServers }),
             });
+            // Not an omission: the skill is delivered, in place, and counting
+            // it as skipped would misreport a component that is present. Warn,
+            // never `onUnsupported`, because the same declaration is usually
+            // live on the targets whose destination is not this source.
+            if ((projected.unappliedModes ?? []).length > 0) {
+              const entries = (projected.unappliedModes ?? [])
+                .map((mode) => JSON.stringify(`${mode.skill}/${mode.path}`))
+                .join(", ");
+              diagnostics.push({
+                code: "HN104",
+                severity: "warn",
+                target: id,
+                component: "agent-plugin.skills",
+                message:
+                  `components.executableFiles ${entries} names a file this target discovers in place, so its ` +
+                  `mode is left as checked in; set the executable bit on the source instead, or move the skill ` +
+                  `outside the destination for Hooknostic to own it`,
+              });
+            }
             for (const omission of projected.omissions ?? []) {
               diagnostics.push({
                 code: "HN205",

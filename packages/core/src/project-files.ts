@@ -31,6 +31,16 @@ export interface ProjectIntegration {
   guidance: string[];
   absent?: { path: string; key: string[] }[];
   omissions?: ProjectComponentOmission[];
+  /**
+   * Declared-executable files inside a tree this target discovers in place.
+   *
+   * Hooknostic owns nothing there, so it cannot honour the declaration -- and
+   * must not try. ADR-0013 is a pair of rules, 0755 on declared files *and*
+   * 0644 on every other file; applying it to a tree the author owns would
+   * strip `+x` from files they set themselves. Reported instead, because the
+   * same declaration is usually live on the other targets.
+   */
+  unappliedModes?: { skill: string; path: string }[];
   /** Preserve these files while removing any prior whole-file ownership. */
   relinquishFiles?: string[];
   /** Preserve every previously owned whole file below these directories while removing ownership. */

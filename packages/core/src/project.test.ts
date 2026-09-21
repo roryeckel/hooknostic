@@ -148,6 +148,46 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
   });
 
+  it("warns per target when a declared mode lands in a skill discovered in place", async () => {
+    // `.claude/skills` is Claude's own destination, so Claude discovers this
+    // skill where it already is and owns nothing to chmod. Codex and OpenCode
+    // copy it to `.agents/skills`, where the declaration is live -- which is
+    // why this warns rather than failing, and why it is not an omission: the
+    // skill is delivered on every target.
+    const { root, options } = await fixture({
+      components: { skills: ["./.claude/skills"], executableFiles: ["review/bin/tool"] },
+    });
+    await mkdir(join(root, ".claude/skills/review/bin"), { recursive: true });
+    await writeFile(
+      join(root, ".claude/skills/review/SKILL.md"),
+      "---\nname: review\ndescription: Review a change\n---\n",
+    );
+    await writeFile(join(root, ".claude/skills/review/bin/tool"), "#!/bin/sh\n");
+
+    const built = await buildProject(options);
+    const warnings = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN104");
+
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        severity: "warn",
+        target: "claude",
+        component: "agent-plugin.skills",
+        message: expect.stringContaining('components.executableFiles "review/bin/tool" names a file this target'),
+      }),
+    ]);
+    // The skill is present, not skipped: an omission would have decremented it.
+    expect(built.report.targets["claude"]?.project?.omissions).toEqual([]);
+    expect(built.report.targets["claude"]?.project?.components["agent-plugin.skills"]).toMatchObject({ emitted: 1 });
+    // And the declaration is honoured where the target does own the tree.
+    // One warning, not three: the other two targets copy the skill to
+    // `.agents/skills`, where they own the tree and the declaration is live.
+    for (const target of ["codex", "opencode"]) {
+      expect(built.report.targets[target]?.project?.components["agent-plugin.skills"], target).toMatchObject({
+        emitted: 1,
+      });
+    }
+  }, 60_000);
+
   it("carries a skill file's declared mode into the projection", () => {
     // The middle link of the chain the loader and the writer already pin: the
     // loader assigns 0755 from `components.executableFiles`, `applyProject`

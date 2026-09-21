@@ -15,6 +15,7 @@ export const DIAGNOSTIC_CODES = {
   HN101: "degraded capability",
   HN102: "optional capability unavailable",
   HN103: "effect truncated or dropped by a runtime budget",
+  HN104: "declared executable mode not applicable to a source discovered in place",
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",

@@ -44,6 +44,9 @@ accepts either source of a file tree, spelled against the root that tree has:
 paths are `<skill>/<path>` — where the file lands, which is also where it was
 read from, since a skill's `name` must equal its own directory. It is rejected
 with a direct MCP source alone, which is one document and owns no tree to mark.
+A target that discovers a skill already in its own destination owns nothing to
+mark either: there the mode stays as checked in and the build warns (HN104), so
+set the bit on the source instead.
 Direct-source `exclude` patterns are evaluated independently relative to each
 configured skill collection root. They do not change the canonical MCP document.
 

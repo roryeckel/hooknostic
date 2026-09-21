@@ -26,6 +26,17 @@ own directory. Entries are resolved once every configured skill collection has
 loaded, so one declaration reaches all of them. A direct MCP source alone is
 rejected — it is a single document, with no tree an entry could name.
 
+The declaration cannot reach a skill a target discovers already in its own
+destination, and Hooknostic must not make it. This rule is a pair — 0755 on
+declared files *and* 0644 on every other file, ignoring host permissions — and a
+tree Hooknostic does not own holds files whose executable bit the author set and
+Git records. Applying the rule there would strip those bits; applying half of it
+would make one declaration mean two things. So the mode is left as checked in
+and the build warns (**HN104**), naming the target: the same declaration is
+usually live on the targets that do copy the skill. Claude discovers
+`.claude/skills` in place, Codex and OpenCode `.agents/skills`, so at most two of
+the three are ever affected by one source directory.
+
 Inventory assigns 0755 to declared files and 0644 to every other file, ignoring
 host permissions. Source and projection digests retain modes as inputs, now
 using these canonical modes. Projector-generated executables continue to use

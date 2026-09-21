@@ -607,6 +607,8 @@ generation failure, **HN302** output commit failure, **HN401** unsupported effec
 at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
 **HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay.
 **HN103** an effect was truncated or dropped by a runtime budget.
+**HN104** a declared executable mode cannot apply to a skill the target discovers
+in place.
 
 #### HN502 — bundled CLI entry point
 

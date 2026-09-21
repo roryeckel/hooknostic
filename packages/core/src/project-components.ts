@@ -7,10 +7,19 @@ import type { ProjectIntegration } from "./project-files.js";
 export function projectSkillFiles(source: ProjectComponents, root: string, destination: string): ProjectIntegration {
   const relinquishFiles: string[] = [];
   const relinquishPrefixes: string[] = [];
+  const unappliedModes: { skill: string; path: string }[] = [];
   const files = source.skills.flatMap((skill) => {
     const path = `${destination}/${skill.name}`;
     if (resolve(root, path) === resolve(skill.source)) {
       relinquishPrefixes.push(path);
+      // Derived rather than passed in: on both component routes 0755 is only
+      // ever reached by declaration (ADR-0013 ignores the host bit), so a
+      // declared entry is exactly a 0755 file here. Passing the declaration
+      // down instead would give this function a second source of truth about
+      // which files were named, free to disagree with the modes it is holding.
+      for (const file of skill.files) {
+        if (file.mode === 0o755) unappliedModes.push({ skill: skill.name, path: file.path });
+      }
       return [];
     }
     return skill.files.map((file) => ({ ...file, path: `${path}/${file.path}` }));
@@ -26,6 +35,7 @@ export function projectSkillFiles(source: ProjectComponents, root: string, desti
     files,
     entries: [],
     guidance: [],
+    ...(unappliedModes.length ? { unappliedModes } : {}),
     ...(relinquishFiles.length ? { relinquishFiles } : {}),
     ...(relinquishPrefixes.length ? { relinquishPrefixes } : {}),
   };
