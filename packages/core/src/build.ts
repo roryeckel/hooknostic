@@ -591,6 +591,30 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       contentDigest: components.contentDigest,
     };
 
+    // A name that matches no server forwards nothing. Warn rather than fail:
+    // the usual cause is a server renamed in `mcp.json`, and a build that still
+    // produces a working plugin for every other server should say so, not stop.
+    const declared = components.mcp?.mcpServers ?? {};
+    const inert = Object.keys(config.components.mcpEnvironment ?? {})
+      .map((name) => {
+        const server = Object.hasOwn(declared, name) ? declared[name] : undefined;
+        if (server === undefined) return { name, reason: "which mcp.json does not declare" };
+        // Forwarding is a property of a spawned child. A remote server is
+        // reached over a URL and has no environment to receive, so a
+        // declaration on one is as inert as a name that matches nothing.
+        return server.type === "stdio" ? undefined : { name, reason: `which is a ${server.type} server, not stdio` };
+      })
+      .filter((entry) => entry !== undefined)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const { name, reason } of inert) {
+      diagnostics.push({
+        code: "HN105",
+        severity: "warn",
+        component: "agent-plugin.mcp.stdio",
+        message: `components.mcpEnvironment names ${JSON.stringify(name)}, ${reason}, so nothing is forwarded for it`,
+      });
+    }
+
     if (hasFatal(diagnostics)) return fail();
   }
 
@@ -941,6 +965,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(materializedTrees.length === 0 ? {} : { materializedTrees }),
             support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.components!.onUnsupported ?? "error",
+            ...(config.components!.mcpEnvironment === undefined
+              ? {}
+              : { mcpEnvironment: config.components!.mcpEnvironment }),
           });
           const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);
           diagnostics.push(...projectedDiagnostics);

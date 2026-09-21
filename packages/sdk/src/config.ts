@@ -221,6 +221,23 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         mcpOverrides?: never;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
+        /**
+         * Ambient environment variable NAMES each packaged MCP server reads,
+         * keyed by the server name in `mcp.json`.
+         *
+         * Names only, never values: nothing here is read, expanded or embedded
+         * in an artifact. It states which variables a server expects the
+         * harness to pass through from its own environment, so a target that
+         * withholds them can be told to forward exactly those.
+         *
+         * It lives here rather than in the package because a package may not
+         * ask: Agent Plugins 1.0 says "unrecognized placeholder-like text MUST
+         * remain literal", so a `${NAME}` in `mcp.json` is text, not a request
+         * (ADR-0011, ADR-0018). Only Codex needs this today -- Claude and
+         * OpenCode start a server with the environment they were launched
+         * with -- and a name no server reads is a warning, not a failure.
+         */
+        mcpEnvironment?: Record<string, string[]>;
       }
     | ({
         root?: never;
@@ -229,6 +246,9 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         /** Exact, case-sensitive `<skill>/<path>` POSIX paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
         materialize?: never;
+        // A direct source resolves `${NAME}` from the launch environment
+        // already, so it states what it needs in the declaration itself.
+        mcpEnvironment?: never;
       } & DirectComponentPolicy<TTarget>)
     // A direct MCP source alone. `skills` is `never` rather than optional
     // because the variant above already covers skills-with-MCP, and leaving it
@@ -241,6 +261,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         mcp: string;
         executableFiles?: never;
         materialize?: never;
+        mcpEnvironment?: never;
       } & DirectComponentPolicy<TTarget>)
   );
 

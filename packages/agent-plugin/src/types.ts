@@ -202,6 +202,16 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    */
   support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
   onUnsupported: "error" | "warn";
+  /**
+   * Ambient variable NAMES each MCP server reads, keyed by server name.
+   *
+   * Names only. A projector whose harness starts a server with the environment
+   * it was launched with ignores this; one that withholds it forwards exactly
+   * these. It arrives from `components.mcpEnvironment` rather than from the
+   * package, because a package cannot ask: unrecognized placeholder-like text
+   * MUST remain literal (ADR-0011, ADR-0018).
+   */
+  mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface AgentPluginProjectionSummary {

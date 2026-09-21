@@ -685,6 +685,59 @@ ${run.stderr}`,
     expect(fromConfigDir).toBe(fromRepoRoot);
   });
 
+  it("warns when a declared MCP environment names a server the package does not declare", async () => {
+    // The usual cause is a server renamed in mcp.json. Forwarding silently
+    // stops, which on Codex looks exactly like a credential the user forgot to
+    // set -- so the build says which name went nowhere.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-mcpenv-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mcpenv", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          present: { type: "stdio", command: "node" },
+          remote: { type: "streamable-http", url: "https://example.invalid/mcp" },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+          components: {
+            root: ".",
+            targets: ["copy"],
+            mcpEnvironment: { present: ["KEPT"], renamed: ["LOST"], remote: ["ALSO_LOST"] },
+          },
+          targets: { copy: { version: ">=1.0 <2", delivery: "package", output: "./dist/copy" } },
+        };`,
+    );
+
+    const json = captureIO();
+    await runBuild({
+      config: join(dir, "hooknostic.config.ts"),
+      json: true,
+      registry: { copy: copyThroughAdapter() },
+      io: json.io,
+      evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+    });
+    const warnings = (JSON.parse(json.out()).diagnostics as { code: string; message: string }[]).filter(
+      (diagnostic) => diagnostic.code === "HN105",
+    );
+
+    // A name matching nothing, and a name matching a server with no child to
+    // receive the value: both forward nothing, so both are reported.
+    expect(warnings.map((warning) => warning.message)).toEqual([
+      expect.stringContaining('names "remote", which is a streamable-http server, not stdio'),
+      expect.stringContaining('names "renamed", which mcp.json does not declare'),
+    ]);
+    expect(warnings.every((warning) => !warning.message.includes('"present"'))).toBe(true);
+  });
+
   it("does not inventory a previous package output as source on the next build", { timeout: 120_000 }, async () => {
     // With `root: "."` the output sits inside the inventory root.
     // If it is not excluded, build N+1 copies build N's package into the new

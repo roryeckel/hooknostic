@@ -8,7 +8,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { classifyStdioCwd, expandStdioServer } from "@hooknostic/agent-plugin";
 
-import { bundleMcpLauncher, MCP_SERVERS_FILE, type McpLauncherServer } from "./mcp-launcher.js";
+import {
+  bundleMcpLauncher,
+  launcherEnvironmentReferences,
+  MCP_SERVERS_FILE,
+  type McpLauncherServer,
+} from "./mcp-launcher.js";
 
 // Node resolves homedir() from USERPROFILE on Windows and HOME elsewhere, so
 // stubbing both keeps every case out of the real ~/.hooknostic.
@@ -335,5 +340,43 @@ describe("generated MCP launcher", () => {
     const result = launch(tree, 0);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("declares no command");
+  });
+});
+
+describe("launcherEnvironmentReferences", () => {
+  it("collects every reference the launcher will expand, sorted and deduplicated", () => {
+    expect(
+      launcherEnvironmentReferences({
+        name: "srv",
+        command: "node",
+        args: ["${SECOND}/a", "${FIRST}"],
+        env: { A: "${SECOND}", B: "literal" },
+        cwd: "${THIRD}/work",
+      }),
+    ).toEqual(["FIRST", "SECOND", "THIRD"]);
+  });
+
+  it("omits the two the launcher binds from its own location", () => {
+    // Forwarding these would ask the harness for variables that exist nowhere
+    // in its environment; the launcher resolves them from where it was installed.
+    expect(
+      launcherEnvironmentReferences({
+        name: "srv",
+        command: "node",
+        args: ["${PLUGIN_ROOT}/server.mjs"],
+        env: { STATE: "${PLUGIN_DATA}/state" },
+        cwd: "${PLUGIN_ROOT}",
+      }),
+    ).toEqual([]);
+  });
+
+  it("ignores a `./` cwd, which is anchored rather than expanded", () => {
+    expect(launcherEnvironmentReferences({ name: "srv", command: "node", cwd: "./nested" })).toEqual([]);
+  });
+
+  it("returns nothing for a declaration with no references at all", () => {
+    expect(
+      launcherEnvironmentReferences({ name: "srv", command: "node", args: ["plain"], env: { A: "literal" } }),
+    ).toEqual([]);
   });
 });

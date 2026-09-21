@@ -1,0 +1,74 @@
+{
+  "version": "codex-cli 0.154.0",
+  "cases": {
+    "undeclaredEnvVar": {
+      "execution": {
+        "code": 1,
+        "loopbackModelFailure": true
+      },
+      "observed": {
+        "names": [
+          "APPDATA",
+          "CAPTURE_PATH",
+          "COMSPEC",
+          "HOMEDRIVE",
+          "HOMEPATH",
+          "LITERAL_REF",
+          "LOCALAPPDATA",
+          "PATH",
+          "PATHEXT",
+          "PROGRAMDATA",
+          "PROGRAMFILES",
+          "PROGRAMFILES(X86)",
+          "PROGRAMW6432",
+          "SHELL",
+          "SYSTEMDRIVE",
+          "SYSTEMROOT",
+          "TEMP",
+          "TMP",
+          "USERDOMAIN",
+          "USERNAME",
+          "USERPROFILE",
+          "WINDIR"
+        ],
+        "marker": null,
+        "literal": "${SYNTHETIC_MARKER}"
+      }
+    },
+    "declaredEnvVar": {
+      "execution": {
+        "code": 1,
+        "loopbackModelFailure": true
+      },
+      "observed": {
+        "names": [
+          "APPDATA",
+          "CAPTURE_PATH",
+          "COMSPEC",
+          "HOMEDRIVE",
+          "HOMEPATH",
+          "LITERAL_REF",
+          "LOCALAPPDATA",
+          "PATH",
+          "PATHEXT",
+          "PROGRAMDATA",
+          "PROGRAMFILES",
+          "PROGRAMFILES(X86)",
+          "PROGRAMW6432",
+          "SHELL",
+          "SYNTHETIC_MARKER",
+          "SYSTEMDRIVE",
+          "SYSTEMROOT",
+          "TEMP",
+          "TMP",
+          "USERDOMAIN",
+          "USERNAME",
+          "USERPROFILE",
+          "WINDIR"
+        ],
+        "marker": "synthetic-marker",
+        "literal": "${SYNTHETIC_MARKER}"
+      }
+    }
+  }
+}

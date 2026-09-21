@@ -608,7 +608,9 @@ at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
 **HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay.
 **HN103** an effect was truncated or dropped by a runtime budget.
 **HN104** a declared executable mode cannot apply to a skill the target discovers
-in place.
+in place. **HN105** a declared MCP environment names a server that cannot receive
+it -- one `mcp.json` does not declare, or a remote server with no child to
+receive a value -- so nothing is forwarded for that name.
 
 #### HN502 — bundled CLI entry point
 

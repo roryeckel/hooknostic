@@ -179,6 +179,7 @@ export const hooknosticConfigSchema = z
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
         executableFiles: z.array(z.string().min(1)).optional(),
+        mcpEnvironment: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
         runtimePackage: z
           .object({
             manifest: z.string().min(1),
@@ -275,6 +276,16 @@ export const hooknosticConfigSchema = z
       }
       if (config.components.mcp === undefined && config.components.mcpOverrides !== undefined) {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
+      }
+      // Packages only. A direct MCP source already resolves `${NAME}` from the
+      // launch environment, so it says what it needs in the declaration itself;
+      // a package may not, which is the whole reason this exists (ADR-0018).
+      if (config.components.root === undefined && config.components.mcpEnvironment !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "mcpEnvironment"],
+          message: "components.mcpEnvironment requires components.root",
+        });
       }
       if (
         config.components.root === undefined &&

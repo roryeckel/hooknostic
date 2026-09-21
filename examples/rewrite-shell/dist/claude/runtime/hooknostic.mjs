@@ -4591,6 +4591,7 @@ var init_schemas = __esm({
         targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
         exclude: external_exports.array(external_exports.string().min(1)).optional(),
         executableFiles: external_exports.array(external_exports.string().min(1)).optional(),
+        mcpEnvironment: external_exports.record(external_exports.string().min(1), external_exports.array(external_exports.string().min(1))).optional(),
         runtimePackage: external_exports.object({
           manifest: external_exports.string().min(1),
           lockfile: external_exports.string().min(1),
@@ -4655,6 +4656,13 @@ var init_schemas = __esm({
         }
         if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
           context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
+        }
+        if (config.components.root === void 0 && config.components.mcpEnvironment !== void 0) {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["components", "mcpEnvironment"],
+            message: "components.mcpEnvironment requires components.root"
+          });
         }
         if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
           context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });

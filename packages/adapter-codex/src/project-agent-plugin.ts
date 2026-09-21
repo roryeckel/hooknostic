@@ -298,6 +298,8 @@ interface CodexStdioServer {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Names Codex copies from its own environment; `env` carries literals. */
+  env_vars?: string[];
   cwd?: string;
 }
 
@@ -353,6 +355,7 @@ interface CodexNativeManifest {
 export function translateMcp(
   source: Pick<AgentPluginPackage, "mcp">,
   projectCwdServers: ReadonlySet<string> = new Set(),
+  mcpEnvironment: Readonly<Record<string, readonly string[]>> = {},
 ): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
   launcherServers: McpLauncherServer[];
@@ -396,10 +399,19 @@ export function translateMcp(
       });
       continue;
     }
+    // Codex starts a stdio child with a fixed platform allowlist and nothing
+    // else, so a variable this server reads arrives unset unless it is named
+    // here (`.capture/codex-plugin-mcp-environment`). The launcher passes its
+    // own environment through, so forwarding reaches the server itself.
+    // Own-property lookup: a schema-valid server named `constructor` would
+    // otherwise read Object.prototype's member and forward a function.
+    const declared = Object.hasOwn(mcpEnvironment, name) ? mcpEnvironment[name] : undefined;
+    const forwarded = [...new Set(declared ?? [])].sort();
     servers[name] = {
       command: "node",
       args: [`./${LAUNCHER_PATH}`, String(launcherServers.length)],
       cwd: ".",
+      ...(forwarded.length === 0 ? {} : { env_vars: forwarded }),
     };
     // Portable text verbatim: the launcher expands it against paths only it
     // knows, and rewriting here would expand twice.
@@ -513,6 +525,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "live-probe",
             artifact: ".capture/mcp-child-path",
             what: "A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables.",
+          },
+          {
+            version: "0.154.0",
+            date: "2026-09-21",
+            method: "live-probe",
+            artifact: ".capture/codex-plugin-mcp-environment",
+            what: "What filters that environment, and the way through it: the same installed plugin in the same environment saw a synthetic marker only once its .mcp.json named it in env_vars, and the marker is not credential-shaped, so the baseline is an allowlist rather than a secret filter. Declared env values are copied verbatim, so Codex expands no reference of its own. The plugin's command hooks inherit the environment whole, so without forwarding a plugin's two halves see different environments.",
           },
           {
             version: "0.154.0",
@@ -771,7 +790,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // diagnostic can name it.
     const shippedByFoldedPath = new Map(copiedPaths.map((path) => [path.toLowerCase(), path]));
 
-    const { servers, launcherServers, omitted } = translateMcp(source);
+    const { servers, launcherServers, omitted } = translateMcp(source, new Set(), context.mcpEnvironment ?? {});
     for (const { name, component, reason } of omitted) {
       omissions.push({ component, name, reason });
       issues.push({
