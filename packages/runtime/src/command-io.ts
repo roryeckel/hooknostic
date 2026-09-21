@@ -74,6 +74,32 @@ export function claimProtocolStdout(): ProtocolStdout {
 // Well inside the 1s process allowance nativeTimeoutSeconds adds to every hook budget.
 const RELEASE_BOUND_MS = 500;
 
+// The rest of that allowance, for the fallback below. A shim that drains on its
+// own never waits it out.
+const DRAIN_GRACE_MS = 250;
+
+/**
+ * Leave the process with `exitCode`, by draining the event loop rather than by
+ * forcing it.
+ *
+ * `process.exit()` here aborted the hook outright on the one path that did a
+ * network call. Node's `fetch` returns its sockets to a pool that is still
+ * closing when the shim returns, and exiting into that teardown trips a libuv
+ * assertion on Windows -- `!(handle->flags & UV_HANDLE_CLOSING)`, `src\win\async.c`.
+ * The reply is already on stdout by then, so the harness reads a well-formed
+ * payload beside an abort's exit code: a hook that only looks failed, and only
+ * when it had something to say.
+ *
+ * The forced exit stays as a fallback, because a handler that leaks a handle
+ * must not hold the hook open until the harness kills it. The timer is
+ * unref'd, so it fires only when something else is still keeping the loop
+ * alive -- exactly the leak -- and cannot delay a shim that already drained.
+ */
+export function finishCommandShim(exitCode: number): void {
+  process.exitCode = exitCode;
+  setTimeout(() => process.exit(exitCode), DRAIN_GRACE_MS).unref();
+}
+
 /**
  * Settles when `work` does, or after the release bound. The timer stays
  * referenced: with a stuck stream nothing else may keep the event loop alive,

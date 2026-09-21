@@ -5185,6 +5185,11 @@ function claimProtocolStdout() {
   };
 }
 var RELEASE_BOUND_MS = 500;
+var DRAIN_GRACE_MS = 250;
+function finishCommandShim(exitCode) {
+  process.exitCode = exitCode;
+  setTimeout(() => process.exit(exitCode), DRAIN_GRACE_MS).unref();
+}
 function bounded(work) {
   let timer;
   return Promise.race([
@@ -5492,7 +5497,7 @@ async function runClaudeCommandShim(source, options) {
   }
   await stdout.release().catch(() => {
   });
-  process.exit(exitCode);
+  finishCommandShim(exitCode);
 }
 
 // hooknostic-shim-entry.ts

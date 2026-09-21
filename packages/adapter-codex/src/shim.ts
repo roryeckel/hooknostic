@@ -6,6 +6,7 @@ import {
   describeDecodedEvent,
   describeHookResult,
   dispatch,
+  finishCommandShim,
   formatHandlerErrors,
   loadCommandPlugin,
 } from "@hooknostic/runtime";
@@ -95,5 +96,5 @@ export async function runCodexCommandShim(source: CommandPluginSource, options: 
     exitCode = 0; // fail-open
   }
   await stdout.release().catch(() => {});
-  process.exit(exitCode);
+  finishCommandShim(exitCode);
 }
