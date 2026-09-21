@@ -104,6 +104,68 @@ describe("loadProjectComponents", () => {
     expect(loaded.source.skills[0]!.files.map((file) => file.path)).toEqual(["reference.md", "SKILL.md"]);
   });
 
+  it("marks declared skill files executable across every listed directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skill-exec-"));
+    roots.push(root);
+    const other = await mkdtemp(join(tmpdir(), "hooknostic-project-skill-exec-other-"));
+    roots.push(other);
+    await mkdir(join(root, "review/scripts"), { recursive: true });
+    await writeFile(join(root, "review/SKILL.md"), "---\nname: review\ndescription: Review a change\n---\n");
+    await writeFile(join(root, "review/scripts/helper.sh"), "#!/bin/sh\n");
+    await writeFile(join(root, "review/reference.md"), "included");
+    await mkdir(join(other, "deploy"), { recursive: true });
+    await writeFile(join(other, "deploy/SKILL.md"), "---\nname: deploy\ndescription: Ship a change\n---\n");
+    await writeFile(join(other, "deploy/run"), "#!/bin/sh\n");
+
+    // One declaration reaches both listed directories, which is why modes are
+    // resolved once every skill has loaded rather than per directory.
+    const loaded = await loadProjectComponents({
+      skills: [root, other],
+      executableFiles: ["review/scripts/helper.sh", "deploy/run"],
+    });
+
+    expect(loaded.issues).toEqual([]);
+    // Every base mode is 0644 whatever the host reported (ADR-0013), so the
+    // 0755 entries here are the declaration's doing and nothing else's.
+    expect(
+      Object.fromEntries(
+        loaded.source.skills.flatMap((skill) => skill.files.map((file) => [`${skill.name}/${file.path}`, file.mode])),
+      ),
+    ).toEqual({
+      "review/SKILL.md": 0o644,
+      "review/reference.md": 0o644,
+      "review/scripts/helper.sh": 0o755,
+      "deploy/SKILL.md": 0o644,
+      "deploy/run": 0o755,
+    });
+  });
+
+  it("rejects a skill executable entry that names no projected file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skill-exec-invalid-"));
+    roots.push(root);
+    await mkdir(join(root, "review/scripts"), { recursive: true });
+    await writeFile(join(root, "review/SKILL.md"), "---\nname: review\ndescription: Review a change\n---\n");
+    await writeFile(join(root, "review/scripts/helper.sh"), "#!/bin/sh\n");
+
+    for (const path of [
+      "scripts/helper.sh", // the on-disk spelling, missing the skill it lands in
+      "review/scripts/HELPER.sh",
+      "review/scripts/../scripts/helper.sh",
+      "review\\scripts\\helper.sh",
+      "review//scripts/helper.sh",
+      "missing/run",
+      "review",
+      "/review/scripts/helper.sh",
+    ]) {
+      const loaded = await loadProjectComponents({ skills: [root], executableFiles: [path] });
+      expect(loaded.issues, path).toContainEqual(expect.objectContaining({ severity: "error", scope: "file" }));
+      expect(
+        loaded.source.skills.flatMap((skill) => skill.files).every((file) => file.mode === 0o644),
+        path,
+      ).toBe(true);
+    }
+  });
+
   it("allows a direct MCP cwd to leave its source directory only within the project", async () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-cwd-"));
     roots.push(root);

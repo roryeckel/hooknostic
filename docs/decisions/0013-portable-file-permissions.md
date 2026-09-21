@@ -1,6 +1,6 @@
 # ADR-0013: Explicit executable files and portable permission digests
 
-Status: accepted
+Status: accepted; amended 2026-09-21 to cover direct skill sources
 
 ## Context
 
@@ -18,6 +18,13 @@ safe dereferenced file link. Absolute paths, backslashes, control characters,
 colon/drive paths, empty segments, `.`/`..` segments, missing paths, directories,
 excluded paths, and case mismatches fail loading. Entries are literal names,
 not globs. Duplicate declarations are harmless.
+
+Direct skill sources (`components.skills`) accept the same declaration under the
+same validation, spelled `<skill>/<path>`: the path the file is projected to,
+which is also the path it was read from, because a skill's `name` must equal its
+own directory. Entries are resolved once every configured skill collection has
+loaded, so one declaration reaches all of them. A direct MCP source alone is
+rejected — it is a single document, with no tree an entry could name.
 
 Inventory assigns 0755 to declared files and 0644 to every other file, ignoring
 host permissions. Source and projection digests retain modes as inputs, now

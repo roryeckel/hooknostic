@@ -118,6 +118,8 @@ Copied files use portable permissions: 0644 by default. Set
 `components.executableFiles: ["bin/tool"]` for files that must be 0755.
 These are exact, case-sensitive POSIX paths relative to `components.root`,
 not globs; each must name an included file. Host `chmod` bits are ignored.
+Direct skill sources take the same declaration spelled `<skill>/<path>`; see
+[project integration](../project-integration.md).
 When migrating, declare files that previously relied on `chmod +x` and rebuild
 both artifacts and reports. See [ADR-0013](../decisions/0013-portable-file-permissions.md).
 

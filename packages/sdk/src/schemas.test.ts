@@ -291,17 +291,31 @@ describe("canonical schemas", () => {
     ).toBe(true);
   });
 
-  it("rejects executable file policy for direct component sources", () => {
+  it("accepts executable file policy for direct skills and refuses it for a lone MCP source", () => {
+    const local = { version: ">=1 <2", delivery: "project" as const, output: "./dist/local" };
+    // Skills are a tree, so they can carry a declared mode. A direct MCP
+    // source is a single file the loader reads and rewrites -- there is
+    // nothing for an entry to name, so the refusal states the two fields that
+    // would give it one rather than restating its own condition.
+    expect(
+      hooknosticConfigSchema.safeParse({
+        project: { root: "." },
+        entry: "./src/hooks.ts",
+        components: { skills: ["./skills"], executableFiles: ["review/bin/tool"], targets: ["local"] },
+        targets: { local },
+      }).success,
+    ).toBe(true);
+
     const result = hooknosticConfigSchema.safeParse({
       project: { root: "." },
       entry: "./src/hooks.ts",
-      components: { skills: ["./skills"], executableFiles: ["bin/tool"], targets: ["local"] },
-      targets: { local: { version: ">=1 <2", delivery: "project", output: "./dist/local" } },
+      components: { mcp: "./mcp.json", executableFiles: ["bin/tool"], targets: ["local"] },
+      targets: { local },
     });
     expect(result.success).toBe(false);
     if (!result.success)
       expect(result.error.issues.map((issue) => issue.message)).toContain(
-        "components.executableFiles requires components.root",
+        "components.executableFiles requires components.root or components.skills",
       );
   });
 

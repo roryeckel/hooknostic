@@ -11,6 +11,7 @@ import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknost
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";
 import { runProject } from "./project.js";
+import { projectSkillFiles } from "./project-components.js";
 import { readProjectToml } from "./project-toml.js";
 const dirs: string[] = [];
 const registry = defaultAdapterRegistry();
@@ -145,6 +146,39 @@ describe("complete project integration", () => {
     });
     expect(await readFile(join(root, ".claude/skills/.gitattributes"), "utf8")).toBe("** -text\n");
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toContain("Synthetic skill");
+  });
+
+  it("carries a skill file's declared mode into the projection", () => {
+    // The middle link of the chain the loader and the writer already pin: the
+    // loader assigns 0755 from `components.executableFiles`, `applyProject`
+    // chmods it (project-recovery.test.ts), and this is the step between,
+    // which is a `map` that could drop the field without failing either end.
+    // Asserted on the returned files rather than on disk because Windows
+    // reports no POSIX bit -- the projection is the portable artifact, and
+    // ADR-0013 is a claim about it, not about the host.
+    const projected = projectSkillFiles(
+      {
+        origin: "direct",
+        skills: [
+          {
+            name: "sample",
+            source: join(tmpdir(), "hooknostic-absent-source", "sample"),
+            files: [
+              { path: "SKILL.md", contents: new Uint8Array(), mode: 0o644 },
+              { path: "scripts/helper.sh", contents: new Uint8Array(), mode: 0o755 },
+            ],
+          },
+        ],
+      },
+      join(tmpdir(), "hooknostic-absent-root"),
+      ".claude/skills",
+    );
+
+    expect(projected.files.map((file) => [file.path, file.mode])).toEqual([
+      [".claude/skills/sample/SKILL.md", 0o644],
+      [".claude/skills/sample/scripts/helper.sh", 0o755],
+      [".claude/skills/.gitattributes", 0o644],
+    ]);
   });
 
   it("carries declared MCP command resolution through build and project reports", async () => {

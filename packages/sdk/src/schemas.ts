@@ -258,11 +258,19 @@ export const hooknosticConfigSchema = z
           message: "components.mcpOverrides is only valid with a direct MCP source",
         });
       }
-      if (config.components.root === undefined && config.components.executableFiles !== undefined) {
+      // A direct MCP source is one file the loader reads and rewrites; it owns
+      // no tree to mark. Skills do, so they accept the declaration -- ADR-0013
+      // ignores host permission bits on both routes, which left a copied
+      // helper script with no way to arrive executable.
+      if (
+        config.components.root === undefined &&
+        config.components.skills === undefined &&
+        config.components.executableFiles !== undefined
+      ) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["components", "executableFiles"],
-          message: "components.executableFiles requires components.root",
+          message: "components.executableFiles requires components.root or components.skills",
         });
       }
       if (config.components.mcp === undefined && config.components.mcpOverrides !== undefined) {

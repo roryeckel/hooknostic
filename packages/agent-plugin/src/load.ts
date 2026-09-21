@@ -654,6 +654,43 @@ const DEFAULT_EXCLUDES = AGENT_PLUGIN_DEFAULT_EXCLUDED_NAMES.flatMap((name) => [
   `**/${name}/**`,
 ]);
 
+/**
+ * Apply ADR-0013's declared modes to an inventoried file set.
+ *
+ * `lookup` is a parameter because the two component routes spell a path
+ * against different roots -- a package's are relative to the package root, a
+ * project's to the skill the file lands in. The *validation* must not vary
+ * with the route: ADR-0013's guarantee is that one declaration yields one set
+ * of modes on every host, and two spellings of "valid path" would be two
+ * contracts wearing one name.
+ */
+function applyExecutableFiles(
+  paths: readonly string[] | undefined,
+  lookup: (path: string) => AgentPluginFile | undefined,
+  issues: AgentPluginIssue[],
+): boolean {
+  for (const path of paths ?? []) {
+    const file = lookup(path);
+    if (
+      typeof path !== "string" ||
+      /[\\:]/.test(path) ||
+      [...path].some((character) => character.charCodeAt(0) < 32) ||
+      path.split("/").some((part) => part === "" || part === "." || part === "..") ||
+      file === undefined
+    ) {
+      issue(
+        issues,
+        "error",
+        "file",
+        `executableFiles entry ${JSON.stringify(path)} must be an exact, case-sensitive POSIX path to an included file.`,
+      );
+      return false;
+    }
+    file.mode = 0o755;
+  }
+  return true;
+}
+
 /** Load an Agent Plugins 1.0 package without consulting network schemas. */
 export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<LoadAgentPluginResult> {
   const root = resolve(options.root);
@@ -672,25 +709,8 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
 
   const inventoried = await inventory(root, patterns, issues);
   if (inventoried === undefined) return { issues };
-  for (const path of options.executableFiles ?? []) {
-    const file = inventoried.files.find((entry) => entry.path === path);
-    if (
-      typeof path !== "string" ||
-      /[\\:]/.test(path) ||
-      [...path].some((character) => character.charCodeAt(0) < 32) ||
-      path.split("/").some((part) => part === "" || part === "." || part === "..") ||
-      file === undefined
-    ) {
-      issue(
-        issues,
-        "error",
-        "file",
-        `executableFiles entry ${JSON.stringify(path)} must be an exact, case-sensitive POSIX path to an included file.`,
-      );
-      return { issues };
-    }
-    file.mode = 0o755;
-  }
+  if (!applyExecutableFiles(options.executableFiles, (path) => inventoried.files.find((e) => e.path === path), issues))
+    return { issues };
   const manifestFile = inventoried.files.find((file) => file.path === "plugin.json");
   if (manifestFile === undefined) {
     issue(
@@ -772,6 +792,7 @@ export async function loadProjectComponents(options: {
   skills?: string[];
   mcp?: string;
   exclude?: string[];
+  executableFiles?: string[];
   projectRoot?: string;
 }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
@@ -804,6 +825,23 @@ export async function loadProjectComponents(options: {
       });
     }
   }
+  // Declared against `<skill>/<path>` -- where the file lands, not where it was
+  // read from. The two cannot disagree: a skill's `name` must equal its own
+  // directory (`validateSkillFrontmatter`), and the projector writes it to
+  // `<destination>/<skill.name>`. Resolved after every listed directory is
+  // loaded, so one declaration can name files across all of them, and so a
+  // duplicate skill name is rejected first rather than silently deciding which
+  // of two files an entry meant.
+  applyExecutableFiles(
+    options.executableFiles,
+    (path) => {
+      const separator = path.indexOf("/");
+      if (separator <= 0) return undefined;
+      const skill = source.skills.find((candidate) => candidate.name === path.slice(0, separator));
+      return skill?.files.find((file) => file.path === path.slice(separator + 1));
+    },
+    issues,
+  );
   if (options.mcp) {
     const requested = resolve(options.mcp);
     let direct: { path: string; contents: Buffer } | undefined;

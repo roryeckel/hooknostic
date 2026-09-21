@@ -38,9 +38,12 @@ entire configured project integration. Targets may have arbitrary names with an
 explicit `adapter`, but only one project target may use a given adapter.
 Delivery-specific component validation applies only to those selected targets:
 an unrelated package target does not make direct sources invalid, and an
-unrelated project target does not require `project.root`. `executableFiles` is
-available only with `components.root`, because its paths are defined relative to
-the package root.
+unrelated project target does not require `project.root`. `executableFiles`
+accepts either source of a file tree, spelled against the root that tree has:
+`components.root` paths are relative to the package root, while direct-skill
+paths are `<skill>/<path>` — where the file lands, which is also where it was
+read from, since a skill's `name` must equal its own directory. It is rejected
+with a direct MCP source alone, which is one document and owns no tree to mark.
 Direct-source `exclude` patterns are evaluated independently relative to each
 configured skill collection root. They do not change the canonical MCP document.
 

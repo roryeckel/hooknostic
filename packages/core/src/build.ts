@@ -603,6 +603,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         : { skills: config.components.skills.map((p) => resolve(configDir, p)) }),
       ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
       ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
+      ...(config.components.executableFiles === undefined
+        ? {}
+        : { executableFiles: config.components.executableFiles }),
       ...(config.project === undefined ? {} : { projectRoot: resolve(configDir, config.project.root) }),
     });
     diagnostics.push(

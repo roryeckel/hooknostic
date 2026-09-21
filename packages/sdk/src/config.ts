@@ -226,12 +226,18 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         root?: never;
         skills: string[];
         mcp?: string;
-        executableFiles?: never;
+        /** Exact, case-sensitive `<skill>/<path>` POSIX paths to emit as 0755; others use 0644. */
+        executableFiles?: string[];
         materialize?: never;
       } & DirectComponentPolicy<TTarget>)
+    // A direct MCP source alone. `skills` is `never` rather than optional
+    // because the variant above already covers skills-with-MCP, and leaving it
+    // optional here made both variants match that shape -- which meant the
+    // type could not tell "MCP alone" from "MCP and skills", and so could not
+    // refuse `executableFiles` on the one route that owns no tree to mark.
     | ({
         root?: never;
-        skills?: string[];
+        skills?: never;
         mcp: string;
         executableFiles?: never;
         materialize?: never;

@@ -262,11 +262,14 @@ describe("compile-time config contracts", () => {
     });
     defineConfig({
       project: { root: "." },
-      components: {
-        skills: ["./skills"],
-        // @ts-expect-error executable paths are relative only to a package root
-        executableFiles: ["bin/tool"],
-      },
+      // Skills accept the declaration, spelled against where the file lands.
+      components: { skills: ["./skills"], executableFiles: ["review/bin/tool"] },
+      targets: { codex },
+    });
+    defineConfig({
+      project: { root: "." },
+      // @ts-expect-error a direct MCP source owns no tree to mark executable
+      components: { mcp: "./mcp.json", executableFiles: ["bin/tool"] },
       targets: { codex },
     });
   });

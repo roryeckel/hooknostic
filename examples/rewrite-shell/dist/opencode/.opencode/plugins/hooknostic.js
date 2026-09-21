@@ -4515,11 +4515,11 @@ var hooknosticConfigSchema = external_exports.object({
         message: "components.mcpOverrides is only valid with a direct MCP source"
       });
     }
-    if (config.components.root === void 0 && config.components.executableFiles !== void 0) {
+    if (config.components.root === void 0 && config.components.skills === void 0 && config.components.executableFiles !== void 0) {
       context.addIssue({
         code: external_exports.ZodIssueCode.custom,
         path: ["components", "executableFiles"],
-        message: "components.executableFiles requires components.root"
+        message: "components.executableFiles requires components.root or components.skills"
       });
     }
     if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
