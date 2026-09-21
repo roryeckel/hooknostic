@@ -116,7 +116,7 @@ export interface PackageMaterializer {
   plan(
     context: PackageMaterializerContext & { outputDir: string },
   ): PackageMaterializationPlan | Promise<PackageMaterializationPlan>;
-  /** Normalize or validate the produced opaque tree before Hooknostic places it. */
+  /** Normalize or validate the produced opaque tree, including provider-owned portability rules. */
   postprocess?(
     files: readonly PackageMaterializerFile[],
     context: PackageMaterializerContext,

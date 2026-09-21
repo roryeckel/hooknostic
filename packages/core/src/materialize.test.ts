@@ -211,6 +211,102 @@ describe("materializePackages", () => {
     expect(result.problems).toEqual([expect.stringContaining("hooknostic-definitely-missing-materializer")]);
   });
 
+  it.each(["stdout", "stderr"] as const)(
+    "drains provider %s larger than the synchronous buffer limit",
+    async (stream) => {
+      const root = await scratch(`hooknostic-materialize-large-${stream}-`);
+      const staging = await scratch("hooknostic-materialize-staging-");
+      await writeFile(join(root, "input"), "data");
+      const provider = definePackageMaterializer({
+        id: `large-${stream}`,
+        plan: ({ outputDir }) => ({
+          command: process.execPath,
+          args: [
+            "-e",
+            `process.${stream}.write("x".repeat(1024 * 1024 + 1024)); require("node:fs").writeFileSync(require("node:path").join(process.argv[1], "complete"), "yes")`,
+            outputDir,
+          ],
+        }),
+      });
+
+      const result = await materializePackages({
+        root,
+        staging,
+        declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+      });
+
+      expect(result.problems).toEqual([]);
+      expect(result.trees[0]?.files).toEqual([
+        expect.objectContaining({ path: "complete", contents: Buffer.from("yes") }),
+      ]);
+    },
+  );
+
+  it("keeps the final stderr lines when a verbose provider exits nonzero", async () => {
+    const root = await scratch("hooknostic-materialize-command-failure-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      id: "verbose-failure",
+      plan: () => ({
+        command: process.execPath,
+        args: [
+          "-e",
+          'process.stderr.write("x".repeat(1024 * 1024 + 1024)); process.stderr.write("\\nfirst\\nsecond\\nfinal marker\\n"); process.exit(7)',
+        ],
+      }),
+    });
+
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    expect(result.problems).toEqual([
+      expect.stringMatching(/command exited with code 7: .*first second final marker$/),
+    ]);
+  });
+
+  it.skipIf(process.platform === "win32")("reports provider signal termination explicitly", async () => {
+    const root = await scratch("hooknostic-materialize-command-signal-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      id: "signal",
+      plan: () => ({
+        command: process.execPath,
+        args: ["-e", 'process.kill(process.pid, "SIGTERM")'],
+      }),
+    });
+
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    expect(result.problems).toEqual([expect.stringContaining("command terminated by signal")]);
+  });
+
+  it("reports provider spawn errors other than a missing command", async () => {
+    const root = await scratch("hooknostic-materialize-command-error-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      id: "spawn-error",
+      plan: () => ({ command: "\0", args: [] }),
+    });
+
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    expect(result.problems).toEqual([expect.stringContaining("could not start")]);
+  });
+
   it("rejects provider-returned escaping and duplicate paths", async () => {
     const root = await scratch("hooknostic-materialize-paths-");
     const staging = await scratch("hooknostic-materialize-staging-");
@@ -237,14 +333,14 @@ describe("materializePackages", () => {
     ]);
   });
 
-  it("rejects actual native executable output", async () => {
-    const root = await scratch("hooknostic-materialize-native-");
+  it("treats produced bytes as opaque after structural validation", async () => {
+    const root = await scratch("hooknostic-materialize-opaque-");
     const staging = await scratch("hooknostic-materialize-staging-");
     await writeFile(join(root, "input"), "data");
     const provider = definePackageMaterializer({
       ...copyingProvider(),
       postprocess: () => ({
-        files: [{ path: "native", contents: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) }],
+        files: [{ path: "opaque", contents: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) }],
         problems: [],
       }),
     });
@@ -253,6 +349,30 @@ describe("materializePackages", () => {
       staging,
       declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
     });
-    expect(result.problems).toEqual([expect.stringContaining("platform-specific output")]);
+    expect(result.problems).toEqual([]);
+    expect(result.trees[0]?.files).toEqual([
+      expect.objectContaining({ path: "opaque", contents: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) }),
+    ]);
+  });
+
+  it("reports provider-owned portability failures from postprocess", async () => {
+    const root = await scratch("hooknostic-materialize-provider-portability-");
+    const staging = await scratch("hooknostic-materialize-staging-");
+    await writeFile(join(root, "input"), "data");
+    const provider = definePackageMaterializer({
+      ...copyingProvider(),
+      postprocess: (files: readonly { path: string; contents: Uint8Array }[]) => ({
+        files,
+        problems: ["locked dependency resolves to a host-specific native binary"],
+      }),
+    });
+    const result = await materializePackages({
+      root,
+      staging,
+      declarations: [{ provider, inputs: { source: "input" }, into: "generated" }],
+    });
+
+    expect(result.problems).toEqual([expect.stringContaining("host-specific native binary")]);
+    expect(result.trees).toEqual([]);
   });
 });

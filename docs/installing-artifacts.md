@@ -171,7 +171,9 @@ imports them. Hooknostic ships no built-in providers and does not own lockfile p
 installer flags, network or cache behavior, generated-file cleanup, or ecosystem
 metadata. Put those rules in the provider. Its `postprocess(files, context)` hook can
 return a replacement tree plus provider-specific problems when installer output needs
-normalization.
+normalization or is not portable across consumer machines. Successful command stdout is
+discarded; on failure Hooknostic reports the final bounded tail of stderr, so providers
+should return validation detail as problems rather than use stdout as an API.
 
 Hooknostic owns the safe, component-neutral boundary around the provider:
 
@@ -183,16 +185,16 @@ Hooknostic owns the safe, component-neutral boundary around the provider:
   while absolute or drive-qualified paths, backslashes, colons, control characters,
   empty segments, and `.` or `..` segments fail with HN501 before the provider runs;
 - output must contain only regular files with contained, unique POSIX paths and cannot
-  overwrite source files, generated files, or another provider's output; and
-- files whose bytes identify ELF, Mach-O, universal Mach-O, or PE objects are rejected,
-  because an artifact built once and installed elsewhere cannot contain one host's
-  native object.
+  overwrite source files, generated files, or another provider's output.
 
-Filename extensions and ecosystem metadata are not generic portability evidence. A
-provider must apply any stronger rule its output needs. Materialization runs once after
-analysis succeeds, and the same bytes are placed into every selected package projection.
-It does not run for project delivery, which references files where they already live.
-See [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the full boundary.
+Core does not infer portability from filenames or byte signatures: neither can prove
+what arbitrary package content means, and maintaining a partial executable-format list
+would create false confidence. The trusted provider must reject host-specific or
+nondeterministic output using its ecosystem's metadata and semantics. Materialization
+runs once after analysis succeeds, and the same bytes are placed into every selected
+package projection. It does not run for project delivery, which references files where
+they already live. See [ADR-0017](decisions/0017-mcp-runtime-dependencies.md) for the full
+boundary.
 
 ### MCP command reporting
 

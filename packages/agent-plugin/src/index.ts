@@ -2,7 +2,6 @@ export * from "./component-counts.js";
 export * from "./json.js";
 export * from "./load.js";
 export * from "./materialize/placement.js";
-export * from "./materialize/portability.js";
 export * from "./placeholders.js";
 export * from "./mcp-commands.js";
 export * from "./runtime-package.js";

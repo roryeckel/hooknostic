@@ -1,11 +1,12 @@
 # Decision 0017 — Package materialization is provider-owned and component-neutral
 
-**Status:** Accepted — 2026-09-16; amended — 2026-09-18 · Referenced from code and docs as **ADR-0017** · Complements [ADR-0012](0012-claude-plugin-runtime-dependencies.md)
+**Status:** Accepted — 2026-09-16; amended — 2026-09-18 and 2026-09-20 · Referenced from code and docs as **ADR-0017** · Complements [ADR-0012](0012-claude-plugin-runtime-dependencies.md)
 
 **In short:** An Agent Plugin build may opt into a trusted, author-supplied Node
 provider that materializes an opaque package tree. Hooknostic owns containment,
-execution, placement, collision detection, and generic native-object screening. It
-contains no registry of ecosystems or package-manager policy.
+execution, placement, and collision detection. Providers own the meaning and
+portability of their output; Hooknostic contains no registry of ecosystems, package
+formats, or executable signatures.
 
 ## Context
 
@@ -28,8 +29,13 @@ ecosystem:
 - source inputs remain inside the Agent Plugin root;
 - provider commands run without a shell and receive a fresh staging directory for output;
 - destinations and produced paths cannot escape a projected package;
-- materialized files cannot overwrite source or generated package files; and
-- a build-once artifact must not accidentally contain a native object for one host.
+- materialized files cannot overwrite source or generated package files.
+
+Cross-machine portability remains required by ADR-0006, but arbitrary bytes do not
+carry enough generic evidence to prove it. A signature list is necessarily incomplete
+(native code can be wrapped in archives or new formats) and can also reject opaque data
+that merely shares a prefix. The trusted provider knows the ecosystem metadata and
+output semantics, so it owns that decision rather than core guessing from bytes.
 
 ## Decision
 
@@ -44,12 +50,12 @@ The provider API has three operations:
 - optional `validate(context)` checks provider-owned input semantics;
 - `plan({ ...context, outputDir })` returns one executable and argument vector; and
 - optional `postprocess(files, context)` validates or normalizes the produced opaque
-  tree in memory.
+  tree in memory, including provider-specific portability rules.
 
 Providers own all ecosystem knowledge: lockfile parsing, installer flags, network and
-cache behavior, generated-file removal, metadata repair, and any stronger portability
-rule. A provider is trusted build code, just like the TypeScript configuration that
-imports it. Hooknostic never discovers or selects a provider from package data.
+cache behavior, generated-file removal, metadata repair, reproducibility, and
+portability. A provider is trusted build code, just like the TypeScript configuration
+that imports it. Hooknostic never discovers or selects a provider from package data.
 
 Core owns the boundary around that code:
 
@@ -61,15 +67,13 @@ Core owns the boundary around that code:
    empty segments, and `.` or `..` segments fail with HN501 before any provider method
    or external command runs. Duplicate destinations compare the canonical value.
 3. Core creates a fresh output directory and invokes the returned command and arguments
-   directly, never through a shell. Missing commands, nonzero exits, and provider
-   exceptions are HN501 build failures.
+   directly, never through a shell. Standard output is discarded; standard error is
+   drained with a bounded tail retained for failure diagnostics. Missing commands,
+   spawn failures, signals, nonzero exits, and provider exceptions are HN501 build
+   failures.
 4. Core inventories only regular files. Symlinks, escaping or duplicate provider paths,
    source-file collisions, generated-file collisions, and collisions between providers
    fail the projection.
-5. Core examines bytes for ELF, Mach-O, universal Mach-O, and PE object formats. A match
-   is rejected because an ADR-0006 artifact is built once and installed elsewhere.
-   Filename extensions and ecosystem metadata are not generic evidence; providers must
-   enforce any additional restrictions their output format requires.
 
 Materialization runs once per build or check after capability and layout analysis
 succeeds. The resulting bytes are reused by every selected package projector, which
@@ -100,8 +104,8 @@ runtime dependencies. Remote servers have no command to report.
 - Reproducibility beyond the generic boundary is the provider's responsibility. A
   provider that invokes a nondeterministic installer produces nondeterministic artifacts,
   which committed-output drift will expose but Hooknostic cannot prevent in general.
-- Generic native-object screening deliberately does not infer meaning from names such as
-  `.so` or from ecosystem metadata. This avoids language coupling and false claims, while
-  providers remain free to fail closed more aggressively.
+- Core deliberately makes no portability claim about opaque output bytes. A provider
+  must reject host-specific output using the metadata and semantics of its own ecosystem;
+  returning a problem from `postprocess` fails materialization before projection.
 - A materialized tree enlarges every selected package output. ADR-0006's committed
   artifact comparison makes that change reviewable.

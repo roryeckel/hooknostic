@@ -3,7 +3,6 @@ import { isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
 
 import spawn from "cross-spawn";
 
-import { verifyPortableTree } from "@hooknostic/agent-plugin";
 import type {
   AgentPluginRuntimePackageConfig,
   PackageMaterializationConfig,
@@ -160,6 +159,72 @@ function treeProblems(files: readonly PackageMaterializerFile[]): string[] {
   return problems;
 }
 
+const STDERR_TAIL_BYTES = 64 * 1024;
+
+interface MaterializerCommandResult {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  stderr: string;
+  error?: NodeJS.ErrnoException;
+}
+
+function appendTail(current: Buffer, chunk: unknown): Buffer {
+  const next = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+  if (next.length >= STDERR_TAIL_BYTES) return Buffer.from(next.subarray(next.length - STDERR_TAIL_BYTES));
+  const combined = Buffer.concat([current, next]);
+  return combined.length <= STDERR_TAIL_BYTES
+    ? combined
+    : Buffer.from(combined.subarray(combined.length - STDERR_TAIL_BYTES));
+}
+
+/** Run a provider without buffering unbounded output; its result is the staged tree, not stdout. */
+async function runMaterializerCommand(
+  command: string,
+  args: readonly string[],
+  cwd: string,
+): Promise<MaterializerCommandResult> {
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      shell: false,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+  } catch (error) {
+    return {
+      status: null,
+      signal: null,
+      stderr: "",
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+
+  let stderrTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  child.stderr?.on("data", (chunk: unknown) => {
+    stderrTail = appendTail(stderrTail, chunk);
+  });
+
+  return await new Promise<MaterializerCommandResult>((resolveResult) => {
+    let spawnError: NodeJS.ErrnoException | undefined;
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      spawnError = error;
+    });
+    child.once("close", (status: number | null, signal: NodeJS.Signals | null) => {
+      resolveResult({
+        status,
+        signal,
+        stderr: stderrTail.toString("utf8"),
+        ...(spawnError === undefined ? {} : { error: spawnError }),
+      });
+    });
+  });
+}
+
+function stderrDetail(stderr: string): string {
+  return stderr.trim().split(/\r?\n/).slice(-3).join(" ").trim();
+}
+
 /** Execute trusted providers once and return opaque package trees reusable by every package projector. */
 export async function materializePackages(options: {
   root: string;
@@ -197,23 +262,27 @@ export async function materializePackages(options: {
         problems.push(`materializer ${JSON.stringify(declaration.provider.id)} returned an invalid command plan`);
         continue;
       }
-      const result = spawn.sync(plan.command, plan.args, {
-        cwd: context.root,
-        encoding: "utf8",
-        env: process.env,
-        shell: false,
-        stdio: "pipe",
-      });
+      const result = await runMaterializerCommand(plan.command, plan.args, context.root);
       if (result.error != null && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
         problems.push(
           `materializer ${JSON.stringify(declaration.provider.id)} needs ${JSON.stringify(plan.command)} on PATH, and it was not found`,
         );
         continue;
       }
-      if (result.status !== 0) {
-        const detail = (result.stderr ?? "").trim().split("\n").slice(-3).join(" ").trim();
+      if (result.error != null) {
         problems.push(
-          `materializer ${JSON.stringify(declaration.provider.id)} command failed${detail === "" ? "" : `: ${detail}`}`,
+          `materializer ${JSON.stringify(declaration.provider.id)} could not start command ${JSON.stringify(plan.command)}: ${result.error.message}`,
+        );
+        continue;
+      }
+      if (result.status !== 0) {
+        const detail = stderrDetail(result.stderr);
+        const outcome =
+          result.status === null
+            ? `terminated by signal ${result.signal ?? "unknown"}`
+            : `exited with code ${result.status}`;
+        problems.push(
+          `materializer ${JSON.stringify(declaration.provider.id)} command ${outcome}${detail === "" ? "" : `: ${detail}`}`,
         );
         continue;
       }
@@ -238,15 +307,6 @@ export async function materializePackages(options: {
       if (structural.length > 0) {
         problems.push(
           ...structural.map((problem) => `materializer ${JSON.stringify(declaration.provider.id)}: ${problem}`),
-        );
-        continue;
-      }
-      const impure = verifyPortableTree(processed.files);
-      if (impure.length > 0) {
-        const shown = impure.slice(0, 3).map((problem) => `${problem.path} (${problem.reason})`);
-        problems.push(
-          `materializer ${JSON.stringify(declaration.provider.id)} produced platform-specific output: ${shown.join(", ")}` +
-            `${impure.length > shown.length ? ", ..." : ""}. Hooknostic artifacts are built once and installed anywhere (ADR-0006).`,
         );
         continue;
       }
