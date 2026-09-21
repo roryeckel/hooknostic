@@ -30,7 +30,8 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
-const marker = join(scratch, "marker.json");
+const mcpMarker = join(scratch, "mcp-marker.json");
+const hookMarker = join(scratch, "hook-marker.json");
 const dump = join(plugin, "dump.mjs");
 const run = (args) =>
   new Promise((resolve, reject) => {
@@ -74,8 +75,41 @@ setTimeout(() => {}, 1000);
 `,
 );
 writeFileSync(
+  join(plugin, "hook.mjs"),
+  `import { writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(hookMarker)}, JSON.stringify({
+  marker: process.env.SYNTHETIC_MARKER ?? null,
+}));
+`,
+);
+writeFileSync(
+  join(plugin, "hooks.json"),
+  JSON.stringify(
+    {
+      hooks: {
+        UserPromptSubmit: [
+          {
+            hooks: [{ type: "command", command: 'node "${PLUGIN_ROOT}/hook.mjs"' }],
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  ),
+);
+writeFileSync(
   join(plugin, ".codex-plugin", "plugin.json"),
-  JSON.stringify({ name: "probe-plugin", version: "0.0.1", description: "Synthetic plugin MCP environment probe." }, null, 2),
+  JSON.stringify(
+    {
+      name: "probe-plugin",
+      version: "0.0.1",
+      description: "Synthetic plugin MCP environment probe.",
+      hooks: "./hooks.json",
+    },
+    null,
+    2,
+  ),
 );
 writeFileSync(
   join(market, ".agents", "plugins", "marketplace.json"),
@@ -94,7 +128,7 @@ const mcpDocument = (declare) => ({
       command: process.execPath,
       args: ["./dump.mjs"],
       cwd: ".",
-      env: { CAPTURE_PATH: marker, LITERAL_REF: "${SYNTHETIC_MARKER}" },
+      env: { CAPTURE_PATH: mcpMarker, LITERAL_REF: "${SYNTHETIC_MARKER}" },
       ...(declare ? { env_vars: ["SYNTHETIC_MARKER"] } : {}),
     },
   },
@@ -125,18 +159,25 @@ try {
       encoding: "utf8",
     });
     assert.equal(install.status, 0, `plugin install failed: ${install.stdout}${install.stderr}`);
-    if (existsSync(marker)) rmSync(marker);
+    for (const path of [mcpMarker, hookMarker]) if (existsSync(path)) rmSync(path);
     const execution = await run(["exec", "--skip-git-repo-check", "--dangerously-bypass-hook-trust", "-"]);
-    assert.ok(existsSync(marker), `plugin stdio server must start: ${JSON.stringify(execution)}`);
-    const observed = JSON.parse(readFileSync(marker, "utf8"));
-    results.cases[declare ? "declaredEnvVar" : "undeclaredEnvVar"] = { execution, observed };
-    rmSync(marker);
+    assert.ok(existsSync(mcpMarker), `plugin stdio server must start: ${JSON.stringify(execution)}`);
+    assert.ok(existsSync(hookMarker), `plugin command hook must run: ${JSON.stringify(execution)}`);
+    const mcpObserved = JSON.parse(readFileSync(mcpMarker, "utf8"));
+    const hookObserved = JSON.parse(readFileSync(hookMarker, "utf8"));
+    results.cases[declare ? "declaredEnvVar" : "undeclaredEnvVar"] = { execution, mcpObserved, hookObserved };
+    rmSync(mcpMarker);
+    rmSync(hookMarker);
   }
   // The whole point: the same variable, same environment, one declaration apart.
-  assert.equal(results.cases.undeclaredEnvVar.observed.marker, null);
-  assert.equal(results.cases.declaredEnvVar.observed.marker, "synthetic-marker");
+  assert.equal(results.cases.undeclaredEnvVar.mcpObserved.marker, null);
+  assert.equal(results.cases.declaredEnvVar.mcpObserved.marker, "synthetic-marker");
   // `env` is copied verbatim; Codex performs no reference expansion of its own.
-  assert.equal(results.cases.declaredEnvVar.observed.literal, "${SYNTHETIC_MARKER}");
+  assert.equal(results.cases.declaredEnvVar.mcpObserved.literal, "${SYNTHETIC_MARKER}");
+  // Command hooks do not cross the MCP-specific filter: the marker reaches
+  // the hook unchanged whether or not the server asks Codex to forward it.
+  assert.equal(results.cases.undeclaredEnvVar.hookObserved.marker, "synthetic-marker");
+  assert.equal(results.cases.declaredEnvVar.hookObserved.marker, "synthetic-marker");
   const sanitize = (value) =>
     JSON.stringify(value, null, 2).split(JSON.stringify(scratch).slice(1, -1)).join("<scratch>");
   writeFileSync(new URL("observations.json", import.meta.url), sanitize(results) + "\n");

@@ -24,15 +24,17 @@ scratch directory afterwards. No personal trust, marketplace or installation
 setting is touched, and the real `~/.codex` is never read or written.
 
 The plugin's MCP server is a synthetic script that records the **names** of the
-variables it was given. It records one value only, a `SYNTHETIC_MARKER` the
-probe itself set; no real credential is read, logged or written.
+variables it was given. A `UserPromptSubmit` command hook records whether it
+received the same marker in a separate file. Both record one value only, a
+`SYNTHETIC_MARKER` the probe itself set; no real credential is read, logged or
+written.
 
 A synthetic model provider points at the probe's own loopback listener, which
 returns HTTP 503 for every request. Codex's session fails as expected — this is
 not a successful model conversation. MCP startup is measured before that
 failure, and no paid model is called.
 
-The two cases differ by one line: the same plugin, the same environment, with
+The two cases differ by one line: the same plugin, hook and environment, with
 and without `env_vars` in its `.mcp.json`.
 
 ## Observations
@@ -51,10 +53,10 @@ and without `env_vars` in its `.mcp.json`.
   `${SYNTHETIC_MARKER}` and arrives as that literal text in both cases, so Codex
   performs no reference expansion of its own. A projection that relies on
   expansion must therefore either expand before emitting or forward the name.
-- The same variable is present for the plugin's **command hooks**, which inherit
-  the environment whole (`.capture/codex-plugin-hooks`). The restriction is
-  specific to MCP servers, so a plugin's two halves see different environments
-  unless the projection forwards.
+- The same synthetic variable reached the plugin's `UserPromptSubmit` command
+  hook unchanged in both cases. It reached the MCP child only in the declared
+  case, so the restriction is specific to MCP startup rather than the plugin's
+  command-hook process.
 
 ## Consequences for the projection
 
@@ -84,5 +86,5 @@ is (an allowlist, not a secret filter) and the supported way through it.
   were unset on this machine and so could not appear here.
 - One Codex version. `env_vars` is not new in 0.154.0, but the baseline
   membership is not guaranteed stable across releases.
-- The probe measures a local stdio plugin server. Remote transports carry their
-  own authentication mechanisms and are out of scope.
+- The probe measures a local stdio plugin server and one `UserPromptSubmit`
+  command hook. Other hook events and remote transports are out of scope.

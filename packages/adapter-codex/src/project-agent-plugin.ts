@@ -531,7 +531,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-21",
             method: "live-probe",
             artifact: ".capture/codex-plugin-mcp-environment",
-            what: "What filters that environment, and the way through it: the same installed plugin in the same environment saw a synthetic marker only once its .mcp.json named it in env_vars, and the marker is not credential-shaped, so the baseline is an allowlist rather than a secret filter. Declared env values are copied verbatim, so Codex expands no reference of its own. The plugin's command hooks inherit the environment whole, so without forwarding a plugin's two halves see different environments.",
+            what: "What filters that environment, and the way through it: the same installed plugin in the same environment saw a synthetic marker in its MCP child only once its .mcp.json named it in env_vars, while its UserPromptSubmit command hook saw the marker unchanged in both cases. The marker is not credential-shaped, so the MCP baseline is an allowlist rather than a secret filter. Declared env values are copied verbatim, so Codex expands no reference of its own.",
           },
           {
             version: "0.154.0",

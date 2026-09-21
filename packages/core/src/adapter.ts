@@ -19,6 +19,8 @@ export interface ProjectComponentOptions {
   mcpStartupTimeoutMs?: Readonly<Record<string, number>>;
   /** Stdio cwd overrides already validated as contained by the project root. */
   mcpProjectCwdServers?: readonly string[];
+  /** Ambient variable names declared for MCP servers from an Agent Plugin package source. */
+  mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
 }
 
 /** A configured build target: config entry keyed by adapter/target id. */

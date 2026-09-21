@@ -84,7 +84,11 @@ export async function projectComponents(
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".agents/skills");
-  const translated = translateMcp(source.mcp ? { mcp: source.mcp.config } : {}, new Set(options.mcpProjectCwdServers));
+  const translated = translateMcp(
+    source.mcp ? { mcp: source.mcp.config } : {},
+    new Set(options.mcpProjectCwdServers),
+    source.origin === "package" ? options.mcpEnvironment : undefined,
+  );
   if (translated.omitted.length)
     throw new Error(translated.omitted.map((item) => `${item.name}: ${item.reason}`).join("; "));
   result.files.push(...(await projectMcpLauncher(source, root, output, translated.launcherServers)).files);
@@ -92,9 +96,13 @@ export async function projectComponents(
     const declaration = source.mcp?.config.mcpServers[name];
     const launcherIndex = "command" in server ? Number(server.args![1]) : -1;
     const forwarded =
-      source.origin === "direct" && launcherIndex >= 0
-        ? launcherEnvironmentReferences(translated.launcherServers[launcherIndex]!)
-        : [];
+      launcherIndex < 0
+        ? []
+        : source.origin === "direct"
+          ? launcherEnvironmentReferences(translated.launcherServers[launcherIndex]!)
+          : "command" in server
+            ? (server.env_vars ?? [])
+            : [];
     const base =
       "command" in server
         ? {

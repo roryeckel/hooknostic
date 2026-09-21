@@ -6,7 +6,7 @@
         "code": 1,
         "loopbackModelFailure": true
       },
-      "observed": {
+      "mcpObserved": {
         "names": [
           "APPDATA",
           "CAPTURE_PATH",
@@ -33,6 +33,9 @@
         ],
         "marker": null,
         "literal": "${SYNTHETIC_MARKER}"
+      },
+      "hookObserved": {
+        "marker": "synthetic-marker"
       }
     },
     "declaredEnvVar": {
@@ -40,7 +43,7 @@
         "code": 1,
         "loopbackModelFailure": true
       },
-      "observed": {
+      "mcpObserved": {
         "names": [
           "APPDATA",
           "CAPTURE_PATH",
@@ -68,6 +71,9 @@
         ],
         "marker": "synthetic-marker",
         "literal": "${SYNTHETIC_MARKER}"
+      },
+      "hookObserved": {
+        "marker": "synthetic-marker"
       }
     }
   }

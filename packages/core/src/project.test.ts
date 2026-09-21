@@ -570,6 +570,49 @@ describe("complete project integration", () => {
     const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
     expect(Object.keys(mcp.mcpServers)).toEqual(["literal"]);
   });
+  it("forwards packaged MCP environment declarations through Codex project delivery", async () => {
+    const codex = registry.codex!;
+    const { root, options } = await fixture({
+      components: {
+        root: "./portable",
+        targets: ["codex"],
+        mcpEnvironment: { credentialed: ["SERVICE_USER", "SERVICE_API_KEY", "SERVICE_USER"] },
+      },
+      targets: {
+        codex: {
+          adapter: "codex",
+          version: codex.harness.recommendedRange,
+          delivery: "project",
+          output: ".hooknostic/artifacts/codex",
+        },
+      },
+    });
+    await mkdir(join(root, "portable"));
+    await writeFile(
+      join(root, "portable/plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable" }),
+    );
+    await writeFile(
+      join(root, "portable/mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          credentialed: { type: "stdio", command: "node" },
+          plain: { type: "stdio", command: "node" },
+        },
+      }),
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    const servers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8")).mcp_servers as Record<
+      string,
+      { env_vars?: string[] }
+    >;
+    expect(servers.credentialed?.env_vars).toEqual(["SERVICE_API_KEY", "SERVICE_USER"]);
+    expect(servers.plain).not.toHaveProperty("env_vars");
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
+  });
   it("applies independent target MCP arguments, cwd, and timeout translations", async () => {
     const { root, options } = await fixture({
       components: {

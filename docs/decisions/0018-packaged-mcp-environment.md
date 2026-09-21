@@ -11,9 +11,10 @@ an API key, a user id, a tuning variable. On Claude and OpenCode it gets one:
 both start the server with the environment they were launched with. Codex does
 not. It starts a stdio child with a fixed platform allowlist and nothing else,
 and a variable reaches the child only by being named in that server's
-`env_vars` (`.capture/codex-plugin-mcp-environment`). The same plugin's command
-hooks inherit the environment whole, so without something, a plugin's two
-halves see different environments and only one of them works.
+`env_vars` (`.capture/codex-plugin-mcp-environment`). In the same probe the
+synthetic variable reached a `UserPromptSubmit` command hook unchanged, so
+without something, a plugin's two halves can see different environments and
+only one of them works.
 
 The obvious move is to let the package ask, by writing `${NAME}` in its
 `mcp.json` `env` and expanding it. That is exactly what the standard forbids.

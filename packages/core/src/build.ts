@@ -1146,6 +1146,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 ? {}
                 : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),
               ...(projectCwdServers.length === 0 ? {} : { mcpProjectCwdServers: projectCwdServers }),
+              ...(config.components?.mcpEnvironment === undefined
+                ? {}
+                : { mcpEnvironment: config.components.mcpEnvironment }),
             });
             // Not an omission: the skill is delivered, in place, and counting
             // it as skipped would misreport a component that is present. Warn,
