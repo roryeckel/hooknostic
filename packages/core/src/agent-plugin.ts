@@ -234,10 +234,9 @@ export function analyzeAgentPluginProjection(
         message: `Agent Plugin component ${JSON.stringify(component)} is unsupported on ${JSON.stringify(target.id)}.`,
       });
     } else if (compatibility !== undefined && !meetsMinimum(support.level, compatibility.minimum)) {
-      // Emitted, not omitted: `support` carries the real level, which is what
-      // keeps the analyzed report from counting the component as skipped.
+      // Emitted, not omitted, so not HN205, which marks a component skipped.
       resolved.diagnostics.push({
-        code: "HN205",
+        code: "HN206",
         severity: compatibility.onBelowMinimum,
         target: target.id,
         component,

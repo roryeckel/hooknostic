@@ -2,6 +2,11 @@
 
 Status: accepted for implementation.
 
+**Superseded in part by:** [ADR-0019](0019-agent-plugin-spec-deviations.md). A
+Claude package remote declaration containing an environment reference is now
+emitted and reported as the `claude:mcp-environment-expansion` deviation (HN106),
+not omitted with HN205.
+
 ## Context
 
 Artifact generation left each consumer responsible for native registrations,

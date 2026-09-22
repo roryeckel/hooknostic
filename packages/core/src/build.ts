@@ -472,11 +472,7 @@ function analyzedProjectionReport(
   if (hasRuntimePackage) discovered.set("agent-plugin.runtime-package", 1);
   const unsupported = new Set(
     resolution.diagnostics.flatMap((diagnostic) =>
-      // Only an unsupported component is skipped. A below-minimum HN205 carries
-      // the component's real level and is still emitted.
-      diagnostic.code === "HN205" && diagnostic.component !== undefined && diagnostic.support === "unsupported"
-        ? [diagnostic.component]
-        : [],
+      diagnostic.code === "HN205" && diagnostic.component !== undefined ? [diagnostic.component] : [],
     ),
   );
   return {
@@ -1118,10 +1114,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 const policy = effectiveCompatibility(config, id);
                 if (!meetsMinimum(cell.level, policy.minimum))
                   diagnostics.push({
-                    code: "HN205",
+                    code: "HN206",
                     severity: policy.onBelowMinimum,
                     target: id,
                     component,
+                    support: cell.level,
                     message: `${component} project support ${cell.level} is below ${policy.minimum}`,
                   });
               }

@@ -54,7 +54,9 @@ export async function projectComponents(
       // Only a package's text is governed by the specification: a direct
       // source's `${NAME}` is a request Claude is meant to resolve. Stdio
       // servers launch from the opaque document, which Claude never expands, so
-      // only a remote declaration shows Claude package text.
+      // only a remote declaration shows Claude package text. The document is
+      // forced, not chosen: a project .mcp.json has no variable naming a package
+      // root (`.capture/claude-project-mcp-environment`).
       if (source.origin === "package" && server.type !== "stdio") {
         const references = claudeExpandedReferences(server);
         if (references.length > 0 && declaresEnvironmentExpansion(options.support?.[component])) {
@@ -92,7 +94,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
-          "A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project.",
+          "A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment. Dependencies are supplied by the project.",
       },
       "agent-plugin.mcp.streamable-http": {
         level: "exact",
@@ -134,6 +136,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-12",
       validatedOn: [
+        {
+          version: "2.1.278",
+          date: "2026-09-21",
+          method: "live-probe",
+          artifact: ".capture/claude-project-mcp-environment",
+          what: "Project stdio: a synchronized package server received its ${NAME} and ${NAME:-default} args and env values literally through the generated launcher, while Claude expanded the same text in a native declaration; Claude did not expand ${CLAUDE_PROJECT_DIR} in .mcp.json, though it set that variable for the child.",
+        },
         {
           version: "2.1.278",
           date: "2026-09-21",

@@ -178,7 +178,7 @@ describe.skipIf(!enabled)("Codex smoke (real harness)", () => {
         "exec",
         "-",
         "-m",
-        "gpt-5.3-codex-spark",
+        "gpt-5.6-luna",
         "-s",
         "workspace-write",
         "--dangerously-bypass-hook-trust",

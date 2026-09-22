@@ -121,7 +121,7 @@ describe("resolveAgentPluginProjection", () => {
     expect(result.diagnostics.filter((item) => item.component === "agent-plugin.skills")).toEqual(
       severities.map((severity) =>
         expect.objectContaining({
-          code: "HN205",
+          code: "HN206",
           severity,
           support: "approximate",
           rationale: "loses metadata",

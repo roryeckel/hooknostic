@@ -364,7 +364,7 @@ Fidelity order: `exact > emulated > approximate > unsupported`. Project default:
 `minimum: "emulated"; onBelowMinimum: "error"`. Per-target overrides allow intentional
 degradation. The same policy applies to every discovered Agent Plugin component, in
 package projection and project delivery alike. A supported component below the minimum
-is an HN205 at `onBelowMinimum`, and it is still emitted when that is `"warn"`. An
+is an HN206 at `onBelowMinimum`, and it is still emitted when that is `"warn"`. An
 `unsupported` component follows `components.onUnsupported` instead. A deviation
 (ADR-0019) is not a level, so this policy never acts on one: `components.onDeviation`
 does.
@@ -607,7 +607,8 @@ HN201 capability unsupported
 Initial codes: **HN101** degraded capability, **HN102** optional capability unavailable,
 **HN201** required capability unsupported, **HN202** event unavailable, **HN203** target
 version outside adapter data, **HN204** artifact mode unsupported, **HN205** valid Agent
-Plugin component unsupported, **HN301** adapter
+Plugin component unsupported, **HN206** Agent Plugin component below the minimum fidelity
+(still emitted under `onBelowMinimum: "warn"`), **HN301** adapter
 generation failure, **HN302** output commit failure, **HN401** unsupported effect returned
 at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
 **HN503** invalid Agent Plugin input, unsafe path, or unmergeable overlay.
