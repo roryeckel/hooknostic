@@ -74,7 +74,7 @@ Known deviations from Agent Plugins 1.0, reported as `HN106`:
 
 | Deviation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `claude:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Claude substitutes set environment variables into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Claude substitutes set variables from its own environment (never from the server's env block) into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command. | `.capture/agent-plugin-mcp-placeholders` |
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
 
@@ -82,6 +82,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | A stdio reference to a name the server's own env block also declares resolved to Claude's ambient value, not the declared one, and a name only the block declares stayed literal, in env and args alike; the child still received each declared value. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} and ${NAME:-default} references in a projected package's stdio command, args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; plain unset references remained literal, and placeholder-like header names stayed literal and were refused as invalid. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration. |
 | 2.1.273 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable. |
