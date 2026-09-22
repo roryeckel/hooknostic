@@ -20,6 +20,9 @@ const ambient = {
   SYNTHETIC_REMOTE_HEADER: "expanded-header",
   PLUGIN_ROOT: "ambient-plugin-root",
   PLUGIN_DATA: "ambient-plugin-data",
+  // Also declared in the server's own env block, with a different value.
+  // SIBLING_ONLY is declared there and deliberately absent from here.
+  SIBLING_BOTH: "ambient-both",
 };
 
 const captureEnvironmentNames = new Set([
@@ -159,6 +162,8 @@ function writeProbeSource(root, remoteBase) {
               "${HOOKNOSTIC_UNSET}",
               "${SYNTHETIC_MARKER:-fallback}",
               "${HOOKNOSTIC_UNSET:-fallback}",
+              "${SIBLING_BOTH}",
+              "${SIBLING_ONLY}",
             ],
             env: {
               RESERVED_ROOT: "${PLUGIN_ROOT}",
@@ -167,6 +172,11 @@ function writeProbeSource(root, remoteBase) {
               UNKNOWN_REFERENCE: "${HOOKNOSTIC_UNSET}",
               DEFAULTED_KNOWN: "${SYNTHETIC_MARKER:-fallback}",
               DEFAULTED_UNKNOWN: "${HOOKNOSTIC_UNSET:-fallback}",
+              // A reference to a name this same block declares.
+              SIBLING_BOTH: "declared-both",
+              SIBLING_ONLY: "declared-only",
+              BOTH_REFERENCE: "${SIBLING_BOTH}",
+              ONLY_REFERENCE: "${SIBLING_ONLY}",
             },
             cwd: "./${SYNTHETIC_CWD}",
           },
@@ -200,7 +210,7 @@ appendFileSync(OUT, JSON.stringify({
   commandLabel: process.argv[2],
   args: process.argv.slice(3),
   cwd: basename(process.cwd()),
-  env: Object.fromEntries(["PLUGIN_ROOT", "PLUGIN_DATA", "RESERVED_ROOT", "RESERVED_DATA", "KNOWN_REFERENCE", "UNKNOWN_REFERENCE", "DEFAULTED_KNOWN", "DEFAULTED_UNKNOWN"].map((name) => [name, process.env[name] ?? null])),
+  env: Object.fromEntries(["PLUGIN_ROOT", "PLUGIN_DATA", "RESERVED_ROOT", "RESERVED_DATA", "KNOWN_REFERENCE", "UNKNOWN_REFERENCE", "DEFAULTED_KNOWN", "DEFAULTED_UNKNOWN", "SIBLING_BOTH", "SIBLING_ONLY", "BOTH_REFERENCE", "ONLY_REFERENCE"].map((name) => [name, process.env[name] ?? null])),
 }) + "\\n", "utf8");
 let buffer = "";
 process.stdin.setEncoding("utf8");
@@ -279,6 +289,8 @@ function nativeClaudeControl(projected, scratch, remoteBase) {
               "${HOOKNOSTIC_UNSET}",
               "${SYNTHETIC_MARKER:-fallback}",
               "${HOOKNOSTIC_UNSET:-fallback}",
+              "${SIBLING_BOTH}",
+              "${SIBLING_ONLY}",
             ],
             env: {
               PLUGIN_ROOT: "${CLAUDE_PLUGIN_ROOT}",
@@ -289,6 +301,10 @@ function nativeClaudeControl(projected, scratch, remoteBase) {
               UNKNOWN_REFERENCE: "${HOOKNOSTIC_UNSET}",
               DEFAULTED_KNOWN: "${SYNTHETIC_MARKER:-fallback}",
               DEFAULTED_UNKNOWN: "${HOOKNOSTIC_UNSET:-fallback}",
+              SIBLING_BOTH: "declared-both",
+              SIBLING_ONLY: "declared-only",
+              BOTH_REFERENCE: "${SIBLING_BOTH}",
+              ONLY_REFERENCE: "${SIBLING_ONLY}",
             },
             cwd: "${CLAUDE_PLUGIN_ROOT}/${SYNTHETIC_CWD}",
           },
@@ -582,15 +598,27 @@ try {
   // text, the command included, reaches Claude's expansion.
   const claude = byHarness["claude-projected"].child;
   assert.equal(claude.commandLabel, "expanded-command");
-  assert.deepEqual(claude.args.slice(2), [ambient.SYNTHETIC_MARKER, "${HOOKNOSTIC_UNSET}", ambient.SYNTHETIC_MARKER, "fallback"]);
+  assert.deepEqual(claude.args.slice(2, 6), [ambient.SYNTHETIC_MARKER, "${HOOKNOSTIC_UNSET}", ambient.SYNTHETIC_MARKER, "fallback"]);
   assert.equal(claude.cwd, ambient.SYNTHETIC_CWD);
   assert.equal(claude.env.KNOWN_REFERENCE, ambient.SYNTHETIC_MARKER);
   assert.equal(claude.env.DEFAULTED_KNOWN, ambient.SYNTHETIC_MARKER);
   assert.equal(claude.env.DEFAULTED_UNKNOWN, "fallback");
+  // Claude resolves a reference from its own environment, never from the
+  // server's env block: the ambient value wins over a sibling declaration, and
+  // a name only the block declares stays literal. The child still receives
+  // the declared value for the variable itself.
+  for (const harness of ["claude-native-control", "claude-projected"]) {
+    const child = byHarness[harness].child;
+    assert.deepEqual(child.args.slice(6), [ambient.SIBLING_BOTH, "${SIBLING_ONLY}"]);
+    assert.equal(child.env.BOTH_REFERENCE, ambient.SIBLING_BOTH);
+    assert.equal(child.env.ONLY_REFERENCE, "${SIBLING_ONLY}");
+    assert.equal(child.env.SIBLING_BOTH, "declared-both");
+    assert.equal(child.env.SIBLING_ONLY, "declared-only");
+  }
   for (const harness of ["opencode-projected", "codex-projected"]) {
     const child = byHarness[harness].child;
     assert.equal(child.commandLabel, "literal-command");
-    assert.deepEqual(child.args.slice(2), [
+    assert.deepEqual(child.args.slice(2, 6), [
       "${SYNTHETIC_MARKER}",
       "${HOOKNOSTIC_UNSET}",
       "${SYNTHETIC_MARKER:-fallback}",
@@ -599,6 +627,9 @@ try {
     assert.equal(child.cwd, "${SYNTHETIC_CWD}");
     assert.equal(child.env.KNOWN_REFERENCE, "${SYNTHETIC_MARKER}");
     assert.equal(child.env.DEFAULTED_UNKNOWN, "${HOOKNOSTIC_UNSET:-fallback}");
+    assert.deepEqual(child.args.slice(6), ["${SIBLING_BOTH}", "${SIBLING_ONLY}"]);
+    assert.equal(child.env.BOTH_REFERENCE, "${SIBLING_BOTH}");
+    assert.equal(child.env.SIBLING_BOTH, "declared-both");
   }
   assert.deepEqual(byHarness["codex-projected"].remote, {
     known: {

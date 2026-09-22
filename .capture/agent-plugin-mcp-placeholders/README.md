@@ -19,7 +19,10 @@ when it loads a projected package?
 stdio server records the command wrapper that ran, its arguments, selected
 environment values, and cwd before completing an MCP handshake. The parent sets
 known synthetic variables while leaving another reference unset. Each reference
-also appears in the `${NAME:-default}` form. The command is
+also appears in the `${NAME:-default}` form. The server's own `env` block also
+declares two names and references them from `env` and `args`. `SIBLING_BOTH` is
+set in the parent environment with a different value, and `SIBLING_ONLY` is
+not. The command is
 `./${SYNTHETIC_COMMAND}.cmd`, and the package ships both a wrapper with that
 literal name and `expanded-command.cmd`. Literal and expanded cwd directories
 both exist too. So the child's own effect shows which spelling the harness used.
@@ -58,6 +61,14 @@ pnpm exec vitest run --config .capture/agent-plugin-mcp-placeholders/vitest.conf
   and left the unset `${HOOKNOSTIC_UNSET}` literal.
 - **Default forms follow the documented rule.** `${NAME:-default}` became the
   value when the name was set and the default when it was not.
+- **A reference resolves from Claude's own environment, never from the
+  server's `env` block.**
+  - `${SIBLING_BOTH}` became the parent environment's value, not the value the
+    same block declared.
+  - `${SIBLING_ONLY}`, declared only in the block, stayed literal.
+  - The child still received each declared variable at its declared value.
+  - This held in the native control and in the projected package, in both
+    `env` and `args`.
 - **The projected package shows the same behavior**, in every field:
   - Claude ran `expanded-command.cmd`: it expanded the command.
   - It expanded the known argument, the known environment value, and both
@@ -80,7 +91,7 @@ escape.
 
 Codex and OpenCode kept the command literal: each ran the wrapper literally
 named `${SYNTHETIC_COMMAND}.cmd`. They kept every stdio reference literal too,
-default forms included. Codex also preserved known, reserved, and unset
+including default forms and references to names the `env` block declares. Codex also preserved known, reserved, and unset
 references in remote URLs and headers. The existing OpenCode projection
 contributes remote fields verbatim after its native interpolation phase
 (`.capture/opencode-agent-plugin`), so no package reference is resolved there.

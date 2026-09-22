@@ -13,7 +13,9 @@
           "expanded-marker",
           "${HOOKNOSTIC_UNSET}",
           "expanded-marker",
-          "fallback"
+          "fallback",
+          "ambient-both",
+          "${SIBLING_ONLY}"
         ],
         "cwd": "hooknostic",
         "env": {
@@ -24,7 +26,11 @@
           "KNOWN_REFERENCE": "expanded-marker",
           "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
           "DEFAULTED_KNOWN": "expanded-marker",
-          "DEFAULTED_UNKNOWN": "fallback"
+          "DEFAULTED_UNKNOWN": "fallback",
+          "SIBLING_BOTH": "declared-both",
+          "SIBLING_ONLY": "declared-only",
+          "BOTH_REFERENCE": "ambient-both",
+          "ONLY_REFERENCE": "${SIBLING_ONLY}"
         }
       },
       "remote": {
@@ -44,7 +50,9 @@
           "expanded-marker",
           "${HOOKNOSTIC_UNSET}",
           "expanded-marker",
-          "fallback"
+          "fallback",
+          "ambient-both",
+          "${SIBLING_ONLY}"
         ],
         "cwd": "expanded-cwd",
         "env": {
@@ -55,7 +63,11 @@
           "KNOWN_REFERENCE": "expanded-marker",
           "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
           "DEFAULTED_KNOWN": "expanded-marker",
-          "DEFAULTED_UNKNOWN": "fallback"
+          "DEFAULTED_UNKNOWN": "fallback",
+          "SIBLING_BOTH": "declared-both",
+          "SIBLING_ONLY": "declared-only",
+          "BOTH_REFERENCE": "ambient-both",
+          "ONLY_REFERENCE": "${SIBLING_ONLY}"
         }
       },
       "remote": {
@@ -75,7 +87,9 @@
           "${SYNTHETIC_MARKER}",
           "${HOOKNOSTIC_UNSET}",
           "${SYNTHETIC_MARKER:-fallback}",
-          "${HOOKNOSTIC_UNSET:-fallback}"
+          "${HOOKNOSTIC_UNSET:-fallback}",
+          "${SIBLING_BOTH}",
+          "${SIBLING_ONLY}"
         ],
         "cwd": "${SYNTHETIC_CWD}",
         "env": {
@@ -86,7 +100,11 @@
           "KNOWN_REFERENCE": "${SYNTHETIC_MARKER}",
           "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
           "DEFAULTED_KNOWN": "${SYNTHETIC_MARKER:-fallback}",
-          "DEFAULTED_UNKNOWN": "${HOOKNOSTIC_UNSET:-fallback}"
+          "DEFAULTED_UNKNOWN": "${HOOKNOSTIC_UNSET:-fallback}",
+          "SIBLING_BOTH": "declared-both",
+          "SIBLING_ONLY": "declared-only",
+          "BOTH_REFERENCE": "${SIBLING_BOTH}",
+          "ONLY_REFERENCE": "${SIBLING_ONLY}"
         }
       },
       "remote": {
@@ -106,7 +124,9 @@
           "${SYNTHETIC_MARKER}",
           "${HOOKNOSTIC_UNSET}",
           "${SYNTHETIC_MARKER:-fallback}",
-          "${HOOKNOSTIC_UNSET:-fallback}"
+          "${HOOKNOSTIC_UNSET:-fallback}",
+          "${SIBLING_BOTH}",
+          "${SIBLING_ONLY}"
         ],
         "cwd": "${SYNTHETIC_CWD}",
         "env": {
@@ -117,7 +137,11 @@
           "KNOWN_REFERENCE": "${SYNTHETIC_MARKER}",
           "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
           "DEFAULTED_KNOWN": "${SYNTHETIC_MARKER:-fallback}",
-          "DEFAULTED_UNKNOWN": "${HOOKNOSTIC_UNSET:-fallback}"
+          "DEFAULTED_UNKNOWN": "${HOOKNOSTIC_UNSET:-fallback}",
+          "SIBLING_BOTH": "declared-both",
+          "SIBLING_ONLY": "declared-only",
+          "BOTH_REFERENCE": "${SIBLING_BOTH}",
+          "ONLY_REFERENCE": "${SIBLING_ONLY}"
         }
       },
       "remote": {

@@ -55,5 +55,7 @@ export function declaresEnvironmentExpansion(cell: AgentPluginComponentSupport |
 }
 
 export function environmentExpansionReason(name: string, references: readonly string[]): string {
-  return `MCP server ${JSON.stringify(name)} contains ${references.join(", ")}, which Agent Plugins 1.0 requires to remain literal; Claude substitutes a set environment variable into it, so the server may receive that value instead.`;
+  // "Its own environment" is load-bearing: a name the server's env block also
+  // declares resolves to Claude's ambient value, not the declared one.
+  return `MCP server ${JSON.stringify(name)} contains ${references.join(", ")}, which Agent Plugins 1.0 requires to remain literal; Claude substitutes the variable's value from its own environment when it is set, never from this server's env block, so the server may receive that value instead.`;
 }

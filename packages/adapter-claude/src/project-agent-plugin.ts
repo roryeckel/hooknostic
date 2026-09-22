@@ -552,7 +552,7 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             {
               id: ENVIRONMENT_EXPANSION_DEVIATION,
               summary:
-                "Claude substitutes set environment variables into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command.",
+                "Claude substitutes set variables from its own environment (never from the server's env block) into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command.",
               evidence: ".capture/agent-plugin-mcp-placeholders",
             },
           ],
@@ -585,6 +585,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-04",
         validatedOn: [
+          {
+            version: "2.1.278",
+            date: "2026-09-21",
+            method: "live-probe",
+            artifact: ".capture/agent-plugin-mcp-placeholders",
+            what: "A stdio reference to a name the server's own env block also declares resolved to Claude's ambient value, not the declared one, and a name only the block declares stayed literal, in env and args alike; the child still received each declared value.",
+          },
           {
             version: "2.1.278",
             date: "2026-09-21",
