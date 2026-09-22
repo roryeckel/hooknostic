@@ -160,6 +160,26 @@ const projectMcpTargetOverrideSchema = z
   })
   .strict();
 
+const mcpEnvironmentRecordSchema = z.record(z.string().min(1), z.array(z.string().min(1)));
+
+const mcpEnvironmentSchema = z.unknown().transform((value, context): Record<string, string[]> => {
+  const parsed = mcpEnvironmentRecordSchema.safeParse(value);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) context.addIssue(issue);
+    return z.NEVER;
+  }
+
+  const entries = Object.entries(parsed.data);
+  // Zod 3 validates an enumerable own `__proto__` record entry, then
+  // deliberately omits it while merging into a plain output object. Rebuild
+  // with Object.fromEntries so the server name remains an own data property
+  // without invoking Object.prototype's inherited setter.
+  if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
+    entries.push(["__proto__", (value as Record<string, string[]>)["__proto__"]!]);
+  }
+  return Object.fromEntries(entries);
+});
+
 export const hooknosticConfigSchema = z
   .object({
     project: z
@@ -179,7 +199,7 @@ export const hooknosticConfigSchema = z
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
         executableFiles: z.array(z.string().min(1)).optional(),
-        mcpEnvironment: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
+        mcpEnvironment: mcpEnvironmentSchema.optional(),
         runtimePackage: z
           .object({
             manifest: z.string().min(1),

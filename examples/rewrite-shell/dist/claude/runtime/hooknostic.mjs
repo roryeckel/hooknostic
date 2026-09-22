@@ -4473,7 +4473,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4577,6 +4577,20 @@ var init_schemas = __esm({
       startupTimeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
       servers: external_exports.record(external_exports.string().min(1), projectMcpServerOverrideSchema).optional()
     }).strict();
+    mcpEnvironmentRecordSchema = external_exports.record(external_exports.string().min(1), external_exports.array(external_exports.string().min(1)));
+    mcpEnvironmentSchema = external_exports.unknown().transform((value, context) => {
+      const parsed = mcpEnvironmentRecordSchema.safeParse(value);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues)
+          context.addIssue(issue);
+        return external_exports.NEVER;
+      }
+      const entries = Object.entries(parsed.data);
+      if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
+        entries.push(["__proto__", value["__proto__"]]);
+      }
+      return Object.fromEntries(entries);
+    });
     hooknosticConfigSchema = external_exports.object({
       project: external_exports.object({ root: external_exports.string().min(1) }).strict().optional(),
       entry: external_exports.string().min(1).optional(),
@@ -4591,7 +4605,7 @@ var init_schemas = __esm({
         targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
         exclude: external_exports.array(external_exports.string().min(1)).optional(),
         executableFiles: external_exports.array(external_exports.string().min(1)).optional(),
-        mcpEnvironment: external_exports.record(external_exports.string().min(1), external_exports.array(external_exports.string().min(1))).optional(),
+        mcpEnvironment: mcpEnvironmentSchema.optional(),
         runtimePackage: external_exports.object({
           manifest: external_exports.string().min(1),
           lockfile: external_exports.string().min(1),

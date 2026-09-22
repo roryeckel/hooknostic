@@ -572,11 +572,14 @@ describe("complete project integration", () => {
   });
   it("forwards packaged MCP environment declarations through Codex project delivery", async () => {
     const codex = registry.codex!;
-    const { root, options } = await fixture({
+    const { root, config, options } = await fixture({
       components: {
         root: "./portable",
         targets: ["codex"],
-        mcpEnvironment: { credentialed: ["SERVICE_USER", "SERVICE_API_KEY", "SERVICE_USER"] },
+        mcpEnvironment: Object.fromEntries([
+          ["credentialed", ["SERVICE_USER", "SERVICE_API_KEY", "SERVICE_USER"]],
+          ["__proto__", ["PROTOTYPE_TOKEN"]],
+        ]),
       },
       targets: {
         codex: {
@@ -587,6 +590,10 @@ describe("complete project integration", () => {
         },
       },
     });
+    // The ordinary object-literal spelling of `__proto__` changes the object's
+    // prototype. Parse the serialized config so it remains an own data property,
+    // matching a computed property in an authored TypeScript config.
+    await writeFile(options.configPath, `export default JSON.parse(${JSON.stringify(JSON.stringify(config))});`);
     await mkdir(join(root, "portable"));
     await writeFile(
       join(root, "portable/plugin.json"),
@@ -596,10 +603,11 @@ describe("complete project integration", () => {
       join(root, "portable/mcp.json"),
       JSON.stringify({
         $schema: AGENT_PLUGIN_MCP_SCHEMA,
-        mcpServers: {
-          credentialed: { type: "stdio", command: "node" },
-          plain: { type: "stdio", command: "node" },
-        },
+        mcpServers: Object.fromEntries([
+          ["credentialed", { type: "stdio", command: "node" }],
+          ["plain", { type: "stdio", command: "node" }],
+          ["__proto__", { type: "stdio", command: "node" }],
+        ]),
       }),
     );
 
@@ -611,6 +619,8 @@ describe("complete project integration", () => {
     >;
     expect(servers.credentialed?.env_vars).toEqual(["SERVICE_API_KEY", "SERVICE_USER"]);
     expect(servers.plain).not.toHaveProperty("env_vars");
+    expect(Object.hasOwn(servers, "__proto__")).toBe(true);
+    expect(servers["__proto__"]?.env_vars).toEqual(["PROTOTYPE_TOKEN"]);
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
   it("applies independent target MCP arguments, cwd, and timeout translations", async () => {
