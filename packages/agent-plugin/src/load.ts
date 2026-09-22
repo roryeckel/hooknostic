@@ -310,6 +310,7 @@ function validateServer(
   name: string,
   value: unknown,
   issues: AgentPluginIssue[],
+  origin: "package" | "direct",
   projectRoot?: string,
 ): AgentPluginMcpServer | undefined {
   const path = `mcp.json#/mcpServers/${name}`;
@@ -332,7 +333,12 @@ function validateServer(
     const commandValid =
       typeof command === "string" &&
       command.length > 0 &&
-      !command.includes("${") &&
+      // The schema admits any command, and the specification excludes it from
+      // expansion, so in a package `${NAME}` is literal text and is carried
+      // as such (a harness that expands it reports a deviation, ADR-0019). A
+      // direct source expands references everywhere else and not here, so it
+      // is refused there rather than launched as a literal the author did not mean.
+      (origin === "package" || !command.includes("${")) &&
       (command.startsWith("./")
         ? command.length > 2 && containedPortablePath(root, command, "./")
         : !command.includes("/") && !command.includes("\\"));
@@ -391,6 +397,7 @@ function loadMcp(
   root: string,
   inventory: InventoryResult,
   issues: AgentPluginIssue[],
+  origin: "package" | "direct",
   projectRoot?: string,
 ): AgentPluginMcpConfig | undefined {
   const file = inventory.files.find((candidate) => candidate.path === "mcp.json");
@@ -424,7 +431,7 @@ function loadMcp(
   }
   const serverEntries: [string, AgentPluginMcpServer][] = [];
   for (const [name, server] of Object.entries(value["mcpServers"])) {
-    const valid = validateServer(root, name, server, issues, projectRoot);
+    const valid = validateServer(root, name, server, issues, origin, projectRoot);
     if (valid !== undefined) serverEntries.push([name, valid]);
   }
   // Object.fromEntries defines own data properties, including `__proto__`.
@@ -739,7 +746,7 @@ export async function loadAgentPlugin(options: LoadAgentPluginOptions): Promise<
   if (manifest === undefined) return { issues };
 
   const skills = loadSkills(inventoried, issues);
-  const mcp = loadMcp(root, inventoried, issues);
+  const mcp = loadMcp(root, inventoried, issues, "package");
   // Only the package route: the direct route hands `loadMcp` a synthetic
   // one-file inventory, and `validateDirectMcpPaths` already resolves its
   // commands against the real filesystem instead.
@@ -862,7 +869,7 @@ export async function loadProjectComponents(options: {
     if (direct) {
       const file = { path: "mcp.json", contents: direct.contents, mode: 0o644 };
       const root = resolve(direct.path, "..");
-      const config = loadMcp(root, { files: [file], directories: new Set() }, issues, options.projectRoot);
+      const config = loadMcp(root, { files: [file], directories: new Set() }, issues, "direct", options.projectRoot);
       if (config) {
         await validateDirectMcpPaths(config, root, issues, options.projectRoot);
         source.mcp = { root, config };

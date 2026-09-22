@@ -124,6 +124,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       component: id,
       level: entry?.level ?? "unsupported",
       ...(entry?.rationale === undefined ? {} : { rationale: entry.rationale }),
+      ...(entry?.deviations === undefined
+        ? {}
+        : { deviations: entry.deviations.map((deviation) => ({ ...deviation, id: `${adapter.id}:${deviation.id}` })) }),
     };
   });
 
@@ -169,6 +172,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       options.io.stdout(
         `${row.level.padEnd(12)} ${row.component}${row.rationale ? `\n             ${row.rationale}` : ""}`,
       );
+      for (const deviation of row.deviations ?? []) {
+        options.io.stdout(`             deviation ${deviation.id}: ${deviation.summary} (${deviation.evidence})`);
+      }
     }
   }
   return 0;

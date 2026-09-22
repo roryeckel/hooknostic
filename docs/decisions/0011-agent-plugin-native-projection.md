@@ -615,3 +615,54 @@ decided here.
   adapter that gains npm packaging later refuses the coordinate loudly until it
   says otherwise; for a field that decides where a package is published, failing
   closed is the safe direction.
+
+## Amendments — 2026-09-21 (fifteenth)
+
+- **Claude's native substitution is broader than the portable contract.** A
+  package probe on 2.1.278 (`.capture/agent-plugin-mcp-placeholders`) showed
+  that Claude substitutes any set environment variable into a projected
+  package's stdio args, env values and launcher cwd argument, and into remote
+  urls and header values. An unset name remains literal. This is Claude's
+  documented `.mcp.json` expansion, not something specific to plugins, and
+  neither that probe nor `.capture/claude-project-mcp-environment` found an
+  escape. Agent Plugins 1.0 requires every name except `PLUGIN_ROOT` and
+  `PLUGIN_DATA` to remain literal on stdio fields and forbids all remote
+  expansion.
+- **The deviation is reported, not engineered around.** The projection keeps
+  its native declaration. Each server containing text Claude would expand is
+  reported, naming the server and the references, and is still emitted:
+  nothing is omitted, and when the variable is set the server gets what its
+  author almost certainly meant. As first written, this was an `HN205` warning
+  at fixed severity. ADR-0019 replaced it with a profile-declared deviation,
+  `HN106`, under `components.onDeviation`. The three MCP components stay
+  `exact` and their rationales state the deviation, as the manifest's author
+  caveat already does: Claude implements the contract. It is just broader than
+  the contract.
+- **An opaque server document was prototyped and rejected.** Moving every
+  server's command, args, env and cwd into a generated document that the
+  launcher reads by index kept the text literal on 2.1.278. But it charged
+  every package for a rare one:
+  - Claude's `.mcp.json` would show only `node <launcher> <index>`. `/mcp`,
+    `claude mcp get`, and anyone reviewing an installed plugin would lose sight
+    of what runs.
+  - It moved Claude onto the self-resolving front end that the tenth amendment
+    kept it off.
+  - It protected text whose author almost always meant expansion.
+
+  Refusing remote servers that contain a reference was rejected with it.
+  Claude's own documentation uses `Authorization: Bearer ${API_KEY}` as its
+  example. Under the default policy the refusal failed the build for a server
+  that works on Claude as its author intended, and left the author to strip the
+  header or wrap the server in a stdio proxy.
+- **The seventh amendment's security argument does not transfer.** That removal
+  concerned expansion that Hooknostic's generated OpenCode module performed, a
+  capability the harness itself did not grant. Claude grants this one to every
+  native plugin, so passing the text through gives a projected package nothing
+  a hand-written Claude plugin lacks. The warning makes the departure from the
+  portable contract visible; the projection does not widen it.
+- **Project delivery is unchanged here.** Claude project integration still omits
+  a package-origin remote server containing a reference
+  (`.capture/claude-project-mcp-environment`). Whether it should warn instead
+  is a separate decision. ADR-0019 made that decision: project delivery reports
+  the same deviation and emits the server.
+

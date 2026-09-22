@@ -48,6 +48,8 @@ test("captures Claude project MCP environment-reference behavior", async () => {
       percentEncoded: { url: transportBase + "/percent/%24%7BHOOKNOSTIC_CAPTURE_PATH%7D", headers: { Authorization: "Bearer %24%7BHOOKNOSTIC_CAPTURE_HEADER%7D" } },
       backslash: { url: transportBase + "/backslash/\\${HOOKNOSTIC_CAPTURE_PATH}", headers: { Authorization: "Bearer \\${HOOKNOSTIC_CAPTURE_HEADER}" } },
       doubledDollar: { url: transportBase + "/doubled-dollar/$${HOOKNOSTIC_CAPTURE_PATH}", headers: { Authorization: "Bearer $${HOOKNOSTIC_CAPTURE_HEADER}" } },
+      defaultedSet: { url: transportBase + "/defaulted-set/${HOOKNOSTIC_CAPTURE_PATH:-fallback-path}", headers: { Authorization: "Bearer ${HOOKNOSTIC_CAPTURE_HEADER:-fallback-header}" } },
+      defaultedUnset: { url: transportBase + "/defaulted-unset/${HOOKNOSTIC_CAPTURE_UNSET:-fallback-path}", headers: { Authorization: "Bearer ${HOOKNOSTIC_CAPTURE_UNSET:-fallback-header}" } },
     };
     const config = join(root, "mcp.json");
     await writeFile(config, JSON.stringify({ mcpServers: Object.fromEntries(Object.entries(variants).map(([name, server]) => [name, { type: "http", ...server }])) }, null, 2));
@@ -72,6 +74,8 @@ test("captures Claude project MCP environment-reference behavior", async () => {
       expect.objectContaining({ url: "/percent/%24%7BHOOKNOSTIC_CAPTURE_PATH%7D", authorization: "Bearer %24%7BHOOKNOSTIC_CAPTURE_HEADER%7D" }),
       expect.objectContaining({ url: "/backslash//expanded-path", authorization: "Bearer \\expanded-header" }),
       expect.objectContaining({ url: "/doubled-dollar/$expanded-path", authorization: "Bearer $expanded-header" }),
+      expect.objectContaining({ url: "/defaulted-set/expanded-path", authorization: "Bearer expanded-header" }),
+      expect.objectContaining({ url: "/defaulted-unset/fallback-path", authorization: "Bearer fallback-header" }),
     ]));
   } finally {
     await model.close();

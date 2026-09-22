@@ -1,6 +1,6 @@
 {
-  "version": "2.1.268",
-  "date": "2026-09-12",
+  "version": "2.1.278",
+  "date": "2026-09-21",
   "platform": "windows",
   "method": "live-probe",
   "observations": {
@@ -23,6 +23,14 @@
     "doubledDollar": {
       "url": "/doubled-dollar/$expanded-path",
       "authorization": "Bearer $expanded-header"
+    },
+    "defaultedSet": {
+      "url": "/defaulted-set/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    "defaultedUnset": {
+      "url": "/defaulted-unset/fallback-path",
+      "authorization": "Bearer fallback-header"
     }
   }
 }

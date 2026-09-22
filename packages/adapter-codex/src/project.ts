@@ -1,14 +1,14 @@
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { contentsText } from "@hooknostic/agent-plugin";
-import type {
-  GeneratedArtifact,
-  McpLauncherServer,
-  ProjectComponentOptions,
-  ProjectEntry,
-  ProjectIntegration,
+import type { GeneratedArtifact, ProjectComponentOptions, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
+import {
+  launcherEnvironmentReferences,
+  projectHookBootstrap,
+  projectMcpBootstrap,
+  projectMcpLauncher,
+  projectSkillFiles,
 } from "@hooknostic/core";
-import { projectHookBootstrap, projectMcpBootstrap, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { codexHarness } from "./harness.js";
 import { translateMcp } from "./project-agent-plugin.js";
@@ -16,27 +16,6 @@ import { translateMcp } from "./project-agent-plugin.js";
 const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 const EXACT_ENVIRONMENT_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 const BEARER_ENVIRONMENT_REFERENCE = /^Bearer \$\{([A-Za-z_][A-Za-z0-9_]*)\}$/i;
-const LAUNCHER_SUPPLIED = new Set(["PLUGIN_ROOT", "PLUGIN_DATA"]);
-
-/**
- * Variables the launcher expands for a stdio server. Codex passes a stdio child
- * only the variables listed in `env_vars` (.capture/codex-project-mcp), so each
- * one must be forwarded or the launcher sees it unset.
- */
-function launcherEnvironment(server: McpLauncherServer): string[] {
-  const expanded = [
-    ...(server.args ?? []),
-    ...Object.values(server.env ?? {}),
-    ...(server.cwd === undefined || server.cwd.startsWith("./") ? [] : [server.cwd]),
-  ];
-  const names = new Set<string>();
-  for (const text of expanded) {
-    for (const match of text.matchAll(ENVIRONMENT_REFERENCE)) {
-      if (!LAUNCHER_SUPPLIED.has(match[1]!)) names.add(match[1]!);
-    }
-  }
-  return [...names].sort();
-}
 
 function directRemote(
   name: string,
@@ -105,7 +84,11 @@ export async function projectComponents(
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".agents/skills");
-  const translated = translateMcp(source.mcp ? { mcp: source.mcp.config } : {}, new Set(options.mcpProjectCwdServers));
+  const translated = translateMcp(
+    source.mcp ? { mcp: source.mcp.config } : {},
+    new Set(options.mcpProjectCwdServers),
+    source.origin === "package" ? options.mcpEnvironment : undefined,
+  );
   if (translated.omitted.length)
     throw new Error(translated.omitted.map((item) => `${item.name}: ${item.reason}`).join("; "));
   result.files.push(...(await projectMcpLauncher(source, root, output, translated.launcherServers)).files);
@@ -113,9 +96,13 @@ export async function projectComponents(
     const declaration = source.mcp?.config.mcpServers[name];
     const launcherIndex = "command" in server ? Number(server.args![1]) : -1;
     const forwarded =
-      source.origin === "direct" && launcherIndex >= 0
-        ? launcherEnvironment(translated.launcherServers[launcherIndex]!)
-        : [];
+      launcherIndex < 0
+        ? []
+        : source.origin === "direct"
+          ? launcherEnvironmentReferences(translated.launcherServers[launcherIndex]!)
+          : "command" in server
+            ? (server.env_vars ?? [])
+            : [];
     const base =
       "command" in server
         ? {

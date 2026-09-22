@@ -20,6 +20,41 @@ export interface McpLauncherServer {
   cwd?: string;
 }
 
+/** `${NAME}` in portable placeholder text. */
+const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/** The two the launcher binds itself; a consumer must never be asked for them. */
+const LAUNCHER_SUPPLIED = new Set(
+  [PLUGIN_ROOT_PLACEHOLDER, PLUGIN_DATA_PLACEHOLDER].map((token) => token.slice(2, -1)),
+);
+
+/**
+ * The environment variables a launcher must be handed to expand one server.
+ *
+ * Codex starts a stdio child with a fixed platform allowlist and nothing else,
+ * so a variable reaches the launcher only by being named in `env_vars`
+ * (`.capture/codex-project-mcp`). Scanning the declaration is what produces
+ * that list: every `${NAME}` the launcher will expand, minus the two it binds
+ * from its own location.
+ *
+ * `cwd` starting with `./` is skipped because it is anchored on the plugin
+ * root rather than expanded, matching the launcher's own treatment.
+ */
+export function launcherEnvironmentReferences(server: McpLauncherServer): string[] {
+  const expanded = [
+    ...(server.args ?? []),
+    ...Object.values(server.env ?? {}),
+    ...(server.cwd === undefined || server.cwd.startsWith("./") ? [] : [server.cwd]),
+  ];
+  const names = new Set<string>();
+  for (const text of expanded) {
+    for (const match of text.matchAll(ENVIRONMENT_REFERENCE)) {
+      if (!LAUNCHER_SUPPLIED.has(match[1]!)) names.add(match[1]!);
+    }
+  }
+  return [...names].sort();
+}
+
 /**
  * The generated servers document, read by the self-resolving front end.
  *

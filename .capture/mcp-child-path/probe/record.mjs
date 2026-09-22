@@ -54,6 +54,7 @@ const record = {
   // Placeholders the Agent Plugins contract may or may not bind.
   pluginRoot: process.env["PLUGIN_ROOT"] ?? null,
   pluginData: process.env["PLUGIN_DATA"] ?? null,
+  syntheticMarker: process.env["SYNTHETIC_MARKER"] ?? null,
   envKeyCount: Object.keys(process.env).length,
 };
 

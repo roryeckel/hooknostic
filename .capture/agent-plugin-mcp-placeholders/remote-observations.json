@@ -1,0 +1,259 @@
+{
+  "claudeVersion": "2.1.278 (Claude Code)",
+  "headerNameStatus": [
+    "plugin:placeholder-probe:headerNameKnown: http://127.0.0.1:<port>/header-name-known (HTTP) - ✘ Failed to connect — Invalid header name: 'X-Probe-${SYNTHETIC_HEADER_NAME}'",
+    "plugin:placeholder-probe:headerNameUnknown: http://127.0.0.1:<port>/header-name-unknown (HTTP) - ✘ Failed to connect — Invalid header name: 'X-Probe-${HOOKNOSTIC_UNSET}'"
+  ],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "GET",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "GET",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "GET",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "GET",
+      "url": "/defaulted-known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "GET",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/known/$%7BSYNTHETIC_REMOTE_PATH%7D",
+      "authorization": "Bearer ${SYNTHETIC_REMOTE_HEADER}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/$%7BPLUGIN_ROOT%7D",
+      "authorization": "Bearer ${PLUGIN_DATA}"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/known/$%7BSYNTHETIC_REMOTE_PATH%7D",
+      "authorization": "Bearer ${SYNTHETIC_REMOTE_HEADER}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/$%7BPLUGIN_ROOT%7D",
+      "authorization": "Bearer ${PLUGIN_DATA}"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/known/$%7BSYNTHETIC_REMOTE_PATH%7D",
+      "authorization": "Bearer ${SYNTHETIC_REMOTE_HEADER}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/$%7BPLUGIN_ROOT%7D",
+      "authorization": "Bearer ${PLUGIN_DATA}"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "GET",
+      "url": "/known/$%7BSYNTHETIC_REMOTE_PATH%7D",
+      "authorization": "Bearer ${SYNTHETIC_REMOTE_HEADER}"
+    },
+    {
+      "method": "POST",
+      "url": "/known/$%7BSYNTHETIC_REMOTE_PATH%7D",
+      "authorization": "Bearer ${SYNTHETIC_REMOTE_HEADER}"
+    },
+    {
+      "method": "GET",
+      "url": "/reserved/$%7BPLUGIN_ROOT%7D",
+      "authorization": "Bearer ${PLUGIN_DATA}"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/$%7BPLUGIN_ROOT%7D",
+      "authorization": "Bearer ${PLUGIN_DATA}"
+    },
+    {
+      "method": "GET",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "GET",
+      "url": "/defaulted-known/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-known/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "GET",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    },
+    {
+      "method": "POST",
+      "url": "/defaulted-unknown/fallback-path",
+      "authorization": "Bearer fallback-header"
+    }
+  ]
+}

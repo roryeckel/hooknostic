@@ -26,6 +26,8 @@ Read these when you want to know *why* something works the way it does, not just
 | [0015 — First-class repository-local integration](0015-project-integration.md) | Who wires generated artifacts into a project — the consumer, or Hooknostic? |
 | [0016 — A portable model.request.before event](0016-model-request-before-event.md) | Why does a moment only OpenCode exposes a hook at get its own normalized event? |
 | [0017 — Package materialization is provider-owned and component-neutral](0017-mcp-runtime-dependencies.md) | How can a build produce portable package content without teaching Hooknostic each ecosystem? |
+| [0018 — A packaged MCP server's environment is declared in build config](0018-packaged-mcp-environment.md) | How does a packaged MCP server receive an ambient variable on a harness that withholds one? |
+| [0019 — Harness deviations from Agent Plugins](0019-agent-plugin-spec-deviations.md) | What happens when a harness treats a package differently from the specification, and how do I make that fail the build? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

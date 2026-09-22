@@ -517,19 +517,99 @@ describe("complete project integration", () => {
     }
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
-  it("reports and omits Claude package remotes whose references cannot remain literal", async () => {
-    const claude = registry.claude!;
-    const { root, options } = await fixture({
-      components: { root: "./portable", targets: ["claude"], onUnsupported: "warn" },
+  it.each([undefined, "error"] as const)(
+    "emits Claude package remotes Claude would expand and reports the deviation (onDeviation %s)",
+    async (onDeviation) => {
+      const claude = registry.claude!;
+      const { root, options } = await fixture({
+        components: {
+          root: "./portable",
+          targets: ["claude"],
+          ...(onDeviation === undefined ? {} : { onDeviation }),
+        },
+        targets: {
+          claude: {
+            adapter: "claude",
+            version: claude.harness.recommendedRange,
+            delivery: "project",
+            output: ".hooknostic/artifacts/claude",
+          },
+        },
+      });
+      await mkdir(join(root, "portable"));
+      await writeFile(
+        join(root, "portable/plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable" }),
+      );
+      await writeFile(
+        join(root, "portable/mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            referenced: {
+              type: "streamable-http",
+              url: "https://example.invalid/${RUNTIME_TOKEN}/mcp",
+              headers: { Authorization: "Bearer ${RUNTIME_TOKEN}" },
+            },
+            literal: { type: "streamable-http", url: "https://example.invalid/mcp" },
+          },
+        }),
+      );
+
+      const built = await buildProject({ ...options, dryRun: true });
+      const project = built.report.targets.claude?.project;
+      expect(project?.components["agent-plugin.mcp.streamable-http"]).toEqual({
+        support: "exact",
+        discovered: 2,
+        emitted: 2,
+        skipped: 0,
+      });
+      expect(project?.omissions).toEqual([]);
+      expect(project?.deviations).toEqual([
+        expect.objectContaining({ id: "claude:mcp-environment-expansion", name: "referenced" }),
+      ]);
+      const synced = await runProject({ ...options, command: "sync" });
+      const hn106 = expect.objectContaining({
+        code: "HN106",
+        severity: onDeviation ?? "warn",
+        component: "agent-plugin.mcp.streamable-http",
+        deviation: "claude:mcp-environment-expansion",
+      });
+      if (onDeviation === "error") {
+        expect(synced.ok).toBe(false);
+        expect(synced.diagnostics).toContainEqual(hn106);
+        return;
+      }
+      expect(synced.errors).toEqual([]);
+      expect(synced.diagnostics).toContainEqual(hn106);
+      const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+      expect(Object.keys(mcp.mcpServers).sort()).toEqual(["literal", "referenced"]);
+    },
+  );
+  it("forwards packaged MCP environment declarations through Codex project delivery", async () => {
+    const codex = registry.codex!;
+    const { root, config, options } = await fixture({
+      components: {
+        root: "./portable",
+        targets: ["codex"],
+        mcpEnvironment: Object.fromEntries([
+          ["credentialed", ["SERVICE_USER", "SERVICE_API_KEY", "SERVICE_USER"]],
+          ["__proto__", ["PROTOTYPE_TOKEN"]],
+        ]),
+      },
       targets: {
-        claude: {
-          adapter: "claude",
-          version: claude.harness.recommendedRange,
+        codex: {
+          adapter: "codex",
+          version: codex.harness.recommendedRange,
           delivery: "project",
-          output: ".hooknostic/artifacts/claude",
+          output: ".hooknostic/artifacts/codex",
         },
       },
     });
+    // The ordinary object-literal spelling of `__proto__` changes the object's
+    // prototype. Parse the serialized config so it remains an own data property,
+    // matching a computed property in an authored TypeScript config.
+    await writeFile(options.configPath, `export default JSON.parse(${JSON.stringify(JSON.stringify(config))});`);
     await mkdir(join(root, "portable"));
     await writeFile(
       join(root, "portable/plugin.json"),
@@ -539,36 +619,25 @@ describe("complete project integration", () => {
       join(root, "portable/mcp.json"),
       JSON.stringify({
         $schema: AGENT_PLUGIN_MCP_SCHEMA,
-        mcpServers: {
-          referenced: {
-            type: "streamable-http",
-            url: "https://example.invalid/${RUNTIME_TOKEN}/mcp",
-            headers: { Authorization: "Bearer ${RUNTIME_TOKEN}" },
-          },
-          literal: { type: "streamable-http", url: "https://example.invalid/mcp" },
-        },
+        mcpServers: Object.fromEntries([
+          ["credentialed", { type: "stdio", command: "node" }],
+          ["plain", { type: "stdio", command: "node" }],
+          ["__proto__", { type: "stdio", command: "node" }],
+        ]),
       }),
     );
 
-    const built = await buildProject({ ...options, dryRun: true });
-    expect(built.report.targets.claude?.project?.components["agent-plugin.mcp.streamable-http"]).toEqual({
-      support: "exact",
-      discovered: 2,
-      emitted: 1,
-      skipped: 1,
-    });
     const synced = await runProject({ ...options, command: "sync" });
     expect(synced.errors).toEqual([]);
-    expect(synced.diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "HN205",
-        severity: "warn",
-        component: "agent-plugin.mcp.streamable-http",
-        message: expect.stringContaining("literal environment references"),
-      }),
-    );
-    const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
-    expect(Object.keys(mcp.mcpServers)).toEqual(["literal"]);
+    const servers = readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8")).mcp_servers as Record<
+      string,
+      { env_vars?: string[] }
+    >;
+    expect(servers.credentialed?.env_vars).toEqual(["SERVICE_API_KEY", "SERVICE_USER"]);
+    expect(servers.plain).not.toHaveProperty("env_vars");
+    expect(Object.hasOwn(servers, "__proto__")).toBe(true);
+    expect(servers["__proto__"]?.env_vars).toEqual(["PROTOTYPE_TOKEN"]);
+    expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
   it("applies independent target MCP arguments, cwd, and timeout translations", async () => {
     const { root, options } = await fixture({

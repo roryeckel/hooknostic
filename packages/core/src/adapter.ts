@@ -1,4 +1,10 @@
-import type { AgentPluginProjectionProfile, AgentPluginProjector, ProjectComponents } from "@hooknostic/agent-plugin";
+import type {
+  AgentPluginComponentId,
+  AgentPluginComponentSupport,
+  AgentPluginProjectionProfile,
+  AgentPluginProjector,
+  ProjectComponents,
+} from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
   HookEvent,
@@ -19,6 +25,14 @@ export interface ProjectComponentOptions {
   mcpStartupTimeoutMs?: Readonly<Record<string, number>>;
   /** Stdio cwd overrides already validated as contained by the project root. */
   mcpProjectCwdServers?: readonly string[];
+  /** Ambient variable names declared for MCP servers from an Agent Plugin package source. */
+  mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * `projectComponentProfiles` resolved against the target's version range.
+   * An integrator reports a deviation only when its cell here declares it, so
+   * the resolution core reports is the one that gates the check.
+   */
+  support?: Readonly<Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>>;
 }
 
 /** A configured build target: config entry keyed by adapter/target id. */

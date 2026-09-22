@@ -1,10 +1,16 @@
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { contentsText } from "@hooknostic/agent-plugin";
-import type { GeneratedArtifact, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
+import type { GeneratedArtifact, ProjectComponentOptions, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
 import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { claudeHarness } from "./harness.js";
+import {
+  claudeExpandedReferences,
+  declaresEnvironmentExpansion,
+  ENVIRONMENT_EXPANSION_DEVIATION,
+  environmentExpansionReason,
+} from "./mcp-expansion.js";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const manifest = artifacts.find((a) => a.path === "hooks/hooks.json");
   const entries: ProjectEntry[] = [];
@@ -35,6 +41,8 @@ export async function projectComponents(
   source: ProjectComponents,
   root: string,
   output: string,
+  _config?: string,
+  options: ProjectComponentOptions = {},
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".claude/skills");
   if (source.mcp) {
@@ -43,14 +51,21 @@ export async function projectComponents(
     let index = 0;
     for (const [name, server] of Object.entries(source.mcp.config.mcpServers)) {
       const component = `agent-plugin.mcp.${server.type}` as const;
-      const hasEnvironmentReference =
-        server.type !== "stdio" &&
-        (/\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(server.url) ||
-          Object.values(server.headers ?? {}).some((value) => /\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(value)));
-      if (source.origin === "package" && hasEnvironmentReference) {
-        const reason = `MCP server ${name} requires literal environment references, but Claude project MCP expands set references`;
-        (result.omissions ??= []).push({ component, name, reason });
-        continue;
+      // Only a package's text is governed by the specification: a direct
+      // source's `${NAME}` is a request Claude is meant to resolve. Stdio
+      // servers launch from the opaque document, which Claude never expands, so
+      // only a remote declaration shows Claude package text.
+      if (source.origin === "package" && server.type !== "stdio") {
+        const references = claudeExpandedReferences(server);
+        if (references.length > 0 && declaresEnvironmentExpansion(options.support?.[component])) {
+          (result.deviations ??= []).push({
+            id: ENVIRONMENT_EXPANSION_DEVIATION,
+            component,
+            name,
+            path: `mcp.json#${name}`,
+            reason: environmentExpansionReason(name, references),
+          });
+        }
       }
       const value =
         server.type === "stdio"
@@ -79,8 +94,28 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project.",
       },
-      "agent-plugin.mcp.streamable-http": { level: "exact" },
-      "agent-plugin.mcp.sse": { level: "exact" },
+      "agent-plugin.mcp.streamable-http": {
+        level: "exact",
+        deviations: [
+          {
+            id: ENVIRONMENT_EXPANSION_DEVIATION,
+            summary:
+              "Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration.",
+            evidence: ".capture/claude-project-mcp-environment",
+          },
+        ],
+      },
+      "agent-plugin.mcp.sse": {
+        level: "exact",
+        deviations: [
+          {
+            id: ENVIRONMENT_EXPANSION_DEVIATION,
+            summary:
+              "Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration.",
+            evidence: ".capture/claude-project-mcp-environment",
+          },
+        ],
+      },
       // Declared rather than left absent. An absent cell still raises HN205,
       // but behind core's rationale-free fallback, which tells the author
       // nothing they can act on. Claims about this projection's own reach, so
@@ -99,6 +134,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-12",
       validatedOn: [
+        {
+          version: "2.1.278",
+          date: "2026-09-21",
+          method: "live-probe",
+          artifact: ".capture/claude-project-mcp-environment",
+          what: "Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal.",
+        },
         {
           version: "2.1.268",
           date: "2026-09-11",

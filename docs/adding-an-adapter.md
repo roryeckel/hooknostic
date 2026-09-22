@@ -239,6 +239,19 @@ entire output.
   your own `profiles` against the target range and hands them back, so a
   projector cannot disagree with the matrix the build reports and
   `onUnsupported` acts on.
+- **A harness that departs from the specification for some packages has a
+  deviation, not a lower level** (ADR-0019). The test is whether every
+  instance is affected. If only a package containing certain text is treated
+  differently, and you emit it anyway, do three things:
+  1. Declare `{ id, summary, evidence }` under that component's `deviations`.
+     The evidence must be one of the profile's `validatedOn` artifacts.
+  2. Report each instance in `summary.deviations` (or
+     `ProjectIntegration.deviations`), but only when `context.support` declares
+     the id for that component.
+  3. Leave severity to core. It applies `components.onDeviation`, and it fails
+     the target if you report an id the resolved profile does not declare.
+
+  Claude's `mcp-environment-expansion` is the worked example.
 - **`summary.copiedPaths` lists byte-for-byte copies only.** Everything else in
   the plan is treated as generated — that is how core separates the two without
   knowing your path layout, and it drives `artifacts` in the build report.

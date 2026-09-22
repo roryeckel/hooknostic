@@ -119,9 +119,43 @@ export const AGENT_PLUGIN_COMPONENT_IDS = [
 export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number];
 export type AgentPluginProjectionSupportLevel = "exact" | "emulated" | "approximate" | "unsupported";
 
+/**
+ * A known way a harness departs from Agent Plugins 1.0 for some instances of a
+ * component (ADR-0019).
+ *
+ * Declared on the profile, next to the level, because it is a fact about a
+ * harness version range: a range that no longer declares it stops reporting
+ * it. It is not a level. A level describes every instance, and an `emulated`
+ * component still conforms. A deviation applies only to packages containing
+ * the triggering text, and those packages do not get what the specification
+ * says.
+ */
+export interface AgentPluginDeviationDeclaration {
+  /** Stable kebab-case id, unique within the adapter; `<adapter>:<id>` qualifies it. */
+  id: string;
+  /** What the harness does instead, in one sentence. */
+  summary: string;
+  /** The capture establishing it; must also be one of the profile's `validatedOn` artifacts. */
+  evidence: string;
+}
+
 export interface AgentPluginComponentSupport {
   level: AgentPluginProjectionSupportLevel;
   rationale?: string;
+  deviations?: readonly AgentPluginDeviationDeclaration[];
+}
+
+/** One instance of a declared deviation found in the package being projected. */
+export interface AgentPluginDeviation {
+  /** A declaration id from the resolved matrix cell for `component`. */
+  id: string;
+  component: AgentPluginComponentId;
+  /** The MCP server, skill or other named item it applies to. */
+  name?: string;
+  /** Package location, such as `mcp.json#server`. */
+  path?: string;
+  /** What in this instance triggers it. */
+  reason: string;
 }
 
 export interface AgentPluginProjectionProfile {
@@ -202,11 +236,28 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    */
   support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
   onUnsupported: "error" | "warn";
+  /**
+   * Ambient variable NAMES each MCP server reads, keyed by server name.
+   *
+   * Names only. A projector whose harness starts a server with the environment
+   * it was launched with ignores this; one that withholds it forwards exactly
+   * these. It arrives from `components.mcpEnvironment` rather than from the
+   * package, because a package cannot ask: unrecognized placeholder-like text
+   * MUST remain literal (ADR-0011, ADR-0018).
+   */
+  mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface AgentPluginProjectionSummary {
   components: Partial<Record<AgentPluginComponentId, { discovered: number; emitted: number; skipped: number }>>;
   omissions: { component: AgentPluginComponentId; name?: string; reason: string }[];
+  /**
+   * Emitted items the harness will treat differently from the specification.
+   * Reported here, not as issues: core applies `components.onDeviation` and
+   * checks each id against the resolved matrix, so no projector chooses the
+   * severity itself.
+   */
+  deviations?: AgentPluginDeviation[];
   /**
    * Plan paths copied byte-for-byte from the source package after overlay
    * resolution, sorted. Every other plan file the projector generated, so this

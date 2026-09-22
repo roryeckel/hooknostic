@@ -597,6 +597,135 @@ describe("hooknostic build end-to-end", () => {
       expect.objectContaining({ component: "agent-plugin.manifest", name: "author" }),
     ]);
   });
+  // ADR-0019: a deviation is emitted and reported, and only strict mode fails
+  // the build for it. Both commands run the projection, so both must agree.
+  it("reports a Claude deviation as HN106 and fails only under onDeviation: error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-deviation-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    const output = join(dir, "dist/claude");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "deviates" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          token: { type: "stdio", command: "node", args: ["--token=${API_TOKEN}"] },
+          plain: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/server.mjs"] },
+        },
+      }),
+    );
+    const writeConfig = async (onDeviation?: "error") =>
+      writeFile(
+        config,
+        `export default ${JSON.stringify({
+          components: { root: ".", targets: ["claude"], ...(onDeviation === undefined ? {} : { onDeviation }) },
+          targets: { claude: { version: claudeHarness.recommendedRange, delivery: "package", output: "dist/claude" } },
+        })};`,
+      );
+    const deviation = (severity: "warn" | "error") =>
+      expect.objectContaining({
+        code: "HN106",
+        severity,
+        target: "claude",
+        component: "agent-plugin.mcp.stdio",
+        deviation: "claude:mcp-environment-expansion",
+        location: { file: "mcp.json#token" },
+      });
+
+    await writeConfig();
+    const accepted = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: accepted.io })).toBe(0);
+    const report = JSON.parse(accepted.out());
+    expect(report.diagnostics.filter((item: { code: string }) => item.code === "HN106")).toEqual([deviation("warn")]);
+    expect(report.targets.claude.projection.deviations).toEqual([
+      expect.objectContaining({ id: "claude:mcp-environment-expansion", name: "token" }),
+    ]);
+    expect(JSON.parse(await readFile(join(output, ".mcp.json"), "utf8")).mcpServers.token.args).toContain(
+      "--token=${API_TOKEN}",
+    );
+
+    await writeConfig("error");
+    await rm(output, { recursive: true, force: true });
+    for (const run of [runCheck, runBuild]) {
+      const strict = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: strict.io })).toBe(2);
+      expect(JSON.parse(strict.out()).diagnostics).toContainEqual(deviation("error"));
+      expect(existsSync(output)).toBe(false);
+    }
+  });
+  // Package delivery used to accept any supported component level while
+  // project delivery enforced compatibility.minimum. Codex stdio is emulated,
+  // so `minimum: "exact"` must reach it, and a warning must not mark the
+  // still-emitted component as skipped.
+  it("applies compatibility.minimum to package-projected components", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-package-minimum-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    const output = join(dir, "dist/codex");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "minimum", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { local: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/server.mjs"] } },
+      }),
+    );
+    const writeConfig = async (onBelowMinimum: "warn" | "error") =>
+      writeFile(
+        config,
+        `export default ${JSON.stringify({
+          components: { root: ".", targets: ["codex"] },
+          targets: {
+            codex: {
+              version: CODEX_PLUGIN_MODE_RANGE,
+              delivery: "package",
+              output: "dist/codex",
+              compatibility: { minimum: "exact", onBelowMinimum },
+            },
+          },
+        })};`,
+      );
+    const belowMinimum = (severity: "warn" | "error") =>
+      expect.objectContaining({
+        code: "HN205",
+        severity,
+        target: "codex",
+        component: "agent-plugin.mcp.stdio",
+        support: "emulated",
+      });
+
+    await writeConfig("warn");
+    const accepted = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: accepted.io })).toBe(0);
+    const report = JSON.parse(accepted.out());
+    expect(report.diagnostics).toContainEqual(belowMinimum("warn"));
+    expect(report.targets.codex.projection.components["agent-plugin.mcp.stdio"]).toEqual({
+      support: "emulated",
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
+    expect(report.targets.codex.projection.omissions).toEqual([]);
+
+    await writeConfig("error");
+    await rm(output, { recursive: true, force: true });
+    for (const run of [runCheck, runBuild]) {
+      const refused = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: refused.io })).toBe(2);
+      const result = JSON.parse(refused.out());
+      expect(result.diagnostics).toContainEqual(belowMinimum("error"));
+      // Refused, not omitted: the analyzed report must not call it skipped.
+      expect(result.targets.codex.projection.components["agent-plugin.mcp.stdio"]).toMatchObject({ skipped: 0 });
+      expect(existsSync(output)).toBe(false);
+    }
+  });
   it("builds the rewrite-shell example into three self-contained target artifacts", { timeout: 120_000 }, async () => {
     const dir = await cleanExample("rewrite-shell");
     const { io, out } = captureIO();
@@ -683,6 +812,59 @@ ${run.stderr}`,
     const fromRepoRoot = await bundleBuiltFrom(REPO);
     const fromConfigDir = await bundleBuiltFrom(dir);
     expect(fromConfigDir).toBe(fromRepoRoot);
+  });
+
+  it("warns when a declared MCP environment names a server the package does not declare", async () => {
+    // The usual cause is a server renamed in mcp.json. Forwarding silently
+    // stops, which on Codex looks exactly like a credential the user forgot to
+    // set -- so the build says which name went nowhere.
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-mcpenv-"));
+    cleanupDirs.push(dir);
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mcpenv", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          present: { type: "stdio", command: "node" },
+          remote: { type: "streamable-http", url: "https://example.invalid/mcp" },
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+          components: {
+            root: ".",
+            targets: ["copy"],
+            mcpEnvironment: { present: ["KEPT"], renamed: ["LOST"], remote: ["ALSO_LOST"] },
+          },
+          targets: { copy: { version: ">=1.0 <2", delivery: "package", output: "./dist/copy" } },
+        };`,
+    );
+
+    const json = captureIO();
+    await runBuild({
+      config: join(dir, "hooknostic.config.ts"),
+      json: true,
+      registry: { copy: copyThroughAdapter() },
+      io: json.io,
+      evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+    });
+    const warnings = (JSON.parse(json.out()).diagnostics as { code: string; message: string }[]).filter(
+      (diagnostic) => diagnostic.code === "HN105",
+    );
+
+    // A name matching nothing, and a name matching a server with no child to
+    // receive the value: both forward nothing, so both are reported.
+    expect(warnings.map((warning) => warning.message)).toEqual([
+      expect.stringContaining('names "remote", which is a streamable-http server, not stdio'),
+      expect.stringContaining('names "renamed", which mcp.json does not declare'),
+    ]);
+    expect(warnings.every((warning) => !warning.message.includes('"present"'))).toBe(true);
   });
 
   it("does not inventory a previous package output as source on the next build", { timeout: 120_000 }, async () => {

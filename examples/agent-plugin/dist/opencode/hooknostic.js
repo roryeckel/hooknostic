@@ -4443,6 +4443,20 @@ var projectMcpTargetOverrideSchema = external_exports.object({
   startupTimeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   servers: external_exports.record(external_exports.string().min(1), projectMcpServerOverrideSchema).optional()
 }).strict();
+var mcpEnvironmentRecordSchema = external_exports.record(external_exports.string().min(1), external_exports.array(external_exports.string().min(1)));
+var mcpEnvironmentSchema = external_exports.unknown().transform((value, context) => {
+  const parsed = mcpEnvironmentRecordSchema.safeParse(value);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues)
+      context.addIssue(issue);
+    return external_exports.NEVER;
+  }
+  const entries = Object.entries(parsed.data);
+  if (typeof value === "object" && value !== null && Object.prototype.propertyIsEnumerable.call(value, "__proto__")) {
+    entries.push(["__proto__", value["__proto__"]]);
+  }
+  return Object.fromEntries(entries);
+});
 var hooknosticConfigSchema = external_exports.object({
   project: external_exports.object({ root: external_exports.string().min(1) }).strict().optional(),
   entry: external_exports.string().min(1).optional(),
@@ -4457,6 +4471,7 @@ var hooknosticConfigSchema = external_exports.object({
     targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
     executableFiles: external_exports.array(external_exports.string().min(1)).optional(),
+    mcpEnvironment: mcpEnvironmentSchema.optional(),
     runtimePackage: external_exports.object({
       manifest: external_exports.string().min(1),
       lockfile: external_exports.string().min(1),
@@ -4468,7 +4483,8 @@ var hooknosticConfigSchema = external_exports.object({
       into: external_exports.string().min(1)
     }).strict()).min(1).optional(),
     onUnsupported: external_exports.enum(["error", "warn"]).optional(),
-    onInvalid: external_exports.enum(["error", "warn"]).optional()
+    onInvalid: external_exports.enum(["error", "warn"]).optional(),
+    onDeviation: external_exports.enum(["error", "warn"]).optional()
   }).strict().optional()
 }).strict().superRefine((config, context) => {
   if (config.entry === void 0 && config.components === void 0) {
@@ -4521,6 +4537,13 @@ var hooknosticConfigSchema = external_exports.object({
     }
     if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
+    }
+    if (config.components.root === void 0 && config.components.mcpEnvironment !== void 0) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["components", "mcpEnvironment"],
+        message: "components.mcpEnvironment requires components.root"
+      });
     }
     if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
       context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });

@@ -41,10 +41,18 @@ contract suite in `@hooknostic/testkit` audits every row.
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
 | `agent-plugin.runtime-package` | unsupported | The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly. |
 
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
 | 2.1.268 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 2.1.268 | 2026-09-12 | live-probe | `.capture/claude-project-mcp-environment` | Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields. |
 
@@ -62,10 +70,20 @@ Project support is independent of package projection.
 | `agent-plugin.client-extension.files` | exact | — |
 | `agent-plugin.runtime-package` | exact | — |
 
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Claude substitutes set environment variables into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
+
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} and ${NAME:-default} references in a projected package's stdio command, args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; plain unset references remained literal, and placeholder-like header names stayed literal and were refused as invalid. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration. |
 | 2.1.273 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable. |
 | 2.1.260 | 2026-09-04 | live-probe | `.capture/harness-playback` | Claude discovered a projected skill, started projected stdio/HTTP/SSE MCP servers with root/data variables, and executed merged Hooknostic hooks. |
 | 2.1.260 | 2026-09-05 | live-probe | `.capture/claude-marketplace-deps` | Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version. |
@@ -151,7 +169,10 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.154.0 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | Against the actual projected package, a synthetic ambient variable was absent without components.mcpEnvironment and reached the stdio child when the declaration generated env_vars. |
+| 0.153.2 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | The installed-plugin path at the lower validated edge behaved the same: a synthetic ambient variable was filtered without components.mcpEnvironment and reached the projected stdio child through generated env_vars. |
 | 0.154.0 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables. |
+| 0.154.0 | 2026-09-21 | live-probe | `.capture/codex-plugin-mcp-environment` | What filters that environment, and the way through it: the same installed plugin in the same environment saw a synthetic marker in its MCP child only once its .mcp.json named it in env_vars, while its UserPromptSubmit command hook saw the marker unchanged in both cases. The marker is not credential-shaped, so the MCP baseline is an allowlist rather than a secret filter. Declared env values are copied verbatim, so Codex expands no reference of its own. |
 | 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional. One naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, but that negative was expected -- portable skills/ is canonical and an inline skills value cannot replace it -- so this run says nothing about whether the namespace is read; the 2026-09-17 records below carry the corrected probe. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line. |
 | 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | A plugin's skills/ directory is discovered with no declaration anywhere -- no native manifest, no skills field, no extensions map. The explicit "skills" pointer this projector writes is therefore belt and braces rather than the mechanism, which is what the 180 plugins in the bundled marketplace also do. |
 | 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | No npm dependency installation. A plugin declaring is-number@7.0.0 with a package-lock.json and no node_modules installed with both manifests copied verbatim, no node_modules in the installed root, and import("is-number") failing ERR_MODULE_NOT_FOUND from there. Placing node_modules/is-number by hand made the same import succeed and removing it restored the failure, so the negative is the dependency and not a broken probe. |
@@ -225,6 +246,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.32 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that OpenCode needs no target-specific forwarding declaration. |
 | 1.18.31 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT to the nested package and supplied PLUGIN_DATA; bare runner commands remained resolvable. |
 | 1.18.30 | 2026-09-16 | live-probe | `.capture/opencode-npm-publish` | The third route is now measured: this projector's output, published unmodified to a loopback registry and installed with `opencode plugin <name>`, loaded through exports["./server"] from the package cache, and the component injector contributed both the skills path and the stdio server -- each resolving its own sibling assets at the cache location rather than the build output. A scoped name works the same way, which matters because an Agent Plugins manifest name cannot be one. |
 | 1.18.30 | 2026-09-16 | live-probe | `.capture/opencode-npm-publish` | A registry-installed plugin's declared dependencies ARE installed, unlike on either other route: a published package declaring is-number@7.0.0 resolved it from the cache root beside itself, a specifier published nowhere failed, and deleting that dependency from the installed closure flipped the result -- so the check discriminates. This is the one OpenCode route on which a plugin could declare dependencies rather than bundle them. |

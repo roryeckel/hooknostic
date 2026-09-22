@@ -1,0 +1,66 @@
+{
+  "capturedOn": "2026-09-21",
+  "platform": "win32",
+  "cases": [
+    {
+      "harness": "claude",
+      "version": "2.1.278 (Claude Code)",
+      "variant": "undeclared",
+      "syntheticMarker": "synthetic-marker",
+      "envKeyCount": 92
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.278 (Claude Code)",
+      "variant": "declared",
+      "syntheticMarker": "synthetic-marker",
+      "envKeyCount": 92
+    },
+    {
+      "harness": "opencode",
+      "version": "1.18.32",
+      "variant": "undeclared",
+      "syntheticMarker": "synthetic-marker",
+      "envKeyCount": 86
+    },
+    {
+      "harness": "opencode",
+      "version": "1.18.32",
+      "variant": "declared",
+      "syntheticMarker": "synthetic-marker",
+      "envKeyCount": 86
+    },
+    {
+      "harness": "codex",
+      "version": "codex-cli 0.154.0",
+      "variant": "undeclared",
+      "syntheticMarker": null,
+      "envKeyCount": 22,
+      "loopbackModelFailure": true
+    },
+    {
+      "harness": "codex",
+      "version": "codex-cli 0.154.0",
+      "variant": "declared",
+      "syntheticMarker": "synthetic-marker",
+      "envKeyCount": 23,
+      "loopbackModelFailure": true
+    },
+    {
+      "harness": "codex",
+      "version": "codex-cli 0.153.2",
+      "variant": "undeclared",
+      "syntheticMarker": null,
+      "envKeyCount": 22,
+      "loopbackModelFailure": true
+    },
+    {
+      "harness": "codex",
+      "version": "codex-cli 0.153.2",
+      "variant": "declared",
+      "syntheticMarker": "synthetic-marker",
+      "envKeyCount": 23,
+      "loopbackModelFailure": true
+    }
+  ]
+}

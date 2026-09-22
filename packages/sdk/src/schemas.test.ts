@@ -196,6 +196,41 @@ describe("canonical schemas", () => {
     ).toThrow();
   });
 
+  it("preserves prototype-key MCP environment server names without polluting the output", () => {
+    const mcpEnvironment = Object.fromEntries([
+      ["__proto__", ["PROTOTYPE_TOKEN"]],
+      ["constructor", ["CONSTRUCTOR_TOKEN"]],
+      ["ordinary", ["ORDINARY_TOKEN"]],
+    ]);
+    const parsed = hooknosticConfigSchema.parse({
+      components: { root: ".", mcpEnvironment },
+      targets: { codex: { version: ">=0.148 <1", delivery: "package", output: "./dist/codex" } },
+    });
+    const environment = parsed.components!.mcpEnvironment!;
+
+    expect(Object.getPrototypeOf(environment)).toBe(Object.prototype);
+    for (const name of ["__proto__", "constructor", "ordinary"]) expect(Object.hasOwn(environment, name)).toBe(true);
+    expect(environment["__proto__"]).toEqual(["PROTOTYPE_TOKEN"]);
+    expect(environment["constructor"]).toEqual(["CONSTRUCTOR_TOKEN"]);
+    expect(environment["ordinary"]).toEqual(["ORDINARY_TOKEN"]);
+  });
+
+  it("still validates an MCP environment value under a prototype-key server name", () => {
+    const result = hooknosticConfigSchema.safeParse({
+      components: { root: ".", mcpEnvironment: Object.fromEntries([["__proto__", [""]]]) },
+      targets: { codex: { version: ">=0.148 <1", delivery: "package", output: "./dist/codex" } },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual([
+        "components",
+        "mcpEnvironment",
+        "__proto__",
+        0,
+      ]);
+  });
+
   it("rejects timeouts above Node's maximum timer delay", () => {
     const config = {
       entry: "./src/hooks.ts",

@@ -172,6 +172,39 @@ describe("Agent Plugin to Codex projection", () => {
     expect(plan.issues).toEqual([]);
   });
 
+  it("forwards only the environment names declared for each server", async () => {
+    const plan = await codexAgentPluginProjector.project(
+      source({
+        credentialed: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/src/server.mjs"] },
+        plain: { type: "stdio", command: "node" },
+      }),
+      {
+        target,
+        hookArtifacts: [],
+        support,
+        onUnsupported: "error",
+        mcpEnvironment: { credentialed: ["SERVICE_USER", "SERVICE_API_KEY", "SERVICE_USER"] },
+      },
+    );
+    // Sorted and deduplicated, so a reordered declaration is not a diff.
+    expect(nativeMcp(plan)["credentialed"]).toEqual({
+      command: "node",
+      args: ["./runtime/mcp-launcher.mjs", "0"],
+      cwd: ".",
+      env_vars: ["SERVICE_API_KEY", "SERVICE_USER"],
+    });
+    // A server nobody declared for forwards nothing rather than everything.
+    expect(nativeMcp(plan)["plain"]).not.toHaveProperty("env_vars");
+    // The declaration never reaches the package: it is build input, not payload.
+    expect(launcherDocument(plan).servers[0]).not.toHaveProperty("env_vars");
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("emits no env_vars when nothing is declared", async () => {
+    const plan = await project(source({ srv: { type: "stdio", command: "node" } }));
+    expect(nativeMcp(plan)["srv"]).not.toHaveProperty("env_vars");
+  });
+
   it("rejects package content at either generated launcher path", async () => {
     for (const path of ["runtime/mcp-launcher.mjs", "runtime/mcp-servers.json"]) {
       const pkg = source({ srv: { type: "stdio", command: "node" } });

@@ -4,13 +4,15 @@ import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginComponentId,
   type AgentPluginComponentSupport,
+  type AgentPluginDeviation,
+  type AgentPluginDeviationDeclaration,
   type AgentPluginIssue,
   type AgentPluginPackage,
   type AgentPluginProjectionProfile,
   type AgentPluginProjector,
   type AgentPluginRuntimePackage,
 } from "@hooknostic/agent-plugin";
-import { leastCapable } from "@hooknostic/sdk";
+import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
@@ -81,15 +83,81 @@ export function resolveAgentPluginProjection(
   const matrix: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>> = {};
   for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
     let chosen: AgentPluginComponentSupport | undefined;
+    // Every profile's, not the chosen one's: a build must not claim more than
+    // the worst version in its range delivers, and a deviation any version in
+    // the range has is one the build can ship into.
+    const deviations = new Map<string, AgentPluginDeviationDeclaration>();
     for (const profile of used) {
       const candidate = profile.components[id] ?? { level: "unsupported" as const };
       if (chosen === undefined || leastCapable(chosen.level, candidate.level) === candidate.level) {
         chosen = candidate;
       }
+      for (const deviation of candidate.deviations ?? []) {
+        if (!deviations.has(deviation.id)) deviations.set(deviation.id, deviation);
+      }
     }
-    if (chosen !== undefined) matrix[id] = chosen;
+    if (chosen !== undefined) {
+      matrix[id] = {
+        level: chosen.level,
+        ...(chosen.rationale === undefined ? {} : { rationale: chosen.rationale }),
+        ...(deviations.size === 0 ? {} : { deviations: [...deviations.values()] }),
+      };
+    }
   }
   return { matrix, profilesUsed: [...used], diagnostics };
+}
+
+export interface AgentPluginDeviationDiagnosticOptions {
+  target: string;
+  /** Adapter id, which qualifies each deviation id. */
+  adapter: string;
+  onDeviation: "error" | "warn";
+  /** The resolved matrix the projector was given; every reported id must be declared in it. */
+  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+}
+
+/**
+ * HN106 for each reported deviation, at the configured severity.
+ *
+ * Also the check that keeps the report honest: a projector may only report a
+ * deviation the resolved matrix declares for that component. Anything else is a
+ * projector defect, or a declaration missing from the profile, and it fails the
+ * target as HN301 instead of reaching users as an unexplained warning.
+ */
+export function diagnosticsFromAgentPluginDeviations(
+  deviations: readonly AgentPluginDeviation[],
+  options: AgentPluginDeviationDiagnosticOptions,
+): Diagnostic[] {
+  return deviations.map((deviation) => {
+    const declaration = options.support[deviation.component]?.deviations?.find((item) => item.id === deviation.id);
+    const qualified = `${options.adapter}:${deviation.id}`;
+    const location = deviation.path === undefined ? {} : { location: { file: deviation.path } };
+    if (declaration === undefined) {
+      return {
+        code: "HN301",
+        severity: "error",
+        target: options.target,
+        component: deviation.component,
+        ...location,
+        message: `Agent Plugin projection for ${JSON.stringify(options.target)} reported deviation ${JSON.stringify(qualified)}, which its resolved profile does not declare for ${deviation.component}.`,
+        remediation: "declare the deviation on the profile with its evidence, or report the projector defect.",
+      };
+    }
+    return {
+      code: "HN106",
+      severity: options.onDeviation,
+      target: options.target,
+      component: deviation.component,
+      deviation: qualified,
+      ...location,
+      message: deviation.reason,
+      rationale: `${declaration.summary} (${declaration.evidence})`,
+      remediation:
+        options.onDeviation === "error"
+          ? 'change the package so it does not trigger this deviation, or set components.onDeviation to "warn" to accept it.'
+          : 'set components.onDeviation to "error" to fail builds that ship a deviation.',
+    };
+  });
 }
 
 function discoveredComponents(
@@ -119,6 +187,12 @@ export function analyzeAgentPluginProjection(
   target: TargetSpec,
   onUnsupported: "error" | "warn",
   runtimePackage?: AgentPluginRuntimePackage,
+  /**
+   * The target's effective compatibility policy. A discovered component below
+   * `minimum` is reported at `onBelowMinimum`, as project delivery already
+   * does; without it, package delivery accepted any supported level.
+   */
+  compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -158,6 +232,19 @@ export function analyzeAgentPluginProjection(
         support: "unsupported",
         ...(support.rationale === undefined ? {} : { rationale: support.rationale }),
         message: `Agent Plugin component ${JSON.stringify(component)} is unsupported on ${JSON.stringify(target.id)}.`,
+      });
+    } else if (compatibility !== undefined && !meetsMinimum(support.level, compatibility.minimum)) {
+      // Emitted, not omitted: `support` carries the real level, which is what
+      // keeps the analyzed report from counting the component as skipped.
+      resolved.diagnostics.push({
+        code: "HN205",
+        severity: compatibility.onBelowMinimum,
+        target: target.id,
+        component,
+        support: support.level,
+        ...(support.rationale === undefined ? {} : { rationale: support.rationale }),
+        message: `${component} package projection support ${support.level} is below ${compatibility.minimum}`,
+        remediation: `lower compatibility.minimum for ${JSON.stringify(target.id)}, or remove the component from the package.`,
       });
     }
   }

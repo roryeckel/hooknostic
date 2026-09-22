@@ -7,7 +7,11 @@ import {
 } from "@hooknostic/agent-plugin";
 
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
-import { analyzeAgentPluginProjection, resolveAgentPluginProjection } from "./agent-plugin.js";
+import {
+  analyzeAgentPluginProjection,
+  diagnosticsFromAgentPluginDeviations,
+  resolveAgentPluginProjection,
+} from "./agent-plugin.js";
 
 const target: TargetSpec = { id: "test", version: ">=2.1 <3", delivery: "package", output: "dist" };
 const projector: AgentPluginProjector<TargetSpec> = {
@@ -63,6 +67,69 @@ describe("resolveAgentPluginProjection", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "HN203", severity: "error" }));
   });
 
+  // A build ships into every version its range admits, so a deviation any of
+  // them has belongs to the whole range, even when another profile's level
+  // is the one chosen.
+  it("carries every intersected profile's deviations, once each", () => {
+    const expansion = { id: "expansion", summary: "expands text", evidence: ".capture/one" };
+    const other = { id: "other", summary: "drops text", evidence: ".capture/two" };
+    // `other` sits only on the profile whose level is NOT chosen, so taking
+    // the chosen cell's deviations alone would lose it.
+    const deviating: AgentPluginProjector<TargetSpec> = {
+      ...projector,
+      profiles: [
+        {
+          ...projector.profiles[0]!,
+          components: { "agent-plugin.skills": { level: "exact", deviations: [expansion, other] } },
+        },
+        {
+          ...projector.profiles[1]!,
+          components: {
+            "agent-plugin.skills": { level: "approximate", rationale: "loses metadata", deviations: [expansion] },
+          },
+        },
+      ],
+    };
+    const whole = resolveAgentPluginProjection(target, deviating).matrix?.["agent-plugin.skills"];
+    expect(whole).toEqual({ level: "approximate", rationale: "loses metadata", deviations: [expansion, other] });
+    const late = resolveAgentPluginProjection({ ...target, version: ">=2.5 <3" }, deviating).matrix;
+    expect(late?.["agent-plugin.skills"]?.deviations).toEqual([expansion]);
+  });
+
+  // The fake projector's skills resolve to `approximate` across the whole range.
+  it.each([
+    [{ minimum: "emulated", onBelowMinimum: "error" }, ["error"]],
+    [{ minimum: "exact", onBelowMinimum: "warn" }, ["warn"]],
+    [{ minimum: "approximate", onBelowMinimum: "error" }, []],
+    [undefined, []],
+  ] as const)("reports a discovered component below compatibility %j", (compatibility, severities) => {
+    const withSkill: AgentPluginPackage = {
+      ...manifestOnlyExtensionSource,
+      manifest: { ...manifestOnlyExtensionSource.manifest, extensions: {} },
+      skills: [
+        { name: "review", description: "Review", directory: "skills/review", manifestPath: "skills/review/SKILL.md" },
+      ],
+    };
+    const result = analyzeAgentPluginProjection(
+      withSkill,
+      adapterWithProjector,
+      target,
+      "error",
+      undefined,
+      compatibility,
+    );
+    expect(result.diagnostics.filter((item) => item.component === "agent-plugin.skills")).toEqual(
+      severities.map((severity) =>
+        expect.objectContaining({
+          code: "HN205",
+          severity,
+          support: "approximate",
+          rationale: "loses metadata",
+        }),
+      ),
+    );
+  });
+
   it("reports HN205 for a manifest-only client extension without projector support", () => {
     const result = analyzeAgentPluginProjection(manifestOnlyExtensionSource, adapterWithProjector, target, "error");
     expect(result.diagnostics).toContainEqual(
@@ -72,5 +139,55 @@ describe("resolveAgentPluginProjection", () => {
         component: "agent-plugin.client-extension.files",
       }),
     );
+  });
+});
+
+describe("diagnosticsFromAgentPluginDeviations", () => {
+  const support = {
+    "agent-plugin.mcp.stdio": {
+      level: "exact" as const,
+      deviations: [{ id: "mcp-environment-expansion", summary: "expands text", evidence: ".capture/probe" }],
+    },
+  };
+  const deviation = {
+    id: "mcp-environment-expansion",
+    component: "agent-plugin.mcp.stdio" as const,
+    name: "worker",
+    path: "mcp.json#worker",
+    reason: "MCP server worker contains ${TOKEN}.",
+  };
+
+  it.each(["warn", "error"] as const)("reports a declared deviation as HN106 at severity %s", (onDeviation) => {
+    expect(
+      diagnosticsFromAgentPluginDeviations([deviation], { target: "claude", adapter: "claude", onDeviation, support }),
+    ).toEqual([
+      expect.objectContaining({
+        code: "HN106",
+        severity: onDeviation,
+        target: "claude",
+        component: "agent-plugin.mcp.stdio",
+        deviation: "claude:mcp-environment-expansion",
+        location: { file: "mcp.json#worker" },
+        message: deviation.reason,
+        rationale: "expands text (.capture/probe)",
+      }),
+    ]);
+  });
+
+  // Declared for one component is not declared for another: a projector that
+  // reports an id its profile does not carry is a defect, and warn mode must
+  // not soften that into an unexplained warning.
+  it.each([
+    { ...deviation, id: "undeclared" },
+    { ...deviation, component: "agent-plugin.mcp.sse" as const },
+  ])("fails a deviation the resolved profile does not declare: %j", (reported) => {
+    expect(
+      diagnosticsFromAgentPluginDeviations([reported], {
+        target: "claude",
+        adapter: "claude",
+        onDeviation: "warn",
+        support,
+      }),
+    ).toEqual([expect.objectContaining({ code: "HN301", severity: "error" })]);
   });
 });

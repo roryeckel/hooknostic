@@ -8,6 +8,7 @@ import { minimatch } from "minimatch";
 
 import {
   type AgentPluginComponentId,
+  type AgentPluginDeviation,
   type AgentPluginFile,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
@@ -35,6 +36,7 @@ import { targetSpecFromConfig } from "./adapter.js";
 import {
   type AgentPluginProjectionResolution,
   analyzeAgentPluginProjection,
+  diagnosticsFromAgentPluginDeviations,
   diagnosticsFromAgentPluginIssues,
   resolveAgentPluginProjection,
 } from "./agent-plugin.js";
@@ -90,6 +92,11 @@ export interface AgentPluginTargetReport {
     Record<AgentPluginComponentId, { support: SupportLevel; discovered: number; emitted: number; skipped: number }>
   >;
   omissions: AgentPluginProjectionSummary["omissions"];
+  /**
+   * Emitted items the harness treats differently from the specification, each
+   * id qualified as `<adapter>:<id>` (ADR-0019). Present once projection ran.
+   */
+  deviations?: AgentPluginDeviation[];
 }
 
 export interface BuildTargetReport {
@@ -103,6 +110,7 @@ export interface BuildTargetReport {
   project?: {
     components: AgentPluginTargetReport["components"];
     omissions: AgentPluginTargetReport["omissions"];
+    deviations?: AgentPluginTargetReport["deviations"];
     guidance: string[];
   };
 }
@@ -410,11 +418,17 @@ function artifactDigest(artifacts: readonly GeneratedArtifact[], directories: re
   return `sha256:${hash.digest("hex")}`;
 }
 
+/** Report form of reported deviations: ids qualified by the adapter that raised them. */
+function qualifiedDeviations(adapter: string, deviations: readonly AgentPluginDeviation[] | undefined) {
+  return (deviations ?? []).map((deviation) => ({ ...deviation, id: `${adapter}:${deviation.id}` }));
+}
+
 function projectionReport(
   resolution: AgentPluginProjectionResolution,
   summary: AgentPluginProjectionSummary,
   artifacts: readonly GeneratedArtifact[],
   directories: readonly string[],
+  adapter: string,
 ): AgentPluginTargetReport {
   const components: AgentPluginTargetReport["components"] = {};
   for (const [id, counts] of Object.entries(summary.components)) {
@@ -433,6 +447,7 @@ function projectionReport(
     ...(directories.length === 0 ? {} : { directories }),
     components,
     omissions: summary.omissions,
+    deviations: qualifiedDeviations(adapter, summary.deviations),
   };
 }
 
@@ -457,7 +472,11 @@ function analyzedProjectionReport(
   if (hasRuntimePackage) discovered.set("agent-plugin.runtime-package", 1);
   const unsupported = new Set(
     resolution.diagnostics.flatMap((diagnostic) =>
-      diagnostic.code === "HN205" && diagnostic.component !== undefined ? [diagnostic.component] : [],
+      // Only an unsupported component is skipped. A below-minimum HN205 carries
+      // the component's real level and is still emitted.
+      diagnostic.code === "HN205" && diagnostic.component !== undefined && diagnostic.support === "unsupported"
+        ? [diagnostic.component]
+        : [],
     ),
   );
   return {
@@ -591,6 +610,30 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       contentDigest: components.contentDigest,
     };
 
+    // A name that matches no server forwards nothing. Warn rather than fail:
+    // the usual cause is a server renamed in `mcp.json`, and a build that still
+    // produces a working plugin for every other server should say so, not stop.
+    const declared = components.mcp?.mcpServers ?? {};
+    const inert = Object.keys(config.components.mcpEnvironment ?? {})
+      .map((name) => {
+        const server = Object.hasOwn(declared, name) ? declared[name] : undefined;
+        if (server === undefined) return { name, reason: "which mcp.json does not declare" };
+        // Forwarding is a property of a spawned child. A remote server is
+        // reached over a URL and has no environment to receive, so a
+        // declaration on one is as inert as a name that matches nothing.
+        return server.type === "stdio" ? undefined : { name, reason: `which is a ${server.type} server, not stdio` };
+      })
+      .filter((entry) => entry !== undefined)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const { name, reason } of inert) {
+      diagnostics.push({
+        code: "HN105",
+        severity: "warn",
+        component: "agent-plugin.mcp.stdio",
+        message: `components.mcpEnvironment names ${JSON.stringify(name)}, ${reason}, so nothing is forwarded for it`,
+      });
+    }
+
     if (hasFatal(diagnostics)) return fail();
   }
 
@@ -678,6 +721,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         spec,
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
+        effectiveCompatibility(config, id),
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -827,6 +871,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         spec,
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
+        effectiveCompatibility(config, id),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -941,12 +986,28 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(materializedTrees.length === 0 ? {} : { materializedTrees }),
             support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.components!.onUnsupported ?? "error",
+            ...(config.components!.mcpEnvironment === undefined
+              ? {}
+              : { mcpEnvironment: config.components!.mcpEnvironment }),
           });
-          const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);
+          const projectedDiagnostics = [
+            ...diagnosticsFromAgentPluginIssues(plan.issues, id),
+            ...diagnosticsFromAgentPluginDeviations(plan.summary.deviations ?? [], {
+              target: id,
+              adapter: adapter.id,
+              onDeviation: config.components!.onDeviation ?? "warn",
+              support: projectionResolutions.get(id)?.matrix ?? {},
+            }),
+          ];
           diagnostics.push(...projectedDiagnostics);
           if (hasFatal(projectedDiagnostics)) {
             target.status = "failed";
-            target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
+            target.projection = {
+              status: "failed",
+              components: {},
+              omissions: plan.summary.omissions,
+              deviations: qualifiedDeviations(adapter.id, plan.summary.deviations),
+            };
             continue;
           }
           if (plan.files.length === 0) {
@@ -985,7 +1046,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           artifacts = plan.files;
           directories = plan.directories ?? [];
           projectionCopiedPaths = new Set(plan.summary.copiedPaths);
-          target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts, directories);
+          target.projection = projectionReport(
+            projectionResolutions.get(id)!,
+            plan.summary,
+            artifacts,
+            directories,
+            adapter.id,
+          );
         }
 
         let integration: ProjectIntegration | undefined;
@@ -1119,6 +1186,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 ? {}
                 : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),
               ...(projectCwdServers.length === 0 ? {} : { mcpProjectCwdServers: projectCwdServers }),
+              ...(config.components?.mcpEnvironment === undefined
+                ? {}
+                : { mcpEnvironment: config.components.mcpEnvironment }),
+              support: support.matrix,
             });
             // Not an omission: the skill is delivered, in place, and counting
             // it as skipped would misreport a component that is present. Warn,
@@ -1154,7 +1225,20 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 counted.skipped++;
               }
             }
-            target.project = { components: counts, omissions, guidance: projected.guidance };
+            diagnostics.push(
+              ...diagnosticsFromAgentPluginDeviations(projected.deviations ?? [], {
+                target: id,
+                adapter: adapter.id,
+                onDeviation: config.components?.onDeviation ?? "warn",
+                support: support.matrix,
+              }),
+            );
+            target.project = {
+              components: counts,
+              omissions,
+              deviations: qualifiedDeviations(adapter.id, projected.deviations),
+              guidance: projected.guidance,
+            };
             if (hasTargetFatal()) {
               target.status = "failed";
               continue;

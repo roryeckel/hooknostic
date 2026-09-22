@@ -92,6 +92,25 @@ describe("Codex project components", () => {
     });
   });
 
+  it("forwards declared environment names for a package delivered to a project", async () => {
+    const packaged: ProjectComponents = {
+      ...source({
+        credentialed: { type: "stdio", command: "node" },
+        plain: { type: "stdio", command: "node" },
+      }),
+      origin: "package",
+    };
+    const integration = await projectComponents(packaged, ".", "out", "hooknostic.config.ts", {
+      mcpEnvironment: { credentialed: ["SERVICE_USER", "SERVICE_API_KEY", "SERVICE_USER"] },
+    });
+    const entries = Object.fromEntries(
+      integration.entries.map((entry) => [String(entry.key[1]), entry.value]),
+    ) as Record<string, Record<string, unknown>>;
+
+    expect(entries["credentialed"]?.["env_vars"]).toEqual(["SERVICE_API_KEY", "SERVICE_USER"]);
+    expect(entries["plain"]).not.toHaveProperty("env_vars");
+  });
+
   it("emits target-native startup timeouts", async () => {
     const integration = await projectComponents(
       source({ slow: { type: "stdio", command: "node" } }),
