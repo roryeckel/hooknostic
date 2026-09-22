@@ -521,6 +521,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         validatedOn: [
           {
             version: "0.154.0",
+            date: "2026-09-21",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "Against the actual projected package, a synthetic ambient variable was absent without components.mcpEnvironment and reached the stdio child when the declaration generated env_vars.",
+          },
+          {
+            version: "0.153.2",
+            date: "2026-09-21",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "The installed-plugin path at the lower validated edge behaved the same: a synthetic ambient variable was filtered without components.mcpEnvironment and reached the projected stdio child through generated env_vars.",
+          },
+          {
+            version: "0.154.0",
             date: "2026-09-16",
             method: "live-probe",
             artifact: ".capture/mcp-child-path",

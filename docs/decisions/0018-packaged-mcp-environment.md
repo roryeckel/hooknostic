@@ -11,7 +11,9 @@ an API key, a user id, a tuning variable. On Claude and OpenCode it gets one:
 both start the server with the environment they were launched with. Codex does
 not. It starts a stdio child with a fixed platform allowlist and nothing else,
 and a variable reaches the child only by being named in that server's
-`env_vars` (`.capture/codex-plugin-mcp-environment`). In the same probe the
+`env_vars`. The cross-harness projected-package matrix is captured in
+`.capture/mcp-child-path`; `.capture/codex-plugin-mcp-environment` isolates the
+native Codex mechanism. In the latter probe the
 synthetic variable reached a `UserPromptSubmit` command hook unchanged, so
 without something, a plugin's two halves can see different environments and
 only one of them works.

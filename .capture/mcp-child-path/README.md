@@ -86,6 +86,49 @@ necessity, not tidiness.
 by the harness. OpenCode's is the nested `package/` directory, which is why a
 materialized tree has to be placed inside it.
 
+## Packaged ambient-variable follow-up (2026-09-21)
+
+The first run established `PATH`, but `PATH` may be a special platform
+allowlist entry. A second live probe asked the narrower question ADR-0018 turns
+on: does an arbitrary, non-credential-shaped ambient variable reach a packaged
+stdio server, and does Codex's generated `env_vars` declaration change that?
+
+Run the repeatable driver from the repository root:
+
+```powershell
+pnpm run bundle
+node .capture/mcp-child-path/probe.mjs --codex C:\path\to\codex-0.153.2.exe
+```
+
+The driver builds the same portable package twice. `undeclared` has no
+`components.mcpEnvironment`; `declared` names only `SYNTHETIC_MARKER` for the
+`recorder` server. It then loads the actual projected package into Claude Code
+**2.1.278**, OpenCode **1.18.32**, codex-cli **0.154.0**, and the supplied
+codex-cli **0.153.2** binary. Claude and OpenCode receive disposable isolated
+configuration roots. Each Codex run gets an isolated `CODEX_HOME`, marketplace,
+plugin install and trusted project, and reaches only a loopback model endpoint
+that returns HTTP 503. Every harness command receives a small allowlist of
+platform process variables plus the synthetic marker, so no user-defined
+credential or service configuration is inherited.
+
+The committed, value-free result is `environment-observations.json`:
+
+| Harness | Undeclared marker | Declared marker |
+| --- | --- | --- |
+| Claude Code 2.1.278 | present | present |
+| OpenCode 1.18.32 | present | present |
+| codex-cli 0.154.0 | absent | present |
+| codex-cli 0.153.2 | absent | present |
+
+This establishes the distinction directly rather than inferring it from an
+environment-key count. Claude and OpenCode pass an arbitrary ambient value to
+the projected child without a target declaration, so they correctly ignore
+`components.mcpEnvironment`. Codex filters it on both captured versions and the
+projector's `env_vars` output is what admits it. The 0.153.2 run exercises the
+installed-plugin path and the generated projection itself, closing the older
+edge of `CODEX_PLUGIN_MODE_RANGE` rather than borrowing evidence from Codex's
+separate project-MCP route.
+
 ## Not measured
 
 - **Ambient lookup precedence or cwd shadowing.** The recorder searched only
@@ -113,3 +156,7 @@ session, so the plugin was installed into the real `~/.codex` and removed
 afterwards: `config.toml` was sha256-verified byte-identical before and after,
 and the `plugins/cache/path-probe` directory that `plugin remove` leaves behind
 was deleted.
+
+The 2026-09-21 driver uses only disposable configuration roots and removes its
+scratch projects, isolated homes, marketplaces, plugin installs and recorder
+output in `finally`. The generated `probe/dist/` trees are ignored build output.

@@ -405,6 +405,13 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         date: "2026-09-08",
         validatedOn: [
           {
+            version: "1.18.32",
+            date: "2026-09-21",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that OpenCode needs no target-specific forwarding declaration.",
+          },
+          {
             version: "1.18.31",
             date: "2026-09-16",
             method: "live-probe",

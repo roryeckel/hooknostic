@@ -529,6 +529,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         date: "2026-09-04",
         validatedOn: [
           {
+            version: "2.1.278",
+            date: "2026-09-21",
+            method: "live-probe",
+            artifact: ".capture/mcp-child-path",
+            what: "An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration.",
+          },
+          {
             version: "2.1.273",
             date: "2026-09-16",
             method: "live-probe",
