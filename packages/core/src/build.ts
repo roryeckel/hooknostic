@@ -472,7 +472,11 @@ function analyzedProjectionReport(
   if (hasRuntimePackage) discovered.set("agent-plugin.runtime-package", 1);
   const unsupported = new Set(
     resolution.diagnostics.flatMap((diagnostic) =>
-      diagnostic.code === "HN205" && diagnostic.component !== undefined ? [diagnostic.component] : [],
+      // Only an unsupported component is skipped. A below-minimum HN205 carries
+      // the component's real level and is still emitted.
+      diagnostic.code === "HN205" && diagnostic.component !== undefined && diagnostic.support === "unsupported"
+        ? [diagnostic.component]
+        : [],
     ),
   );
   return {
@@ -717,6 +721,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         spec,
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
+        effectiveCompatibility(config, id),
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -866,6 +871,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         spec,
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
+        effectiveCompatibility(config, id),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);

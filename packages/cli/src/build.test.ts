@@ -657,6 +657,75 @@ describe("hooknostic build end-to-end", () => {
       expect(existsSync(output)).toBe(false);
     }
   });
+  // Package delivery used to accept any supported component level while
+  // project delivery enforced compatibility.minimum. Codex stdio is emulated,
+  // so `minimum: "exact"` must reach it, and a warning must not mark the
+  // still-emitted component as skipped.
+  it("applies compatibility.minimum to package-projected components", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-package-minimum-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    const output = join(dir, "dist/codex");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "minimum", version: "1.0.0" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { local: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/server.mjs"] } },
+      }),
+    );
+    const writeConfig = async (onBelowMinimum: "warn" | "error") =>
+      writeFile(
+        config,
+        `export default ${JSON.stringify({
+          components: { root: ".", targets: ["codex"] },
+          targets: {
+            codex: {
+              version: CODEX_PLUGIN_MODE_RANGE,
+              delivery: "package",
+              output: "dist/codex",
+              compatibility: { minimum: "exact", onBelowMinimum },
+            },
+          },
+        })};`,
+      );
+    const belowMinimum = (severity: "warn" | "error") =>
+      expect.objectContaining({
+        code: "HN205",
+        severity,
+        target: "codex",
+        component: "agent-plugin.mcp.stdio",
+        support: "emulated",
+      });
+
+    await writeConfig("warn");
+    const accepted = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: accepted.io })).toBe(0);
+    const report = JSON.parse(accepted.out());
+    expect(report.diagnostics).toContainEqual(belowMinimum("warn"));
+    expect(report.targets.codex.projection.components["agent-plugin.mcp.stdio"]).toEqual({
+      support: "emulated",
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
+    expect(report.targets.codex.projection.omissions).toEqual([]);
+
+    await writeConfig("error");
+    await rm(output, { recursive: true, force: true });
+    for (const run of [runCheck, runBuild]) {
+      const refused = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: refused.io })).toBe(2);
+      const result = JSON.parse(refused.out());
+      expect(result.diagnostics).toContainEqual(belowMinimum("error"));
+      // Refused, not omitted: the analyzed report must not call it skipped.
+      expect(result.targets.codex.projection.components["agent-plugin.mcp.stdio"]).toMatchObject({ skipped: 0 });
+      expect(existsSync(output)).toBe(false);
+    }
+  });
   it("builds the rewrite-shell example into three self-contained target artifacts", { timeout: 120_000 }, async () => {
     const dir = await cleanExample("rewrite-shell");
     const { io, out } = captureIO();

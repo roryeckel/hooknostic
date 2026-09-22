@@ -34,7 +34,8 @@ Rendered by `hooknostic inspect`.
 
 **Compatibility policy** — your config's answer to "how much degradation is
 acceptable?": a minimum support level and what to do below it, settable globally and
-per target. Default: minimum `emulated`, below-minimum is an error.
+per target. It applies to hook capabilities and to Agent Plugin components alike.
+Default: minimum `emulated`, below-minimum is an error.
 
 ## The machinery
 

@@ -96,6 +96,40 @@ describe("resolveAgentPluginProjection", () => {
     expect(late?.["agent-plugin.skills"]?.deviations).toEqual([expansion]);
   });
 
+  // The fake projector's skills resolve to `approximate` across the whole range.
+  it.each([
+    [{ minimum: "emulated", onBelowMinimum: "error" }, ["error"]],
+    [{ minimum: "exact", onBelowMinimum: "warn" }, ["warn"]],
+    [{ minimum: "approximate", onBelowMinimum: "error" }, []],
+    [undefined, []],
+  ] as const)("reports a discovered component below compatibility %j", (compatibility, severities) => {
+    const withSkill: AgentPluginPackage = {
+      ...manifestOnlyExtensionSource,
+      manifest: { ...manifestOnlyExtensionSource.manifest, extensions: {} },
+      skills: [
+        { name: "review", description: "Review", directory: "skills/review", manifestPath: "skills/review/SKILL.md" },
+      ],
+    };
+    const result = analyzeAgentPluginProjection(
+      withSkill,
+      adapterWithProjector,
+      target,
+      "error",
+      undefined,
+      compatibility,
+    );
+    expect(result.diagnostics.filter((item) => item.component === "agent-plugin.skills")).toEqual(
+      severities.map((severity) =>
+        expect.objectContaining({
+          code: "HN205",
+          severity,
+          support: "approximate",
+          rationale: "loses metadata",
+        }),
+      ),
+    );
+  });
+
   it("reports HN205 for a manifest-only client extension without projector support", () => {
     const result = analyzeAgentPluginProjection(manifestOnlyExtensionSource, adapterWithProjector, target, "error");
     expect(result.diagnostics).toContainEqual(

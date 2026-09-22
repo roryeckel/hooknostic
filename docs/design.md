@@ -362,7 +362,12 @@ targets: {
 
 Fidelity order: `exact > emulated > approximate > unsupported`. Project default:
 `minimum: "emulated"; onBelowMinimum: "error"`. Per-target overrides allow intentional
-degradation.
+degradation. The same policy applies to every discovered Agent Plugin component, in
+package projection and project delivery alike. A supported component below the minimum
+is an HN205 at `onBelowMinimum`, and it is still emitted when that is `"warn"`. An
+`unsupported` component follows `components.onUnsupported` instead. A deviation
+(ADR-0019) is not a level, so this policy never acts on one: `components.onDeviation`
+does.
 
 ### 7.6 Target-scoped hooks
 

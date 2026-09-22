@@ -12,7 +12,7 @@ import {
   type AgentPluginProjector,
   type AgentPluginRuntimePackage,
 } from "@hooknostic/agent-plugin";
-import { leastCapable } from "@hooknostic/sdk";
+import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
@@ -187,6 +187,12 @@ export function analyzeAgentPluginProjection(
   target: TargetSpec,
   onUnsupported: "error" | "warn",
   runtimePackage?: AgentPluginRuntimePackage,
+  /**
+   * The target's effective compatibility policy. A discovered component below
+   * `minimum` is reported at `onBelowMinimum`, as project delivery already
+   * does; without it, package delivery accepted any supported level.
+   */
+  compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -226,6 +232,19 @@ export function analyzeAgentPluginProjection(
         support: "unsupported",
         ...(support.rationale === undefined ? {} : { rationale: support.rationale }),
         message: `Agent Plugin component ${JSON.stringify(component)} is unsupported on ${JSON.stringify(target.id)}.`,
+      });
+    } else if (compatibility !== undefined && !meetsMinimum(support.level, compatibility.minimum)) {
+      // Emitted, not omitted: `support` carries the real level, which is what
+      // keeps the analyzed report from counting the component as skipped.
+      resolved.diagnostics.push({
+        code: "HN205",
+        severity: compatibility.onBelowMinimum,
+        target: target.id,
+        component,
+        support: support.level,
+        ...(support.rationale === undefined ? {} : { rationale: support.rationale }),
+        message: `${component} package projection support ${support.level} is below ${compatibility.minimum}`,
+        remediation: `lower compatibility.minimum for ${JSON.stringify(target.id)}, or remove the component from the package.`,
       });
     }
   }
