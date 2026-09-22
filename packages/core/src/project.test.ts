@@ -44,6 +44,34 @@ export default definePlugin({ name: "sample-project", hooks: [hook("tool.before"
   return { root, config, options: { configPath, registry, evaluate } };
 }
 describe("complete project integration", () => {
+  it("anchors a dot MCP override to its nested source directory for every target", async () => {
+    const { root, options } = await fixture({
+      components: {
+        mcp: "./services/mcp.json",
+        mcpOverrides: Object.fromEntries(Object.keys(registry).map((id) => [id, { servers: { probe: { cwd: "." } } }])),
+      },
+    });
+    await mkdir(join(root, "services"));
+    await writeFile(
+      join(root, "services/mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { probe: { type: "stdio", command: "node", args: ["-e", "console.log(process.cwd())"] } },
+      }),
+    );
+    const result = await buildProject(options);
+    expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
+    for (const id of Object.keys(registry)) {
+      const run = spawnSync(process.execPath, [join(root, `.hooknostic/artifacts/${id}/mcp-launcher.mjs`), "0"], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout.trim(), id).toBe(join(root, "services"));
+    }
+  });
+
   it("wires all three harnesses, verifies cleanly, and detects stale source", async () => {
     const { root, options } = await fixture();
     const dry = await runProject({ ...options, command: "sync", dryRun: true });

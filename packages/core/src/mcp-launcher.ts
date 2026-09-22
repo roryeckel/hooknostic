@@ -230,7 +230,7 @@ function expand(value) {
 }
 
 const cwd =
-  entry.cwd === undefined
+  entry.cwd === undefined || entry.cwd === "."
     ? pluginRoot
     : entry.cwd.startsWith("./")
       ? resolve(pluginRoot, entry.cwd)

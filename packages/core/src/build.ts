@@ -497,12 +497,12 @@ function analyzedProjectionReport(
 
 async function writeArtifacts(
   stagingRoot: string,
-  key: string,
   artifacts: GeneratedArtifact[],
   directories: readonly string[],
 ): Promise<string> {
-  const dir = join(stagingRoot, key);
-  await mkdir(dir, { recursive: true });
+  // Target aliases are identifiers, not paths. Independent directories also
+  // keep nested and case-distinct aliases from sharing staged artifacts.
+  const dir = await mkdtemp(join(stagingRoot, "target-"));
   for (const directory of directories) {
     const path = join(dir, directory);
     if (!isStrictDescendant(dir, path)) {
@@ -1339,7 +1339,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         });
         if (stagingRoot === undefined) continue;
         phase = "staging";
-        const stagingDir = await writeArtifacts(stagingRoot, id, artifacts, directories);
+        const stagingDir = await writeArtifacts(stagingRoot, artifacts, directories);
         staged.push({ key: id, target: id, stagingDir, outputDir: outputFor(id)!.outputDir });
       } catch (error) {
         diagnostics.push({

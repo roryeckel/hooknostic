@@ -88,7 +88,5 @@ if (check) {
   console.log(`all version carriers agree on ${version}`);
 } else {
   console.log(rewrites > 0 ? `${rewrites} files rewritten to ${version}` : `already at ${version}`);
-  console.log(
-    "next: pnpm install --lockfile-only && pnpm build, then rebuild both example artifacts from the repo root",
-  );
+  console.log("next: pnpm install --lockfile-only, then pnpm build:examples from the repo root");
 }

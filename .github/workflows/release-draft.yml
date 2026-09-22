@@ -37,25 +37,50 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
        startsWith(github.event.pull_request.head.ref, 'release/v'))
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
     steps:
       - name: Resolve version and target
         id: meta
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_REF: ${{ inputs.target_ref }}
+          INPUT_DRAFT: ${{ inputs.draft }}
+          INPUT_PREVIOUS_TAG: ${{ inputs.previous_tag }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ inputs.target_ref }}" >> "$GITHUB_OUTPUT"
-            echo "draft=${{ inputs.draft }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
+            REF="$INPUT_REF"
+            DRAFT="$INPUT_DRAFT"
           else
-            HEAD_REF="${{ github.event.pull_request.head.ref }}"
-            echo "version=${HEAD_REF#release/v}" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ github.event.pull_request.merge_commit_sha }}" >> "$GITHUB_OUTPUT"
-            echo "draft=true" >> "$GITHUB_OUTPUT"
+            if [[ "$HEAD_REF" != release/v* ]]; then
+              echo "expected a release/v branch"; exit 1
+            fi
+            VERSION="${HEAD_REF#release/v}"
+            REF="$MERGE_SHA"
+            DRAFT=true
           fi
+          # Validate everything before emitting any single-line step outputs.
+          for VALUE in "$VERSION" "$REF" "$DRAFT" "$INPUT_PREVIOUS_TAG"; do
+            if [[ "$VALUE" == *$'\n'* || "$VALUE" == *$'\r'* ]]; then
+              echo "release metadata must not contain line breaks"; exit 1
+            fi
+          done
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "expected a release version without leading v"; exit 1
+          fi
+          if [[ -z "$REF" || ( "$DRAFT" != true && "$DRAFT" != false ) ]]; then
+            echo "expected a target ref and a true/false draft flag"; exit 1
+          fi
+          printf 'version=%s\nref=%s\ndraft=%s\n' "$VERSION" "$REF" "$DRAFT" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7
         with:
@@ -72,7 +97,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Version carriers agree with the release version
-        run: node scripts/set-versions.mjs --check "${{ steps.meta.outputs.version }}"
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: node scripts/set-versions.mjs --check "$VERSION"
 
       # The private:true guard and the release flow cooperate rather than
       # collide: this fails BEFORE the human gate, naming the checklist item.
@@ -94,40 +121,49 @@ jobs:
         shell: bash
         run: |
           SHA="$(git rev-parse HEAD)"
-          node scripts/wait-for-ci.mjs "${{ github.repository }}" "$SHA"
+          node scripts/wait-for-ci.mjs "$REPOSITORY" "$SHA"
 
       - name: Previous tag
         id: prev
         shell: bash
+        env:
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
         run: |
-          if [ -n "${{ inputs.previous_tag }}" ]; then
-            echo "tag=${{ inputs.previous_tag }}" >> "$GITHUB_OUTPUT"
-          else
+          if [ -z "$PREVIOUS_TAG" ]; then
             # First release has no previous tag; empty is a handled input to
             # the notes script, not an error.
-            echo "tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+            PREVIOUS_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
           fi
+          if [[ "$PREVIOUS_TAG" == *$'\n'* || "$PREVIOUS_TAG" == *$'\r'* ]]; then
+            echo "previous tag must not contain line breaks"; exit 1
+          fi
+          printf 'tag=%s\n' "$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREV: ${{ steps.prev.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           pnpm build
-          PREV="${{ steps.prev.outputs.tag }}"
+          PREVIOUS_FLAGS=()
+          if [ -n "$PREV" ]; then PREVIOUS_FLAGS+=(--previous-tag "$PREV"); fi
           node scripts/release-notes.mjs \
-            --version "${{ steps.meta.outputs.version }}" \
+            --version "$VERSION" \
             --sha "$(git rev-parse HEAD)" \
-            ${PREV:+--previous-tag "$PREV"} \
-            --repo "${{ github.repository }}" \
+            "${PREVIOUS_FLAGS[@]}" \
+            --repo "$REPOSITORY" \
             --output release-notes.md
 
       - name: Create draft release
         shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          DRAFT: ${{ steps.meta.outputs.draft }}
         run: |
-          VERSION="${{ steps.meta.outputs.version }}"
           FLAGS=(--target "$(git rev-parse HEAD)" --notes-file release-notes.md --title "v$VERSION")
-          [ "${{ steps.meta.outputs.draft }}" = "true" ] && FLAGS+=(--draft)
+          [ "$DRAFT" = "true" ] && FLAGS+=(--draft)
           # Prerelease flag from the version suffix; a prerelease also gets the
           # npm `next` dist-tag in stage 3.
           if echo "$VERSION" | grep -qiE -- '-(rc|alpha|a|beta|b|dev|pre|preview)[.-]?[0-9]*$'; then
@@ -136,8 +172,10 @@ jobs:
           gh release create "v$VERSION" "${FLAGS[@]}"
 
       - name: Delete the release branch
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         shell: bash
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/${{ github.event.pull_request.head.ref }}" \
+          gh api -X DELETE "repos/$REPOSITORY/git/refs/heads/$HEAD_REF" \
             || echo "branch already gone"

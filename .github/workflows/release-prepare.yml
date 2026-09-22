@@ -89,10 +89,7 @@ jobs:
 
       - name: Rebuild committed example artifacts (repo root)
         shell: bash
-        run: |
-          pnpm build
-          node packages/cli/bin/hooknostic.mjs build --config examples/rewrite-shell/hooknostic.config.ts
-          node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hooknostic.config.ts
+        run: pnpm build:examples
 
       - name: Commit, push, open PR
         if: inputs.dry_run != 'true'

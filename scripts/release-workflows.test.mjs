@@ -24,7 +24,8 @@ it("keeps formatting a pinned root script and a CI gate", () => {
 it("wires the draft gate to CI workflow runs instead of all checks on its own commit", () => {
   const draft = read(".github/workflows/release-draft.yml");
   expect(draft).toContain("actions: read");
-  expect(draft).toContain('node scripts/wait-for-ci.mjs "${{ github.repository }}" "$SHA"');
+  expect(draft).toContain('node scripts/wait-for-ci.mjs "$REPOSITORY" "$SHA"');
+  expect(draft).toContain("REPOSITORY: ${{ github.repository }}");
   expect(draft).not.toContain("/check-runs");
 });
 

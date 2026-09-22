@@ -109,6 +109,15 @@ const probeServer = (extra: Partial<McpLauncherServer> = {}): McpLauncherServer 
 });
 
 describe("generated MCP launcher", () => {
+  it("anchors every accepted spelling of the root independently of the invocation directory", async () => {
+    for (const cwd of [undefined, ".", "./"]) {
+      const tree = await layout([probeServer(cwd === undefined ? {} : { cwd })]);
+      const result = launch(tree, 0);
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).cwd, `cwd ${JSON.stringify(cwd)}`).toBe(tree.root);
+    }
+  });
+
   it("binds both variables absolutely and anchors the root above itself", async () => {
     const tree = await layout([probeServer()]);
     const result = launch(tree, 0);

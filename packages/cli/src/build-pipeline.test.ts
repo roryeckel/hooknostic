@@ -99,6 +99,83 @@ const mainGuardSource = `import { pathToFileURL } from "node:url";
    export default definePlugin({ name: "p", hooks: [hook("session.start", { id: "s", async run() {} })] });`;
 
 describe("build pipeline hardening", () => {
+  it("keeps target aliases out of staging paths and preserves their report identities", async () => {
+    const dir = await project();
+    const aliases = ["../source", "nested", "nested/child", "Same", "same", "hooknostic-build.json"];
+    await mkdir(join(dir, "source"));
+    await writeFile(join(dir, "source/important.txt"), "original source");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default ${JSON.stringify({
+        entry: "./hooks.ts",
+        targets: Object.fromEntries(
+          aliases.map((id, index) => [
+            id,
+            {
+              adapter: "fake",
+              version: ">=1.0 <2",
+              delivery: "package",
+              output: `./dist/target-${index}`,
+            },
+          ]),
+        ),
+      })};`,
+    );
+    const adapter = fake({ compile: (_plugin, target) => [{ path: "important.txt", contents: target.id }] });
+    const dry = await buildProject({
+      configPath: join(dir, "hooknostic.config.ts"),
+      registry: { fake: adapter },
+      evaluate: EVALUATE,
+      dryRun: true,
+    });
+    expect(dry.ok, JSON.stringify(dry.report.diagnostics)).toBe(true);
+    expect(existsSync(join(dir, "dist"))).toBe(false);
+    expect(await stagingLeftovers(dir)).toEqual([]);
+    const result = await build(dir, adapter);
+    expect(await readFile(join(dir, "source/important.txt"), "utf8")).toBe("original source");
+    expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
+    expect(Object.keys(result.report.targets)).toEqual(aliases);
+    for (const [index, id] of aliases.entries()) {
+      expect(await readdir(join(dir, `dist/target-${index}`))).toEqual(["important.txt"]);
+      expect(await readFile(join(dir, `dist/target-${index}/important.txt`), "utf8")).toBe(id);
+    }
+    expect(await stagingLeftovers(dir)).toEqual([]);
+  });
+
+  it("leaves sources and previous outputs intact when staging fails after a path-like alias", async () => {
+    const dir = await project();
+    await mkdir(join(dir, "source"));
+    await writeFile(join(dir, "source/important.txt"), "original source");
+    await mkdir(join(dir, "dist/first"), { recursive: true });
+    await writeFile(join(dir, "dist/first/important.txt"), "previous output");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+      entry: "./hooks.ts", targets: {
+        "../source": { adapter: "fake", version: ">=1.0 <2", delivery: "package", output: "./dist/first" },
+        later: { adapter: "fake", version: ">=1.0 <2", delivery: "package", output: "./dist/later" }
+      }
+    };`,
+    );
+    const result = await build(
+      dir,
+      fake({
+        compile: (_plugin, target) => [
+          {
+            path: target.id === "later" ? `${"n".repeat(300)}.txt` : "important.txt",
+            contents: "new output",
+          },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(await readFile(join(dir, "source/important.txt"), "utf8")).toBe("original source");
+    expect(await readFile(join(dir, "dist/first/important.txt"), "utf8")).toBe("previous output");
+    expect(existsSync(join(dir, "dist/later"))).toBe(false);
+    expect(existsSync(join(dir, "hooknostic-build.json"))).toBe(false);
+    expect(await stagingLeftovers(dir)).toEqual([]);
+  });
+
   it("rejects artifact paths that escape the output directory without writing anything", async () => {
     const dir = await project();
     const result = await build(
