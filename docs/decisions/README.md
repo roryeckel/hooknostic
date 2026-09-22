@@ -28,6 +28,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0017 — Package materialization is provider-owned and component-neutral](0017-mcp-runtime-dependencies.md) | How can a build produce portable package content without teaching Hooknostic each ecosystem? |
 | [0018 — A packaged MCP server's environment is declared in build config](0018-packaged-mcp-environment.md) | How does a packaged MCP server receive an ambient variable on a harness that withholds one? |
 | [0019 — Harness deviations from Agent Plugins](0019-agent-plugin-spec-deviations.md) | What happens when a harness treats a package differently from the specification, and how do I make that fail the build? |
+| [0020 — A hook finds its own package](0020-hook-plugin-root.md) | How does a hook reach a file its package ships, on every harness and delivery? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

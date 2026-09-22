@@ -235,6 +235,13 @@ entire output.
   binds neither, a launcher is the only mechanism left, and `PLUGIN_DATA` must
   live somewhere an upgrade will not delete: check whether the harness installs
   into a version-scoped directory before choosing a location inside it.
+- **Declare where the hook runtime lands, and where the package lands.**
+  `hookRuntimePath(delivery)` names the path `compile()` writes the runtime to,
+  and the projector's `packageRoot` names the directory package files are
+  copied into when it is not the output root. The build derives
+  `ctx.plugin.root` from the two (ADR-0020), and the contract suite fails if
+  `hookRuntimePath` disagrees with `compile()`. Leave both undeclared and your
+  target simply offers no `ctx.plugin`.
 - **Read support from `context.support`, never re-derive it.** Core resolves
   your own `profiles` against the target range and hands them back, so a
   projector cannot disagree with the matrix the build reports and

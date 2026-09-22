@@ -278,6 +278,11 @@ export interface AgentPluginProjectionPlan {
 export interface AgentPluginProjector<TTarget = AgentPluginProjectionTarget> {
   namespace: string;
   profiles: readonly AgentPluginProjectionProfile[];
+  /**
+   * Where the package's own files land in the projected output, as a POSIX
+   * path relative to it -- the directory `${PLUGIN_ROOT}` names. Default `"."`.
+   */
+  packageRoot?: string;
   project(
     source: AgentPluginPackage,
     context: AgentPluginProjectionContext<TTarget>,

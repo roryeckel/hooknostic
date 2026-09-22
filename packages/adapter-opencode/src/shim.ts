@@ -16,6 +16,11 @@ export interface OpenCodeShimOptions {
   minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
   harnessVersion?: string;
+  /**
+   * Absolute Agent Plugin root, surfaced to handlers as `ctx.plugin.root`
+   * (ADR-0020). The generated entry resolves it from its own location.
+   */
+  pluginRoot?: string;
 }
 
 /**
@@ -122,6 +127,7 @@ export function createHooknosticHooks(
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: opencodeShellCodec,
+      ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     const application = planOpenCodeApplication(result);
 
@@ -326,3 +332,7 @@ export function createHooknosticHooks(
   }
   return hooks;
 }
+
+// The generated entry resolves `pluginRoot` with this; it imports only the
+// shim subpath, so the helper is re-exported here rather than from the runtime.
+export { pluginRootFrom } from "@hooknostic/runtime";

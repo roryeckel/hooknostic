@@ -7,6 +7,7 @@ import type {
   HookDefinition,
   HookEvent,
   HookResult,
+  PluginContext,
   RuntimePolicy,
   ShellCodec,
   SupportLevel,
@@ -51,6 +52,8 @@ export interface DispatchOptions {
    * raw `replaceInput` drops `tool.shell` (absent, never stale).
    */
   shellCodec?: ShellCodec;
+  /** The executing artifact's Agent Plugin package, surfaced as `ctx.plugin` (ADR-0020). */
+  plugin?: PluginContext;
 }
 
 function toolOf(event: HookEvent): ToolInvocation | undefined {
@@ -180,6 +183,9 @@ export async function dispatch(
       capabilities,
       harness: { ...options.harness },
       signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...(options.plugin === undefined ? {} : { plugin: { ...options.plugin } }),
     };
 
     let outcome: Effect | undefined | void;

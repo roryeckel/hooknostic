@@ -12,6 +12,16 @@ export interface CapabilitySet {
   level(id: CapabilityId): SupportLevel;
 }
 
+/** The Agent Plugin package a hook ships in (ADR-0020). */
+export interface PluginContext {
+  /**
+   * Absolute path of the package root on this target: the directory its MCP
+   * servers see as `${PLUGIN_ROOT}`, and the place to find files the package
+   * ships beside its hooks, such as a script a hook runs.
+   */
+  root: string;
+}
+
 export interface HookContext {
   capabilities: CapabilitySet;
   harness: {
@@ -20,6 +30,12 @@ export interface HookContext {
   };
   /** Aborted when the configured hook timeout elapses. */
   signal: AbortSignal;
+  /**
+   * Present exactly when the build projected an Agent Plugin package
+   * (`components.root`) for the executing target; absent for a hooks-only
+   * build and for direct component sources, which have no package root.
+   */
+  plugin?: PluginContext;
 }
 
 /** Intentional harness scoping — not a portability failure, never a warning. */

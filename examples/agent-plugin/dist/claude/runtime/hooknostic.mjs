@@ -4866,6 +4866,8 @@ init_dist();
 import { Console } from "node:console";
 import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
+import { dirname as pathDirname, resolve as pathResolve } from "node:path";
+import { fileURLToPath as urlToPath } from "node:url";
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4956,7 +4958,10 @@ async function dispatch(hooks, event, options) {
     const ctx = {
       capabilities,
       harness: { ...options.harness },
-      signal: controller.signal
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
     };
     let outcome;
     let timedOut = false;
@@ -5245,6 +5250,9 @@ function describeHookResult(result) {
   const errors = `${result.errors.length} error${result.errors.length === 1 ? "" : "s"}`;
   return `effects [${effects}]${terminated}, ${errors}`;
 }
+function pluginRootFrom(moduleUrl, offset) {
+  return pathResolve(pathDirname(urlToPath(moduleUrl)), offset);
+}
 var NATIVE_EVENT = {
   "session.start": "SessionStart",
   "session.end": "SessionEnd",
@@ -5503,7 +5511,8 @@ async function runClaudeCommandShim(source, options) {
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
-      shellCodec: claudeShellCodec
+      shellCodec: claudeShellCodec,
+      ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);
@@ -5533,7 +5542,8 @@ await runClaudeCommandShim(() => Promise.resolve().then(() => (init_hooks(), hoo
   targetId: "claude",
   capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "permission.request.context.add": "exact", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "exact" },
   minimumCapabilityLevel: "emulated",
-  policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
+  policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 },
+  pluginRoot: pluginRootFrom(import.meta.url, "..")
 });
 /*!
 Bundled package notices

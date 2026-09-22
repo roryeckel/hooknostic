@@ -1223,3 +1223,33 @@ describe("updateShell under policy edges", () => {
     expect(terminalEffect(result)?.kind).toBe("block");
   });
 });
+
+describe("plugin context (ADR-0020)", () => {
+  it("hands each hook its own copy of the plugin root, and none without a package", async () => {
+    const seen: (string | undefined)[] = [];
+    const hooks = [
+      hook("turn.stop", {
+        id: "mover",
+        async run(_event, ctx) {
+          seen.push(ctx.plugin?.root);
+          if (ctx.plugin) ctx.plugin.root = "C:/elsewhere";
+        },
+      }),
+      hook("turn.stop", {
+        id: "reader",
+        async run(_event, ctx) {
+          seen.push(ctx.plugin?.root);
+        },
+      }),
+    ];
+    const plugin = { root: "C:/plugins/rooted" };
+    await dispatch(hooks, turnStop(), { ...OPTIONS, plugin });
+    // A handler that moves the root moves it for itself only.
+    expect(seen).toEqual(["C:/plugins/rooted", "C:/plugins/rooted"]);
+    expect(plugin.root).toBe("C:/plugins/rooted");
+
+    seen.length = 0;
+    await dispatch(hooks, turnStop(), OPTIONS);
+    expect(seen).toEqual([undefined, undefined]);
+  });
+});

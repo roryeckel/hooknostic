@@ -54,6 +54,12 @@ const RUNTIME_PATH = ".codex/hooknostic/hooknostic.mjs";
 export const CODEX_PLUGIN_HOOKS_PATH = "hooks.json";
 export const CODEX_PLUGIN_RUNTIME_PATH = "hooknostic/hooknostic.mjs";
 export const CODEX_PLUGIN_MANIFEST_PATH = ".codex-plugin/plugin.json";
+
+/** Where the hook runtime lands for a delivery; `generateCodexArtifacts` picks the same way. */
+export function codexHookRuntimePath(delivery: TargetSpec["delivery"]): string {
+  return delivery === "package" ? CODEX_PLUGIN_RUNTIME_PATH : RUNTIME_PATH;
+}
+
 /**
  * Versions whose PreToolUse matcher semantics are captured
  * (.capture/codex-hook-matcher): matched against the hook-boundary tool name.
@@ -117,7 +123,7 @@ export function generateCodexArtifacts(
     );
   }
   const hooksPath = bundled ? CODEX_PLUGIN_HOOKS_PATH : ".codex/hooks.json";
-  const runtimePath = bundled ? CODEX_PLUGIN_RUNTIME_PATH : RUNTIME_PATH;
+  const runtimePath = codexHookRuntimePath(target.delivery);
   // Quoted because ${PLUGIN_ROOT} expands to an absolute install path, and a
   // Windows home directory routinely contains a space -- unquoted, the command
   // splits and every hook fails to start. Codex parses this string with quoting

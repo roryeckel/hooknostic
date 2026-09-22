@@ -4,9 +4,9 @@ import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { HarnessAdapter } from "@hooknostic/core";
-import { rangeCoversVersion } from "@hooknostic/core";
+import { buildPluginIR, rangeCoversVersion } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+import { ALL_CAPABILITY_IDS, DEFAULT_RUNTIME, definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 import { loadFixtureFrom } from "./fixtures.js";
 
@@ -227,6 +227,42 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
             `validatedOn ${record.version} (${record.method}) falls outside every profile range`,
           ).toBe(true);
         }
+      }
+    });
+
+    // ctx.plugin.root is resolved from where hookRuntimePath says the runtime is
+    // (ADR-0020); if compile() put it anywhere else, every hook would be handed
+    // a path to some other directory, and nothing else would notice.
+    it("places the hook runtime where hookRuntimePath says, on every delivery", async () => {
+      if (adapter.hookRuntimePath === undefined) return;
+      const event = observedEvents[0];
+      if (event === undefined) return;
+      const { ir } = buildPluginIR(definePlugin({ name: "contract", hooks: [hook(event, { id: "h", run() {} })] }));
+      const bundle = { code: "// contract runtime\n" };
+      // A delivery may be established on only part of the adapter's range
+      // (Codex plugin hooks start at 0.153), so each is audited at the first
+      // range the adapter itself declares that compiles it.
+      const ranges = [
+        ...new Set([
+          options.version ?? adapter.harness.recommendedRange,
+          ...(adapter.agentPluginProjector?.profiles ?? []).map((profile) => profile.range),
+          ...adapter.supportedHarnessVersions(),
+        ]),
+      ];
+      for (const delivery of adapter.supportedDeliveries()) {
+        let artifacts: Awaited<ReturnType<HarnessAdapter["compile"]>> | undefined;
+        for (const version of ranges) {
+          try {
+            const target = { id: adapter.id, version, delivery, output: "." };
+            artifacts = await adapter.compile(ir!, target, bundle, { runtime: DEFAULT_RUNTIME });
+            break;
+          } catch {
+            // Not established at this range; try the next.
+          }
+        }
+        expect(artifacts, `${delivery} compiles at no declared range`).toBeDefined();
+        const runtimes = artifacts!.filter((artifact) => artifact.contents === bundle.code).map((a) => a.path);
+        expect(runtimes, delivery).toEqual([adapter.hookRuntimePath(delivery)]);
       }
     });
 

@@ -16,7 +16,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyClaude } from "./apply.js";
 import { decodeClaude } from "./decode.js";
-import { generateClaudeArtifacts } from "./generate.js";
+import { claudeHookRuntimePath, generateClaudeArtifacts } from "./generate.js";
 import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
@@ -54,11 +54,12 @@ export function claudeShimEntrySource(options: {
   policy: RuntimePolicy;
   minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
+  pluginRootOffset?: string;
 }): string {
   return [
     // The /shim subpath keeps compile-time-only machinery (core, esbuild)
     // out of the generated runtime bundle.
-    `import { runClaudeCommandShim } from "@hooknostic/adapter-claude/shim";`,
+    `import { runClaudeCommandShim${options.pluginRootOffset !== undefined ? ", pluginRootFrom" : ""} } from "@hooknostic/adapter-claude/shim";`,
     // Loaded lazily so the shim claims stdout before plugin modules evaluate.
     `await runClaudeCommandShim(() => import(${JSON.stringify(options.entryImportPath)}), {`,
     `  targetId: ${JSON.stringify(options.targetId ?? "claude")},`,
@@ -68,6 +69,11 @@ export function claudeShimEntrySource(options: {
       : []),
     `  policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
+    // Resolved from the artifact's own location (ADR-0020): the offset is fixed
+    // by where this adapter places the runtime relative to the package root.
+    ...(options.pluginRootOffset !== undefined
+      ? [`  pluginRoot: pluginRootFrom(import.meta.url, ${JSON.stringify(options.pluginRootOffset)}),`]
+      : []),
     `});`,
     "",
   ].join("\n");
@@ -85,6 +91,11 @@ export function claudeAdapter(): HarnessAdapter {
     agentPluginProjector: claudeAgentPluginProjector,
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",
+
+    hookRuntimePath() {
+      return claudeHookRuntimePath();
+    },
+
     shellCodec: claudeShellCodec,
     shellShapes: CLAUDE_SHELL_SHAPES,
 

@@ -52,6 +52,11 @@ export const CLAUDE_NATIVE_EVENT: Record<HookEventName, string | undefined> = {
 
 const RUNTIME_PATH = "runtime/hooknostic.mjs";
 
+/** Where the hook runtime lands; the same on both deliveries. */
+export function claudeHookRuntimePath(): string {
+  return RUNTIME_PATH;
+}
+
 const CLAUDE_TOOL_VOCABULARY: NativeToolVocabulary = {
   names: namesByKind(CLAUDE_TOOL_KINDS),
   patterns: { mcp: CLAUDE_MCP_TOOL.source.slice(1, -1) },

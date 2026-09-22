@@ -18,6 +18,7 @@ import { applyOpenCode } from "./apply.js";
 import { decodeOpenCode } from "./decode.js";
 import {
   generateOpenCodeArtifacts,
+  opencodeHookRuntimePath,
   PACKAGE_COMPONENTS_PATH,
   PACKAGE_ENTRY_PATH,
   PACKAGE_MANIFEST_PATH,
@@ -60,10 +61,11 @@ export function opencodeShimEntrySource(options: {
   policy: RuntimePolicy;
   minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
+  pluginRootOffset?: string;
 }): string {
   return [
     `import plugin from ${JSON.stringify(options.entryImportPath)};`,
-    `import { createHooknosticHooks } from "@hooknostic/adapter-opencode/shim";`,
+    `import { createHooknosticHooks${options.pluginRootOffset !== undefined ? ", pluginRootFrom" : ""} } from "@hooknostic/adapter-opencode/shim";`,
     `export const HooknosticPlugin = async (input) =>`,
     `  createHooknosticHooks(plugin, {`,
     `    targetId: ${JSON.stringify(options.targetId ?? "opencode")},`,
@@ -73,6 +75,11 @@ export function opencodeShimEntrySource(options: {
       : []),
     `    policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined ? [`    harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
+    // Resolved from the artifact's own location (ADR-0020): the offset is fixed
+    // by where this adapter places the runtime relative to the package root.
+    ...(options.pluginRootOffset !== undefined
+      ? [`    pluginRoot: pluginRootFrom(import.meta.url, ${JSON.stringify(options.pluginRootOffset)}),`]
+      : []),
     `  }, input);`,
     `export default HooknosticPlugin;`,
     "",
@@ -92,6 +99,11 @@ export function opencodeAdapter(): HarnessAdapter {
     agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.
     shimExecution: "module",
+
+    hookRuntimePath(delivery) {
+      return opencodeHookRuntimePath(delivery);
+    },
+
     shellCodec: opencodeShellCodec,
     shellShapes: OPENCODE_SHELL_SHAPES,
 

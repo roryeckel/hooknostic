@@ -10,6 +10,12 @@ const PROJECT_PLUGIN_PATH = ".opencode/plugins/hooknostic.js";
  * `exports["./server"]` names.
  */
 export const PACKAGE_PLUGIN_PATH = "hooknostic.js";
+
+/** Where the hook module lands for a delivery; `generateOpenCodeArtifacts` picks the same way. */
+export function opencodeHookRuntimePath(delivery: TargetSpec["delivery"]): string {
+  return delivery === "package" ? PACKAGE_PLUGIN_PATH : PROJECT_PLUGIN_PATH;
+}
+
 export const PACKAGE_ENTRY_PATH = "index.js";
 export const PACKAGE_MANIFEST_PATH = "package.json";
 export const PACKAGE_COMPONENTS_PATH = "hooknostic-agent-plugin.js";

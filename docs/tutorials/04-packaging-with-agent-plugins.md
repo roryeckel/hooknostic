@@ -108,6 +108,12 @@ package's MCP servers and skills. A local directory is installable as-is — no 
 publication. None of the outputs is portable, and that is the point — the
 *source* is the portable artifact.
 
+A hook in the same package reaches its package's files through `ctx.plugin.root`. It
+names the directory the MCP servers see as `${PLUGIN_ROOT}` on every target: the
+output itself on Claude and Codex, and its `package/` directory on OpenCode. It is
+resolved from where the build placed the hook runtime, not from any harness variable
+([ADR-0020](../decisions/0020-hook-plugin-root.md)).
+
 Listing a target under `components.targets` whose adapter has no projector at all is a
 different error, and not one `onUnsupported` degrades: a projection that cannot happen
 is a configuration mistake, not a component to degrade.

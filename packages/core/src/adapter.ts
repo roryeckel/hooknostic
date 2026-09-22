@@ -210,6 +210,13 @@ export interface ShimEntryOptions {
     notifyCharLimit: number;
   };
   harnessVersion?: string;
+  /**
+   * POSIX path from the runtime artifact's directory to the Agent Plugin root,
+   * when the build has one for this target. The entry resolves it against its
+   * own `import.meta.url` and passes the result to the shim as `pluginRoot`,
+   * which dispatch surfaces as `ctx.plugin.root` (ADR-0020).
+   */
+  pluginRootOffset?: string;
 }
 
 export interface HarnessAdapter {
@@ -276,6 +283,15 @@ export interface HarnessAdapter {
    * imported ones.
    */
   readonly shimExecution?: "command" | "module";
+
+  /**
+   * Where `compile()` writes the hook runtime artifact for a delivery, as a
+   * POSIX path relative to the target output. The build derives
+   * `ctx.plugin.root` from it (ADR-0020), and the adapter contract suite
+   * checks it against what `compile()` actually emits, so the two cannot
+   * drift. Undeclared means the adapter offers no `ctx.plugin`.
+   */
+  hookRuntimePath?(delivery: TargetSpec["delivery"]): string;
 
   /**
    * Module-specifier aliases needed to bundle the shim entry. User projects

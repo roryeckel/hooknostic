@@ -23,6 +23,11 @@ export interface ClaudeShimOptions {
   minimumCapabilityLevel?: SupportLevel;
   policy?: RuntimePolicy;
   harnessVersion?: string;
+  /**
+   * Absolute Agent Plugin root, surfaced to handlers as `ctx.plugin.root`
+   * (ADR-0020). The generated entry resolves it from its own location.
+   */
+  pluginRoot?: string;
 }
 
 async function readStdin(): Promise<string> {
@@ -73,6 +78,7 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: claudeShellCodec,
+      ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);
@@ -100,3 +106,7 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
   await stdout.release().catch(() => {});
   finishCommandShim(exitCode);
 }
+
+// The generated entry resolves `pluginRoot` with this; it imports only the
+// shim subpath, so the helper is re-exported here rather than from the runtime.
+export { pluginRootFrom } from "@hooknostic/runtime";

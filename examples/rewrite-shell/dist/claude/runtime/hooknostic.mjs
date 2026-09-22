@@ -4872,10 +4872,10 @@ var init_hooks = __esm({
 
 // ../../packages/cli/dist/shims/claude.mjs
 init_dist();
-init_dist();
 import { Console } from "node:console";
 import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
+init_dist();
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4966,7 +4966,10 @@ async function dispatch(hooks, event, options) {
     const ctx = {
       capabilities,
       harness: { ...options.harness },
-      signal: controller.signal
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
     };
     let outcome;
     let timedOut = false;
@@ -5513,7 +5516,8 @@ async function runClaudeCommandShim(source, options) {
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
-      shellCodec: claudeShellCodec
+      shellCodec: claudeShellCodec,
+      ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     trace?.(describeHookResult(result));
     const native = await applyClaude(result, nativeEvent, invocation);

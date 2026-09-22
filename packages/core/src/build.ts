@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
 import { minimatch } from "minimatch";
 
@@ -31,7 +31,7 @@ import {
   type SupportLevel,
 } from "@hooknostic/sdk";
 
-import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, TargetSpec } from "./adapter.js";
+import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, HarnessAdapter, TargetSpec } from "./adapter.js";
 import { targetSpecFromConfig } from "./adapter.js";
 import {
   type AgentPluginProjectionResolution,
@@ -303,6 +303,31 @@ function materializedSourceCollisionProblems(
     }
   }
   return problems;
+}
+
+/**
+ * The path from a target's hook runtime to its Agent Plugin root (ADR-0020),
+ * or nothing when the target has no package root to offer.
+ *
+ * The root is wherever that target's MCP servers see `${PLUGIN_ROOT}`: the
+ * projected package under package delivery, and the source package itself
+ * under project delivery, which references files in place rather than copying
+ * them. Both ends are placed by this build, so the offset is known here and the
+ * runtime needs nothing from the harness to find its way back.
+ */
+function hookPluginRootOffset(
+  adapter: HarnessAdapter,
+  delivery: TargetSpec["delivery"],
+  outputDir: string,
+  packageRoot: string,
+): string | undefined {
+  const runtime = adapter.hookRuntimePath?.(delivery);
+  if (runtime === undefined) return undefined;
+  if (delivery === "package") {
+    const projected = adapter.agentPluginProjector?.packageRoot ?? ".";
+    return posix.relative(posix.dirname(runtime), projected) || ".";
+  }
+  return relative(dirname(resolve(outputDir, runtime)), packageRoot).replaceAll("\\", "/") || ".";
 }
 
 function resolveProjectSdk(configDir: string): string | undefined {
@@ -943,6 +968,17 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(projectSdk === undefined ? {} : { "@hooknostic/sdk": projectSdk }),
             ...options.evaluate?.alias,
           };
+          const pluginRootOffset =
+            components !== undefined &&
+            config.components?.root !== undefined &&
+            (config.components.targets ?? Object.keys(config.targets)).includes(id)
+              ? hookPluginRootOffset(
+                  adapter,
+                  targetConfig.delivery,
+                  outputFor(id)!.outputDir,
+                  resolve(configDir, config.components.root),
+                )
+              : undefined;
           const bundle = await bundleRuntime({
             source: adapter.shimEntry({
               targetId: id,
@@ -950,6 +986,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               capabilities: levelsFromMatrix(resolved.matrix ?? {}),
               minimumCapabilityLevel: compatibility.minimum,
               policy: runtimePolicy,
+              ...(pluginRootOffset === undefined ? {} : { pluginRootOffset }),
             }),
             resolveDir: configDir,
             ...(Object.keys(alias).length === 0 ? {} : { alias }),

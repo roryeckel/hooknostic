@@ -4774,7 +4774,10 @@ async function dispatch(hooks, event, options) {
     const ctx = {
       capabilities,
       harness: { ...options.harness },
-      signal: controller.signal
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
     };
     let outcome;
     let timedOut = false;
@@ -5244,7 +5247,8 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
-      shellCodec: opencodeShellCodec
+      shellCodec: opencodeShellCodec,
+      ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     const application = planOpenCodeApplication(result);
     const output = native.output ?? {};

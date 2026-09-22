@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -1551,6 +1551,136 @@ ${run.stderr}`,
       "agent-plugin.mcp.streamable-http": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
     });
   });
+
+  it(
+    "hands every hook the directory its package's MCP servers see as ${PLUGIN_ROOT}",
+    { timeout: 240_000 },
+    async () => {
+      // ADR-0020. Each generated runtime is run the way its harness runs it, from
+      // a cwd that is not the package, and reports ctx.plugin.root through a file
+      // named in the environment. The root is found from where the build placed
+      // the runtime, so a wrong offset for any adapter or delivery names some
+      // other directory here.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-plugin-root-"));
+      cleanupDirs.push(dir);
+      await mkdir(join(dir, "skills/review"), { recursive: true });
+      await writeFile(
+        join(dir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "rooted", version: "1.0.0" }),
+      );
+      await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+      await writeFile(
+        join(dir, "hooks.ts"),
+        `import { writeFileSync } from "node:fs";
+         import { definePlugin, hook } from "@hooknostic/sdk";
+         export default definePlugin({
+           name: "rooted",
+           hooks: [hook("tool.before", { id: "root", run(_event, ctx) {
+             writeFileSync(process.env.HN_ROOT_OUT, ctx.plugin?.root ?? "absent");
+           } })],
+         });`,
+      );
+      const writeConfig = (delivery: "package" | "project", components: boolean) =>
+        writeFile(
+          join(dir, "hooknostic.config.ts"),
+          `export default {
+            entry: "./hooks.ts",
+            ${delivery === "project" ? 'project: { root: "." },' : ""}
+            ${components ? 'components: { root: "." },' : ""}
+            targets: {
+              claude: { version: "${claudeHarness.recommendedRange}", delivery: "${delivery}", output: "./dist/${delivery}/claude" },
+              codex: { version: "${CODEX_PLUGIN_MODE_RANGE}", delivery: "${delivery}", output: "./dist/${delivery}/codex" },
+              opencode: { version: "${opencodeHarness.recommendedRange}", delivery: "${delivery}", output: "./dist/${delivery}/opencode", compatibility: { minimum: "approximate" } },
+            },
+          };`,
+        );
+      const build = async () => {
+        const json = captureIO();
+        expect(
+          await runBuild({
+            config: join(dir, "hooknostic.config.ts"),
+            json: true,
+            registry: defaultAdapterRegistry(),
+            io: json.io,
+            evaluate: { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } },
+          }),
+          json.out(),
+        ).toBe(0);
+      };
+      const elsewhere = await mkdtemp(join(tmpdir(), "hooknostic-plugin-root-cwd-"));
+      cleanupDirs.push(elsewhere);
+      const out = join(elsewhere, "root.txt");
+      const commandRoot = async (runtime: string, fixture: string) => {
+        await rm(out, { force: true });
+        const child = spawnSync(process.execPath, [runtime], {
+          cwd: elsewhere,
+          input: await readFile(join(REPO, "fixtures", fixture), "utf8"),
+          env: { ...process.env, HN_ROOT_OUT: out },
+          encoding: "utf8",
+        });
+        expect(child.status, child.stderr).toBe(0);
+        return readFile(out, "utf8");
+      };
+      const moduleRoot = async (module: string) => {
+        await rm(out, { force: true });
+        process.env["HN_ROOT_OUT"] = out;
+        try {
+          const loaded = (await import(`${pathToFileURL(module).href}?${Date.now()}`)) as {
+            HooknosticPlugin: (input: {
+              directory: string;
+            }) => Promise<Record<string, (i: unknown, o: unknown) => Promise<void>>>;
+          };
+          const hooks = await loaded.HooknosticPlugin({ directory: elsewhere });
+          await hooks["tool.execute.before"]!(
+            { tool: "bash", sessionID: "s", callID: "c" },
+            { args: { command: "ls" } },
+          );
+        } finally {
+          delete process.env["HN_ROOT_OUT"];
+        }
+        return readFile(out, "utf8");
+      };
+      const real = (path: string) => realpathSync(path);
+      const roots = async (delivery: "package" | "project") => {
+        const base = join(dir, "dist", delivery);
+        return {
+          claude: await commandRoot(join(base, "claude/runtime/hooknostic.mjs"), "claude/2.1/pre-tool-bash.input.json"),
+          codex: await commandRoot(
+            join(
+              base,
+              delivery === "package" ? "codex/hooknostic/hooknostic.mjs" : "codex/.codex/hooknostic/hooknostic.mjs",
+            ),
+            "codex/0.148/pre-tool-bash.input.json",
+          ),
+          opencode: await moduleRoot(
+            join(base, delivery === "package" ? "opencode/hooknostic.js" : "opencode/.opencode/plugins/hooknostic.js"),
+          ),
+        };
+      };
+
+      // Package delivery: the projected package, which is the output itself on
+      // Claude and Codex and the nested package/ directory on OpenCode.
+      await writeConfig("package", true);
+      await build();
+      const packaged = await roots("package");
+      expect(real(packaged.claude)).toBe(real(join(dir, "dist/package/claude")));
+      expect(real(packaged.codex)).toBe(real(join(dir, "dist/package/codex")));
+      expect(real(packaged.opencode)).toBe(real(join(dir, "dist/package/opencode/package")));
+      expect(existsSync(join(packaged.opencode, "skills/review/SKILL.md"))).toBe(true);
+
+      // Project delivery references the source package in place.
+      await writeConfig("project", true);
+      await build();
+      const projected = await roots("project");
+      for (const root of Object.values(projected)) expect(real(root)).toBe(real(dir));
+
+      // No package, no root: a hooks-only build has nothing to point at.
+      await rm(join(dir, "dist"), { recursive: true, force: true });
+      await writeConfig("package", false);
+      await build();
+      expect(await roots("package")).toEqual({ claude: "absent", codex: "absent", opencode: "absent" });
+    },
+  );
 
   it("reports a natively projected component the harness cannot consume as an omission", async () => {
     // Codex has no sse transport, and its native reader would register an sse

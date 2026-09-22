@@ -16,7 +16,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyCodex } from "./apply.js";
 import { decodeCodex } from "./decode.js";
-import { CODEX_NATIVE_EVENT, generateCodexArtifacts } from "./generate.js";
+import { CODEX_NATIVE_EVENT, codexHookRuntimePath, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
@@ -56,9 +56,10 @@ export function codexShimEntrySource(options: {
   policy: RuntimePolicy;
   minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
+  pluginRootOffset?: string;
 }): string {
   return [
-    `import { runCodexCommandShim } from "@hooknostic/adapter-codex/shim";`,
+    `import { runCodexCommandShim${options.pluginRootOffset !== undefined ? ", pluginRootFrom" : ""} } from "@hooknostic/adapter-codex/shim";`,
     // Loaded lazily so the shim claims stdout before plugin modules evaluate.
     `await runCodexCommandShim(() => import(${JSON.stringify(options.entryImportPath)}), {`,
     `  targetId: ${JSON.stringify(options.targetId ?? "codex")},`,
@@ -68,6 +69,11 @@ export function codexShimEntrySource(options: {
       : []),
     `  policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
+    // Resolved from the artifact's own location (ADR-0020): the offset is fixed
+    // by where this adapter places the runtime relative to the package root.
+    ...(options.pluginRootOffset !== undefined
+      ? [`  pluginRoot: pluginRootFrom(import.meta.url, ${JSON.stringify(options.pluginRootOffset)}),`]
+      : []),
     `});`,
     "",
   ].join("\n");
@@ -86,6 +92,11 @@ export function codexAdapter(): HarnessAdapter {
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.
     shimExecution: "command",
+
+    hookRuntimePath(delivery) {
+      return codexHookRuntimePath(delivery);
+    },
+
     shellCodec: codexShellCodec,
     shellShapes: CODEX_SHELL_SHAPES,
 

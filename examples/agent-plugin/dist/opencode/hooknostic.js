@@ -4689,6 +4689,8 @@ var hooks_default = definePlugin({
 });
 
 // ../../packages/cli/dist/shims/opencode.mjs
+import { dirname as pathDirname, resolve as pathResolve } from "node:path";
+import { fileURLToPath as urlToPath } from "node:url";
 function createCapabilitySet(levels) {
   return {
     has(id) {
@@ -4779,7 +4781,10 @@ async function dispatch(hooks, event, options) {
     const ctx = {
       capabilities,
       harness: { ...options.harness },
-      signal: controller.signal
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
     };
     let outcome;
     let timedOut = false;
@@ -4993,6 +4998,9 @@ async function dispatch(hooks, event, options) {
 function formatHandlerErrors(result) {
   if (result.errors.length === 0) return void 0;
   return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
+}
+function pluginRootFrom(moduleUrl, offset) {
+  return pathResolve(pathDirname(urlToPath(moduleUrl)), offset);
 }
 var UNREPRESENTABLE_OUTPUT = "[hooknostic: unrepresentable output]";
 function serializeOpenCodeOutput(output) {
@@ -5249,7 +5257,8 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       capabilities: options.capabilities,
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
-      shellCodec: opencodeShellCodec
+      shellCodec: opencodeShellCodec,
+      ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     const application = planOpenCodeApplication(result);
     const output = native.output ?? {};
@@ -5371,7 +5380,8 @@ var HooknosticPlugin = async (input) => createHooknosticHooks(hooks_default, {
   targetId: "opencode",
   capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
   minimumCapabilityLevel: "emulated",
-  policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
+  policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 },
+  pluginRoot: pluginRootFrom(import.meta.url, "package")
 }, input);
 var hooknostic_shim_entry_default = HooknosticPlugin;
 export {
