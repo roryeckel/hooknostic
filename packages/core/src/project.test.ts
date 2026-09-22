@@ -478,6 +478,48 @@ describe("complete project integration", () => {
     expect(await readFile(join(root, ".hooknostic/integration.json"), "utf8")).not.toContain("TOKEN");
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
+  // Claude's project stdio cell is `emulated`, so an `exact` floor puts it below.
+  it.each(["warn", "error"] as const)(
+    "reports a project component below compatibility as HN206 and still emits it (onBelowMinimum %s)",
+    async (onBelowMinimum) => {
+      const claude = registry.claude!;
+      const { root, options } = await fixture({
+        components: { mcp: "./mcp.json" },
+        targets: {
+          claude: {
+            adapter: "claude",
+            version: claude.harness.recommendedRange,
+            delivery: "project",
+            output: ".hooknostic/artifacts/claude",
+            compatibility: { minimum: "exact", onBelowMinimum },
+          },
+        },
+      });
+      await writeFile(
+        join(root, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: { sample: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/server.mjs"] } },
+        }),
+      );
+
+      const built = await buildProject({ ...options, dryRun: true });
+      const stdio = built.report.diagnostics.filter((item) => item.component === "agent-plugin.mcp.stdio");
+      expect(stdio).toEqual([
+        expect.objectContaining({ code: "HN206", severity: onBelowMinimum, target: "claude", support: "emulated" }),
+      ]);
+      expect(built.ok).toBe(onBelowMinimum === "warn");
+      if (onBelowMinimum === "error") return;
+      const project = built.report.targets.claude?.project;
+      expect(project?.components["agent-plugin.mcp.stdio"]).toEqual({
+        support: "emulated",
+        discovered: 1,
+        emitted: 1,
+        skipped: 0,
+      });
+      expect(project?.omissions).toEqual([]);
+    },
+  );
   it("synchronizes prototype-key MCP server names for Claude and Codex", async () => {
     const claude = registry.claude!;
     const codex = registry.codex!;

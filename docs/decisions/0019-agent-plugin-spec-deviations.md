@@ -18,7 +18,7 @@ the specification says:
 | --- | --- | --- |
 | invalid | the package breaks the specification | `onInvalid`, HN503 |
 | unsupported | a valid component cannot be emitted, so it is omitted | `onUnsupported`, HN205 |
-| below minimum | the whole component is delivered at a lower fidelity level | `compatibility.minimum` |
+| below minimum | the whole component is delivered at a lower fidelity level | `compatibility.minimum`, HN206 |
 
 Claude's native `.mcp.json` fits none of them
 (`.capture/agent-plugin-mcp-placeholders`,

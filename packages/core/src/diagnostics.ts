@@ -23,6 +23,7 @@ export const DIAGNOSTIC_CODES = {
   HN203: "target version outside adapter data",
   HN204: "artifact mode unsupported",
   HN205: "Agent Plugin component unsupported",
+  HN206: "Agent Plugin component below minimum fidelity",
   HN301: "adapter generation failure",
   HN302: "output commit failure",
   HN401: "unsupported effect returned at runtime",

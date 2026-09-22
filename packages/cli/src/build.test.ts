@@ -694,7 +694,7 @@ describe("hooknostic build end-to-end", () => {
       );
     const belowMinimum = (severity: "warn" | "error") =>
       expect.objectContaining({
-        code: "HN205",
+        code: "HN206",
         severity,
         target: "codex",
         component: "agent-plugin.mcp.stdio",

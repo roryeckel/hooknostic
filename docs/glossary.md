@@ -35,7 +35,8 @@ Rendered by `hooknostic inspect`.
 **Compatibility policy** — your config's answer to "how much degradation is
 acceptable?": a minimum support level and what to do below it, settable globally and
 per target. It applies to hook capabilities and to Agent Plugin components alike.
-Default: minimum `emulated`, below-minimum is an error.
+Default: minimum `emulated`, below-minimum is an error. A capability below it is an
+HN201; a component below it is an HN206 and is still emitted when that is a warning.
 
 ## The machinery
 
