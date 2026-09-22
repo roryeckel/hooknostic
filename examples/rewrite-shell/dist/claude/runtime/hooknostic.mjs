@@ -277,6 +277,13 @@ var init_plugin = __esm({
   }
 });
 
+// ../../packages/sdk/dist/process.js
+var init_process = __esm({
+  "../../packages/sdk/dist/process.js"() {
+    "use strict";
+  }
+});
+
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/util.js
 var util, objectUtil, ZodParsedType, getParsedType;
 var init_util = __esm({
@@ -4825,6 +4832,7 @@ var init_dist = __esm({
     init_hook();
     init_json();
     init_plugin();
+    init_process();
     init_result();
     init_schemas();
     init_support();
