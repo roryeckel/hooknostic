@@ -1,0 +1,123 @@
+{
+  "capturedOn": "2026-09-21",
+  "platform": "win32",
+  "cases": [
+    {
+      "harness": "claude-native-control",
+      "version": "2.1.278 (Claude Code)",
+      "child": {
+        "commandLabel": "expanded-command",
+        "args": [
+          "<PLUGIN_ROOT>",
+          "<PLUGIN_DATA>",
+          "expanded-marker",
+          "${HOOKNOSTIC_UNSET}"
+        ],
+        "cwd": "hooknostic",
+        "env": {
+          "PLUGIN_ROOT": "<PLUGIN_ROOT>",
+          "PLUGIN_DATA": "<PLUGIN_DATA>",
+          "RESERVED_ROOT": "<PLUGIN_ROOT>",
+          "RESERVED_DATA": "<PLUGIN_DATA>",
+          "KNOWN_REFERENCE": "expanded-marker",
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+        }
+      },
+      "remote": {
+        "known": null,
+        "reserved": null,
+        "unknown": null
+      }
+    },
+    {
+      "harness": "claude-projected",
+      "version": "2.1.278 (Claude Code)",
+      "child": {
+        "commandLabel": "literal-command",
+        "args": [
+          "<PLUGIN_ROOT>",
+          "<PLUGIN_DATA>",
+          "expanded-marker",
+          "${HOOKNOSTIC_UNSET}"
+        ],
+        "cwd": "expanded-cwd",
+        "env": {
+          "PLUGIN_ROOT": "<PLUGIN_ROOT>",
+          "PLUGIN_DATA": "<PLUGIN_DATA>",
+          "RESERVED_ROOT": "<PLUGIN_ROOT>",
+          "RESERVED_DATA": "<PLUGIN_DATA>",
+          "KNOWN_REFERENCE": "expanded-marker",
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+        }
+      },
+      "remote": {
+        "known": null,
+        "reserved": null,
+        "unknown": null
+      }
+    },
+    {
+      "harness": "opencode-projected",
+      "version": "1.18.32",
+      "child": {
+        "commandLabel": "literal-command",
+        "args": [
+          "<PLUGIN_ROOT>",
+          "<PLUGIN_DATA>",
+          "${SYNTHETIC_MARKER}",
+          "${HOOKNOSTIC_UNSET}"
+        ],
+        "cwd": "${SYNTHETIC_CWD}",
+        "env": {
+          "PLUGIN_ROOT": "<PLUGIN_ROOT>",
+          "PLUGIN_DATA": "<PLUGIN_DATA>",
+          "RESERVED_ROOT": "<PLUGIN_ROOT>",
+          "RESERVED_DATA": "<PLUGIN_DATA>",
+          "KNOWN_REFERENCE": "${SYNTHETIC_MARKER}",
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+        }
+      },
+      "remote": {
+        "known": null,
+        "reserved": null,
+        "unknown": null
+      }
+    },
+    {
+      "harness": "codex-projected",
+      "version": "codex-cli 0.154.0",
+      "child": {
+        "commandLabel": "literal-command",
+        "args": [
+          "<PLUGIN_ROOT>",
+          "<PLUGIN_DATA>",
+          "${SYNTHETIC_MARKER}",
+          "${HOOKNOSTIC_UNSET}"
+        ],
+        "cwd": "${SYNTHETIC_CWD}",
+        "env": {
+          "PLUGIN_ROOT": "<PLUGIN_ROOT>",
+          "PLUGIN_DATA": "<PLUGIN_DATA>",
+          "RESERVED_ROOT": "<PLUGIN_ROOT>",
+          "RESERVED_DATA": "<PLUGIN_DATA>",
+          "KNOWN_REFERENCE": "${SYNTHETIC_MARKER}",
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+        }
+      },
+      "remote": {
+        "known": {
+          "url": "/known/$%7BSYNTHETIC_REMOTE_PATH%7D",
+          "authorization": "Bearer ${SYNTHETIC_REMOTE_HEADER}"
+        },
+        "reserved": {
+          "url": "/reserved/$%7BPLUGIN_ROOT%7D",
+          "authorization": "Bearer ${PLUGIN_DATA}"
+        },
+        "unknown": {
+          "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+          "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+        }
+      }
+    }
+  ]
+}

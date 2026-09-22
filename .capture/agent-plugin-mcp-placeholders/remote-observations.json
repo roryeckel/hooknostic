@@ -1,0 +1,80 @@
+{
+  "claudeVersion": "2.1.278 (Claude Code)",
+  "requests": [
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "GET",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "GET",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "GET",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    },
+    {
+      "method": "POST",
+      "url": "/known/expanded-path",
+      "authorization": "Bearer expanded-header"
+    },
+    {
+      "method": "POST",
+      "url": "/reserved/ambient-plugin-root",
+      "authorization": "Bearer ambient-plugin-data"
+    },
+    {
+      "method": "POST",
+      "url": "/unknown/$%7BHOOKNOSTIC_UNSET%7D",
+      "authorization": "Bearer ${HOOKNOSTIC_UNSET}"
+    }
+  ]
+}

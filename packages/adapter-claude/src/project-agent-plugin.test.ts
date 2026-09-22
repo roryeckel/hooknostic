@@ -169,6 +169,85 @@ describe("Agent Plugin to Claude projection", () => {
     });
   });
 
+  // Claude expands any set ${NAME} in these fields
+  // (.capture/agent-plugin-mcp-placeholders). The declaration stays native and
+  // emitted; the deviation from the literal rule is reported per server.
+  it("warns for each server containing text Claude would expand, and still emits it", async () => {
+    const portable = source();
+    portable.mcp!.mcpServers = {
+      clean: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/a"], env: { STATE: "${PLUGIN_DATA}/s" } },
+      worker: {
+        type: "stdio",
+        command: "node",
+        args: ["${PLUGIN_ROOT}", "--token=${API_TOKEN}"],
+        env: { REGION: "${REGION:-us}" },
+        cwd: "./${SUBDIR}",
+      },
+      http: {
+        type: "streamable-http",
+        url: "https://example.invalid/${TENANT}/mcp",
+        headers: { Authorization: "Bearer ${API_TOKEN}" },
+      },
+      // Remote fields expand nothing under the standard, the plugin
+      // placeholders included, and Claude substitutes an ambient PLUGIN_ROOT.
+      events: { type: "sse", url: "https://example.invalid/${PLUGIN_ROOT}/sse" },
+    };
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+    });
+
+    expect(plan.issues).toEqual([
+      expect.objectContaining({
+        severity: "warn",
+        component: "agent-plugin.mcp.stdio",
+        path: "mcp.json#worker",
+        message: expect.stringContaining("${API_TOKEN}, ${REGION:-us}, ${SUBDIR}"),
+      }),
+      expect.objectContaining({
+        severity: "warn",
+        component: "agent-plugin.mcp.streamable-http",
+        path: "mcp.json#http",
+        message: expect.stringContaining("${TENANT}, ${API_TOKEN}"),
+      }),
+      expect.objectContaining({
+        severity: "warn",
+        component: "agent-plugin.mcp.sse",
+        path: "mcp.json#events",
+        message: expect.stringContaining("${PLUGIN_ROOT}"),
+      }),
+    ]);
+    expect(diagnosticsFromAgentPluginIssues(plan.issues, "claude").map((item) => item.severity)).toEqual([
+      "warn",
+      "warn",
+      "warn",
+    ]);
+    const servers = parsed(plan, ".mcp.json").mcpServers;
+    expect(servers.worker.args).toEqual([
+      "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
+      "${CLAUDE_PLUGIN_ROOT}/${SUBDIR}",
+      "node",
+      "${CLAUDE_PLUGIN_ROOT}",
+      "--token=${API_TOKEN}",
+    ]);
+    expect(servers.http).toEqual({
+      type: "http",
+      url: "https://example.invalid/${TENANT}/mcp",
+      headers: { Authorization: "Bearer ${API_TOKEN}" },
+    });
+    expect(servers.events).toEqual({ type: "sse", url: "https://example.invalid/${PLUGIN_ROOT}/sse" });
+    expect(plan.summary.omissions).toEqual([]);
+    for (const [component, count] of [
+      ["agent-plugin.mcp.stdio", 2],
+      ["agent-plugin.mcp.streamable-http", 1],
+      ["agent-plugin.mcp.sse", 1],
+    ] as const) {
+      expect(plan.summary.components[component]).toMatchObject({ discovered: count, emitted: count, skipped: 0 });
+    }
+  });
+
   // Everything an omission has to stay consistent with: the count the report
   // publishes, the file that would otherwise be generated for nobody, and the
   // field the diagnostic names.

@@ -56,9 +56,9 @@ Project support is independent of package projection.
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
 | `agent-plugin.skills` | exact | — |
-| `agent-plugin.mcp.stdio` | exact | — |
-| `agent-plugin.mcp.streamable-http` | exact | — |
-| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.mcp.stdio` | exact | Claude also expands other set ${NAME} references in args, env values and cwd, which Agent Plugins 1.0 requires to remain literal; the projection keeps the native declaration and warns for each server containing one. |
+| `agent-plugin.mcp.streamable-http` | exact | Claude expands set ${NAME} references in remote urls and header values, where Agent Plugins 1.0 forbids expansion; the projection keeps the native declaration and warns for each server containing one. |
+| `agent-plugin.mcp.sse` | exact | Claude expands set ${NAME} references in remote urls and header values, where Agent Plugins 1.0 forbids expansion; the projection keeps the native declaration and warns for each server containing one. |
 | `agent-plugin.client-extension.files` | exact | — |
 | `agent-plugin.runtime-package` | exact | — |
 
@@ -66,6 +66,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} references in a projected package's stdio args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; unset references remained literal. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration. |
 | 2.1.273 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable. |
 | 2.1.260 | 2026-09-04 | live-probe | `.capture/harness-playback` | Claude discovered a projected skill, started projected stdio/HTTP/SSE MCP servers with root/data variables, and executed merged Hooknostic hooks. |
