@@ -1,7 +1,7 @@
 /**
  * Real-harness smoke test for OpenCode. Opt-in: HOOKNOSTIC_SMOKE=1 or
  * HOOKNOSTIC_SMOKE=opencode. Requires the `opencode` CLI on PATH with a
- * provider configured for ollama-cloud/deepseek-v4-flash.
+ * provider configured for ollama-cloud/deepseek-v4.1-flash.
  *
  * Generates the bundled `.opencode/plugins/hooknostic.mjs` local plugin into
  * a scratch project and drives a real `opencode run` session.
@@ -30,7 +30,7 @@ const SMOKE_DIR = join(REPO, ".capture", "opencode-smoke");
 // directory that test itself wipes; sharing one leaves a stale sentinel that
 // silently short-circuits the hook on every subsequent run.
 const STOP_DIR = join(REPO, ".capture", "opencode-stop-smoke");
-const MODEL = "ollama-cloud/deepseek-v4-flash";
+const MODEL = "ollama-cloud/deepseek-v4.1-flash";
 const ALIAS = {
   "@hooknostic/sdk": join(PACKAGES, "sdk/src/index.ts"),
   "@hooknostic/runtime": join(PACKAGES, "runtime/src/index.ts"),
