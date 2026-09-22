@@ -89,6 +89,30 @@ references to `env_http_headers` and bearer authorization to
 `bearer_token_env_var`; references in URLs or mixed header values are rejected
 because Codex has no equivalent native field.
 
+## Amendment — 2026-09-22: default forms in direct sources
+
+- **A direct source may write `${NAME:-default}`, and it resolves as Claude
+  resolves it.** Hooknostic resolves a direct source's references itself in
+  two places: the stdio launcher, on every harness, and OpenCode's remote
+  module. Both understood only `${NAME}`. So a `${NAME:-default}` that Claude
+  honors in a native declaration reached the server as literal text.
+  - A capture on Claude 2.1.278 (`.capture/claude-project-mcp-environment`)
+    established the rules: a defined variable wins even when it is empty, and
+    only an undefined one takes the default.
+  - Both places now implement those rules.
+- **An unset `${NAME}` without a default still stops a stdio server.** Claude
+  would pass the text on literally. The launcher keeps refusing, because a
+  startup error that names the variable is better than a server that silently
+  receives `${TOKEN}`. OpenCode's remote module still disables the server.
+- **Codex forwards defaulted names too.** `env_vars` lists every name the
+  launcher may expand, defaulted ones included, so a set value still wins. Codex
+  0.154.0 starts the server when a listed name is absent from its environment
+  (`.capture/project-integration`).
+- **Codex remote declarations refuse the default form.** Codex's
+  environment-backed header fields name a variable and have no fallback. A
+  default form in a remote URL or header is now rejected, like the other
+  references Codex cannot represent. It used to be sent on as literal text.
+
 ## Boundaries
 
 Hooknostic compiles artifacts and optionally reconciles explicitly configured

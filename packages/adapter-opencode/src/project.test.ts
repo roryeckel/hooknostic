@@ -16,34 +16,32 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-function source(origin: ProjectComponents["origin"]): ProjectComponents {
+function source(
+  origin: ProjectComponents["origin"],
+  mcpServers: NonNullable<ProjectComponents["mcp"]>["config"]["mcpServers"] = {
+    remote: {
+      type: "streamable-http",
+      url: "https://example.invalid/${HOOKNOSTIC_PROJECT_TOKEN}/mcp",
+      headers: { Authorization: "Bearer ${HOOKNOSTIC_PROJECT_TOKEN}" },
+    },
+  },
+): ProjectComponents {
   return {
     origin,
     skills: [],
-    mcp: {
-      root: ".",
-      config: {
-        $schema: AGENT_PLUGIN_MCP_SCHEMA,
-        mcpServers: {
-          remote: {
-            type: "streamable-http",
-            url: "https://example.invalid/${HOOKNOSTIC_PROJECT_TOKEN}/mcp",
-            headers: { Authorization: "Bearer ${HOOKNOSTIC_PROJECT_TOKEN}" },
-          },
-        },
-      },
-    },
+    mcp: { root: ".", config: { $schema: AGENT_PLUGIN_MCP_SCHEMA, mcpServers } },
   };
 }
 
 async function moduleFor(
   origin: ProjectComponents["origin"],
   options: { mcpStartupTimeoutMs?: Record<string, number> } = {},
+  mcpServers?: Parameters<typeof source>[1],
 ): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-opencode-project-"));
   roots.push(root);
   const integration = await projectComponents(
-    source(origin),
+    source(origin, mcpServers),
     root,
     ".hooknostic/artifacts/opencode",
     "hooknostic.config.ts",
@@ -142,6 +140,39 @@ describe("OpenCode project components", () => {
     expect(config.mcp?.["inherited"]).toEqual({ enabled: true });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("HOOKNOSTIC_PROJECT_TOKEN"));
     warn.mockRestore();
+  });
+
+  // The rules Claude applies to the same text natively
+  // (`.capture/claude-project-mcp-environment`): a defined variable wins even
+  // when empty, and only an undefined one takes the default.
+  it("resolves a direct `${NAME:-default}` as Claude does, without disabling the server", async () => {
+    process.env["HOOKNOSTIC_PROJECT_TOKEN"] = "";
+    expect(process.env["HOOKNOSTIC_PROJECT_UNSET"]).toBeUndefined();
+    const path = await moduleFor(
+      "direct",
+      {},
+      {
+        defaulted: {
+          type: "streamable-http",
+          url: "https://example.invalid/${HOOKNOSTIC_PROJECT_UNSET:-anonymous}/mcp",
+          headers: {
+            Authorization: "Bearer ${HOOKNOSTIC_PROJECT_UNSET:-}",
+            "X-Empty": "${HOOKNOSTIC_PROJECT_TOKEN:-unused}",
+          },
+        },
+      },
+    );
+    const plugin = await (await import(pathToFileURL(path).href + "?defaulted")).default();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const config: { mcp?: Record<string, { enabled?: boolean; url: string; headers: Record<string, string> }> } = {};
+    plugin.config(config);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    expect(config.mcp?.["defaulted"]?.enabled).toBe(true);
+    expect(config.mcp?.["defaulted"]).toMatchObject({
+      url: "https://example.invalid/anonymous/mcp",
+      headers: { Authorization: "Bearer ", "X-Empty": "" },
+    });
   });
 
   it("lets project MCP declarations replace inherited servers", async () => {

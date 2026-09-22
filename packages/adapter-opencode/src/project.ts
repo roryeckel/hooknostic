@@ -60,10 +60,12 @@ export async function projectComponents(
     const directEnvironmentResolution =
       source.origin === "direct"
         ? `
-const expandEnvironment = (value, missing) => value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}/g, (reference, name) => {
+const expandEnvironment = (value, missing) => value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\\}/g, (reference, name, fallback) => {
   const resolved = process.env[name];
-  if (resolved === undefined) { missing.add(name); return reference; }
-  return resolved;
+  if (resolved !== undefined) return resolved;
+  if (fallback !== undefined) return fallback;
+  missing.add(name);
+  return reference;
 });
 const resolveRemote = (name, server) => {
   const missing = new Set();

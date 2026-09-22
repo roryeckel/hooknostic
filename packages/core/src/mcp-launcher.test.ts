@@ -248,6 +248,38 @@ describe("generated MCP launcher", () => {
     expect(JSON.parse(literal.stdout).declared).toBe("${HOOKNOSTIC_PROJECT_TOKEN}");
   });
 
+  // The rules Claude applies to the same text natively
+  // (`.capture/claude-project-mcp-environment`): a defined variable wins even
+  // when empty, and only an undefined one takes the default.
+  it("resolves a direct project `${NAME:-default}` as Claude does", async () => {
+    const references = [
+      "set=${HOOKNOSTIC_DEFAULT_SET:-fallback}",
+      "unset=${HOOKNOSTIC_DEFAULT_UNSET:-fallback}",
+      "empty=${HOOKNOSTIC_DEFAULT_EMPTY:-fallback}",
+      "blank=${HOOKNOSTIC_DEFAULT_UNSET:-}",
+    ];
+    const server = probeServer({
+      args: ["-e", PROBE, ...references],
+      env: { DECLARED: "${HOOKNOSTIC_DEFAULT_UNSET:-env-fallback}" },
+    });
+    const variables = { HOOKNOSTIC_DEFAULT_SET: "runtime-value", HOOKNOSTIC_DEFAULT_EMPTY: "" };
+    expect(process.env["HOOKNOSTIC_DEFAULT_UNSET"]).toBeUndefined();
+
+    const direct = launch(await layout([server], { environmentReferences: true }), 0, variables);
+    expect(direct.status, direct.stderr).toBe(0);
+    expect(JSON.parse(direct.stdout)).toMatchObject({
+      declared: "env-fallback",
+      args: ["set=runtime-value", "unset=fallback", "empty=", "blank="],
+    });
+
+    const packaged = launch(await layout([server]), 0, variables);
+    expect(packaged.status, packaged.stderr).toBe(0);
+    expect(JSON.parse(packaged.stdout)).toMatchObject({
+      declared: "${HOOKNOSTIC_DEFAULT_UNSET:-env-fallback}",
+      args: references,
+    });
+  });
+
   it("agrees with the TypeScript placeholder oracle", async () => {
     const cases: { cwd?: string; args: string[] }[] = [
       { args: ["${PLUGIN_ROOT}/a", "x${PLUGIN_ROOT}y${PLUGIN_ROOT}z", "${TOKEN}"] },
@@ -368,6 +400,19 @@ describe("launcherEnvironmentReferences", () => {
         cwd: "${PLUGIN_ROOT}",
       }),
     ).toEqual([]);
+  });
+
+  // Unlisted, a value set in Codex's environment would never reach the
+  // launcher, and the default would win even when the name is set.
+  it("names the variable of a defaulted reference", () => {
+    expect(
+      launcherEnvironmentReferences({
+        name: "srv",
+        command: "node",
+        args: ["${WITH_DEFAULT:-fallback}"],
+        env: { A: "${BLANK_DEFAULT:-}" },
+      }),
+    ).toEqual(["BLANK_DEFAULT", "WITH_DEFAULT"]);
   });
 
   it("ignores a `./` cwd, which is anchored rather than expanded", () => {

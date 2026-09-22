@@ -95,9 +95,13 @@ profiles. Stdio uses the existing portable launcher; command paths and cwd resol
 from the MCP source file's directory. A direct-source cwd may move above that
 directory only when its resolved destination remains inside `project.root`;
 packaged declarations retain package-root containment. Environment references remain literal until
-runtime. Direct project sources resolve `${NAME}` from the launch environment.
-OpenCode disables only a remote declaration whose required variable is unset and
-warns with the server name and missing variables; other servers remain available.
+runtime. Direct project sources resolve `${NAME}` and `${NAME:-default}` from the
+launch environment, by the rules Claude applies to its own declarations: a defined
+variable wins even when it is empty, and only an undefined one takes the default.
+A stdio server whose `${NAME}` has neither a value nor a default does not start;
+the launcher names the missing variable. OpenCode disables only a remote
+declaration whose required variable is unset and warns with the server name and
+missing variables; other servers remain available.
 Agent Plugin package inputs retain unrecognized references literally under the
 package standard. Claude project MCP expands set `${NAME}` and `${NAME:-default}`
 references in remote URLs and headers, and no captured escape preserves the literal.
@@ -120,8 +124,8 @@ paths. Streamable HTTP uses native `url`, `http_headers`, `env_http_headers`, an
 `bearer_token_env_var`. A direct `${NAME}` header maps to `env_http_headers`, and
 an `Authorization: Bearer ${NAME}` header maps to `bearer_token_env_var` without
 placing the value in generated output. Codex cannot represent references inside a
-remote URL or mixed with other header text, so those configurations fail with a
-targeted diagnostic. OpenCode resolves direct remote URL and header references in
+remote URL, mixed with other header text, or with a `${NAME:-default}` fallback,
+so those configurations fail with a targeted diagnostic. OpenCode resolves direct remote URL and header references in
 its generated project module because its own interpolation runs before plugin
 configuration hooks. Project declarations replace same-named inherited servers
 while unrelated entries remain. SSE remains

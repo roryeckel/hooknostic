@@ -33,6 +33,99 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 // Both the packaged server and the native controls carry these texts.
 const REFERENCES = ["set=${HOOKNOSTIC_CAPTURE_SET}", "default=${HOOKNOSTIC_CAPTURE_UNSET:-fallback}"];
 
+// A direct source is not governed by Agent Plugins: it is text the project
+// wrote for the harness to resolve, so it should resolve as Claude resolves
+// the same text in its own declaration.
+const DIRECT_REFERENCES = [
+  "set=${HOOKNOSTIC_CAPTURE_SET}",
+  "default-set=${HOOKNOSTIC_CAPTURE_SET:-fallback}",
+  "default-unset=${HOOKNOSTIC_CAPTURE_UNSET:-fallback}",
+  "empty=${HOOKNOSTIC_CAPTURE_EMPTY}",
+  "default-empty=${HOOKNOSTIC_CAPTURE_EMPTY:-fallback}",
+  "default-blank=${HOOKNOSTIC_CAPTURE_UNSET:-}",
+];
+
+type ChildRecord = { argv: string[]; cwd: string | null; env: Record<string, string | null> };
+
+async function synchronize(root: string, components: Record<string, unknown>): Promise<void> {
+  const configPath = join(root, "hooknostic.config.ts");
+  await writeFile(
+    configPath,
+    `export default ${JSON.stringify({
+      project: { root: "." },
+      components,
+      targets: {
+        claude: {
+          version: claudeHarness.recommendedRange,
+          delivery: "project",
+          output: ".hooknostic/artifacts/claude",
+        },
+      },
+    })};`,
+  );
+  const sync = await runProcess(process.execPath, [join(repo, "packages/cli/bin/hooknostic.mjs"), "sync", "--config", configPath, "--json"], {
+    cwd: root,
+    env: process.env,
+    timeoutMs: 120_000,
+  });
+  expect(sync.code, sync.stdout + sync.stderr).toBe(0);
+}
+
+/** Approves `servers` in an isolated config, runs `claude mcp list`, and reads what each child recorded. */
+async function listServers(root: string, servers: string[], recordFiles: string[], variables: Record<string, string>) {
+  const configDir = join(root, "claude-config");
+  await mkdir(configDir);
+  await writeFile(
+    join(configDir, ".claude.json"),
+    JSON.stringify({
+      hasCompletedOnboarding: true,
+      projects: Object.fromEntries(
+        [root, root.replaceAll("\\", "/")].map((key) => [key, { hasTrustDialogAccepted: true, enabledMcpjsonServers: servers }]),
+      ),
+    }),
+  );
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    CLAUDE_CONFIG_DIR: configDir,
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    DISABLE_AUTOUPDATER: "1",
+    DISABLE_TELEMETRY: "1",
+    ...variables,
+  };
+  for (const name of ["HOOKNOSTIC_CAPTURE_UNSET", "CLAUDE_PROJECT_DIR", "PLUGIN_ROOT", "PLUGIN_DATA"]) delete env[name];
+  const listed = await runProcess("claude", ["mcp", "list"], { cwd: root, env, timeoutMs: 120_000 });
+  const version = await runProcess("claude", ["--version"], { cwd: root, env });
+  expect(listed.code, listed.stdout + listed.stderr).toBe(0);
+
+  const records = (
+    await Promise.all(recordFiles.map(async (path) => (existsSync(path) ? (await readFile(path, "utf8")).trim().split("\n") : [])))
+  )
+    .flat()
+    .map((line) => JSON.parse(line) as ChildRecord & { label: string });
+  const normalize = (value: string | null) =>
+    value === null ? null : value.replaceAll(root, "<project>").replaceAll(root.replaceAll("\\", "/"), "<project>");
+  const first = Object.fromEntries(
+    servers.map((label): [string, ChildRecord | null] => {
+      const record = records.find((item) => item.label === label);
+      return [
+        label,
+        record === undefined
+          ? null
+          : {
+              argv: record.argv,
+              cwd: normalize(record.cwd),
+              env: Object.fromEntries(Object.entries(record.env).map(([name, value]) => [name, normalize(value)])),
+            },
+      ];
+    }),
+  );
+  const status = Object.fromEntries(
+    servers.map((name) => [name, listed.stdout.split("\n").find((line) => line.startsWith(`${name}:`))?.trim() ?? null]),
+  );
+  const diagnostics = listed.stdout.split("\n").filter((line) => line.includes("[Warning]")).map((line) => line.trim());
+  return { version: version.stdout.trim().split(" ")[0], records: first, status, diagnostics, normalize };
+}
+
 test("captures how Claude project MCP launches packaged and native stdio servers", async () => {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-claude-stdio-probe-"));
   try {
@@ -76,86 +169,18 @@ test("captures how Claude project MCP launches packaged and native stdio servers
         },
       }),
     );
-    const configPath = join(root, "hooknostic.config.ts");
-    await writeFile(
-      configPath,
-      `export default ${JSON.stringify({
-        project: { root: "." },
-        components: { root: "./portable", targets: ["claude"] },
-        targets: {
-          claude: {
-            version: claudeHarness.recommendedRange,
-            delivery: "project",
-            output: ".hooknostic/artifacts/claude",
-          },
-        },
-      })};`,
-    );
-    const sync = await runProcess(process.execPath, [join(repo, "packages/cli/bin/hooknostic.mjs"), "sync", "--config", configPath, "--json"], {
-      cwd: root,
-      env: process.env,
-      timeoutMs: 120_000,
-    });
-    expect(sync.code, sync.stdout + sync.stderr).toBe(0);
+    await synchronize(root, { root: "./portable", targets: ["claude"] });
 
-    const configDir = join(root, "claude-config");
-    await mkdir(configDir);
     const servers = ["packaged", "nativeReferences", "nativeProjectDir"];
-    await writeFile(
-      join(configDir, ".claude.json"),
-      JSON.stringify({
-        hasCompletedOnboarding: true,
-        projects: Object.fromEntries(
-          [root, root.replaceAll("\\", "/")].map((key) => [key, { hasTrustDialogAccepted: true, enabledMcpjsonServers: servers }]),
-        ),
-      }),
-    );
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      CLAUDE_CONFIG_DIR: configDir,
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      DISABLE_AUTOUPDATER: "1",
-      DISABLE_TELEMETRY: "1",
-      HOOKNOSTIC_CAPTURE_SET: "expanded-value",
-    };
-    for (const name of ["HOOKNOSTIC_CAPTURE_UNSET", "CLAUDE_PROJECT_DIR", "PLUGIN_ROOT", "PLUGIN_DATA"]) delete env[name];
-    const listed = await runProcess("claude", ["mcp", "list"], { cwd: root, env, timeoutMs: 120_000 });
-    const version = await runProcess("claude", ["--version"], { cwd: root, env });
-    expect(listed.code, listed.stdout + listed.stderr).toBe(0);
-
-    const records = (
-      await Promise.all(
-        [join(portable, "records.jsonl"), join(root, "records.jsonl")].map(async (path) =>
-          existsSync(path) ? (await readFile(path, "utf8")).trim().split("\n") : [],
-        ),
-      )
-    )
-      .flat()
-      .map((line) => JSON.parse(line) as { label: string; argv: string[]; cwd: string; env: Record<string, string | null> });
-    const normalize = (value: string | null) =>
-      value === null ? null : value.replaceAll(root, "<project>").replaceAll(root.replaceAll("\\", "/"), "<project>");
-    const first = Object.fromEntries(
-      servers.map((label) => {
-        const record = records.find((item) => item.label === label);
-        return [
-          label,
-          record === undefined
-            ? null
-            : {
-                argv: record.argv,
-                cwd: normalize(record.cwd),
-                env: Object.fromEntries(Object.entries(record.env).map(([name, value]) => [name, normalize(value)])),
-              },
-        ];
-      }),
+    const { version, records: first, status, diagnostics, normalize } = await listServers(
+      root,
+      servers,
+      [join(portable, "records.jsonl"), join(root, "records.jsonl")],
+      { HOOKNOSTIC_CAPTURE_SET: "expanded-value" },
     );
     const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8")) as { mcpServers: Record<string, unknown> };
-    const status = Object.fromEntries(
-      servers.map((name) => [name, listed.stdout.split("\n").find((line) => line.startsWith(`${name}:`))?.trim() ?? null]),
-    );
-    const diagnostics = listed.stdout.split("\n").filter((line) => line.includes("[Warning]")).map((line) => line.trim());
     const observations = {
-      version: version.stdout.trim().split(" ")[0],
+      version,
       platform: process.platform,
       method: "live-probe",
       projected: mcp.mcpServers["packaged"],
@@ -185,6 +210,60 @@ test("captures how Claude project MCP launches packaged and native stdio servers
     // project or a package root.
     expect(diagnostics).toContainEqual(expect.stringContaining("Missing environment variables: CLAUDE_PROJECT_DIR"));
     expect(first["nativeProjectDir"]).toBeNull();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("captures a direct source's stdio references against Claude's native reading", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hooknostic-claude-direct-probe-"));
+  try {
+    await writeFile(join(root, "recorder.mjs"), RECORDER);
+    const direct = (label: string, args: string[]) => ({
+      command: "node",
+      args: ["./recorder.mjs", label, ...args],
+      env: { CAPTURE_ENV: "${HOOKNOSTIC_CAPTURE_UNSET:-env-fallback}" },
+    });
+    await writeFile(
+      join(root, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          direct: { type: "stdio", ...direct("direct", DIRECT_REFERENCES) },
+          directUnset: { type: "stdio", ...direct("directUnset", ["unset=${HOOKNOSTIC_CAPTURE_UNSET}"]) },
+        },
+      }),
+    );
+    await writeFile(
+      join(root, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          native: direct("native", DIRECT_REFERENCES),
+          nativeUnset: direct("nativeUnset", ["unset=${HOOKNOSTIC_CAPTURE_UNSET}"]),
+        },
+      }),
+    );
+    await synchronize(root, { mcp: "./mcp.json" });
+
+    const servers = ["direct", "native", "directUnset", "nativeUnset"];
+    const { version, records, status, diagnostics } = await listServers(root, servers, [join(root, "records.jsonl")], {
+      HOOKNOSTIC_CAPTURE_SET: "expanded-value",
+      HOOKNOSTIC_CAPTURE_EMPTY: "",
+    });
+    const observations = { version, platform: process.platform, method: "live-probe", status, diagnostics, records };
+    console.log(JSON.stringify(observations, null, 2));
+    await writeFile(join(here, "direct-observations.json"), JSON.stringify(observations, null, 2) + "\n");
+
+    // Every form Claude resolves resolves the same way through the launcher.
+    // PLUGIN_ROOT is the launcher's own binding, which a native server lacks.
+    expect(records["native"]).not.toBeNull();
+    expect(records["direct"]?.argv).toEqual(records["native"]?.argv);
+    expect(records["direct"]?.env["CAPTURE_ENV"]).toBe(records["native"]?.env["CAPTURE_ENV"]);
+    // An unset name without a default: Claude starts the server with the text
+    // literal, and the launcher refuses to start it (ADR-0015).
+    expect(records["nativeUnset"]?.argv).toEqual(["unset=${HOOKNOSTIC_CAPTURE_UNSET}"]);
+    expect(records["directUnset"]).toBeNull();
+    expect(status["directUnset"]).toContain("Failed to connect");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

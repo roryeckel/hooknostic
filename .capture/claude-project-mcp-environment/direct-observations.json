@@ -1,0 +1,60 @@
+{
+  "version": "2.1.278",
+  "platform": "win32",
+  "method": "live-probe",
+  "status": {
+    "direct": "direct: node ./.hooknostic/artifacts/claude/mcp-launcher.mjs 0 - ✔ Connected",
+    "native": "native: node ./recorder.mjs native set=${HOOKNOSTIC_CAPTURE_SET} default-set=${HOOKNOSTIC_CAPTURE_SET} default-unset=${HOOKNOSTIC_CAPTURE_UNSET} empty=${HOOKNOSTIC_CAPTURE_EMPTY} default-empty=${HOOKNOSTIC_CAPTURE_EMPTY} default-blank=${HOOKNOSTIC_CAPTURE_UNSET} - ✔ Connected",
+    "directUnset": "directUnset: node ./.hooknostic/artifacts/claude/mcp-launcher.mjs 1 - ✘ Failed to connect — CONNECTION_CLOSED: Connection closed",
+    "nativeUnset": "nativeUnset: node ./recorder.mjs nativeUnset unset=${HOOKNOSTIC_CAPTURE_UNSET} - ✔ Connected"
+  },
+  "diagnostics": [
+    "└ [Warning] [nativeUnset] mcpServers.nativeUnset: Missing environment variables: HOOKNOSTIC_CAPTURE_UNSET"
+  ],
+  "records": {
+    "direct": {
+      "argv": [
+        "set=expanded-value",
+        "default-set=expanded-value",
+        "default-unset=fallback",
+        "empty=",
+        "default-empty=",
+        "default-blank="
+      ],
+      "cwd": "<project>",
+      "env": {
+        "CAPTURE_ENV": "env-fallback",
+        "PLUGIN_ROOT": "<project>",
+        "CLAUDE_PROJECT_DIR": "<project>"
+      }
+    },
+    "native": {
+      "argv": [
+        "set=expanded-value",
+        "default-set=expanded-value",
+        "default-unset=fallback",
+        "empty=",
+        "default-empty=",
+        "default-blank="
+      ],
+      "cwd": "<project>",
+      "env": {
+        "CAPTURE_ENV": "env-fallback",
+        "PLUGIN_ROOT": null,
+        "CLAUDE_PROJECT_DIR": "<project>"
+      }
+    },
+    "directUnset": null,
+    "nativeUnset": {
+      "argv": [
+        "unset=${HOOKNOSTIC_CAPTURE_UNSET}"
+      ],
+      "cwd": "<project>",
+      "env": {
+        "CAPTURE_ENV": "env-fallback",
+        "PLUGIN_ROOT": null,
+        "CLAUDE_PROJECT_DIR": "<project>"
+      }
+    }
+  }
+}

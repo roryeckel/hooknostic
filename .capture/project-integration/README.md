@@ -36,6 +36,22 @@ reference versions; this record does not claim those exact older binaries were
 rerun. Hook protocol fixtures and existing package projection captures remain
 separate evidence. POSIX discovery was not probed here.
 
+## Follow-up — 2026-09-22: default forms in direct stdio
+
+Re-run of the same test on Claude Code 2.1.278, Codex 0.154.0, and OpenCode
+1.18.32, on Windows. `HOOKNOSTIC_PLAYBACK_VERSION` named each installed build.
+The direct stdio server now also passes `${HOOKNOSTIC_PLAYBACK_STDIO_SET:-unused}`
+and `${HOOKNOSTIC_PLAYBACK_STDIO_UNSET:-stdio-fallback}`. Only the first
+variable is set.
+
+- **All three harnesses:** the fixture received `stdio-set` and
+  `stdio-fallback`, resolved by the generated launcher.
+- **Codex:** the generated `env_vars` listed both names, and the server started
+  although Codex's environment lacked the second one.
+
+Claude's rules for the same text in its own declaration are recorded in
+`../claude-project-mcp-environment`.
+
 ## Regression mutation evidence
 
 `mutation-results.json` records isolated source mutants and the failed regression

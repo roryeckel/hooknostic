@@ -1276,7 +1276,16 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
               localProbe: {
                 type: "stdio" as const,
                 command: "node",
-                args: ["${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs", "${PLUGIN_DATA}", adapter!.id],
+                // A direct source's `${NAME:-default}` resolves through the
+                // launcher on every harness. On Codex, both names are listed
+                // in env_vars, including the one its environment lacks.
+                args: [
+                  "${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs",
+                  "${PLUGIN_DATA}",
+                  adapter!.id,
+                  "${HOOKNOSTIC_PLAYBACK_STDIO_SET:-unused}",
+                  "${HOOKNOSTIC_PLAYBACK_STDIO_UNSET:-stdio-fallback}",
+                ],
                 env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
                 cwd: projectCwdOverride,
               },
@@ -1307,6 +1316,8 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
     await mkdir(harnessCwd, { recursive: true });
     let harnessOutput = "";
+    process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"] = "stdio-set";
+    delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_UNSET"];
     if (adapter!.id === "claude") {
       process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"] = "expanded-path";
       process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"] = "expanded-header";
@@ -1339,7 +1350,14 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
               normalize(adapter!.id === "claude" ? join(source, "mcp-working-dir") : dir),
             );
             expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
-            expect(environment.argv).toEqual([environment.pluginData, adapter!.id]);
+            expect(environment.argv).toEqual([environment.pluginData, adapter!.id, "stdio-set", "stdio-fallback"]);
+            // The server above started although env_vars names a variable
+            // Codex's environment does not have.
+            if (adapter!.id === "codex") {
+              expect(await readFile(join(dir, ".codex/config.toml"), "utf8")).toContain(
+                '"HOOKNOSTIC_PLAYBACK_STDIO_UNSET"',
+              );
+            }
             expect(transports.counts.http).toBeGreaterThan(0);
             if (adapter!.id === "claude") {
               expect(transports.received.httpPaths).toContain("/http/expanded-path");
@@ -1355,6 +1373,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     } finally {
       delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"];
       delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"];
+      delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"];
       await transports.close();
     }
     if (adapter!.id === "opencode") {

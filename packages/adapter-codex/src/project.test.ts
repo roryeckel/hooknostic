@@ -70,6 +70,30 @@ describe("Codex project components", () => {
       },
       "cannot mix an environment reference with literal text",
     ],
+    [
+      { bad: { type: "streamable-http" as const, url: "https://example.invalid/${TOKEN:-anonymous}/mcp" } },
+      "cannot represent environment references in a remote URL",
+    ],
+    [
+      {
+        bad: {
+          type: "streamable-http" as const,
+          url: "https://example.invalid/mcp",
+          headers: { Authorization: "Bearer ${TOKEN:-anonymous}" },
+        },
+      },
+      "cannot represent a ${NAME:-default} fallback",
+    ],
+    [
+      {
+        bad: {
+          type: "streamable-http" as const,
+          url: "https://example.invalid/mcp",
+          headers: { "x-key": "${TOKEN:-}" },
+        },
+      },
+      "cannot represent a ${NAME:-default} fallback",
+    ],
   ])("rejects a direct remote reference Codex cannot represent", async (servers, message) => {
     await expect(projectComponents(source(servers), ".", "out", "hooknostic.config.ts", {})).rejects.toThrow(message);
   });

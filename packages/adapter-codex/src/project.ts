@@ -13,7 +13,11 @@ import {
 import { codexHarness } from "./harness.js";
 import { translateMcp } from "./project-agent-plugin.js";
 
-const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+// Both forms a direct source may write. Codex's native fields carry only a
+// plain `${NAME}`, so any other reference is refused rather than sent on as
+// literal text.
+const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g;
+const DEFAULTED_ENVIRONMENT_REFERENCE = /\$\{[A-Za-z_][A-Za-z0-9_]*:-[^}]*\}/;
 const EXACT_ENVIRONMENT_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 const BEARER_ENVIRONMENT_REFERENCE = /^Bearer \$\{([A-Za-z_][A-Za-z0-9_]*)\}$/i;
 
@@ -30,6 +34,11 @@ function directRemote(
   const envHttpHeaders: Record<string, string> = Object.create(null);
   let bearerTokenEnvVar: string | undefined;
   for (const [header, value] of Object.entries(server.headers ?? {})) {
+    if (DEFAULTED_ENVIRONMENT_REFERENCE.test(value)) {
+      throw new Error(
+        `Codex project MCP ${JSON.stringify(name)} header ${JSON.stringify(header)} cannot represent a \${NAME:-default} fallback; Codex's environment-backed headers name a variable with no default`,
+      );
+    }
     const exact = value.match(EXACT_ENVIRONMENT_REFERENCE);
     const bearer = header.toLowerCase() === "authorization" ? value.match(BEARER_ENVIRONMENT_REFERENCE) : null;
     if (bearer) bearerTokenEnvVar = bearer[1]!;
@@ -166,6 +175,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: "0.154.0",
+          date: "2026-09-22",
+          method: "live-probe",
+          artifact: ".capture/project-integration",
+          what: "A direct stdio server started although its generated env_vars named a variable absent from Codex's environment, and the launcher resolved ${NAME:-default} for both the set and the unset name.",
+        },
         {
           version: "0.153.2",
           date: "2026-09-11",

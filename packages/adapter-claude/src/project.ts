@@ -94,7 +94,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
-          "A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment. Dependencies are supplied by the project.",
+          "A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment by Claude's own rules, except that an unset one with no default stops the server. Dependencies are supplied by the project.",
       },
       "agent-plugin.mcp.streamable-http": {
         level: "exact",
@@ -136,6 +136,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-12",
       validatedOn: [
+        {
+          version: "2.1.278",
+          date: "2026-09-22",
+          method: "live-probe",
+          artifact: ".capture/claude-project-mcp-environment",
+          what: "Direct source: in its own declaration Claude resolved ${NAME:-default} to a defined variable's value, even an empty one, and otherwise to the default; a direct stdio server received the same values through the launcher, and one with an unset ${NAME} and no default did not start.",
+        },
         {
           version: "2.1.278",
           date: "2026-09-21",

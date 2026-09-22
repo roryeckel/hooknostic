@@ -20,8 +20,12 @@ export interface McpLauncherServer {
   cwd?: string;
 }
 
-/** `${NAME}` in portable placeholder text. */
-const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+/**
+ * `${NAME}` or `${NAME:-default}` in a direct source's text: the two forms
+ * Claude resolves in its own declarations, and the grammar the launcher
+ * implements for every harness (`.capture/claude-project-mcp-environment`).
+ */
+const ENVIRONMENT_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g;
 
 /** The two the launcher binds itself; a consumer must never be asked for them. */
 const LAUNCHER_SUPPLIED = new Set(
@@ -35,7 +39,9 @@ const LAUNCHER_SUPPLIED = new Set(
  * so a variable reaches the launcher only by being named in `env_vars`
  * (`.capture/codex-project-mcp`). Scanning the declaration is what produces
  * that list: every `${NAME}` the launcher will expand, minus the two it binds
- * from its own location.
+ * from its own location. A `${NAME:-default}` name is listed too, or a value
+ * set in Codex's environment would never displace the default. Listing a name
+ * Codex does not have still starts the server (`.capture/project-integration`).
  *
  * `cwd` starting with `./` is skipped because it is anchored on the plugin
  * root rather than expanded, matching the launcher's own treatment.
@@ -209,13 +215,17 @@ if (typeof entry.command !== "string") {
   fail("server at index " + index + " in " + documentPath + " declares no command");
 }
 
+// Claude's rules, as captured: a defined variable wins even when empty, and
+// only an undefined one takes the default. With no default it is refused
+// here, where Claude would pass the text on literally (ADR-0015).
 function expand(value) {
   const paths = value.split(ROOT_TOKEN).join(pluginRoot).split(DATA_TOKEN).join(pluginData);
   if (!ENVIRONMENT_REFERENCES) return paths;
-  return paths.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}/g, (reference, name) => {
+  return paths.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\\}/g, (reference, name, fallback) => {
     const resolved = process.env[name];
-    if (resolved === undefined) fail("environment variable " + name + " is required by " + reference);
-    return resolved;
+    if (resolved !== undefined) return resolved;
+    if (fallback !== undefined) return fallback;
+    fail("environment variable " + name + " is required by " + reference);
   });
 }
 

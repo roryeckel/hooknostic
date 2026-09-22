@@ -3,8 +3,8 @@
 Evidence class: **live-probe**. The remote probe was first run on Claude Code
 **2.1.268** on **2026-09-12**, then re-run on **2.1.278** on **2026-09-21** with
 the `${NAME:-default}` cases added. Every earlier observation reproduced. The
-stdio probe was added on **2.1.278** on **2026-09-21**. All runs were on
-Windows. The observations are loopback HTTP request effects and records written
+stdio probe was added on **2.1.278** on **2026-09-21**, and its direct-source
+case on **2026-09-22**. All runs were on Windows. The observations are loopback HTTP request effects and records written
 by spawned stdio children, not hook payload fixtures.
 
 ## Questions
@@ -16,6 +16,10 @@ by spawned stdio children, not hook payload fixtures.
    delivery, compared with the same text in a native declaration? Can a project
    `.mcp.json` name the project, so that it could anchor a package root the way
    `${CLAUDE_PLUGIN_ROOT}` does under package delivery?
+3. **Direct source:** Which rules does Claude apply to `${NAME}` and
+   `${NAME:-default}` in its own declaration, including an empty variable? Does
+   a direct source's stdio server, which starts through the launcher, receive
+   the same values?
 
 ## Method
 
@@ -44,6 +48,17 @@ Every server records its argv, cwd, and selected environment values when it
 starts, then completes the MCP handshake. The test pre-approves the three
 servers in an isolated `CLAUDE_CONFIG_DIR` and runs `claude mcp list` from the
 project root. That health check starts each server. No model is contacted.
+
+**Direct source.** A second case in `stdio.test.ts` synchronizes a direct
+`mcp.json`, with no package manifest. Beside it, the project's `.mcp.json`
+declares native controls with the same text. The servers pass:
+
+- a set, an unset, and an empty variable in `${NAME:-default}`;
+- the same names in plain `${NAME}`;
+- an unset name with an empty default, `${NAME:-}`;
+- a defaulted env value.
+
+A second pair of servers references an unset name with no default.
 
 Reproduce from the repository root:
 
@@ -85,16 +100,39 @@ pnpm exec vitest run --config .capture/claude-project-mcp-environment/vitest.con
   - Claude does set `CLAUDE_PROJECT_DIR` in every stdio child's environment.
   - Native servers started in the directory Claude was launched from.
 
+### Direct source
+
+- **Claude's rules for its own declaration:**
+  - A set `${NAME:-default}` became its value, and an unset one its default.
+  - `${NAME:-}` with an unset name became empty.
+  - **A variable set to the empty string stayed empty.** `${NAME:-default}`
+    became `""`, not the default, which differs from a POSIX shell's `:-`.
+  - An unset `${NAME}` without a default stayed literal. Claude still started
+    the server and warned `Missing environment variables`.
+- **Through the launcher, the direct server received the same args and env
+  values as the native control.** The one addition is `PLUGIN_ROOT`, which the
+  launcher binds for every server.
+- **The direct server with an unset `${NAME}` and no default did not start.**
+  The launcher refuses it (ADR-0015), and Claude reported the connection closed.
+
+Before the launcher implemented the default form, the same run delivered every
+`${NAME:-default}` literally.
+
 `observations.json` holds the normalized first request for each remote case
 from the 2.1.278 run. `stdio-observations.json` holds the projected declaration,
-Claude's status lines and configuration warnings, and each child's record. The
+Claude's status lines and configuration warnings, and each child's record.
+`direct-observations.json` holds the same for the direct-source case. The
 project path is normalized to `<project>`. No credential or resolved secret is
 recorded.
 
 ## Consequences
 
-- **Direct project sources** may pass `${NAME}` through for Claude to resolve at
-  runtime.
+- **Direct project sources** may pass `${NAME}` and `${NAME:-default}` through
+  for Claude to resolve at runtime.
+  - Remote declarations are native.
+  - Stdio servers resolve through the launcher by the same rules, with one
+    intended exception: an unset `${NAME}` with no default stops the server
+    rather than reaching it literally (ADR-0015, 2026-09-22 amendment).
 - **A package's remote server** cannot keep its text literal, as Agent Plugins
   requires, and no escape exists. Project delivery therefore emits the server
   and reports the `claude:mcp-environment-expansion` deviation (HN106,
@@ -113,6 +151,6 @@ recorded.
 
 ## Not measured
 
-- POSIX behavior. Both probes are Windows-only.
+- POSIX behavior. Every probe here is Windows-only.
 - Launching Claude from a subdirectory. The project guidance already says to
   launch from the project root.
