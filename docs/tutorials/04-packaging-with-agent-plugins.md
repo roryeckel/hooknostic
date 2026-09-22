@@ -182,15 +182,22 @@ become Claude's persistent variables: `${PLUGIN_ROOT}` → `${CLAUDE_PLUGIN_ROOT
 start with `./`; the latter becomes a Claude plugin-root command. Streamable HTTP becomes
 Claude's native `http` transport; SSE, literal URLs, and literal headers are preserved.
 
-Claude also expands any other `${NAME}` in those fields, and in remote URLs and
-header values, when that variable is set in its environment
+Claude also expands `${NAME}` and `${NAME:-default}` anywhere else in a server
+when that variable is set in its environment: the stdio command, args, env
+values and cwd, and remote URLs and header values
 ([capture](../../.capture/agent-plugin-mcp-placeholders/README.md)). Agent
-Plugins 1.0 requires such text to stay literal, and Codex and OpenCode keep it
-literal. The projection keeps Claude's native declaration and reports each
-affected server with an `HN205` warning, but still emits it. So
+Plugins 1.0 requires that text to stay literal, and Codex and OpenCode keep it
+literal. The projection keeps Claude's native declaration, still emits the
+server, and reports it as the `claude:mcp-environment-expansion` deviation,
+`HN106` ([ADR-0019](../decisions/0019-agent-plugin-spec-deviations.md)). So
 `Bearer ${API_KEY}` works on Claude and reaches Codex as literal text. On Codex,
 forward a variable a stdio server reads with `components.mcpEnvironment`
 ([ADR-0018](../decisions/0018-packaged-mcp-environment.md)).
+
+A deviation warns by default. Set `components.onDeviation: "error"` for strict
+mode: `check` and `build` then fail rather than ship a package that behaves
+outside the specification on some target. `hooknostic inspect <target>
+--component <id>` lists the deviations each adapter declares.
 
 For stdio servers, `cwd: "./"` selects the installed plugin root and
 `cwd: "./worker"` selects its `worker` subdirectory. Omitted cwd defaults to the

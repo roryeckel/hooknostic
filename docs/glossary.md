@@ -109,6 +109,13 @@ compilation, so a package may be hookless.
 Agent Plugin component such as skills or an MCP transport. It is separate from hook
 capability support and can be inspected with `hooknostic inspect --component`.
 
+**Deviation** — a known, captured way a harness treats some instances of a component
+differently from Agent Plugins 1.0, which Hooknostic reports rather than corrects. It is
+not a support level: a level describes every instance, while a deviation applies only to
+packages containing the triggering text. Each one is declared on the adapter's profile
+under a qualified id such as `claude:mcp-environment-expansion`. It is reported as HN106,
+and it fails the build under `components.onDeviation: "error"` (ADR-0019).
+
 **Skill** — an Agent Plugins portable component (`skills/<name>/SKILL.md`): reusable
 instructions a harness can invoke. Not something Hooknostic generates or modifies.
 

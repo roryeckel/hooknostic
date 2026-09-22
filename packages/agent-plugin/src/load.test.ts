@@ -61,6 +61,28 @@ describe("loadProjectComponents", () => {
     ]);
   });
 
+  // A direct source expands ${NAME} in args, env and cwd but never in command,
+  // so a placeholder-like command would launch as a literal nobody meant.
+  it("refuses a placeholder-like command in a direct MCP source", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-command-"));
+    roots.push(root);
+    const path = join(root, "mcp.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: { tool: { type: "stdio", command: "${TOOL}" }, node: { type: "stdio", command: "node" } },
+      }),
+    );
+
+    const loaded = await loadProjectComponents({ mcp: path, projectRoot: root });
+
+    expect(Object.keys(loaded.source.mcp?.config.mcpServers ?? {})).toEqual(["node"]);
+    expect(loaded.issues).toContainEqual(
+      expect.objectContaining({ severity: "warn", scope: "mcp", path: "mcp.json#/mcpServers/tool" }),
+    );
+  });
+
   it("preserves target-native frontmatter while validating portable skill fields", async () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-project-skills-"));
     roots.push(root);
@@ -300,7 +322,10 @@ describe("loadAgentPlugin", () => {
     });
   });
 
-  it("rejects placeholders in MCP commands while retaining valid sibling servers", async () => {
+  // The schema admits any command and the specification never expands one, so a
+  // placeholder-like command is literal text. Only the separator rule refuses
+  // `${PLUGIN_ROOT}/bin/server`: a bare command may not contain `/`.
+  it("keeps a placeholder-like package command literal while refusing a separator", async () => {
     const root = await packageRoot();
     // A `./` command has to name a file the package ships, declared executable
     // -- otherwise `checkContainedCommands` skips it and this test would be
@@ -321,14 +346,15 @@ describe("loadAgentPlugin", () => {
     );
 
     const loaded = await loadAgentPlugin({ root, executableFiles: ["bin/server"] });
-    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["executable", "relative"]);
-    expect(loaded.issues).toContainEqual(
+    expect(Object.keys(loaded.package?.mcp?.mcpServers ?? {})).toEqual(["executable", "relative", "placeholderOnly"]);
+    expect(loaded.package?.mcp?.mcpServers["placeholderOnly"]).toEqual({ type: "stdio", command: "${PLUGIN_ROOT}" });
+    expect(loaded.issues).toEqual([
       expect.objectContaining({
         severity: "warn",
         scope: "mcp",
         path: "mcp.json#/mcpServers/placeholder",
       }),
-    );
+    ]);
   });
 
   it("skips a contained command the package does not ship", async () => {

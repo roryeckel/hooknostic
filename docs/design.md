@@ -610,7 +610,10 @@ at runtime, **HN501** invalid configuration, **HN502** bundled CLI entry point,
 **HN104** a declared executable mode cannot apply to a skill the target discovers
 in place. **HN105** a declared MCP environment names a server that cannot receive
 it -- one `mcp.json` does not declare, or a remote server with no child to
-receive a value -- so nothing is forwarded for that name.
+receive a value -- so nothing is forwarded for that name. **HN106** an emitted
+Agent Plugin component instance that the target harness treats differently from
+the specification. Each is a deviation declared on the adapter's profile, and it
+is fatal under `components.onDeviation: "error"` (ADR-0019).
 
 #### HN502 — bundled CLI entry point
 
@@ -832,7 +835,10 @@ listed under `components.targets` whose adapter has no projector is an HN205 err
 regardless of `onUnsupported`: that policy degrades individual components, never a
 whole projection, so a build can never commit an empty package as a success. An invalid
 component the loader would skip (a malformed skill or MCP server) is an HN503 error by
-default; `onInvalid: "warn"` restores the loader's lenient skip-and-continue.
+default; `onInvalid: "warn"` restores the loader's lenient skip-and-continue. An emitted
+component the harness treats differently from the specification is an HN106 deviation:
+a warning by default, and fatal under `onDeviation: "error"`. Nothing is omitted either
+way (ADR-0019).
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
 `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the

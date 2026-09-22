@@ -29,12 +29,22 @@ function withoutCredentials(): NodeJS.ProcessEnv {
 }
 
 test("captures Claude package remote MCP placeholder expansion", async () => {
-  const requests: { method?: string; url?: string; authorization?: string }[] = [];
+  const requests: { method?: string; url?: string; authorization?: string; probeHeaders?: Record<string, string> }[] =
+    [];
   const sockets = new Set<Socket>();
   const transport = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += String(chunk);
-    requests.push({ method: request.method, url: request.url, authorization: request.headers.authorization });
+    // Node lower-cases header names; only the probe's own are recorded.
+    const probeHeaders = Object.fromEntries(
+      Object.entries(request.headers).filter(([name]) => name.startsWith("x-probe")),
+    ) as Record<string, string>;
+    requests.push({
+      method: request.method,
+      url: request.url,
+      authorization: request.headers.authorization,
+      ...(Object.keys(probeHeaders).length === 0 ? {} : { probeHeaders }),
+    });
     const rpc = body === "" ? {} : (JSON.parse(body) as { id?: unknown; method?: string; params?: { protocolVersion?: string } });
     if (rpc.id === undefined) {
       response.writeHead(202).end();
@@ -94,6 +104,29 @@ test("captures Claude package remote MCP placeholder expansion", async () => {
               url: `${transportBase}/unknown/\${HOOKNOSTIC_UNSET}`,
               headers: { Authorization: "Bearer ${HOOKNOSTIC_UNSET}" },
             },
+            // The documented default form, with the name set and unset.
+            defaultedKnown: {
+              type: "http",
+              url: `${transportBase}/defaulted-known/\${SYNTHETIC_REMOTE_PATH:-fallback-path}`,
+              headers: { Authorization: "Bearer ${SYNTHETIC_REMOTE_HEADER:-fallback-header}" },
+            },
+            defaultedUnknown: {
+              type: "http",
+              url: `${transportBase}/defaulted-unknown/\${HOOKNOSTIC_UNSET:-fallback-path}`,
+              headers: { Authorization: "Bearer ${HOOKNOSTIC_UNSET:-fallback-header}" },
+            },
+            // A literal brace is not a legal header-name character, so the
+            // unset case also shows whether Claude connects at all.
+            headerNameKnown: {
+              type: "http",
+              url: `${transportBase}/header-name-known`,
+              headers: { "X-Probe-${SYNTHETIC_HEADER_NAME}": "name-probe" },
+            },
+            headerNameUnknown: {
+              type: "http",
+              url: `${transportBase}/header-name-unknown`,
+              headers: { "X-Probe-${HOOKNOSTIC_UNSET}": "name-probe" },
+            },
           },
         },
         null,
@@ -131,15 +164,40 @@ test("captures Claude package remote MCP placeholder expansion", async () => {
           DISABLE_TELEMETRY: "1",
           SYNTHETIC_REMOTE_PATH: "expanded-path",
           SYNTHETIC_REMOTE_HEADER: "expanded-header",
+          SYNTHETIC_HEADER_NAME: "expanded-name",
           PLUGIN_ROOT: "ambient-plugin-root",
           PLUGIN_DATA: "ambient-plugin-data",
         },
       },
     );
     const version = await runProcess("claude", ["--version"], { cwd: root, env: withoutCredentials() });
+    // Neither header-name server reaches the transport, so its status line is
+    // the evidence of what Claude did with the name.
+    const list = await runProcess("claude", ["--plugin-dir", plugin, "mcp", "list"], {
+      cwd: root,
+      timeoutMs: 90_000,
+      env: {
+        ...withoutCredentials(),
+        CLAUDE_CONFIG_DIR: configDir,
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+        DISABLE_AUTOUPDATER: "1",
+        DISABLE_TELEMETRY: "1",
+        SYNTHETIC_HEADER_NAME: "expanded-name",
+      },
+    });
+    const headerNameStatus = list.stdout
+      .split(/\r?\n/)
+      .filter((line) => line.includes(":headerName"))
+      .map((line) => line.replace(/127\.0\.0\.1:\d+/, "127.0.0.1:<port>").trim());
     const normalized = {
       claudeVersion: version.stdout.trim(),
-      requests: requests.map(({ method, url, authorization }) => ({ method, url, authorization })),
+      headerNameStatus,
+      requests: requests.map(({ method, url, authorization, probeHeaders }) => ({
+        method,
+        url,
+        authorization,
+        ...(probeHeaders === undefined ? {} : { probeHeaders }),
+      })),
     };
     await writeFile(join(import.meta.dirname, "remote-observations.json"), `${JSON.stringify(normalized, null, 2)}\n`);
     expect(result.code, result.stdout + result.stderr).toBe(0);
@@ -149,8 +207,17 @@ test("captures Claude package remote MCP placeholder expansion", async () => {
         expect.objectContaining({ url: "/known/expanded-path", authorization: "Bearer expanded-header" }),
         expect.objectContaining({ url: "/reserved/ambient-plugin-root", authorization: "Bearer ambient-plugin-data" }),
         expect.objectContaining({ url: "/unknown/$%7BHOOKNOSTIC_UNSET%7D", authorization: "Bearer ${HOOKNOSTIC_UNSET}" }),
+        expect.objectContaining({ url: "/defaulted-known/expanded-path", authorization: "Bearer expanded-header" }),
+        expect.objectContaining({ url: "/defaulted-unknown/fallback-path", authorization: "Bearer fallback-header" }),
       ]),
     );
+    // Header names are not expanded: the literal is refused as an invalid
+    // name whether or not the variable is set, and nothing is sent.
+    expect(requests.some((request) => request.url?.startsWith("/header-name"))).toBe(false);
+    expect(headerNameStatus).toEqual([
+      expect.stringContaining("Invalid header name: 'X-Probe-${SYNTHETIC_HEADER_NAME}'"),
+      expect.stringContaining("Invalid header name: 'X-Probe-${HOOKNOSTIC_UNSET}'"),
+    ]);
   } finally {
     await model.close();
     for (const socket of sockets) socket.destroy();

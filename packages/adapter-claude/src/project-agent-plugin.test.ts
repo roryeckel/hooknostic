@@ -171,8 +171,8 @@ describe("Agent Plugin to Claude projection", () => {
 
   // Claude expands any set ${NAME} in these fields
   // (.capture/agent-plugin-mcp-placeholders). The declaration stays native and
-  // emitted; the deviation from the literal rule is reported per server.
-  it("warns for each server containing text Claude would expand, and still emits it", async () => {
+  // emitted; the departure from the literal rule is reported per server.
+  it("reports a deviation for each server containing text Claude would expand, and still emits it", async () => {
     const portable = source();
     portable.mcp!.mcpServers = {
       clean: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/a"], env: { STATE: "${PLUGIN_DATA}/s" } },
@@ -183,10 +183,14 @@ describe("Agent Plugin to Claude projection", () => {
         env: { REGION: "${REGION:-us}" },
         cwd: "./${SUBDIR}",
       },
+      // The specification expands nothing in a command, so even the plugin
+      // placeholder is literal text there.
+      tool: { type: "stdio", command: "${PLUGIN_ROOT}" },
       http: {
         type: "streamable-http",
         url: "https://example.invalid/${TENANT}/mcp",
-        headers: { Authorization: "Bearer ${API_TOKEN}" },
+        // Header names are not scanned: Claude keeps them literal.
+        headers: { Authorization: "Bearer ${API_TOKEN}", "X-${NAME}": "literal" },
       },
       // Remote fields expand nothing under the standard, the plugin
       // placeholders included, and Claude substitutes an ambient PLUGIN_ROOT.
@@ -199,30 +203,19 @@ describe("Agent Plugin to Claude projection", () => {
       onUnsupported: "error",
     });
 
-    expect(plan.issues).toEqual([
-      expect.objectContaining({
-        severity: "warn",
-        component: "agent-plugin.mcp.stdio",
-        path: "mcp.json#worker",
-        message: expect.stringContaining("${API_TOKEN}, ${REGION:-us}, ${SUBDIR}"),
-      }),
-      expect.objectContaining({
-        severity: "warn",
-        component: "agent-plugin.mcp.streamable-http",
-        path: "mcp.json#http",
-        message: expect.stringContaining("${TENANT}, ${API_TOKEN}"),
-      }),
-      expect.objectContaining({
-        severity: "warn",
-        component: "agent-plugin.mcp.sse",
-        path: "mcp.json#events",
-        message: expect.stringContaining("${PLUGIN_ROOT}"),
-      }),
-    ]);
-    expect(diagnosticsFromAgentPluginIssues(plan.issues, "claude").map((item) => item.severity)).toEqual([
-      "warn",
-      "warn",
-      "warn",
+    expect(plan.issues).toEqual([]);
+    const reported = (name: string, component: string, references: string) => ({
+      id: "mcp-environment-expansion",
+      component,
+      name,
+      path: `mcp.json#${name}`,
+      reason: expect.stringContaining(`contains ${references}, which`),
+    });
+    expect(plan.summary.deviations).toEqual([
+      reported("worker", "agent-plugin.mcp.stdio", "${API_TOKEN}, ${REGION:-us}, ${SUBDIR}"),
+      reported("tool", "agent-plugin.mcp.stdio", "${PLUGIN_ROOT}"),
+      reported("http", "agent-plugin.mcp.streamable-http", "${TENANT}, ${API_TOKEN}"),
+      reported("events", "agent-plugin.mcp.sse", "${PLUGIN_ROOT}"),
     ]);
     const servers = parsed(plan, ".mcp.json").mcpServers;
     expect(servers.worker.args).toEqual([
@@ -232,20 +225,42 @@ describe("Agent Plugin to Claude projection", () => {
       "${CLAUDE_PLUGIN_ROOT}",
       "--token=${API_TOKEN}",
     ]);
+    // Carried literally, not translated to Claude's variable.
+    expect(servers.tool.args).toEqual([
+      "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
+      "${CLAUDE_PLUGIN_ROOT}",
+      "${PLUGIN_ROOT}",
+    ]);
     expect(servers.http).toEqual({
       type: "http",
       url: "https://example.invalid/${TENANT}/mcp",
-      headers: { Authorization: "Bearer ${API_TOKEN}" },
+      headers: { Authorization: "Bearer ${API_TOKEN}", "X-${NAME}": "literal" },
     });
     expect(servers.events).toEqual({ type: "sse", url: "https://example.invalid/${PLUGIN_ROOT}/sse" });
     expect(plan.summary.omissions).toEqual([]);
     for (const [component, count] of [
-      ["agent-plugin.mcp.stdio", 2],
+      ["agent-plugin.mcp.stdio", 3],
       ["agent-plugin.mcp.streamable-http", 1],
       ["agent-plugin.mcp.sse", 1],
     ] as const) {
       expect(plan.summary.components[component]).toMatchObject({ discovered: count, emitted: count, skipped: 0 });
     }
+  });
+
+  it("reports no deviation for a range whose profile does not declare it", async () => {
+    const portable = source();
+    portable.mcp!.mcpServers = { worker: { type: "stdio", command: "node", args: ["${API_TOKEN}"] } };
+    const undeclared = Object.fromEntries(
+      Object.entries(support).map(([component, cell]) => [component, { level: cell.level }]),
+    );
+    const plan = await projectAgentPluginToClaude(portable, {
+      target,
+      hookArtifacts: [],
+      support: undeclared,
+      onUnsupported: "error",
+    });
+    expect(plan.summary.deviations).toEqual([]);
+    expect(parsed(plan, ".mcp.json").mcpServers.worker.args.at(-1)).toBe("${API_TOKEN}");
   });
 
   // Everything an omission has to stay consistent with: the count the report

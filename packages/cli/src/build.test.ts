@@ -597,6 +597,66 @@ describe("hooknostic build end-to-end", () => {
       expect.objectContaining({ component: "agent-plugin.manifest", name: "author" }),
     ]);
   });
+  // ADR-0019: a deviation is emitted and reported, and only strict mode fails
+  // the build for it. Both commands run the projection, so both must agree.
+  it("reports a Claude deviation as HN106 and fails only under onDeviation: error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-deviation-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    const output = join(dir, "dist/claude");
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "deviates" }),
+    );
+    await writeFile(
+      join(dir, "mcp.json"),
+      JSON.stringify({
+        $schema: AGENT_PLUGIN_MCP_SCHEMA,
+        mcpServers: {
+          token: { type: "stdio", command: "node", args: ["--token=${API_TOKEN}"] },
+          plain: { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/server.mjs"] },
+        },
+      }),
+    );
+    const writeConfig = async (onDeviation?: "error") =>
+      writeFile(
+        config,
+        `export default ${JSON.stringify({
+          components: { root: ".", targets: ["claude"], ...(onDeviation === undefined ? {} : { onDeviation }) },
+          targets: { claude: { version: claudeHarness.recommendedRange, delivery: "package", output: "dist/claude" } },
+        })};`,
+      );
+    const deviation = (severity: "warn" | "error") =>
+      expect.objectContaining({
+        code: "HN106",
+        severity,
+        target: "claude",
+        component: "agent-plugin.mcp.stdio",
+        deviation: "claude:mcp-environment-expansion",
+        location: { file: "mcp.json#token" },
+      });
+
+    await writeConfig();
+    const accepted = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: accepted.io })).toBe(0);
+    const report = JSON.parse(accepted.out());
+    expect(report.diagnostics.filter((item: { code: string }) => item.code === "HN106")).toEqual([deviation("warn")]);
+    expect(report.targets.claude.projection.deviations).toEqual([
+      expect.objectContaining({ id: "claude:mcp-environment-expansion", name: "token" }),
+    ]);
+    expect(JSON.parse(await readFile(join(output, ".mcp.json"), "utf8")).mcpServers.token.args).toContain(
+      "--token=${API_TOKEN}",
+    );
+
+    await writeConfig("error");
+    await rm(output, { recursive: true, force: true });
+    for (const run of [runCheck, runBuild]) {
+      const strict = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: strict.io })).toBe(2);
+      expect(JSON.parse(strict.out()).diagnostics).toContainEqual(deviation("error"));
+      expect(existsSync(output)).toBe(false);
+    }
+  });
   it("builds the rewrite-shell example into three self-contained target artifacts", { timeout: 120_000 }, async () => {
     const dir = await cleanExample("rewrite-shell");
     const { io, out } = captureIO();

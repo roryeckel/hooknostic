@@ -41,10 +41,18 @@ contract suite in `@hooknostic/testkit` audits every row.
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
 | `agent-plugin.runtime-package` | unsupported | The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly. |
 
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
 | 2.1.268 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 2.1.268 | 2026-09-12 | live-probe | `.capture/claude-project-mcp-environment` | Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields. |
 
@@ -56,17 +64,25 @@ Project support is independent of package projection.
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
 | `agent-plugin.skills` | exact | — |
-| `agent-plugin.mcp.stdio` | exact | Claude also expands other set ${NAME} references in args, env values and cwd, which Agent Plugins 1.0 requires to remain literal; the projection keeps the native declaration and warns for each server containing one. |
-| `agent-plugin.mcp.streamable-http` | exact | Claude expands set ${NAME} references in remote urls and header values, where Agent Plugins 1.0 forbids expansion; the projection keeps the native declaration and warns for each server containing one. |
-| `agent-plugin.mcp.sse` | exact | Claude expands set ${NAME} references in remote urls and header values, where Agent Plugins 1.0 forbids expansion; the projection keeps the native declaration and warns for each server containing one. |
+| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | exact | — |
 | `agent-plugin.runtime-package` | exact | — |
+
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Claude substitutes set environment variables into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} references in a projected package's stdio args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; unset references remained literal. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} and ${NAME:-default} references in a projected package's stdio command, args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; plain unset references remained literal, and placeholder-like header names stayed literal and were refused as invalid. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration. |
 | 2.1.273 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable. |
 | 2.1.260 | 2026-09-04 | live-probe | `.capture/harness-playback` | Claude discovered a projected skill, started projected stdio/HTTP/SSE MCP servers with root/data variables, and executed merged Hooknostic hooks. |

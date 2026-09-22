@@ -17,6 +17,7 @@ export const DIAGNOSTIC_CODES = {
   HN103: "effect truncated or dropped by a runtime budget",
   HN104: "declared executable mode not applicable to a source discovered in place",
   HN105: "declared MCP environment cannot be forwarded",
+  HN106: "Agent Plugin behavior deviates from the specification",
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",
@@ -59,6 +60,8 @@ export interface Diagnostic {
   support?: SupportLevel;
   /** Adapter-provided rationale for a non-exact mapping. */
   rationale?: string;
+  /** Qualified deviation id, `<adapter>:<id>`, for an HN106 (ADR-0019). */
+  deviation?: string;
   remediation?: string;
   location?: { file: string; line?: number };
 }
@@ -81,7 +84,8 @@ export function formatDiagnostic(d: Diagnostic): string {
   if (d.component) lines.push(`  component: ${d.component}`);
   if (d.target) lines.push(`  target:   ${d.target}`);
   if (d.support) lines.push(`  support:  ${d.support}`);
-  if (d.capability || d.component || d.target || d.support) lines.push("");
+  if (d.deviation) lines.push(`  deviation: ${d.deviation}`);
+  if (d.capability || d.component || d.target || d.support || d.deviation) lines.push("");
   lines.push(`  ${d.message}`);
   if (d.rationale) {
     lines.push("");

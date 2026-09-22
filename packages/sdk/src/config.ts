@@ -205,6 +205,15 @@ interface ComponentPolicy<TTarget extends string> {
    * publishing is an authoring mistake, not a portable-spec recovery.
    */
   onInvalid?: "error" | "warn";
+  /**
+   * Whether an emitted component the harness will treat differently from Agent
+   * Plugins 1.0 fails the build. Default `"warn"`. `"error"` is strict mode:
+   * a build fails rather than ship a package that behaves outside the
+   * specification on some target. Nothing is omitted either way. Each deviation
+   * is a known, captured harness behavior declared on the adapter's profile
+   * (ADR-0019), reported as HN106.
+   */
+  onDeviation?: "error" | "warn";
 }
 
 type DirectComponentPolicy<TTarget extends string> = {

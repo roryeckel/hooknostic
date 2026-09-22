@@ -111,7 +111,7 @@ function componentTables(target, projector, recordsLabel) {
   const resolution = resolveAgentPluginProjection(target, projector);
   const profiles = resolution.profilesUsed;
   if (profiles.length <= 1) {
-    emitComponentTable(resolution.matrix, profiles, recordsLabel);
+    emitComponentTable(resolution.matrix, profiles, recordsLabel, target.id);
     return;
   }
   lines.push(
@@ -124,14 +124,28 @@ function componentTables(target, projector, recordsLabel) {
   for (const profile of profiles) {
     lines.push(`##### \`${profile.range}\``, "");
     const scoped = resolveAgentPluginProjection({ ...target, version: profile.range }, projector);
-    emitComponentTable(scoped.matrix, [profile], recordsLabel);
+    emitComponentTable(scoped.matrix, [profile], recordsLabel, target.id);
   }
 }
 
-function emitComponentTable(matrix, profiles, recordsLabel) {
+function emitComponentTable(matrix, profiles, recordsLabel, adapterId) {
   lines.push("| Component | Support | Rationale |", "| --- | --- | --- |");
   for (const [component, support] of Object.entries(matrix ?? {})) {
     lines.push(`| \`${component}\` | ${support.level} | ${support.rationale ?? "—"} |`);
+  }
+  // Instance-level departures from Agent Plugins 1.0 (ADR-0019): a package
+  // containing the triggering text gets HN106, fatal under onDeviation: "error".
+  const deviations = Object.entries(matrix ?? {}).flatMap(([component, support]) =>
+    (support.deviations ?? []).map((deviation) => ({ component, ...deviation })),
+  );
+  if (deviations.length > 0) {
+    lines.push("", "Known deviations from Agent Plugins 1.0, reported as `HN106`:", "");
+    lines.push("| Deviation | Component | Behavior | Evidence |", "| --- | --- | --- | --- |");
+    for (const deviation of deviations) {
+      lines.push(
+        `| \`${adapterId}:${deviation.id}\` | \`${deviation.component}\` | ${deviation.summary} | \`${deviation.evidence}\` |`,
+      );
+    }
   }
   lines.push("", recordsLabel, "");
   lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");

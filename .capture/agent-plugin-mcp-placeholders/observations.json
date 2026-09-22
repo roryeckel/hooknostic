@@ -11,7 +11,9 @@
           "<PLUGIN_ROOT>",
           "<PLUGIN_DATA>",
           "expanded-marker",
-          "${HOOKNOSTIC_UNSET}"
+          "${HOOKNOSTIC_UNSET}",
+          "expanded-marker",
+          "fallback"
         ],
         "cwd": "hooknostic",
         "env": {
@@ -20,7 +22,9 @@
           "RESERVED_ROOT": "<PLUGIN_ROOT>",
           "RESERVED_DATA": "<PLUGIN_DATA>",
           "KNOWN_REFERENCE": "expanded-marker",
-          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
+          "DEFAULTED_KNOWN": "expanded-marker",
+          "DEFAULTED_UNKNOWN": "fallback"
         }
       },
       "remote": {
@@ -33,12 +37,14 @@
       "harness": "claude-projected",
       "version": "2.1.278 (Claude Code)",
       "child": {
-        "commandLabel": "literal-command",
+        "commandLabel": "expanded-command",
         "args": [
           "<PLUGIN_ROOT>",
           "<PLUGIN_DATA>",
           "expanded-marker",
-          "${HOOKNOSTIC_UNSET}"
+          "${HOOKNOSTIC_UNSET}",
+          "expanded-marker",
+          "fallback"
         ],
         "cwd": "expanded-cwd",
         "env": {
@@ -47,7 +53,9 @@
           "RESERVED_ROOT": "<PLUGIN_ROOT>",
           "RESERVED_DATA": "<PLUGIN_DATA>",
           "KNOWN_REFERENCE": "expanded-marker",
-          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
+          "DEFAULTED_KNOWN": "expanded-marker",
+          "DEFAULTED_UNKNOWN": "fallback"
         }
       },
       "remote": {
@@ -65,7 +73,9 @@
           "<PLUGIN_ROOT>",
           "<PLUGIN_DATA>",
           "${SYNTHETIC_MARKER}",
-          "${HOOKNOSTIC_UNSET}"
+          "${HOOKNOSTIC_UNSET}",
+          "${SYNTHETIC_MARKER:-fallback}",
+          "${HOOKNOSTIC_UNSET:-fallback}"
         ],
         "cwd": "${SYNTHETIC_CWD}",
         "env": {
@@ -74,7 +84,9 @@
           "RESERVED_ROOT": "<PLUGIN_ROOT>",
           "RESERVED_DATA": "<PLUGIN_DATA>",
           "KNOWN_REFERENCE": "${SYNTHETIC_MARKER}",
-          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
+          "DEFAULTED_KNOWN": "${SYNTHETIC_MARKER:-fallback}",
+          "DEFAULTED_UNKNOWN": "${HOOKNOSTIC_UNSET:-fallback}"
         }
       },
       "remote": {
@@ -92,7 +104,9 @@
           "<PLUGIN_ROOT>",
           "<PLUGIN_DATA>",
           "${SYNTHETIC_MARKER}",
-          "${HOOKNOSTIC_UNSET}"
+          "${HOOKNOSTIC_UNSET}",
+          "${SYNTHETIC_MARKER:-fallback}",
+          "${HOOKNOSTIC_UNSET:-fallback}"
         ],
         "cwd": "${SYNTHETIC_CWD}",
         "env": {
@@ -101,7 +115,9 @@
           "RESERVED_ROOT": "<PLUGIN_ROOT>",
           "RESERVED_DATA": "<PLUGIN_DATA>",
           "KNOWN_REFERENCE": "${SYNTHETIC_MARKER}",
-          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}"
+          "UNKNOWN_REFERENCE": "${HOOKNOSTIC_UNSET}",
+          "DEFAULTED_KNOWN": "${SYNTHETIC_MARKER:-fallback}",
+          "DEFAULTED_UNKNOWN": "${HOOKNOSTIC_UNSET:-fallback}"
         }
       },
       "remote": {

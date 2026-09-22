@@ -222,6 +222,7 @@ export const hooknosticConfigSchema = z
           .optional(),
         onUnsupported: z.enum(["error", "warn"]).optional(),
         onInvalid: z.enum(["error", "warn"]).optional(),
+        onDeviation: z.enum(["error", "warn"]).optional(),
       })
       .strict()
       .optional(),

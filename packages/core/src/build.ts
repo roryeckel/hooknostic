@@ -8,6 +8,7 @@ import { minimatch } from "minimatch";
 
 import {
   type AgentPluginComponentId,
+  type AgentPluginDeviation,
   type AgentPluginFile,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
@@ -35,6 +36,7 @@ import { targetSpecFromConfig } from "./adapter.js";
 import {
   type AgentPluginProjectionResolution,
   analyzeAgentPluginProjection,
+  diagnosticsFromAgentPluginDeviations,
   diagnosticsFromAgentPluginIssues,
   resolveAgentPluginProjection,
 } from "./agent-plugin.js";
@@ -90,6 +92,11 @@ export interface AgentPluginTargetReport {
     Record<AgentPluginComponentId, { support: SupportLevel; discovered: number; emitted: number; skipped: number }>
   >;
   omissions: AgentPluginProjectionSummary["omissions"];
+  /**
+   * Emitted items the harness treats differently from the specification, each
+   * id qualified as `<adapter>:<id>` (ADR-0019). Present once projection ran.
+   */
+  deviations?: AgentPluginDeviation[];
 }
 
 export interface BuildTargetReport {
@@ -103,6 +110,7 @@ export interface BuildTargetReport {
   project?: {
     components: AgentPluginTargetReport["components"];
     omissions: AgentPluginTargetReport["omissions"];
+    deviations?: AgentPluginTargetReport["deviations"];
     guidance: string[];
   };
 }
@@ -410,11 +418,17 @@ function artifactDigest(artifacts: readonly GeneratedArtifact[], directories: re
   return `sha256:${hash.digest("hex")}`;
 }
 
+/** Report form of reported deviations: ids qualified by the adapter that raised them. */
+function qualifiedDeviations(adapter: string, deviations: readonly AgentPluginDeviation[] | undefined) {
+  return (deviations ?? []).map((deviation) => ({ ...deviation, id: `${adapter}:${deviation.id}` }));
+}
+
 function projectionReport(
   resolution: AgentPluginProjectionResolution,
   summary: AgentPluginProjectionSummary,
   artifacts: readonly GeneratedArtifact[],
   directories: readonly string[],
+  adapter: string,
 ): AgentPluginTargetReport {
   const components: AgentPluginTargetReport["components"] = {};
   for (const [id, counts] of Object.entries(summary.components)) {
@@ -433,6 +447,7 @@ function projectionReport(
     ...(directories.length === 0 ? {} : { directories }),
     components,
     omissions: summary.omissions,
+    deviations: qualifiedDeviations(adapter, summary.deviations),
   };
 }
 
@@ -969,11 +984,24 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ? {}
               : { mcpEnvironment: config.components!.mcpEnvironment }),
           });
-          const projectedDiagnostics = diagnosticsFromAgentPluginIssues(plan.issues, id);
+          const projectedDiagnostics = [
+            ...diagnosticsFromAgentPluginIssues(plan.issues, id),
+            ...diagnosticsFromAgentPluginDeviations(plan.summary.deviations ?? [], {
+              target: id,
+              adapter: adapter.id,
+              onDeviation: config.components!.onDeviation ?? "warn",
+              support: projectionResolutions.get(id)?.matrix ?? {},
+            }),
+          ];
           diagnostics.push(...projectedDiagnostics);
           if (hasFatal(projectedDiagnostics)) {
             target.status = "failed";
-            target.projection = { status: "failed", components: {}, omissions: plan.summary.omissions };
+            target.projection = {
+              status: "failed",
+              components: {},
+              omissions: plan.summary.omissions,
+              deviations: qualifiedDeviations(adapter.id, plan.summary.deviations),
+            };
             continue;
           }
           if (plan.files.length === 0) {
@@ -1012,7 +1040,13 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           artifacts = plan.files;
           directories = plan.directories ?? [];
           projectionCopiedPaths = new Set(plan.summary.copiedPaths);
-          target.projection = projectionReport(projectionResolutions.get(id)!, plan.summary, artifacts, directories);
+          target.projection = projectionReport(
+            projectionResolutions.get(id)!,
+            plan.summary,
+            artifacts,
+            directories,
+            adapter.id,
+          );
         }
 
         let integration: ProjectIntegration | undefined;
@@ -1149,6 +1183,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ...(config.components?.mcpEnvironment === undefined
                 ? {}
                 : { mcpEnvironment: config.components.mcpEnvironment }),
+              support: support.matrix,
             });
             // Not an omission: the skill is delivered, in place, and counting
             // it as skipped would misreport a component that is present. Warn,
@@ -1184,7 +1219,20 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 counted.skipped++;
               }
             }
-            target.project = { components: counts, omissions, guidance: projected.guidance };
+            diagnostics.push(
+              ...diagnosticsFromAgentPluginDeviations(projected.deviations ?? [], {
+                target: id,
+                adapter: adapter.id,
+                onDeviation: config.components?.onDeviation ?? "warn",
+                support: support.matrix,
+              }),
+            );
+            target.project = {
+              components: counts,
+              omissions,
+              deviations: qualifiedDeviations(adapter.id, projected.deviations),
+              guidance: projected.guidance,
+            };
             if (hasTargetFatal()) {
               target.status = "failed";
               continue;

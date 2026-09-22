@@ -147,13 +147,26 @@ function writeProbeSource(root, remoteBase) {
         mcpServers: {
           recorder: {
             type: "stdio",
-            command: "./literal-command.cmd",
-            args: ["${PLUGIN_ROOT}", "${PLUGIN_DATA}", "${SYNTHETIC_MARKER}", "${HOOKNOSTIC_UNSET}"],
+            // The specification never expands a command, so a harness that
+            // keeps it literal runs the wrapper literally named
+            // `${SYNTHETIC_COMMAND}.cmd`; one that expands it runs
+            // `expanded-command.cmd`.
+            command: "./${SYNTHETIC_COMMAND}.cmd",
+            args: [
+              "${PLUGIN_ROOT}",
+              "${PLUGIN_DATA}",
+              "${SYNTHETIC_MARKER}",
+              "${HOOKNOSTIC_UNSET}",
+              "${SYNTHETIC_MARKER:-fallback}",
+              "${HOOKNOSTIC_UNSET:-fallback}",
+            ],
             env: {
               RESERVED_ROOT: "${PLUGIN_ROOT}",
               RESERVED_DATA: "${PLUGIN_DATA}",
               KNOWN_REFERENCE: "${SYNTHETIC_MARKER}",
               UNKNOWN_REFERENCE: "${HOOKNOSTIC_UNSET}",
+              DEFAULTED_KNOWN: "${SYNTHETIC_MARKER:-fallback}",
+              DEFAULTED_UNKNOWN: "${HOOKNOSTIC_UNSET:-fallback}",
             },
             cwd: "./${SYNTHETIC_CWD}",
           },
@@ -187,7 +200,7 @@ appendFileSync(OUT, JSON.stringify({
   commandLabel: process.argv[2],
   args: process.argv.slice(3),
   cwd: basename(process.cwd()),
-  env: Object.fromEntries(["PLUGIN_ROOT", "PLUGIN_DATA", "RESERVED_ROOT", "RESERVED_DATA", "KNOWN_REFERENCE", "UNKNOWN_REFERENCE"].map((name) => [name, process.env[name] ?? null])),
+  env: Object.fromEntries(["PLUGIN_ROOT", "PLUGIN_DATA", "RESERVED_ROOT", "RESERVED_DATA", "KNOWN_REFERENCE", "UNKNOWN_REFERENCE", "DEFAULTED_KNOWN", "DEFAULTED_UNKNOWN"].map((name) => [name, process.env[name] ?? null])),
 }) + "\\n", "utf8");
 let buffer = "";
 process.stdin.setEncoding("utf8");
@@ -210,7 +223,7 @@ process.stdin.on("data", (chunk) => {
 `;
   writeFileSync(join(root, "record.mjs"), recorder);
   writeFileSync(
-    join(root, "literal-command.cmd"),
+    join(root, "${SYNTHETIC_COMMAND}.cmd"),
     '@echo off\r\nnode "%~dp0record.mjs" literal-command %*\r\n',
   );
   writeFileSync(
@@ -236,7 +249,7 @@ function buildProjectedPackage(scratch, remoteBase) {
         components: {
           root: source,
           targets: ["claude", "codex", "opencode"],
-          executableFiles: ["literal-command.cmd", `${ambient.SYNTHETIC_COMMAND}.cmd`],
+          executableFiles: ["${SYNTHETIC_COMMAND}.cmd", `${ambient.SYNTHETIC_COMMAND}.cmd`],
           onUnsupported: "warn",
         },
       },
@@ -264,6 +277,8 @@ function nativeClaudeControl(projected, scratch, remoteBase) {
               "${CLAUDE_PLUGIN_DATA}",
               "${SYNTHETIC_MARKER}",
               "${HOOKNOSTIC_UNSET}",
+              "${SYNTHETIC_MARKER:-fallback}",
+              "${HOOKNOSTIC_UNSET:-fallback}",
             ],
             env: {
               PLUGIN_ROOT: "${CLAUDE_PLUGIN_ROOT}",
@@ -272,6 +287,8 @@ function nativeClaudeControl(projected, scratch, remoteBase) {
               RESERVED_DATA: "${CLAUDE_PLUGIN_DATA}",
               KNOWN_REFERENCE: "${SYNTHETIC_MARKER}",
               UNKNOWN_REFERENCE: "${HOOKNOSTIC_UNSET}",
+              DEFAULTED_KNOWN: "${SYNTHETIC_MARKER:-fallback}",
+              DEFAULTED_UNKNOWN: "${HOOKNOSTIC_UNSET:-fallback}",
             },
             cwd: "${CLAUDE_PLUGIN_ROOT}/${SYNTHETIC_CWD}",
           },
@@ -562,17 +579,26 @@ try {
   assert.equal(byHarness["claude-native-control"].child.args[2], ambient.SYNTHETIC_MARKER);
   assert.equal(byHarness["claude-native-control"].child.env.KNOWN_REFERENCE, ambient.SYNTHETIC_MARKER);
   // The projection keeps Claude's native declaration, so the package's own
-  // text reaches Claude's expansion; only the command is not package text.
-  assert.equal(byHarness["claude-projected"].child.commandLabel, "literal-command");
-  assert.equal(byHarness["claude-projected"].child.args[2], ambient.SYNTHETIC_MARKER);
-  assert.equal(byHarness["claude-projected"].child.args[3], "${HOOKNOSTIC_UNSET}");
-  assert.equal(byHarness["claude-projected"].child.cwd, ambient.SYNTHETIC_CWD);
-  assert.equal(byHarness["claude-projected"].child.env.KNOWN_REFERENCE, ambient.SYNTHETIC_MARKER);
+  // text, the command included, reaches Claude's expansion.
+  const claude = byHarness["claude-projected"].child;
+  assert.equal(claude.commandLabel, "expanded-command");
+  assert.deepEqual(claude.args.slice(2), [ambient.SYNTHETIC_MARKER, "${HOOKNOSTIC_UNSET}", ambient.SYNTHETIC_MARKER, "fallback"]);
+  assert.equal(claude.cwd, ambient.SYNTHETIC_CWD);
+  assert.equal(claude.env.KNOWN_REFERENCE, ambient.SYNTHETIC_MARKER);
+  assert.equal(claude.env.DEFAULTED_KNOWN, ambient.SYNTHETIC_MARKER);
+  assert.equal(claude.env.DEFAULTED_UNKNOWN, "fallback");
   for (const harness of ["opencode-projected", "codex-projected"]) {
-    assert.equal(byHarness[harness].child.commandLabel, "literal-command");
-    assert.equal(byHarness[harness].child.args[2], "${SYNTHETIC_MARKER}");
-    assert.equal(byHarness[harness].child.cwd, "${SYNTHETIC_CWD}");
-    assert.equal(byHarness[harness].child.env.KNOWN_REFERENCE, "${SYNTHETIC_MARKER}");
+    const child = byHarness[harness].child;
+    assert.equal(child.commandLabel, "literal-command");
+    assert.deepEqual(child.args.slice(2), [
+      "${SYNTHETIC_MARKER}",
+      "${HOOKNOSTIC_UNSET}",
+      "${SYNTHETIC_MARKER:-fallback}",
+      "${HOOKNOSTIC_UNSET:-fallback}",
+    ]);
+    assert.equal(child.cwd, "${SYNTHETIC_CWD}");
+    assert.equal(child.env.KNOWN_REFERENCE, "${SYNTHETIC_MARKER}");
+    assert.equal(child.env.DEFAULTED_UNKNOWN, "${HOOKNOSTIC_UNSET:-fallback}");
   }
   assert.deepEqual(byHarness["codex-projected"].remote, {
     known: {

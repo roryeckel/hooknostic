@@ -4614,7 +4614,8 @@ var init_schemas = __esm({
           into: external_exports.string().min(1)
         }).strict()).min(1).optional(),
         onUnsupported: external_exports.enum(["error", "warn"]).optional(),
-        onInvalid: external_exports.enum(["error", "warn"]).optional()
+        onInvalid: external_exports.enum(["error", "warn"]).optional(),
+        onDeviation: external_exports.enum(["error", "warn"]).optional()
       }).strict().optional()
     }).strict().superRefine((config, context) => {
       if (config.entry === void 0 && config.components === void 0) {

@@ -517,59 +517,75 @@ describe("complete project integration", () => {
     }
     expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
   });
-  it("reports and omits Claude package remotes whose references cannot remain literal", async () => {
-    const claude = registry.claude!;
-    const { root, options } = await fixture({
-      components: { root: "./portable", targets: ["claude"], onUnsupported: "warn" },
-      targets: {
-        claude: {
-          adapter: "claude",
-          version: claude.harness.recommendedRange,
-          delivery: "project",
-          output: ".hooknostic/artifacts/claude",
+  it.each([undefined, "error"] as const)(
+    "emits Claude package remotes Claude would expand and reports the deviation (onDeviation %s)",
+    async (onDeviation) => {
+      const claude = registry.claude!;
+      const { root, options } = await fixture({
+        components: {
+          root: "./portable",
+          targets: ["claude"],
+          ...(onDeviation === undefined ? {} : { onDeviation }),
         },
-      },
-    });
-    await mkdir(join(root, "portable"));
-    await writeFile(
-      join(root, "portable/plugin.json"),
-      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable" }),
-    );
-    await writeFile(
-      join(root, "portable/mcp.json"),
-      JSON.stringify({
-        $schema: AGENT_PLUGIN_MCP_SCHEMA,
-        mcpServers: {
-          referenced: {
-            type: "streamable-http",
-            url: "https://example.invalid/${RUNTIME_TOKEN}/mcp",
-            headers: { Authorization: "Bearer ${RUNTIME_TOKEN}" },
+        targets: {
+          claude: {
+            adapter: "claude",
+            version: claude.harness.recommendedRange,
+            delivery: "project",
+            output: ".hooknostic/artifacts/claude",
           },
-          literal: { type: "streamable-http", url: "https://example.invalid/mcp" },
         },
-      }),
-    );
+      });
+      await mkdir(join(root, "portable"));
+      await writeFile(
+        join(root, "portable/plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable" }),
+      );
+      await writeFile(
+        join(root, "portable/mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            referenced: {
+              type: "streamable-http",
+              url: "https://example.invalid/${RUNTIME_TOKEN}/mcp",
+              headers: { Authorization: "Bearer ${RUNTIME_TOKEN}" },
+            },
+            literal: { type: "streamable-http", url: "https://example.invalid/mcp" },
+          },
+        }),
+      );
 
-    const built = await buildProject({ ...options, dryRun: true });
-    expect(built.report.targets.claude?.project?.components["agent-plugin.mcp.streamable-http"]).toEqual({
-      support: "exact",
-      discovered: 2,
-      emitted: 1,
-      skipped: 1,
-    });
-    const synced = await runProject({ ...options, command: "sync" });
-    expect(synced.errors).toEqual([]);
-    expect(synced.diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "HN205",
-        severity: "warn",
+      const built = await buildProject({ ...options, dryRun: true });
+      const project = built.report.targets.claude?.project;
+      expect(project?.components["agent-plugin.mcp.streamable-http"]).toEqual({
+        support: "exact",
+        discovered: 2,
+        emitted: 2,
+        skipped: 0,
+      });
+      expect(project?.omissions).toEqual([]);
+      expect(project?.deviations).toEqual([
+        expect.objectContaining({ id: "claude:mcp-environment-expansion", name: "referenced" }),
+      ]);
+      const synced = await runProject({ ...options, command: "sync" });
+      const hn106 = expect.objectContaining({
+        code: "HN106",
+        severity: onDeviation ?? "warn",
         component: "agent-plugin.mcp.streamable-http",
-        message: expect.stringContaining("literal environment references"),
-      }),
-    );
-    const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
-    expect(Object.keys(mcp.mcpServers)).toEqual(["literal"]);
-  });
+        deviation: "claude:mcp-environment-expansion",
+      });
+      if (onDeviation === "error") {
+        expect(synced.ok).toBe(false);
+        expect(synced.diagnostics).toContainEqual(hn106);
+        return;
+      }
+      expect(synced.errors).toEqual([]);
+      expect(synced.diagnostics).toContainEqual(hn106);
+      const mcp = JSON.parse(await readFile(join(root, ".mcp.json"), "utf8"));
+      expect(Object.keys(mcp.mcpServers).sort()).toEqual(["literal", "referenced"]);
+    },
+  );
   it("forwards packaged MCP environment declarations through Codex project delivery", async () => {
     const codex = registry.codex!;
     const { root, config, options } = await fixture({

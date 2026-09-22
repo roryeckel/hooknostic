@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:41aa5cfa7bf9a3913060bd283f070ce7c574788853255ba94af3859458710eae",
+        "contentDigest": "sha256:eb8794a0a9d7eb1bfcf705a89f0922134786fd45e1efb175ac4acb040ee1a743",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -43,7 +43,8 @@
             "skipped": 0
           }
         },
-        "omissions": []
+        "omissions": [],
+        "deviations": []
       },
       "artifacts": [
         ".claude-plugin/plugin.json",
@@ -68,7 +69,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:5ea7c7f63b9ce6f436b078a282edcd6e034cd5da8bc0ed1bd8d110e302a04e90",
+        "contentDigest": "sha256:cb50277fe818b7adf4691cf0942965cf1c02885a0ec7a86457caeb1501549988",
         "copiedFileCount": 4,
         "directories": [
           "runtime",
@@ -107,7 +108,8 @@
             "component": "agent-plugin.runtime-package",
             "reason": "Codex is not known to install a plugin's npm dependencies"
           }
-        ]
+        ],
+        "deviations": []
       },
       "artifacts": [
         ".codex-plugin/plugin.json",
@@ -131,7 +133,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:0db883391200e948e08a3df9e618b20761a8f3914957fe83bcff18ce88058375",
+        "contentDigest": "sha256:99315462d2bf887112ca9004bc37292b440f848adf0f24fc596d344995c2bbc7",
         "copiedFileCount": 7,
         "directories": [
           "package/runtime",
@@ -170,7 +172,8 @@
             "component": "agent-plugin.runtime-package",
             "reason": "the generated root manifest is the only one any OpenCode route reads, and this component's manifest and lockfile are copied into the nested author package, where nothing merges or installs them; bundle the dependencies instead"
           }
-        ]
+        ],
+        "deviations": []
       },
       "artifacts": [
         "hooknostic-agent-plugin.js",

@@ -99,11 +99,12 @@ runtime. Direct project sources resolve `${NAME}` from the launch environment.
 OpenCode disables only a remote declaration whose required variable is unset and
 warns with the server name and missing variables; other servers remain available.
 Agent Plugin package inputs retain unrecognized references literally under the
-package standard. Claude project MCP expands set `${NAME}` references in remote
-URLs and headers and has no captured lossless escape across both fields, so
-Hooknostic omits an affected package-origin remote server and reports HN205;
-literal package remotes without references are emitted normally. Direct Claude
-project declarations retain the harness's native runtime expansion.
+package standard. Claude project MCP expands set `${NAME}` and `${NAME:-default}`
+references in remote URLs and headers, and no captured escape preserves the literal.
+Hooknostic therefore emits an affected package-origin remote server and reports the
+`claude:mcp-environment-expansion` deviation as HN106. The build fails only under
+`components.onDeviation: "error"` (ADR-0019). Direct Claude project declarations retain
+the harness's native runtime expansion.
 `${PLUGIN_ROOT}` means that source directory and `${PLUGIN_DATA}` resolves to
 ignored project-local `.hooknostic/data`. Dependencies must already be installed:
 project delivery references a server where it already lives rather than copying it, so

@@ -1,4 +1,5 @@
 import {
+  type AgentPluginDeviation,
   type AgentPluginIssue,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
@@ -14,12 +15,17 @@ import {
   isRootNpmManifestPath,
   materializedPackageFiles,
   parseJsonObject,
-  PLUGIN_DATA_PLACEHOLDER,
-  PLUGIN_ROOT_PLACEHOLDER,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE } from "@hooknostic/core";
+
+import {
+  claudeExpandedReferences,
+  declaresEnvironmentExpansion,
+  ENVIRONMENT_EXPANSION_DEVIATION,
+  environmentExpansionReason,
+} from "./mcp-expansion.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
 const MANIFEST_PATH = ".claude-plugin/plugin.json";
@@ -108,40 +114,6 @@ function replacePluginVariables(value: string): string {
 // directory before starting the server (`.capture/claude-mcp-cwd`).
 const MCP_LAUNCHER_PATH = `runtime/${MCP_LAUNCHER_FILE}`;
 
-// `${NAME}` is captured (`.capture/agent-plugin-mcp-placeholders`); the
-// `${NAME:-default}` form is doc-derived, and is matched because a warning that
-// over-reports is the safe direction.
-const CLAUDE_EXPANDED_REFERENCE = /\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}/g;
-
-/**
- * Package text Claude would expand although Agent Plugins 1.0 requires it to
- * stay literal.
- *
- * Claude's native `.mcp.json` substitutes any set environment variable into
- * stdio args, env values and cwd, and into remote urls and header values. The
- * standard allows only the two plugin placeholders, and only on stdio fields,
- * which the projection translates to Claude's own spellings. Everything else
- * stays native and is reported rather than hidden from Claude (ADR-0011,
- * fifteenth amendment): the author almost always means expansion, and routing
- * every server through an opaque document to prevent it would cost all
- * packages Claude's own view of their servers.
- */
-function claudeExpandedReferences(server: AgentPluginMcpServer): string[] {
-  const texts =
-    server.type === "stdio"
-      ? [...(server.args ?? []), ...Object.values(server.env ?? {}), ...(server.cwd === undefined ? [] : [server.cwd])]
-      : [server.url, ...Object.values(server.headers ?? {})];
-  const references = new Set<string>();
-  for (const text of texts) {
-    for (const [reference] of text.matchAll(CLAUDE_EXPANDED_REFERENCE)) {
-      const translated =
-        server.type === "stdio" && (reference === PLUGIN_ROOT_PLACEHOLDER || reference === PLUGIN_DATA_PLACEHOLDER);
-      if (!translated) references.add(reference);
-    }
-  }
-  return [...references];
-}
-
 /** A translated server, or the reason this one cannot be represented. */
 type TranslatedServer = { entry: Record<string, unknown>; reason?: undefined } | { entry?: undefined; reason: string };
 
@@ -166,9 +138,12 @@ function translateServer(server: AgentPluginMcpServer): TranslatedServer {
       reason: `working directory ${JSON.stringify(server.cwd)} escapes the directory it is anchored on`,
     };
   }
+  // Never translated: the specification expands nothing in `command`, so a
+  // `${PLUGIN_ROOT}` there is literal text, and Claude's own expansion of it
+  // is reported as a deviation rather than arranged.
   const command = server.command.startsWith("./")
     ? `\${CLAUDE_PLUGIN_ROOT}/${server.command.slice(2)}`
-    : replacePluginVariables(server.command);
+    : server.command;
   const env: Record<string, string> = Object.fromEntries(
     Object.entries(server.env ?? {}).map(([key, value]) => [key, replacePluginVariables(value)]),
   );
@@ -271,6 +246,7 @@ export async function projectAgentPluginToClaude(
   assertPackageDelivery("claude", context.target.delivery);
   const issues: AgentPluginIssue[] = [];
   const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
+  const deviations: AgentPluginDeviation[] = [];
   const files = new Map<string, AgentPluginProjectionFile>();
   const copiedPaths = new Set<string>();
   const insideRejectedSkill = isRejectedSkillPath(source);
@@ -443,16 +419,18 @@ export async function projectAgentPluginToClaude(
         });
         continue;
       }
+      // Emitted either way. The native declaration stays visible to Claude
+      // rather than hidden behind an opaque document, and the author of a
+      // `${NAME}` almost always means expansion (ADR-0011, fifteenth amendment).
+      const component = `agent-plugin.mcp.${server.type}` as const;
       const references = claudeExpandedReferences(server);
-      if (references.length > 0) {
-        // Warn rather than onUnsupported: the server is emitted, and on a set
-        // variable it gets what its author most likely meant.
-        issues.push({
-          severity: "warn",
-          scope: "projection",
-          component: `agent-plugin.mcp.${server.type}` as const,
+      if (references.length > 0 && declaresEnvironmentExpansion(context.support[component])) {
+        deviations.push({
+          id: ENVIRONMENT_EXPANSION_DEVIATION,
+          component,
+          name,
           path: `mcp.json#${name}`,
-          message: `MCP server ${JSON.stringify(name)} contains ${references.join(", ")}, which Agent Plugins 1.0 requires to remain literal; Claude substitutes a set environment variable into it, so the server may receive that value instead.`,
+          reason: environmentExpansionReason(name, references),
         });
       }
       if (entry["type"] === "stdio") emittedStdio += 1;
@@ -548,6 +526,7 @@ export async function projectAgentPluginToClaude(
         omissions.filter((item) => item.component === "agent-plugin.mcp.stdio").length,
       ),
       omissions,
+      deviations,
       copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
     },
   };
@@ -569,18 +548,36 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.skills": { level: "exact" },
         "agent-plugin.mcp.stdio": {
           level: "exact",
-          rationale:
-            "Claude also expands other set ${NAME} references in args, env values and cwd, which Agent Plugins 1.0 requires to remain literal; the projection keeps the native declaration and warns for each server containing one.",
+          deviations: [
+            {
+              id: ENVIRONMENT_EXPANSION_DEVIATION,
+              summary:
+                "Claude substitutes set environment variables into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command.",
+              evidence: ".capture/agent-plugin-mcp-placeholders",
+            },
+          ],
         },
         "agent-plugin.mcp.streamable-http": {
           level: "exact",
-          rationale:
-            "Claude expands set ${NAME} references in remote urls and header values, where Agent Plugins 1.0 forbids expansion; the projection keeps the native declaration and warns for each server containing one.",
+          deviations: [
+            {
+              id: ENVIRONMENT_EXPANSION_DEVIATION,
+              summary:
+                "Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion.",
+              evidence: ".capture/agent-plugin-mcp-placeholders",
+            },
+          ],
         },
         "agent-plugin.mcp.sse": {
           level: "exact",
-          rationale:
-            "Claude expands set ${NAME} references in remote urls and header values, where Agent Plugins 1.0 forbids expansion; the projection keeps the native declaration and warns for each server containing one.",
+          deviations: [
+            {
+              id: ENVIRONMENT_EXPANSION_DEVIATION,
+              summary:
+                "Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion.",
+              evidence: ".capture/agent-plugin-mcp-placeholders",
+            },
+          ],
         },
         "agent-plugin.client-extension.files": { level: "exact" },
         "agent-plugin.runtime-package": { level: "exact" },
@@ -593,7 +590,7 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-21",
             method: "live-probe",
             artifact: ".capture/agent-plugin-mcp-placeholders",
-            what: "Claude expanded set ${NAME} references in a projected package's stdio args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; unset references remained literal.",
+            what: "Claude expanded set ${NAME} and ${NAME:-default} references in a projected package's stdio command, args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; plain unset references remained literal, and placeholder-like header names stayed literal and were refused as invalid.",
           },
           {
             version: "2.1.278",

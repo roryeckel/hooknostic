@@ -629,11 +629,12 @@ decided here.
   `PLUGIN_DATA` to remain literal on stdio fields and forbids all remote
   expansion.
 - **The deviation is reported, not engineered around.** The projection keeps
-  its native declaration. Each server containing text Claude would expand gets
-  an `HN205` warning naming the server and the references, and is still
-  emitted. The severity is fixed at warn rather than following
-  `onUnsupported`: nothing is omitted, and when the variable is set the server
-  gets what its author almost certainly meant. The three MCP components stay
+  its native declaration. Each server containing text Claude would expand is
+  reported, naming the server and the references, and is still emitted:
+  nothing is omitted, and when the variable is set the server gets what its
+  author almost certainly meant. As first written, this was an `HN205` warning
+  at fixed severity. ADR-0019 replaced it with a profile-declared deviation,
+  `HN106`, under `components.onDeviation`. The three MCP components stay
   `exact` and their rationales state the deviation, as the manifest's author
   caveat already does: Claude implements the contract. It is just broader than
   the contract.
@@ -662,5 +663,6 @@ decided here.
 - **Project delivery is unchanged here.** Claude project integration still omits
   a package-origin remote server containing a reference
   (`.capture/claude-project-mcp-environment`). Whether it should warn instead
-  is a separate decision.
+  is a separate decision. ADR-0019 made that decision: project delivery reports
+  the same deviation and emits the server.
 
