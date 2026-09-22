@@ -1,0 +1,47 @@
+{
+  "version": "2.1.278",
+  "platform": "win32",
+  "method": "live-probe",
+  "projected": {
+    "command": "node",
+    "args": [
+      "./.hooknostic/artifacts/claude/mcp-launcher.mjs",
+      "0"
+    ]
+  },
+  "status": {
+    "packaged": "packaged: node ./.hooknostic/artifacts/claude/mcp-launcher.mjs 0 - ✔ Connected",
+    "nativeReferences": "nativeReferences: node ./recorder.mjs nativeReferences set=${HOOKNOSTIC_CAPTURE_SET} default=${HOOKNOSTIC_CAPTURE_UNSET} - ✔ Connected",
+    "nativeProjectDir": "nativeProjectDir: node ${CLAUDE_PROJECT_DIR}/recorder.mjs nativeProjectDir - ✘ Failed to connect — CONNECTION_CLOSED: Connection closed"
+  },
+  "diagnostics": [
+    "└ [Warning] [nativeProjectDir] mcpServers.nativeProjectDir: Missing environment variables: CLAUDE_PROJECT_DIR"
+  ],
+  "records": {
+    "packaged": {
+      "argv": [
+        "set=${HOOKNOSTIC_CAPTURE_SET}",
+        "default=${HOOKNOSTIC_CAPTURE_UNSET:-fallback}"
+      ],
+      "cwd": "<project>\\portable",
+      "env": {
+        "CAPTURE_ENV": "${HOOKNOSTIC_CAPTURE_SET}",
+        "PLUGIN_ROOT": "<project>\\portable",
+        "CLAUDE_PROJECT_DIR": "<project>"
+      }
+    },
+    "nativeReferences": {
+      "argv": [
+        "set=expanded-value",
+        "default=fallback"
+      ],
+      "cwd": "<project>",
+      "env": {
+        "CAPTURE_ENV": "expanded-value",
+        "PLUGIN_ROOT": null,
+        "CLAUDE_PROJECT_DIR": "<project>"
+      }
+    },
+    "nativeProjectDir": null
+  }
+}

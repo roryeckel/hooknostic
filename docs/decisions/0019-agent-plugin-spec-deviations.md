@@ -78,7 +78,8 @@ depending on the route, and neither could be made fatal on its own.
 - **The first declaration is `claude:mcp-environment-expansion`.** It is declared
   on package projection for all three MCP components, and on project delivery
   for the two remote ones. Project stdio servers launch from an opaque document
-  that Claude never expands, so they need no declaration.
+  that Claude never expands, so they need no declaration (see "Delivery routes"
+  below).
   - Only a package's text is governed: a direct source's `${NAME}` is a request
     that Claude is meant to resolve.
   - Header names are not covered. Claude keeps them literal and refuses the
@@ -96,6 +97,41 @@ than the loader's former caution:
 - **Claude's projector no longer translates `${PLUGIN_ROOT}` inside a bare
   command.** A command is literal under the specification, so the translation
   was performing an expansion the standard forbids.
+
+## Delivery routes
+
+Claude's two delivery routes treat a package's stdio text differently. This
+record keeps it that way.
+
+- **Package delivery** declares each server natively, and translates
+  `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` to Claude's own variables. Claude then
+  expands the rest of the text as well. That is the deviation.
+- **Project delivery** has no such variable. A project `.mcp.json` names neither
+  the project nor a package root.
+  - Claude does not expand `${CLAUDE_PROJECT_DIR}` there, although it sets that
+    variable for the child (`.capture/claude-project-mcp-environment`).
+  - So the generated launcher resolves the package's paths from its own
+    location and reads the server from its document.
+  - Claude never sees the package's text, which reaches the server literally.
+    That conforms.
+
+Remote declarations are native on both routes, so both routes report the
+deviation for them.
+
+Making the routes agree would take one of two changes, and both are worse than
+the difference:
+
+- **The project launcher could expand `${NAME}` itself.** Hooknostic would then
+  reproduce the harness's deviation in its own code, on a route that currently
+  meets the specification.
+- **The project declaration could be shown to Claude.** That needs a spelling
+  of the package root that Claude leaves alone, and there is none. Claude
+  expands any `${...}` placeholder whose variable is set in its environment, so
+  every server that uses `${PLUGIN_ROOT}` would be exposed to an ambient value.
+
+A publisher who wants the specification's behavior on both routes sets
+`components.onDeviation: "error"`. The package route then fails for exactly the
+servers whose text would differ.
 
 ## Rejected alternatives
 

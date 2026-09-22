@@ -35,7 +35,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | — |
-| `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
+| `agent-plugin.mcp.stdio` | emulated | A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment. Dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
@@ -52,6 +52,7 @@ Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Project stdio: a synchronized package server received its ${NAME} and ${NAME:-default} args and env values literally through the generated launcher, while Claude expanded the same text in a native declaration; Claude did not expand ${CLAUDE_PROJECT_DIR} in .mcp.json, though it set that variable for the child. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
 | 2.1.268 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 2.1.268 | 2026-09-12 | live-probe | `.capture/claude-project-mcp-environment` | Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields. |
