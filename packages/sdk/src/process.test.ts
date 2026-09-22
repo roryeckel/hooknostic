@@ -252,6 +252,38 @@ describe("runProcess", () => {
   );
 
   it.runIf(process.platform === "win32")(
+    "runs a batch file for a caller whose environment names no ComSpec and no System32",
+    async () => {
+      const dir = scratch();
+      writeFileSync(join(dir, "ok.cmd"), "@echo ran\r\n");
+      const result = await runProcess(join(dir, "ok.cmd"), [], { env: { PATH: dir } });
+      expect(result.failure).toBeUndefined();
+      expect(result.stdout.trim()).toBe("ran");
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "runs a batch file past a stale ComSpec, in the caller's environment or this process's",
+    async () => {
+      const dir = scratch();
+      writeFileSync(join(dir, "ok.cmd"), "@echo ran\r\n");
+      const stale = join(dir, "gone", "cmd.exe");
+      const inherited = process.env["ComSpec"];
+      process.env["ComSpec"] = stale;
+      try {
+        for (const env of [{ PATH: dir }, { PATH: dir, ComSpec: stale }]) {
+          const result = await runProcess(join(dir, "ok.cmd"), [], { env });
+          expect(result.failure, JSON.stringify(env)).toBeUndefined();
+          expect(result.stdout.trim()).toBe("ran");
+        }
+      } finally {
+        if (inherited === undefined) delete process.env["ComSpec"];
+        else process.env["ComSpec"] = inherited;
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
     "looks a command up in the same PATH the child receives when the environment spells it twice",
     async () => {
       // `{ ...process.env, PATH: x }` over an inherited `Path` yields both

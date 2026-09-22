@@ -115,6 +115,22 @@ function envValue(env: Record<string, string | undefined>, name: string): string
   return key === undefined ? undefined : env[key];
 }
 
+/**
+ * The cmd.exe that runs a batch file.
+ *
+ * It is how this helper runs a batch file, not the caller's program, so it
+ * must not hinge on the caller's environment: a hook passing a minimal env (no
+ * ComSpec, a PATH without System32) still gets one. Each candidate is checked
+ * to exist, so a stale ComSpec anywhere falls through to the next rather than
+ * failing the call: the caller's own choice, then the system's, then this
+ * process's, and last a PATH lookup.
+ */
+function commandInterpreter(env: Record<string, string | undefined>): string {
+  const systemRoot = envValue(env, "SYSTEMROOT") ?? process.env["SystemRoot"] ?? "C:\\Windows";
+  const candidates = [envValue(env, "COMSPEC"), join(systemRoot, "System32", "cmd.exe"), process.env["ComSpec"]];
+  return candidates.find((candidate) => candidate !== undefined && candidate !== "" && isFile(candidate)) ?? "cmd.exe";
+}
+
 /** A bare Windows command name resolved the way cmd.exe would, or the name unchanged. */
 function resolveWindowsCommand(command: string, env: Record<string, string | undefined>): string {
   if (isAbsolute(command) || command.includes("/") || command.includes("\\")) return command;
@@ -214,7 +230,7 @@ export function runProcess(
     file = resolveWindowsCommand(command, env);
     if (/\.(cmd|bat)$/i.test(file)) {
       argv = ["/d", "/s", "/c", `"${[escapeCommand(file), ...args.map(escapeArgument)].join(" ")}"`];
-      file = envValue(env, "COMSPEC") ?? "cmd.exe";
+      file = commandInterpreter(env);
       verbatim = true;
     }
   }
