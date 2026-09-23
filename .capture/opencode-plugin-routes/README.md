@@ -173,8 +173,8 @@ cwd.
 
 This is upstream's intended behaviour, not a bug: it was reported as
 [anomalyco/opencode#28384](https://github.com/anomalyco/opencode/issues/28384)
-(a `.opencode/opencode.json` entry of `.opencode/plugins/graphify.js` resolving
-to `<project>/.opencode/.opencode/plugins/graphify.js`) and **closed by a
+(a `.opencode/opencode.json` entry of `.opencode/plugins/<name>.js` resolving
+to `<project>/.opencode/.opencode/plugins/<name>.js`) and **closed by a
 maintainer as working as intended**, with "write it relative to the config file"
 as the answer. A feature request arguing the other way
 ([#35404](https://github.com/anomalyco/opencode/issues/35404)) was closed by the
