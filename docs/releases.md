@@ -31,6 +31,10 @@ Key safety property: **a draft release materializes no tag.** Until decision
    version, guards against duplicates, bumps every carrier, syncs the
    lockfile, rebuilds both committed example artifacts from the repo root,
    and opens `Release vX.Y.Z` with a checklist.
+   For a rehearsal, set `dry_run=true`: preparation uses the workflow token,
+   needs no `RELEASE_PAT`, and never pushes a branch or opens a PR. Duplicate
+   checks stop on authentication/service errors, and failure cleanup deletes
+   only a branch created by that run.
 2. Review the PR — CI runs the 3-OS matrix, the artifact byte gate, and the
    docs drift gate on it. Merge it (**decision 1**).
 3. **Release draft** fires on the merge: asserts every version carrier agrees

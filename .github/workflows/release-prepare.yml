@@ -31,13 +31,17 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
-      GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+      GH_TOKEN: ${{ inputs.dry_run == 'true' && github.token || secrets.RELEASE_PAT }}
       VERSION: ${{ inputs.version }}
     steps:
       - name: Validate version
         shell: bash
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "RELEASE_PAT is required for a real release PR; use dry_run=true to rehearse without it."; exit 1
+          fi
           if [[ "$VERSION" == v* ]]; then
             echo "no leading v -- pass 0.1.0, the tag becomes v0.1.0"; exit 1
           fi
@@ -49,16 +53,17 @@ jobs:
         shell: bash
         run: |
           REPO="${{ github.repository }}"
-          if gh api "repos/$REPO/git/refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "tag v$VERSION already exists"; exit 1
-          fi
-          if gh api "repos/$REPO/branches/release/v$VERSION" >/dev/null 2>&1; then
-            echo "branch release/v$VERSION already exists -- delete it or pick another version"; exit 1
-          fi
+          for REF in "git/ref/tags/v$VERSION" "git/ref/heads/release/v$VERSION"; do
+            if RESPONSE="$(gh api --include "repos/$REPO/$REF" 2>/dev/null)"; then
+              echo "$REF already exists -- pick another version"; exit 1
+            elif ! grep -qE '^HTTP/[^ ]+ 404([[:space:]]|$)' <<< "$RESPONSE"; then
+              echo "Could not establish whether $REF exists; check the token and GitHub availability."; exit 1
+            fi
+          done
 
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ inputs.dry_run == 'true' && github.token || secrets.RELEASE_PAT }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -103,6 +108,7 @@ jobs:
           git add -A
           git commit -m "chore(release): $VERSION"
           git push origin "$BRANCH"
+          echo "branch_created=true" >> "$GITHUB_OUTPUT"
           {
             echo "## Release v$VERSION"
             echo ""
@@ -122,7 +128,7 @@ jobs:
           rm -f pr-body.md
 
       - name: Cleanup on failure
-        if: failure() && inputs.dry_run != 'true'
+        if: failure() && inputs.dry_run != 'true' && steps.pr.outputs.branch_created == 'true'
         shell: bash
         run: |
           git push origin --delete "release/v$VERSION" 2>/dev/null || true

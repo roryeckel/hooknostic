@@ -11,10 +11,8 @@
 //      matrix (the leg ran once, not per harness).
 //   3. report-failure read watch-outcome-<harness>.json without ever
 //      downloading the artifact that carries it.
-//   4. verify's install-failure detection read steps.playback.conclusion
-//      (`skipped` / empty) instead of steps.playback.outcome — the empty
-//      case is outcome == "", and `skipped` happens only on `if:` gating,
-//      not on an earlier step's failure.
+//   4. verify must classify both skipped and absent playback steps as an
+//      installation/toolchain failure; neither exercised the harness.
 //
 // The YAML is parsed with the `yaml` package if present; otherwise a
 // line-based fallback is used. All assertions work on plain text/structure
@@ -92,8 +90,7 @@ describe("harness-watch workflow structure", () => {
 
   it("verify classifies install-failure via steps.playback.outcome, not conclusion", () => {
     const verify = jobSource("verify");
-    // steps.*.conclusion of an unrun step is "skipped" for `if:` gating but
-    // the outcome is "" — the workflow must branch on outcome emptiness.
+    // Only an explicitly failed playback step is a playback failure.
     expect(verify).toContain("steps.playback.outcome");
     expect(verify).not.toContain("steps.playback.conclusion");
     expect(verify).toMatch(/outcome=install-failure/);
@@ -139,6 +136,9 @@ describe("harness-watch workflow structure", () => {
     );
     expect(drive).not.toContain("HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}");
     expect(drive).toContain("docker run --rm --network bridge");
+    expect(drive).toContain("--init --user node");
+    expect(drive).toContain("export npm_config_prefix=/tmp/hooknostic-harness");
+    expect(drive).toContain('export PATH="$npm_config_prefix/bin:$PATH"');
     expect(drive).toContain("dst=/workspace,readonly");
     expect(drive).toContain("--security-opt no-new-privileges");
     expect(drive).toContain('PLAYBACK_NODE="$(cat .github/node/playback/.node-version)"');

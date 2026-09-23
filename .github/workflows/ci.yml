@@ -5,6 +5,9 @@ on:
     branches: [master]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -13,6 +16,7 @@ jobs:
   dependency-policy:
     name: dependency policy and Renovate extraction
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     # The hosted app maintains its runtime. This image supplies the matching
@@ -40,6 +44,7 @@ jobs:
   test:
     name: lint + typecheck + test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -123,6 +128,7 @@ jobs:
   harness-playback:
     name: offline harness playback (${{ matrix.harness }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

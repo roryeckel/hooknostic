@@ -27,6 +27,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: npm
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
@@ -104,12 +105,16 @@ jobs:
         shell: bash
         run: |
           VERSION="${RELEASE_TAG#v}"
-          if npm view "@hooknostic/sdk@$VERSION" version >/dev/null 2>&1; then
+          if npm view "@hooknostic/sdk@$VERSION" version --json >"$RUNNER_TEMP/npm-version.json" 2>"$RUNNER_TEMP/npm-error.log"; then
             echo "@hooknostic/sdk@$VERSION already on the registry; skipping"
-          else
+          elif node -e 'const fs = require("node:fs"); const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.exit(result.error?.code === "E404" ? 0 : 1)' "$RUNNER_TEMP/npm-version.json"; then
             EXTRA=""
             [[ "$VERSION" == *-* ]] && EXTRA="--tag next" # prerelease never becomes latest
             pnpm publish --no-git-checks --access public $EXTRA
+          else
+            echo "Registry lookup failed; publication requires a confirmed E404."
+            cat "$RUNNER_TEMP/npm-error.log"
+            exit 1
           fi
 
       - name: Publish @hooknostic/agent-plugin
@@ -118,12 +123,16 @@ jobs:
         shell: bash
         run: |
           VERSION="${RELEASE_TAG#v}"
-          if npm view "@hooknostic/agent-plugin@$VERSION" version >/dev/null 2>&1; then
+          if npm view "@hooknostic/agent-plugin@$VERSION" version --json >"$RUNNER_TEMP/npm-version.json" 2>"$RUNNER_TEMP/npm-error.log"; then
             echo "@hooknostic/agent-plugin@$VERSION already on the registry; skipping"
-          else
+          elif node -e 'const fs = require("node:fs"); const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.exit(result.error?.code === "E404" ? 0 : 1)' "$RUNNER_TEMP/npm-version.json"; then
             EXTRA=""
             [[ "$VERSION" == *-* ]] && EXTRA="--tag next"
             pnpm publish --no-git-checks --access public $EXTRA
+          else
+            echo "Registry lookup failed; publication requires a confirmed E404."
+            cat "$RUNNER_TEMP/npm-error.log"
+            exit 1
           fi
 
       - name: Publish hooknostic (CLI)
@@ -132,10 +141,14 @@ jobs:
         shell: bash
         run: |
           VERSION="${RELEASE_TAG#v}"
-          if npm view "hooknostic@$VERSION" version >/dev/null 2>&1; then
+          if npm view "hooknostic@$VERSION" version --json >"$RUNNER_TEMP/npm-version.json" 2>"$RUNNER_TEMP/npm-error.log"; then
             echo "hooknostic@$VERSION already on the registry; skipping"
-          else
+          elif node -e 'const fs = require("node:fs"); const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.exit(result.error?.code === "E404" ? 0 : 1)' "$RUNNER_TEMP/npm-version.json"; then
             EXTRA=""
             [[ "$VERSION" == *-* ]] && EXTRA="--tag next"
             pnpm publish --no-git-checks --access public $EXTRA
+          else
+            echo "Registry lookup failed; publication requires a confirmed E404."
+            cat "$RUNNER_TEMP/npm-error.log"
+            exit 1
           fi
