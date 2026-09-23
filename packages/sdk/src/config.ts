@@ -74,6 +74,19 @@ export interface TargetConfig {
    * than a setting that quietly does nothing.
    */
   npmName?: string;
+  /**
+   * How skills are named on a harness that lists every installed plugin's
+   * skills in one namespace (OpenCode). `"qualified"`, the default, names each
+   * one `<plugin>-<skill>` so two plugins' `status` skills both stay
+   * reachable. `"authored"` keeps the name the author wrote, so the emitted
+   * SKILL.md still matches its directory as Agent Skills requires, at the risk
+   * of another plugin's skill of the same name hiding it (ADR-0021).
+   *
+   * Only meaningful where the projection qualifies skill names. Set on any
+   * other target, it is a configuration error rather than a setting that
+   * quietly does nothing.
+   */
+  skillNames?: "qualified" | "authored";
   compatibility?: CompatibilityPolicy;
 }
 
@@ -214,6 +227,22 @@ interface ComponentPolicy<TTarget extends string> {
    * (ADR-0019), reported as HN106.
    */
   onDeviation?: "error" | "warn";
+  /**
+   * Whether an emitted item the projection could not deliver at its
+   * component's level fails the build -- an OpenCode skill that cannot be
+   * named for its plugin, say. Default `"error"`, because the author can
+   * usually fix it in the package; `"warn"` ships it with an HN101 warning.
+   * Each degradation is declared on the adapter's profile (ADR-0021).
+   */
+  onDegraded?: "error" | "warn";
+  /**
+   * Qualified deviation and degradation ids to ship whatever `onDeviation`
+   * and `onDegraded` say, such as `"opencode:skill-name-unqualified"`. Each
+   * accepted instance is still reported, as information, and still recorded in
+   * the build report. An id no adapter declares is an error, so a typo cannot
+   * silently accept nothing.
+   */
+  accept?: string[];
 }
 
 type DirectComponentPolicy<TTarget extends string> = {

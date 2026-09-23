@@ -8,6 +8,7 @@ import { minimatch } from "minimatch";
 
 import {
   type AgentPluginComponentId,
+  type AgentPluginDegradation,
   type AgentPluginDeviation,
   type AgentPluginFile,
   type AgentPluginMcpServer,
@@ -36,6 +37,7 @@ import { targetSpecFromConfig } from "./adapter.js";
 import {
   type AgentPluginProjectionResolution,
   analyzeAgentPluginProjection,
+  diagnosticsFromAgentPluginDegradations,
   diagnosticsFromAgentPluginDeviations,
   diagnosticsFromAgentPluginIssues,
   resolveAgentPluginProjection,
@@ -97,6 +99,12 @@ export interface AgentPluginTargetReport {
    * id qualified as `<adapter>:<id>` (ADR-0019). Present once projection ran.
    */
   deviations?: AgentPluginDeviation[];
+  /**
+   * Emitted items the projection could not deliver at their component's level,
+   * each id qualified as `<adapter>:<id>` (ADR-0021). Present once projection
+   * ran and found any.
+   */
+  degradations?: AgentPluginDegradation[];
 }
 
 export interface BuildTargetReport {
@@ -448,6 +456,33 @@ function qualifiedDeviations(adapter: string, deviations: readonly AgentPluginDe
   return (deviations ?? []).map((deviation) => ({ ...deviation, id: `${adapter}:${deviation.id}` }));
 }
 
+/** The report's `degradations` member, present only when there are any. */
+function degradationReport(adapter: string, degradations: readonly AgentPluginDegradation[] | undefined) {
+  return (degradations ?? []).length === 0 ? {} : { degradations: qualifiedDeviations(adapter, degradations) };
+}
+
+/**
+ * Every qualified deviation and degradation id the adapters behind these
+ * targets declare, in any profile. `components.accept` is checked against it
+ * so a misspelt id fails instead of silently accepting nothing; any profile
+ * counts, because an accepted id may belong to a version range this build
+ * does not cover yet.
+ */
+function declaredShortfallIds(adapters: readonly HarnessAdapter[]): Set<string> {
+  const ids = new Set<string>();
+  for (const adapter of adapters) {
+    const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
+    for (const profile of profiles) {
+      for (const cell of Object.values(profile.components)) {
+        for (const declaration of [...(cell?.deviations ?? []), ...(cell?.degradations ?? [])]) {
+          ids.add(`${adapter.id}:${declaration.id}`);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
 function projectionReport(
   resolution: AgentPluginProjectionResolution,
   summary: AgentPluginProjectionSummary,
@@ -473,6 +508,7 @@ function projectionReport(
     components,
     omissions: summary.omissions,
     deviations: qualifiedDeviations(adapter, summary.deviations),
+    ...degradationReport(adapter, summary.degradations),
   };
 }
 
@@ -721,6 +757,23 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
 
   const analysis = analyzeCapabilities(ir, config, options.registry, options.targets);
   diagnostics.push(...analysis.diagnostics);
+  if ((config.components?.accept ?? []).length > 0) {
+    const declared = declaredShortfallIds(
+      Object.entries(config.targets).flatMap(([id, target]) => {
+        const adapter = options.registry[target.adapter ?? id];
+        return adapter === undefined ? [] : [adapter];
+      }),
+    );
+    for (const accepted of config.components!.accept!) {
+      if (declared.has(accepted)) continue;
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        message: `components.accept names ${JSON.stringify(accepted)}, which no configured target's adapter declares as a deviation or degradation.`,
+        remediation: "use a qualified id as a build report or `hooknostic inspect` prints it, or remove the entry.",
+      });
+    }
+  }
   const projectionResolutions = new Map<string, AgentPluginProjectionResolution>();
   for (const [id, target] of Object.entries(analysis.targets)) {
     report.targets[id] = {
@@ -1030,6 +1083,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               adapter: adapter.id,
               onDeviation: config.components!.onDeviation ?? "warn",
               support: projectionResolutions.get(id)?.matrix ?? {},
+              ...(config.components!.accept === undefined ? {} : { accept: config.components!.accept }),
+            }),
+            ...diagnosticsFromAgentPluginDegradations(plan.summary.degradations ?? [], {
+              target: id,
+              adapter: adapter.id,
+              onDegraded: config.components!.onDegraded ?? "error",
+              support: projectionResolutions.get(id)?.matrix ?? {},
+              ...(config.components!.accept === undefined ? {} : { accept: config.components!.accept }),
             }),
           ];
           diagnostics.push(...projectedDiagnostics);
@@ -1040,6 +1101,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               components: {},
               omissions: plan.summary.omissions,
               deviations: qualifiedDeviations(adapter.id, plan.summary.deviations),
+              ...degradationReport(adapter.id, plan.summary.degradations),
             };
             continue;
           }
@@ -1265,6 +1327,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 adapter: adapter.id,
                 onDeviation: config.components?.onDeviation ?? "warn",
                 support: support.matrix,
+                ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
               }),
             );
             target.project = {

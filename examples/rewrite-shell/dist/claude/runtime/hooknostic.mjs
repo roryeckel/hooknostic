@@ -4573,6 +4573,7 @@ var init_schemas = __esm({
       delivery: external_exports.enum(["package", "project"]),
       output: external_exports.string().min(1),
       npmName: external_exports.string().min(1).optional(),
+      skillNames: external_exports.enum(["qualified", "authored"]).optional(),
       compatibility: compatibilityPolicySchema.optional()
     }).strict();
     projectMcpServerOverrideSchema = external_exports.object({
@@ -4625,7 +4626,9 @@ var init_schemas = __esm({
         }).strict()).min(1).optional(),
         onUnsupported: external_exports.enum(["error", "warn"]).optional(),
         onInvalid: external_exports.enum(["error", "warn"]).optional(),
-        onDeviation: external_exports.enum(["error", "warn"]).optional()
+        onDeviation: external_exports.enum(["error", "warn"]).optional(),
+        onDegraded: external_exports.enum(["error", "warn"]).optional(),
+        accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional()
       }).strict().optional()
     }).strict().superRefine((config, context) => {
       if (config.entry === void 0 && config.components === void 0) {
@@ -4649,6 +4652,13 @@ var init_schemas = __esm({
             code: external_exports.ZodIssueCode.custom,
             path: ["targets", name, "npmName"],
             message: `npmName requires package delivery`
+          });
+        }
+        if (target.skillNames !== void 0 && target.delivery !== "package") {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "skillNames"],
+            message: `skillNames requires package delivery`
           });
         }
       }

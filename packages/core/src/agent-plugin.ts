@@ -4,6 +4,8 @@ import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginComponentId,
   type AgentPluginComponentSupport,
+  type AgentPluginDegradation,
+  type AgentPluginDegradationDeclaration,
   type AgentPluginDeviation,
   type AgentPluginDeviationDeclaration,
   type AgentPluginIssue,
@@ -51,7 +53,7 @@ export function diagnosticsFromAgentPluginIssues(
 
 export function resolveAgentPluginProjection(
   target: TargetSpec,
-  projector: Pick<AgentPluginProjector<TargetSpec>, "profiles">,
+  projector: Pick<AgentPluginProjector<TargetSpec>, "profiles" | "supportFor">,
 ): AgentPluginProjectionResolution {
   const diagnostics: Diagnostic[] = [];
   if (!semver.validRange(target.version)) {
@@ -87,6 +89,7 @@ export function resolveAgentPluginProjection(
     // the worst version in its range delivers, and a deviation any version in
     // the range has is one the build can ship into.
     const deviations = new Map<string, AgentPluginDeviationDeclaration>();
+    const degradations = new Map<string, AgentPluginDegradationDeclaration>();
     for (const profile of used) {
       const candidate = profile.components[id] ?? { level: "unsupported" as const };
       if (chosen === undefined || leastCapable(chosen.level, candidate.level) === candidate.level) {
@@ -95,16 +98,20 @@ export function resolveAgentPluginProjection(
       for (const deviation of candidate.deviations ?? []) {
         if (!deviations.has(deviation.id)) deviations.set(deviation.id, deviation);
       }
+      for (const degradation of candidate.degradations ?? []) {
+        if (!degradations.has(degradation.id)) degradations.set(degradation.id, degradation);
+      }
     }
     if (chosen !== undefined) {
       matrix[id] = {
         level: chosen.level,
         ...(chosen.rationale === undefined ? {} : { rationale: chosen.rationale }),
         ...(deviations.size === 0 ? {} : { deviations: [...deviations.values()] }),
+        ...(degradations.size === 0 ? {} : { degradations: [...degradations.values()] }),
       };
     }
   }
-  return { matrix, profilesUsed: [...used], diagnostics };
+  return { matrix: projector.supportFor?.(target, matrix) ?? matrix, profilesUsed: [...used], diagnostics };
 }
 
 export interface AgentPluginDeviationDiagnosticOptions {
@@ -114,50 +121,117 @@ export interface AgentPluginDeviationDiagnosticOptions {
   onDeviation: "error" | "warn";
   /** The resolved matrix the projector was given; every reported id must be declared in it. */
   support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  /** Qualified ids from `components.accept`, reported as information whatever the policy. */
+  accept?: readonly string[];
 }
 
+export interface AgentPluginDegradationDiagnosticOptions {
+  target: string;
+  /** Adapter id, which qualifies each degradation id. */
+  adapter: string;
+  onDegraded: "error" | "warn";
+  /** The resolved matrix the projector was given; every reported id must be declared in it. */
+  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  /** Qualified ids from `components.accept`, reported as information whatever the policy. */
+  accept?: readonly string[];
+}
+
+interface ShortfallKind {
+  noun: "deviation" | "degradation";
+  code: "HN106" | "HN101";
+  policy: "onDeviation" | "onDegraded";
+  declarations: (
+    cell: AgentPluginComponentSupport | undefined,
+  ) => readonly AgentPluginDeviationDeclaration[] | undefined;
+}
+
+const DEVIATION: ShortfallKind = {
+  noun: "deviation",
+  code: "HN106",
+  policy: "onDeviation",
+  declarations: (cell) => cell?.deviations,
+};
+
+const DEGRADATION: ShortfallKind = {
+  noun: "degradation",
+  code: "HN101",
+  policy: "onDegraded",
+  declarations: (cell) => cell?.degradations,
+};
+
 /**
- * HN106 for each reported deviation, at the configured severity.
+ * One diagnostic per reported instance, at the class's configured severity.
  *
- * Also the check that keeps the report honest: a projector may only report a
- * deviation the resolved matrix declares for that component. Anything else is a
+ * Also the check that keeps the report honest: a projector may only report an
+ * id the resolved matrix declares for that component. Anything else is a
  * projector defect, or a declaration missing from the profile, and it fails the
  * target as HN301 instead of reaching users as an unexplained warning.
+ *
+ * An id listed in `components.accept` is still reported, as information: the
+ * author has seen it and chosen to ship it, which is different from nobody
+ * having looked.
  */
-export function diagnosticsFromAgentPluginDeviations(
-  deviations: readonly AgentPluginDeviation[],
-  options: AgentPluginDeviationDiagnosticOptions,
+function shortfallDiagnostics(
+  kind: ShortfallKind,
+  instances: readonly AgentPluginDeviation[],
+  options: {
+    target: string;
+    adapter: string;
+    severity: "error" | "warn";
+    support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+    accept?: readonly string[];
+  },
 ): Diagnostic[] {
-  return deviations.map((deviation) => {
-    const declaration = options.support[deviation.component]?.deviations?.find((item) => item.id === deviation.id);
-    const qualified = `${options.adapter}:${deviation.id}`;
-    const location = deviation.path === undefined ? {} : { location: { file: deviation.path } };
+  const accepted = new Set(options.accept ?? []);
+  return instances.map((instance) => {
+    const declaration = kind.declarations(options.support[instance.component])?.find((item) => item.id === instance.id);
+    const qualified = `${options.adapter}:${instance.id}`;
+    const location = instance.path === undefined ? {} : { location: { file: instance.path } };
     if (declaration === undefined) {
       return {
         code: "HN301",
         severity: "error",
         target: options.target,
-        component: deviation.component,
+        component: instance.component,
         ...location,
-        message: `Agent Plugin projection for ${JSON.stringify(options.target)} reported deviation ${JSON.stringify(qualified)}, which its resolved profile does not declare for ${deviation.component}.`,
-        remediation: "declare the deviation on the profile with its evidence, or report the projector defect.",
+        message: `Agent Plugin projection for ${JSON.stringify(options.target)} reported ${kind.noun} ${JSON.stringify(qualified)}, which its resolved profile does not declare for ${instance.component}.`,
+        remediation: `declare the ${kind.noun} on the profile with its evidence, or report the projector defect.`,
       };
     }
+    const isAccepted = accepted.has(qualified);
+    const severity = isAccepted ? "info" : options.severity;
     return {
-      code: "HN106",
-      severity: options.onDeviation,
+      code: kind.code,
+      severity,
       target: options.target,
-      component: deviation.component,
-      deviation: qualified,
+      component: instance.component,
+      [kind.noun]: qualified,
       ...location,
-      message: deviation.reason,
+      message: instance.reason,
       rationale: `${declaration.summary} (${declaration.evidence})`,
-      remediation:
-        options.onDeviation === "error"
-          ? 'change the package so it does not trigger this deviation, or set components.onDeviation to "warn" to accept it.'
-          : 'set components.onDeviation to "error" to fail builds that ship a deviation.',
+      remediation: isAccepted
+        ? `accepted by components.accept; remove ${JSON.stringify(qualified)} from it to apply components.${kind.policy} again.`
+        : severity === "error"
+          ? `change the package so it does not trigger this ${kind.noun}, add ${JSON.stringify(qualified)} to components.accept to ship it, or set components.${kind.policy} to "warn".`
+          : `set components.${kind.policy} to "error" to fail builds that ship a ${kind.noun}, or add ${JSON.stringify(qualified)} to components.accept to acknowledge this one.`,
     };
   });
+}
+
+/** HN106 for each reported deviation (ADR-0019). */
+export function diagnosticsFromAgentPluginDeviations(
+  deviations: readonly AgentPluginDeviation[],
+  options: AgentPluginDeviationDiagnosticOptions,
+): Diagnostic[] {
+  return shortfallDiagnostics(DEVIATION, deviations, { ...options, severity: options.onDeviation });
+}
+
+/** HN101 for each reported degradation (ADR-0021). */
+export function diagnosticsFromAgentPluginDegradations(
+  degradations: readonly AgentPluginDegradation[],
+  options: AgentPluginDegradationDiagnosticOptions,
+): Diagnostic[] {
+  return shortfallDiagnostics(DEGRADATION, degradations, { ...options, severity: options.onDegraded });
 }
 
 function discoveredComponents(

@@ -259,6 +259,20 @@ entire output.
      the target if you report an id the resolved profile does not declare.
 
   Claude's `mcp-environment-expansion` is the worked example.
+- **A translation your projection cannot apply to some items is a
+  degradation** (ADR-0022). The item still ships, but not at the component's
+  level. Declare `{ id, summary, evidence }` under that component's
+  `degradations`, report each instance in `summary.degradations`, and leave
+  severity to core, which applies `components.onDegraded` and
+  `components.accept`. Make the declaration the switch: apply the
+  translation only when `context.support` declares it, so a profile that no
+  longer needs it turns both off. OpenCode's `skill-name-unqualified` is the
+  worked example (ADR-0021).
+- **A target option your projector reads changes the support it reports.**
+  Declare it (as `qualifiesSkillNames` does for `skillNames`) so core refuses
+  it on targets that would ignore it, and implement `supportFor(target,
+  matrix)` to return the matrix that option produces. Profiles stay facts
+  about the harness; the option's effect lives in one pure function.
 - **`summary.copiedPaths` lists byte-for-byte copies only.** Everything else in
   the plan is treated as generated — that is how core separates the two without
   knowing your path layout, and it drives `artifacts` in the build report.

@@ -219,6 +219,101 @@ describe("Agent Plugin to OpenCode projection", () => {
     });
   });
 
+  // OpenCode lists skills in one flat namespace, so a second plugin's `review`
+  // would hide this one (.capture/opencode-skill-namespace).
+  describe("skill names", () => {
+    const manifest = "---\nname: review\ndescription: Review code\n---\n\nRun scripts/review.sh.\n";
+    const withManifest = (pkg: AgentPluginPackage, path: string, contents: string): AgentPluginPackage => ({
+      ...pkg,
+      files: pkg.files.map((candidate) =>
+        candidate.path === path ? { ...candidate, contents: encoder.encode(contents) } : candidate,
+      ),
+    });
+
+    it("qualifies each skill by its plugin, in place", async () => {
+      const plan = await project(withManifest(source(), "skills/review/SKILL.md", manifest));
+      expect(text(plan, "package/skills/review/SKILL.md")).toBe(
+        "---\nname: portable-tools-review\ndescription: Review code\n---\n\nRun scripts/review.sh.\n",
+      );
+      // The directory keeps its portable name, so paths into it still resolve.
+      expect(plan.files.map((candidate) => candidate.path)).not.toContain(
+        "package/skills/portable-tools-review/SKILL.md",
+      );
+      // Rewritten, so no longer reported as copied byte for byte.
+      expect(plan.summary.copiedPaths).not.toContain("package/skills/review/SKILL.md");
+      expect(plan.issues).toEqual([]);
+    });
+
+    it("reports a skill that keeps its bare name as degraded, and ships it", async () => {
+      const plan = await project(withManifest(source(), "skills/review/SKILL.md", "---\nname: >-\n  review\n---\n"));
+      expect(text(plan, "package/skills/review/SKILL.md")).toBe("---\nname: >-\n  review\n---\n");
+      expect(plan.summary.copiedPaths).toContain("package/skills/review/SKILL.md");
+      // Reported for core to apply components.onDegraded, never raised here.
+      expect(plan.issues).toEqual([]);
+      expect(plan.summary.degradations).toEqual([
+        {
+          id: "skill-name-unqualified",
+          component: "agent-plugin.skills",
+          name: "review",
+          path: "skills/review/SKILL.md",
+          reason: expect.stringContaining("keeps its bare name") as unknown,
+        },
+      ]);
+      // And the profile declares it, so core will not treat it as a defect.
+      expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual(["skill-name-unqualified"]);
+    });
+
+    // What a profile for an OpenCode that qualifies plugin skills itself would
+    // resolve to: no declaration, so the projection leaves names as authored.
+    it("keeps authored names under a profile that does not declare the degradation", async () => {
+      const plan = await opencodeAgentPluginProjector.project(
+        withManifest(source(), "skills/review/SKILL.md", manifest),
+        {
+          target,
+          hookArtifacts: [],
+          support: { ...support, "agent-plugin.skills": { level: "exact" } },
+          onUnsupported: "error",
+        },
+      );
+      expect(text(plan, "package/skills/review/SKILL.md")).toBe(manifest);
+      expect(plan.summary.copiedPaths).toContain("package/skills/review/SKILL.md");
+      expect(plan.summary.degradations).toBeUndefined();
+    });
+
+    // skillNames: "authored" is that same state, chosen by the author on a
+    // harness that needs it: exact delivery, nothing declared to report.
+    it("resolves authored skill names to exact delivery with nothing to rename", () => {
+      const authored = resolveAgentPluginProjection(
+        { ...target, skillNames: "authored" },
+        opencodeAgentPluginProjector,
+      );
+      expect(authored.matrix?.["agent-plugin.skills"]).toEqual({ level: "exact" });
+      // Everything else is the harness's, untouched by the option.
+      expect(authored.matrix?.["agent-plugin.mcp.stdio"]).toEqual(support["agent-plugin.mcp.stdio"]);
+      for (const skillNames of [undefined, "qualified"] as const) {
+        const qualified = resolveAgentPluginProjection(
+          { ...target, ...(skillNames === undefined ? {} : { skillNames }) },
+          opencodeAgentPluginProjector,
+        );
+        expect(qualified.matrix?.["agent-plugin.skills"]).toEqual(
+          expect.objectContaining({
+            level: "emulated",
+            degradations: [expect.objectContaining({ id: "skill-name-unqualified" })],
+          }),
+        );
+      }
+    });
+
+    it("still refuses a hook artifact that lands on a rewritten skill manifest", async () => {
+      const plan = await project(withManifest(source(), "skills/review/SKILL.md", manifest), [
+        { path: "package/skills/review/SKILL.md", contents: "hook" },
+      ]);
+      expect(plan.issues).toEqual([
+        expect.objectContaining({ severity: "error", message: expect.stringContaining("collides") as unknown }),
+      ]);
+    });
+  });
+
   it("refuses to project for project delivery", async () => {
     // The projector only ever runs for package delivery: build.ts gates the
     // projection phase on it, inspect routes a project-delivery query to

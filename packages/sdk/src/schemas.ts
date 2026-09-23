@@ -141,6 +141,7 @@ export const targetConfigSchema = z
     delivery: z.enum(["package", "project"]),
     output: z.string().min(1),
     npmName: z.string().min(1).optional(),
+    skillNames: z.enum(["qualified", "authored"]).optional(),
     compatibility: compatibilityPolicySchema.optional(),
   })
   .strict();
@@ -223,6 +224,8 @@ export const hooknosticConfigSchema = z
         onUnsupported: z.enum(["error", "warn"]).optional(),
         onInvalid: z.enum(["error", "warn"]).optional(),
         onDeviation: z.enum(["error", "warn"]).optional(),
+        onDegraded: z.enum(["error", "warn"]).optional(),
+        accept: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
       })
       .strict()
       .optional(),
@@ -251,6 +254,15 @@ export const hooknosticConfigSchema = z
           code: z.ZodIssueCode.custom,
           path: ["targets", name, "npmName"],
           message: `npmName requires package delivery`,
+        });
+      }
+      // Project delivery copies skills into the project's own directory under
+      // their authored names on every harness; there is nothing to choose.
+      if (target.skillNames !== undefined && target.delivery !== "package") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targets", name, "skillNames"],
+          message: `skillNames requires package delivery`,
         });
       }
     }

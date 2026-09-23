@@ -118,6 +118,11 @@ packages containing the triggering text. Each one is declared on the adapter's p
 under a qualified id such as `claude:mcp-environment-expansion`. It is reported as HN106,
 and it fails the build under `components.onDeviation: "error"` (ADR-0019).
 
+**Degradation** — a known way a projection falls short of its component's level for some
+items it still emits, such as an OpenCode skill it cannot name for its plugin. Declared on
+the adapter's profile under a qualified id such as `opencode:skill-name-unqualified`,
+reported as HN101, and fatal by default under `components.onDegraded` (ADR-0022).
+
 **Skill** — an Agent Plugins portable component (`skills/<name>/SKILL.md`): reusable
 instructions a harness can invoke. Not something Hooknostic generates or modifies.
 

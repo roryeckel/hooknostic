@@ -44,6 +44,8 @@ export interface TargetSpec {
   output: string;
   /** npm coordinate for this target's output; see `TargetConfig.npmName`. */
   npmName?: string;
+  /** Skill naming on a flat skill namespace; see `TargetConfig.skillNames`. */
+  skillNames?: "qualified" | "authored";
 }
 
 export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSpec {
@@ -53,6 +55,7 @@ export function targetSpecFromConfig(id: string, target: TargetConfig): TargetSp
     delivery: target.delivery,
     output: target.output,
     ...(target.npmName === undefined ? {} : { npmName: target.npmName }),
+    ...(target.skillNames === undefined ? {} : { skillNames: target.skillNames }),
   };
 }
 

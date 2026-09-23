@@ -139,10 +139,23 @@ export interface AgentPluginDeviationDeclaration {
   evidence: string;
 }
 
+/**
+ * A known way the projection itself falls short of its component's level for
+ * some instances (ADR-0021).
+ *
+ * The counterpart of a deviation: there the harness departs from the
+ * specification, here Hooknostic cannot deliver its own translation for one
+ * item -- an OpenCode skill it cannot name for its plugin, say. The item is
+ * still emitted. Declared on the profile with the capture that makes the
+ * translation necessary, so a range that no longer needs it stops reporting it.
+ */
+export type AgentPluginDegradationDeclaration = AgentPluginDeviationDeclaration;
+
 export interface AgentPluginComponentSupport {
   level: AgentPluginProjectionSupportLevel;
   rationale?: string;
   deviations?: readonly AgentPluginDeviationDeclaration[];
+  degradations?: readonly AgentPluginDegradationDeclaration[];
 }
 
 /** One instance of a declared deviation found in the package being projected. */
@@ -157,6 +170,9 @@ export interface AgentPluginDeviation {
   /** What in this instance triggers it. */
   reason: string;
 }
+
+/** One instance of a declared degradation, in the same shape as a deviation. */
+export type AgentPluginDegradation = AgentPluginDeviation;
 
 export interface AgentPluginProjectionProfile {
   range: string;
@@ -259,6 +275,12 @@ export interface AgentPluginProjectionSummary {
    */
   deviations?: AgentPluginDeviation[];
   /**
+   * Emitted items the projection could not deliver at its component's level.
+   * Reported here for the same reason as deviations: core applies
+   * `components.onDegraded` and checks each id against the resolved matrix.
+   */
+  degradations?: AgentPluginDegradation[];
+  /**
    * Plan paths copied byte-for-byte from the source package after overlay
    * resolution, sorted. Every other plan file the projector generated, so this
    * is also how a consumer tells the two apart without knowing the harness's
@@ -283,6 +305,23 @@ export interface AgentPluginProjector<TTarget = AgentPluginProjectionTarget> {
    * path relative to it -- the directory `${PLUGIN_ROOT}` names. Default `"."`.
    */
   packageRoot?: string;
+  /**
+   * Whether this projector renames skills for their plugin, which is what
+   * makes `TargetSpec.skillNames` mean anything. Undeclared reads as no, and
+   * a build that sets `skillNames` for such a projector fails (ADR-0021).
+   */
+  qualifiesSkillNames?: boolean;
+  /**
+   * The resolved support for one target, adjusted for target options this
+   * projector reads. Profiles describe the harness; an option such as
+   * `skillNames: "authored"` changes what the projection does with it, and
+   * so the level and declarations the build reports. Pure: it may depend on
+   * the target and the matrix only.
+   */
+  supportFor?(
+    target: TTarget,
+    matrix: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>,
+  ): Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
   project(
     source: AgentPluginPackage,
     context: AgentPluginProjectionContext<TTarget>,

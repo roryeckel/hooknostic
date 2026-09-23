@@ -205,6 +205,29 @@ mode: `check` and `build` then fail rather than ship a package that behaves
 outside the specification on some target. `hooknostic inspect <target>
 --component <id>` lists the deviations each adapter declares.
 
+OpenCode lists every installed plugin's skills in one namespace, so the OpenCode
+package names each skill for its plugin: a `review` skill in `my-tools` is
+`my-tools-review` there, while Claude and Codex show `my-tools:review`
+([ADR-0021](../decisions/0021-opencode-skill-names.md)). A skill that cannot be
+renamed, such as one whose qualified name would pass 64 characters, keeps its
+name and fails the build as the `opencode:skill-name-unqualified` degradation.
+Rename the skill, set `components.onDegraded: "warn"`, or accept that one id:
+
+```ts
+components: {
+  root: ".",
+  accept: ["opencode:skill-name-unqualified"],
+},
+```
+
+To keep every skill's authored name on OpenCode instead, and accept that another
+plugin's skill of the same name can hide it, set `skillNames: "authored"` on the
+`opencode` target.
+
+`accept` works the same way for a deviation you have reviewed. Accepted items
+are still reported, as information
+([ADR-0022](../decisions/0022-shortfall-policy.md)).
+
 For stdio servers, `cwd: "./"` selects the installed plugin root and
 `cwd: "./worker"` selects its `worker` subdirectory. Omitted cwd defaults to the
 plugin root. A `cwd` that climbs out of the directory it is anchored on is

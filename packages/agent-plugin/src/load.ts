@@ -38,6 +38,11 @@ const SKILL_KEYS = new Set(["name", "description", "license", "compatibility", "
 const PLUGIN_NAME = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const SKILL_NAME = /^(?!.*--)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
+/** Whether `name` satisfies the Agent Skills name rules, including the 64-character limit. */
+export function isAgentSkillName(name: string): boolean {
+  return name.length <= 64 && SKILL_NAME.test(name);
+}
+
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -463,7 +468,7 @@ function validateSkillFrontmatter(
   }
   const name = value["name"];
   const description = value["description"];
-  if (typeof name !== "string" || name.length > 64 || !SKILL_NAME.test(name) || name !== directory) {
+  if (typeof name !== "string" || !isAgentSkillName(name) || name !== directory) {
     throw new Error("name must match its directory and satisfy the Agent Skills name rules");
   }
   if (typeof description !== "string" || description.length === 0 || description.length > 1024) {

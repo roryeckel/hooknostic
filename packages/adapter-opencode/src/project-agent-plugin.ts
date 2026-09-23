@@ -1,4 +1,5 @@
 import type {
+  AgentPluginDegradation,
   AgentPluginIssue,
   AgentPluginPackage,
   AgentPluginProjectionFile,
@@ -24,6 +25,7 @@ import {
   PACKAGE_PLUGIN_PATH,
   packageEntrySource,
 } from "./generate.js";
+import { qualifiedSkillNames, renameSkillManifest } from "./skill-names.js";
 
 /**
  * Package delivery emits an npm package, so every path here is package-root
@@ -366,10 +368,22 @@ function packageManifest(
  * - The scan is flat: two sibling modules both loaded, while modules one level
  *   deeper and in a neighbouring directory did not.
  */
+/** Degradation id for a skill that keeps its bare name (ADR-0021). */
+export const SKILL_NAME_UNQUALIFIED = "skill-name-unqualified";
+
 export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   // OpenCode reads no reverse-DNS client-extension namespace.
   namespace: "",
   packageRoot: PACKAGE_DIR,
+  qualifiesSkillNames: true,
+  // Under skillNames: "authored" each skill ships exactly as written, which
+  // is exact delivery, and without the declaration nothing is renamed or
+  // reported (ADR-0021).
+  supportFor: (target, matrix) => {
+    const skills = matrix["agent-plugin.skills"];
+    if (target.skillNames !== "authored" || skills === undefined || skills.level === "unsupported") return matrix;
+    return { ...matrix, "agent-plugin.skills": { level: "exact" } };
+  },
   // The hook module and the package share `.opencode/plugins/`.
   profiles: [
     {
@@ -380,7 +394,19 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         // manifest member with no npm equivalent, `extensions`, belongs to the
         // client-extension component, which OpenCode does not read at all.
         "agent-plugin.manifest": { level: "exact" },
-        "agent-plugin.skills": { level: "exact" },
+        "agent-plugin.skills": {
+          level: "emulated",
+          degradations: [
+            {
+              id: SKILL_NAME_UNQUALIFIED,
+              summary:
+                "A skill that cannot be named `<plugin>-<skill>` -- the name would pass 64 characters or break the Agent Skills name rules, duplicate another skill in the package, or sit on no rewritable frontmatter line -- keeps its bare name in OpenCode's flat skill namespace, where another plugin's skill of that name would hide it.",
+              evidence: ".capture/opencode-skill-namespace",
+            },
+          ],
+          rationale:
+            "OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts.",
+        },
         "agent-plugin.mcp.stdio": {
           level: "emulated",
           rationale:
@@ -405,6 +431,13 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "1.18.31",
+            date: "2026-09-23",
+            method: "live-probe",
+            artifact: ".capture/opencode-skill-namespace",
+            what: "Two installed plugins each shipping skills/status/SKILL.md named status: `opencode debug skill` listed one status, the same plugin's in both plugin orders, so the other was unreachable. With only the frontmatter names changed to alpha-status and beta-status and the directories untouched, both were listed at their original locations, nothing was logged about the name differing from its directory, and a model call loaded alpha-status through the skill tool.",
+          },
           {
             version: "1.18.32",
             date: "2026-09-21",
@@ -536,6 +569,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     assertPackageDelivery("opencode", context.target.delivery);
     const issues: AgentPluginIssue[] = [];
     const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
+    const degradations: AgentPluginDegradation[] = [];
     const files: AgentPluginProjectionFile[] = [];
     const copiedPaths: string[] = [];
 
@@ -547,12 +581,45 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // continued past under `onInvalid: "warn"`: its files stay in `files` while
     // it leaves `skills`, and `skills.paths` names the copied tree wholesale,
     // so shipping it hands OpenCode the very skill the loader said it skipped.
+    //
+    // A skill's SKILL.md is also the one file whose bytes may change: OpenCode
+    // lists skills in one flat namespace, so each is renamed for its plugin
+    // (see skill-names.ts). A rewritten file is generated, not copied.
     const insideRejectedSkill = isRejectedSkillPath(source);
+    const renamed = new Map<string, Uint8Array>();
+    // The declaration is the switch: a profile for an OpenCode that qualifies
+    // plugin skills itself drops it, and with it both the renaming and the
+    // reports, as ADR-0019 requires of anything a projector reports.
+    const qualifying =
+      context.support["agent-plugin.skills"]?.degradations?.some((item) => item.id === SKILL_NAME_UNQUALIFIED) ?? false;
+    for (const { skill, name, kept } of qualifying ? qualifiedSkillNames(source.manifest.name, source.skills) : []) {
+      let reason = kept;
+      if (reason === undefined && name !== skill.name) {
+        const contents = source.files.find((file) => file.path === skill.manifestPath)?.contents;
+        const rewritten = contents === undefined ? undefined : renameSkillManifest(contents, skill.name, name);
+        if (rewritten === undefined) reason = "its frontmatter has no single top-level name line to rewrite";
+        else renamed.set(skill.manifestPath, rewritten);
+      }
+      if (reason === undefined) continue;
+      // Reported, never raised: core applies components.onDegraded and
+      // components.accept.
+      degradations.push({
+        id: SKILL_NAME_UNQUALIFIED,
+        component: "agent-plugin.skills",
+        name: skill.name,
+        path: skill.manifestPath,
+        reason:
+          `skill ${JSON.stringify(skill.name)} keeps its bare name on OpenCode, where skill names are not ` +
+          `qualified by plugin and another plugin's skill of that name would hide it: ${reason}.`,
+      });
+    }
+    const rewrittenPaths: string[] = [];
     for (const file of source.files) {
       if (insideRejectedSkill(file.path)) continue;
       const path = `${PACKAGE_DIR}/${file.path}`;
-      files.push({ path, contents: file.contents, mode: file.mode });
-      copiedPaths.push(path);
+      const rewritten = renamed.get(file.path);
+      files.push({ path, contents: rewritten ?? file.contents, mode: file.mode });
+      (rewritten === undefined ? copiedPaths : rewrittenPaths).push(path);
     }
     // `${PLUGIN_ROOT}` here is the nested package directory, so a materialized
     // tree has to land inside it or nothing in mcp.json can name it. That
@@ -567,7 +634,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // able to answer either question.
     const materialized = materializedPackageFiles(context.materializedTrees, {
       prefix: `${PACKAGE_DIR}/`,
-      claimed: new Set(copiedPaths),
+      claimed: new Set([...copiedPaths, ...rewrittenPaths]),
     });
     issues.push(...materialized.issues);
     const materializedPaths = new Set<string>();
@@ -666,7 +733,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       });
     }
 
-    const copied = new Set(copiedPaths);
+    const copied = new Set([...copiedPaths, ...rewrittenPaths]);
     const generated = new Set([
       INJECTOR_PATH,
       LAUNCHER_PATH,
@@ -735,6 +802,7 @@ export const opencodeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       summary: {
         components: counts,
         omissions,
+        ...(degradations.length === 0 ? {} : { degradations }),
         copiedPaths: [...copiedPaths].sort((a, b) => a.localeCompare(b)),
       },
     };

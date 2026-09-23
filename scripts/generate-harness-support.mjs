@@ -147,6 +147,20 @@ function emitComponentTable(matrix, profiles, recordsLabel, adapterId) {
       );
     }
   }
+  // Items a projection cannot translate for some packages (ADR-0021): HN101,
+  // fatal under onDegraded: "error", the default.
+  const degradations = Object.entries(matrix ?? {}).flatMap(([component, support]) =>
+    (support.degradations ?? []).map((degradation) => ({ component, ...degradation })),
+  );
+  if (degradations.length > 0) {
+    lines.push("", "Known degradations, reported as `HN101`:", "");
+    lines.push("| Degradation | Component | Behavior | Evidence |", "| --- | --- | --- | --- |");
+    for (const degradation of degradations) {
+      lines.push(
+        `| \`${adapterId}:${degradation.id}\` | \`${degradation.component}\` | ${degradation.summary} | \`${degradation.evidence}\` |`,
+      );
+    }
+  }
   lines.push("", recordsLabel, "");
   lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
   for (const profile of profiles) {

@@ -215,6 +215,19 @@ export function analyzeCapabilities(
         remediation: "remove npmName, or target a harness whose package delivery emits an npm manifest.",
       });
     }
+    // The same fail-closed rule as npmName: a projector that does not rename
+    // skills would ignore the setting, so the author hears about it instead.
+    if (spec.skillNames !== undefined && adapter.agentPluginProjector?.qualifiesSkillNames !== true) {
+      targetDiagnostics.push({
+        code: "HN501",
+        severity: "error",
+        target: targetId,
+        message:
+          `target ${JSON.stringify(targetId)} declares skillNames ${JSON.stringify(spec.skillNames)}, but ` +
+          `${adapter.id} package delivery keeps every skill's authored name already`,
+        remediation: "remove skillNames; it applies only to a harness whose skill names are not qualified by plugin.",
+      });
+    }
     const resolved = adapter.capabilities(spec);
     targetDiagnostics.push(...resolved.diagnostics);
 

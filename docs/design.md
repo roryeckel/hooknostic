@@ -367,7 +367,8 @@ package projection and project delivery alike. A supported component below the m
 is an HN206 at `onBelowMinimum`, and it is still emitted when that is `"warn"`. An
 `unsupported` component follows `components.onUnsupported` instead. A deviation
 (ADR-0019) is not a level, so this policy never acts on one: `components.onDeviation`
-does.
+does. Nor is a degradation, an item the projection cannot deliver at its component's
+level, which `components.onDegraded` governs (ADR-0022).
 
 ### 7.6 Target-scoped hooks
 
@@ -844,7 +845,10 @@ component the loader would skip (a malformed skill or MCP server) is an HN503 er
 default; `onInvalid: "warn"` restores the loader's lenient skip-and-continue. An emitted
 component the harness treats differently from the specification is an HN106 deviation:
 a warning by default, and fatal under `onDeviation: "error"`. Nothing is omitted either
-way (ADR-0019).
+way (ADR-0019). An emitted item the projection cannot translate, such as an OpenCode skill
+it cannot name for its plugin, is an HN101 degradation: fatal by default, and a warning
+under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
+ships whatever the policy says, and is still reported, as information (ADR-0022).
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
 `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the

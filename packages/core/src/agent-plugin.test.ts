@@ -9,7 +9,9 @@ import {
 import type { HarnessAdapter, TargetSpec } from "./adapter.js";
 import {
   analyzeAgentPluginProjection,
+  diagnosticsFromAgentPluginDegradations,
   diagnosticsFromAgentPluginDeviations,
+  diagnosticsFromAgentPluginIssues,
   resolveAgentPluginProjection,
 } from "./agent-plugin.js";
 
@@ -142,6 +144,22 @@ describe("resolveAgentPluginProjection", () => {
   });
 });
 
+describe("diagnosticsFromAgentPluginIssues", () => {
+  const issue = { severity: "warn", scope: "projection", component: "agent-plugin.skills", message: "m" } as const;
+
+  it("reports a projection issue for a component as an omission", () => {
+    expect(diagnosticsFromAgentPluginIssues([issue], "t")).toEqual([
+      expect.objectContaining({ code: "HN205", severity: "warn", target: "t", component: "agent-plugin.skills" }),
+    ]);
+  });
+
+  it("reports a package issue as invalid", () => {
+    expect(diagnosticsFromAgentPluginIssues([{ ...issue, scope: "skill" }], "t")).toEqual([
+      expect.objectContaining({ code: "HN503" }),
+    ]);
+  });
+});
+
 describe("diagnosticsFromAgentPluginDeviations", () => {
   const support = {
     "agent-plugin.mcp.stdio": {
@@ -186,6 +204,111 @@ describe("diagnosticsFromAgentPluginDeviations", () => {
         target: "claude",
         adapter: "claude",
         onDeviation: "warn",
+        support,
+      }),
+    ).toEqual([expect.objectContaining({ code: "HN301", severity: "error" })]);
+  });
+
+  // Seen and chosen, which is different from nobody having looked: still
+  // reported, never at a severity that fails or nags.
+  it("reports an accepted deviation as information whatever the policy", () => {
+    expect(
+      diagnosticsFromAgentPluginDeviations([deviation], {
+        target: "claude",
+        adapter: "claude",
+        onDeviation: "error",
+        support,
+        accept: ["claude:mcp-environment-expansion"],
+      }),
+    ).toEqual([expect.objectContaining({ code: "HN106", severity: "info" })]);
+  });
+
+  it("does not let an accepted id excuse an undeclared report", () => {
+    expect(
+      diagnosticsFromAgentPluginDeviations([{ ...deviation, id: "undeclared" }], {
+        target: "claude",
+        adapter: "claude",
+        onDeviation: "warn",
+        support,
+        accept: ["claude:undeclared"],
+      }),
+    ).toEqual([expect.objectContaining({ code: "HN301", severity: "error" })]);
+  });
+});
+
+describe("diagnosticsFromAgentPluginDegradations", () => {
+  const support = {
+    "agent-plugin.skills": {
+      level: "emulated" as const,
+      degradations: [{ id: "skill-name-unqualified", summary: "keeps its name", evidence: ".capture/probe" }],
+      // A deviation of the same id must not satisfy a degradation report.
+      deviations: [{ id: "deviation-only", summary: "other", evidence: ".capture/probe" }],
+    },
+  };
+  const degradation = {
+    id: "skill-name-unqualified",
+    component: "agent-plugin.skills" as const,
+    name: "status",
+    path: "skills/status/SKILL.md",
+    reason: "skill status keeps its bare name.",
+  };
+
+  it.each(["warn", "error"] as const)("reports a declared degradation as HN101 at severity %s", (onDegraded) => {
+    expect(
+      diagnosticsFromAgentPluginDegradations([degradation], {
+        target: "opencode",
+        adapter: "opencode",
+        onDegraded,
+        support,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        code: "HN101",
+        severity: onDegraded,
+        component: "agent-plugin.skills",
+        degradation: "opencode:skill-name-unqualified",
+        location: { file: "skills/status/SKILL.md" },
+        message: degradation.reason,
+        rationale: "keeps its name (.capture/probe)",
+      }),
+    ]);
+  });
+
+  it("reports an accepted degradation as information", () => {
+    expect(
+      diagnosticsFromAgentPluginDegradations([degradation], {
+        target: "opencode",
+        adapter: "opencode",
+        onDegraded: "error",
+        support,
+        accept: ["opencode:skill-name-unqualified"],
+      }),
+    ).toEqual([expect.objectContaining({ code: "HN101", severity: "info" })]);
+  });
+
+  // Accepting one id accepts nothing else, and an id qualified by another
+  // adapter is a different id.
+  it.each([["opencode:other"], ["claude:skill-name-unqualified"]])(
+    "applies the policy when only %s is accepted",
+    (accepted) => {
+      expect(
+        diagnosticsFromAgentPluginDegradations([degradation], {
+          target: "opencode",
+          adapter: "opencode",
+          onDegraded: "error",
+          support,
+          accept: [accepted],
+        }),
+      ).toEqual([expect.objectContaining({ severity: "error" })]);
+    },
+  );
+
+  it("fails a degradation declared only as a deviation", () => {
+    expect(
+      diagnosticsFromAgentPluginDegradations([{ ...degradation, id: "deviation-only" }], {
+        target: "opencode",
+        adapter: "opencode",
+        onDegraded: "warn",
         support,
       }),
     ).toEqual([expect.objectContaining({ code: "HN301", severity: "error" })]);

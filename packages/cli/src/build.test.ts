@@ -657,6 +657,163 @@ describe("hooknostic build end-to-end", () => {
       expect(existsSync(output)).toBe(false);
     }
   });
+  // ADR-0021: a skill OpenCode cannot receive under its plugin's name is
+  // still emitted, and the author decides whether that fails the build.
+  // Default error, because renaming the skill fixes it.
+  it("fails an unqualifiable OpenCode skill by default, and ships it under warn or accept", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-degradation-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    const output = join(dir, "dist/opencode");
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "kept" }));
+    // A block scalar is a valid name no single-line rewrite can change safely.
+    await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: >-\n  review\ndescription: Review\n---\n");
+    const writeConfig = async (policy: Record<string, unknown>) =>
+      writeFile(
+        config,
+        `export default ${JSON.stringify({
+          components: { root: ".", targets: ["opencode"], ...policy },
+          targets: {
+            opencode: { version: opencodeHarness.recommendedRange, delivery: "package", output: "dist/opencode" },
+          },
+        })};`,
+      );
+    const degradation = (severity: "info" | "warn" | "error") =>
+      expect.objectContaining({
+        code: "HN101",
+        severity,
+        target: "opencode",
+        component: "agent-plugin.skills",
+        degradation: "opencode:skill-name-unqualified",
+        location: { file: "skills/review/SKILL.md" },
+      });
+
+    await writeConfig({});
+    for (const run of [runCheck, runBuild]) {
+      const strict = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: strict.io })).toBe(2);
+      expect(JSON.parse(strict.out()).diagnostics).toContainEqual(degradation("error"));
+      expect(existsSync(output)).toBe(false);
+    }
+
+    for (const [policy, severity] of [
+      [{ onDegraded: "warn" }, "warn"],
+      [{ accept: ["opencode:skill-name-unqualified"] }, "info"],
+    ] as const) {
+      await writeConfig(policy);
+      await rm(output, { recursive: true, force: true });
+      const shipped = captureIO();
+      expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: shipped.io })).toBe(0);
+      const report = JSON.parse(shipped.out());
+      expect(report.diagnostics.filter((item: { code: string }) => item.code === "HN101")).toEqual([
+        degradation(severity),
+      ]);
+      // Recorded either way, so CI can see what shipped without parsing diagnostics.
+      expect(report.targets.opencode.projection.degradations).toEqual([
+        expect.objectContaining({ id: "opencode:skill-name-unqualified", name: "review" }),
+      ]);
+      expect(await readFile(join(output, "package/skills/review/SKILL.md"), "utf8")).toContain("name: >-\n  review\n");
+    }
+  });
+
+  // The author's choice between two valid outputs, not a policy: authored
+  // names ship as written, so there is nothing to rename and nothing to fail.
+  it("keeps authored OpenCode skill names under skillNames: authored", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-authored-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    await mkdir(join(dir, "skills/review"), { recursive: true });
+    await mkdir(join(dir, "skills/folded"), { recursive: true });
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mine" }));
+    await writeFile(join(dir, "skills/review/SKILL.md"), "---\nname: review\ndescription: Review\n---\n");
+    // Would be an unqualifiable skill, and so an error, under the default.
+    await writeFile(join(dir, "skills/folded/SKILL.md"), "---\nname: >-\n  folded\ndescription: Folded\n---\n");
+    await writeFile(
+      config,
+      `export default ${JSON.stringify({
+        components: { root: ".", targets: ["opencode"] },
+        targets: {
+          opencode: {
+            version: opencodeHarness.recommendedRange,
+            delivery: "package",
+            output: "dist/opencode",
+            skillNames: "authored",
+          },
+        },
+      })};`,
+    );
+    const io = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io: io.io })).toBe(0);
+    const report = JSON.parse(io.out());
+    expect(report.targets.opencode.projection.components["agent-plugin.skills"]).toMatchObject({ support: "exact" });
+    expect(report.targets.opencode.projection.degradations).toBeUndefined();
+    expect(report.diagnostics.filter((item: { code: string }) => item.code === "HN101")).toEqual([]);
+    expect(await readFile(join(dir, "dist/opencode/package/skills/review/SKILL.md"), "utf8")).toBe(
+      "---\nname: review\ndescription: Review\n---\n",
+    );
+  });
+
+  // Claude and Codex qualify skills themselves, so the option would do nothing
+  // there; project delivery never renames on any harness.
+  it("refuses skillNames where no projection renames skills", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-skillnames-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "mine" }));
+    const write = (target: Record<string, unknown>) =>
+      writeFile(
+        config,
+        `export default ${JSON.stringify({ components: { root: ".", targets: ["claude"] }, targets: { claude: target } })};`,
+      );
+
+    await write({
+      version: claudeHarness.recommendedRange,
+      delivery: "package",
+      output: "dist",
+      skillNames: "authored",
+    });
+    const packaged = captureIO();
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: packaged.io })).toBe(2);
+    expect(JSON.parse(packaged.out()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN501",
+        target: "claude",
+        message: expect.stringContaining("skillNames") as unknown,
+      }),
+    );
+
+    await write({ version: claudeHarness.recommendedRange, delivery: "project", output: ".", skillNames: "qualified" });
+    const project = captureIO();
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: project.io })).toBe(2);
+    expect(project.out()).toContain("skillNames requires package delivery");
+  });
+
+  // A misspelt id would otherwise accept nothing, silently.
+  it("refuses a components.accept id no configured adapter declares", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-accept-"));
+    cleanupDirs.push(dir);
+    const config = join(dir, "hooknostic.config.ts");
+    await writeFile(join(dir, "plugin.json"), JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "typo" }));
+    await writeFile(
+      config,
+      `export default ${JSON.stringify({
+        // Declared, but by an adapter no target here uses.
+        components: { root: ".", targets: ["opencode"], accept: ["claude:mcp-environment-expansion"] },
+        targets: { opencode: { version: opencodeHarness.recommendedRange, delivery: "package", output: "dist" } },
+      })};`,
+    );
+    const io = captureIO();
+    expect(await runCheck({ config, json: true, registry: defaultAdapterRegistry(), io: io.io })).toBe(2);
+    expect(JSON.parse(io.out()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN501",
+        severity: "error",
+        message: expect.stringContaining('"claude:mcp-environment-expansion"') as unknown,
+      }),
+    );
+  });
+
   // Package delivery used to accept any supported component level while
   // project delivery enforced compatibility.minimum. Codex stdio is emulated,
   // so `minimum: "exact"` must reach it, and a warning must not mark the
@@ -1354,6 +1511,11 @@ ${run.stderr}`,
     // module in this directory, and does not recurse into `skills/`.
     expect(existsSync(join(dir, "dist/opencode/hooknostic.js"))).toBe(true);
     expect(existsSync(join(dir, "dist/opencode/package/skills/review/SKILL.md"))).toBe(true);
+    // OpenCode lists skills in one flat namespace, so the skill is named for
+    // its plugin in place (ADR-0021).
+    expect(await readFile(join(dir, "dist/opencode/package/skills/review/SKILL.md"), "utf8")).toContain(
+      "name: oc-trio-review\n",
+    );
     const injector = await readFile(join(dir, "dist/opencode/hooknostic-agent-plugin.js"), "utf8");
 
     // Agent Plugins 1.0 defines two placeholders and requires unrecognized
@@ -1391,7 +1553,7 @@ ${run.stderr}`,
 
     const report = JSON.parse(json.out());
     expect(report.targets.opencode.projection.components).toMatchObject({
-      "agent-plugin.skills": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agent-plugin.skills": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.mcp.stdio": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
       "agent-plugin.mcp.sse": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
     });

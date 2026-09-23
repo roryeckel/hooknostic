@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:98684093b6d4d0a5ad306818d52836fd1c4f32122f3166eb6a858d60e25eabc2",
+        "contentDigest": "sha256:e082023d69e73ed3a451b6e4640a49b115fa2bbd6ab250bb119a36f9b17a7513",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -69,7 +69,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:8860a95d1fd20cdc81734f1f8d83df57dcd051d9ce04999cb83dabc323250f63",
+        "contentDigest": "sha256:d8f10877132de402b81004554baeae33f6ff99dbe289f7237139730d77a9e014",
         "copiedFileCount": 4,
         "directories": [
           "runtime",
@@ -133,8 +133,8 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:c2b5e7f7774cd64e30e6ce7138cf926868a96de0873d9b5f68371eee231c8e43",
-        "copiedFileCount": 7,
+        "contentDigest": "sha256:fb3b487cbc41b4e341cbcda940ff9034ffff023822fd506c78d9906b0bfa0cb1",
+        "copiedFileCount": 6,
         "directories": [
           "package/runtime",
           "package/skills",
@@ -149,7 +149,7 @@
             "skipped": 0
           },
           "agent-plugin.skills": {
-            "support": "exact",
+            "support": "emulated",
             "discovered": 1,
             "emitted": 1,
             "skipped": 0
@@ -181,7 +181,8 @@
         "hooknostic-runtime/mcp-servers.json",
         "hooknostic.js",
         "index.js",
-        "package.json"
+        "package.json",
+        "package/skills/greet/SKILL.md"
       ]
     }
   },

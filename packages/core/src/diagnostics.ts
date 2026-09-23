@@ -63,6 +63,8 @@ export interface Diagnostic {
   rationale?: string;
   /** Qualified deviation id, `<adapter>:<id>`, for an HN106 (ADR-0019). */
   deviation?: string;
+  /** Qualified degradation id, `<adapter>:<id>`, for an HN101 from a projection (ADR-0021). */
+  degradation?: string;
   remediation?: string;
   location?: { file: string; line?: number };
 }

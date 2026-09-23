@@ -127,6 +127,14 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       ...(entry?.deviations === undefined
         ? {}
         : { deviations: entry.deviations.map((deviation) => ({ ...deviation, id: `${adapter.id}:${deviation.id}` })) }),
+      ...(entry?.degradations === undefined
+        ? {}
+        : {
+            degradations: entry.degradations.map((degradation) => ({
+              ...degradation,
+              id: `${adapter.id}:${degradation.id}`,
+            })),
+          }),
     };
   });
 
@@ -174,6 +182,11 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       );
       for (const deviation of row.deviations ?? []) {
         options.io.stdout(`             deviation ${deviation.id}: ${deviation.summary} (${deviation.evidence})`);
+      }
+      for (const degradation of row.degradations ?? []) {
+        options.io.stdout(
+          `             degradation ${degradation.id}: ${degradation.summary} (${degradation.evidence})`,
+        );
       }
     }
   }
