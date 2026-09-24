@@ -21,7 +21,7 @@ import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
-import { CODEX_SHELL_SHAPES, codexShellCodec } from "./toolmap.js";
+import { classifyCodexTool, CODEX_SHELL_SHAPES, codexShellCodec } from "./toolmap.js";
 export { codexHarness } from "./harness.js";
 
 export { applyCodex } from "./apply.js";
@@ -99,6 +99,7 @@ export function codexAdapter(): HarnessAdapter {
 
     shellCodec: codexShellCodec,
     shellShapes: CODEX_SHELL_SHAPES,
+    classifyTool: classifyCodexTool,
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);

@@ -20,8 +20,8 @@ import {
   targetSpecFromConfig,
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
-import type { HookEvent, HookResult, PluginSpec } from "@hooknostic/sdk";
-import { baseHookEventSchema, isToolScopedEvent, toolInvocationSchema } from "@hooknostic/sdk";
+import type { HookEvent, HookEventName, HookResult, PluginSpec } from "@hooknostic/sdk";
+import { baseHookEventSchema, isToolScopedEvent } from "@hooknostic/sdk";
 
 import type { CommandIO } from "./check.js";
 
@@ -67,11 +67,52 @@ function describeIssues(issues: readonly { path: readonly PropertyKey[]; message
   return issues.map((issue) => `${issue.path.map(String).join(".") || "<root>"}: ${issue.message}`).join("; ");
 }
 
+type FieldCheck = (value: unknown) => string | undefined;
+
+const optionalString: FieldCheck = (value) =>
+  value === undefined || typeof value === "string" ? undefined : "must be a string when present";
+const requiredString: FieldCheck = (value) => (typeof value === "string" ? undefined : "must be a string");
+const anyValue: FieldCheck = () => undefined;
+
+function objectOfOptionalStrings(keys: readonly string[]): FieldCheck {
+  return (value) =>
+    isRecord(value) && Object.entries(value).every(([key, field]) => keys.includes(key) && typeof field === "string")
+      ? undefined
+      : `must be an object with optional string ${keys.join(" and ")}`;
+}
+
+const ENVELOPE_FIELDS = ["schemaVersion", "event", "harness", "session", "correlation", "raw"];
+
 /**
- * Complete a portable event the way a decoder completes a native one. The
- * envelope gets its defaults, and `tool.shell` is derived from `tool.input` by
- * the target's own codec, so a test cannot hand a hook a view the harness never
- * would (ADR-0023).
+ * Each event's own fields beyond the envelope and `tool`, mirroring its
+ * interface in the SDK's events.ts. A decoder always supplies the required
+ * ones, so a test must too, and a new event does not compile until it is listed.
+ */
+const EVENT_FIELDS: Record<HookEventName, Readonly<Record<string, FieldCheck>>> = {
+  "session.start": { how: optionalString },
+  "session.end": { reason: optionalString },
+  "prompt.before": { prompt: requiredString },
+  "model.request.before": {},
+  "tool.before": {},
+  "tool.after": { output: anyValue },
+  "tool.error": { error: objectOfOptionalStrings(["message"]) },
+  "permission.request": {},
+  "context.compact.before": { trigger: optionalString },
+  "context.compact.after": {},
+  "agent.start": { agent: objectOfOptionalStrings(["id", "type"]) },
+  "agent.stop": { agent: objectOfOptionalStrings(["id", "type"]), lastMessage: optionalString },
+  "turn.stop": { lastMessage: optionalString },
+};
+
+/** What the target's classifier derives; a test supplies only `nativeName` and `input`. */
+const DERIVED_TOOL_FIELDS = ["kind", "mcp", "shell"];
+
+/**
+ * Complete a portable event the way a decoder completes a native one, so a
+ * test cannot hand a hook an event its harness never would (ADR-0023). The
+ * envelope gets its defaults, the event's own fields must be as its type
+ * declares them, and the tool is the target's classification of its name and
+ * input.
  */
 function completeEvent(value: unknown, adapter: HarnessAdapter): { event: HookEvent } | { problem: string } {
   if (!isRecord(value)) return { problem: "an event must be a JSON object" };
@@ -96,16 +137,38 @@ function completeEvent(value: unknown, adapter: HarnessAdapter): { event: HookEv
   if (!envelope.success) return { problem: describeIssues(envelope.error.issues) };
 
   const name = envelope.data.event;
+  const fields = EVENT_FIELDS[name];
   const tool = value["tool"] as Record<string, unknown> | undefined;
-  if (tool === undefined) {
-    return isToolScopedEvent(name) ? { problem: `${name} needs a tool` } : { event: event as unknown as HookEvent };
+  if (tool === undefined && isToolScopedEvent(name)) return { problem: `${name} needs a tool` };
+  if (tool !== undefined && !isToolScopedEvent(name)) {
+    return { problem: `${name} is not tool-scoped, so it takes no tool` };
   }
-  if (!isToolScopedEvent(name)) return { problem: `${name} is not tool-scoped, so it takes no tool` };
-  if ("shell" in tool) return { problem: "tool.shell is derived from tool.input by the target's shell codec; omit it" };
-  const parsed = toolInvocationSchema.safeParse(tool);
-  if (!parsed.success) return { problem: `tool: ${describeIssues(parsed.error.issues)}` };
-  const shell = adapter.shellCodec?.classify(parsed.data.nativeName, parsed.data.input);
-  event["tool"] = { ...tool, ...(shell === undefined ? {} : { shell }) };
+  const unknown = Object.keys(value).find(
+    (key) => !ENVELOPE_FIELDS.includes(key) && key !== "tool" && !Object.hasOwn(fields, key),
+  );
+  if (unknown !== undefined) return { problem: `${name} has no field ${JSON.stringify(unknown)}` };
+  for (const [field, check] of Object.entries(fields)) {
+    const problem = check(value[field]);
+    if (problem !== undefined) return { problem: `${field} ${problem}` };
+  }
+  if (tool === undefined) return { event: event as unknown as HookEvent };
+
+  const derived = DERIVED_TOOL_FIELDS.filter((key) => key in tool);
+  if (derived.length > 0) {
+    const [verb, pronoun] = derived.length === 1 ? ["is", "it"] : ["are", "them"];
+    return {
+      problem: `${derived.map((key) => `tool.${key}`).join(" and ")} ${verb} derived from tool.nativeName and tool.input by the target's classifier; omit ${pronoun}`,
+    };
+  }
+  const extra = Object.keys(tool).find((key) => key !== "nativeName" && key !== "input");
+  if (extra !== undefined) return { problem: `tool has no field ${JSON.stringify(extra)}` };
+  const nativeName = tool["nativeName"];
+  if (typeof nativeName !== "string" || nativeName === "")
+    return { problem: "tool.nativeName must be a non-empty string" };
+  if (adapter.classifyTool === undefined) {
+    return { problem: `the ${adapter.id} adapter cannot classify tools, so it cannot dispatch ${name}` };
+  }
+  event["tool"] = adapter.classifyTool(nativeName, tool["input"]);
   return { event: event as unknown as HookEvent };
 }
 

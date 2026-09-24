@@ -42,17 +42,21 @@ filled in for you:
 | `harness` | `id` is always the target's adapter. `nativeEvent` is `"hooknostic.dispatch"` unless you name one. |
 | `schemaVersion` | `1` |
 
-Event-specific fields such as `prompt`, `output` or `lastMessage` are passed
-through as given.
+Each event's own fields are checked against its type in the SDK. A required one
+must be there: `prompt.before` needs a string `prompt`, `tool.error` an `error`
+object, and `agent.start` and `agent.stop` an `agent` object. An optional one,
+such as `lastMessage`, must have the declared type when present. A field the
+event does not declare is rejected, so a misspelling fails instead of being
+ignored.
 
 **Tool events** (`tool.before`, `tool.after`, `tool.error`, `permission.request`)
-need a `tool` with `kind`, `nativeName` and `input`. Other events refuse one.
-`nativeName` and `input` are the harness's own tool name and arguments: Claude's
-`Bash` takes `command`, while Codex's `exec_command` takes `cmd`. Do not write
-`tool.shell`. Dispatch derives it from `input` with the target's shell codec, as
-the harness's decoder would, and rejects an event that supplies one. An input
-the codec does not recognize leaves `tool.shell` absent, exactly as it would in
-a real session.
+need a `tool` holding only `nativeName` and `input`. Other events refuse one.
+These are the harness's own tool name and arguments: Claude's `Bash` takes
+`command`, while Codex's `exec_command` takes `cmd`. Dispatch classifies the
+call the way that target's decoder does and fills in `kind`, `mcp` and `shell`
+itself. An event that supplies any of the three is rejected. So Claude's
+`Write` is a file write however its input looks, and an input the classifier
+does not recognize leaves `tool.shell` absent, exactly as in a real session.
 
 ## Results
 

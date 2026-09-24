@@ -28,7 +28,7 @@ import { opencodeHarness } from "./harness.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
-import { OPENCODE_SHELL_SHAPES, opencodeShellCodec } from "./toolmap.js";
+import { classifyOpenCodeTool, OPENCODE_SHELL_SHAPES, opencodeShellCodec } from "./toolmap.js";
 export { opencodeHarness } from "./harness.js";
 
 export { applyOpenCode, planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
@@ -106,6 +106,7 @@ export function opencodeAdapter(): HarnessAdapter {
 
     shellCodec: opencodeShellCodec,
     shellShapes: OPENCODE_SHELL_SHAPES,
+    classifyTool: classifyOpenCodeTool,
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);

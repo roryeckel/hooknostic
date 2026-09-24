@@ -50,10 +50,16 @@ session prompts and their reply flag), so no client double is needed.
 - `harness.id` is the target's adapter. `harness.nativeEvent` defaults to
   `hooknostic.dispatch`, which marks the event as synthetic. The decoders have
   no inverse, and naming a native event would be a guess.
-- `tool.shell` is always derived from `tool.input` by the target's codec, and an
-  event that supplies one is rejected. A test cannot hand a hook a normalized
-  view its harness never would.
+- A test gives a tool only its `nativeName` and `input`. The rest of the view —
+  `kind`, `mcp` and `shell` — comes from the adapter's `classifyTool`, the
+  decoder's own classification, which the contract suite holds to every
+  tool-bearing fixture. An event that supplies any of them is rejected, so a
+  test cannot hand a hook a normalized view its harness never would.
 - Tool-scoped events require `tool`; the rest refuse it.
+- Each event's own fields must be as its SDK type declares them: a required
+  one such as `prompt` or `agent` must be present, and a field the type does not
+  declare is rejected. The decoders' fallbacks for a field a harness omitted
+  are not copied, because they differ between adapters; a test states the value.
 
 **Module lifetime.** A command target gets a fresh module instance for every
 event, because its harness starts a process per dispatch. A module target keeps

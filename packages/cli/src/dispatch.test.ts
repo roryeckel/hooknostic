@@ -54,6 +54,14 @@ export default definePlugin({
         if (command !== undefined && command.includes("rm -rf /")) return block("no: " + command);
       },
     }),
+    hook("tool.before", {
+      id: "mcp-guard",
+      match: { kind: "mcp" },
+      capabilities: { "tool.before.block": "required" },
+      run(event) {
+        return block("mcp " + event.tool.mcp?.server + "/" + event.tool.mcp?.tool);
+      },
+    }),
     hook("prompt.before", {
       id: "echo",
       capabilities: { "prompt.before.context.add": "optional" },
@@ -116,19 +124,22 @@ function captureIO() {
   };
 }
 
-const shell = (nativeName: string, input: Record<string, unknown>) => ({
+const toolBefore = (nativeName: string, input: Record<string, unknown>) => ({
   event: "tool.before",
   session: { id: "s" },
-  tool: { kind: "shell", nativeName, input },
+  tool: { nativeName, input },
 });
 
 describe("hooknostic dispatch", () => {
-  it("derives tool.shell with the target's own codec and answers in its native reply", async () => {
+  it("classifies the tool as the target's decoder would and answers in its native reply", async () => {
     const dir = await project(HOOKS);
 
-    const [denied, allowed] = await dispatched(dir, "claude", [
-      shell("Bash", { command: "rm -rf /" }),
-      shell("Bash", { command: "ls" }),
+    const [denied, allowed, write, mcp] = await dispatched(dir, "claude", [
+      toolBefore("Bash", { command: "rm -rf /" }),
+      toolBefore("Bash", { command: "ls" }),
+      // Claude classifies Write as a file write, whatever its input holds.
+      toolBefore("Write", { command: "rm -rf /" }),
+      toolBefore("mcp__gitea__issue_write", {}),
     ]);
     expect(denied!.effects).toEqual([{ hookId: "guard", effect: { kind: "block", reason: "no: rm -rf /" } }]);
     expect(denied!.terminatedBy).toBe("guard");
@@ -140,12 +151,14 @@ describe("hooknostic dispatch", () => {
       },
     });
     expect(allowed!.effects).toEqual([]);
+    expect(write!.effects).toEqual([]);
+    expect(mcp!.effects).toEqual([{ hookId: "mcp-guard", effect: { kind: "block", reason: "mcp gitea/issue_write" } }]);
 
-    // Codex's exec_command carries its command under `cmd`; only the codec knows that.
-    const [codex] = await dispatched(dir, "codex", [shell("exec_command", { cmd: "rm -rf /", workdir: "." })]);
+    // Codex's exec_command carries its command under `cmd`; only the classifier knows that.
+    const [codex] = await dispatched(dir, "codex", [toolBefore("exec_command", { cmd: "rm -rf /", workdir: "." })]);
     expect(codex!.terminatedBy).toBe("guard");
 
-    const [opencode] = await dispatched(dir, "opencode", [shell("bash", { command: "rm -rf /" })]);
+    const [opencode] = await dispatched(dir, "opencode", [toolBefore("bash", { command: "rm -rf /" })]);
     expect(opencode!.native.body).toEqual({ throwMessage: "no: rm -rf /" });
   });
 
@@ -205,11 +218,18 @@ describe("hooknostic dispatch", () => {
     await writeFile(
       events,
       [
-        JSON.stringify({ ...shell("Bash", { command: "ls" }), tool: { ...shell("Bash", {}).tool, shell: {} } }),
+        JSON.stringify({
+          event: "tool.before",
+          tool: { nativeName: "Bash", input: { command: "ls" }, kind: "shell", shell: { command: "ls" } },
+        }),
         JSON.stringify({ event: "tool.before" }),
         JSON.stringify({ event: "turn.stop", harness: { id: "codex" } }),
-        JSON.stringify({ event: "turn.stop", tool: shell("Bash", { command: "ls" }).tool }),
+        JSON.stringify({ event: "turn.stop", tool: toolBefore("Bash", { command: "ls" }).tool }),
         JSON.stringify({ event: "no.such.event" }),
+        JSON.stringify({ event: "prompt.before" }),
+        JSON.stringify({ event: "agent.start" }),
+        JSON.stringify({ event: "turn.stop", lastmessage: "done" }),
+        JSON.stringify({ event: "tool.before", tool: { nativeName: "Bash", input: { command: "ls" }, cwd: "." } }),
       ].join("\n") + "\n",
     );
     const cli = captureIO();
@@ -217,11 +237,15 @@ describe("hooknostic dispatch", () => {
     expect(await runCli(argv, { io: cli.io })).toBe(2);
     expect(cli.out).toEqual([]);
     expect(cli.err().split("\n")).toEqual([
-      "event 1: tool.shell is derived from tool.input by the target's shell codec; omit it",
+      "event 1: tool.kind and tool.shell are derived from tool.nativeName and tool.input by the target's classifier; omit them",
       "event 2: tool.before needs a tool",
       'event 3: harness.id "codex" is not this target\'s adapter, "claude"',
       "event 4: turn.stop is not tool-scoped, so it takes no tool",
       expect.stringMatching(/^event 5: event: /),
+      "event 6: prompt must be a string",
+      "event 7: agent must be an object with optional string id and type",
+      'event 8: turn.stop has no field "lastmessage"',
+      'event 9: tool has no field "cwd"',
     ]);
 
     await writeFile(events, `${JSON.stringify({ event: "turn.stop" })}\n\n{nope\n`);
@@ -277,7 +301,7 @@ describe("hooknostic dispatch", () => {
     }`;
     const rootOf = async (dir: string, target: string) => {
       const [result] = await dispatched(dir, target, [
-        shell(target === "opencode" ? "bash" : "Bash", { command: "ls" }),
+        toolBefore(target === "opencode" ? "bash" : "Bash", { command: "ls" }),
       ]);
       return (result!.effects[0]?.effect as { reason?: string } | undefined)?.reason;
     };

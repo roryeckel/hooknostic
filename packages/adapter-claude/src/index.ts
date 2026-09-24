@@ -21,7 +21,7 @@ import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
-import { CLAUDE_SHELL_SHAPES, claudeShellCodec } from "./toolmap.js";
+import { classifyClaudeTool, CLAUDE_SHELL_SHAPES, claudeShellCodec } from "./toolmap.js";
 export { claudeHarness } from "./harness.js";
 
 export { applyClaude } from "./apply.js";
@@ -98,6 +98,7 @@ export function claudeAdapter(): HarnessAdapter {
 
     shellCodec: claudeShellCodec,
     shellShapes: CLAUDE_SHELL_SHAPES,
+    classifyTool: classifyClaudeTool,
 
     supportedHarnessVersions() {
       return claudeCapabilityProfiles.map((p) => p.range);
