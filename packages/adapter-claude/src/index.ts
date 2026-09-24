@@ -82,7 +82,7 @@ export function claudeShimEntrySource(options: {
 export function claudeAdapter(): HarnessAdapter {
   return {
     id: "claude",
-    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.1.1-rc.0", // kept equal to package.json by versions.test.ts
     harness: claudeHarness,
     projectPaths: [".claude/settings.json", ".claude/skills", ".mcp.json"],
     projectIntegration,

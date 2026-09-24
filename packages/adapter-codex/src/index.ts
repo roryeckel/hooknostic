@@ -82,7 +82,7 @@ export function codexShimEntrySource(options: {
 export function codexAdapter(): HarnessAdapter {
   return {
     id: "codex",
-    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.1.1-rc.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
     projectPaths: [".codex/hooks.json", ".codex/config.toml", ".agents/skills"],
     projectIntegration,

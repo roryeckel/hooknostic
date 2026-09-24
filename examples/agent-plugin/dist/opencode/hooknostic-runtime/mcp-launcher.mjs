@@ -30,7 +30,7 @@ THE SOFTWARE.
 
 ---
 
-hooknostic@0.1.0
+hooknostic@0.1.1-rc.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
