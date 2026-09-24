@@ -102,7 +102,7 @@ export function verifyOrigin({ repository, run, workflow, jobs, pr, manifest }) 
     pr.user?.type !== "Bot" ||
     pr.head?.repo?.full_name !== repository ||
     pr.base?.repo?.full_name !== repository ||
-    !/^renovate\/[A-Za-z0-9_./-]+$/.test(pr.head?.ref ?? "") ||
+    !/^renovate\/[A-Za-z0-9_./()-]+$/.test(pr.head?.ref ?? "") ||
     pr.head.ref !== run.head_branch
   ) {
     throw new Error("Not a same-repository Renovate PR and branch");

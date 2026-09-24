@@ -161,6 +161,16 @@ it("skips superseded run attempts and closed PRs", async () => {
   expect(s.writes).toEqual([]);
 });
 
+it.each(["renovate/npm-dependencies-(non-major)", "renovate/ci-and-tooling-(non-major)"])(
+  "accepts the configured Renovate group branch %s",
+  async (branch) => {
+    const s = scenario();
+    s.pr.head.ref = s.run.head_branch = branch;
+    expect(await s.apply()).toBe("committed example artifacts");
+    expect(s.writes[0].variables.input.branch.branchName).toBe(branch);
+  },
+);
+
 it("rejects foreign PRs, non-bot authors, mismatched associations, and non-Renovate branches", async () => {
   const mutations = [
     (s) => {
