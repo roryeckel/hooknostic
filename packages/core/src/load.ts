@@ -20,12 +20,19 @@ export interface EvaluateOptions {
   alias?: Record<string, string>;
 }
 
+/** A bundled user module written where `import()` can load it. */
+export interface StagedUserModule {
+  /** File URL of the bundle; a distinct query string imports a fresh module instance. */
+  href: string;
+  dispose(): Promise<void>;
+}
+
 /**
- * Bundle-safe evaluation of user TypeScript modules (config and hook entry).
- * The module is bundled self-contained with esbuild, written to a temp file,
- * and imported; nothing from the user's module graph escapes evaluation.
+ * Bundle a user TypeScript module (config or hook entry) self-contained with
+ * esbuild and write it to a temp file, so nothing from the user's module graph
+ * escapes evaluation.
  */
-async function evaluateModule(file: string, options?: EvaluateOptions): Promise<unknown> {
+export async function stageUserModule(file: string, options?: EvaluateOptions): Promise<StagedUserModule> {
   const absolute = resolve(file);
   const bundled = await build({
     entryPoints: [absolute],
@@ -54,13 +61,24 @@ async function evaluateModule(file: string, options?: EvaluateOptions): Promise<
   // import(): pathToFileURL percent-encodes "~" as %7E and vite-node then
   // fails to load the URL (node fine, vitest runner not — vitest#7084).
   const dir = await mkdtemp(join(await realpath(tmpdir()), "hooknostic-eval-"));
+  const dispose = () => rm(dir, { recursive: true, force: true });
   const out = join(dir, "module.mjs");
   try {
     await writeFile(out, code, "utf8");
-    const mod = (await import(pathToFileURL(out).href)) as { default?: unknown };
+  } catch (error) {
+    await dispose();
+    throw error;
+  }
+  return { href: pathToFileURL(out).href, dispose };
+}
+
+async function evaluateModule(file: string, options?: EvaluateOptions): Promise<unknown> {
+  const staged = await stageUserModule(file, options);
+  try {
+    const mod = (await import(staged.href)) as { default?: unknown };
     return mod.default;
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await staged.dispose();
   }
 }
 

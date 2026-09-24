@@ -30,6 +30,7 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | Guide | When to read it |
 | --- | --- |
 | [Installing built output](installing-artifacts.md) | You ran `hooknostic build` and want each agent to actually load the result — including the common case of a repo consuming its own hooks |
+| [Testing your hooks](testing-your-hooks.md) | You want tests that assert what your hooks decide on each target, with `hooknostic dispatch`, without writing any harness's wire format |
 | [Contributing](../CONTRIBUTING.md) | What is in scope, what evidence a change needs, how to run the gates — read before opening an issue or a pull request |
 | [Adding a harness adapter](adding-an-adapter.md) | You want Hooknostic to support another coding agent |
 | [Publishing & packaging](publishing.md) | Maintainers: what ships, and testing the npm story without publishing |

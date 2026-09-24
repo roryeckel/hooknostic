@@ -17,6 +17,13 @@ npx hooknostic check --config ./hooknostic.config.ts
 npx hooknostic build --config ./hooknostic.config.ts
 ```
 
+To test what the hooks decide on a target, pipe portable events (JSON Lines) to
+`dispatch`; see [Testing your hooks](https://github.com/roryeckel/hooknostic/blob/master/docs/testing-your-hooks.md):
+
+```sh
+npx hooknostic dispatch --config ./hooknostic.config.ts --target claude < events.jsonl
+```
+
 Start with the [tutorials](https://github.com/roryeckel/hooknostic/tree/master/docs/tutorials)
 and [examples](https://github.com/roryeckel/hooknostic/tree/master/examples).
 The [harness support table](https://github.com/roryeckel/hooknostic/blob/master/docs/harness-support.md)

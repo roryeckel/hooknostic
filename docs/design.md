@@ -661,6 +661,7 @@ parser is available to the published CLI to make the check structural.
 | `hooknostic build` | Check + stage + atomically commit target artifacts. |
 | `hooknostic doctor` | Are installed harness versions detected and within validated ranges? |
 | `hooknostic inspect <target>` | Why does this adapter map a capability/event the way it does? |
+| `hooknostic dispatch --target <id>` | What do these hooks decide for this portable event on this target, and what native reply follows? Runs the source in process (ADR-0023). |
 
 ## 10. Runtime and handler composition
 
