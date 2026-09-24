@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:c46a251741e811b873a8d4ee663136520526fbe9e6c7d88625a871b3724630ad",
+        "contentDigest": "sha256:f5eca87806983cff07ceb183ecab3d8dcc575c1de93dd4238f82fc96b72f7dcf",
         "copiedFileCount": 2,
         "components": {
           "agent-plugin.manifest": {
@@ -69,7 +69,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:93fe1a5473d039aeb39c40536af6764ff9377181405463a14b56ebd955b485cf",
+        "contentDigest": "sha256:3486548bc80c8d21e770c6a25919aea328fc147a7b954cd49964313688f73d5b",
         "copiedFileCount": 4,
         "directories": [
           "runtime",
@@ -133,7 +133,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:fa59e2dd67a56f2b127a7ce344d08b76c0038f18f80b370b8e4ec07060a650de",
+        "contentDigest": "sha256:bbc7c9bcacf3dbca0b8ad75271a747d5af9d79154d280a3ba165be43165e36d2",
         "copiedFileCount": 6,
         "directories": [
           "package/runtime",
@@ -224,7 +224,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:0f02b0c32ac8de8939cdf4b2fe60977d5f8122d719a92b62b2ab8cac990c32b9"
+    "contentDigest": "sha256:eb28b195a486b89ad0dd553bb2039171406e18dcae530e22cbc46e87025dd9ac"
   },
   "mcpServers": [
     {
