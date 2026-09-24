@@ -14,6 +14,7 @@ import type {
   ShellShapes,
   SupportLevel,
   TargetConfig,
+  ToolInvocation,
 } from "@hooknostic/sdk";
 
 import type { Diagnostic } from "./diagnostics.js";
@@ -318,6 +319,14 @@ export interface HarnessAdapter {
    * shell-bearing fixture, or a new entry ships silently untested.
    */
   readonly shellShapes?: ShellShapes;
+
+  /**
+   * The decoder's own classification of a native tool call: kind, MCP
+   * identity and shell view from its name and input. `hooknostic dispatch`
+   * builds a test event's tool from it (ADR-0023), and the contract suite holds
+   * it to every tool-bearing fixture.
+   */
+  classifyTool?(nativeName: string, input: unknown): ToolInvocation;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

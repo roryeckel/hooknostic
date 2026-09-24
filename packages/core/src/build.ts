@@ -26,6 +26,7 @@ import {
   validateContainedCommands,
 } from "@hooknostic/agent-plugin";
 import {
+  type HooknosticConfig,
   meetsMinimum,
   type PackageMaterializationConfig,
   type ProjectMcpTargetOverride,
@@ -271,7 +272,7 @@ async function validDirectProjectCwd(
   return rel === "" || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\"));
 }
 
-function levelsFromMatrix(matrix: CapabilityMatrix): Partial<Record<string, SupportLevel>> {
+export function levelsFromMatrix(matrix: CapabilityMatrix): Partial<Record<string, SupportLevel>> {
   return Object.fromEntries(Object.entries(matrix).map(([id, entry]) => [id, entry.level]));
 }
 
@@ -336,6 +337,28 @@ function hookPluginRootOffset(
     return posix.relative(posix.dirname(runtime), projected) || ".";
   }
   return relative(dirname(resolve(outputDir, runtime)), packageRoot).replaceAll("\\", "/") || ".";
+}
+
+/**
+ * The absolute `ctx.plugin.root` a target's built hook runtime resolves
+ * (ADR-0020), or undefined when the build gives that target none.
+ */
+export function hookPluginRoot(
+  config: HooknosticConfig,
+  configDir: string,
+  targetId: string,
+  adapter: HarnessAdapter,
+): string | undefined {
+  const target = config.targets[targetId];
+  const root = config.components?.root;
+  if (target === undefined || root === undefined) return undefined;
+  if (!(config.components!.targets ?? Object.keys(config.targets)).includes(targetId)) return undefined;
+  const runtime = adapter.hookRuntimePath?.(target.delivery);
+  const outputDir = resolve(configDir, target.output);
+  const offset = hookPluginRootOffset(adapter, target.delivery, outputDir, resolve(configDir, root));
+  if (runtime === undefined || offset === undefined) return undefined;
+  // What pluginRootFrom computes from inside the runtime artifact.
+  return resolve(dirname(resolve(outputDir, runtime)), offset);
 }
 
 function resolveProjectSdk(configDir: string): string | undefined {

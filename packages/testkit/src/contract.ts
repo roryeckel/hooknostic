@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HarnessAdapter } from "@hooknostic/core";
 import { buildPluginIR, rangeCoversVersion } from "@hooknostic/core";
-import type { HookEventName } from "@hooknostic/sdk";
+import type { HookEventName, ToolInvocation } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, DEFAULT_RUNTIME, definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 import { loadFixtureFrom } from "./fixtures.js";
@@ -170,6 +170,18 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
           adapter.shellCodec!.classify(tool.nativeName, encoded)?.command,
           `${name}: encode does not round-trip through classify`,
         ).toBe("hooknostic-contract-probe");
+      }
+    });
+
+    it("classifies the tool of every fixture exactly as its decoder did", () => {
+      // `hooknostic dispatch` builds a test event's whole tool view from
+      // classifyTool (ADR-0023), so it must reproduce the decoder's output, not
+      // an approximation of it.
+      for (const name of fixtureNames) {
+        const tool = loadFixtureFrom<{ tool?: ToolInvocation }>(join(options.fixturesDir, name)).tool;
+        if (tool === undefined) continue;
+        expect(adapter.classifyTool, `${name} has a tool but adapter has no classifyTool`).toBeDefined();
+        expect(adapter.classifyTool!(tool.nativeName, tool.input), name).toEqual(tool);
       }
     });
 

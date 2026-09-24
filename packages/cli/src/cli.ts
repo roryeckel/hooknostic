@@ -1,12 +1,15 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import type { AdapterRegistry } from "@hooknostic/core";
 import { loadConfig, runProject } from "@hooknostic/core";
+import { claimProtocolStdout, finishCommandShim } from "@hooknostic/runtime";
 
 import { runBuild } from "./build.js";
 import type { CommandIO } from "./check.js";
 import { runCheck } from "./check.js";
+import { runDispatch } from "./dispatch.js";
 import { runDoctor } from "./doctor.js";
 import { runInit } from "./init.js";
 import { runInspect } from "./inspect.js";
@@ -23,10 +26,12 @@ Usage:
   hooknostic recover [--config <path>] [--json]
   hooknostic doctor  [--config <path>] [--json]
   hooknostic inspect <target> [--capability <id> | --component <id>] [--version <range>] [--delivery <project|package>] [--config <path>] [--json]
+  hooknostic dispatch --target <id> [--events <path>] [--config <path>]
 
 Options:
   --config <path>     Path to hooknostic.config.ts (default ./hooknostic.config.ts)
   --target <a,b>      Narrow the configured target set (never adds targets)
+  --events <path>     JSON Lines of portable events to dispatch (default: stdin)
   --capability <id>   Inspect a single capability
   --component <id>    Inspect a single Agent Plugin component
   --version <range>   Harness version range for inspect
@@ -38,6 +43,13 @@ Options:
 export interface RunCliOptions {
   registry?: AdapterRegistry;
   io?: CommandIO;
+}
+
+async function readStdin(): Promise<string> {
+  let data = "";
+  process.stdin.setEncoding("utf8");
+  for await (const chunk of process.stdin) data += chunk;
+  return data;
 }
 
 export async function runCli(argv: string[], options?: RunCliOptions): Promise<number> {
@@ -67,6 +79,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         capability: { type: "string" },
         component: { type: "string" },
         delivery: { type: "string" },
+        events: { type: "string" },
         version: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -190,6 +203,44 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
           registry,
           io,
         });
+      }
+      case "dispatch": {
+        const target = targets?.length === 1 ? targets[0] : undefined;
+        if (target === undefined) {
+          io.stderr("dispatch requires exactly one --target, e.g. `hooknostic dispatch --target claude`.");
+          return 2;
+        }
+        const input =
+          typeof parsed.values["events"] === "string"
+            ? await readFile(resolve(parsed.values["events"]), "utf8")
+            : await readStdin();
+        // Hooks run in this process. Without an injected io this is the real
+        // CLI, so it treats them as a command shim does: their stdout stays out
+        // of the result lines, and a handle one leaks cannot hold the process open.
+        const protocol = options?.io === undefined ? claimProtocolStdout() : undefined;
+        const writes: Promise<void>[] = [];
+        const code = await runDispatch({
+          ...(typeof parsed.values["config"] === "string" ? { config: parsed.values["config"] } : {}),
+          target,
+          input,
+          registry,
+          io:
+            protocol === undefined
+              ? io
+              : {
+                  stdout: (text) => {
+                    writes.push(protocol.writeReply(`${text}\n`));
+                  },
+                  stderr: io.stderr,
+                },
+        });
+        if (protocol !== undefined) {
+          // Written before the forced-exit fallback can fire: it would truncate a pipe.
+          await Promise.all(writes);
+          await protocol.release();
+          finishCommandShim(code);
+        }
+        return code;
       }
       default:
         io.stderr(`unknown command "${command}"`);

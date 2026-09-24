@@ -52,6 +52,11 @@ Omit tools whose shape you have not captured — both directions then decline,
 guess a key: a wrong entry silently rewrites the wrong field of a live tool
 call.
 
+Expose the function your decoder classifies tools with as `adapter.classifyTool`
+(`(nativeName, input) => ToolInvocation`). `hooknostic dispatch` builds a test
+event's tool from it (ADR-0023), and the contract suite requires it to reproduce
+the `tool` of every fixture exactly.
+
 Run the contract suite from your own package — it is the definition of done for
 an adapter, and it is the same one the three shipped adapters run:
 

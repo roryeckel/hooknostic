@@ -77,6 +77,7 @@ hooknostic check     # can my hooks work on every configured target? (no files w
 hooknostic build     # check, then generate ready-to-install output per target
 hooknostic doctor    # are my installed agent versions within the validated ranges?
 hooknostic inspect   # why does a target support (or not support) a given behavior?
+hooknostic dispatch  # what do my hooks decide for this event on this target? (for tests)
 ```
 
 ## The idea in one paragraph
