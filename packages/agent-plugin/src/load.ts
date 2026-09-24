@@ -874,7 +874,8 @@ export async function loadProjectComponents(options: {
     if (direct) {
       const file = { path: "mcp.json", contents: direct.contents, mode: 0o644 };
       const root = resolve(direct.path, "..");
-      const config = loadMcp(root, { files: [file], directories: new Set() }, issues, "direct", options.projectRoot);
+      const projectRoot = options.projectRoot === undefined ? undefined : await canonicalCandidate(options.projectRoot);
+      const config = loadMcp(root, { files: [file], directories: new Set() }, issues, "direct", projectRoot);
       if (config) {
         await validateDirectMcpPaths(config, root, issues, options.projectRoot);
         source.mcp = { root, config };

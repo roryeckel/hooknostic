@@ -40,6 +40,7 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository &&
        startsWith(github.event.pull_request.head.ref, 'release/v'))
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPOSITORY: ${{ github.repository }}

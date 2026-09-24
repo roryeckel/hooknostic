@@ -303,7 +303,9 @@ describe("materializePackages", () => {
         command: process.execPath,
         args: [
           "-e",
-          'process.stderr.write("x".repeat(1024 * 1024 + 1024)); process.stderr.write("\\nfirst\\nsecond\\nfinal marker\\n"); process.exit(7)',
+          // Let piped stderr drain on POSIX before exiting; process.exit()
+          // discards queued writes and would test the fixture, not the reader.
+          'process.stderr.write("x".repeat(1024 * 1024 + 1024)); process.stderr.write("\\nfirst\\nsecond\\nfinal marker\\n"); process.exitCode = 7',
         ],
       }),
     });

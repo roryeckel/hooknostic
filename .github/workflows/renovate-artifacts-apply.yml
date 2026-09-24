@@ -23,6 +23,7 @@ jobs:
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,5 +36,5 @@ jobs:
       - name: Verify provenance and apply permitted byte changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RENOVATE_ARTIFACTS_TOKEN: ${{ secrets.RENOVATE_ARTIFACTS_TOKEN }}
+          RENOVATE_ARTIFACTS_PAT: ${{ secrets.RENOVATE_ARTIFACTS_PAT }}
         run: node scripts/apply-renovate-artifacts.mjs

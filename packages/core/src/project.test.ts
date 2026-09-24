@@ -59,6 +59,11 @@ describe("complete project integration", () => {
         mcpServers: { probe: { type: "stdio", command: "node", args: ["-e", "console.log(process.cwd())"] } },
       }),
     );
+    // Give the same project a spelling with a different directory depth.
+    // A launcher offset computed between lexical and real paths is invalid.
+    const alias = join(root, "alias");
+    await symlink(root, alias, process.platform === "win32" ? "junction" : "dir");
+    options.configPath = join(alias, "hooknostic.config.ts");
     const result = await buildProject(options);
     expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
     for (const id of Object.keys(registry)) {

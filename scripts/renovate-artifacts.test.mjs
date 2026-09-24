@@ -161,6 +161,16 @@ it("skips superseded run attempts and closed PRs", async () => {
   expect(s.writes).toEqual([]);
 });
 
+it.each(["renovate/npm-dependencies-(non-major)", "renovate/ci-and-tooling-(non-major)"])(
+  "accepts the configured Renovate group branch %s",
+  async (branch) => {
+    const s = scenario();
+    s.pr.head.ref = s.run.head_branch = branch;
+    expect(await s.apply()).toBe("committed example artifacts");
+    expect(s.writes[0].variables.input.branch.branchName).toBe(branch);
+  },
+);
+
 it("rejects foreign PRs, non-bot authors, mismatched associations, and non-Renovate branches", async () => {
   const mutations = [
     (s) => {
@@ -352,6 +362,6 @@ it("keeps the generating job unprivileged and the applying job on default-branch
   expect(apply).toContain("workflow_run:");
   expect(apply).toContain("ref: ${{ github.sha }}");
   expect(apply).toContain("persist-credentials: false");
-  expect(apply).toContain("secrets.RENOVATE_ARTIFACTS_TOKEN");
+  expect(apply).toContain("secrets.RENOVATE_ARTIFACTS_PAT");
   expect(apply).not.toMatch(/pnpm install|pnpm build|pull_request_target/);
 });

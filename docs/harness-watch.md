@@ -149,6 +149,9 @@ job's steps:
    `node:<playback version>-bookworm` (from `.github/node/playback/.node-version`): the third-party harness package is installed there
    with `--ignore-scripts`, the repository is mounted read-only, only the
    throwaway capture directory is writable, and no Docker socket is mounted.
+   The container runs as the image's unprivileged `node` user with an init
+   process; npm installs into a temporary prefix owned by that user. Claude
+   refuses the driver's permission-bypassing session when run as root.
    Claude and OpenCode then run their package-owned bootstrap explicitly.
    For OpenCode, the driver also pre-seeds the exact-version plugin dependency
    into its project and redirected config directories, both under the

@@ -23,6 +23,8 @@ import { writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // GitHub caps release bodies at 125k characters; past the budget, drop the
@@ -164,6 +166,6 @@ async function main() {
   console.log(`release notes written to ${output} (${body.length} chars, ${commits.length} commits in range)`);
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   await main();
 }

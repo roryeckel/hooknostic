@@ -33,8 +33,9 @@
 //   stopped being emitted) and inconclusive when the whole tool exchange is
 //   absent. Fixture variants outside the expected set stay "not exercised".
 import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+import { isMainModule } from "./is-main-module.mjs";
 
 // ---------------------------------------------------------------------------
 // shapeOf
@@ -418,6 +419,6 @@ async function main() {
 }
 
 // Same CLI guard as release-notes.mjs: pure helpers stay importable.
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   await main();
 }

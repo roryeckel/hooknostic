@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+
 import { build } from "esbuild";
 
 import type { RuntimeBundle } from "./adapter.js";
@@ -18,10 +20,13 @@ export interface BundleOptions {
  * directory stays independently distributable.
  */
 export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBundle> {
+  // Give esbuild the same canonical root used to match its output files and
+  // collect license notices, including Windows short directory names.
+  const resolveDir = await realpath(options.resolveDir);
   const result = await build({
     stdin: {
       contents: options.source,
-      resolveDir: options.resolveDir,
+      resolveDir,
       loader: "ts",
       sourcefile: "hooknostic-shim-entry.ts",
     },
@@ -33,7 +38,7 @@ export async function bundleRuntime(options: BundleOptions): Promise<RuntimeBund
     // makes "the committed artifact matches its source" a claim about where you
     // happened to stand, and a consumer's drift check reports staleness when
     // nothing is stale.
-    absWorkingDir: options.resolveDir,
+    absWorkingDir: resolveDir,
     bundle: true,
     format: "esm",
     platform: "node",

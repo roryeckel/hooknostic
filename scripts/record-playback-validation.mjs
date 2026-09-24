@@ -27,6 +27,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const adapters = {
@@ -60,8 +62,7 @@ const RECORD_TEMPLATE = (version, date) =>
     `          date: "${date}",`,
     '          method: "live-probe",',
     '          artifact: ".capture/harness-playback",',
-    "          what:",
-    `            "${ROLLING_WHAT}",`,
+    `          what: "${ROLLING_WHAT}",`,
     "        },",
   ].join("\n");
 
@@ -193,9 +194,7 @@ async function main() {
 
 // ESM top-level await, guarded so the pure helpers stay importable from the
 // test (same CLI guard as release-notes.mjs).
-export function isMainModule(moduleUrl, argv1) {
-  return argv1 !== undefined && fileURLToPath(moduleUrl) === resolve(argv1);
-}
+export { isMainModule } from "./is-main-module.mjs";
 
 if (isMainModule(import.meta.url, process.argv[1])) {
   await main();

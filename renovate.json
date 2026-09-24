@@ -5,7 +5,7 @@
   "automerge": false,
   "dependencyDashboard": true,
   "branchPrefix": "renovate/",
-  "gitIgnoredAuthors": [],
+  "gitIgnoredAuthors": ["16675082+roryeckel@users.noreply.github.com"],
   "rangeStrategy": "bump",
   "enabledManagers": ["npm", "nodenv", "github-actions", "pip_requirements"],
   "ignorePaths": ["**/node_modules/**", "**/dist/**", ".capture/**", "fixtures/**", "docs/**", "examples/*/com.*/**"],

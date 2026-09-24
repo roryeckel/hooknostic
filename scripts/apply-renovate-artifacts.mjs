@@ -1,9 +1,8 @@
 import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
 import {
   artifactName,
   manifestLimit,
@@ -97,12 +96,12 @@ export async function applyArtifacts({ repository, runId, attempt, api, download
   return "committed example artifacts";
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
   async function request(path, body) {
     // The read-only workflow token reads Actions artifacts. Only the final
     // commit API receives the dedicated repository-scoped write credential.
-    const token = body ? process.env.RENOVATE_ARTIFACTS_TOKEN : process.env.GITHUB_TOKEN;
+    const token = body ? process.env.RENOVATE_ARTIFACTS_PAT : process.env.GITHUB_TOKEN;
     if (!token) throw new Error("Required workflow credential is missing; see docs/dependencies.md");
     const response = await fetch(`https://api.github.com${path}`, {
       method: body ? "POST" : "GET",

@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { cwd } from "node:process";
 import { TextEncoder } from "node:util";
@@ -83,7 +83,9 @@ export function licenseNoticesPlugin({ noticeFile, additionalSources = [] } = {}
       build.initialOptions.metafile = true;
       build.onEnd(async (result) => {
         if (result.errors.length || !result.metafile) return;
-        const workingDir = build.initialOptions.absWorkingDir ?? cwd();
+        // esbuild canonicalizes its output paths, including /var -> /private/var
+        // on macOS. Match that spelling when finding an in-memory output file.
+        const workingDir = await realpath(build.initialOptions.absWorkingDir ?? cwd());
         const notices = new Map();
         const packages = new Map();
         const all = new Set();

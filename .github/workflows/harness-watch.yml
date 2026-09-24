@@ -79,6 +79,7 @@ jobs:
     # Fork no-op: scheduled runs on forks would otherwise burn minutes.
     if: github.repository == 'roryeckel/hooknostic'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
       count: ${{ steps.detect.outputs.count }}
@@ -123,6 +124,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.count != '0'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -204,12 +206,11 @@ jobs:
         if: always()
         shell: bash
         run: |
-          # Distinguish install-failure from playback-failure in the artifact.
-          # steps.playback.outcome is "" when the step never ran (an earlier
-          # step failed) — that is an install/toolchain failure, not playback.
+          # A skipped or absent step never exercised playback. Preserve that
+          # distinction when an earlier installation/toolchain step failed.
           if [ "${{ steps.playback.outcome }}" = "success" ]; then
             outcome=pass
-          elif [ -n "${{ steps.playback.outcome }}" ]; then
+          elif [ "${{ steps.playback.outcome }}" = "failure" ]; then
             outcome=playback-failure
           else
             outcome=install-failure
@@ -234,6 +235,7 @@ jobs:
     # advance its rolling validation record.
     if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write
@@ -309,8 +311,8 @@ jobs:
         shell: bash
         run: |
           BRANCH="harness-watch/${{ matrix.harness }}"
-          EXISTING="$(gh pr view "$BRANCH" --json headRefName,title --jq '.title // ""' 2>/dev/null || true)"
-          if [[ "$EXISTING" == *"${{ matrix.latest }}"* ]]; then
+          EXISTING="$(gh pr list --head "$BRANCH" --state open --json title --jq '.[0].title // ""')"
+          if [ "$EXISTING" = "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" ]; then
             echo "PR already names ${{ matrix.latest }} — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
@@ -386,12 +388,15 @@ jobs:
         if: steps.record.outputs.outcome == 'wrote'
         shell: bash
         run: |
+          set +e
           pnpm build;  BUILD=$?
           node scripts/generate-harness-support.mjs;  GEN=$?
           pnpm lint;   LINT=$?
+          pnpm format:check; FORMAT=$?
           pnpm test;   TEST=$?
-          echo "BUILD=$BUILD GEN=$GEN LINT=$LINT TEST=$TEST"
-          [ "$BUILD" = "0" ] && [ "$GEN" = "0" ] && [ "$LINT" = "0" ] && [ "$TEST" = "0" ]
+          set -e
+          echo "BUILD=$BUILD GEN=$GEN LINT=$LINT FORMAT=$FORMAT TEST=$TEST"
+          [ "$BUILD" = "0" ] && [ "$GEN" = "0" ] && [ "$LINT" = "0" ] && [ "$FORMAT" = "0" ] && [ "$TEST" = "0" ]
 
       - name: Commit, push, open or update PR
         if: steps.record.outputs.outcome == 'wrote'
@@ -443,6 +448,7 @@ jobs:
     # still skips it when detect produced no matrix entries.
     if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -513,6 +519,7 @@ jobs:
     # playback failure calls for.
     if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Posts nothing — publish-verdict owns all writes — and it executes
     # third-party harness code, so read-only scopes only. contents: read is
     # required for checkout itself.
@@ -655,11 +662,16 @@ jobs:
           PLAYBACK_NODE="$(cat .github/node/playback/.node-version)"
           [[ "$PLAYBACK_NODE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           docker run --rm --network bridge --add-host host.docker.internal:host-gateway \
+            --init --user node \
             --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
             --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" \
             --mount "type=bind,src=$SCRATCH_ROOT,dst=/drift" \
             "${CONTAINER_ENVS[@]}" --workdir /workspace "node:${PLAYBACK_NODE}-bookworm" \
             sh -ec '
+              # Claude refuses permission-bypassing sessions as root. Keep
+              # installation and execution under the unprivileged image user.
+              export npm_config_prefix=/tmp/hooknostic-harness
+              export PATH="$npm_config_prefix/bin:$PATH"
               npm install --global --ignore-scripts --no-fund --no-audit "$1@$2" \
                 || npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
               case "$3" in
@@ -720,6 +732,7 @@ jobs:
     # count — the two guards below exclude the fork no-op and detect failure.
     if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
