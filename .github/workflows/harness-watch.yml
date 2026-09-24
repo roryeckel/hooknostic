@@ -454,6 +454,9 @@ jobs:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
+      # Resolve the repository without a checkout that would clean the
+      # downloaded outcome before the issue body reads it.
+      GH_REPO: ${{ github.repository }}
     strategy:
       fail-fast: false
       matrix:
@@ -477,9 +480,6 @@ jobs:
           fi
           OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
           if [ "$OUTCOME" = "pass" ]; then echo "failed=false" >> "$GITHUB_OUTPUT"; else echo "failed=true" >> "$GITHUB_OUTPUT"; fi
-
-      - uses: actions/checkout@v7
-        if: steps.outcome.outputs.failed == 'true'
 
       - name: Ensure harness-watch label exists
         if: steps.outcome.outputs.failed == 'true'

@@ -67,6 +67,34 @@ it("does not suppress validation because a closed PR names the same version", ()
   expect(result.stdout).toContain("skip=false");
 });
 
+it("preserves the downloaded outcome through failure issue creation", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/harness-watch.yml", import.meta.url), "utf8");
+  const report = workflow.slice(workflow.indexOf("  report-failure:"), workflow.indexOf("  drift:"));
+  const download = report.indexOf("uses: actions/download-artifact@");
+  const issue = report.indexOf("name: Deduped failure issue");
+  expect(download).toBeGreaterThan(0);
+  expect(issue).toBeGreaterThan(download);
+  // Checkout's default clean removes untracked downloaded artifacts. Reproduce
+  // that boundary before running the actual issue-writing shell body.
+  const cleansOutcome = report.slice(download, issue).includes("uses: actions/checkout@");
+  const result = runWatchStep(
+    "Deduped failure issue",
+    {
+      "matrix.harness": "codex",
+      "matrix.latest": "0.0.0-readiness-probe",
+      "github.server_url": "https://github.com",
+      "github.repository": "owner/project",
+      "github.run_id": "123",
+    },
+    `printf '{"outcome":"install-failure"}' > watch-outcome-codex.json
+    ${cleansOutcome ? "rm watch-outcome-codex.json" : ":"}
+    jq() { node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).outcome)' "$3"; }
+    gh() { if [[ "$1 $2" == "issue create" ]]; then printf '%s\\n' "$@"; fi; }`,
+  );
+  expect(result.stdout).toContain("Outcome: `install-failure`");
+  expect(report).toContain("GH_REPO: ${{ github.repository }}");
+});
+
 it.each([401, 403, 500])("release duplicate checks stop on HTTP %s instead of treating it as absence", (status) => {
   runWatchStep(
     "Guard duplicates",
