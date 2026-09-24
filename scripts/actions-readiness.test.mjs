@@ -2,8 +2,106 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Script } from "node:vm";
 
 import { expect, it } from "vitest";
+
+it("routes bot updates through readiness while humans, forks, and master pushes keep full CI", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const gate = ci.split("  renovate-ready:")[1].split(/\r?\n {2}\S/)[0];
+  const expression = gate.split("if: >-")[1].split("runs-on:")[0].trim();
+  const github = {
+    event_name: "pull_request",
+    repository: "owner/repo",
+    event: {
+      pull_request: {
+        user: { login: "renovate[bot]", type: "Bot" },
+        head: { repo: { full_name: "owner/repo" }, ref: "renovate/update" },
+      },
+    },
+  };
+  const evaluate = (context) =>
+    new Script(expression).runInNewContext({ github: context, startsWith: (s, prefix) => s.startsWith(prefix) });
+  expect(evaluate(github)).toBe(true);
+  for (const mutate of [
+    (g) => {
+      g.event_name = "push";
+      g.event = {};
+    },
+    (g) => {
+      g.event.pull_request.user.login = "human";
+    },
+    (g) => {
+      g.event.pull_request.user.type = "User";
+    },
+    (g) => {
+      g.event.pull_request.head.repo.full_name = "fork/repo";
+    },
+    (g) => {
+      g.event.pull_request.head.ref = "feature/update";
+    },
+  ]) {
+    const context = globalThis.structuredClone(github);
+    mutate(context);
+    expect(evaluate(context)).toBe(false);
+  }
+  for (const job of ["dependency-policy", "test", "harness-playback"]) {
+    const body = ci.split(`  ${job}:`)[1].split(/\r?\n {2}\S/)[0];
+    // GitHub permits hyphens in property names; JavaScript needs brackets.
+    const condition = body
+      .match(/if: \$\{\{(.*?)\}\}/)[1]
+      .replaceAll("needs.renovate-ready", 'needs["renovate-ready"]');
+    for (const result of ["success", "skipped", "failure", "cancelled"]) {
+      for (const cancelled of [false, true]) {
+        expect(
+          new Script(condition).runInNewContext({
+            needs: { "renovate-ready": { result } },
+            cancelled: () => cancelled,
+          }),
+        ).toBe(!cancelled && ["success", "skipped"].includes(result));
+      }
+    }
+  }
+});
+
+it("makes every full CI lane wait for Renovate artifact readiness", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  for (const job of ["dependency-policy", "test", "harness-playback"]) {
+    const body = ci.split(`  ${job}:`)[1].split(/\r?\n {2}\S/)[0];
+    expect(body).toContain("needs: renovate-ready");
+    expect(body).toContain("!cancelled()");
+    expect(body).toContain("needs.renovate-ready.result == 'success'");
+    expect(body).toContain("needs.renovate-ready.result == 'skipped'");
+  }
+  const gate = ci.split("  renovate-ready:")[1].split(/\r?\n {2}\S/)[0];
+  expect(gate).toContain("github.event_name == 'pull_request'");
+  expect(gate).toContain("github.event.pull_request.user.login == 'renovate[bot]'");
+  expect(gate).toContain("github.event.pull_request.user.type == 'Bot'");
+  expect(gate).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+  expect(gate).toContain("startsWith(github.event.pull_request.head.ref, 'renovate/')");
+  expect(gate).toContain("persist-credentials: false");
+  expect(gate).not.toContain("secrets.");
+  expect(ci).toMatch(/push:\s+branches: \[master\]/);
+});
+
+it.each([" M example", "?? example", " D example"])(
+  "stops Renovate CI before the matrix when generation leaves %s",
+  (status) => {
+    runWatchStep(
+      "Require current generated artifacts",
+      {},
+      `pnpm() { :; }\ngit() { if [[ "$1" == status ]]; then echo '${status}'; fi; }`,
+      "ci",
+      1,
+    );
+  },
+);
+
+it("allows the matrix for clean Renovate artifacts but fails closed on build or git errors", () => {
+  runWatchStep("Require current generated artifacts", {}, "pnpm() { :; }\ngit() { :; }", "ci");
+  runWatchStep("Require current generated artifacts", {}, "pnpm() { return 23; }", "ci", 23);
+  runWatchStep("Require current generated artifacts", {}, "pnpm() { :; }\ngit() { return 24; }", "ci", 24);
+});
 
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
   const source = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), "utf8");

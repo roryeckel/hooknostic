@@ -133,6 +133,28 @@ The dedicated token makes the resulting commit trigger normal PR checks. That
 commit must pass the existing artifact drift gate before human merging. The
 next generation run should be a no-op, ending the refresh cycle.
 
+CI first runs a five-minute-bounded artifact readiness job for these same-repository
+Renovate PRs. It rebuilds the examples on the PR merge checkout before starting
+the seven full-validation jobs. Changed, deleted, or new generated files fail
+readiness, so the intermediate commit never starts the full matrix. The existing
+artifact writer pushes a refresh; that successor goes through readiness and the
+full matrix. An already reproducible update proceeds without waiting for the
+writer's no-op run. Build, install, and Git errors fail closed.
+
+An initial red readiness check is expected when artifacts need refreshing. If
+no successor arrives, inspect **Renovate artifacts** and **Apply Renovate artifacts**
+for failures or stale-head skips. A merge-base change can also cause reproducibility
+failure; rebase the PR and regenerate rather than accepting skipped matrix jobs.
+Require **Renovate artifact readiness** alongside the matrix checks in branch
+protection: skipped jobs alone are not evidence of validation.
+
+Human PRs (including forks and human-authored `renovate/` branches) and pushes to
+`master` skip readiness and retain the full matrix. Release drafting still waits
+for CI on its exact target commit. This change reduces artifact-refresh fan-out;
+it does not deduplicate merges, separate Renovate updates, or later rebases.
+Plan their runner costs before merging. No write token is used by the readiness
+job, and the credentialed artifact writer remains unchanged.
+
 ## Verification and rollout
 
 Run `pnpm lint`, `pnpm build`, and `pnpm test`, recording each exit code
