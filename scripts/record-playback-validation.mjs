@@ -62,8 +62,7 @@ const RECORD_TEMPLATE = (version, date) =>
     `          date: "${date}",`,
     '          method: "live-probe",',
     '          artifact: ".capture/harness-playback",',
-    "          what:",
-    `            "${ROLLING_WHAT}",`,
+    `          what: "${ROLLING_WHAT}",`,
     "        },",
   ].join("\n");
 

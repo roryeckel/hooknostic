@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { check, resolveConfig } from "prettier";
 import { describe, expect, it } from "vitest";
 
 import { isMainModule, rewriteRollingRecord, ROLLING_WHAT } from "./record-playback-validation.mjs";
@@ -50,6 +51,11 @@ const EMPTY_REGION = [
 ].join("\n");
 
 describe("rewriteRollingRecord", () => {
+  it("writes a record that passes the repository formatting gate", async () => {
+    const next = rewriteRollingRecord(EMPTY_REGION, { version: "1.18.30", date: "2026-09-09" });
+    expect(await check(next, { ...(await resolveConfig(".prettierrc.json")), parser: "typescript" })).toBe(true);
+  });
+
   it("inserts the record into an empty marker region", () => {
     const next = rewriteRollingRecord(EMPTY_REGION, {
       version: "1.18.30",
@@ -123,6 +129,6 @@ describe("rewriteRollingRecord", () => {
     expect(next).not.toContain("});\r\n\r\n        }");
     const between = next.slice(next.indexOf(BEGIN), next.indexOf(END));
     expect(between).toContain('version: "1.18.30",\r\n');
-    expect(between.match(/\r\n/g).length).toBeGreaterThan(8);
+    expect(between.match(/\r\n/g).length).toBeGreaterThan(7);
   });
 });
