@@ -4247,14 +4247,14 @@ var init_types = __esm({
     onumber = () => numberType().optional();
     oboolean = () => booleanType().optional();
     coerce = {
-      string: (arg) => ZodString.create({ ...arg, coerce: true }),
-      number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-      boolean: (arg) => ZodBoolean.create({
+      string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+      number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+      boolean: ((arg) => ZodBoolean.create({
         ...arg,
         coerce: true
-      }),
-      bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-      date: (arg) => ZodDate.create({ ...arg, coerce: true })
+      })),
+      bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+      date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
     };
     NEVER = INVALID;
   }
