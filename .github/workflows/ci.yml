@@ -13,7 +13,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  renovate-ready:
+    name: Renovate artifact readiness
+    # A dependency update can require a PAT-authored artifact refresh. Do not
+    # start seven runners on the intermediate commit: its successor will
+    # trigger this workflow again. A no-op refresh proceeds immediately.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.user.type == 'Bot' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'renovate/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/ci/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require current generated artifacts
+        shell: bash
+        run: |
+          pnpm build:examples
+          changes="$(git status --porcelain -- examples/rewrite-shell examples/agent-plugin)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo "Generated artifacts need refreshing. The Renovate artifact writer will trigger CI on its successor commit."
+            echo "If no successor appears, inspect Renovate artifacts and Apply Renovate artifacts; do not treat skipped matrix jobs as validation."
+            exit 1
+          fi
+
   dependency-policy:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
     name: dependency policy and Renovate extraction
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -42,6 +79,8 @@ jobs:
         run: node scripts/check-dependencies.mjs "$RUNNER_TEMP/renovate-extraction.ndjson"
 
   test:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
     name: lint + typecheck + test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -126,6 +165,8 @@ jobs:
           fi
 
   harness-playback:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
     name: offline harness playback (${{ matrix.harness }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
