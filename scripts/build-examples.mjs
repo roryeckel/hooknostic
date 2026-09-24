@@ -3,6 +3,7 @@ import { renameSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
 import { outputRoots } from "./renovate-artifacts.mjs";
 
 // All invocations have the same working directory (ADR-0006). Remove old
@@ -36,4 +37,4 @@ export function buildExamples(cwd = fileURLToPath(new URL("../", import.meta.url
   );
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) buildExamples();
+if (isMainModule(import.meta.url, process.argv[1])) buildExamples();

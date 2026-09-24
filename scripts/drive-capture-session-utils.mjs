@@ -3,7 +3,6 @@
 // without loading the driver's TypeScript playback dependencies.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 const SYNTHETIC_CAPTURE_FILES = {
   // The OpenCode tee records its own module initialization as a diagnostic.
@@ -12,9 +11,7 @@ const SYNTHETIC_CAPTURE_FILES = {
 };
 
 /** True only when Node invoked this module as the CLI entrypoint. */
-export function isEntrypoint(moduleUrl, argv1) {
-  return argv1 !== undefined && moduleUrl === pathToFileURL(argv1).href;
-}
+export { isMainModule as isEntrypoint } from "./is-main-module.mjs";
 
 /** List raw tee output files, including diagnostics preserved for artifacts. */
 export function listCaptured(dir) {

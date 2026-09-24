@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,7 +15,8 @@ it.each(["release-notes.mjs", "compare-capture-shapes.mjs"])(
     try {
       cpSync(join(ROOT, "scripts"), join(root, "scripts"), { recursive: true });
       writeFileSync(join(root, "package.json"), '{"type":"module"}');
-      const file = join(root, "scripts", script);
+      symlinkSync(join(root, "scripts"), join(root, "alias"), process.platform === "win32" ? "junction" : "dir");
+      const file = join(root, "alias", script);
       const direct = spawnSync(process.execPath, ["--experimental-strip-types", file], { encoding: "utf8" });
       expect(direct.error).toBeUndefined();
       expect(direct.status).toBe(2);

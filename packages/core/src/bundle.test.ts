@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -40,9 +40,11 @@ it("carries dependency license and notice text plus source legal comments throug
       "Copyright Example Author\nPermission is hereby granted, free of charge.\n",
     );
     await writeFile(join(dependency, "NOTICE"), "Example attribution notice.\n");
+    const alias = join(root, "alias");
+    await symlink(root, alias, process.platform === "win32" ? "junction" : "dir");
     const first = await bundleRuntime({
       source: '/*! Keep this source attribution. */\nimport value from "notice-fixture"; console.log(value);',
-      resolveDir: root,
+      resolveDir: alias,
     });
     for (const text of [
       "notice-fixture@1.0.0",

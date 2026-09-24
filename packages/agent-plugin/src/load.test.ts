@@ -192,6 +192,8 @@ describe("loadProjectComponents", () => {
     const root = await mkdtemp(join(tmpdir(), "hooknostic-project-mcp-cwd-"));
     roots.push(root);
     await mkdir(join(root, ".agents"));
+    const alias = join(root, "alias");
+    await symlink(root, alias, process.platform === "win32" ? "junction" : "dir");
     const path = join(root, ".agents/mcp.json");
     const document = (cwd: string) =>
       JSON.stringify({
@@ -202,7 +204,7 @@ describe("loadProjectComponents", () => {
 
     const packagedSemantics = await loadProjectComponents({ mcp: path });
     expect(packagedSemantics.source.mcp?.config.mcpServers).toEqual({});
-    const direct = await loadProjectComponents({ mcp: path, projectRoot: root });
+    const direct = await loadProjectComponents({ mcp: path, projectRoot: alias });
     expect(direct.issues).toEqual([]);
     expect(direct.source.mcp?.config.mcpServers.probe).toMatchObject({ cwd: "${PLUGIN_ROOT}/.." });
 

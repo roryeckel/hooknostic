@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
+
 // Reuse the workspace's existing YAML parser; this script runs after install.
 const { parse } = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url))("yaml");
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -152,7 +154,7 @@ export function checkExtraction(expected, packageFiles) {
   return { dependencies: found.size, managers: [...new Set(expected.map((dep) => dep.manager))] };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const expected = inventory();
   if (process.argv[2]) {
     const logs = readFileSync(process.argv[2], "utf8")

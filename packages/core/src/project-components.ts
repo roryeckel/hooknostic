@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
@@ -53,6 +54,9 @@ export async function projectMcpLauncher(
       .filter(([, s]) => s.type === "stdio")
       .map(([name, s]) => ({ name, ...s }));
   if (!servers.length) return { files: [], entries: [], guidance: [] };
+  // The loaded MCP source and the runtime's import.meta.url are real paths.
+  // Keep their relative offsets independent of the caller's project alias.
+  root = await realpath(root);
   const relativeToOutput = (path: string) => relative(resolve(root, output), path).replaceAll("\\", "/") || ".";
   const launcher = await bundleMcpLauncher({
     frontEnd: "self-resolving",

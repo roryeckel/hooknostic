@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+
+import { isMainModule } from "./is-main-module.mjs";
 
 /** Select only the latest push run of CI on the requested commit, including reruns. */
 export function ciState(runs, sha) {
@@ -47,7 +47,7 @@ function queryRuns(repo, sha) {
   return pages.flatMap((page) => page.workflow_runs);
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const [repo, sha] = process.argv.slice(2);
   if (!repo || !sha) throw new Error("usage: wait-for-ci.mjs owner/repo sha");
   await waitForCI({ repo, sha });

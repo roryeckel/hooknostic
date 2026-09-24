@@ -4,6 +4,8 @@ import { lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
+
 export const outputRoots = ["examples/rewrite-shell/dist", "examples/agent-plugin/dist"];
 export const manifestLimit = 32 * 1024 * 1024;
 export const artifactName = "renovate-example-artifacts";
@@ -138,7 +140,7 @@ export function planChanges(manifest, tree) {
   return { additions, deletions };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const [destination, headSha, number] = process.argv.slice(2);
   const root = fileURLToPath(new URL("../", import.meta.url));
   writeFileSync(destination, `${JSON.stringify(collectManifest(root, headSha, Number(number)))}\n`);

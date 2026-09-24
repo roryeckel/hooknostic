@@ -10,8 +10,8 @@ credentials, event delivery, environment protection, or cross-job artifacts.
 | Workflow | Exercised | Still needs hosted proof |
 | --- | --- | --- |
 | CI | Windows and Linux lint, format, build, and tests; generated examples and docs; version literals; actionlint; all three reference playback lanes; strict Renovate validation and extraction in the pinned image | Full corrected matrix, including macOS |
-| Harness watch | npm detection; all three current-release playback lanes; capture/compare drivers; record CLI write, repeat no-op, out-of-range refusal, and older-version refusal | PAT checkout/push, PR creation, issue/report routing, artifacts between jobs, quiet scheduled run, optional paid sidecar |
-| Release prepare | Disposable checkout: version bump, lockfile sync, example regeneration, version agreement; failure guards tested with actual Bash bodies | Dry-run dispatch, then credentialed PR creation |
+| Harness watch | npm detection; all three current-release playback lanes; capture/compare drivers; record CLI write, repeat no-op, out-of-range refusal, and older-version refusal; hosted reference-version no-op and clean Codex drift verdict through cross-job artifacts | PAT push, PR creation, issue/report routing, quiet scheduled run, optional paid sidecar |
+| Release prepare | Disposable checkout: version bump, lockfile sync, example regeneration, version agreement; failure guards tested with actual Bash bodies; hosted dry run and credentialed PR creation with downstream CI | Human review of a real release |
 | Release draft | Real GitHub generate-notes API and local composition; existing release metadata and CI-gate tests | Protected release process after an approved release PR; draft creation |
 | Release publish | Three pnpm tarballs inspected; no workspace/catalog dependency references remain; registry error, existing-version, and missing-prerelease branches tested using fake commands | Protected bootstrap asset upload; later owner bootstrap and OIDC publication |
 | Renovate artifacts | Example regeneration, manifest/ZIP tests, changed/no-op/deleted-output tests | An authentic same-repository Renovate PR and artifact upload |
@@ -22,12 +22,29 @@ Final local gates passed with each exit code recorded separately. Windows:
 are platform-specific tests. Playback's explicit driver limitations remain
 inconclusive; see [testing.md](testing.md).
 
-The only hosted job started during this pass was the Ubuntu CI canary:
+The first hosted job was the Ubuntu CI canary:
 [run 35921735562, attempt 2](https://github.com/roryeckel/hooknostic/actions/runs/35921735562/attempts/2).
 It ran for 2 minutes 50 seconds and exposed the stderr fixture defect below.
 Other failed jobs displayed on that run were inherited from the earlier billing
 failure, not newly executed jobs. No paid model calls or registry publication
 were performed.
+
+After the owner supplied the PATs and approved up to 100 runner minutes:
+
+- [Initial full CI](https://github.com/roryeckel/hooknostic/actions/runs/35939660778)
+  passed Ubuntu, dependency validation, and all three harness playback jobs.
+  Windows and macOS exposed the path-alias defects below.
+- [Harness watch](https://github.com/roryeckel/hooknostic/actions/runs/35939683801)
+  passed for the Codex reference version: PAT checkout, record no-op, uploaded
+  outcomes, capture/compare, and final clean verdict all worked.
+- [Release dry run](https://github.com/roryeckel/hooknostic/actions/runs/35939681230)
+  and [credentialed preparation](https://github.com/roryeckel/hooknostic/actions/runs/35939791781)
+  passed. The latter opened [rehearsal PR #16](https://github.com/roryeckel/hooknostic/pull/16)
+  using `RELEASE_PAT` and triggered CI. That duplicate CI was cancelled after
+  proving event delivery. The rehearsal must not be merged or published.
+
+Final hosted results are tracked on the
+[readiness PR](https://github.com/roryeckel/hooknostic/pull/15).
 
 ## Defects corrected
 
@@ -49,6 +66,11 @@ were performed.
   permission. Harness-watch records formatting and all verification exit codes.
 - Release preparation's dry run can use the ordinary workflow token, without
   needing the release PAT.
+- Canonical and aliased filesystem paths disagreed on macOS and Windows CI.
+  This dropped bundled license notices, rejected valid direct MCP working
+  directories, broke generated launch offsets, and skipped script entrypoints.
+  Explicit symlink/junction regressions failed before the fixes and passed
+  afterward. Baseline test fixtures now use the OS's real temporary directory.
 
 Codex capture/compare was clean. OpenCode completed its session and returned
 the documented advisory drift verdict against its existing fixtures; this is
@@ -57,16 +79,15 @@ capability ranges, or validation records were changed by these rehearsals.
 
 ## Owner setup and next hosted checks
 
-At audit time, `HARNESS_WATCH_PAT` and the LLM connection settings existed.
-`HARNESS_WATCH_AUTOMERGE` was false. `RELEASE_PAT` and
-`RENOVATE_ARTIFACTS_PAT` were absent; `gitIgnoredAuthors` was empty. No `npm`
+`HARNESS_WATCH_PAT`, `RELEASE_PAT`, `RENOVATE_ARTIFACTS_PAT`, and the LLM
+connection settings now exist. `HARNESS_WATCH_AUTOMERGE` is false;
+`gitIgnoredAuthors` was empty at audit time. No `npm`
 environment existed. GitHub refused ruleset access on the current private
 repository plan. Renovate installation has not been established.
 
-1. Agree a runner budget and push the reviewed readiness patch. Run the full
-   PR CI once; rerun only failed jobs after diagnosis.
-2. Dispatch release preparation with `dry_run=true` and an explicitly chosen
-   rehearsal version. It must create no branch, PR, or tag.
+1. Complete the corrected PR CI matrix within the approved runner budget.
+2. Keep the successful release-preparation rehearsal separate from launch;
+   it proves the credentials and event delivery, not publication readiness.
 3. Exercise harness-watch on a pinned reference version first, then one newer
    passing harness after the fixes land. Check the no-op route and the actual
    record PR/CI route before expanding to all harnesses. Review artifacts and
