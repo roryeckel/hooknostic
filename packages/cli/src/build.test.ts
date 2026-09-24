@@ -1129,6 +1129,7 @@ ${run.stderr}`,
     async () => {
       const dir = await cleanExample("agent-plugin");
       const manifestBefore = await readFile(join(dir, "plugin.json"), "utf8");
+      const runtimeManifestBefore = JSON.parse(await readFile(join(dir, "runtime/package.json"), "utf8"));
 
       const { io, out } = captureIO();
       const code = await runBuild({
@@ -1183,7 +1184,7 @@ ${run.stderr}`,
       const runtimeManifest = JSON.parse(await readFile(join(dir, "dist/claude/package.json"), "utf8"));
       expect(runtimeManifest).toMatchObject({
         name: "combined-example-runtime",
-        dependencies: { "@modelcontextprotocol/server": "2.0.0", zod: "4.5.4" },
+        dependencies: runtimeManifestBefore.dependencies,
       });
       expect(existsSync(join(dir, "dist/claude/package-lock.json"))).toBe(true);
       expect(existsSync(join(dir, "dist/claude/runtime.package.json"))).toBe(false);
