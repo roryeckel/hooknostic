@@ -4,6 +4,16 @@ import { expect, it } from "vitest";
 
 import { checkEngines, checkExtraction, inventory } from "./check-dependencies.mjs";
 
+it("aligns Renovate npm release ages with the explicit pnpm install guard", () => {
+  const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
+  const config = JSON.parse(readFileSync(new URL("../renovate.json", import.meta.url), "utf8"));
+  const ageRule = config.packageRules.find((rule) => rule.matchDatasources?.includes("npm") && rule.minimumReleaseAge);
+  expect(workspace).toMatch(/^minimumReleaseAge: 1440$/m);
+  expect(ageRule?.minimumReleaseAge).toBe("1 day");
+  expect(ageRule?.minimumReleaseAgeBehaviour).toBe("timestamp-required");
+  expect(ageRule?.internalChecksFilter).toBe("strict");
+});
+
 it("requires every package engine declaration to match the authoritative root", () => {
   const root = { engines: { node: ">=99.1.0" } };
   expect(() => checkEngines({ "package.json": root, "packages/example/package.json": root })).not.toThrow();

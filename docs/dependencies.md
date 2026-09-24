@@ -100,6 +100,21 @@ app supplies that token. See [Renovate local dry runs](https://docs.renovatebot.
 
 ## Artifact refresh
 
+pnpm installs enforce a 24-hour minimum release age (`minimumReleaseAge: 1440`).
+Renovate's npm datasource uses the same one-day wait, requires release timestamps,
+and filters pending releases before routine branch creation. The install guard
+still applies to transitive dependencies and lockfile maintenance; Renovate's
+direct-update check does not replace it. A companion dependency published later
+can therefore still delay a frozen install.
+
+Requesting an update through a Dependency Dashboard checkbox can override
+Renovate's wait. If CI reports `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, leave the
+install guard intact and retry after the newest rejected package is 24 hours old.
+Rerun both the failed CI prerequisite and artifact-generation workflow at the
+unchanged PR head; if the writer pushes a successor, let its new CI run finish.
+Do not interpret this install failure as proof of the dirty-artifact path.
+See [Renovate's release-age behavior](https://docs.renovatebot.com/key-concepts/minimum-release-age/).
+
 Run `pnpm build:examples` at the repository root. The command builds the workspace
 and invokes both example builds **from the repository root**. It first removes
 each output directory so outputs that are no longer emitted become deletions.
