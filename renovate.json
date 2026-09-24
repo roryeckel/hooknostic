@@ -14,6 +14,13 @@
   },
   "packageRules": [
     {
+      "description": "Wait for the same 24-hour npm cooldown enforced by pnpm installs",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "1 day",
+      "minimumReleaseAgeBehaviour": "timestamp-required",
+      "internalChecksFilter": "strict"
+    },
+    {
       "description": "One reviewed PR for non-major workspace dependencies",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
