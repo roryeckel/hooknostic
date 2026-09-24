@@ -454,6 +454,9 @@ jobs:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
+      # Resolve the repository without a checkout that would clean the
+      # downloaded outcome before the issue body reads it.
+      GH_REPO: ${{ github.repository }}
     strategy:
       fail-fast: false
       matrix:
@@ -477,9 +480,6 @@ jobs:
           fi
           OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
           if [ "$OUTCOME" = "pass" ]; then echo "failed=false" >> "$GITHUB_OUTPUT"; else echo "failed=true" >> "$GITHUB_OUTPUT"; fi
-
-      - uses: actions/checkout@v7
-        if: steps.outcome.outputs.failed == 'true'
 
       - name: Ensure harness-watch label exists
         if: steps.outcome.outputs.failed == 'true'
@@ -595,13 +595,12 @@ jobs:
         env:
           HARNESS_LLM_BASE_URL: ${{ vars.HARNESS_LLM_BASE_URL }}
           HARNESS_LLM_API_KEY: ${{ secrets.HARNESS_LLM_API_KEY }}
+          HARNESS_LLM_MODEL: ${{ vars.HARNESS_LLM_MODEL }}
         run: |
           SIDECAR_URL="http://127.0.0.1:4000"
           SIDECAR_LOG="$RUNNER_TEMP/litellm-sidecar.log"
           OPENAI_API_KEY="$HARNESS_LLM_API_KEY" \
-            litellm --model "openai/${{ vars.HARNESS_LLM_MODEL }}" \
-              --api_base "$HARNESS_LLM_BASE_URL" \
-              --port 4000 >"$SIDECAR_LOG" 2>&1 &
+            litellm --config .github/litellm.json --port 4000 >"$SIDECAR_LOG" 2>&1 &
           SIDECAR_PID=$!
           SIDECAR_READY=false
           for i in $(seq 1 30); do

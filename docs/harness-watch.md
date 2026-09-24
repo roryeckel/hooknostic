@@ -217,6 +217,21 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
 
 ## Repository configuration (ops, not commits)
 
+The paid sidecar reads `.github/litellm.json`. Its two explicit bridge settings
+keep both Messages and Responses requests on the upstream chat-completions API;
+provider defaults alone can select a native Responses endpoint instead.
+Configuration references environment variables, so no upstream key is written
+to the config file. Before upgrading the pinned proxy, exercise its real
+streaming and non-streaming translations against a loopback-only stub:
+
+```bash
+uv run --with-requirements .github/requirements/litellm.txt python scripts/probe-litellm-sidecar.py
+```
+
+This installs the pinned proxy in an isolated environment and makes no paid
+model calls. It proves proxy translation, not a live harness session or the
+owner's upstream credentials.
+
 | Item | Type | Purpose |
 | --- | --- | --- |
 | `HARNESS_WATCH_PAT` | secret | Fine-grained PAT: this repo, Contents RW + Pull requests RW. Rotate like `RELEASE_PAT` (docs/releases.md). |

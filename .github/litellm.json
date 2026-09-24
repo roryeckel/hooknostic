@@ -1,0 +1,17 @@
+{
+  "litellm_settings": {
+    "use_chat_completions_url_for_anthropic_messages": true
+  },
+  "model_list": [
+    {
+      "model_name": "os.environ/HARNESS_LLM_MODEL",
+      "litellm_params": {
+        "model": "os.environ/HARNESS_LLM_MODEL",
+        "custom_llm_provider": "openai",
+        "api_base": "os.environ/HARNESS_LLM_BASE_URL",
+        "api_key": "os.environ/OPENAI_API_KEY",
+        "use_chat_completions_api": true
+      }
+    }
+  ]
+}

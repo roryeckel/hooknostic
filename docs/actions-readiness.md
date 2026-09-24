@@ -104,3 +104,29 @@ repository plan. Renovate installation has not been established.
 
 Job timeouts bound individual failures; they are not an account spending cap.
 GitHub's billing budget remains the final cap.
+
+## Follow-up rehearsal: 2026-09-24
+
+The deliberate nonexistent-version run
+[35947708880](https://github.com/roryeckel/hooknostic/actions/runs/35947708880)
+proved failure issue creation, repeated-report deduplication, and drift-verdict
+routing. It exposed a blank outcome: checkout cleaned the downloaded artifact
+before the issue body read it. Removing that unnecessary checkout and setting
+`GH_REPO` preserved `install-failure` in the corrected
+[run 35948254362](https://github.com/roryeckel/hooknostic/actions/runs/35948254362).
+Both runs intentionally failed installation; rehearsal issues #20 and #24 were
+closed afterward. The shell regression failed with the bad checkout restored.
+
+Enabling vulnerability alerts surfaced 30 findings and automatically triggered
+three Renovate security PRs. Their duplicate CI runs were cancelled with owner
+approval. This follow-up consumed 97 rounded runner minutes, exceeding its
+initial estimate because of those automatic matrices; no further hosted run is
+authorized by that estimate. Consolidated security changes require a fresh
+hosted allowance. Locally, patched Vitest, esbuild, and transitive js-yaml clear
+the npm audit; the newer pinned LiteLLM and its resolved dependencies clear
+`pip-audit`. The [sidecar probe](harness-watch.md#repository-configuration-ops-not-commits)
+uses a fake upstream, not model credentials.
+
+GitHub still blocks tag rulesets and required environment reviewers on the
+current private-repository plan. The failed environment setup left an empty,
+unprotected environment, which was removed. Publication guards remain intact.
