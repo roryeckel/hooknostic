@@ -59,7 +59,7 @@ capability ranges, or validation records were changed by these rehearsals.
 
 At audit time, `HARNESS_WATCH_PAT` and the LLM connection settings existed.
 `HARNESS_WATCH_AUTOMERGE` was false. `RELEASE_PAT` and
-`RENOVATE_ARTIFACTS_TOKEN` were absent; `gitIgnoredAuthors` was empty. No `npm`
+`RENOVATE_ARTIFACTS_PAT` were absent; `gitIgnoredAuthors` was empty. No `npm`
 environment existed. GitHub refused ruleset access on the current private
 repository plan. Renovate installation has not been established.
 

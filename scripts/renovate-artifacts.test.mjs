@@ -352,6 +352,6 @@ it("keeps the generating job unprivileged and the applying job on default-branch
   expect(apply).toContain("workflow_run:");
   expect(apply).toContain("ref: ${{ github.sha }}");
   expect(apply).toContain("persist-credentials: false");
-  expect(apply).toContain("secrets.RENOVATE_ARTIFACTS_TOKEN");
+  expect(apply).toContain("secrets.RENOVATE_ARTIFACTS_PAT");
   expect(apply).not.toMatch(/pnpm install|pnpm build|pull_request_target/);
 });

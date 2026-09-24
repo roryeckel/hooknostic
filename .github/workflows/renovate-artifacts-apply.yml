@@ -36,5 +36,5 @@ jobs:
       - name: Verify provenance and apply permitted byte changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RENOVATE_ARTIFACTS_TOKEN: ${{ secrets.RENOVATE_ARTIFACTS_TOKEN }}
+          RENOVATE_ARTIFACTS_PAT: ${{ secrets.RENOVATE_ARTIFACTS_PAT }}
         run: node scripts/apply-renovate-artifacts.mjs

@@ -160,7 +160,7 @@ section retains a `catalog:` or `workspace:` reference. See
 Rollout is **pending** until these owner actions and hosted checks are complete:
 
 1. Merge the migration and workflow configuration without dependency upgrades.
-2. Create `RENOVATE_ARTIFACTS_TOKEN`: a dedicated fine-grained PAT restricted to
+2. Create `RENOVATE_ARTIFACTS_PAT`: a dedicated fine-grained PAT restricted to
    this repository, with **Contents: read/write** and **Pull requests: read/write**.
    Store it as a repository Actions secret; use an expiry and rotation owner.
    No Actions-write or workflow-write permission is needed. The ordinary
