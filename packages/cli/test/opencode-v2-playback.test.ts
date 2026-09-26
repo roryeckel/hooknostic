@@ -420,6 +420,23 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       const events = await traceEvents(join(root, "trace.jsonl"));
       expect(events.filter((event) => event === "permission.request")).toHaveLength(2);
       expect(events.filter((event) => event === "turn.stop")).toHaveLength(6);
+      // The first session may precede lazy setup. Subsequent sessions are
+      // created after the first prompt has completed and must be observed.
+      for (const outcome of capture.outcomes.slice(1)) {
+        expect(outcome.records).toContainEqual(
+          expect.objectContaining({
+            hook: "event",
+            event: expect.objectContaining({
+              type: "session.created",
+              data: expect.objectContaining({ sessionID: outcome.sessionID }),
+            }),
+          }),
+        );
+      }
+      const starts = capture.outcomes.flatMap((outcome: { records: { hook: string; event: { type: string } }[] }) =>
+        outcome.records.filter((row) => row.hook === "event" && row.event.type === "session.created"),
+      );
+      expect(events.filter((event) => event === "session.start")).toHaveLength(starts.length);
     },
     70000,
   );
@@ -609,7 +626,8 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
         expect(events).toContain("tool.before");
         expect(events).toContain("prompt.before");
         expect(events).toContain("turn.stop");
-        expect(events).toContain("session.start");
+        // Session-start delivery is checked after lazy setup in the sessions
+        // probe; the first standalone session can precede plugin subscription.
         if (effect !== "block") expect(events).toContain("tool.after");
         expect(model.requests.length).toBeGreaterThan(1);
         if (effect === "block")

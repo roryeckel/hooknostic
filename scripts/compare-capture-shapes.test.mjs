@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   compareCaptures,
+  EXPECTED_VARIANTS,
   filterOpenCodeBus,
   OPENCODE_MAPPED_BUS_EVENTS,
   shapeDiff,
@@ -403,6 +404,20 @@ describe("shapeDiff", () => {
 });
 
 describe("OpenCode v2 drift", () => {
+  it("reports an unobserved first session start without declaring drift", () => {
+    const fixtures = readFixtureInputs("opencode/2.0");
+    const captured = fixtures.filter((row) => row.event.type !== "session.created");
+    const { verdict, report } = compareCaptures({
+      harness: "opencode-v2",
+      fixtures,
+      captured,
+      expectedVariants: EXPECTED_VARIANTS["opencode-v2"],
+    });
+    expect(verdict).toBe("clean");
+    expect(report).toContain("Fixture variants not exercised");
+    expect(report).toContain("event+session.created");
+  });
+
   it.each([
     "generate",
     "compaction",

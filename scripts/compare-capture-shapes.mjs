@@ -402,7 +402,8 @@ const FIXTURE_DIRS = {
  */
 export const EXPECTED_VARIANTS = {
   "opencode-v2": [
-    "event+session.created",
+    // The first standalone session can precede lazy plugin setup. Compare
+    // session.created when observed, but report its absence as unexercised.
     "prompt",
     "context",
     "title",
