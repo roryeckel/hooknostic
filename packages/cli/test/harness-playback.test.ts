@@ -188,6 +188,49 @@ describe("scriptedTool schema fidelity", () => {
   });
 });
 
+describe("model playback auxiliary requests", () => {
+  it("answers a request without tools between scripted turns without advancing the script", async () => {
+    const server = await startModelPlayback("openai-chat", "rewrite", [
+      { kind: "tool" },
+      { kind: "text", text: "hooknostic-valid-compaction-summary" },
+    ]);
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "shell",
+          parameters: { type: "object", properties: { command: { type: "string" } } },
+        },
+      },
+    ];
+    const request = (body: Record<string, unknown>) =>
+      fetch(`${server.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    try {
+      const first = await request({ tools });
+      expect(first.status).toBe(200);
+      expect(await first.text()).toContain("call_playback");
+      expect(server.turnCount).toBe(1);
+
+      const auxiliary = await request({ tools: [] });
+      expect(auxiliary.status).toBe(200);
+      expect(await auxiliary.text()).toContain("hooknostic-valid-compaction-summary");
+      expect(server.turnCount).toBe(1);
+      expect(server.errors).toEqual([]);
+
+      const second = await request({ tools });
+      expect(second.status).toBe(200);
+      expect(await second.text()).toContain("hooknostic-valid-compaction-summary");
+      expect(server.turnCount).toBe(2);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe("runProcess argument passing", () => {
   const ARGS = ["plain", "has space", 'has "quote"', "100%", "%PATH%", "a&b|c", String.raw`C:\dir with space\file`];
   const echoArgv = "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n";

@@ -944,6 +944,7 @@ export async function startModelPlayback(
     (scenario === "rewrite" || scenario === "block" || scenario === "fail" || scenario === "continuation"
       ? [{ kind: "tool", disposition: scenario }, { kind: "text" }]
       : [{ kind: "text", text: "playback complete" }]);
+  const auxiliaryAction: TurnAction = [...turns].reverse().find((action) => action.kind === "text") ?? { kind: "text" };
   const requests: unknown[] = [];
   const errors: string[] = [];
   const urls: string[] = [];
@@ -1024,7 +1025,7 @@ export async function startModelPlayback(
         // Past the script's last turn the model keeps completing with text:
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
-        const action = turns[Math.min(turn, turns.length) - 1] ?? { kind: "text" as const };
+        const action = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
         if (protocol === "anthropic-messages") {
           anthropicTurn(response, parsed, turn, action);
         } else if (protocol === "openai-responses") {
