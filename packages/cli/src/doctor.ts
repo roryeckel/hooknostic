@@ -126,7 +126,16 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       ];
     }
   }
-  for (const adapter of adapters) {
+  for (const registered of adapters) {
+    const detection = registered.detect ? await registered.detect() : undefined;
+    const familyFor = (version: string) =>
+      resolveTargetAdapter(registered, { id: registered.id, version, delivery: "project", output: "." }).adapter;
+    const adapter =
+      options.config === undefined
+        ? (familyFor(detection?.version ?? registered.harness.recommendedRange) ??
+          familyFor(registered.harness.recommendedRange) ??
+          registered)
+        : registered;
     const ranges = adapter.supportedHarnessVersions();
     // Newest validation event across the recommended range's profiles: this is
     // what lets doctor report staleness of OUR validation, not just novelty of
@@ -153,7 +162,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       recommendedRange: adapter.harness.recommendedRange,
       ...(newestValidated !== undefined ? { newestValidated } : {}),
     };
-    if (!adapter.detect) {
+    if (!detection) {
       entries.push({
         ...base,
         installed: false,
@@ -162,7 +171,6 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       });
       continue;
     }
-    const detection = await adapter.detect();
     if (!detection.installed) {
       entries.push({
         ...base,

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR, resolveTargetAdapter } from "@hooknostic/core";
-import { definePlugin, hook } from "@hooknostic/sdk";
+import { definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 import { describeAdapterContract } from "@hooknostic/testkit";
 
 import { opencodeHarness } from "../harness.js";
@@ -67,6 +67,56 @@ describe("OpenCode family selection", () => {
 });
 
 describe("v2 captured boundary", () => {
+  it("preserves own __proto__ data and live input identity when replacing tool arguments", async () => {
+    const replacement = JSON.parse('{"__proto__":{"injected":"yes"},"command":"echo safe"}');
+    let callback: ((event: Record<string, unknown>) => Promise<void>) | undefined;
+    const cleanup = await setupOpenCodeV2(
+      definePlugin({
+        name: "data-keys",
+        hooks: [
+          hook("tool.before", {
+            id: "replace",
+            capabilities: { "tool.before.input.replace": "required" },
+            run() {
+              return replaceInput(replacement);
+            },
+          }),
+        ],
+      }),
+      { capabilities: { "tool.before.observe": "exact", "tool.before.input.replace": "exact" } },
+      {
+        location: { directory: "." },
+        session: { hook: vi.fn() },
+        tool: {
+          hook: async (_name, fn) => {
+            callback = fn;
+            return { dispose: async () => {} };
+          },
+        },
+        event: { async *subscribe() {} },
+      },
+    );
+    const input = { command: "old", stale: true };
+    const prototype = Object.getPrototypeOf(input);
+    const native = { tool: "shell", sessionID: "session", id: "call", input };
+    try {
+      await callback!(native);
+      expect(native.input).toBe(input);
+      expect(Object.getPrototypeOf(input)).toBe(prototype);
+      expect(Object.getOwnPropertyDescriptor(input, "__proto__")).toEqual({
+        value: { injected: "yes" },
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+      expect(input).not.toHaveProperty("injected");
+      expect(input.stale).toBeUndefined();
+      expect(input.command).toBe("echo safe");
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("registers error-only hooks and disposes their registration", async () => {
     let callback: ((event: Record<string, unknown>) => Promise<void>) | undefined;
     const dispose = vi.fn(async () => {});

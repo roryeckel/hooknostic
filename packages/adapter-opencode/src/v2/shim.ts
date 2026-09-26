@@ -69,7 +69,7 @@ export async function setupOpenCodeV2(
     ) {
       const replacement = structuredClone(application.input);
       for (const key of Object.keys(native.input)) delete (native.input as Record<string, unknown>)[key];
-      Object.assign(native.input, replacement);
+      Object.defineProperties(native.input, Object.getOwnPropertyDescriptors(replacement));
     }
     if (application.content !== undefined && native.result && typeof native.result === "object")
       (native.result as Record<string, unknown>).content = application.content;
