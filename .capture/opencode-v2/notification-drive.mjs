@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-export async function driveNotifications({ executable, root, project, env }) {
-  const { spawn } = createRequire(new URL("../../packages/cli/package.json", import.meta.url))("node-pty");
+export async function driveNotifications({ executable, root, project, env, pty }) {
+  const { spawn } = pty ?? createRequire(new URL("../../packages/cli/package.json", import.meta.url))("node-pty");
   const child = spawn(executable, ["--standalone", "--auto"], { cwd: project, env, cols: 120, rows: 35, name: "xterm-256color" });
   let transcript = "", exited = false;
   child.onData(chunk => { transcript += chunk; });
@@ -20,8 +20,8 @@ export async function driveNotifications({ executable, root, project, env }) {
     if (!transcript.includes("hooknostic-server-notification") || !records.some(row => row.phase === "client-received") || records.some(row => row.phase === "error"))
       throw new Error("Server notification was not rendered: " + JSON.stringify(records));
     child.write("\x03");
-    await delay(300);
-    if (!exited) child.write("\x03");
+    // ConPTY delays its exit event while flushing output. A second interrupt
+    // can hit its already-closing input pipe and emit an unhandled EAGAIN.
     await Promise.race([done, delay(3000)]);
   } finally {
     if (!exited) child.kill();
