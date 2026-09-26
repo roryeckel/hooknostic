@@ -22,9 +22,23 @@ import {
 
 import { defaultAdapterRegistry } from "./registry.js";
 
+const adapters = Object.values(defaultAdapterRegistry()).flatMap((adapter) =>
+  adapter.harnessFamilies
+    ? adapter.harnessFamilies.map(
+        (harness) =>
+          adapter.resolveTarget!({
+            id: adapter.id,
+            version: harness.recommendedRange,
+            delivery: "project",
+            output: ".",
+          }).adapter!,
+      )
+    : [adapter],
+);
+
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
-for (const adapter of Object.values(defaultAdapterRegistry())) {
+for (const adapter of adapters) {
   describeAdapterContract(adapter, { fixturesDir: adapterFixturesDir(adapter) });
   describeScenarioCoverage(adapter);
 }
@@ -46,7 +60,7 @@ describe("validation evidence", () => {
   it("points every validatedOn artifact at an existing tracked path", () => {
     // Repo-local (a third party's evidence lives in its own tree): this is
     // what stops "fixtures/codex/0.148" from outliving the directory.
-    for (const adapter of Object.values(defaultAdapterRegistry())) {
+    for (const adapter of adapters) {
       const resolution = adapter.capabilities({
         id: adapter.id,
         version: adapter.harness.recommendedRange,

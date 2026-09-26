@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.before",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_2"
+  },
+  "event": "tool.before",
+  "tool": {
+    "nativeName": "read",
+    "input": {
+      "path": "probe.txt"
+    },
+    "kind": "file.read"
+  }
+}

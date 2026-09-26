@@ -1,0 +1,35 @@
+[
+  {
+    "phase": "setup",
+    "version": "2.0.17"
+  },
+  {
+    "phase": "attention",
+    "result": {
+      "ok": false,
+      "notification": false,
+      "sound": false,
+      "skipped": "attention_disabled"
+    }
+  },
+  {
+    "phase": "server-emitted"
+  },
+  {
+    "phase": "client-received",
+    "event": {
+      "id": "evt_0def3d9b8001ETwbDNqUYUyMAU",
+      "created": 1790446918072,
+      "type": "rpc.hooknostic-notification-probe.message",
+      "location": {
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-HtxN22\\project"
+      },
+      "data": {
+        "text": "hooknostic-server-notification"
+      }
+    }
+  },
+  {
+    "phase": "cleanup"
+  }
+]

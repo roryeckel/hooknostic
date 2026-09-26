@@ -1,0 +1,211 @@
+[
+  {
+    "mode": "allow",
+    "executions": 1,
+    "records": [
+      {
+        "hook": "evaluate",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "sessionID": "ses_f2133a714ffeug6RWTV25MaO5g",
+          "agent": "build",
+          "action": "shell",
+          "resources": [
+            "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+          ],
+          "source": {
+            "type": "tool",
+            "messageID": "msg_0decc5a22001zrBIQyEC5pDf9d",
+            "id": "call_session_probe"
+          },
+          "effect": "allow"
+        }
+      }
+    ]
+  },
+  {
+    "mode": "ask-allow",
+    "pending": {
+      "id": "per_0decc5d4c001IkH78clM3B4eWm",
+      "sessionID": "ses_f2133a2e5ffe63ylGir1zaCb5D",
+      "action": "shell",
+      "resources": [
+        "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+      ],
+      "save": [
+        "node *"
+      ],
+      "source": {
+        "type": "tool",
+        "messageID": "msg_0decc5d38001weyVQKQ6gpDXFU",
+        "id": "call_session_probe"
+      }
+    },
+    "executions": 1,
+    "records": [
+      {
+        "hook": "evaluate",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "sessionID": "ses_f2133a2e5ffe63ylGir1zaCb5D",
+          "agent": "build",
+          "action": "shell",
+          "resources": [
+            "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+          ],
+          "source": {
+            "type": "tool",
+            "messageID": "msg_0decc5d38001weyVQKQ6gpDXFU",
+            "id": "call_session_probe"
+          },
+          "effect": "ask"
+        }
+      },
+      {
+        "hook": "event",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "id": "evt_0decc5d4c002GPWs9rJD6aBvix",
+          "created": 1790444330316,
+          "type": "permission.asked",
+          "location": {
+            "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project"
+          },
+          "data": {
+            "id": "per_0decc5d4c001IkH78clM3B4eWm",
+            "sessionID": "ses_f2133a2e5ffe63ylGir1zaCb5D",
+            "action": "shell",
+            "resources": [
+              "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+            ],
+            "save": [
+              "node *"
+            ],
+            "source": {
+              "type": "tool",
+              "messageID": "msg_0decc5d38001weyVQKQ6gpDXFU",
+              "id": "call_session_probe"
+            }
+          }
+        }
+      },
+      {
+        "hook": "event",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "id": "evt_0decc5dc7001hiHRHDi2zDawYz",
+          "created": 1790444330439,
+          "type": "permission.replied",
+          "location": {
+            "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project"
+          },
+          "data": {
+            "sessionID": "ses_f2133a2e5ffe63ylGir1zaCb5D",
+            "requestID": "per_0decc5d4c001IkH78clM3B4eWm",
+            "reply": "once"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "mode": "ask-reject",
+    "pending": {
+      "id": "per_0decc5ee5001h1dHqE2dS1RZ42",
+      "sessionID": "ses_f2133a14cffeSkcOg1pfugbYKl",
+      "action": "shell",
+      "resources": [
+        "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+      ],
+      "save": [
+        "node *"
+      ],
+      "source": {
+        "type": "tool",
+        "messageID": "msg_0decc5ecc001OU6xzSWexH5zy0",
+        "id": "call_session_probe"
+      }
+    },
+    "executions": 0,
+    "records": [
+      {
+        "hook": "evaluate",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "sessionID": "ses_f2133a14cffeSkcOg1pfugbYKl",
+          "agent": "build",
+          "action": "shell",
+          "resources": [
+            "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+          ],
+          "source": {
+            "type": "tool",
+            "messageID": "msg_0decc5ecc001OU6xzSWexH5zy0",
+            "id": "call_session_probe"
+          },
+          "effect": "ask"
+        }
+      },
+      {
+        "hook": "event",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "id": "evt_0decc5ee5002kl6ZnvQiSzvLuy",
+          "created": 1790444330725,
+          "type": "permission.asked",
+          "location": {
+            "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project"
+          },
+          "data": {
+            "id": "per_0decc5ee5001h1dHqE2dS1RZ42",
+            "sessionID": "ses_f2133a14cffeSkcOg1pfugbYKl",
+            "action": "shell",
+            "resources": [
+              "node -e \"require('node:fs').appendFileSync('permission-executed.txt','executed\\n')\""
+            ],
+            "save": [
+              "node *"
+            ],
+            "source": {
+              "type": "tool",
+              "messageID": "msg_0decc5ecc001OU6xzSWexH5zy0",
+              "id": "call_session_probe"
+            }
+          }
+        }
+      },
+      {
+        "hook": "event",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+        "event": {
+          "id": "evt_0decc5f4e001Prf3H16XgYgL4o",
+          "created": 1790444330830,
+          "type": "permission.replied",
+          "location": {
+            "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project"
+          },
+          "data": {
+            "sessionID": "ses_f2133a14cffeSkcOg1pfugbYKl",
+            "requestID": "per_0decc5ee5001h1dHqE2dS1RZ42",
+            "reply": "reject"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "mode": "deny",
+    "executions": 0,
+    "records": []
+  },
+  {
+    "mode": "fail",
+    "executions": 0,
+    "records": []
+  },
+  {
+    "mode": "interrupt",
+    "executions": 0,
+    "records": []
+  }
+]

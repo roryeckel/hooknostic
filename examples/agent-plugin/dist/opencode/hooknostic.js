@@ -4498,7 +4498,7 @@ var hooknosticConfigSchema = external_exports.object({
   }
   const projectAdapters = /* @__PURE__ */ new Set();
   for (const [name, target] of Object.entries(config.targets)) {
-    if (target.delivery !== "project")
+    if (config.project === void 0 || target.delivery !== "project")
       continue;
     const adapter = target.adapter ?? name;
     if (projectAdapters.has(adapter))
@@ -5231,6 +5231,8 @@ function decodeOpenCode(nativeEvent, invocation) {
       throw new OpenCodeDecodeError(`unmapped native callback "${native.hook}"`);
   }
 }
+var OPENCODE_V2_SHELL_SHAPES = { shell: { commandKey: "command", cwdKey: "workdir" } };
+var opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
 var POST_TIMEOUT_MS = 1e4;
 function withTimeout(promise) {
   promise.catch(() => void 0);

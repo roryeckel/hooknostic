@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_10"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "skill",
+    "input": {
+      "id": "native"
+    },
+    "kind": "other"
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "<skill_content name=\"hooknostic-native\">\n# Skill: hooknostic-native\n\nProbe content.\n\nBase directory for this skill: C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\.agents\\skills\\native\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>"
+    }
+  ]
+}

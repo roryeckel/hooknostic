@@ -226,6 +226,10 @@ export interface ShimEntryOptions {
 export interface HarnessAdapter {
   readonly id: string;
   readonly adapterVersion: string;
+  /** Select a complete implementation from the configured range, never PATH. */
+  resolveTarget?(target: TargetSpec): TargetAdapterResolution;
+  /** Independently maintained families; omitted for single-family adapters. */
+  readonly harnessFamilies?: readonly HarnessMetadata[];
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
   projectPaths?: readonly string[];
   projectComponents?(
@@ -353,3 +357,12 @@ export interface HarnessAdapter {
 }
 
 export type AdapterRegistry = Record<string, HarnessAdapter>;
+
+export interface TargetAdapterResolution {
+  adapter?: HarnessAdapter;
+  diagnostics: Diagnostic[];
+}
+
+export function resolveTargetAdapter(adapter: HarnessAdapter, target: TargetSpec): TargetAdapterResolution {
+  return adapter.resolveTarget?.(target) ?? { adapter, diagnostics: [] };
+}

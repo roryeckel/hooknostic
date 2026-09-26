@@ -10,7 +10,7 @@ import type {
   RuntimeBundle,
   TargetSpec,
 } from "@hooknostic/core";
-import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
+import { detectCommandVersion, isRangeFullyCovered, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
@@ -29,6 +29,10 @@ import { opencodeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 import { classifyOpenCodeTool, OPENCODE_SHELL_SHAPES, opencodeShellCodec } from "./toolmap.js";
+import { opencodeV2Harness } from "./v2/harness.js";
+import { opencodeV2Adapter } from "./v2/index.js";
+export { opencodeV2Harness } from "./v2/harness.js";
+export { opencodeV2CapabilityProfiles } from "./v2/profile.js";
 export { opencodeHarness } from "./harness.js";
 
 export { applyOpenCode, planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
@@ -86,7 +90,7 @@ export function opencodeShimEntrySource(options: {
   ].join("\n");
 }
 
-export function opencodeAdapter(): HarnessAdapter {
+export function opencodeV1Adapter(): HarnessAdapter {
   return {
     id: "opencode",
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
@@ -239,6 +243,47 @@ export function opencodeAdapter(): HarnessAdapter {
         return decodeOpenCode(nativeEvent, invocation);
       },
       apply: applyOpenCode,
+    },
+  };
+}
+
+export function opencodeAdapter(): HarnessAdapter {
+  const v1 = opencodeV1Adapter();
+  const v2 = opencodeV2Adapter(
+    () => ({ "@hooknostic/adapter-opencode/shim": resolveShimPath() }),
+    v1.validateArtifacts!,
+  );
+  const families = [v1, v2];
+  const resolveTarget: NonNullable<HarnessAdapter["resolveTarget"]> = (target) => {
+    let adapter: HarnessAdapter | undefined;
+    try {
+      adapter = families.find((family) => isRangeFullyCovered(target.version, family.supportedHarnessVersions()));
+    } catch {
+      /* Invalid semver is reported through the same HN203 result. */
+    }
+    return adapter
+      ? { adapter, diagnostics: [] }
+      : {
+          diagnostics: [
+            {
+              code: "HN203",
+              severity: "error",
+              target: target.id,
+              message: `OpenCode target range "${target.version}" must be covered by exactly one supported family.`,
+              remediation:
+                "Use a supported v1 or v2 range. To build both, configure two named targets with adapter: opencode and distinct output directories.",
+            },
+          ],
+        };
+  };
+  return {
+    ...v2,
+    harnessFamilies: [v1.harness, opencodeV2Harness],
+    resolveTarget,
+    supportedHarnessVersions: () => families.flatMap((f) => f.supportedHarnessVersions()),
+    capabilities(target) {
+      const selected = resolveTarget(target);
+      return selected.adapter?.capabilities(target) ?? { profilesUsed: [], diagnostics: selected.diagnostics };
     },
   };
 }

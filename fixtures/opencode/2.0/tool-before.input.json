@@ -1,0 +1,14 @@
+{
+  "hook": "execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-ttZTN2\\project",
+  "event": {
+    "tool": "shell",
+    "sessionID": "ses_f23cdab9fffeb00E0A4DGUtHaQ",
+    "agent": "build",
+    "messageID": "msg_0dc3255610011MGRb0RgZbjTIO",
+    "id": "call_playback",
+    "input": {
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
+    }
+  }
+}

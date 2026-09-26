@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "context",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f23cdab9fffeb00E0A4DGUtHaQ",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-ttZTN2\\project"
+  },
+  "correlation": {},
+  "event": "model.request.before"
+}

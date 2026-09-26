@@ -55,7 +55,7 @@ on:
   workflow_dispatch:
     inputs:
       harness:
-        description: "Harness filter (claude|codex|opencode); empty = all"
+        description: "Harness filter (claude|codex|opencode-v1|opencode-v2); empty = all"
         required: false
         default: ""
       version:
@@ -64,6 +64,10 @@ on:
         default: ""
       force_llm:
         description: "Run the paid LLM drift transport (LiteLLM sidecar + Ollama Cloud)"
+        required: false
+        default: "false"
+      dry_run:
+        description: "Rehearse verification and drift without writing PRs, issues, or validation records"
         required: false
         default: "false"
 
@@ -160,7 +164,7 @@ jobs:
         run: |
           case "${{ matrix.harness }}" in
             claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
-            opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs" ;;
+            opencode|opencode-v1|opencode-v2) node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}" ;;
             codex) : ;;
           esac
 
@@ -169,7 +173,7 @@ jobs:
 
       - name: Model-free playback against the newer build
         id: playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
@@ -233,7 +237,7 @@ jobs:
     # Run after a failed verify matrix leg too: each record leg gates itself
     # on its own uploaded outcome artifact, so a passing harness can still
     # advance its rolling validation record.
-    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' && inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -446,7 +450,7 @@ jobs:
     needs: [detect, verify]
     # `always()` lets this job run after a failed verify leg; the count guard
     # still skips it when detect produced no matrix entries.
-    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' && inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -504,7 +508,7 @@ jobs:
           Run: $LINK
 
           Runbook:
-          - [ ] Reproduce locally: \`HOOKNOSTIC_PLAYBACK=${{ matrix.harness }} HOOKNOSTIC_PLAYBACK_VERSION=${{ matrix.latest }} pnpm exec vitest run packages/cli/test/harness-playback.test.ts\` (bundle first — docs/testing.md)
+          - [ ] Reproduce locally: \`HOOKNOSTIC_PLAYBACK=${{ matrix.harness }} HOOKNOSTIC_PLAYBACK_VERSION=${{ matrix.latest }} pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts\` (bundle first — docs/testing.md)
           - [ ] If real harness drift: follow the harness-capture skill; fixtures and ranges extend only with captured evidence
           - [ ] If an adapter regression: fix, mutation-verify, let the next scheduled run close this issue
           - [ ] If install failure: check \`--ignore-scripts\` viability for this package (docs/harness-watch.md)
@@ -542,9 +546,9 @@ jobs:
         shell: bash
         run: |
           # No outcome artifact → verify leg never completed; drift would be
-          # noise. force_llm always runs the lane.
+          # noise. Explicit rehearsals and force_llm always run the lane.
           RUN=false
-          if [ "${{ inputs.force_llm }}" = "true" ]; then
+          if [ "${{ inputs.force_llm }}" = "true" ] || [ "${{ inputs.dry_run }}" = "true" ]; then
             RUN=true
           elif [ -f "watch-outcome-${{ matrix.harness }}.json" ]; then
             OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
@@ -675,7 +679,7 @@ jobs:
                 || npm install --global --ignore-scripts --no-fund --no-audit "$1@$2"
               case "$3" in
                 claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
-                opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs" ;;
+                opencode|opencode-v1|opencode-v2) node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}" ;;
                 codex) : ;;
               esac
               HOOKNOSTIC_PLAYBACK_VERSION="$2" \
@@ -729,7 +733,7 @@ jobs:
     # publishing is serialized (no duplicate/orphaned posts). always() lets it
     # run after skipped/failed legs, but a skipped/failed detect has an empty
     # count — the two guards below exclude the fork no-op and detect failure.
-    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' }}
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' && inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

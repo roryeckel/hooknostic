@@ -27,27 +27,22 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { harnessLaneId, harnessLanes } from "./harness-lanes.mjs";
 import { isMainModule } from "./is-main-module.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const adapters = {
-  claude: {
-    profileModule: "../packages/adapter-claude/src/profile.ts",
-    profileExport: "claudeCapabilityProfiles",
-    profilePath: "packages/adapter-claude/src/profile.ts",
-  },
-  codex: {
-    profileModule: "../packages/adapter-codex/src/profile.ts",
-    profileExport: "codexCapabilityProfiles",
-    profilePath: "packages/adapter-codex/src/profile.ts",
-  },
-  opencode: {
-    profileModule: "../packages/adapter-opencode/src/profile.ts",
-    profileExport: "opencodeCapabilityProfiles",
-    profilePath: "packages/adapter-opencode/src/profile.ts",
-  },
-};
+const adapters = Object.fromEntries(
+  Object.entries(harnessLanes).map(([id, lane]) => [
+    id,
+    {
+      profileModule: lane.module,
+      profileExport: lane.profileExport,
+      profilePath: lane.module.slice(3),
+      harnessExport: lane.harnessExport,
+    },
+  ]),
+);
 
 export const ROLLING_WHAT =
   "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified";
@@ -115,7 +110,7 @@ function fail(message, code) {
 async function main() {
   const { positional, date: dateArg } = parseArgs(process.argv.slice(2));
   const [harness, version] = positional;
-  const entry = adapters[harness];
+  const entry = adapters[harnessLaneId(harness)];
   if (entry === undefined || version === undefined) {
     fail(
       `usage: node --experimental-strip-types scripts/record-playback-validation.mjs <${Object.keys(adapters).join("|")}> <version> [--date YYYY-MM-DD]`,
@@ -150,9 +145,7 @@ async function main() {
 
   // Guard 2: baseline = max(referenceVersion, rolling record), nothing else.
   const harnessModule = await import(new URL(entry.profileModule.replace("profile.ts", "harness.ts"), import.meta.url));
-  const harnessExport = Object.values(harnessModule).find(
-    (v) => v !== null && typeof v === "object" && "referenceVersion" in v,
-  );
+  const harnessExport = harnessModule[entry.harnessExport];
   if (harnessExport === undefined) {
     fail(`${harness}: harness metadata not found`, 1);
   }

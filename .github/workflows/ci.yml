@@ -167,19 +167,23 @@ jobs:
   harness-playback:
     needs: renovate-ready
     if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
-    name: offline harness playback (${{ matrix.harness }})
-    runs-on: ubuntu-latest
+    name: offline harness playback (${{ matrix.harness }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
           - harness: claude
-            package: "@anthropic-ai/claude-code"
+            os: ubuntu-latest
           - harness: codex
-            package: "@openai/codex"
-          - harness: opencode
-            package: "opencode-ai"
+            os: ubuntu-latest
+          - harness: opencode-v1
+            os: ubuntu-latest
+          - harness: opencode-v2
+            os: ubuntu-latest
+          - harness: opencode-v2
+            os: windows-latest
     steps:
       - uses: actions/checkout@v7
 
@@ -199,15 +203,17 @@ jobs:
         run: |
           version="$(node --experimental-strip-types scripts/harness-playback-version.mjs '${{ matrix.harness }}')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          package="$(node --input-type=module -e 'import { harnessLanes } from "./scripts/harness-lanes.mjs"; console.log(harnessLanes[process.argv[1]].pkg)' '${{ matrix.harness }}')"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
 
       - name: Install captured harness version
-        run: npm install --global '${{ matrix.package }}@${{ steps.harness.outputs.version }}'
+        run: npm install --global '${{ steps.harness.outputs.package }}@${{ steps.harness.outputs.version }}'
 
       - name: Bundle compiler and dependencies
         run: pnpm run bundle
 
       - name: Run model-free playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           # Deliberately blank: the test routes model traffic to loopback.

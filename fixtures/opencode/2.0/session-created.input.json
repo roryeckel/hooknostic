@@ -1,0 +1,27 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-ttZTN2\\project",
+  "event": {
+    "id": "evt_0dc325501001r6hgXpBCJ2gdkc",
+    "created": 1790400681217,
+    "type": "session.created",
+    "durable": {
+      "aggregateID": "ses_f23cdab9fffeb00E0A4DGUtHaQ",
+      "seq": 0,
+      "version": 1
+    },
+    "location": {
+      "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-ttZTN2\\project"
+    },
+    "data": {
+      "sessionID": "ses_f23cdab9fffeb00E0A4DGUtHaQ",
+      "projectID": "716e02817150ae74860607e9167951255aea98d3",
+      "location": {
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-ttZTN2\\project"
+      },
+      "subpath": "",
+      "slug": "curious-garden",
+      "version": "2.0.17"
+    }
+  }
+}

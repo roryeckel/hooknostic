@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f210d8482ffepAdzgGoA7eXFvx",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-4095VY\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_1"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "subagent",
+    "input": {
+      "agent": "general",
+      "description": "Offline child result capture",
+      "prompt": "hooknostic-child-task: return the scripted child result."
+    },
+    "kind": "agent"
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "<subagent sessionID=\"ses_f210d82c3ffeGPQh58M1L50kC9\" state=\"completed\">\nhooknostic-child-result\n</subagent>"
+    }
+  ]
+}

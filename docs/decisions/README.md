@@ -32,6 +32,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0021 — OpenCode package skills are named for their plugin](0021-opencode-skill-names.md) | Why is my `status` skill called `my-plugin-status` on OpenCode? |
 | [0022 — Every shortfall has a class, a default, and an id to accept](0022-shortfall-policy.md) | Which build shortfalls fail by default, and how do I accept one I understand? |
 | [0023 — Consumers test hooks by dispatching portable events](0023-dispatch-portable-events.md) | How do I test what my hooks decide on each target without writing a harness's wire format? |
+| [0024 — OpenCode version families](0024-opencode-version-families.md) | How does one adapter target incompatible native implementations without conflating their evidence? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

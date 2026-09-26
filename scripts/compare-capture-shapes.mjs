@@ -128,6 +128,14 @@ export const OPENCODE_MAPPED_BUS_EVENTS = new Set([
  * Bash vs exec_command).
  */
 export function variantOf(harness, payload) {
+  if (harness === "opencode-v2") {
+    const hook = payload?.hook,
+      event = payload?.event;
+    if (hook === "event") return `event+${event?.type}`;
+    return event?.tool
+      ? `${hook}+${event.tool}${hook === "execute.after" && event.status === "error" ? "+error" : ""}`
+      : String(hook);
+  }
   if (harness === "claude" || harness === "codex") {
     const event = payload?.["hook_event_name"];
     const tool = payload?.["tool_name"];
@@ -228,9 +236,27 @@ export function shapeDiff(capturedShape, fixtureShape, path = "$") {
  * Returns {verdict, report}.
  */
 export function compareCaptures({ harness, captured, fixtures, expectedVariants = [] }) {
+  if (harness === "opencode-v1") harness = "opencode";
   const report = [];
   let busAppendix = [];
   let payloads = captured;
+  if (harness === "opencode-v2") {
+    const mapped = (payload) =>
+      payload?.hook === "event"
+        ? [
+            "session.created",
+            "session.execution.succeeded",
+            "session.execution.failed",
+            "session.execution.interrupted",
+            "session.compaction.ended",
+          ].includes(payload.event?.type)
+        : ["prompt", "context", "title", "generate", "compaction", "execute.before", "execute.after"].includes(
+            payload?.hook,
+          ) ||
+          (payload?.hook === "evaluate" && payload.event?.effect === "ask");
+    payloads = captured.filter(mapped);
+    busAppendix = captured.filter((payload) => !mapped(payload));
+  }
   if (harness === "opencode") {
     const filtered = filterOpenCodeBus(captured);
     payloads = filtered.compared;
@@ -290,7 +316,10 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   // hook stopped being emitted); with no tool capture at all, the drive
   // never exercised the exchange, so absence is not a drift claim.
   const isToolVariant = (variant) =>
-    variant.includes("tool") || variant.includes("PreToolUse") || variant.includes("PostToolUse");
+    variant.includes("tool") ||
+    variant.startsWith("execute.") ||
+    variant.includes("PreToolUse") ||
+    variant.includes("PostToolUse");
   const toolExchangeFired = [...capturedByVariant.keys()].some(isToolVariant);
   const toolExchangeMissing =
     !toolExchangeFired && expectedVariants.filter(isToolVariant).some((variant) => !capturedByVariant.has(variant));
@@ -328,7 +357,7 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   if (busAppendix.length > 0) {
     report.push("", "### Unmapped OpenCode bus events (diagnostics only)", "");
     for (const p of busAppendix) {
-      report.push(`- ${p?.input?.event?.type}`);
+      report.push(`- ${harness === "opencode-v2" ? variantOf(harness, p) : p?.input?.event?.type}`);
     }
   }
   const verdict =
@@ -360,6 +389,8 @@ const FIXTURE_DIRS = {
   claude: "fixtures/claude/2.1",
   codex: "fixtures/codex/0.148",
   opencode: "fixtures/opencode/1.18",
+  "opencode-v1": "fixtures/opencode/1.18",
+  "opencode-v2": "fixtures/opencode/2.0",
 };
 
 /**
@@ -370,6 +401,15 @@ const FIXTURE_DIRS = {
  * comparator as a module and needs the same expected set.
  */
 export const EXPECTED_VARIANTS = {
+  "opencode-v2": [
+    "event+session.created",
+    "prompt",
+    "context",
+    "title",
+    "execute.before+shell",
+    "execute.after+shell",
+    "event+session.execution.succeeded",
+  ],
   claude: ["SessionStart", "UserPromptSubmit", "PreToolUse+Bash", "PostToolUse+Bash", "Stop"],
   codex: ["SessionStart", "UserPromptSubmit", "PreToolUse+Bash", "PostToolUse+Bash", "Stop"],
   opencode: [
@@ -412,7 +452,7 @@ async function main() {
     harness: opts.harness,
     captured,
     fixtures,
-    expectedVariants: EXPECTED_VARIANTS[opts.harness] ?? [],
+    expectedVariants: EXPECTED_VARIANTS[opts.harness === "opencode-v1" ? "opencode" : opts.harness] ?? [],
   });
   process.stdout.write(`${report}\n`);
   process.exit(verdict === "clean" ? 0 : verdict === "drift" ? 4 : 5);

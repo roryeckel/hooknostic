@@ -1,0 +1,22 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+  "event": {
+    "id": "evt_0decc6026001DluiZFAnrY20IE",
+    "created": 1790444331046,
+    "type": "session.execution.failed",
+    "durable": {
+      "aggregateID": "ses_f21339fffffeHzGbVJINLsj80h",
+      "seq": 9,
+      "version": 1
+    },
+    "data": {
+      "sessionID": "ses_f21339fffffeHzGbVJINLsj80h",
+      "error": {
+        "type": "provider.invalid-request",
+        "message": "hooknostic-model-failure",
+        "status": 400
+      }
+    }
+  }
+}

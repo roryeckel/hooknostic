@@ -1,0 +1,17 @@
+{
+  "hook": "mcp.registry",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-qUpf0b\\project",
+  "event": {
+    "location": {
+      "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-qUpf0b\\project"
+    },
+    "data": [
+      {
+        "name": "hooknostic",
+        "status": {
+          "status": "connected"
+        }
+      }
+    ]
+  }
+}

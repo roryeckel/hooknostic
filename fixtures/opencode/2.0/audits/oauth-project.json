@@ -1,0 +1,502 @@
+{
+  "version": "2.0.17",
+  "date": "2026-09-26",
+  "remote": {
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "content-type": "application/json",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "218"
+        },
+        "body": {
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {
+              "elicitation": {
+                "form": {
+                  "applyDefaults": true
+                },
+                "url": {}
+              },
+              "roots": {}
+            },
+            "clientInfo": {
+              "name": "cli",
+              "version": "2.0.17"
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 0
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/oauth-protected-resource",
+        "headers": {
+          "mcp-protocol-version": "2025-11-25",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "accept": "*/*",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/oauth-authorization-server",
+        "headers": {
+          "accept": "application/json",
+          "mcp-protocol-version": "2025-11-25",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/http",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "content-type": "application/json",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "139"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 0,
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {
+              "name": "opencode"
+            }
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/oauth-protected-resource",
+        "headers": {
+          "mcp-protocol-version": "2025-11-25",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "accept": "*/*",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/oauth-authorization-server",
+        "headers": {
+          "accept": "application/json",
+          "mcp-protocol-version": "2025-11-25",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/register",
+        "headers": {
+          "content-type": "application/json",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "accept": "*/*",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "276"
+        },
+        "body": {
+          "redirect_uris": [
+            "http://127.0.0.1:65460/callback"
+          ],
+          "client_name": "opencode",
+          "client_uri": "https://opencode.ai",
+          "grant_types": [
+            "authorization_code",
+            "refresh_token"
+          ],
+          "response_types": [
+            "code"
+          ],
+          "token_endpoint_auth_method": "none",
+          "application_type": "native",
+          "scope": "mcp:tools"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/authorize?response_type=code&client_id=hooknostic-local-client&code_challenge=h9pJAHUFwRNM7w3A-vsxoM-puH3trSP9Q23d-b6-OjU&code_challenge_method=S256&redirect_uri=http%3A%2F%2F127.0.0.1%3A65460%2Fcallback&state=2lCbY1Bvx-DdXM2Yfw5u1gW4ZLUA8V6BAB81dMwh9F0&scope=mcp%3Atools&resource=http%3A%2F%2F127.0.0.1%3A65442%2Fhttp",
+        "headers": {
+          "host": "127.0.0.1:65442",
+          "connection": "keep-alive",
+          "accept": "*/*",
+          "accept-language": "*",
+          "sec-fetch-mode": "cors",
+          "user-agent": "node",
+          "accept-encoding": "gzip, deflate"
+        },
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/token",
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "252"
+        },
+        "body": {
+          "grant_type": "authorization_code",
+          "code": "hooknostic-local-code",
+          "code_verifier": "ELt4IjoqP1lUcNj4TAuX~y_Rgbm4.n3P_LCx2HEOV0J",
+          "redirect_uri": "http://127.0.0.1:65460/callback",
+          "resource": "http://127.0.0.1:65442/http",
+          "client_id": "hooknostic-local-client"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-initial-access",
+          "content-type": "application/json",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "218"
+        },
+        "body": {
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {
+              "elicitation": {
+                "form": {
+                  "applyDefaults": true
+                },
+                "url": {}
+              },
+              "roots": {}
+            },
+            "clientInfo": {
+              "name": "cli",
+              "version": "2.0.17"
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 0
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-initial-access",
+          "content-type": "application/json",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "54"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "notifications/initialized"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "text/event-stream",
+          "authorization": "Bearer hooknostic-initial-access",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-initial-access",
+          "content-type": "application/json",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "46"
+        },
+        "body": {
+          "method": "tools/list",
+          "jsonrpc": "2.0",
+          "id": 1
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-initial-access",
+          "content-type": "application/json",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "218"
+        },
+        "body": {
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {
+              "elicitation": {
+                "form": {
+                  "applyDefaults": true
+                },
+                "url": {}
+              },
+              "roots": {}
+            },
+            "clientInfo": {
+              "name": "cli",
+              "version": "2.0.17"
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 0
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/oauth-protected-resource",
+        "headers": {
+          "mcp-protocol-version": "2025-11-25",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "accept": "*/*",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "GET",
+        "path": "/.well-known/oauth-authorization-server",
+        "headers": {
+          "accept": "application/json",
+          "mcp-protocol-version": "2025-11-25",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/token",
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "144"
+        },
+        "body": {
+          "grant_type": "refresh_token",
+          "refresh_token": "hooknostic-local-refresh",
+          "resource": "http://127.0.0.1:65442/http",
+          "client_id": "hooknostic-local-client"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-refreshed-access",
+          "content-type": "application/json",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "218"
+        },
+        "body": {
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {
+              "elicitation": {
+                "form": {
+                  "applyDefaults": true
+                },
+                "url": {}
+              },
+              "roots": {}
+            },
+            "clientInfo": {
+              "name": "cli",
+              "version": "2.0.17"
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 0
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-refreshed-access",
+          "content-type": "application/json",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "54"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "notifications/initialized"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "text/event-stream",
+          "authorization": "Bearer hooknostic-refreshed-access",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd"
+        },
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-refreshed-access",
+          "content-type": "application/json",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "46"
+        },
+        "body": {
+          "method": "tools/list",
+          "jsonrpc": "2.0",
+          "id": 1
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/http?codemode=false",
+        "headers": {
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer hooknostic-refreshed-access",
+          "content-type": "application/json",
+          "mcp-protocol-version": "2024-11-05",
+          "x-hooknostic": "remote-expanded",
+          "connection": "keep-alive",
+          "user-agent": "opencode/latest/2.0.17/cli",
+          "host": "127.0.0.1:65442",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "content-length": "182"
+        },
+        "body": {
+          "method": "tools/call",
+          "params": {
+            "name": "hooknostic_echo",
+            "arguments": {},
+            "_meta": {
+              "ai.opencode/sessionID": "ses_f2110acfdffex8G7Yh1rDGTOos",
+              "progressToken": 2
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 2
+        }
+      }
+    ],
+    "errors": []
+  },
+  "server": {
+    "name": "http",
+    "status": {
+      "status": "needs_auth",
+      "error": "MCP server \"http://127.0.0.1:65442/http\" requires a login before it can register a client"
+    },
+    "integrationID": "mcp_f020c9859952c26d"
+  },
+  "status": {
+    "status": "complete",
+    "time": {
+      "created": 1790446620133,
+      "expires": 1790447220133
+    }
+  },
+  "modelReceivedOutput": true
+}

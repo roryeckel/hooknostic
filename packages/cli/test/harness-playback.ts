@@ -256,6 +256,7 @@ if (!tracePath) throw new Error("HOOKNOSTIC_PLAYBACK_TRACE is required");
 
 export default definePlugin({
   name: "harness-playback",
+  version: "0.0.0",
   hooks: [${definitions.join(",")}
   ],
 });
@@ -320,7 +321,7 @@ export async function buildPlaybackArtifact(
       async run() {},
     }),
   );
-  const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", hooks }));
+  const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", version: "0.0.0", hooks }));
   if (ir === undefined) {
     throw new Error(
       `${adapter.id}: could not build playback IR: ${diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`,
@@ -821,6 +822,22 @@ function responsesTurn(
       { type: "response.output_item.done", output_index: 0, item },
     );
   } else {
+    const text = action.text ?? "playback complete";
+    const item = { type: "message", role: "assistant", id: "msg_playback", status: "in_progress", content: [] };
+    const part = { type: "output_text", text, annotations: [] };
+    events.push(
+      { type: "response.output_item.added", output_index: 0, item },
+      {
+        type: "response.content_part.added",
+        item_id: item.id,
+        output_index: 0,
+        content_index: 0,
+        part: { ...part, text: "" },
+      },
+      { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
+      { type: "response.output_text.done", item_id: item.id, output_index: 0, content_index: 0, text },
+      { type: "response.content_part.done", item_id: item.id, output_index: 0, content_index: 0, part },
+    );
     events.push({
       type: "response.output_item.done",
       output_index: 0,

@@ -1,6 +1,6 @@
 import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
 import type { AdapterRegistry } from "@hooknostic/core";
-import { resolveAgentPluginProjection } from "@hooknostic/core";
+import { resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
 import type { CapabilityId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, isCapabilityId } from "@hooknostic/sdk";
 
@@ -31,7 +31,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     else for (const message of errors) options.io.stderr(message);
     return 2;
   };
-  const adapter = Object.hasOwn(options.registry, options.target) ? options.registry[options.target] : undefined;
+  let adapter = Object.hasOwn(options.registry, options.target) ? options.registry[options.target] : undefined;
   if (!adapter) {
     errors.push(`unknown target "${options.target}"; available: ${Object.keys(options.registry).join(", ")}`);
     return failure();
@@ -60,6 +60,17 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   // --version this command should answer for the range users are told to
   // target, which can be deliberately narrower than the validated union.
   const version = options.version ?? adapter.harness.recommendedRange;
+  const selected = resolveTargetAdapter(adapter, {
+    id: options.target,
+    version,
+    delivery: options.delivery ?? "project",
+    output: ".",
+  });
+  if (!selected.adapter) {
+    errors.push(...selected.diagnostics.map((d) => `${d.code}: ${d.message}`));
+    return failure();
+  }
+  adapter = selected.adapter;
   const resolved = adapter.capabilities({
     id: adapter.id,
     version,

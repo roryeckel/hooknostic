@@ -38,6 +38,7 @@ export async function projectComponents(
   output: string,
   _config: string,
   options: ProjectComponentOptions,
+  emitMcp?: (body: string) => string,
 ): Promise<ProjectIntegration> {
   // OpenCode discovers .agents/skills natively. Copy the loader's filtered
   // inventory there instead of naming its unfiltered source directory through
@@ -85,7 +86,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const declarations = JSON.parse(${JSON.stringify(JSON.stringify(declarations))});
 ${directEnvironmentResolution}
-export default async () => ({ config(config) {
+${emitMcp ? "const configure = (config) => {" : "export default async () => ({ config(config) {"}
   const mcp = { ...(config.mcp ?? {}) };
   for (const [name, server] of declarations) {
     const value = server.type === "local" ? { ...server,
@@ -95,9 +96,12 @@ export default async () => ({ config(config) {
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
-} });
+${emitMcp ? "};" : "} });"}
 `;
-    result.files.push({ path: ".opencode/plugins/hooknostic-components.js", contents: module });
+    result.files.push({
+      path: ".opencode/plugins/hooknostic-components.js",
+      contents: emitMcp ? emitMcp(module) : module,
+    });
     result.absent = declarations.flatMap(([name]) =>
       ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["mcp", name] })),
     );

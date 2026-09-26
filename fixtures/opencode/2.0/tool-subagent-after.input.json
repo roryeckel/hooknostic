@@ -1,0 +1,34 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-4095VY\\project",
+  "event": {
+    "tool": "subagent",
+    "sessionID": "ses_f210d8482ffepAdzgGoA7eXFvx",
+    "agent": "build",
+    "messageID": "msg_0def27c870016Az4M5FGl68t4z",
+    "id": "call_probe_1",
+    "input": {
+      "agent": "general",
+      "description": "Offline child result capture",
+      "prompt": "hooknostic-child-task: return the scripted child result."
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "sessionID": "ses_f210d82c3ffeGPQh58M1L50kC9",
+        "status": "completed",
+        "output": "hooknostic-child-result"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "<subagent sessionID=\"ses_f210d82c3ffeGPQh58M1L50kC9\" state=\"completed\">\nhooknostic-child-result\n</subagent>"
+        }
+      ],
+      "metadata": {
+        "sessionID": "ses_f210d82c3ffeGPQh58M1L50kC9",
+        "status": "completed"
+      }
+    }
+  }
+}

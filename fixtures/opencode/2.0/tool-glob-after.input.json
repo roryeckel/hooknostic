@@ -1,0 +1,34 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "glob",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab39f0011jKAATygLH27g9",
+    "id": "call_probe_4",
+    "input": {
+      "pattern": "probe.txt",
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
+    },
+    "status": "completed",
+    "result": {
+      "output": [
+        {
+          "path": "probe.txt",
+          "type": "file"
+        }
+      ],
+      "content": [
+        {
+          "type": "text",
+          "text": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\probe.txt"
+        }
+      ],
+      "metadata": {
+        "count": 1,
+        "truncated": false
+      }
+    }
+  }
+}

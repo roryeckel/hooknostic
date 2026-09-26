@@ -1,0 +1,19 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-yhA8lk\\project",
+  "event": {
+    "tool": "read",
+    "sessionID": "ses_f211983ecffeJEkZgTbcZuydXb",
+    "agent": "build",
+    "messageID": "msg_0dee67db4001wKEElOqm3tOEoX",
+    "id": "call_probe_1",
+    "input": {
+      "path": "definitely-missing-hooknostic.txt"
+    },
+    "status": "error",
+    "error": {
+      "_tag": "Tool.Error",
+      "message": "File not found: definitely-missing-hooknostic.txt"
+    }
+  }
+}

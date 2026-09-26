@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f211983ecffeJEkZgTbcZuydXb",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-yhA8lk\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_1"
+  },
+  "event": "tool.error",
+  "tool": {
+    "nativeName": "read",
+    "input": {
+      "path": "definitely-missing-hooknostic.txt"
+    },
+    "kind": "file.read"
+  },
+  "error": {
+    "message": "File not found: definitely-missing-hooknostic.txt"
+  }
+}

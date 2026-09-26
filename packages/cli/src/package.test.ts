@@ -8,6 +8,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { opencodeV2Harness } from "@hooknostic/adapter-opencode";
+
 const ROOT_VERSION = (
   JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
     version: string;
@@ -184,8 +186,23 @@ describe("simulated registry install", () => {
       expect(installedAgentPlugin.loadAgentPlugin).toBeTypeOf("function");
 
       await mkdir(join(project, "src"), { recursive: true });
-      await cp(join(REPO, "examples/basic/hooknostic.config.ts"), join(project, "hooknostic.config.ts"));
-      await cp(join(REPO, "examples/basic/src/hooks.ts"), join(project, "src/hooks.ts"));
+      const configSource = await readFile(join(REPO, "examples/basic/hooknostic.config.ts"), "utf8");
+      await writeFile(
+        join(project, "hooknostic.config.ts"),
+        configSource.replace(
+          "targets: {",
+          `targets: {
+        modern: { adapter: "opencode", version: ${JSON.stringify(opencodeV2Harness.recommendedRange)}, delivery: "project", output: "./dist/modern", compatibility: { minimum: "approximate", onBelowMinimum: "warn" } },`,
+        ),
+      );
+      const hookSource = await readFile(join(REPO, "examples/basic/src/hooks.ts"), "utf8");
+      await writeFile(
+        join(project, "src/hooks.ts"),
+        hookSource.replace(
+          'id: "observe-session-end",',
+          'id: "observe-session-end", targets: { exclude: ["modern"] },',
+        ),
+      );
       await writeFile(
         join(project, "package.json"),
         JSON.stringify(
@@ -217,13 +234,14 @@ describe("simulated registry install", () => {
       const report = JSON.parse(run.stdout) as {
         targets: Record<string, { status: string; requestedVersion: string }>;
       };
-      expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode"]);
+      expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "modern", "opencode"]);
       for (const target of Object.values(report.targets)) expect(target.status).toBe("success");
 
       for (const artifact of [
         "dist/claude/runtime/hooknostic.mjs",
         "dist/codex/.codex/hooknostic/hooknostic.mjs",
         "dist/opencode/.opencode/plugins/hooknostic.js",
+        "dist/modern/.opencode/plugins/hooknostic.js",
       ]) {
         const code = await readFile(join(project, artifact), "utf8");
         // Self-contained: no bare workspace specifier survives bundling…
@@ -253,6 +271,21 @@ describe("simulated registry install", () => {
         { cwd: project, encoding: "utf8", stdio: "pipe", timeout: 60_000 },
       );
       expect(load.status, `stdout:\n${load.stdout}\nstderr:\n${load.stderr}`).toBe(0);
+
+      const modernArtifact = pathToFileURL(join(project, "dist/modern/.opencode/plugins/hooknostic.js")).href;
+      const modernLoad = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+        const { default: plugin } = await import(${JSON.stringify(modernArtifact)});
+        if (typeof plugin.setup !== "function" || typeof plugin.id !== "string") throw new Error("missing v2 definition");
+      `,
+        ],
+        { cwd: project, encoding: "utf8", timeout: 60000 },
+      );
+      expect(modernLoad.status, modernLoad.stderr).toBe(0);
 
       // The installed compiler must resolve its own launcher dependencies;
       // the projected launcher must then run with no node_modules beside it.

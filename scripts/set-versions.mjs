@@ -5,7 +5,7 @@
 //   node scripts/set-versions.mjs 0.2.0          # rewrite
 //   node scripts/set-versions.mjs --check 0.2.0  # assert, change nothing
 //
-// Rewrites: the root and every packages/*/package.json "version", the three
+// Rewrites: the root and every packages/*/package.json "version", all
 // inlined adapterVersion literals, and HOOKNOSTIC_VERSION in core/build.ts.
 // Never touches examples/ (their versions are example content, not release
 // versions) or workspace:* specifiers (pnpm rewrites those at pack time).
@@ -65,6 +65,7 @@ const sourceCarriers = [
   ["packages/adapter-claude/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-codex/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-opencode/src/index.ts", /(adapterVersion: ")[^"]+(")/],
+  ["packages/adapter-opencode/src/v2/index.ts", /(adapterVersion: ")[^"]+(")/],
 ];
 for (const [rel, pattern] of sourceCarriers) {
   const path = resolve(ROOT, rel);

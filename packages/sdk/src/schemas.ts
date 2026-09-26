@@ -240,7 +240,7 @@ export const hooknosticConfigSchema = z
     }
     const projectAdapters = new Set<string>();
     for (const [name, target] of Object.entries(config.targets)) {
-      if (target.delivery !== "project") continue;
+      if (config.project === undefined || target.delivery !== "project") continue;
       const adapter = target.adapter ?? name;
       if (projectAdapters.has(adapter))
         context.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate project delivery for adapter ${adapter}` });

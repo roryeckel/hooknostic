@@ -22,6 +22,18 @@ const allowed = new Map(
     adapter.id,
     new Set([
       adapter.harness.recommendedRange,
+      ...(adapter.harnessFamilies ?? []).flatMap((harness) => {
+        const selected = adapter.resolveTarget?.({
+          id: adapter.id,
+          version: harness.recommendedRange,
+          delivery: "package",
+          output: ".",
+        }).adapter;
+        return [
+          harness.recommendedRange,
+          ...(selected?.agentPluginProjector?.profiles ?? []).map((profile) => profile.range),
+        ];
+      }),
       ...adapter.supportedHarnessVersions(),
       // Projector profiles are validated ranges too, and they can be narrower
       // than the hook profile: Codex delivers plugin hooks only from 0.153,

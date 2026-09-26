@@ -18,7 +18,15 @@ const { defaultAdapterRegistry, resolveAgentPluginProjection } = await import(
 );
 
 const registry = defaultAdapterRegistry();
-const adapters = Object.values(registry);
+const adapters = Object.values(registry).flatMap((adapter) =>
+  adapter.harnessFamilies
+    ? adapter.harnessFamilies.map(
+        (harness) =>
+          adapter.resolveTarget({ id: adapter.id, version: harness.recommendedRange, delivery: "project", output: "." })
+            .adapter,
+      )
+    : [adapter],
+);
 
 // --- docs/harness-support.md -------------------------------------------------
 
@@ -30,6 +38,7 @@ const lines = [
   "The single source for these facts is each adapter's `harness` metadata and",
   "capability profiles (`packages/adapter-*/src/{harness,profile}.ts`). The",
   "contract suite in `@hooknostic/testkit` audits every row.",
+  "See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.",
   "",
   "> [!WARNING]",
   "> **macOS is untested.** Every record below was established on Windows or Linux.",

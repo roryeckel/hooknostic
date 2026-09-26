@@ -4,7 +4,15 @@ import { delimiter, resolve } from "node:path";
 import semver from "semver";
 
 import type { AdapterRegistry, McpServerCommand } from "@hooknostic/core";
-import { buildProject, loadConfig, mcpAmbientCommands, type ProjectCommandResult, runProject } from "@hooknostic/core";
+import {
+  buildProject,
+  loadConfig,
+  mcpAmbientCommands,
+  type ProjectCommandResult,
+  resolveTargetAdapter,
+  runProject,
+  targetSpecFromConfig,
+} from "@hooknostic/core";
 
 import type { CommandIO } from "./check.js";
 
@@ -107,8 +115,15 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     : undefined;
   if (loaded) {
     if (loaded.config) {
-      const selected = new Set(Object.entries(loaded.config.targets).map(([name, target]) => target.adapter ?? name));
-      adapters = adapters.filter((adapter) => selected.has(adapter.id));
+      const selected = Object.entries(loaded.config.targets).flatMap(([name, target]) => {
+        const registered = options.registry[target.adapter ?? name];
+        if (!registered) return [];
+        const adapter = resolveTargetAdapter(registered, targetSpecFromConfig(name, target)).adapter;
+        return adapter ? [{ ...adapter, ...(registered.detect ? { detect: registered.detect } : {}) }] : [];
+      });
+      adapters = [
+        ...new Map(selected.map((adapter) => [`${adapter.id}:${adapter.harness.referenceVersion}`, adapter])).values(),
+      ];
     }
   }
   for (const adapter of adapters) {

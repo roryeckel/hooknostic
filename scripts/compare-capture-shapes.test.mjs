@@ -74,6 +74,12 @@ describe("shapeOf", () => {
 // ---------------------------------------------------------------------------
 
 describe("variantOf", () => {
+  it("separates v2 typed tool failures from successful output shapes", () => {
+    const fixture = (name) =>
+      JSON.parse(readFileSync(new URL(`../fixtures/opencode/2.0/${name}.input.json`, import.meta.url), "utf8"));
+    expect(variantOf("opencode-v2", fixture("tool-read-error"))).toBe("execute.after+read+error");
+    expect(variantOf("opencode-v2", fixture("tool-read-after"))).toBe("execute.after+read");
+  });
   it("discriminates claude/codex by event + tool", () => {
     expect(
       variantOf(
@@ -393,5 +399,32 @@ describe("shapeDiff", () => {
   });
   it("returns empty for identical shapes", () => {
     expect(shapeDiff({ a: ["string"] }, { a: ["string"] })).toEqual([]);
+  });
+});
+
+describe("OpenCode v2 drift", () => {
+  it.each([
+    "generate",
+    "compaction",
+    "evaluate",
+    "session.execution.failed",
+    "session.execution.interrupted",
+    "session.compaction.ended",
+  ])("compares newly supported session route %s", (name) => {
+    const fixtures = readFixtureInputs("opencode/2.0");
+    const source = fixtures.find((row) => row.hook === name || row.event.type === name);
+    expect(source).toBeDefined();
+    const changed = JSON.parse(JSON.stringify(source));
+    changed.event.unexpected = true;
+    expect(compareCaptures({ harness: "opencode-v2", fixtures, captured: [...fixtures, changed] }).verdict).toBe(
+      "drift",
+    );
+  });
+  it("compares the v2 envelope and reports an unfamiliar tool variant", () => {
+    const fixtures = readFixtureInputs("opencode/2.0");
+    expect(compareCaptures({ harness: "opencode-v2", fixtures, captured: fixtures }).verdict).toBe("clean");
+    const tool = JSON.parse(JSON.stringify(fixtures.find((row) => row.hook === "execute.before")));
+    tool.event.tool = "unfamiliar";
+    expect(compareCaptures({ harness: "opencode-v2", fixtures, captured: [...fixtures, tool] }).verdict).toBe("drift");
   });
 });

@@ -18,6 +18,14 @@ function withShippedShim(adapter: HarnessAdapter): HarnessAdapter {
   if (!existsSync(shipped)) return adapter;
   return {
     ...adapter,
+    ...(adapter.resolveTarget
+      ? {
+          resolveTarget: (target: Parameters<NonNullable<HarnessAdapter["resolveTarget"]>>[0]) => {
+            const result = adapter.resolveTarget!(target);
+            return { ...result, ...(result.adapter ? { adapter: withShippedShim(result.adapter) } : {}) };
+          },
+        }
+      : {}),
     shimAliases: () => ({
       ...adapter.shimAliases?.(),
       [`@hooknostic/adapter-${adapter.id}/shim`]: shipped,

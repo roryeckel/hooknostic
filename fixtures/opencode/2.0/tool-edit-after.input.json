@@ -1,0 +1,48 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "edit",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab37f001Kanmbgt56beUkN",
+    "id": "call_probe_3",
+    "input": {
+      "path": "probe.txt",
+      "oldString": "hooknostic-before-edit",
+      "newString": "hooknostic-after-edit"
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "files": [
+          {
+            "file": "probe.txt",
+            "patch": "Index: probe.txt\n===================================================================\n--- probe.txt\n+++ probe.txt\n@@ -1,1 +1,1 @@\n-hooknostic-before-edit\n\\ No newline at end of file\n+hooknostic-after-edit\n\\ No newline at end of file\n",
+            "additions": 1,
+            "deletions": 1,
+            "status": "modified"
+          }
+        ],
+        "replacements": 1
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Edited probe.txt (1 replacement)"
+        }
+      ],
+      "metadata": {
+        "files": [
+          {
+            "file": "probe.txt",
+            "patch": "Index: probe.txt\n===================================================================\n--- probe.txt\n+++ probe.txt\n@@ -1,1 +1,1 @@\n-hooknostic-before-edit\n\\ No newline at end of file\n+hooknostic-after-edit\n\\ No newline at end of file\n",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 1
+          }
+        ]
+      }
+    }
+  }
+}

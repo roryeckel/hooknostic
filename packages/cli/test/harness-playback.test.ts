@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
 import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
-import { opencodeAgentPluginProjector } from "@hooknostic/adapter-opencode";
+import { opencodeAgentPluginProjector, opencodeV1Adapter } from "@hooknostic/adapter-opencode";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
@@ -33,7 +33,12 @@ import {
 } from "./harness-playback.js";
 
 const selected = process.env["HOOKNOSTIC_PLAYBACK"] ?? "";
-const adapter = defaultAdapterRegistry()[selected];
+const adapter =
+  selected === "opencode" || selected === "opencode-v1"
+    ? opencodeV1Adapter()
+    : selected === "opencode-v2"
+      ? undefined
+      : defaultAdapterRegistry()[selected];
 const tempDirs: string[] = [];
 
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
@@ -140,7 +145,7 @@ async function startProjectionMcpTransports(): Promise<{
   };
 }
 
-if (selected !== "" && adapter === undefined) {
+if (selected !== "" && selected !== "opencode-v2" && adapter === undefined) {
   throw new Error(`unknown HOOKNOSTIC_PLAYBACK harness ${JSON.stringify(selected)}`);
 }
 

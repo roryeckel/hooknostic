@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-26",
+  "platform": "Windows",
+  "v2Version": "2.0.17",
+  "v1Version": "1.18.18",
+  "checks": [
+    { "command": "pnpm lint", "exitCode": 0 },
+    { "command": "pnpm format:check", "exitCode": 0 },
+    { "command": "pnpm build", "exitCode": 0 },
+    { "command": "pnpm test", "exitCode": 0, "passed": 1408, "skipped": 69 },
+    { "command": "pnpm build:examples", "exitCode": 0 },
+    { "command": "node scripts/generate-harness-support.mjs", "exitCode": 0 },
+    { "command": "node scripts/check-version-literals.mjs", "exitCode": 0 },
+    {
+      "command": "HOOKNOSTIC_PLAYBACK=opencode-v1 pnpm exec vitest run packages/cli/test/harness-playback.test.ts",
+      "exitCode": 0,
+      "passed": 24,
+      "skipped": 14
+    },
+    {
+      "command": "HOOKNOSTIC_PLAYBACK=opencode-v2 pnpm exec vitest run packages/cli/test/opencode-v2-playback.test.ts",
+      "exitCode": 0,
+      "passed": 26
+    }
+  ],
+  "mutations": {
+    "audit-error-decode": { "testExitCode": 1 },
+    "audit-error-registration": { "testExitCode": 1 },
+    "audit-result": { "testExitCode": 1 },
+    "audit-provider": { "testExitCode": 1 },
+    "audit-responses-stream": { "testExitCode": 1 },
+    "audit-subagent": { "testExitCode": 1 },
+    "audit-notifications": { "testExitCode": 1 },
+    "audit-oauth-refresh": { "testExitCode": 1 },
+    "audit-error-drift": { "testExitCode": 1 }
+  },
+  "notes": [
+    "All mutants were restored byte-for-byte. The Responses mutant reinstates the original incomplete stream, rather than deleting only a redundant delta event.",
+    "The first full test run exited 1 because the new evidence directory lacked Git intent-to-add entries. The complete rerun passed after registering the new files.",
+    "Playback uses isolated installations and loopback services. No live model smoke or real-account OAuth was run.",
+    "Hosted Linux playback was not executed on this Windows workstation. The expanded v2 cases are included in the existing Windows/Linux automation lane."
+  ]
+}

@@ -10,6 +10,8 @@ import type { OpenCodeNativeEvent } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { opencodeShellCodec } from "./toolmap.js";
 
+export { setupOpenCodeV2 } from "./v2/shim.js";
+
 export interface OpenCodeShimOptions {
   targetId?: string;
   capabilities: CapabilityLevels;
