@@ -18,9 +18,9 @@ hooks are outside the standard's v1 portable component set.
 
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
-TypeScript hooks ─────────┼─ check / build ──┼─ Codex plugin       → marketplace
-Direct skills / MCP ──────┘                 └─ OpenCode package or project artifact
-                                   sync ───── native repository wiring
+TypeScript hooks ──────────┼─ check / build ─├─ Codex plugin       → marketplace
+Direct skills / MCP ───────┘                 └─ OpenCode package or project artifact
+                                    sync ─────  native repository wiring
 ```
 
 The same source can contain hooks, skills, and MCP together, or only the components you
