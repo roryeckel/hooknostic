@@ -42,6 +42,20 @@ export interface HooknosticExtension {
 
 type PiHandler = (event: unknown, ctx: unknown) => Promise<unknown> | unknown;
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isMutablePlainRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    isPlainRecord(value) &&
+    Object.isExtensible(value) &&
+    Reflect.ownKeys(value).every((key) => Object.getOwnPropertyDescriptor(value, key)?.configurable === true)
+  );
+}
+
 /**
  * Build the pi event subscriptions for a portable plugin. pi imports the
  * extension module in-process and calls the default factory with the
@@ -82,6 +96,16 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: piShellCodec,
+      validateEffect(effect) {
+        if (effect.kind !== "replaceInput") return undefined;
+        if (!isMutablePlainRecord(native.event["input"])) {
+          return "pi cannot apply a rewrite because the live tool input is not a mutable plain object";
+        }
+        if (!isPlainRecord(effect.input)) {
+          return "pi cannot apply a replacement that is not a plain object";
+        }
+        return undefined;
+      },
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     const application = planPiApplication(dispatchResult);
@@ -104,25 +128,18 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
     if (application.inputReplacement !== undefined) {
       // pi executes the live `event.input` after the handler returns and
       // performs no re-validation (0.84.4 type docs; verified by effect:
-      // .capture/pi). Replace its properties in place — reassignment is not
-      // an established channel.
+      // .capture/pi). The dispatcher has already rejected payloads that cannot
+      // use this channel; reassignment is not an established channel.
       const existing = piEvent["input"];
       const replacement = application.inputReplacement;
-      if (
-        existing !== null &&
-        typeof existing === "object" &&
-        replacement !== null &&
-        typeof replacement === "object" &&
-        !Array.isArray(existing)
-      ) {
-        const replacementSnapshot = { ...(replacement as Record<string, unknown>) };
-        for (const key of Object.keys(existing as Record<string, unknown>)) {
-          delete (existing as Record<string, unknown>)[key];
-        }
-        Object.defineProperties(existing, Object.getOwnPropertyDescriptors(replacementSnapshot));
-      } else {
-        piEvent["input"] = replacement;
+      if (!isMutablePlainRecord(existing) || !isPlainRecord(replacement)) {
+        throw new Error("pi input replacement escaped dispatch validation");
       }
+      const replacementSnapshot = { ...replacement };
+      for (const key of Reflect.ownKeys(existing)) {
+        delete existing[key as keyof typeof existing];
+      }
+      Object.defineProperties(existing, Object.getOwnPropertyDescriptors(replacementSnapshot));
     }
     if (application.contextMessages !== undefined) {
       // pi honors the RETURN value here (unlike tool_call, whose documented

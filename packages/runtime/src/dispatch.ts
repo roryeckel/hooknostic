@@ -52,6 +52,13 @@ export interface DispatchOptions {
    * raw `replaceInput` drops `tool.shell` (absent, never stale).
    */
   shellCodec?: ShellCodec;
+  /**
+   * Target-specific application check after portable validation and shell
+   * lowering, before an effect changes the canonical event. A returned reason
+   * is an HN401 failure governed by onHookError. updateShell reaches this
+   * check as its lowered replaceInput effect.
+   */
+  validateEffect?: (effect: Effect, event: HookEvent) => string | undefined;
   /** The executing artifact's Agent Plugin package, surfaced as `ctx.plugin` (ADR-0020). */
   plugin?: PluginContext;
 }
@@ -335,6 +342,31 @@ export async function dispatch(
               `"${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has ` +
               `not captured; guard with event.tool.shell !== undefined, and use ` +
               `replaceInput for uncaptured shapes.`,
+          },
+          capabilities,
+        );
+        if (terminal) break;
+        continue;
+      }
+    }
+
+    if (options.validateEffect !== undefined) {
+      const nativeEffect: Effect =
+        effect.kind === "updateShell" ? { kind: "replaceInput", input: loweredShellInput } : effect;
+      let rejection: string | undefined;
+      try {
+        rejection = options.validateEffect(nativeEffect, event);
+      } catch (error) {
+        rejection = `target validation failed: ${errorMessage(error)}`;
+      }
+      if (rejection !== undefined) {
+        const terminal = failDispatch(
+          hook.id,
+          {
+            hookId: hook.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook.id}" returned "${effect.kind}" that target "${options.targetId}" cannot apply: ${rejection}`,
           },
           capabilities,
         );

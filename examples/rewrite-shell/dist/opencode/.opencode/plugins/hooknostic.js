@@ -4930,6 +4930,29 @@ async function dispatch(hooks, event, options) {
         continue;
       }
     }
+    if (options.validateEffect !== void 0) {
+      const nativeEffect = effect.kind === "updateShell" ? { kind: "replaceInput", input: loweredShellInput } : effect;
+      let rejection;
+      try {
+        rejection = options.validateEffect(nativeEffect, event);
+      } catch (error) {
+        rejection = `target validation failed: ${errorMessage(error)}`;
+      }
+      if (rejection !== void 0) {
+        const terminal = failDispatch(
+          hook2.id,
+          {
+            hookId: hook2.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook2.id}" returned "${effect.kind}" that target "${options.targetId}" cannot apply: ${rejection}`
+          },
+          capabilities
+        );
+        if (terminal) break;
+        continue;
+      }
+    }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);

@@ -39,11 +39,11 @@ interface ToolCallShape {
  * must receive an isolated snapshot so direct mutations cannot bypass the
  * dispatcher's validated `replaceInput` effects.
  */
-function snapshotPiInput(input: unknown): unknown {
+function snapshotPiValue(input: unknown, label: string): unknown {
   try {
     return structuredClone(input);
   } catch {
-    throw new PiDecodeError("tool_call input cannot be cloned");
+    throw new PiDecodeError(`${label} cannot be cloned`);
   }
 }
 
@@ -51,7 +51,7 @@ function snapshotPiRaw(native: PiNativeEvent): PiNativeEvent {
   try {
     return structuredClone(native);
   } catch {
-    throw new PiDecodeError("tool_call event cannot be cloned");
+    throw new PiDecodeError("pi event cannot be cloned");
   }
 }
 
@@ -119,7 +119,7 @@ export function decodePi(nativeEvent: unknown, invocation: InvocationContext): H
     }
     case "context": {
       // Per-LLM-call boundary: the message array the call will use.
-      return { ...base, event: "model.request.before" };
+      return { ...base, raw: snapshotPiRaw(native), event: "model.request.before" };
     }
     case "tool_call": {
       if (typeof toolCall.toolName !== "string") {
@@ -132,28 +132,35 @@ export function decodePi(nativeEvent: unknown, invocation: InvocationContext): H
         ...withToolCallId(base),
         raw: snapshotPiRaw(native),
         event: "tool.before",
-        tool: classifyPiTool(toolCall.toolName, snapshotPiInput(toolCall.input)),
+        tool: classifyPiTool(toolCall.toolName, snapshotPiValue(toolCall.input, "tool_call input")),
       };
     }
     case "tool_result": {
       if (typeof toolCall.toolName !== "string") {
         throw new PiDecodeError("tool_result has no toolName");
       }
+      // pi's result content and input can still share references with the
+      // agent. Raw and normalized views must not let a no-effect hook mutate
+      // either those live values or each other.
+      const raw = snapshotPiRaw(native);
+      const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
       if (isError) {
         return {
           ...withToolCallId(base),
+          raw,
           event: "tool.error",
-          tool: classifyPiTool(toolCall.toolName, toolCall.input),
+          tool: classifyPiTool(toolCall.toolName, input),
           error: {},
         };
       }
       return {
         ...withToolCallId(base),
+        raw,
         event: "tool.after",
-        tool: classifyPiTool(toolCall.toolName, toolCall.input),
-        output,
+        tool: classifyPiTool(toolCall.toolName, input),
+        output: snapshotPiValue(output, "tool_result content"),
       };
     }
     case "session_before_compact": {

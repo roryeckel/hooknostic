@@ -115,6 +115,125 @@ describe("createHooknosticExtension", () => {
     expect(liveInput).toEqual({ command: "pnpm test" });
   });
 
+  it.each([null, "not an argument object", ["not", "an", "object"]])(
+    "rejects an input replacement pi cannot apply in place: %j",
+    async (replacement) => {
+      const pi = fakePi();
+      const seen: unknown[] = [];
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        createHooknosticExtension(
+          pluginWith([
+            hook("tool.before", {
+              id: "invalid",
+              capabilities: { "tool.before.input.replace": "required" },
+              async run() {
+                return { kind: "replaceInput", input: replacement };
+              },
+            }),
+            hook("tool.before", {
+              id: "observe",
+              async run(event) {
+                seen.push(structuredClone(event.tool.input));
+              },
+            }),
+          ]),
+          { ...INVOCATION, capabilities: LEVELS },
+        )(pi);
+        const input = { command: "original" };
+        const payload = { type: "tool_call", toolName: "bash", toolCallId: "c1", input };
+        expect(await fire(pi, "tool_call", payload)).toBeUndefined();
+        expect(payload.input).toBe(input);
+        expect(input).toEqual({ command: "original" });
+        expect(seen).toEqual([{ command: "original" }]);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("HN401"));
+      } finally {
+        error.mockRestore();
+      }
+    },
+  );
+
+  it("blocks under onHookError: block when pi cannot apply a replacement", async () => {
+    const pi = fakePi();
+    const input = { command: "original" };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      createHooknosticExtension(
+        pluginWith([
+          hook("tool.before", {
+            id: "invalid",
+            capabilities: { "tool.before.input.replace": "required" },
+            async run() {
+              return { kind: "replaceInput", input: null };
+            },
+          }),
+        ]),
+        { ...INVOCATION, capabilities: LEVELS, policy: { onHookError: "block" } },
+      )(pi);
+      expect(await fire(pi, "tool_call", { type: "tool_call", toolName: "bash", input })).toEqual({
+        block: true,
+        reason: expect.stringContaining("cannot apply"),
+      });
+      expect(input).toEqual({ command: "original" });
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("HN401"));
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("applies a captured updateShell rewrite through the same live input object", async () => {
+    const pi = fakePi();
+    createHooknosticExtension(
+      pluginWith([
+        hook("tool.before", {
+          id: "rewrite",
+          capabilities: { "tool.before.input.replace": "required" },
+          async run() {
+            return { kind: "updateShell", command: "pnpm test" };
+          },
+        }),
+      ]),
+      { ...INVOCATION, capabilities: LEVELS },
+    )(pi);
+    const input = { command: "npm test", timeout: 10 };
+    const payload = { type: "tool_call", toolName: "bash", input };
+    expect(await fire(pi, "tool_call", payload)).toBeUndefined();
+    expect(payload.input).toBe(input);
+    expect(input).toEqual({ command: "pnpm test", timeout: 10 });
+  });
+
+  it.each(["replaceInput", "updateShell"] as const)(
+    "rejects %s when pi's live input cannot be mutated",
+    async (kind) => {
+      const pi = fakePi();
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        createHooknosticExtension(
+          pluginWith([
+            hook("tool.before", {
+              id: "rewrite",
+              capabilities: { "tool.before.input.replace": "required" },
+              async run() {
+                return kind === "replaceInput"
+                  ? { kind: "replaceInput", input: { command: "new" } }
+                  : { kind: "updateShell", command: "new" };
+              },
+            }),
+          ]),
+          { ...INVOCATION, capabilities: LEVELS },
+        )(pi);
+        const input = Object.freeze({ command: "original" });
+        const payload = { type: "tool_call", toolName: "bash", input };
+        expect(await fire(pi, "tool_call", payload)).toBeUndefined();
+        expect(payload.input).toBe(input);
+        expect(input).toEqual({ command: "original" });
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("HN401"));
+      } finally {
+        error.mockRestore();
+      }
+    },
+  );
+
   it("keeps raw tool input mutations away from pi's live input", async () => {
     const pi = fakePi();
     let observedToolInput: unknown;
@@ -178,6 +297,44 @@ describe("createHooknosticExtension", () => {
     expect(result).toEqual({ content: [{ type: "text", text: "[redacted]" }] });
   });
 
+  it("keeps raw and normalized tool results away from pi's live payload", async () => {
+    const pi = fakePi();
+    let observed: unknown;
+    createHooknosticExtension(
+      pluginWith([
+        hook("tool.after", {
+          id: "inspect",
+          async run(event) {
+            const raw = event.raw as { event: { input: { command: string }; content: { text: string }[] } };
+            raw.event.input.command = "changed through raw";
+            raw.event.content[0]!.text = "changed through raw";
+            (event.tool.input as { command: string }).command = "changed through tool";
+            (event.output as { text: string }[])[0]!.text = "changed through output";
+            observed = {
+              rawInput: raw.event.input.command,
+              rawOutput: raw.event.content[0]!.text,
+              toolInput: (event.tool.input as { command: string }).command,
+              output: (event.output as { text: string }[])[0]!.text,
+            };
+          },
+        }),
+      ]),
+      { ...INVOCATION, capabilities: LEVELS },
+    )(pi);
+    const input = { command: "cat .env" };
+    const content = [{ type: "text", text: "SECRET=1" }];
+    const payload = { type: "tool_result", toolName: "bash", input, content, isError: false };
+    expect(await fire(pi, "tool_result", payload)).toBeUndefined();
+    expect(observed).toEqual({
+      rawInput: "changed through raw",
+      rawOutput: "changed through raw",
+      toolInput: "changed through tool",
+      output: "changed through output",
+    });
+    expect(input).toEqual({ command: "cat .env" });
+    expect(content).toEqual([{ type: "text", text: "SECRET=1" }]);
+  });
+
   it("injects prompt context as a before_agent_start message result", async () => {
     const pi = fakePi();
     const extension = createHooknosticExtension(
@@ -233,6 +390,39 @@ describe("createHooknosticExtension", () => {
     });
     // The handed copy is left untouched (it is a deep copy pi discards).
     expect(messages).toEqual([{ role: "user", content: [{ type: "text", text: "hi" }] }]);
+  });
+
+  it("keeps raw context message mutations away from pi's live messages", async () => {
+    const pi = fakePi();
+    createHooknosticExtension(
+      pluginWith([
+        hook("model.request.before", {
+          id: "inspect",
+          async run(event) {
+            const raw = event.raw as { event: { messages: { content: { text: string }[] }[] } };
+            raw.event.messages[0]!.content[0]!.text = "changed";
+            raw.event.messages.push({ content: [{ text: "injected" }] });
+          },
+        }),
+      ]),
+      { ...INVOCATION, capabilities: LEVELS },
+    )(pi);
+    const messages = [{ role: "user", content: [{ type: "text", text: "original" }] }];
+    expect(await fire(pi, "context", { type: "context", messages })).toBeUndefined();
+    expect(messages).toEqual([{ role: "user", content: [{ type: "text", text: "original" }] }]);
+  });
+
+  it("fails open before dispatch when a live context payload cannot be cloned", async () => {
+    const pi = fakePi();
+    const run = vi.fn();
+    createHooknosticExtension(pluginWith([hook("model.request.before", { id: "observe", run })]), {
+      ...INVOCATION,
+      capabilities: LEVELS,
+    })(pi);
+    const messages = [{ role: "user", content: "original" }];
+    expect(await fire(pi, "context", { type: "context", messages, uncloneable: () => {} })).toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+    expect(messages).toEqual([{ role: "user", content: "original" }]);
   });
 
   it("cancels compaction by returning {cancel: true}", async () => {
