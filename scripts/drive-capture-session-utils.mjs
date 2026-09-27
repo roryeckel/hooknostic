@@ -36,7 +36,10 @@ export function flattenCaptured(dir, harness) {
       .split("\n")
       .filter((line) => line.trim() !== "");
     for (const [index, line] of lines.entries()) {
-      writeFileSync(join(dst, `${file.replace(".jsonl", "")}-${index}.json`), line, "utf8");
+      // Pi tees {event: <channel>, payload: {event, ctx}}; its fixtures
+      // contain the invocation envelope, not the tee's recording wrapper.
+      const payload = harness === "pi" ? JSON.stringify(JSON.parse(line).payload) : line;
+      writeFileSync(join(dst, `${file.replace(".jsonl", "")}-${index}.json`), payload, "utf8");
       count += 1;
     }
   }

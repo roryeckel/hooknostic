@@ -55,7 +55,7 @@ on:
   workflow_dispatch:
     inputs:
       harness:
-        description: "Harness filter (claude|codex|opencode-v1|opencode-v2); empty = all"
+        description: "Harness filter (claude|codex|opencode-v1|opencode-v2|pi); empty = all"
         required: false
         default: ""
       version:

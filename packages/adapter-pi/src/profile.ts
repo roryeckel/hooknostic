@@ -17,6 +17,15 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     source: {
       date: "2026-09-27",
       validatedOn: [
+        // scheduled-playback:begin
+        // scheduled-playback:end
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/pi/0.84",
+          what: "before-agent-start-isolated: before_agent_start captured in a fresh project and agent home against the loopback model: no user skills, context files, or third-party tool snippets; retained alongside the original populated fixture",
+        },
         {
           version: "0.84.4",
           date: "2026-09-27",
@@ -37,6 +46,13 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
           method: "schema-derived",
           artifact: ".capture/pi/README.md",
           what: "installed @earendil-works/pi-coding-agent 0.84.4 type definitions and loader/compaction source: event surface, tool input shapes, extension discovery rules",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "Halogen Qwen 3.8 Flash Next drove a real bash exchange in an isolated Pi session; both streaming requests succeeded, the command marker was observed in tool_result, and captured lifecycle/tool shapes matched the committed fixtures. This direct provider probe does not validate the scheduled llm transport or unexercised effects.",
         },
       ],
       notes: [

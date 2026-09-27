@@ -21,6 +21,7 @@ Fixture `input.json` files are exactly that shape (post-capture, pre-decode).
 |---|---|---|
 | `session-start` | captured | reason `"startup"` |
 | `before-agent-start` | captured | full `systemPrompt` incl. project context block; `systemPromptOptions` |
+| `before-agent-start-isolated` | captured | 2026-09-27, same reference build, Windows; free loopback drift driver in a fresh temporary project and agent home, without user skills, context files, or third-party tool snippets. Account-name path segments redacted as above. |
 | `agent-start` | captured | |
 | `context` | captured | messages deep copy handed to handler |
 | `tool-call-write` | captured | write tool `{path, content}` |

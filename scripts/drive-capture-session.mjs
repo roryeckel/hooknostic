@@ -45,9 +45,13 @@ const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const hookUrl = new URL("ts-resolve-hook.mjs", import.meta.url).href;
 register(hookUrl);
 
-const { openCodePlaybackConfigHome, prepareOpenCodePluginDependency, startModelPlayback, runProcess } = await import(
-  pathToFileURL(join(REPO, "packages/cli/test/harness-playback.ts")).href
-);
+const {
+  openCodePlaybackConfigHome,
+  prepareOpenCodePluginDependency,
+  startModelPlayback,
+  runProcess,
+  writePiProviderExtension,
+} = await import(pathToFileURL(join(REPO, "packages/cli/test/harness-playback.ts")).href);
 
 const DRIVE_PROMPT = "Use the shell tool exactly once to print the word drift-probe, then stop.";
 const DRIVE_TIMEOUT_MS = 120_000;
@@ -89,13 +93,22 @@ const TEE_TEMPLATE_DIRS = {
 // Fixture dir per harness relative to fixtures/<harness>/ — mirrors
 // compare-capture-shapes.mjs's FIXTURE_DIRS (which prefix fixtures/<harness>/).
 const FIXTURE_DIRS = {
+  pi: "0.84",
   claude: "2.1",
   codex: "0.148",
   opencode: "1.18",
 };
 
 function prepareScratch(repo, harness, scratchOverride) {
-  const scratch = scratchOverride ?? join(mkdtempSync(join(tmpdir(), "hkn-drift-")), harness);
+  const scratch = resolve(scratchOverride ?? join(mkdtempSync(join(tmpdir(), "hkn-drift-")), harness));
+  if (harness === "pi") {
+    // Copy only the passive tee, never ignored captures or user settings.
+    mkdirSync(scratch, { recursive: true });
+    cpSync(join(repo, ".capture/pi/hooknostic-capture.ts"), join(scratch, "hooknostic-capture.ts"));
+    rmSync(join(scratch, "captured"), { recursive: true, force: true });
+    mkdirSync(join(scratch, "captured"), { recursive: true });
+    return scratch;
+  }
   const template = join(repo, TEE_TEMPLATE_DIRS[harness]);
   cpSync(template, scratch, { recursive: true });
   rmSync(join(scratch, "captured"), { recursive: true, force: true });
@@ -128,6 +141,7 @@ function prepareScratch(repo, harness, scratchOverride) {
 // ---------------------------------------------------------------------------
 
 const PLAYBACK_PROTOCOLS = {
+  pi: "openai-chat",
   claude: "anthropic-messages",
   codex: "openai-responses",
   opencode: "openai-chat",
@@ -249,6 +263,37 @@ async function driveClaude(scratch, model) {
         CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: "1",
         DISABLE_AUTOUPDATER: "1",
         DISABLE_TELEMETRY: "1",
+      },
+    },
+  );
+}
+
+async function drivePi(scratch, baseUrl) {
+  const provider = await writePiProviderExtension(scratch, baseUrl);
+  return runProcess(
+    "pi",
+    [
+      "--provider",
+      "hooknostic-playback",
+      "--model",
+      "hooknostic-playback",
+      "-e",
+      provider,
+      "-e",
+      join(scratch, "hooknostic-capture.ts"),
+      "--approve",
+      "--no-session",
+      "-p",
+      DRIVE_PROMPT,
+    ],
+    {
+      cwd: scratch,
+      timeoutMs: DRIVE_TIMEOUT_MS,
+      env: {
+        ...withoutCredentials(),
+        PI_CODING_AGENT_DIR: join(scratch, "pi-home"),
+        HKN_CAPTURE_DIR: join(scratch, "captured"),
+        HKN_PI_PROBE: "tee",
       },
     },
   );
@@ -412,15 +457,19 @@ async function main() {
     console.log(comparison.report);
     process.exit(comparison.verdict === "clean" ? 0 : comparison.verdict === "drift" ? 4 : 5);
   }
-  if (opts.harness === undefined || !["claude", "codex", "opencode"].includes(opts.harness)) {
+  if (opts.harness === undefined || !["claude", "codex", "opencode", "pi"].includes(opts.harness)) {
     process.stderr.write(
-      `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|opencode> [--transport playback|llm] [--scratch <dir>]\n`,
+      `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|opencode|pi> [--transport playback|llm] [--scratch <dir>]\n`,
     );
     process.exit(2);
   }
   if (opts.transport !== "playback" && opts.transport !== "llm") {
     process.stderr.write(`unknown transport: ${opts.transport}\n`);
     process.exit(2);
+  }
+  if (opts.harness === "pi" && opts.transport === "llm") {
+    console.error("Pi paid drift capture is not established; use --transport playback (inconclusive)");
+    process.exit(5);
   }
 
   const scratch = prepareScratch(REPO, opts.harness, opts.scratch);
@@ -464,7 +513,9 @@ async function main() {
 
   let result;
   try {
-    if (opts.harness === "claude") {
+    if (opts.harness === "pi") {
+      result = await drivePi(scratch, server.baseUrl);
+    } else if (opts.harness === "claude") {
       const url =
         opts.transport === "playback"
           ? { url: server.baseUrl }
@@ -490,6 +541,10 @@ async function main() {
       writeOpencodeConfig(scratch, base, key, modelLabel);
       result = await driveOpencode(scratch, modelLabel);
     }
+  } catch (error) {
+    console.error(`[drift] harness drive failed: ${error.message}`);
+    process.exitCode = 6;
+    return;
   } finally {
     if (server !== undefined) await server.close();
   }

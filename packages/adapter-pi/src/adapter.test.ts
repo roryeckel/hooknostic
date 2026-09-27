@@ -19,6 +19,7 @@ describe("decodePi fixtures", () => {
   const CASES = [
     "session-start",
     "before-agent-start",
+    "before-agent-start-isolated",
     "context",
     "tool-call-write",
     "tool-call-bash",

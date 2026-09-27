@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "before_agent_start"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-drift-MJ7OqZ\\pi"
+  },
+  "correlation": {},
+  "event": "prompt.before",
+  "prompt": "Use the shell tool exactly once to print the word drift-probe, then stop."
+}

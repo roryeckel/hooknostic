@@ -33,6 +33,7 @@ import {
   scriptedTool,
   startModelPlayback,
   traceEvents,
+  writePiProviderExtension,
 } from "./harness-playback.js";
 
 const selected = process.env["HOOKNOSTIC_PLAYBACK"] ?? "";
@@ -690,40 +691,6 @@ async function runInstalledHarness(
   else if (adapter!.id === "codex") await runCodexPlayback(build, scenario, options);
   else if (adapter!.id === "pi") await runPiPlayback(build, scenario, options);
   else await runOpenCodePlayback(build, scenario, options);
-}
-
-/**
- * The playback provider extension for pi: registers an openai-completions
- * provider pointing at the loopback model server, so the drive needs no
- * credentials and spends nothing. Same mechanism as .capture/pi's
- * provider-ollama.ts (verified live against 0.84.4).
- */
-async function writePiProviderExtension(artifactDir: string, baseUrl: string): Promise<string> {
-  const path = join(artifactDir, "playback-provider.js");
-  await writeFile(
-    path,
-    `export default function (pi) {
-  pi.registerProvider("hooknostic-playback", {
-    baseUrl: ${JSON.stringify(baseUrl)},
-    apiKey: "playback",
-    api: "openai-completions",
-    models: [
-      {
-        id: "hooknostic-playback",
-        name: "hooknostic playback",
-        reasoning: false,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 128000,
-        maxTokens: 8192,
-      },
-    ],
-  });
-}
-`,
-    "utf8",
-  );
-  return path;
 }
 
 async function runPiPlayback(

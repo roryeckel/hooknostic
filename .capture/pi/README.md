@@ -112,6 +112,70 @@ provenance table lives in `fixtures/pi/0.84/README.md`.
 
 ## Reproduce
 
+### Free drift capture
+
+After bundling the repository, run:
+
+```sh
+node scripts/drive-capture-session.mjs pi --transport playback
+```
+
+This starts a loopback model server, loads the tee in passive mode, and drives
+one bash exchange in a fresh temporary project with an isolated Pi agent home.
+The generated command writes `hooknostic-original` to `hooknostic-tool.txt`;
+this driver captures native events and does not load the hook-rewriting plugin.
+Raw JSONL stays in `<scratch>/captured`, and unwrapped `{event, ctx}` records
+are compared with the committed fixtures. `--scratch <directory>` selects a
+scratch workspace; each run replaces that workspace's capture output.
+
+The 2026-09-27 reference run established the isolated
+`before-agent-start-isolated` fixture. The original prompt fixture includes
+user-installed MCP/subagent tool snippets and repository skills/context files;
+the isolated fixture has neither. Both shapes remain evidence, rather than
+ignoring those fields in the comparator. Unmapped tee events are diagnostic
+only, and compaction/write/error variants not driven by this scenario are
+reported as not exercised. The generic `--transport llm` driver is not wired
+for Pi and returns exit 5 (inconclusive) before contacting a provider. The
+direct live-provider check below is separate from that automation route.
+
+### Halogen Qwen live-provider check (2026-09-27)
+
+Pi 0.84.4 on Windows was driven directly with
+`halogen-qwen3.8-flash-next` through Halogen's OpenAI-compatible chat-completions
+endpoint, using the owner's configured provider credential. This replaces the
+requested Ollama Cloud run, which was not attempted after the owner reported
+its usage limit. Model/provider identity is execution provenance only.
+
+Method: use a fresh temporary project and isolated `PI_CODING_AGENT_DIR`, load
+`hooknostic-capture.ts` with `HKN_PI_PROBE=tee`, and select the configured model
+with `--thinking low --approve --no-session -p`. A loopback proxy held the
+upstream credential; Pi received a dummy local key and a minimal environment.
+The Pi model used `openai-completions`, a 262144-token context window, a
+4096-token output cap, `supportsDeveloperRole: false`,
+`supportsReasoningEffort: true`, and `supportsStore: false`. The prompt was:
+
+> Use bash exactly once to run: echo hooknostic-paid-drift. Then reply DONE.
+> Do not inspect files or run other commands.
+
+Observed results:
+
+- Two streamed model requests returned HTTP 200 with `reasoning_effort: low`.
+- Exactly one `bash` call executed `echo hooknostic-paid-drift`; its
+  `tool_result` had `isError: false` and text `hooknostic-paid-drift\n`.
+- Pi exited 0, printed `DONE`, and emitted no stderr.
+- Unwrapped native captures compared **clean** against `fixtures/pi/0.84`,
+  including all expected prompt, context, bash, settled, and session events.
+- Compaction, write-tool, and tool-error variants were not exercised. The tee
+  was passive; this does not establish block/rewrite effects or the scheduled
+  `--transport llm` route.
+
+The local run summary is in ignored `scratch/halogen-check-result.json`; raw
+JSONL remains in the temporary capture directory named there. No credential
+is stored in either the summary or committed evidence. The observed shapes
+already match existing fixtures, so no new shape or capability is claimed.
+
+### Model-backed probes
+
 ```
 node .capture/pi/run-capture.mjs tee             # passive capture
 node .capture/pi/run-capture.mjs block-bash      # tool_call block probe

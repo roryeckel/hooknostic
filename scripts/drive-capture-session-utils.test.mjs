@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,6 +14,20 @@ afterEach(() => {
 });
 
 describe("drive capture-session helpers", () => {
+  it("unwraps Pi tee records without changing raw capture files", () => {
+    const captured = mkdtempSync(join(tmpdir(), "hooknostic-drive-pi-"));
+    tempDirs.push(captured, `${captured}-json`);
+    const payload = {
+      event: { type: "tool_call", toolName: "bash", input: { command: "echo probe" } },
+      ctx: { cwd: "/project", mode: "print" },
+    };
+    const raw = JSON.stringify({ event: "tool_call", payload }) + "\n";
+    writeFileSync(join(captured, "tool_call.jsonl"), raw);
+    const { dst, count } = flattenCaptured(captured, "pi");
+    expect(count).toBe(1);
+    expect(JSON.parse(readFileSync(join(dst, "tool_call-0.json"), "utf8"))).toEqual(payload);
+    expect(readFileSync(join(captured, "tool_call.jsonl"), "utf8")).toBe(raw);
+  });
   it("recognizes an absolute CLI path as its own module URL", () => {
     const script = join(process.cwd(), "scripts", "drive-capture-session.mjs");
     expect(isEntrypoint(pathToFileURL(script).href, script)).toBe(true);
