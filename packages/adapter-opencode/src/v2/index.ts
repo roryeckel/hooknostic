@@ -36,7 +36,7 @@ export function opencodeV2Adapter(
     id: "opencode",
     adapterVersion: "0.1.0",
     harness: opencodeV2Harness,
-    projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json"],
+    projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration: projectOpenCodeV2Integration,
     projectComponents: projectOpenCodeV2Components,
     projectComponentProfiles: opencodeV2ProjectProfiles,

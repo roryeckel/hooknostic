@@ -17,7 +17,7 @@ const ROOT_VERSION = (
 ).version;
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
-import { opencodeHarness } from "@hooknostic/adapter-opencode";
+import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
@@ -1306,6 +1306,48 @@ ${run.stderr}`,
         message: expect.stringContaining("invalid directory path"),
       }),
     );
+  });
+
+  it("excludes a v2 project's opencode.jsonc from a package built from the same root", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-v2-inventory-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "assets"));
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "v2-inventory", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "assets/public.txt"), "portable content\n");
+    const projectConfig = '{ "mcp": { "private": { "headers": { "Authorization": "secret-marker" } } } }\n';
+    await writeFile(join(dir, "opencode.jsonc"), projectConfig);
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        project: { root: "." },
+        components: { root: ".", targets: ["project", "package"] },
+        targets: {
+          project: { adapter: "opencode", version: ${JSON.stringify(opencodeV2Harness.recommendedRange)}, delivery: "project", output: ".hooknostic/artifacts/opencode" },
+          package: { adapter: "opencode", version: ${JSON.stringify(opencodeV2Harness.recommendedRange)}, delivery: "package", output: "dist/opencode" },
+        },
+      };`,
+    );
+
+    const capture = captureIO();
+    expect(
+      await runBuild({
+        config: join(dir, "hooknostic.config.ts"),
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: capture.io,
+      }),
+      capture.out(),
+    ).toBe(0);
+    const report = JSON.parse(capture.out());
+    expect(report.components.sourceFiles).toEqual(["assets/public.txt", "plugin.json"]);
+    // copiedFileCount comes from the package projector's copiedPaths.
+    expect(report.targets.package.projection.copiedFileCount).toBe(2);
+    expect(existsSync(join(dir, "dist/opencode/package/opencode.jsonc"))).toBe(false);
+    expect(await readFile(join(dir, "dist/opencode/package/assets/public.txt"), "utf8")).toBe("portable content\n");
+    expect(await readFile(join(dir, "opencode.jsonc"), "utf8")).toBe(projectConfig);
   });
 
   it("builds a hookless skill package without emitting a runtime", async () => {
