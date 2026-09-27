@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "before_agent_start"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic"
+  },
+  "correlation": {},
+  "event": "prompt.before",
+  "prompt": "Create"
+}

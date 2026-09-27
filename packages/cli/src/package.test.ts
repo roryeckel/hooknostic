@@ -17,7 +17,7 @@ const ROOT_VERSION = (
 ).version;
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
-const SHIPPED_ADAPTERS = ["claude", "codex", "opencode"];
+const SHIPPED_ADAPTERS = ["claude", "codex", "opencode", "pi"];
 
 interface Manifest {
   name: string;

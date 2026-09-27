@@ -18,6 +18,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | Codex CLI (`codex`) | `>=0.148 <1` | `>=0.140 <1` | 0.148.0 | `fixtures/codex/0.148` |
 | OpenCode (`opencode`) | `>=1.18 <2` | `>=1.10 <2` | 1.18.18 | `fixtures/opencode/1.18` |
 | OpenCode v2 (`opencode`) | `>=2.0.17 <3` | `>=2.0.17 <3` | 2.0.17 | `fixtures/opencode/2.0` |
+| pi (`pi`) | `>=0.84 <1` | `>=0.84 <1` | 0.84.4 | `fixtures/pi/0.84` |
 
 ## Validation evidence
 
@@ -340,4 +341,50 @@ Projection validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-remote` | Generated project and packed relocated package execute Streamable HTTP MCP tools with recorded headers. Project variables expand and missing variables disable only the affected server; package placeholders remain literal. Default and legacy protocol probes do not fall back to SSE after HTTP 405. OAuth is unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session. |
+
+### pi
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | live extension event payloads incl. in-place tool_call input mutation and tool_result replacement |
+| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | verified by effect: tool_call block, input rewrite, tool_result replace, system-prompt injection, session_before_compact {cancel:true}, turn injection via sendMessage({triggerTurn:true}), context {messages} replacement; input {action:"handled"} proven NOT a reliable prompt block (mid-stream only, first-token suppression hangs print mode) |
+| 0.84.4 | 2026-09-27 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 0.84.4 type definitions and loader/compaction source: event surface, tool input shapes, extension discovery rules |
+
+#### Project delivery
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | unsupported | — |
+| `agent-plugin.skills` | exact | pi implements the Agent Skills standard natively (SKILL.md + frontmatter; skills.js source 0.84.4) and discovers project-local skills from .pi/skills/. |
+| `agent-plugin.mcp.stdio` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
+| `agent-plugin.mcp.streamable-http` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
+| `agent-plugin.mcp.sse` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
+| `agent-plugin.client-extension.files` | unsupported | pi reads no portable client-extension namespace; extensions are the only code surface. |
+| `agent-plugin.runtime-package` | unsupported | pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact. |
+
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source. |
+
+Project support is independent of package projection.
+
+#### Agent Plugin projection
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | Portable package identity is emitted in the npm package.json; pi reads its pi resource declarations from the same file. |
+| `agent-plugin.skills` | exact | Accepted Agent Skills trees are copied without rewriting and named explicitly in the pi package manifest; an installed package skill was verified by effect on 0.84.4. |
+| `agent-plugin.mcp.stdio` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
+| `agent-plugin.mcp.streamable-http` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
+| `agent-plugin.mcp.sse` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
+| `agent-plugin.client-extension.files` | unsupported | pi does not read Agent Plugins client-extension namespaces. |
+| `agent-plugin.runtime-package` | unsupported | A local-path pi package is referenced in place, with no npm install. An npm-sourced package is installed, but pi does not perform a locked npm ci of the portable runtime manifest and lockfile; this component is not delivered on both routes. |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager. |
 

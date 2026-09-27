@@ -1,0 +1,29 @@
+{
+  "name": "@hooknostic/adapter-pi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hooknostic adapter for the pi coding agent",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./shim": {
+      "types": "./src/shim.ts",
+      "default": "./src/shim.ts"
+    }
+  },
+  "dependencies": {
+    "@hooknostic/agent-plugin": "workspace:*",
+    "@hooknostic/core": "workspace:*",
+    "@hooknostic/runtime": "workspace:*",
+    "@hooknostic/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@hooknostic/testkit": "workspace:*"
+  }
+}

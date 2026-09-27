@@ -1,0 +1,21 @@
+{
+  "event": {
+    "type": "context",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Create"
+          }
+        ],
+        "timestamp": 1790487485019
+      }
+    ]
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

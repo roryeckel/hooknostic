@@ -48,6 +48,7 @@ describe("workspace version lockstep", () => {
       "packages/adapter-claude",
       "packages/adapter-codex",
       "packages/adapter-opencode",
+      "packages/adapter-pi",
     ]) {
       expect(packageVersion(dir), dir).toBe(root);
     }
@@ -68,6 +69,7 @@ describe("workspace version lockstep", () => {
       "packages/adapter-claude",
       "packages/adapter-codex",
       "packages/adapter-opencode",
+      "packages/adapter-pi",
     ]) {
       const manifest = JSON.parse(readFileSync(resolve(REPO_ROOT, dir, "package.json"), "utf8")) as {
         name: string;

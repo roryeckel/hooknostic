@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic"
+  },
+  "correlation": {
+    "toolCallId": "call_boguw77h"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "file.write",
+    "nativeName": "write",
+    "input": {
+      "path": "C:/Users/user/source/repos/hooknostic/hello.txt",
+      "content": "hello\n"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "Successfully wrote 6 bytes to C:/Users/user/source/repos/hooknostic/hello.txt"
+    }
+  ]
+}

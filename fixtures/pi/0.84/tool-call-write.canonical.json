@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_call"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic"
+  },
+  "correlation": {
+    "toolCallId": "call_boguw77h"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.write",
+    "nativeName": "write",
+    "input": {
+      "path": "C:/Users/user/source/repos/hooknostic/hello.txt",
+      "content": "hello\n"
+    }
+  }
+}

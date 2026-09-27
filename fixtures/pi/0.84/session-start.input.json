@@ -1,0 +1,10 @@
+{
+  "event": {
+    "type": "session_start",
+    "reason": "startup"
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

@@ -1,0 +1,271 @@
+{
+  "event": {
+    "type": "session_before_compact",
+    "preparation": {
+      "firstKeptEntryId": "33bf785b",
+      "messagesToSummarize": [],
+      "turnPrefixMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Write"
+            }
+          ],
+          "timestamp": 1790489732527
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The user just typed \"Write\". That's ambiguous. Maybe they want me to write something? There's no context. Let me check the repo state to see what might be pending? Perhaps there's a session context. Let me look at git status.",
+              "thinkingSignature": "reasoning"
+            },
+            {
+              "type": "toolCall",
+              "id": "call_hzzuqn6t",
+              "name": "bash",
+              "arguments": {
+                "command": "git status && git log --oneline -5"
+              }
+            },
+            {
+              "type": "toolCall",
+              "id": "call_fs0jmr0m",
+              "name": "bash",
+              "arguments": {
+                "command": "ls"
+              }
+            }
+          ],
+          "api": "openai-completions",
+          "provider": "hkn-capture",
+          "model": "deepseek-v4.1-flash:cloud",
+          "usage": {
+            "input": 19,
+            "output": 125,
+            "cacheRead": 2816,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 2960,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1790489732540,
+          "responseId": "chatcmpl-5",
+          "responseModel": "deepseek-v4.1-flash",
+          "rawStopReason": "tool_calls"
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_hzzuqn6t",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "On branch master\nYour branch is up to date with 'origin/master'.\n\nChanges not staged for commit:\n  (use \"git add <file>...\" to update what will be committed)\n  (use \"git restore <file>...\" to discard changes in working directory)\n\tmodified:   .gitignore\n\nUntracked files:\n  (use \"git add <file>...\" to include in what will be committed)\n\t.capture/pi/\n\t.env.tmp\n\t.grep.tmp\n\thello.txt\n\nno changes added to commit (use \"git add\" and/or \"git commit -a\")\n5e074cb docs: align package diagram spacing\n5241a56 feat: add marketplace-ready packages and launch verification\n9d6cca8 Exclude OpenCode v2 project config from package output\n677eaac Merge pull request #31 from roryeckel/codex/opencode-v2-release-readiness\n7913bab Accept checkout permission variation for owned project files\n"
+            }
+          ],
+          "isError": false,
+          "timestamp": 1790489733537
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_fs0jmr0m",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "AGENTS.md\nCLAUDE.md\nCODE_OF_CONDUCT.md\nCONTRIBUTING.md\ndocs\neslint.config.mjs\nexamples\nfixtures\nhello.txt\nhooknostiac\nLICENSE\nnode_modules\npackage.json\npackages\npnpm-lock.yaml\npnpm-workspace.yaml\nREADME.md\nrenovate.json\nscripts\nSECURITY.md\ntsconfig.json\nvitest.config.ts\n"
+            }
+          ],
+          "isError": false,
+          "timestamp": 1790489733538
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The user's message is just \"Write\". Ambiguous. Possibly they want me to write something to a file â€” maybe a continuation of prior session? There's no prior conversation. I should ask for clarification... but maybe there's context: `.capture/pi/` untracked, `hello.txt`. Let me check hello.txt and .env.tmp maybe to understand. Also the message might be truncated. Let me check the tempfiles.",
+              "thinkingSignature": "reasoning"
+            },
+            {
+              "type": "toolCall",
+              "id": "call_jigxsdne",
+              "name": "bash",
+              "arguments": {
+                "command": "[redacted: environment dump captured in session tool output; contained live credentials]"
+              }
+            }
+          ],
+          "api": "openai-completions",
+          "provider": "hkn-capture",
+          "model": "deepseek-v4.1-flash:cloud",
+          "usage": {
+            "input": 329,
+            "output": 171,
+            "cacheRead": 2944,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 3444,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1790489733540,
+          "responseId": "chatcmpl-319",
+          "responseModel": "deepseek-v4.1-flash",
+          "rawStopReason": "tool_calls"
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_jigxsdne",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "[redacted: environment dump captured in session tool output; contained live credentials]"
+            }
+          ],
+          "isError": false,
+          "timestamp": 1790489734543
+        }
+      ],
+      "isSplitTurn": true,
+      "tokensBefore": 7313,
+      "fileOps": {
+        "read": {},
+        "written": {},
+        "edited": {}
+      },
+      "settings": {
+        "enabled": true,
+        "reserveTokens": 16384,
+        "keepRecentTokens": 1
+      }
+    },
+    "branchEntries": [
+      {
+        "type": "model_change",
+        "id": "56f088b6",
+        "parentId": null,
+        "timestamp": "2026-09-27T06:15:32.521Z",
+        "provider": "hkn-capture",
+        "modelId": "deepseek-v4.1-flash:cloud"
+      },
+      {
+        "type": "thinking_level_change",
+        "id": "6128a60d",
+        "parentId": "56f088b6",
+        "timestamp": "2026-09-27T06:15:32.521Z",
+        "thinkingLevel": "off"
+      },
+      {
+        "type": "message",
+        "id": "f82a207e",
+        "parentId": "6128a60d",
+        "timestamp": "2026-09-27T06:15:32.530Z",
+        "message": "[circular]"
+      },
+      {
+        "type": "message",
+        "id": "579fb58d",
+        "parentId": "f82a207e",
+        "timestamp": "2026-09-27T06:15:33.266Z",
+        "message": "[circular]"
+      },
+      {
+        "type": "message",
+        "id": "5d81a5c9",
+        "parentId": "579fb58d",
+        "timestamp": "2026-09-27T06:15:33.538Z",
+        "message": "[circular]"
+      },
+      {
+        "type": "message",
+        "id": "f6283b0e",
+        "parentId": "5d81a5c9",
+        "timestamp": "2026-09-27T06:15:33.538Z",
+        "message": "[circular]"
+      },
+      {
+        "type": "message",
+        "id": "2a3648fc",
+        "parentId": "f6283b0e",
+        "timestamp": "2026-09-27T06:15:34.452Z",
+        "message": "[circular]"
+      },
+      {
+        "type": "message",
+        "id": "b6d29c14",
+        "parentId": "2a3648fc",
+        "timestamp": "2026-09-27T06:15:34.543Z",
+        "message": "[circular]"
+      },
+      {
+        "type": "message",
+        "id": "33bf785b",
+        "parentId": "b6d29c14",
+        "timestamp": "2026-09-27T06:15:36.743Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The user just said \"Write\". Very ambiguous. There is no prior conversation content. I should ask for clarification about what to write. But maybe the intent is: this is a test of the harness? The session shows `.capture/pi/` capture infrastructure â€” this looks like a pi harness capture probe. HKN_PI_PROBE=replace-output. Maybe the user's actual task is from a capture scenario where they expect the agent to write a file. Possibly the expected behavior is to write something.\n\nGiven ambiguity, best response: ask what they want written. But guidelines say be concise. I could offer. However, maybe there's a hidden instruction: The message is literally \"Write\" which might be a truncated prompt. I'll ask for clarification.\n\nActually, let me consider: this environment appears to be a capture setup for testing pi hooks (the repo is hooknostic, and .capture/pi exists with captured-replace-output). The user may be running a probe where the prompt is \"Write\" expecting the agent to call the write tool. But guessing and writing random files could pollute the repo.\n\nI think the safest and most helpful action is to ask what file/content they want. Keepit short.",
+              "thinkingSignature": "reasoning"
+            },
+            {
+              "type": "text",
+              "text": "What would you like me to write? Your message came through as just \"Write\" â€” I need the target path and the content (or a description of the change you want).\n\nIf you meant something in this repo, tell me which of these you're after:\n- a new file (path + content)\n- edits to an existing file\n- a commit message / PR description\n- docs, ADR, or a test\n\nNote: I also see untracked scratch artifacts (`.env.tmp`, `.grep.tmp`, `hello.txt`, `.capture/pi/`) and a `.gitignore` change in the working tree. `.env.tmp` contains secrets and shouldn't be committed."
+            }
+          ],
+          "api": "openai-completions",
+          "provider": "hkn-capture",
+          "model": "deepseek-v4.1-flash:cloud",
+          "usage": {
+            "input": 3589,
+            "output": 396,
+            "cacheRead": 3328,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 7313,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1790489734544,
+          "responseId": "chatcmpl-436",
+          "responseModel": "deepseek-v4.1-flash",
+          "rawStopReason": "stop"
+        }
+      }
+    ],
+    "reason": "overflow",
+    "willRetry": false,
+    "signal": {}
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

@@ -54,6 +54,7 @@
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",
+    "@hooknostic/adapter-pi": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/testkit": "workspace:*",

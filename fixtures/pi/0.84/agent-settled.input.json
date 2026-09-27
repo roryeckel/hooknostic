@@ -1,0 +1,9 @@
+{
+  "event": {
+    "type": "agent_settled"
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

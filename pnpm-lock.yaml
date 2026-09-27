@@ -214,6 +214,25 @@ importers:
         specifier: workspace:*
         version: link:../testkit
 
+  packages/adapter-pi:
+    dependencies:
+      '@hooknostic/agent-plugin':
+        specifier: workspace:*
+        version: link:../agent-plugin
+      '@hooknostic/core':
+        specifier: workspace:*
+        version: link:../core
+      '@hooknostic/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@hooknostic/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+    devDependencies:
+      '@hooknostic/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+
   packages/agent-plugin:
     dependencies:
       minimatch:
@@ -263,6 +282,9 @@ importers:
       '@hooknostic/adapter-opencode':
         specifier: workspace:*
         version: link:../adapter-opencode
+      '@hooknostic/adapter-pi':
+        specifier: workspace:*
+        version: link:../adapter-pi
       '@hooknostic/agent-plugin':
         specifier: workspace:*
         version: link:../agent-plugin

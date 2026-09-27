@@ -1157,3 +1157,47 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
     pairs.map((fixture) => fixture.canonical.event),
   );
 }
+
+/**
+ * Replay pi fixture invocations through the generated production artifact.
+ * pi's shim exports an extension factory, not a callback map: the factory is
+ * driven through a recording ExtensionAPI double that routes each native
+ * event to the subscription pi would have registered.
+ */
+export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
+  const pairs = await fixturePairs(fixturesDir);
+  const previousTrace = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
+  process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = build.tracePath;
+  try {
+    const imported = (await import(`${pathToFileURL(build.runtimePath).href}?playback=1`)) as {
+      default: (pi: {
+        on: (event: string, handler: (event: unknown, ctx: unknown) => Promise<unknown> | unknown) => void;
+      }) => void;
+    };
+    const subscriptions = new Map<string, Array<(event: unknown, ctx: unknown) => Promise<unknown> | unknown>>();
+    imported.default({
+      on: (event, handler) => {
+        const list = subscriptions.get(event) ?? [];
+        list.push(handler);
+        subscriptions.set(event, list);
+      },
+    });
+    for (const fixture of pairs) {
+      const native = fixture.input as {
+        event: { type?: unknown };
+        ctx: { cwd: string; mode?: string };
+      };
+      const type = native.event.type;
+      expect(typeof type, `${fixture.name}: fixture has no event type`).toBe("string");
+      const handlers = subscriptions.get(type as string);
+      expect(handlers, `${fixture.name}: generated extension did not register ${type}`).toBeDefined();
+      await handlers![0]!(native.event, { cwd: native.ctx.cwd, ...(native.ctx.mode ? { mode: native.ctx.mode } : {}) });
+    }
+  } finally {
+    if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
+    else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
+  }
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
+    pairs.map((fixture) => fixture.canonical.event),
+  );
+}

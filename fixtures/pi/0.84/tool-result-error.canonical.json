@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic"
+  },
+  "correlation": {
+    "toolCallId": "call_b4d24xij"
+  },
+  "event": "tool.error",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "exit 7"
+    },
+    "shell": {
+      "command": "exit 7",
+      "commandKey": "command"
+    }
+  },
+  "error": {}
+}

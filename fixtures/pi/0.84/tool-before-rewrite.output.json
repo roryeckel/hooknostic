@@ -1,0 +1,3 @@
+{
+  "inputReplacement": { "command": "pnpm install" }
+}

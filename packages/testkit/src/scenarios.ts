@@ -101,6 +101,18 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     title: "per-request injected context reaches the model as a system message in EVERY agent request",
     covers: ["model.request.before.context.add"],
     driver: "loopback",
+    // pi delivers per-request context through the context event's message
+    // array, which is AgentMessage[] (user/assistant/toolResult/custom/thinking
+    // -- no system role). A system-role entry appended to the returned array
+    // is dropped by pi's AgentMessage->Message conversion (observed live on
+    // 0.84.4); the working channel appends a conversation message, which the
+    // model sees verbatim (verified by effect: .capture/pi context-inject
+    // probe). The scenario's system-message assertion checks a shape pi's
+    // channel cannot take, so the scheduled lane records it inconclusive
+    // rather than silently passing on a different channel.
+    inconclusiveByHarness: {
+      pi: "pi's per-request context channel is the message array (AgentMessage[]), which carries no system role; the drive's system-message shape cannot be produced",
+    },
   },
   {
     id: "tool-before-block",
@@ -196,6 +208,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
       claude: "loopback playback cannot deterministically fill Claude's context window",
       codex: "loopback playback cannot deterministically fill Codex's context window",
       opencode: "loopback playback cannot deterministically fill OpenCode's context window",
+      pi: "loopback playback cannot deterministically fill pi's context window (the compaction cells are live-verified: .capture/pi compact-cancel/compact-run probes)",
     },
   },
   {

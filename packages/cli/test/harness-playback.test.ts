@@ -28,6 +28,7 @@ import {
   prepareOpenCodePluginDependency,
   replayCommandFixtures,
   replayOpenCodeFixtures,
+  replayPiFixtures,
   runProcess,
   scriptedTool,
   startModelPlayback,
@@ -687,7 +688,106 @@ async function runInstalledHarness(
 ): Promise<void> {
   if (adapter!.id === "claude") await runClaudePlayback(build, scenario, options);
   else if (adapter!.id === "codex") await runCodexPlayback(build, scenario, options);
+  else if (adapter!.id === "pi") await runPiPlayback(build, scenario, options);
   else await runOpenCodePlayback(build, scenario, options);
+}
+
+/**
+ * The playback provider extension for pi: registers an openai-completions
+ * provider pointing at the loopback model server, so the drive needs no
+ * credentials and spends nothing. Same mechanism as .capture/pi's
+ * provider-ollama.ts (verified live against 0.84.4).
+ */
+async function writePiProviderExtension(artifactDir: string, baseUrl: string): Promise<string> {
+  const path = join(artifactDir, "playback-provider.js");
+  await writeFile(
+    path,
+    `export default function (pi) {
+  pi.registerProvider("hooknostic-playback", {
+    baseUrl: ${JSON.stringify(baseUrl)},
+    apiKey: "playback",
+    api: "openai-completions",
+    models: [
+      {
+        id: "hooknostic-playback",
+        name: "hooknostic playback",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 8192,
+      },
+    ],
+  });
+}
+`,
+    "utf8",
+  );
+  return path;
+}
+
+async function runPiPlayback(
+  build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
+  scenario: PlaybackScenario,
+  options: DriveOptions = {},
+): Promise<void> {
+  const server = await startModelPlayback("openai-chat", scenario, options.script);
+  try {
+    // Project delivery writes .pi/extensions/ into the artifact dir, which pi
+    // discovers on startup; the provider rides in via -e.
+    const providerExtension = await writePiProviderExtension(build.artifactDir, server.baseUrl);
+    let result: Awaited<ReturnType<typeof runProcess>>;
+    try {
+      result = await runProcess(
+        "pi",
+        [
+          "--provider",
+          "hooknostic-playback",
+          "--model",
+          "hooknostic-playback",
+          "-e",
+          providerExtension,
+          // Project-local extensions load only in trusted projects (captured:
+          // .capture/pi package probe refused without it), and the playback
+          // scratch dir is brand new, so this run must carry its own trust.
+          "--approve",
+          "--no-session",
+          "-p",
+          options.prompt ?? playbackPrompt(scenario),
+        ],
+        {
+          cwd: build.artifactDir,
+          timeoutMs: 90_000,
+          env: {
+            ...withoutCredentials(),
+            PI_CODING_AGENT_DIR: join(build.artifactDir, "playback-agent-home"),
+            HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+            ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+          },
+        },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${message}\nserverErrors: ${JSON.stringify(server.errors)}\nurls: ${JSON.stringify(server.urls)}\nrequests: ${JSON.stringify(server.requests)}`,
+      );
+    }
+    expect(options.expectedExitCodes ?? [0], `pi exit ${result.code}: ${result.stdout}\n${result.stderr}`).toContain(
+      result.code,
+    );
+    options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
+    // The default is to require a tool-bearing model request; scenarios whose
+    // expected effect is that the turn never starts disable it, and there the
+    // absence IS the assertion.
+    if (options.requireAgentRequest !== false) {
+      expect(server.turnCount, `no tool-bearing model request reached the loopback`).toBeGreaterThan(0);
+    }
+    if (options.verify !== undefined) {
+      await options.verify({ server, dir: build.artifactDir });
+    }
+  } finally {
+    await server.close();
+  }
 }
 
 /** The playback provider config every OpenCode drive needs in the artifact dir. */
@@ -1279,160 +1379,169 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     expect(detection.version).toBe(expectedVersion);
   });
 
-  it("runs repository-local integration without installing a plugin", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "hooknostic-local-playback-"));
-    tempDirs.push(dir);
-    const transports = await startProjectionMcpTransports();
-    const source = join(dir, "portable");
-    await mkdir(join(source, "mcp-working-dir"), { recursive: true });
-    await writeFile(join(source, "plugin-mcp-env-fixture.mjs"), await readFile(PluginMcpEnvFixturePath));
-    const skillSource = join(dir, "portable-skills/local-sample");
-    await mkdir(skillSource, { recursive: true });
-    await writeFile(
-      join(skillSource, "SKILL.md"),
-      "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
-    );
-    const projectCwdOverride = adapter!.id === "claude" ? "./mcp-working-dir" : "${PLUGIN_ROOT}/..";
-    const build = await buildPlaybackArtifact(adapter!, dir, {
-      delivery: "project",
-      project: true,
-      componentOptions: {
-        ...(adapter!.id === "claude"
-          ? {}
-          : { mcpProjectCwdServers: ["localProbe"], mcpStartupTimeoutMs: { localProbe: 60_000 } }),
-      },
-      components: {
-        origin: "direct",
-        skills: [
-          {
-            name: "local-sample",
-            source: skillSource,
-            files: [
-              {
-                path: "SKILL.md",
-                mode: 0o644,
-                contents: new TextEncoder().encode(
-                  "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
-                ),
-              },
-            ],
-          },
-        ],
-        mcp: {
-          root: source,
-          config: {
-            $schema: AGENT_PLUGIN_MCP_SCHEMA,
-            mcpServers: {
-              localProbe: {
-                type: "stdio" as const,
-                command: "node",
-                // A direct source's `${NAME:-default}` resolves through the
-                // launcher on every harness. On Codex, both names are listed
-                // in env_vars, including the one its environment lacks.
-                args: [
-                  "${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs",
-                  "${PLUGIN_DATA}",
-                  adapter!.id,
-                  "${HOOKNOSTIC_PLAYBACK_STDIO_SET:-unused}",
-                  "${HOOKNOSTIC_PLAYBACK_STDIO_UNSET:-stdio-fallback}",
-                ],
-                env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
-                cwd: projectCwdOverride,
-              },
-              localHttp: {
-                type: "streamable-http" as const,
-                url:
-                  adapter!.id === "claude"
-                    ? transports.httpUrl + "/${HOOKNOSTIC_PLAYBACK_REMOTE_PATH}"
-                    : transports.httpUrl,
-                ...(adapter!.id === "claude"
-                  ? { headers: { Authorization: "Bearer ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER}" } }
+  // The projection drive asserts MCP transports and ${}-expansion end to end.
+  // pi has no native MCP channel (profile cells unsupported, HN205 by
+  // design), so the scenario has no meaning there and the build would fail
+  // before any artifact exists. pi's local integration (skills + extension
+  // discovery) is covered by its own scenarios below.
+  it.skipIf(adapter?.id === "pi")(
+    "runs repository-local integration without installing a plugin",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-local-playback-"));
+      tempDirs.push(dir);
+      const transports = await startProjectionMcpTransports();
+      const source = join(dir, "portable");
+      await mkdir(join(source, "mcp-working-dir"), { recursive: true });
+      await writeFile(join(source, "plugin-mcp-env-fixture.mjs"), await readFile(PluginMcpEnvFixturePath));
+      const skillSource = join(dir, "portable-skills/local-sample");
+      await mkdir(skillSource, { recursive: true });
+      await writeFile(
+        join(skillSource, "SKILL.md"),
+        "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
+      );
+      const projectCwdOverride = adapter!.id === "claude" ? "./mcp-working-dir" : "${PLUGIN_ROOT}/..";
+      const build = await buildPlaybackArtifact(adapter!, dir, {
+        delivery: "project",
+        project: true,
+        componentOptions: {
+          ...(adapter!.id === "claude"
+            ? {}
+            : { mcpProjectCwdServers: ["localProbe"], mcpStartupTimeoutMs: { localProbe: 60_000 } }),
+        },
+        components: {
+          origin: "direct",
+          skills: [
+            {
+              name: "local-sample",
+              source: skillSource,
+              files: [
+                {
+                  path: "SKILL.md",
+                  mode: 0o644,
+                  contents: new TextEncoder().encode(
+                    "---\nname: local-sample\ndescription: local-skill-marker\n---\nSynthetic playback skill.\n",
+                  ),
+                },
+              ],
+            },
+          ],
+          mcp: {
+            root: source,
+            config: {
+              $schema: AGENT_PLUGIN_MCP_SCHEMA,
+              mcpServers: {
+                localProbe: {
+                  type: "stdio" as const,
+                  command: "node",
+                  // A direct source's `${NAME:-default}` resolves through the
+                  // launcher on every harness. On Codex, both names are listed
+                  // in env_vars, including the one its environment lacks.
+                  args: [
+                    "${PLUGIN_ROOT}/plugin-mcp-env-fixture.mjs",
+                    "${PLUGIN_DATA}",
+                    adapter!.id,
+                    "${HOOKNOSTIC_PLAYBACK_STDIO_SET:-unused}",
+                    "${HOOKNOSTIC_PLAYBACK_STDIO_UNSET:-stdio-fallback}",
+                  ],
+                  env: { CAPTURE_PATH: "${PLUGIN_ROOT}/mcp-environment.json" },
+                  cwd: projectCwdOverride,
+                },
+                localHttp: {
+                  type: "streamable-http" as const,
+                  url:
+                    adapter!.id === "claude"
+                      ? transports.httpUrl + "/${HOOKNOSTIC_PLAYBACK_REMOTE_PATH}"
+                      : transports.httpUrl,
+                  ...(adapter!.id === "claude"
+                    ? { headers: { Authorization: "Bearer ${HOOKNOSTIC_PLAYBACK_REMOTE_HEADER}" } }
+                    : {}),
+                },
+                ...(adapter!.id === "opencode"
+                  ? {
+                      missingRemote: {
+                        type: "streamable-http" as const,
+                        url: "https://example.invalid/${HOOKNOSTIC_PLAYBACK_UNSET_REMOTE}/mcp",
+                      },
+                    }
                   : {}),
+                ...(adapter!.id === "codex" ? {} : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
               },
-              ...(adapter!.id === "opencode"
-                ? {
-                    missingRemote: {
-                      type: "streamable-http" as const,
-                      url: "https://example.invalid/${HOOKNOSTIC_PLAYBACK_UNSET_REMOTE}/mcp",
-                    },
-                  }
-                : {}),
-              ...(adapter!.id === "codex" ? {} : { localSse: { type: "sse" as const, url: transports.sseUrl } }),
             },
           },
         },
-      },
-    });
-    const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
-    await mkdir(harnessCwd, { recursive: true });
-    let harnessOutput = "";
-    process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"] = "stdio-set";
-    delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_UNSET"];
-    if (adapter!.id === "claude") {
-      process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"] = "expanded-path";
-      process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"] = "expanded-header";
-    }
-    try {
-      await runInstalledHarness(build, "rewrite", {
-        harnessCwd,
-        ...(adapter!.id === "claude"
-          ? { extraArgs: ["--strict-mcp-config", "--mcp-config", join(dir, ".mcp.json")] }
-          : {}),
-        ...(adapter!.id === "opencode"
-          ? {
-              opencodeConfig: {
-                mcp: {
-                  localProbe: { type: "remote", url: "https://inherited.invalid/mcp", enabled: true },
-                  inheritedOnly: { type: "remote", url: "https://example.invalid/inherited", enabled: false },
-                },
-              },
-            }
-          : {}),
-        capture: ({ stdout, stderr }) => {
-          harnessOutput = stdout + stderr;
-        },
-        verify: async ({ server }) => {
-          expect(requestContents(server.requests).join("\n")).toContain("local-skill-marker");
-          {
-            const environment = JSON.parse(await readFile(join(source, "mcp-environment.json"), "utf8"));
-            expect(normalize(environment.pluginRoot)).toBe(normalize(source));
-            expect(normalize(environment.cwd)).toBe(
-              normalize(adapter!.id === "claude" ? join(source, "mcp-working-dir") : dir),
-            );
-            expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
-            expect(environment.argv).toEqual([environment.pluginData, adapter!.id, "stdio-set", "stdio-fallback"]);
-            // The server above started although env_vars names a variable
-            // Codex's environment does not have.
-            if (adapter!.id === "codex") {
-              expect(await readFile(join(dir, ".codex/config.toml"), "utf8")).toContain(
-                '"HOOKNOSTIC_PLAYBACK_STDIO_UNSET"',
-              );
-            }
-            expect(transports.counts.http).toBeGreaterThan(0);
-            if (adapter!.id === "claude") {
-              expect(transports.received.httpPaths).toContain("/http/expanded-path");
-              expect(transports.received.authorizations).toContain("Bearer expanded-header");
-            }
-            if (adapter!.id !== "codex") {
-              expect(transports.counts.sseGet).toBeGreaterThan(0);
-              expect(transports.counts.ssePost).toBeGreaterThan(0);
-            }
-          }
-        },
       });
-    } finally {
-      delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"];
-      delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"];
-      delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"];
-      await transports.close();
-    }
-    if (adapter!.id === "opencode") {
-      expect(harnessOutput).toContain("Hooknostic disabled MCP");
-      expect(harnessOutput).toContain("HOOKNOSTIC_PLAYBACK_UNSET_REMOTE");
-    }
-    const events = await traceEvents(build.tracePath);
-    expect(events).toContain("tool.before");
-  }, 180_000);
+      const harnessCwd = adapter!.id === "codex" ? join(dir, "nested/session") : dir;
+      await mkdir(harnessCwd, { recursive: true });
+      let harnessOutput = "";
+      process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"] = "stdio-set";
+      delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_UNSET"];
+      if (adapter!.id === "claude") {
+        process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"] = "expanded-path";
+        process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"] = "expanded-header";
+      }
+      try {
+        await runInstalledHarness(build, "rewrite", {
+          harnessCwd,
+          ...(adapter!.id === "claude"
+            ? { extraArgs: ["--strict-mcp-config", "--mcp-config", join(dir, ".mcp.json")] }
+            : {}),
+          ...(adapter!.id === "opencode"
+            ? {
+                opencodeConfig: {
+                  mcp: {
+                    localProbe: { type: "remote", url: "https://inherited.invalid/mcp", enabled: true },
+                    inheritedOnly: { type: "remote", url: "https://example.invalid/inherited", enabled: false },
+                  },
+                },
+              }
+            : {}),
+          capture: ({ stdout, stderr }) => {
+            harnessOutput = stdout + stderr;
+          },
+          verify: async ({ server }) => {
+            expect(requestContents(server.requests).join("\n")).toContain("local-skill-marker");
+            {
+              const environment = JSON.parse(await readFile(join(source, "mcp-environment.json"), "utf8"));
+              expect(normalize(environment.pluginRoot)).toBe(normalize(source));
+              expect(normalize(environment.cwd)).toBe(
+                normalize(adapter!.id === "claude" ? join(source, "mcp-working-dir") : dir),
+              );
+              expect(normalize(environment.pluginData)).toBe(normalize(join(dir, ".hooknostic/data")));
+              expect(environment.argv).toEqual([environment.pluginData, adapter!.id, "stdio-set", "stdio-fallback"]);
+              // The server above started although env_vars names a variable
+              // Codex's environment does not have.
+              if (adapter!.id === "codex") {
+                expect(await readFile(join(dir, ".codex/config.toml"), "utf8")).toContain(
+                  '"HOOKNOSTIC_PLAYBACK_STDIO_UNSET"',
+                );
+              }
+              expect(transports.counts.http).toBeGreaterThan(0);
+              if (adapter!.id === "claude") {
+                expect(transports.received.httpPaths).toContain("/http/expanded-path");
+                expect(transports.received.authorizations).toContain("Bearer expanded-header");
+              }
+              if (adapter!.id !== "codex") {
+                expect(transports.counts.sseGet).toBeGreaterThan(0);
+                expect(transports.counts.ssePost).toBeGreaterThan(0);
+              }
+            }
+          },
+        });
+      } finally {
+        delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_PATH"];
+        delete process.env["HOOKNOSTIC_PLAYBACK_REMOTE_HEADER"];
+        delete process.env["HOOKNOSTIC_PLAYBACK_STDIO_SET"];
+        await transports.close();
+      }
+      if (adapter!.id === "opencode") {
+        expect(harnessOutput).toContain("Hooknostic disabled MCP");
+        expect(harnessOutput).toContain("HOOKNOSTIC_PLAYBACK_UNSET_REMOTE");
+      }
+      const events = await traceEvents(build.tracePath);
+      expect(events).toContain("tool.before");
+    },
+    180_000,
+  );
 
   it("replays every captured hook payload through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-playback-${adapter!.id}-`));
@@ -1441,6 +1550,8 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     const fixturesDir = adapterFixturesDir(adapter!);
     if (adapter!.shimExecution === "command") {
       await replayCommandFixtures(build, fixturesDir);
+    } else if (adapter!.id === "pi") {
+      await replayPiFixtures(build, fixturesDir);
     } else {
       await replayOpenCodeFixtures(build, fixturesDir);
     }
@@ -2057,7 +2168,101 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     300_000,
   );
 
-  it("drives the fixture MCP tool through the generated production artifact", async () => {
+  it.skipIf(adapter?.id !== "pi")(
+    "loads projected package skills and honours its hook through pi install -l",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-package-playback-"));
+      tempDirs.push(dir);
+      const packageDir = join(dir, "projected");
+      const sourceDir = join(dir, "source");
+      const projectDir = join(dir, "consumer");
+      await mkdir(join(sourceDir, "skills", "playback-skill"), { recursive: true });
+      await mkdir(projectDir, { recursive: true });
+      await writeFile(
+        join(sourceDir, "plugin.json"),
+        JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "pi-playback", version: "1.0.0" }),
+      );
+      await writeFile(
+        join(sourceDir, "skills", "playback-skill", "SKILL.md"),
+        "---\nname: playback-skill\ndescription: hooknostic-package-skill-available\n---\n\nPlayback skill body.\n",
+      );
+      const loaded = await loadAgentPlugin({ root: sourceDir });
+      expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+      expect(loaded.package).toBeDefined();
+      const build = await buildPlaybackArtifact(adapter!, packageDir, { delivery: "package" });
+      const projector = adapter!.agentPluginProjector!;
+      const target = {
+        id: "pi",
+        delivery: "package" as const,
+        version: adapter!.harness.referenceVersion,
+        output: packageDir,
+      };
+      const plan = await projector.project(loaded.package!, {
+        target,
+        hookArtifacts: [
+          { path: "hooknostic.js", contents: await readFile(build.runtimePath, "utf8") },
+          { path: "package.json", contents: await readFile(join(packageDir, "package.json"), "utf8") },
+        ],
+        support: resolveAgentPluginProjection(target, projector).matrix!,
+        onUnsupported: "error",
+      });
+      expect(plan.issues).toEqual([]);
+      for (const file of plan.files) {
+        const dest = join(packageDir, file.path);
+        await mkdir(join(dest, ".."), { recursive: true });
+        await writeFile(dest, file.contents);
+      }
+      const agentDir = join(dir, "pi-home");
+      const env = { ...withoutCredentials(), PI_CODING_AGENT_DIR: agentDir };
+      const install = await runProcess("pi", ["install", "-l", "--approve", packageDir], {
+        cwd: projectDir,
+        timeoutMs: 60_000,
+        env,
+      });
+      expect(install.code, install.stdout + install.stderr).toBe(0);
+
+      const server = await startModelPlayback("openai-chat", "rewrite");
+      try {
+        const provider = await writePiProviderExtension(projectDir, server.baseUrl);
+        const run = await runProcess(
+          "pi",
+          [
+            "--provider",
+            "hooknostic-playback",
+            "--model",
+            "hooknostic-playback",
+            "-e",
+            provider,
+            "--approve",
+            "--no-session",
+            "-p",
+            playbackPrompt("rewrite"),
+          ],
+          {
+            cwd: projectDir,
+            timeoutMs: 90_000,
+            env: {
+              ...env,
+              HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+              HOOKNOSTIC_PLAYBACK_EFFECTS: "rewrite",
+            },
+          },
+        );
+        expect(run.code, run.stdout + run.stderr).toBe(0);
+        expect(server.errors).toEqual([]);
+        expect(JSON.stringify(server.requests)).toContain("hooknostic-package-skill-available");
+        expect(await readFile(join(projectDir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+        expect(await traceEvents(build.tracePath)).toContain("tool.before");
+      } finally {
+        await server.close();
+      }
+    },
+    180_000,
+  );
+
+  // pi has no native MCP channel (profile cells unsupported by design), so
+  // there is no fixture MCP tool to drive on it.
+  it.skipIf(adapter?.id === "pi")("drives the fixture MCP tool through the generated production artifact", async () => {
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-mcp-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);

@@ -1,0 +1,5 @@
+{
+  "sendMessage": [
+    { "content": "run the tests first", "triggerTurn": true }
+  ]
+}
