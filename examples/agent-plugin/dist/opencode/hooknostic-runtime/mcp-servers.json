@@ -5,7 +5,7 @@
       "name": "greeter",
       "command": "node",
       "args": [
-        "${PLUGIN_ROOT}/src/greet-mcp.mjs"
+        "${PLUGIN_ROOT}/bundled/greet-mcp.mjs"
       ]
     }
   ]

@@ -1,10 +1,15 @@
 # Hooknostic documentation
 
-Welcome! This is the documentation hub for Hooknostic — write lifecycle hooks for
-coding agents once, and compile them into native integrations for Claude Code, OpenAI
+Welcome! This is the documentation hub for Hooknostic — portable hooks, skills, and MCP servers, compiled into native packages or project integrations for Claude Code, OpenAI
 Codex CLI, and OpenCode.
 
 Pick your path:
+
+## Choose a workflow
+
+- [Distribute a standards-based package](tutorials/04-packaging-with-agent-plugins.md): Agent Plugins 1.0 → native Claude/Codex marketplace plugins or OpenCode packages.
+- [Maintain a repository](project-integration.md): direct hooks, skills, and MCP with init, sync, and verify.
+- [Configuration and commands](configuration.md): source forms, delivery, policies, and build reports.
 
 ## 🚀 Start here
 
@@ -23,7 +28,7 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | [1. Your first hook](tutorials/01-your-first-hook.md) | Blocking a dangerous command; observing events; `check` vs `build` | [`examples/basic`](../examples/basic/) |
 | [2. Rewriting tool input](tutorials/02-rewriting-tool-input.md) | Required vs optional capabilities; feature detection; graceful degradation | [`examples/rewrite-shell`](../examples/rewrite-shell/) |
 | [3. Injecting context](tutorials/03-injecting-context.md) | Adding model-visible context; when a target can't do what you want; per-target policies | [`examples/context-injection`](../examples/context-injection/) |
-| [4. Packaging with Agent Plugins](tutorials/04-packaging-with-agent-plugins.md) | Combining hooks with a portable Agent Plugins package (skills + manifest) | [`examples/agent-plugin`](../examples/agent-plugin/) |
+| [4. Packaging with Agent Plugins](tutorials/04-packaging-with-agent-plugins.md) | Combined hooks, skills, bundled MCP, and Claude/Codex marketplace installation | [`examples/agent-plugin`](../examples/agent-plugin/) |
 
 ## 🛠 Guides
 
@@ -49,17 +54,12 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 
 ## How the pieces fit
 
-```
-your TypeScript hooks  ──▶  hooknostic check   "will this work on every target?"
-        │                          │
-        │                          ▼
-        └──────────────▶  hooknostic build ──▶  dist/claude/    a Claude Code plugin
-                                                dist/codex/     a repo-level .codex/ tree
-                                                dist/opencode/  an .opencode/ plugin module
+```text
+hooks + Agent Plugins package ── check / build ── native distributable packages
+hooks + direct skills / MCP ──── sync ─────────── native project integration
+                                verify ───────── drift detection
 ```
 
-Each output directory is self-contained and independently distributable. Installing
-them into a harness is a deliberate manual step ([why?](installing-artifacts.md)) —
-Hooknostic never touches an agent's trust or configuration state.
-
-[Repository-local integration](project-integration.md) — source configuration, sync, ownership, verification, and recovery.
+Source packages stay portable. Adapters own target formats and report support differences.
+`build` writes artifacts; `sync` maintains project discovery and ownership records.
+Harness trust and approvals remain explicit user steps.

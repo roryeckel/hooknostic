@@ -1,37 +1,87 @@
 # Hooknostic
 
-**Write lifecycle hooks for your coding agent once — run them in Claude Code, OpenAI
-Codex CLI, and OpenCode.**
+**Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
+Claude Code and Codex marketplaces, or maintain integrations directly in your repository.**
 
-Coding agents let you hook into their lifecycle: run code before a tool executes, when
-a session starts, when the agent wants to stop. The problem is that every agent — we
-call each one a *harness* — has its own hook format, event names, and rules about what
-hook code is actually allowed to do. The same "block dangerous shell commands" hook
-gets written three times, three different ways.
+Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
+Codex CLI**, and **OpenCode**. Adapters handle native packaging, component configuration,
+project discovery, and lifecycle behavior. Before writing output, Hooknostic checks what
+each target can deliver and reports every compatibility shortfall.
 
-Hooknostic fixes that. You author hooks once in TypeScript, and Hooknostic:
+## Standards in, native integrations out
 
-1. **Checks** whether each harness you target can actually deliver the behavior your
-   hooks rely on — before anything is generated.
-2. **Reports** exactly how each behavior maps: natively supported (`exact`), achieved a
-   different way (`emulated`), close-but-different (`approximate`), or `unsupported`.
-3. **Builds** the smallest possible native integration for every target that passes.
+[Agent Plugins 1.0](https://agent-plugins.org/specification) defines portable packages:
+a manifest, Agent Skills, MCP servers, and namespaced client extensions. Hooknostic
+validates that format and projects it into native harness artifacts. The source package
+stays unchanged. Portable TypeScript hooks can accompany it, or be used on their own;
+hooks are outside the standard's v1 portable component set.
 
-It can also validate an **Agent Plugins 1.0** package and project its manifest, skills,
-MCP servers, client overlay, and optional Hooknostic hooks into a complete Claude Code
-plugin. Hookless skill/MCP packages work too; OpenCode package projection is deferred.
+```text
+Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
+TypeScript hooks ─────────┼─ check / build ──┼─ Codex plugin       → marketplace
+Direct skills / MCP ──────┘                 └─ OpenCode package or project artifact
+                                   sync ───── native repository wiring
+```
 
-v0.1 targets **Claude Code**, **OpenAI Codex CLI**, and **OpenCode**.
+The same source can contain hooks, skills, and MCP together, or only the components you
+need. Native outputs are ready for their harness's installation workflow. Authors still
+register their marketplace and list the built plugins; Hooknostic does not submit listings.
 
-> [!WARNING]
-> **macOS is untested.** Every observation of a real harness behind these adapters was
-> made on Windows or Linux. On macOS only the unit and fixture tests run in CI; no
-> Claude Code, Codex, or OpenCode session has ever been driven there, so generated
-> integrations are unverified on that platform. If you run Hooknostic on macOS, the
-> credential-free playback lane in [docs/testing.md](docs/testing.md) is the quickest
-> way to confirm it, and a report either way is welcome.
+## Choose your starting point
 
-## What it looks like
+Requires **Node.js 22.13+**. Install the CLI and configuration/hook authoring SDK:
+
+```sh
+npm install --save-dev hooknostic @hooknostic/sdk
+```
+
+Before the first npm release, use the [local tarball installation](docs/publishing.md#testing-without-publishing-the-everyday-flow).
+
+| Your goal | Workflow | Start here |
+| --- | --- | --- |
+| Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or OpenCode | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
+| Maintain a repository | Keep portable hooks, skills, and MCP; `init --local`, `sync --dry-run`, `sync`, then `verify` | [Repository integration](docs/project-integration.md) |
+| Write portable hooks | Author one TypeScript entry and choose package or project delivery | [First hook walkthrough](docs/getting-started.md) |
+
+`build` writes distributable artifacts. `sync` additionally maintains project discovery
+files and ownership records. Trust prompts, dependency installation, and activation remain
+explicit harness/user steps. [Scope and contribution contract](CONTRIBUTING.md).
+
+## One package, multiple targets
+
+```text
+portable/
+├── plugin.json
+├── skills/greet/SKILL.md
+└── mcp.json
+src/hooks.ts                 # optional
+hooknostic.config.ts
+```
+
+```ts
+import { defineConfig } from "@hooknostic/sdk";
+
+export default defineConfig({
+  entry: "./src/hooks.ts",
+  components: { root: "./portable" },
+  targets: {
+    claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
+    codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
+    opencode: { version: ">=2.0.17 <3", delivery: "package", output: "./dist/opencode" },
+  },
+});
+```
+
+Omit `entry` for a hookless package. For direct repository sources, use
+`components.skills` / `components.mcp` and project delivery instead of a package root.
+The [existing combined example](examples/agent-plugin/) includes a bundled MCP server,
+so its generated packages run without workspace dependencies. OpenCode v1 remains
+available through an explicit version range; see [version families](docs/opencode-families.md).
+
+## Portable hooks
+
+Coding agents expose different lifecycle events and different actions at those events.
+Hooknostic lets you express the hook once and declare which capabilities it needs:
 
 ```ts
 // src/hooks.ts
@@ -59,7 +109,7 @@ export default definePlugin({
           command.startsWith("npm ")
         ) {
           // Portable write-back: lands under whichever key this harness uses
-          // (`command` on Claude/OpenCode, `cmd` on Codex), siblings preserved.
+          // (according to the captured tool shape), siblings preserved.
           return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
@@ -72,13 +122,22 @@ That one file blocks a destructive command on all three harnesses, and rewrites
 `npm` to `pnpm` on the ones that support input rewriting — falling back gracefully
 (and visibly) where they don't.
 
+## Commands at a glance
+
+```sh
+hooknostic init --local         # scaffold a repository integration
+hooknostic check                # compile and validate without writing target artifacts
+hooknostic build                # emit native artifacts and a build report
+hooknostic sync --dry-run       # preview repository changes
+hooknostic sync                 # reconcile owned project wiring
+hooknostic verify               # detect integration drift
+hooknostic doctor               # diagnose installed versions and activation
+hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts
+hooknostic dispatch --target claude --events events.jsonl
 ```
-hooknostic check     # can my hooks work on every configured target? (no files written)
-hooknostic build     # check, then generate ready-to-install output per target
-hooknostic doctor    # are my installed agent versions within the validated ranges?
-hooknostic inspect   # why does a target support (or not support) a given behavior?
-hooknostic dispatch  # what do my hooks decide for this event on this target? (for tests)
-```
+
+See the [command reference](docs/configuration.md). Trusted materializers may run during
+compilation, including `check`; review their network/cache behavior like other build code.
 
 ## The idea in one paragraph
 
@@ -93,9 +152,12 @@ over by an optimistic translation layer.
 ## Documentation
 
 **New here? Start with the [documentation wiki](docs/README.md)** — it has a
-plain-language tour of the concepts, a getting-started walkthrough, and step-by-step
+plain-language tour of the concepts, two delivery workflows, and step-by-step
 tutorials built on the [examples](examples/).
 
+- [Configuration and commands](docs/configuration.md) — sources, delivery, policies, dependencies, and reports
+- [Marketplace packages](docs/tutorials/04-packaging-with-agent-plugins.md) — install the combined example in Claude and Codex
+- [Repository integration](docs/project-integration.md) — sync, verify, ownership, and recovery
 - [Core concepts](docs/concepts.md) — events, effects, capabilities, and the build
   pipeline, in plain language
 - [Getting started](docs/getting-started.md) — from empty folder to installed hooks
@@ -124,7 +186,7 @@ Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
 | `@hooknostic/agent-plugin` | Public Agent Plugins 1.0 loader, schemas, and projection contracts |
 | `@hooknostic/core` | Compiler: config loading, plugin model, capability analysis, diagnostics |
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |
-| `hooknostic` | CLI: `check` / `build` / `doctor` / `inspect` |
+| `hooknostic` | CLI: compile, reconcile projects, inspect support, and test hooks |
 | `@hooknostic/adapter-{claude,codex,opencode}` | Per-harness adapters (internal) |
 | `@hooknostic/testkit` | Fixtures, fake adapters, and the adapter contract suite |
 
@@ -135,17 +197,22 @@ pnpm test       # vitest
 pnpm lint
 ```
 
-## Status
+## Support and status
 
-v0.1: all three adapters are implemented against fixtures captured from real installed
-harnesses (the exact builds are listed in [docs/harness-support.md](docs/harness-support.md),
-generated from the adapter metadata) and verified by
-live smoke tests (`HOOKNOSTIC_SMOKE=1 pnpm test`): tool blocking, input rewriting, and
-context injection observed working end-to-end in real sessions of all three, on Windows
-and Linux only (macOS is untested; see the warning above). `check`,
-`build`, `doctor`, and `inspect` are functional; builds are atomic (nothing is written
-until every selected target passes) and reproducible from the version ranges in your
-config — never from whatever happens to be installed locally.
+The compiler, project reconciliation, and package projectors are implemented. See the
+[generated support table](docs/harness-support.md) for version ranges, component support,
+and the evidence behind each claim. Package and project support can differ; Codex
+package hooks require a narrower version range than project hooks.
+
+**macOS has unit and fixture coverage, but no real-harness playback evidence.** Windows
+and Linux observations are recorded separately. OpenCode v2 retains explicit limitations,
+including approximate context/stop behavior and incomplete MCP identity normalization;
+read [OpenCode families](docs/opencode-families.md) before relying on those capabilities.
+
+The default compatibility minimum is `emulated`. Unsupported components and degraded
+items fail by default; known standard deviations warn and remain visible in the report.
+Use [component policies](docs/configuration.md#compatibility-and-component-policies) to
+require exact behavior or accept a specific documented exception.
 
 **A note on trust:** Hooknostic hook execution is not a sandbox or security boundary.
 Generated integrations preserve each harness's own trust and review mechanisms — Codex
@@ -180,11 +247,3 @@ vulnerabilities privately rather than in a public issue —
 ## License
 
 [Apache License 2.0](LICENSE).
-
-## Repository-local integration
-
-Use `hooknostic init --local`, author your portable sources, then run
-`hooknostic sync` and `hooknostic verify`. `build` still writes only artifacts;
-`sync` also maintains project discovery files and deterministic ownership records.
-See the [local integration guide](docs/project-integration.md) and
-[synthetic example](examples/local-project/README.md).

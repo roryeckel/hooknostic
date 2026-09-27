@@ -7,7 +7,7 @@
         "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
         "${CLAUDE_PLUGIN_ROOT}",
         "node",
-        "${CLAUDE_PLUGIN_ROOT}/src/greet-mcp.mjs"
+        "${CLAUDE_PLUGIN_ROOT}/bundled/greet-mcp.mjs"
       ],
       "env": {
         "PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",

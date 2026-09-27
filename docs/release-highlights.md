@@ -1,3 +1,23 @@
+# First public release
+
+Hooknostic compiles portable hooks, skills, and MCP servers into native coding-agent
+integrations. Agent Plugins 1.0 packages can be projected for Claude Code and Codex
+marketplaces and OpenCode package delivery. Repository maintainers can use direct sources
+with `init --local`, `sync`, and `verify`.
+
+- Author portable TypeScript hooks and inspect exact, emulated, approximate, or unsupported behavior.
+- Keep the standard package source unchanged while adapters translate manifests, skills, MCP, and hooks.
+- Build combined or hookless packages; the combined example bundles its MCP server for installation without workspace dependencies.
+- Inspect component policies and accepted exceptions in diagnostics and build reports.
+- Test hook decisions with portable-event `dispatch`, and verify marketplace installation locally without model spend.
+
+Start with the [README](../README.md), [marketplace walkthrough](tutorials/04-packaging-with-agent-plugins.md),
+or [repository integration](project-integration.md). Supported versions and evidence are
+listed in the generated table. macOS has unit/fixture coverage but no real-harness validation.
+
+The initial owner bootstrap uses verified CI-built tarballs and has no npm provenance
+attestation. Subsequent trusted-publishing releases carry provenance; see [releases](releases.md).
+
 ## OpenCode v2 support
 
 The public adapter remains `opencode`. Your configured version range selects

@@ -155,3 +155,35 @@ capabilities and limits. The test removes common model credential
 variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.
+
+## Marketplace release gates
+
+After `pnpm run bundle`, print the package baseline from existing capture metadata:
+
+```sh
+node scripts/verify-marketplaces.mjs codex --print-version
+node scripts/verify-marketplaces.mjs claude --print-version
+```
+
+Install those exact harness versions, then run `node scripts/verify-marketplaces.mjs codex`
+and the corresponding `claude` command. For a deliberate check against another installed
+version, set `HOOKNOSTIC_PLAYBACK_VERSION` to that exact version; record it with the result.
+The gate fails when the binary is missing, the version differs, or the package route is
+unsupported. It must actually install the documented example into an isolated marketplace,
+find the skill, receive an MCP greeting, and observe the hook denial from an unrelated
+project directory. Codex also checks the existing installed-plugin block/rewrite scenarios.
+The older project playback baseline stays unchanged.
+
+These gates use loopback model playback and isolated configuration. They are local commands;
+no Actions workflow or paid smoke session is launched. Normal `pnpm test` also relocates
+all example outputs and calls the bundled MCP server without source dependencies.
+
+## Actual npm package installation
+
+After `pnpm run bundle`, set `HOOKNOSTIC_PACK=1` and run
+`pnpm exec vitest run packages/cli/test/packed-consumer.test.ts`.
+This packs all three packages with `pnpm pack`, installs those exact tarballs with npm
+in a temporary consumer, checks shipped documentation and rewritten dependencies,
+and exercises init/check/sync/verify plus a hookless package build. It may download
+registry dependencies; it never publishes. The normal suite retains its offline
+simulated-install coverage.

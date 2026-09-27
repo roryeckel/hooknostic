@@ -1,0 +1,5 @@
+{
+  "name": "hooknostic-example",
+  "owner": { "name": "Hooknostic contributors" },
+  "plugins": [{ "name": "combined-example", "version": "1.0.0", "source": "./dist/codex" }]
+}

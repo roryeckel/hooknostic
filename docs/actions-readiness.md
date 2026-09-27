@@ -1,5 +1,17 @@
 # GitHub Actions readiness
 
+## Current launch status
+
+The historical rehearsal below is not a current checklist. The complete matrix at
+[86ecc3e](https://github.com/roryeckel/hooknostic/actions/runs/36281653270) passed.
+The later [9d6cca8 run](https://github.com/roryeckel/hooknostic/actions/runs/36289090959)
+never started its jobs because of billing limits. Final-revision hosted verification
+remains outstanding; local checks do not establish hosted credential/event behavior.
+No new hosted runs are authorized by the launch documentation work. See
+[release readiness](releases.md#launch-readiness-before-changing-visibility).
+
+## Historical rehearsal
+
 Validation snapshot: 2026-09-23, starting at
 [`c5ff598`](https://github.com/roryeckel/hooknostic/commit/c5ff59882678a95349ab03e8e7b7babf18b4fb72).
 Hosted verification is **not complete**. Local execution does not prove GitHub

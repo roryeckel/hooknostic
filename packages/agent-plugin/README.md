@@ -24,3 +24,5 @@ The loader does not install the package into a harness. Use the `hooknostic`
 CLI for native projection. See the [packaging tutorial](https://github.com/roryeckel/hooknostic/blob/master/docs/tutorials/04-packaging-with-agent-plugins.md)
 and [project documentation](https://github.com/roryeckel/hooknostic#readme).
 Licensed under Apache-2.0.
+
+Hooknostic keeps the Agent Plugins 1.0 source unchanged and reports native translation shortfalls. Claude and Codex marketplace packaging is handled by the CLI adapters; OpenCode package/project delivery is also available. Portable hook authoring is an optional companion to the standard.

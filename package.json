@@ -2,7 +2,7 @@
   "name": "hooknostic-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Hooknostic — portable lifecycle hooks for coding-agent harnesses",
+  "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"

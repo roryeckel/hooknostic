@@ -1,5 +1,5 @@
 ---
-name: combined-example-greet
+name: greet
 description: Greet the user by name and summarize the repo state.
 ---
 

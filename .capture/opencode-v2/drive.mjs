@@ -108,9 +108,13 @@ if (
     const { loadAgentPlugin } = await import("../../packages/agent-plugin/src/index.ts");
     const source = await loadAgentPlugin({
       root: fileURLToPath(new URL("../../examples/agent-plugin", import.meta.url)),
+      exclude: [".claude-plugin/**", ".agents/plugins/**", "build/**", "runtime/**"],
     });
     const serverFile = source.package.files.find((file) => file.path === "src/greet-mcp.mjs");
     serverFile.contents = new Uint8Array(serverProbe);
+    // The example bundles MCP at build time; this capture substitutes its own
+    // dependency-free server, so redirect the declaration with the file.
+    source.package.mcp.mcpServers.greeter.args = ["${PLUGIN_ROOT}/src/greet-mcp.mjs"];
     source.package.mcp.mcpServers.greeter.env = { HKN_MCP_ENV: "package-marker", HKN_MCP_ROOT: "${PLUGIN_ROOT}" };
     source.package.mcp.mcpServers.greeter.cwd = "${PLUGIN_ROOT}/src";
     if (remote) source.package.mcp.mcpServers = remoteServers;

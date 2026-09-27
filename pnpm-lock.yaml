@@ -126,6 +126,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.1.0
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.28.2
       zod:
         specifier: catalog:zod4
         version: 4.6.5

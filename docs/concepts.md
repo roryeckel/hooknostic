@@ -3,6 +3,18 @@
 Everything in Hooknostic builds on five ideas. This page explains them in plain
 language; the [design document](design.md) has the precise contracts behind each one.
 
+## Packages and repository integration
+
+Agent Plugins 1.0 supplies the portable manifest, skills, MCP, and client-extension
+contract. Hooknostic validates it and translates components through adapter profiles.
+Hooks use the TypeScript SDK and can accompany a package or stand alone. Direct skills
+and MCP sources can also be synchronized into a repository without a manifest.
+
+Choose package or project delivery per target. `build` writes native output; `sync`
+maintains project discovery files and ownership state, and `verify` detects drift.
+Component support has the same four levels as hook capabilities, with explicit
+[shortfall policies](configuration.md#compatibility-and-component-policies).
+
 ## 1. Harnesses: the tools your hooks run inside
 
 A **harness** is a coding-agent application — Claude Code, OpenAI Codex CLI, OpenCode.
@@ -125,7 +137,7 @@ Nothing is ever silently dropped.
 ## 5. The build pipeline: check first, emit last
 
 ```
-hooknostic.config.ts + src/hooks.ts
+config + hooks and/or components
         │
         ▼
   normalized plugin model
@@ -137,13 +149,13 @@ hooknostic.config.ts + src/hooks.ts
   bundle your hook code once
         │
         ├── Claude adapter   ──▶  dist/claude/    (a complete Claude Code plugin)
-        ├── Codex adapter    ──▶  dist/codex/     (a repo-level .codex/ tree)
-        └── OpenCode adapter ──▶  dist/opencode/  (an .opencode/ plugin module)
+        ├── Codex adapter    ──▶  dist/codex/     (a native package or project tree)
+        └── OpenCode adapter ──▶  dist/opencode/  (a native package or project plugin)
 ```
 
 Key properties:
 
-- **`check` is `build` without the writing.** Both run the same pipeline — analysis,
+- **`check` compiles without writing target artifacts.** Trusted materializers may use network or persistent caches. Both run the same pipeline — analysis,
   bundling, Agent Plugin projection, artifact validation — and `check` stops just before
   staging. Whatever `build` rejects before touching the filesystem, `check` rejects — an
   existing output of the wrong kind (a file where a directory goes) included, since that

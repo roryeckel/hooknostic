@@ -15,7 +15,7 @@ import { runInit } from "./init.js";
 import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
-export const CLI_USAGE = `hooknostic — portable lifecycle hooks for coding-agent harnesses
+export const CLI_USAGE = `hooknostic — portable hooks, skills, and MCP for coding agents
 
 Usage:
   hooknostic check   [--config <path>] [--target <a,b>] [--json]

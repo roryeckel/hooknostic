@@ -8,15 +8,15 @@
       "requestedVersion": ">=2.1 <3",
       "output": "./dist/claude",
       "capabilities": {
-        "exact": 2,
+        "exact": 4,
         "emulated": 0,
         "approximate": 0,
         "unsupported": 0
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:a09a98b4c8a5070e93f0d63c3e400c9fa2bc7146a5a8c9787d94bf04fd0b038a",
-        "copiedFileCount": 2,
+        "contentDigest": "sha256:01d2d58c9fb6a0a5d4747fb863c6ffe2534742b47f0a5fbae4230353f5c8bfb2",
+        "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
             "support": "exact",
@@ -35,12 +35,6 @@
             "discovered": 1,
             "emitted": 1,
             "skipped": 0
-          },
-          "agent-plugin.runtime-package": {
-            "support": "exact",
-            "discovered": 1,
-            "emitted": 1,
-            "skipped": 0
           }
         },
         "omissions": [],
@@ -49,9 +43,9 @@
       "artifacts": [
         ".claude-plugin/plugin.json",
         ".mcp.json",
+        "bundled/greet-mcp.mjs",
+        "bundled/THIRD_PARTY_NOTICES.txt",
         "hooks/hooks.json",
-        "package-lock.json",
-        "package.json",
         "runtime/hooknostic.mjs",
         "runtime/mcp-launcher.mjs"
       ]
@@ -62,17 +56,17 @@
       "requestedVersion": ">=0.153 <1",
       "output": "./dist/codex",
       "capabilities": {
-        "exact": 2,
+        "exact": 4,
         "emulated": 0,
         "approximate": 0,
         "unsupported": 0
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:976288b6a196a3951b411a6ed6baf91e5d15b27d785d84bdbb7d8071e3758b0b",
-        "copiedFileCount": 4,
+        "contentDigest": "sha256:65014877d6c4ffe1941c9cbc15ca21cc641ac114acf1a7260f294ee2f24686ad",
+        "copiedFileCount": 3,
         "directories": [
-          "runtime",
+          ".agents",
           "skills",
           "skills/greet",
           "src"
@@ -95,25 +89,16 @@
             "discovered": 1,
             "emitted": 1,
             "skipped": 0
-          },
-          "agent-plugin.runtime-package": {
-            "support": "unsupported",
-            "discovered": 1,
-            "emitted": 0,
-            "skipped": 1
           }
         },
-        "omissions": [
-          {
-            "component": "agent-plugin.runtime-package",
-            "reason": "Codex is not known to install a plugin's npm dependencies"
-          }
-        ],
+        "omissions": [],
         "deviations": []
       },
       "artifacts": [
         ".codex-plugin/plugin.json",
         ".mcp.json",
+        "bundled/greet-mcp.mjs",
+        "bundled/THIRD_PARTY_NOTICES.txt",
         "hooknostic/hooknostic.mjs",
         "hooks.json",
         "runtime/mcp-launcher.mjs",
@@ -123,20 +108,20 @@
     "opencode": {
       "status": "success",
       "adapter": "opencode@0.1.0",
-      "requestedVersion": ">=1.18 <2",
+      "requestedVersion": ">=2.0.17 <3",
       "output": "./dist/opencode",
       "capabilities": {
-        "exact": 2,
+        "exact": 4,
         "emulated": 0,
         "approximate": 0,
         "unsupported": 0
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:dc45dd9930e43ff27119cb4488dbad90deb6f3074b4a3e5d39ff8447baf2c0b2",
+        "contentDigest": "sha256:840f5f42a05ea1e0a6b38b8b8402cd321de5343c682d7f8735dba2599f1fe4d0",
         "copiedFileCount": 6,
         "directories": [
-          "package/runtime",
+          "package/.agents",
           "package/skills",
           "package/skills/greet",
           "package/src"
@@ -159,20 +144,9 @@
             "discovered": 1,
             "emitted": 1,
             "skipped": 0
-          },
-          "agent-plugin.runtime-package": {
-            "support": "unsupported",
-            "discovered": 1,
-            "emitted": 0,
-            "skipped": 1
           }
         },
-        "omissions": [
-          {
-            "component": "agent-plugin.runtime-package",
-            "reason": "the generated root manifest is the only one any OpenCode route reads, and this component's manifest and lockfile are copied into the nested author package, where nothing merges or installs them; bundle the dependencies instead"
-          }
-        ],
+        "omissions": [],
         "deviations": []
       },
       "artifacts": [
@@ -182,49 +156,87 @@
         "hooknostic.js",
         "index.js",
         "package.json",
+        "package/bundled/greet-mcp.mjs",
+        "package/bundled/THIRD_PARTY_NOTICES.txt"
+      ]
+    },
+    "legacy": {
+      "status": "success",
+      "adapter": "opencode@0.1.0",
+      "requestedVersion": ">=1.18 <2",
+      "output": "./dist/opencode-v1",
+      "capabilities": {
+        "exact": 4,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "projection": {
+        "status": "success",
+        "contentDigest": "sha256:cc4dd2017a741e1eb24d1f0d950551289101f31388f000e7762fa9affb9836b8",
+        "copiedFileCount": 5,
+        "directories": [
+          "package/.agents",
+          "package/skills",
+          "package/skills/greet",
+          "package/src"
+        ],
+        "components": {
+          "agent-plugin.manifest": {
+            "support": "exact",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.skills": {
+            "support": "emulated",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          },
+          "agent-plugin.mcp.stdio": {
+            "support": "emulated",
+            "discovered": 1,
+            "emitted": 1,
+            "skipped": 0
+          }
+        },
+        "omissions": [],
+        "deviations": []
+      },
+      "artifacts": [
+        "hooknostic-agent-plugin.js",
+        "hooknostic-runtime/mcp-launcher.mjs",
+        "hooknostic-runtime/mcp-servers.json",
+        "hooknostic.js",
+        "index.js",
+        "package.json",
+        "package/bundled/greet-mcp.mjs",
+        "package/bundled/THIRD_PARTY_NOTICES.txt",
         "package/skills/greet/SKILL.md"
       ]
     }
   },
-  "diagnostics": [
-    {
-      "code": "HN205",
-      "severity": "warn",
-      "target": "codex",
-      "component": "agent-plugin.runtime-package",
-      "support": "unsupported",
-      "rationale": "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
-      "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"codex\"."
-    },
-    {
-      "code": "HN205",
-      "severity": "warn",
-      "target": "opencode",
-      "component": "agent-plugin.runtime-package",
-      "support": "unsupported",
-      "rationale": "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim.",
-      "message": "Agent Plugin component \"agent-plugin.runtime-package\" is unsupported on \"opencode\"."
-    }
-  ],
+  "diagnostics": [],
   "components": {
     "root": ".",
     "specVersion": "1.0.0",
     "targets": [
       "claude",
       "codex",
-      "opencode"
+      "opencode",
+      "legacy"
     ],
-    "sourceFileCount": 7,
+    "sourceFileCount": 6,
     "sourceFiles": [
+      "README.md",
       "mcp.json",
       "package.json",
       "plugin.json",
-      "runtime/package-lock.json",
-      "runtime/package.json",
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:c56abe6a8459dfe187828905bc37ff4c0b5f3e9f5a1f74860e1272fbb5516029"
+    "contentDigest": "sha256:eedb2f85aa076c9754ded7cd24f56acd25dbe7213dec06484229816762927d89"
   },
   "mcpServers": [
     {

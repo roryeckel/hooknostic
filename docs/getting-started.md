@@ -7,6 +7,8 @@ on. Time: about 15 minutes.
 **Prerequisites:** Node.js 22.13 or newer, and at least one supported agent installed
 (Claude Code, OpenAI Codex CLI, or OpenCode).
 
+For a combined standards-based package, start with [packaging and marketplaces](tutorials/04-packaging-with-agent-plugins.md). For repository integration, use [init, sync, and verify](project-integration.md). This walkthrough retains the hooks-only authoring path.
+
 ## 1. Install the authoring and CLI packages
 
 Hook authors use `@hooknostic/sdk` (the authoring API) and `hooknostic` (the CLI).
@@ -144,7 +146,7 @@ narrows the set (it can only narrow — the config defines what's allowed).
 
 ## 6. Install the output into a harness
 
-Hooknostic deliberately stops at `dist/` — every harness gates hook loading behind its
+`hooknostic build` stops at its configured output; `hooknostic sync` additionally maintains project wiring ([guide](project-integration.md)) — every harness gates hook loading behind its
 own trust and review mechanism, and Hooknostic never touches that state. The fastest
 path per harness:
 
@@ -167,8 +169,7 @@ path per harness:
   cp -r dist/opencode/.opencode .
   ```
 
-Now ask the agent to run `git push --force` — it gets blocked with your message, on
-whichever harness you picked.
+Test the decision first with [portable-event dispatch](testing-your-hooks.md). For a harmless live activation check, use the marker command in the [combined example](../examples/agent-plugin/README.md); do not use a real force push as an installation test.
 
 The full installation story — installing the Claude output as a proper plugin, version
 bumping, Codex trust configuration, committing `dist/` vs building on demand — is in
@@ -181,7 +182,7 @@ npx hooknostic doctor            # are my *installed* harness versions inside th
 npx hooknostic inspect claude    # show the capability table: what can this target do, and why?
 ```
 
-`doctor` is the only command that looks at your machine; it warns when an installed
+`doctor` inspects installed versions, runtime availability, and project wiring; it warns when an installed
 harness is newer than what the adapter has been validated against. `inspect` renders
 the adapter's capability table — support level and rationale per capability — which is
 how you answer "would `requestApproval` work on OpenCode?" without trial and error.

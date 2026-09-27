@@ -66,6 +66,7 @@ what counts as a vulnerability here.
 - Builds are atomic: nothing is written until every selected target passes.
 - Artifact paths are validated before staging — relative, POSIX, no `..`, no
   absolute paths.
-- Publication to npm happens only through a GitHub Actions workflow using
-  Trusted Publishing. There is no npm token in the repository, in CI, or on a
-  maintainer machine.
+- Routine npm publication uses GitHub Actions Trusted Publishing, without an npm
+  token secret. The first-package bootstrap is performed by the owner with interactive
+  2FA from verified CI-built tarballs; it is intentionally unattested. See
+  [the release runbook](docs/releases.md#first-public-release--one-time-owner-bootstrap).

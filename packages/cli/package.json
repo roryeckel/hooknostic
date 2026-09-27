@@ -2,7 +2,7 @@
   "name": "hooknostic",
   "version": "0.1.0",
   "private": true,
-  "description": "Hooknostic CLI: check, build, doctor, inspect",
+  "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
   "homepage": "https://github.com/roryeckel/hooknostic#readme",

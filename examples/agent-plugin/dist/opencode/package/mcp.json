@@ -4,7 +4,7 @@
     "greeter": {
       "type": "stdio",
       "command": "node",
-      "args": ["${PLUGIN_ROOT}/src/greet-mcp.mjs"]
+      "args": ["${PLUGIN_ROOT}/bundled/greet-mcp.mjs"]
     }
   }
 }

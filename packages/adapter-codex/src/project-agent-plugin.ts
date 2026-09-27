@@ -472,6 +472,20 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         date: "2026-09-08",
         validatedOn: [
           {
+            version: "0.153.2",
+            date: "2026-09-27",
+            method: "live-probe",
+            artifact: ".capture/marketplace-launch",
+            what: "On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies.",
+          },
+          {
+            version: "0.156.1",
+            date: "2026-09-27",
+            method: "live-probe",
+            artifact: ".capture/marketplace-launch",
+            what: "On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies.",
+          },
+          {
             version: "0.148.0",
             date: "2026-08-20",
             method: "doc-derived",

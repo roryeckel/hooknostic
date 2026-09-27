@@ -86,6 +86,8 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.260 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
+| 2.1.283 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | A stdio reference to a name the server's own env block also declares resolved to Claude's ambient value, not the declared one, and a name only the block declares stayed literal, in env and args alike; the child still received each declared value. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} and ${NAME:-default} references in a projected package's stdio command, args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; plain unset references remained literal, and placeholder-like header names stayed literal and were refused as invalid. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration. |
@@ -158,6 +160,8 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.153.2 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
+| 0.156.1 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 0.148.0 | 2026-08-20 | doc-derived | `.capture/codex-plugin-hooks` | Recorded as having removed the plugin_hooks feature; not re-testable on this machine, so the versions between it and 0.153.2 are declined rather than assumed. |
 
 ##### `>=0.153 <1`

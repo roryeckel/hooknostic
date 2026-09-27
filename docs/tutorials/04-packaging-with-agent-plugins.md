@@ -1,122 +1,183 @@
-# Tutorial 4 — Projecting an Agent Plugin
+# Tutorial 4 — Packages and marketplaces
 
 **Example:** [`examples/agent-plugin`](../../examples/agent-plugin/) ·
-**You'll learn:** compiling an Agent Plugins 1.0 package into a complete Claude Code
-plugin, with or without Hooknostic hooks.
+**You'll learn:** one Agent Plugins 1.0 package with hooks, skills, and a bundled MCP
+server, installed through Claude and Codex marketplaces or loaded by OpenCode.
 
-[Agent Plugins](https://agent-plugins.org/specification) standardizes a portable
-manifest, Agent Skills, MCP servers, and namespaced client extensions. Hooknostic reads
-that package as input and asks a harness adapter to project its components into the
-harness's native plugin layout. The portable package stays unchanged.
+[Agent Plugins 1.0](https://agent-plugins.org/specification) standardizes the manifest,
+Agent Skills, MCP servers, and namespaced client extensions. Hooknostic reads that source
+unchanged and translates it to each harness's native layout. Portable TypeScript hooks
+are optional; they complement the standard, whose v1 portable components exclude hooks.
 
-## Combined package layout
+## Build the existing example
+
+From the repository root:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+node packages/cli/bin/hooknostic.mjs check --config examples/agent-plugin/hooknostic.config.ts
+node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hooknostic.config.ts
+```
 
 ```text
 examples/agent-plugin/
 ├── plugin.json
-├── mcp.json
-├── runtime/
-│   ├── package.json
-│   └── package-lock.json
 ├── skills/greet/SKILL.md
+├── mcp.json
+├── src/hooks.ts
+├── src/greet-mcp.mjs
+├── build/bundle-mcp.mjs
 ├── hooknostic.config.ts
-├── src/
-│   ├── greet-mcp.mjs
-│   └── hooks.ts
 └── dist/
-    ├── claude/                 ← complete Claude plugin: package + native hooks
-    ├── codex/                  ← native Codex plugin: package + hooks, installable
-    └── opencode/               ← project plugin: package + hooks under .opencode/
+    ├── claude/          # native Claude plugin
+    ├── codex/           # native Codex plugin
+    ├── opencode/        # OpenCode v2 package
+    └── opencode-v1/     # explicit legacy family
 ```
 
-The projection is explicit:
+The checked-in configuration selects package delivery for each target. The source
+`mcp.json` refers to `${PLUGIN_ROOT}/bundled/greet-mcp.mjs`. An author-owned
+`components.materialize` provider bundles the MCP implementation and its npm dependencies
+once, then Hooknostic places the same bytes in every output. Consumers need Node but
+no npm install, source checkout, or compiler. The default component policy stays strict. Marketplace registration files are excluded
+from native packages; rebuilding after registration does not copy those files into a plugin.
+
+`check` executes the same trusted provider and validates projection without writing
+target artifacts. Read the provider like any build script. See
+[materialization](../installing-artifacts.md#build-time-package-materialization).
+
+The default `opencode` target uses v2; `legacy` names an explicit v1 target with
+`adapter: "opencode"`. Both outputs are packages, with distinct native loaders.
+Install only the output matching your harness family. See [OpenCode families](../opencode-families.md).
+
+## Install through a marketplace
+
+From here, run commands in `examples/agent-plugin`. The example includes the marketplace documents
+below. They register native output, not the portable source root.
+Do not add both portable and native manifests to one installed Codex output: the
+portable manifest takes precedence and suppresses hooks in the captured versions.
+
+### Claude Code
+
+The included `.claude-plugin/marketplace.json`:
+
+```json
+{
+  "name": "hooknostic-example",
+  "owner": { "name": "Hooknostic contributors" },
+  "plugins": [
+    { "name": "combined-example", "source": "./dist/claude" }
+  ]
+}
+```
+
+```sh
+claude plugin marketplace add .
+claude plugin install combined-example@hooknostic-example
+```
+
+For a temporary single-session preview, `claude --plugin-dir ./dist/claude` loads the
+same package without a marketplace installation. A preview does not establish the
+marketplace install path; the local verification gate below tests an actual install.
+
+### Codex CLI
+
+The included `.agents/plugins/marketplace.json`:
+
+```json
+{
+  "name": "hooknostic-example",
+  "owner": { "name": "Hooknostic contributors" },
+  "plugins": [
+    { "name": "combined-example", "version": "1.0.0", "source": "./dist/codex" }
+  ]
+}
+```
+
+```sh
+codex plugin marketplace add .
+codex plugin add combined-example@hooknostic-example
+```
+
+The qualified name is required. The native Codex artifact combines its manifest,
+`hooks.json`, skills, and native MCP declarations in one installed plugin. Package
+hook delivery uses `>=0.153 <1`; the older project reference alone does not verify
+marketplace behavior. Review normal harness trust prompts and restart the session.
+
+Both marketplace installations use cached copies. Building again does not update an
+installed copy automatically. These instructions register a local marketplace; publishing
+or submitting a listing to someone else's marketplace remains a separate author step.
+
+### Verify what actually loaded
+
+Start a fresh session in an unrelated scratch repository, then:
+
+1. Ask for the `greet` skill (use the harness's discovered qualified name). Its instructions
+   say to greet you and summarize `git status --short`.
+2. Ask the `greeter` MCP server's `greet` tool to greet `friend`. Expect `Hello, friend!`.
+3. Ask to run `echo HOOKNOSTIC_BLOCK_PROBE`. Expect **Hooknostic marketplace probe blocked.**
+   The command is harmless if the hook failed to load.
+
+A successful installation message alone is insufficient. Check each observable effect.
+The [local marketplace gate](../testing.md#marketplace-release-gates) repeats installation
+and checks model-visible skill discovery, an MCP response, and the hook denial against a
+loopback model server. It uses isolated harness state and no model credits.
+
+### Updates
+
+Increment the portable `plugin.json` version and rebuild. For Codex, update the marketplace
+entry version to match. Use the harness's installed-plugin update mechanism; the
+[installation guide](../installing-artifacts.md#updating-an-installed-plugin) covers
+Claude's cache/version behavior. To repeat this local demonstration from a known state,
+remove and add the package again:
+
+```sh
+claude plugin uninstall combined-example@hooknostic-example
+claude plugin install combined-example@hooknostic-example
+codex plugin remove combined-example@hooknostic-example
+codex plugin add combined-example@hooknostic-example
+```
+
+Restart affected sessions and repeat all three checks. Keep the marketplace definition
+pointing to the rebuilt native output. Retain normal approval and trust review.
+
+## OpenCode package delivery
+
+For v2, set `opencode.json` to `{ "plugins": ["/absolute/path/to/dist/opencode"] }`.
+For v1, use `{ "plugin": ["./dist/opencode-v1"] }` from the example root. Follow the family-specific [installation guide](../installing-artifacts.md#opencode)
+and [version-family guide](../opencode-families.md). The v1 `exports["./server"]` entry
+and the v2 default plugin definition are different contracts; do not exchange their output.
+Neither output needs the example's workspace dependencies at runtime.
+
+## Advanced: Claude installs locked npm dependencies
+
+The example retains `runtime/package.json` and `runtime/package-lock.json` to illustrate
+Claude's separate `runtimePackage` contract. To try that alternative in a copy of the
+example: select only Claude, remove `components.materialize` and the `runtime/**`
+exclusion, change the MCP argument back to `${PLUGIN_ROOT}/src/greet-mcp.mjs`, and add:
 
 ```ts
-import { defineConfig } from "@hooknostic/sdk";
-
-export default defineConfig({
-  entry: "./src/hooks.ts",
-  targets: {
-    claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
-    codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
-    opencode: { version: ">=1.18 <2", delivery: "package", output: "./dist/opencode" },
-  },
-  components: {
-    root: ".",
-    targets: ["claude", "codex", "opencode"],
-    onUnsupported: "warn",
-    runtimePackage: {
-      manifest: "./runtime/package.json",
-      lockfile: "./runtime/package-lock.json",
-    },
-  },
-});
+runtimePackage: {
+  manifest: "./runtime/package.json",
+  lockfile: "./runtime/package-lock.json",
+}
 ```
 
-The portable `mcp.json` declares a local `greeter` server. Its `greet` tool is
-implemented with the official MCP TypeScript SDK in `src/greet-mcp.mjs` and served over
-stdio. `${PLUGIN_ROOT}` keeps the entry path portable; projection translates it to the
-native plugin-root variable.
+On captured Claude marketplace installations, the harness installs the locked production
+dependencies in its cache with scripts disabled. The manifest and lockfile must agree;
+packages that require install scripts are outside this contract. This route is not
+available on Codex or OpenCode: an `onUnsupported: "warn"` build can omit the installation
+component and still exit successfully, leaving an unbundled server unable to start.
+The common walkthrough avoids that dependency by bundling. See
+[the npm contract](../installing-artifacts.md#the-npm-case) for validation and supported inputs.
 
-`defineConfig` infers the target names, so `components.targets` naming a target that
-is not configured, or a config with neither `entry` nor `components`, is an editor
-error before it is a build error.
+## Hook files inside a package
 
-The source package's `package.json` is for building this example. `runtimePackage`
-is the separate, harness-owned npm contract from
-[ADR-0012](../decisions/0012-claude-plugin-runtime-dependencies.md). Generic generated
-package content instead comes from an explicit, author-supplied
-`components.materialize` provider; Hooknostic ships no ecosystem-specific providers.
-See [ADR-0017](../decisions/0017-mcp-runtime-dependencies.md) and
-[build-time package materialization](../installing-artifacts.md#build-time-package-materialization).
-Here, `runtimePackage`
-keeps the MCP server's production dependencies separate: Claude projection writes the
-configured manifest and npm lockfile as `dist/claude/package.json` and
-`dist/claude/package-lock.json`. On marketplace installation, Claude runs the locked,
-script-free npm install in its cached plugin copy. This contract supports pure-JavaScript
-npm dependencies; packages that need lifecycle scripts are not supported, and a lockfile
-entry declaring `hasInstallScript` fails `check` rather than installing unbuilt on the
-user's machine. (Verified a package that works without its script anyway? Name it in
-`runtimePackage.allowInstallScripts`; the script still never runs.) The pair is otherwise
-validated at build time the way `npm ci` would validate it: the manifest declares only
-`dependencies` with registry ranges, dist-tags, tarball URLs, or git specs (no `file:` or
-`workspace:`); the lockfile must be an npm `package-lock.json` (v2 or v3, not a pnpm or
-Yarn lock), its root entry must declare exactly the manifest's dependencies, every
-dependency must be locked at a version and resolution that satisfies its spec under npm's
-rules, and the locked graph must be complete down to the last transitive dependency.
-Regenerate the lockfile from the manifest whenever you change either; a hand-edited lock
-fails `check` with the same message `npm ci` would have given the user.
-
-This example projects into all three targets, and each gets a different translation of
-the same package. Codex receives a *native* plugin rather than the portable one: it does
-read a portable package, but a portable manifest cannot carry hooks and outranks the
-`.codex-plugin/plugin.json` that can, so a package declaring both loads its skills and
-silently ignores every hook. The projection therefore replaces `plugin.json` and
-`mcp.json` with native equivalents and emits the compiled hooks alongside them, and why its
-target is `delivery: "package"`.
-
-Its version range narrows too: hook delivery from an installed plugin is only established
-from 0.153, so `delivery: "package"` is rejected below it, while a local Codex artifact
-still builds from 0.148. `onUnsupported: "warn"` is what this example needs, because
-its `runtimePackage` has no Codex or OpenCode equivalent — see
-[harness support](../harness-support.md) for the per-component table.
-
-Claude's projection is a third translation: `.claude-plugin/`, a rewritten `.mcp.json`,
-and a generated launcher. OpenCode's is an npm package: a `package.json` whose `exports["./server"]` names a
-generated entry, which re-exports both the compiled hooks and a module contributing the
-package's MCP servers and skills. A local directory is installable as-is — no registry
-publication. None of the outputs is portable, and that is the point — the
-*source* is the portable artifact.
-
-A hook in the same package reaches its package's files through `ctx.plugin.root`. It
-names the directory the MCP servers see as `${PLUGIN_ROOT}` on every target: the
-output itself on Claude and Codex, and its `package/` directory on OpenCode. It is
-resolved from where the build placed the hook runtime, not from any harness variable
-([ADR-0020](../decisions/0020-hook-plugin-root.md)).
-
-Listing a target under `components.targets` whose adapter has no projector at all is a
-different error, and not one `onUnsupported` degrades: a projection that cannot happen
-is a configuration mistake, not a component to degrade.
+`defineConfig` checks target names and requires hooks or components. A hook reaches its
+package files through `ctx.plugin.root`, the same logical root used by MCP's
+`${PLUGIN_ROOT}`. For OpenCode this is the nested `package/` directory. Component support,
+omissions, deviations, and accepted exceptions are recorded in `hooknostic-build.json`.
 
 ## What ships
 
@@ -288,7 +349,8 @@ additionally requires that:
 - a remote MCP `url` is `https:`, or `http:` to `localhost`, `127.*`, or `::1` only, with
   no credentials or fragment;
 - a stdio `command` is a bare executable name or a `./`-relative path contained in the
-  package, and contains no `${...}` placeholder;
+  package. In a package, placeholder-like command text remains literal; direct
+  project sources reject command placeholders because they do not expand them;
 - `env` does not set the reserved `PLUGIN_ROOT` or `PLUGIN_DATA` keys;
 - any non-excluded symlink that resolves outside the package root rejects the whole
   package before component contents are parsed.

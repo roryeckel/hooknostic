@@ -1,6 +1,7 @@
 # @hooknostic/sdk
 
-Author portable lifecycle hooks in TypeScript, then compile them for supported
+Configure portable packages and repository integrations, and author lifecycle hooks
+in TypeScript. Compile hooks, skills, and MCP for supported
 coding-agent harnesses with the `hooknostic` CLI. Requires Node.js 22.13.0 or newer.
 
 ```sh
@@ -29,3 +30,5 @@ targets and compile it using the [getting-started tutorial](https://github.com/r
 See the [project documentation](https://github.com/roryeckel/hooknostic#readme)
 and [harness support](https://github.com/roryeckel/hooknostic/blob/master/docs/harness-support.md)
 for the supported events and effects. Licensed under Apache-2.0.
+
+`defineConfig` also selects Agent Plugins 1.0 inputs or direct project components. See the [configuration reference](https://github.com/roryeckel/hooknostic/blob/master/docs/configuration.md). Hookless builds need configuration but no `definePlugin` entry.

@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Glob|Grep|Read",
+        "matcher": "Bash|Glob|Grep|PowerShell|Read",
         "hooks": [
           {
             "type": "command",
@@ -11,7 +11,7 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/runtime/hooknostic.mjs"
             ],
-            "timeout": 6
+            "timeout": 11
           }
         ]
       }

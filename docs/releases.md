@@ -24,6 +24,35 @@ bump + branch + PR        notes + DRAFT release      npm publish (OIDC)
 Key safety property: **a draft release materializes no tag.** Until decision
 2, deleting the draft leaves nothing public anywhere.
 
+## Launch readiness before changing visibility
+
+See [local launch verification](launch-verification.md) for completed checks and
+the publication review's remaining limits.
+
+Keep the publish guards armed until the reviewed first-release PR. While private,
+complete local gates, rebuild committed examples from the repository root, and run
+[marketplace and real-tarball verification](testing.md#marketplace-release-gates).
+Do not equate a budget-blocked Actions run with a test failure. Preserve the last
+successful matrix evidence and verify the final revision when hosted execution is available.
+
+Before publication, review tracked files and history for credentials, captured personal
+data, and downstream consumer names; follow the repository anonymity rule. Update the
+README, npm descriptions, and release highlights together. Confirm the npm account's
+package/scope access as part of the owner bootstrap.
+
+At the owner-approved public visibility change, configure the `npm` environment,
+tag protections, and private vulnerability reporting. Standard hosted runners are
+[free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions);
+final hosted CI and release execution need not assume increased private-runner budget.
+Storage allowances and account restrictions remain separate. Wait for the final
+revision's CI, including marketplace installation and real tarball consumption, before
+publishing. The protected bootstrap, owner 2FA steps, and later OIDC verification below
+remain required. Never remove those gates merely to work around unavailable Actions.
+
+After publishing, install the exact registry versions in an empty consumer, repeat the
+documented entry paths, and check package README links and dist-tags before announcing.
+Do not replace tarball verification with a workspace-linked installation.
+
 ## Cutting a release
 
 Before preparation, update [release highlights](release-highlights.md) with the

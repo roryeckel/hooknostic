@@ -9,6 +9,7 @@
   "devDependencies": {
     "@hooknostic/sdk": "workspace:*",
     "@modelcontextprotocol/server": "catalog:",
+    "esbuild": "catalog:",
     "zod": "catalog:zod4"
   }
 }

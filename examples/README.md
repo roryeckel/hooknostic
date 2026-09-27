@@ -1,14 +1,15 @@
 # Examples
 
-Four runnable projects, each the companion to a [tutorial](../docs/tutorials/) that
-walks through it line by line. They grow in scope in order:
+Five runnable projects, each the companion to a [tutorial](../docs/tutorials/) that
+walks through it line by line. Choose the package or repository path, or start with a hook:
 
 | Example | Shows | Tutorial |
 | --- | --- | --- |
 | [`basic/`](basic/) | Block a dangerous shell command; observe session end | [1 — Your first hook](../docs/tutorials/01-your-first-hook.md) |
 | [`rewrite-shell/`](rewrite-shell/) | Required vs optional capabilities; rewrite `npm` → `pnpm` with runtime feature detection | [2 — Rewriting tool input](../docs/tutorials/02-rewriting-tool-input.md) |
 | [`context-injection/`](context-injection/) | Inject model-visible context at two lifecycle points; narrow targets when one can't comply | [3 — Injecting context](../docs/tutorials/03-injecting-context.md) |
-| [`agent-plugin/`](agent-plugin/) | Combine hooks with an Agent Plugins package (manifest + skill + MCP server); metadata inheritance | [4 — Packaging with Agent Plugins](../docs/tutorials/04-packaging-with-agent-plugins.md) |
+| [`agent-plugin/`](agent-plugin/) | Standards-based package, bundled MCP, hooks, skills, and marketplace installation | [4 — Packaging with Agent Plugins](../docs/tutorials/04-packaging-with-agent-plugins.md) |
+| [`local-project/`](local-project/) | Direct hooks, skills, and MCP with sync/verify and owned native wiring | [Repository integration](../docs/project-integration.md) |
 
 ## Running them
 
@@ -41,7 +42,7 @@ repository.
 `components`, and that config shape is where a machine-specific path can reach
 the build report — a gate that rebuilds only `rewrite-shell` cannot see it.
 
-The other two examples are built on demand and their output is gitignored.
+The basic and context-injection examples are built on demand and their output is gitignored.
 
 To load the output into a real harness, see
 [Installing built output](../docs/installing-artifacts.md).

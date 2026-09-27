@@ -1124,12 +1124,11 @@ ${run.stderr}`,
   });
 
   it(
-    "projects one Agent Plugin into three native plugins without modifying the source",
+    "projects one Agent Plugin into native packages for both OpenCode families without modifying the source",
     { timeout: 120_000 },
     async () => {
       const dir = await cleanExample("agent-plugin");
       const manifestBefore = await readFile(join(dir, "plugin.json"), "utf8");
-      const runtimeManifestBefore = JSON.parse(await readFile(join(dir, "runtime/package.json"), "utf8"));
 
       const { io, out } = captureIO();
       const code = await runBuild({
@@ -1141,8 +1140,8 @@ ${run.stderr}`,
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.components.targets).toEqual(["claude", "codex", "opencode"]);
-      for (const id of ["claude", "codex", "opencode"]) {
+      expect(report.components.targets).toEqual(["claude", "codex", "opencode", "legacy"]);
+      for (const id of ["claude", "codex", "opencode", "legacy"]) {
         expect(report.targets[id].projection, id).toMatchObject({ status: "success" });
       }
 
@@ -1154,8 +1153,6 @@ ${run.stderr}`,
           ".claude-plugin/plugin.json",
           ".mcp.json",
           "hooks/hooks.json",
-          "package.json",
-          "package-lock.json",
           "runtime/hooknostic.mjs",
         ]),
       );
@@ -1177,17 +1174,12 @@ ${run.stderr}`,
           "${CLAUDE_PLUGIN_ROOT}/runtime/mcp-launcher.mjs",
           "${CLAUDE_PLUGIN_ROOT}",
           "node",
-          "${CLAUDE_PLUGIN_ROOT}/src/greet-mcp.mjs",
+          "${CLAUDE_PLUGIN_ROOT}/bundled/greet-mcp.mjs",
         ],
       });
 
-      const runtimeManifest = JSON.parse(await readFile(join(dir, "dist/claude/package.json"), "utf8"));
-      expect(runtimeManifest).toMatchObject({
-        name: "combined-example-runtime",
-        dependencies: runtimeManifestBefore.dependencies,
-      });
-      expect(existsSync(join(dir, "dist/claude/package-lock.json"))).toBe(true);
-      expect(existsSync(join(dir, "dist/claude/runtime.package.json"))).toBe(false);
+      expect(existsSync(join(dir, "dist/claude/bundled/greet-mcp.mjs"))).toBe(true);
+      expect(existsSync(join(dir, "dist/claude/package-lock.json"))).toBe(false);
 
       // plugin.json metadata filled the gaps in the plugin spec.
       const pluginJson = JSON.parse(await readFile(join(dir, "dist/claude/.claude-plugin/plugin.json"), "utf8"));
@@ -1215,12 +1207,8 @@ ${run.stderr}`,
       // cannot start, reported emitted.
       expect(existsSync(join(dir, "dist/opencode/package/src/greet-mcp.mjs"))).toBe(true);
 
-      // `runtimePackage` is a Claude-only component, which is why the example
-      // sets onUnsupported: "warn" -- the other two record the omission.
-      for (const id of ["codex", "opencode"]) {
-        expect(report.targets[id].projection.omissions, id).toContainEqual(
-          expect.objectContaining({ component: "agent-plugin.runtime-package" }),
-        );
+      for (const id of ["claude", "codex", "opencode", "legacy"]) {
+        expect(report.targets[id].projection.omissions, id).toEqual([]);
       }
     },
   );

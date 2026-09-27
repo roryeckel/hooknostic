@@ -18,6 +18,8 @@ import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 
+// @ts-expect-error Repository release tooling is plain JavaScript.
+import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs";
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
@@ -1650,6 +1652,9 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       const resolved = resolveAgentPluginProjection(target, codexAgentPluginProjector);
       // Below the plugin-hooks range this adapter declines every component, so
       // there is no projection to install and nothing this lane can establish.
+      if (process.env["HOOKNOSTIC_REQUIRE_PACKAGE"] === "1") {
+        requirePackageSupport(resolved.matrix?.["agent-plugin.mcp.stdio"]?.level);
+      }
       if (resolved.matrix?.["agent-plugin.mcp.stdio"]?.level === "unsupported") return;
       const plan = await codexAgentPluginProjector.project(loaded.package!, {
         target,
@@ -1966,6 +1971,7 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
           version: installedVersion!,
         });
       } catch (error) {
+        if (process.env["HOOKNOSTIC_REQUIRE_PACKAGE"] === "1") throw error;
         // Below the plugin-hooks range the adapter refuses to generate at all,
         // which is the honest outcome on an older binary rather than a failure.
         expect((error as Error).message).toContain("requires harness");

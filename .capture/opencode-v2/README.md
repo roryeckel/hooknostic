@@ -196,3 +196,5 @@ With per-checkout ids, nearest-integration serving and location filtering, both
 copies are active and every dispatch in each location carries that location's
 label. The `nested-*` and `location-*` mutants in `verify-mutations.mjs` remove
 the serving guard, the id suffix, the components guard and each filter branch.
+
+The distribution example now bundles its MCP server. The package capture driver still substitutes its dependency-free fixture and redirects the MCP argument to that fixture; marketplace registration files are excluded from the source inventory.

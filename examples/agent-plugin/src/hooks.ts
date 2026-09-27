@@ -6,6 +6,16 @@ export default definePlugin({
   name: "combined-example",
   hooks: [
     hook("tool.before", {
+      id: "marketplace-probe",
+      match: { kind: "shell" },
+      capabilities: { "tool.before.block": "required" },
+      run(event) {
+        if (event.tool.shell?.command.includes("HOOKNOSTIC_BLOCK_PROBE")) {
+          return block("Hooknostic marketplace probe blocked.");
+        }
+      },
+    }),
+    hook("tool.before", {
       id: "protect-env-files",
       match: { kind: "file.read" },
       capabilities: { "tool.before.block": "required" },

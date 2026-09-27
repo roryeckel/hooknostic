@@ -764,7 +764,7 @@ function anthropicTurn(
       {
         type: "content_block_start",
         index: 0,
-        content_block: { type: "tool_use", id: "toolu_playback", name: tool.name, input: {} },
+        content_block: { type: "tool_use", id: `toolu_playback_${turn}`, name: tool.name, input: {} },
       },
       {
         type: "content_block_delta",

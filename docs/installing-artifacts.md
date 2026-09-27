@@ -19,19 +19,23 @@ targets: {
 }
 ```
 
+For repository integration, prefer [init, sync, and verify](project-integration.md) to maintaining discovery files by hand. For distribution, follow the complete [Claude/Codex marketplace walkthrough](tutorials/04-packaging-with-agent-plugins.md#install-through-a-marketplace).
+
 ## What gets emitted
 
 | Target | Mode | Artifact | Shape |
 | --- | --- | --- | --- |
-| `claude` | `plugin` | `dist/claude/` | A Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
-| `codex` | `local` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
-| `codex` | `plugin` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
-| `opencode` | `local` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
+| `claude` | `package` | `dist/claude/` | A Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
+| `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
+| `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
+| `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 
-The `local` outputs are directory trees copied to a project root — their generated
+The `project` outputs are directory trees copied to a project root — their generated
 commands and loader paths resolve against the session's project directory. The
-`plugin` outputs are installed instead, and their paths resolve against the
+`package` outputs are installed instead, and their paths resolve against the
 install cache.
+
+OpenCode also supports package delivery for both families; the v2 entry differs from v1. See [OpenCode families](opencode-families.md).
 
 ### Scope: packages are user-level, trees are per-project
 
@@ -370,6 +374,27 @@ not running:
 
 ## OpenCode
 
+### V2 package delivery
+
+For a v2 target, the generated package supplies a default plugin definition. Point
+`opencode.json` at the absolute package directory with the plural `plugins` field:
+
+```json
+{ "plugins": ["/absolute/path/to/dist/opencode"] }
+```
+
+On Windows use a JSON-escaped absolute path or forward slashes. The captured v2
+package probe loads a relocated installed package this way; a scoped npm coordinate
+was separately verified through a loopback registry. See [version families](opencode-families.md)
+and [package evidence](../.capture/opencode-v2/README.md). The combined example already
+bundles its MCP dependencies. Restart the harness and verify its skill, MCP greeting,
+and harmless hook marker as in the [marketplace tutorial](tutorials/04-packaging-with-agent-plugins.md).
+
+### V1 delivery
+
+The instructions below describe the v1 target and its singular `plugin` field.
+In the combined example, use `dist/opencode-v1` for these instructions.
+
 What the build emits depends on the target's `delivery`, and the two install
 completely differently.
 
@@ -587,7 +612,7 @@ Install from a marketplace whose `.agents/plugins/marketplace.json` points at th
 output, then `codex plugin add`. Remember that this is a **user-level** install:
 the plugin's skills and servers are then offered in every session on the machine.
 
-OpenCode needs no install step. Its package projection is an npm package, named
+OpenCode v1 needs no install step. Its package projection is an npm package, named
 from a project's `opencode.json` `plugin` array — a local directory path is
 enough, with no registry publication and nothing copied into the repository. The
 compiled hook module and the generated components module sit at the package root

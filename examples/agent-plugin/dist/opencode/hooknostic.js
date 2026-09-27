@@ -1596,48 +1596,48 @@ var ZodString = class _ZodString extends ZodType {
       ...errorUtil.errToObj(message)
     });
   }
-  jwt(options) {
-    return this._addCheck({ kind: "jwt", ...errorUtil.errToObj(options) });
+  jwt(options2) {
+    return this._addCheck({ kind: "jwt", ...errorUtil.errToObj(options2) });
   }
-  ip(options) {
-    return this._addCheck({ kind: "ip", ...errorUtil.errToObj(options) });
+  ip(options2) {
+    return this._addCheck({ kind: "ip", ...errorUtil.errToObj(options2) });
   }
-  cidr(options) {
-    return this._addCheck({ kind: "cidr", ...errorUtil.errToObj(options) });
+  cidr(options2) {
+    return this._addCheck({ kind: "cidr", ...errorUtil.errToObj(options2) });
   }
-  datetime(options) {
-    if (typeof options === "string") {
+  datetime(options2) {
+    if (typeof options2 === "string") {
       return this._addCheck({
         kind: "datetime",
         precision: null,
         offset: false,
         local: false,
-        message: options
+        message: options2
       });
     }
     return this._addCheck({
       kind: "datetime",
-      precision: typeof options?.precision === "undefined" ? null : options?.precision,
-      offset: options?.offset ?? false,
-      local: options?.local ?? false,
-      ...errorUtil.errToObj(options?.message)
+      precision: typeof options2?.precision === "undefined" ? null : options2?.precision,
+      offset: options2?.offset ?? false,
+      local: options2?.local ?? false,
+      ...errorUtil.errToObj(options2?.message)
     });
   }
   date(message) {
     return this._addCheck({ kind: "date", message });
   }
-  time(options) {
-    if (typeof options === "string") {
+  time(options2) {
+    if (typeof options2 === "string") {
       return this._addCheck({
         kind: "time",
         precision: null,
-        message: options
+        message: options2
       });
     }
     return this._addCheck({
       kind: "time",
-      precision: typeof options?.precision === "undefined" ? null : options?.precision,
-      ...errorUtil.errToObj(options?.message)
+      precision: typeof options2?.precision === "undefined" ? null : options2?.precision,
+      ...errorUtil.errToObj(options2?.message)
     });
   }
   duration(message) {
@@ -1650,12 +1650,12 @@ var ZodString = class _ZodString extends ZodType {
       ...errorUtil.errToObj(message)
     });
   }
-  includes(value, options) {
+  includes(value, options2) {
     return this._addCheck({
       kind: "includes",
       value,
-      position: options?.position,
-      ...errorUtil.errToObj(options?.message)
+      position: options2?.position,
+      ...errorUtil.errToObj(options2?.message)
     });
   }
   startsWith(value, message) {
@@ -2939,7 +2939,7 @@ ZodObject.lazycreate = (shape, params) => {
 var ZodUnion = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
-    const options = this._def.options;
+    const options2 = this._def.options;
     function handleResults(results) {
       for (const result of results) {
         if (result.result.status === "valid") {
@@ -2960,7 +2960,7 @@ var ZodUnion = class extends ZodType {
       return INVALID;
     }
     if (ctx.common.async) {
-      return Promise.all(options.map(async (option) => {
+      return Promise.all(options2.map(async (option) => {
         const childCtx = {
           ...ctx,
           common: {
@@ -2981,7 +2981,7 @@ var ZodUnion = class extends ZodType {
     } else {
       let dirty = void 0;
       const issues = [];
-      for (const option of options) {
+      for (const option of options2) {
         const childCtx = {
           ...ctx,
           common: {
@@ -3111,9 +3111,9 @@ var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
    * @param types an array of object schemas
    * @param params
    */
-  static create(discriminator, options, params) {
+  static create(discriminator, options2, params) {
     const optionsMap = /* @__PURE__ */ new Map();
-    for (const type of options) {
+    for (const type of options2) {
       const discriminatorValues = getDiscriminator(type.shape[discriminator]);
       if (!discriminatorValues.length) {
         throw new Error(`A discriminator value for key \`${discriminator}\` could not be extracted from all schema options`);
@@ -3128,7 +3128,7 @@ var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
     return new _ZodDiscriminatedUnion({
       typeName: ZodFirstPartyTypeKind.ZodDiscriminatedUnion,
       discriminator,
-      options,
+      options: options2,
       optionsMap,
       ...processCreateParams(params)
     });
@@ -4304,8 +4304,8 @@ function isPlainObject2(value) {
 function shapeOf(shapes, key) {
   return Object.hasOwn(shapes, key) ? shapes[key] : void 0;
 }
-function shellCodec(shapes, options) {
-  const normalize = options?.normalizeName ?? ((name) => name);
+function shellCodec(shapes, options2) {
+  const normalize = options2?.normalizeName ?? ((name) => name);
   return {
     classify(nativeName, input) {
       const shape = shapeOf(shapes, normalize(nativeName));
@@ -4336,8 +4336,8 @@ function matchesTool(match, tool) {
   if (!match)
     return true;
   if (match.kind !== void 0) {
-    const kinds = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds.includes(tool.kind))
+    const kinds2 = Array.isArray(match.kind) ? match.kind : [match.kind];
+    if (!kinds2.includes(tool.kind))
       return false;
   }
   if (match.nativeName !== void 0) {
@@ -4685,6 +4685,16 @@ var hooks_default = definePlugin({
   name: "combined-example",
   hooks: [
     hook("tool.before", {
+      id: "marketplace-probe",
+      match: { kind: "shell" },
+      capabilities: { "tool.before.block": "required" },
+      run(event) {
+        if (event.tool.shell?.command.includes("HOOKNOSTIC_BLOCK_PROBE")) {
+          return block("Hooknostic marketplace probe blocked.");
+        }
+      }
+    }),
+    hook("tool.before", {
       id: "protect-env-files",
       match: { kind: "file.read" },
       capabilities: { "tool.before.block": "required" },
@@ -4740,9 +4750,9 @@ function errorMessage(error) {
     return "uninspectable thrown value";
   }
 }
-async function dispatch(hooks, event, options) {
-  const policy = { ...DEFAULT_RUNTIME, ...options.policy };
-  const targetCapabilities = createCapabilitySet(options.capabilities);
+async function dispatch(hooks, event, options2) {
+  const policy = { ...DEFAULT_RUNTIME, ...options2.policy };
+  const targetCapabilities = createCapabilitySet(options2.capabilities);
   const result = {
     schemaVersion: 1,
     event: event.event,
@@ -4753,7 +4763,7 @@ async function dispatch(hooks, event, options) {
   let notifyBudget = typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0 ? policy.notifyCharLimit : DEFAULT_RUNTIME.notifyCharLimit;
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
-    if (!hookAppliesToTarget(hook2, options.targetId)) return false;
+    if (!hookAppliesToTarget(hook2, options2.targetId)) return false;
     const tool = toolOf(event);
     if (hook2.match && tool && !matchesTool(hook2.match, tool)) return false;
     return true;
@@ -4780,7 +4790,7 @@ async function dispatch(hooks, event, options) {
       },
       level(id) {
         const level = targetCapabilities.level(id);
-        const minimum = options.minimumCapabilityLevel;
+        const minimum = options2.minimumCapabilityLevel;
         if (minimum !== void 0 && hook2.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
           return "unsupported";
         }
@@ -4790,11 +4800,11 @@ async function dispatch(hooks, event, options) {
     const controller = new AbortController();
     const ctx = {
       capabilities,
-      harness: { ...options.harness },
+      harness: { ...options2.harness },
       signal: controller.signal,
       // A copy per hook, like `harness`: a handler that mutates it must not
       // move the root under the hooks after it.
-      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
+      ...options2.plugin === void 0 ? {} : { plugin: { ...options2.plugin } }
     };
     let outcome;
     let timedOut = false;
@@ -4896,7 +4906,7 @@ async function dispatch(hooks, event, options) {
           hookId: hook2.id,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `capability "${capability}" is unavailable on target "${options.targetId}"; feature-detect with ctx.capabilities.has().`
+          message: `capability "${capability}" is unavailable on target "${options2.targetId}"; feature-detect with ctx.capabilities.has().`
         },
         capabilities
       );
@@ -4906,7 +4916,7 @@ async function dispatch(hooks, event, options) {
     let loweredShellInput;
     if (effect.kind === "updateShell") {
       const tool = toolOf(event);
-      loweredShellInput = tool !== void 0 ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
+      loweredShellInput = tool !== void 0 ? options2.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
       if (loweredShellInput === void 0) {
         const terminal = failDispatch(
           hook2.id,
@@ -4925,14 +4935,14 @@ async function dispatch(hooks, event, options) {
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options2.shellCodec);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options.shellCodec);
+        setToolInput(tool, loweredShellInput, options2.shellCodec);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5005,66 +5015,8 @@ async function dispatch(hooks, event, options) {
   }
   return result;
 }
-function formatHandlerErrors(result) {
-  if (result.errors.length === 0) return void 0;
-  return result.errors.map((e) => `hooknostic ${e.code ?? e.kind} [${e.hookId}]: ${e.message}`).join("\n");
-}
 function pluginRootFrom(moduleUrl, offset) {
   return pathResolve(pathDirname(urlToPath(moduleUrl)), offset);
-}
-var UNREPRESENTABLE_OUTPUT = "[hooknostic: unrepresentable output]";
-function serializeOpenCodeOutput(output) {
-  if (typeof output === "string") return output;
-  try {
-    const json = JSON.stringify(output);
-    if (json !== void 0) return json;
-  } catch {
-  }
-  try {
-    return String(output);
-  } catch {
-    return UNREPRESENTABLE_OUTPUT;
-  }
-}
-function planOpenCodeApplication(result) {
-  const application = {};
-  const mutations = {};
-  const terminal = result.terminatedBy !== void 0 ? result.effects[result.effects.length - 1]?.effect : void 0;
-  if (terminal?.kind === "block") {
-    if (result.event !== "permission.request") {
-      application.throwMessage = terminal.reason;
-    }
-  }
-  const replacedInput = [...result.effects].reverse().find((e) => e.effect.kind === "replaceInput")?.effect;
-  if (replacedInput !== void 0 && application.throwMessage === void 0) {
-    mutations.args = replacedInput.input;
-  }
-  const replacedOutput = [...result.effects].reverse().find((e) => e.effect.kind === "replaceOutput")?.effect;
-  if (replacedOutput !== void 0) {
-    mutations.output = serializeOpenCodeOutput(replacedOutput.output);
-  }
-  const context = result.effects.filter((e) => e.effect.kind === "addContext").map((e) => e.effect.context);
-  if (context.length > 0 && result.event === "context.compact.before") {
-    mutations.context = context;
-  }
-  if (context.length > 0 && result.event === "model.request.before") {
-    mutations.system = context;
-  }
-  if (result.event === "turn.stop") {
-    const prompts = result.effects.filter((e) => e.effect.kind === "notify").map((e) => ({ text: e.effect.message, reply: false }));
-    if (terminal?.kind === "preventStop") {
-      prompts.push({
-        text: terminal.reason ?? "hooknostic: continue working",
-        reply: true
-      });
-    }
-    if (prompts.length > 0) application.prompts = prompts;
-  }
-  if (result.event === "permission.request" && terminal?.kind === "block") {
-    application.permissionReply = { response: "reject" };
-  }
-  if (Object.keys(mutations).length > 0) application.mutations = mutations;
-  return application;
 }
 var POST_TIMEOUT_MS = 1e4;
 function withTimeout(promise) {
@@ -5077,324 +5029,245 @@ function withTimeout(promise) {
     if (timer !== void 0) clearTimeout(timer);
   });
 }
-var EXACT = {
-  bash: "shell",
-  shell: "shell",
-  read: "file.read",
-  glob: "file.read",
-  grep: "file.read",
-  list: "file.read",
-  write: "file.write",
-  edit: "file.edit",
-  patch: "file.edit",
-  multiedit: "file.edit",
-  webfetch: "web.fetch",
-  websearch: "web.search",
-  task: "agent",
-  agent: "agent",
-  todowrite: "other",
-  todoread: "other"
-};
 var OPENCODE_SHELL_SHAPES = {
   bash: { commandKey: "command" }
 };
 var opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
   normalizeName: (name) => name.toLowerCase()
 });
-function classifyOpenCodeTool(nativeName, input) {
-  const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
-  const lowered = nativeName.toLowerCase();
-  const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : void 0;
-  if (known !== void 0) {
-    const shell = opencodeShellCodec.classify(nativeName, input);
-    return { kind: known, nativeName, input, ...shell !== void 0 ? { shell } : {} };
+function planOpenCodeV2Application(result) {
+  const application = {};
+  const terminal = result.terminatedBy ? result.effects.at(-1)?.effect : void 0;
+  if (terminal?.kind === "block") return { throwMessage: terminal.reason };
+  for (const { effect } of result.effects) {
+    if (effect.kind === "replaceInput") application.input = effect.input;
+    if (effect.kind === "replaceOutput")
+      application.content = typeof effect.output === "string" ? effect.output : JSON.stringify(effect.output);
+    if (effect.kind === "addContext") (application.system ??= []).push({ type: "text", text: effect.context });
   }
-  if (mcpMatch) {
-    return {
-      kind: "mcp",
-      nativeName,
-      input,
-      mcp: { server: mcpMatch[1], tool: mcpMatch[2] }
-    };
+  if (result.event === "turn.stop") {
+    const synthetic = result.effects.flatMap(
+      ({ effect }) => effect.kind === "notify" ? [{ text: effect.message, resume: false }] : []
+    );
+    if (terminal?.kind === "preventStop")
+      synthetic.push({ text: terminal.reason ?? "hooknostic: continue working", resume: true });
+    if (synthetic.length > 0) application.synthetic = synthetic;
   }
-  return { kind: "other", nativeName, input };
+  return application;
 }
-var OpenCodeDecodeError = class extends Error {
+var OPENCODE_V2_SHELL_SHAPES = { shell: { commandKey: "command", cwdKey: "workdir" } };
+var opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
+var kinds = {
+  shell: "shell",
+  read: "file.read",
+  glob: "file.read",
+  grep: "file.read",
+  write: "file.write",
+  edit: "file.edit",
+  webfetch: "web.fetch",
+  websearch: "web.search",
+  subagent: "agent"
 };
-function snapshotOpenCodeArgs(args) {
-  try {
-    return structuredClone(args);
-  } catch {
-    throw new OpenCodeDecodeError("tool.execute.before arguments cannot be cloned");
-  }
+function classifyOpenCodeV2Tool(nativeName, input) {
+  const shell = opencodeV2ShellCodec.classify(nativeName, input);
+  const kind = Object.hasOwn(kinds, nativeName) ? kinds[nativeName] : "other";
+  return { nativeName, input, kind, ...shell ? { shell } : {} };
 }
-function decodeOpenCode(nativeEvent, invocation) {
-  if (typeof nativeEvent !== "object" || nativeEvent === null) {
-    throw new OpenCodeDecodeError("native event is not an object");
-  }
-  const native = nativeEvent;
-  if (typeof native.hook !== "string" || typeof native.directory !== "string") {
-    throw new OpenCodeDecodeError("native event has no hook/directory");
-  }
-  const input = native.input ?? {};
-  const output = native.output ?? {};
+var OpenCodeV2DecodeError = class extends Error {
+};
+var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function decodeOpenCodeV2(raw, invocation) {
+  const native = record(raw);
+  if (typeof native.hook !== "string" || typeof native.directory !== "string" || !native.event)
+    throw new OpenCodeV2DecodeError("v2 invocation requires hook, directory and event");
+  const event = record(native.event);
+  const data = native.hook === "event" ? record(event.data) : event;
+  const sessionID = data.sessionID;
+  const location = record(event.location);
   const base = {
     schemaVersion: 1,
     harness: {
       id: "opencode",
-      ...invocation.harnessVersion !== void 0 ? { version: invocation.harnessVersion } : {},
-      nativeEvent: native.hook
+      nativeEvent: native.hook,
+      ...invocation.harnessVersion ? { version: invocation.harnessVersion } : {}
     },
     session: {
-      ...typeof input.sessionID === "string" ? { id: input.sessionID } : {},
-      cwd: native.directory
+      ...typeof sessionID === "string" ? { id: sessionID } : {},
+      cwd: typeof location.directory === "string" ? location.directory : native.directory
     },
-    correlation: {
-      ...typeof input.callID === "string" ? { toolCallId: input.callID } : {}
-    },
-    raw: nativeEvent
+    correlation: { ...typeof event.id === "string" && native.hook !== "event" ? { toolCallId: event.id } : {} },
+    raw
   };
-  switch (native.hook) {
-    case "tool.execute.before": {
-      if (typeof input.tool !== "string") {
-        throw new OpenCodeDecodeError("tool.execute.before has no tool name");
-      }
-      return {
-        ...base,
-        event: "tool.before",
-        tool: classifyOpenCodeTool(input.tool, snapshotOpenCodeArgs(output["args"]))
-      };
+  if (native.hook === "execute.before" || native.hook === "execute.after") {
+    if (typeof event.tool !== "string") throw new OpenCodeV2DecodeError("v2 tool event has no tool name");
+    const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
+    if (native.hook === "execute.before") return { ...base, event: "tool.before", tool };
+    if (event.status === "error") {
+      const message = record(event.error).message;
+      return { ...base, event: "tool.error", tool, error: typeof message === "string" ? { message } : {} };
     }
-    case "tool.execute.after": {
-      if (typeof input.tool !== "string") {
-        throw new OpenCodeDecodeError("tool.execute.after has no tool name");
-      }
-      return {
-        ...base,
-        event: "tool.after",
-        tool: classifyOpenCodeTool(input.tool, input.args),
-        output: output["output"]
-      };
-    }
-    case "permission.ask": {
-      const permission = input;
-      return {
-        ...base,
-        session: {
-          ...typeof permission.sessionID === "string" ? { id: permission.sessionID } : {},
-          cwd: native.directory
-        },
-        correlation: {
-          ...typeof permission.callID === "string" ? { toolCallId: permission.callID } : {}
-        },
-        event: "permission.request",
-        tool: classifyOpenCodeTool(permission.type ?? "unknown", native.input)
-      };
-    }
-    case "chat.message": {
-      const parts = Array.isArray(output["parts"]) ? output["parts"] : [];
-      const prompt = parts.map((p) => typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
-      return { ...base, event: "prompt.before", prompt };
-    }
-    case "experimental.chat.system.transform":
-      return { ...base, event: "model.request.before" };
-    case "experimental.session.compacting":
-      return { ...base, event: "context.compact.before" };
-    case "event": {
-      const busEvent = input.event;
-      const infoSessionId = busEvent?.properties?.info?.id;
-      const propertySessionId = busEvent?.properties?.sessionID;
-      const withSession = (id) => ({
-        ...base,
-        session: {
-          ...typeof id === "string" ? { id } : {},
-          cwd: native.directory
-        }
-      });
-      switch (busEvent?.type) {
-        case "session.created":
-          return { ...withSession(infoSessionId), event: "session.start" };
-        case "session.deleted":
-          return { ...withSession(infoSessionId), event: "session.end" };
-        case "session.idle":
-          return { ...withSession(propertySessionId), event: "turn.stop" };
-        case "session.compacted":
-          return { ...withSession(propertySessionId), event: "context.compact.after" };
-        case "permission.asked": {
-          const properties = busEvent.properties ?? {};
-          return {
-            ...withSession(properties.sessionID),
-            correlation: {
-              ...typeof properties.tool?.callID === "string" ? { toolCallId: properties.tool.callID } : {}
-            },
-            event: "permission.request",
-            tool: classifyOpenCodeTool(
-              typeof properties.permission === "string" ? properties.permission : "unknown",
-              properties.metadata
-            )
-          };
-        }
-        default:
-          throw new OpenCodeDecodeError(`unmapped bus event "${busEvent?.type}"`);
-      }
-    }
-    default:
-      throw new OpenCodeDecodeError(`unmapped native callback "${native.hook}"`);
+    if (event.status !== "completed") throw new OpenCodeV2DecodeError("unknown v2 tool status");
+    return { ...base, event: "tool.after", tool, output: structuredClone(record(event.result).content) };
   }
+  if (native.hook === "prompt")
+    return { ...base, event: "prompt.before", prompt: String(record(event.prompt).text ?? "") };
+  if (["context", "title", "generate"].includes(native.hook)) return { ...base, event: "model.request.before" };
+  if (native.hook === "compaction") return { ...base, event: "context.compact.before" };
+  if (native.hook === "evaluate" && event.effect === "ask")
+    return {
+      ...base,
+      event: "permission.request",
+      correlation: {
+        ...typeof record(event.source).id === "string" ? { toolCallId: record(event.source).id } : {}
+      },
+      // A permission action/resource is not a tool name/input. Keep it in raw.
+      tool: { kind: "other", nativeName: "unknown", input: void 0 }
+    };
+  if (native.hook === "event") {
+    if (event.type === "session.created") return { ...base, event: "session.start" };
+    if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(
+      String(event.type)
+    ))
+      return { ...base, event: "turn.stop" };
+    if (event.type === "session.compaction.ended") return { ...base, event: "context.compact.after" };
+  }
+  throw new OpenCodeV2DecodeError(`unmapped v2 callback ${native.hook}`);
 }
-var OPENCODE_V2_SHELL_SHAPES = { shell: { commandKey: "command", cwdKey: "workdir" } };
-var opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
-function createHooknosticHooks(plugin, options, pluginInput) {
-  const targetId = options.targetId ?? "opencode";
-  const invocation = {
-    targetId,
-    ...options.harnessVersion !== void 0 ? { harnessVersion: options.harnessVersion } : {}
+async function setupOpenCodeV2(plugin, options2, ctx) {
+  const targetId = options2.targetId ?? "opencode";
+  const events = new Set(plugin.hooks.filter((h) => hookAppliesToTarget(h, targetId)).map((h) => h.event));
+  const registrations = [];
+  const controller = new AbortController();
+  let task;
+  const children = /* @__PURE__ */ new Set();
+  const queues = /* @__PURE__ */ new Map();
+  const local = /* @__PURE__ */ new Set();
+  const comparable = (path) => {
+    const trimmed = path.replace(/[\\/]+/g, "/").replace(/\/$/, "");
+    return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
-  const events = new Set(
-    plugin.hooks.filter((hook2) => hookAppliesToTarget(hook2, invocation.targetId)).map((hook2) => hook2.event)
-  );
-  class HooknosticBlock extends Error {
-  }
-  const run = async (native) => {
-    let event;
-    try {
-      event = decodeOpenCode(native, invocation);
-    } catch (error) {
-      if (error instanceof OpenCodeDecodeError) return;
-      throw error;
-    }
-    const result = await dispatch(plugin.hooks, event, {
-      targetId,
-      harness: event.harness,
-      capabilities: options.capabilities,
-      ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
-      ...options.policy !== void 0 ? { policy: options.policy } : {},
-      shellCodec: opencodeShellCodec,
-      ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
-    });
-    const application = planOpenCodeApplication(result);
-    const output = native.output ?? {};
-    if (application.mutations?.args !== void 0) {
-      const existing = output["args"];
-      const replacement = application.mutations.args;
-      if (existing !== null && typeof existing === "object" && replacement !== null && typeof replacement === "object" && !Array.isArray(existing)) {
-        const replacementSnapshot = { ...replacement };
-        for (const key of Object.keys(existing)) {
-          delete existing[key];
-        }
-        Object.defineProperties(existing, Object.getOwnPropertyDescriptors(replacementSnapshot));
-      } else {
-        output["args"] = replacement;
-      }
-    }
-    if (application.mutations?.output !== void 0) {
-      output["output"] = application.mutations.output;
-    }
-    if (application.mutations?.context !== void 0) {
-      const context = output["context"];
-      if (Array.isArray(context)) context.push(...application.mutations.context);
-      else output["context"] = [...application.mutations.context];
-    }
-    if (application.mutations?.system !== void 0) {
-      const system = output["system"];
-      if (Array.isArray(system)) system.push(...application.mutations.system);
-      else output["system"] = [...application.mutations.system];
-    }
-    const diagnostics = formatHandlerErrors(result);
-    if (diagnostics !== void 0) console.error(diagnostics);
-    await postPrompts(event, application);
-    await replyPermission(event, native, application);
-    if (application.throwMessage !== void 0) {
-      throw new HooknosticBlock(application.throwMessage);
-    }
-  };
-  const runFailingOpen = async (native) => {
-    try {
-      await run(native);
-    } catch (error) {
-      if (error instanceof HooknosticBlock) throw error;
-    }
-  };
-  const postPrompts = async (event, application) => {
-    if (application.prompts === void 0) return;
-    const id = event.session.id;
-    const session = pluginInput.client?.session;
-    if (id === void 0 || session === void 0 || typeof session.promptAsync !== "function") {
-      return;
-    }
-    for (const prompt of application.prompts) {
+  const here = comparable(ctx.location.directory);
+  const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
+  const post = async (native, event, messages) => {
+    const sessionID = event.session.id;
+    if (native.type !== "session.execution.succeeded" || sessionID === void 0 || children.has(sessionID)) return;
+    if (typeof ctx.session.synthetic !== "function") return;
+    for (const { text, resume } of messages) {
       try {
-        await withTimeout(
-          Promise.resolve(
-            session.promptAsync({
-              path: { id },
-              body: {
-                parts: [{ type: "text", text: prompt.text }],
-                ...prompt.reply ? {} : { noReply: true }
-              }
-            })
-          )
-        );
+        await withTimeout(Promise.resolve(ctx.session.synthetic({ sessionID, text, resume })));
       } catch {
       }
     }
   };
-  const replyPermission = async (event, native, application) => {
-    if (application.permissionReply === void 0) return;
-    const properties = native.input?.event?.properties ?? {};
-    const permissionID = typeof properties.id === "string" ? properties.id : void 0;
-    const sessionID = typeof properties.sessionID === "string" ? properties.sessionID : void 0;
-    if (permissionID === void 0 || sessionID === void 0) return;
-    const client = pluginInput.client;
-    if (client === void 0 || typeof client.postSessionIdPermissionsPermissionId !== "function") {
-      return;
-    }
-    try {
-      await withTimeout(
-        Promise.resolve(
-          client.postSessionIdPermissionsPermissionId({
-            path: { id: sessionID, permissionID },
-            body: { response: "reject" }
-          })
-        )
-      );
-    } catch {
-    }
-  };
-  const hooks = {};
-  const callback = (hook2) => async (input, output) => {
-    await runFailingOpen({
-      hook: hook2,
-      directory: pluginInput.directory,
-      ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
-      input,
-      output
+  const enqueue = (key, work) => {
+    const next = (queues.get(key) ?? Promise.resolve()).then(() => controller.signal.aborted ? void 0 : work()).catch(() => void 0);
+    queues.set(key, next);
+    void next.then(() => {
+      if (queues.get(key) === next) queues.delete(key);
     });
   };
-  if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
-  if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
-  if (events.has("permission.request")) hooks["event"] = callback("event");
-  if (events.has("prompt.before")) hooks["chat.message"] = callback("chat.message");
-  if (events.has("context.compact.before")) {
-    hooks["experimental.session.compacting"] = callback("experimental.session.compacting");
+  const run = async (hook2, native, modelRequest = false) => {
+    let event;
+    try {
+      event = decodeOpenCodeV2(
+        { hook: hook2, directory: ctx.location.directory, event: native },
+        { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} }
+      );
+    } catch (error) {
+      if (error instanceof OpenCodeV2DecodeError) return;
+      throw error;
+    }
+    if (modelRequest) event = { ...event, event: "model.request.before" };
+    if (!events.has(event.event)) return;
+    const result = await dispatch(plugin.hooks, event, {
+      targetId,
+      harness: event.harness,
+      capabilities: options2.capabilities,
+      shellCodec: opencodeV2ShellCodec,
+      ...options2.policy ? { policy: options2.policy } : {},
+      ...options2.minimumCapabilityLevel ? { minimumCapabilityLevel: options2.minimumCapabilityLevel } : {},
+      ...options2.pluginRoot ? { plugin: { root: options2.pluginRoot } } : {}
+    });
+    const application = planOpenCodeV2Application(result);
+    if (application.throwMessage !== void 0) {
+      if (event.event === "permission.request") {
+        native.effect = "deny";
+        native.message = application.throwMessage;
+        return;
+      }
+      throw new Error(application.throwMessage);
+    }
+    if (application.input !== void 0 && native.input && typeof native.input === "object" && application.input && typeof application.input === "object") {
+      const replacement = structuredClone(application.input);
+      for (const key of Object.keys(native.input)) delete native.input[key];
+      Object.defineProperties(native.input, Object.getOwnPropertyDescriptors(replacement));
+    }
+    if (application.content !== void 0 && native.result && typeof native.result === "object")
+      native.result.content = application.content;
+    if (application.system && Array.isArray(native.system)) native.system.push(...application.system);
+    if (application.synthetic) await post(native, event, application.synthetic);
+  };
+  const cleanup = async () => {
+    controller.abort();
+    await Promise.allSettled(registrations.map((r) => r.dispose()));
+    await task;
+    await Promise.allSettled(queues.values());
+  };
+  try {
+    if (events.has("prompt.before") || subscribes)
+      registrations.push(
+        await ctx.session.hook("prompt", async (e) => {
+          if (typeof e.sessionID === "string") local.add(e.sessionID);
+          if (events.has("prompt.before")) await run("prompt", e);
+        })
+      );
+    if (events.has("tool.before"))
+      registrations.push(await ctx.tool.hook("execute.before", (e) => run("execute.before", e)));
+    if (events.has("tool.after") || events.has("tool.error"))
+      registrations.push(await ctx.tool.hook("execute.after", (e) => run("execute.after", e)));
+    if (events.has("model.request.before"))
+      for (const name of ["context", "title", "generate"])
+        registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
+    if (events.has("model.request.before") || events.has("context.compact.before"))
+      registrations.push(
+        await ctx.session.hook("compaction", async (e) => {
+          if (events.has("model.request.before")) await run("compaction", e, true);
+          await run("compaction", e);
+        })
+      );
+    if (events.has("permission.request")) {
+      if (!ctx.permission) throw new Error("OpenCode v2 permission domain is unavailable");
+      registrations.push(await ctx.permission.hook("evaluate", (e) => run("evaluate", e)));
+    }
+    if (subscribes) {
+      task = (async () => {
+        try {
+          for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+            const data = event.data !== null && typeof event.data === "object" ? event.data : {};
+            const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
+            if (event.type === "session.created") {
+              const location = data.location ?? event.location;
+              if (typeof location?.directory !== "string" || comparable(location.directory) !== here) continue;
+              local.add(sessionID);
+              if (typeof data.parentID === "string") children.add(sessionID);
+            } else if (!local.has(sessionID)) continue;
+            enqueue(sessionID, () => run("event", event));
+          }
+        } catch {
+        }
+      })();
+    }
+    return cleanup;
+  } catch (error) {
+    await cleanup();
+    throw error;
   }
-  if (events.has("model.request.before")) {
-    hooks["experimental.chat.system.transform"] = callback("experimental.chat.system.transform");
-  }
-  if (events.has("session.start") || events.has("session.end") || events.has("turn.stop") || events.has("context.compact.after")) {
-    hooks["event"] = callback("event");
-  }
-  return hooks;
 }
 
 // hooknostic-shim-entry.ts
-var HooknosticPlugin = async (input) => createHooknosticHooks(hooks_default, {
-  targetId: "opencode",
-  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
-  minimumCapabilityLevel: "emulated",
-  policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 },
-  pluginRoot: pluginRootFrom(import.meta.url, "package")
-}, input);
+var options = { "targetId": "opencode", "capabilities": { "session.start.observe": "approximate", "prompt.before.observe": "exact", "prompt.before.block": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.error.observe": "approximate", "tool.after.output.replace": "approximate", "model.request.before.observe": "approximate", "model.request.before.context.add": "approximate", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "permission.request.observe": "approximate", "permission.request.block": "approximate" }, "policy": { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }, "minimumCapabilityLevel": "emulated" };
+options.pluginRoot = pluginRootFrom(import.meta.url, "package");
+var HooknosticPlugin = { id: "hooknostic." + hooks_default.name + ".opencode", setup: (ctx) => setupOpenCodeV2(hooks_default, options, ctx) };
 var hooknostic_shim_entry_default = HooknosticPlugin;
 export {
   HooknosticPlugin,

@@ -586,6 +586,20 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         date: "2026-09-04",
         validatedOn: [
           {
+            version: "2.1.260",
+            date: "2026-09-27",
+            method: "live-probe",
+            artifact: ".capture/marketplace-launch",
+            what: "On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies.",
+          },
+          {
+            version: "2.1.283",
+            date: "2026-09-27",
+            method: "live-probe",
+            artifact: ".capture/marketplace-launch",
+            what: "On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies.",
+          },
+          {
             version: "2.1.278",
             date: "2026-09-21",
             method: "live-probe",
