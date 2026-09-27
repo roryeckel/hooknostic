@@ -25,8 +25,8 @@ are decoder output minus `raw`. The capturing account segment is redacted to
 `user`; Windows path syntax and scratch names are preserved.
 
 Behavioral probes and limitations are recorded in `.capture/opencode-v2`.
-Follow-up OAuth and native TUI evidence is documented below; portable notification
-effects remain unsupported.
+Follow-up OAuth, native TUI and stop evidence is documented below; a user-only
+notification remains unsupported.
 
 | Additional case | Provenance | Observed boundary |
 | --- | --- | --- |
@@ -36,6 +36,9 @@ effects remain unsupported.
 | execution-failed/interrupted | captured | Deliberate HTTP 400 and rejected approval, respectively |
 | session-audit/permissions.json | captured + constructed labels/counts | Allow, accept, reject and configured-deny controls |
 | remote/observations.json | captured + constructed scenario labels | HTTP execution/headers and absent legacy SSE fallback |
+| session-created-child | captured | Subagent child creation carrying the parent as `parentID` |
+| execution-interrupted-user | captured | User interrupt of a pending request (`reason: "user"`) |
+| stop-audit/outcomes.json | captured counts + constructed labels | Execution counts per session for the `stop` drive |
 
 These additions use the same version/date on Windows. Procedures and limits:
 `.capture/opencode-v2-session` and `.capture/opencode-v2-remote`.

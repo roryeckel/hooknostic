@@ -37,8 +37,8 @@ Ordinary run teardown did not produce a cleanup
 record, so automatic host cleanup is not claimed from these captures.
 
 The follow-up session audit establishes generation, compaction and failed/
-interrupted completion. Persistent-session notification and stop prevention
-remain unverified. Captures establish the
+interrupted completion. Persistent-session stop prevention and notification
+are established by the `stop` drive below. Captures establish the
 OpenAI-compatible provider path only; no paid smoke was run.
 
 ## Component and packed-output probes
@@ -143,5 +143,54 @@ The later `results`, `notifications`, `provider-anthropic`, `provider-responses`
 the earlier captures. They establish typed tool errors, richer replacement
 delivery, native server-to-TUI toast delivery, two additional HTTP provider
 paths, foreground subagent execution, and default MCP OAuth with refresh.
-Generated portable notifications, WebSocket/provider OAuth, search execution,
-SSE and stop prevention remain outside verified support.
+A generated user-only notification, WebSocket/provider OAuth, search execution
+and SSE remain outside verified support.
+
+## Stop prevention and notification
+
+`stop` drives a private `serve --stdio` server, because a posted continuation
+needs a session that outlives the stop. The generated playback hook prevents
+each session's first `turn.stop` and notifies on later ones. Four sessions run
+in turn: a shell turn, a user interrupt of a pending request, a model HTTP 400,
+and a parent that delegates one task to a `general` subagent child.
+
+After the first succeeded execution, `session.synthetic` with `resume` started
+exactly one more execution, and its request carried the stop reason as a
+user-role message. The later notice (`resume: false`) started no execution and
+appeared in no request until the next user prompt, whose request then carried
+it as a user-role message. The interrupt (`reason: "user"`), the failure and
+the child each completed exactly once. The child's `session.created` carries
+the parent's ID as `parentID`. Six real prompts produced six `prompt.before`
+dispatches: `session.synthetic` does not run the prompt hook. No `session.idle`
+event was published at any point. Every completion still dispatched
+`turn.stop`: eight in total.
+
+The same scenarios were repeated against `deepseek-v4.1-flash` on Ollama Cloud
+(a paid model, run once at the owner's request, not a committed drive) with the
+same execution counts; the model quoted the notice once the next prompt ran. In
+the real TUI (`--standalone`), the notice was enqueued in the session inbox as
+a synthetic item, started no execution, and was not rendered during two idle
+minutes: a notice is deferred to the session's next run.
+
+A detached `session.synthetic` call also succeeded, so no receiver requirement
+is claimed.
+
+## Nested checkouts
+
+`nested` builds generated project wiring into an outer checkout and into
+`.claude/worktrees/nested` inside it, each tracing under its own label, then
+prompts one session in each location on a single `serve --stdio` server. V2
+loaded both checkouts' `.opencode/plugins` for the nested location. With the
+shared generated id the outer copy stayed active and the nested copy failed
+with `Duplicate plugin ID`, so the nested session ran the outer checkout's
+hooks. The plugin instance for the nested location also received the outer
+session's `session.created` and execution events and dispatched `session.start`
+and `turn.stop` for it; `prompt` and tool callbacks stayed location-scoped.
+With per-checkout ids, nearest-integration serving and location filtering, both
+copies are active and every dispatch in each location carries that location's
+label. The `nested-*` and `location-*` mutants in `verify-mutations.mjs` remove
+the serving guard, the id suffix, the components guard and each filter branch. `promote-stops.mjs <stop-root>` promotes the child `session.created`,
+the user-interrupt completion and `stop-audit/outcomes.json`. The `stop-*`
+mutants in `verify-mutations.mjs` remove the success gate, the child gate, the
+notice's `resume: false`, notice ordering, per-post fail-open and the per-session
+event queue; each fails its unit or playback test.

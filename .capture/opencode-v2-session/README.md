@@ -54,7 +54,8 @@ A deliberate HTTP 400 produces `session.execution.failed`; interrupting a
 pending loopback request produces `session.execution.interrupted`. Both now
 dispatch `turn.stop`, alongside successful executions. This also observes
 manual compaction execution completion, so the rating remains approximate.
-There is no stop prevention or user notification implementation.
+Stop prevention and notification post only after a succeeded execution; see
+the `stop` drive in `../opencode-v2`.
 
 Reload records one cleanup, two setups and one prompt per session. The probe
 kills and awaits its private server at exit. Abrupt process exit is not proof

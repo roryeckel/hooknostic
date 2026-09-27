@@ -133,7 +133,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:8f5474cc7d4514cc49ef9db58d259f0f1fcb23f3eb9131ef06412885b02232bd",
+        "contentDigest": "sha256:dc45dd9930e43ff27119cb4488dbad90deb6f3074b4a3e5d39ff8447baf2c0b2",
         "copiedFileCount": 6,
         "directories": [
           "package/runtime",

@@ -27,7 +27,7 @@ terminal, sends Ctrl+C to exit, and kills the child in `finally` if necessary.
 | --- | --- |
 | Tool error | Missing-file `read` yields `execute.after`, `status: error`, `_tag: Tool.Error` and a message. Generated hooks dispatch `tool.error` with input and call ID. A plain custom `Error` reaches the model but bypasses this callback; shell nonzero exit remains a completed result. Observation is approximate. |
 | Rich output | Text and object replacements reach the next model request; objects become JSON text. Original content, structured `output` and metadata survive in the captured raw event. Structured output/metadata are not replaced, so support stays approximate. |
-| Notifications | A companion `./tui` entry receives a server RPC event, renders its sentinel in terminal output and records cleanup on normal exit. Attention returns `attention_disabled` under scratch defaults. Generated portable `notify`, OS delivery, remote-client routing and disconnected delivery remain unverified. |
+| Notifications | A companion `./tui` entry receives a server RPC event, renders its sentinel in terminal output and records cleanup on normal exit. Attention returns `attention_disabled` under scratch defaults. A generated user-only notification, OS delivery, remote-client routing and disconnected delivery remain unverified; portable `notify` is emulated with `session.synthetic` (`../opencode-v2`). |
 | Providers | Anthropic Messages and OpenAI Responses HTTP each exercise ordinary, title, generation and successful compaction with injected context. Shell markers establish execution. WebSocket, other providers and provider OAuth remain unverified. |
 | Subagent | A foreground `general` child returns its sentinel to the parent's recorded request. Session IDs differ. Background completion and deeper nesting are unverified. |
 | MCP OAuth | Project and packed relocated package reach `needs_auth`, discover metadata, dynamically register and complete S256 PKCE. The issuer checks the verifier, rejects the expired token and observes a refresh grant. The tool executes with the refreshed bearer. Custom options, real issuers, cancellation and restart persistence remain unverified. |
@@ -61,8 +61,8 @@ belong only to the disposable local issuer.
 
 Playback enforces effects; fixtures enforce decoding. Drift comparison separates
 typed failures from successful results for the same tool. The named audit
-mutants in `verify-mutations.mjs` exercise those assertions. SSE and stop
-prevention remain unsupported.
+mutants in `verify-mutations.mjs` exercise those assertions. SSE remains
+unsupported.
 
 Final check exit codes, test counts and mutation outcomes are in
 `validation.json`. Both offline families passed on Windows. Hosted Linux

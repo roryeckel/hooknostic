@@ -804,8 +804,8 @@ coverage, not a security boundary.
 Local mode: bundled JS module under `.opencode/plugins/`. The module returns native
 callbacks (`tool.execute.before/after`, permission/session events), normalizes each
 event, invokes the same portable runtime, and applies effects by mutating callback output,
-throwing, or posting back into the session with `client.session.promptAsync` (the only
-channel for stop prevention and notification) per OpenCode semantics. Persistent module memory is never exposed as a
+throwing, or posting back into the session (v1 `client.session.promptAsync`, v2
+`session.synthetic`: the only channel for stop prevention and notification) per OpenCode semantics. Persistent module memory is never exposed as a
 feature.
 
 ### 12.4 Capability matrices are adapter-owned

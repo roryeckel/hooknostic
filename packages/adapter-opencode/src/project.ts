@@ -7,30 +7,34 @@ import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
-export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
-  const importPath = (path: string): string =>
-    path
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/");
-  const files = [
-    {
-      path: ".opencode/plugins/.gitattributes",
-      contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
-    },
-    ...artifacts
-      .filter((a) => a.path.startsWith(".opencode/plugins/"))
-      .map((a) => ({
-        path: a.path,
-        contents: `export { default } from ${JSON.stringify("../../" + importPath(output + "/" + a.path))};\n`,
-      })),
-  ];
-  return {
-    files,
-    entries: [],
-    guidance: ["Restart OpenCode to reload project modules; execution has not been observed by this command."],
+/** Project wiring whose `.opencode/plugins` module is `wrap(importPathOfArtifact)`. */
+export function projectIntegrationWith(wrap: (importPath: string) => string) {
+  return (artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration => {
+    const importPath = (path: string): string =>
+      path
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+    const files = [
+      {
+        path: ".opencode/plugins/.gitattributes",
+        contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
+      },
+      ...artifacts
+        .filter((a) => a.path.startsWith(".opencode/plugins/"))
+        .map((a) => ({ path: a.path, contents: wrap("../../" + importPath(output + "/" + a.path)) })),
+    ];
+    return {
+      files,
+      entries: [],
+      guidance: ["Restart OpenCode to reload project modules; execution has not been observed by this command."],
+    };
   };
 }
+
+export const projectIntegration = projectIntegrationWith(
+  (importPath) => `export { default } from ${JSON.stringify(importPath)};\n`,
+);
 
 export async function projectComponents(
   source: ProjectComponents,

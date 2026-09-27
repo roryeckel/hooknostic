@@ -65,6 +65,8 @@ export interface PlaybackTargetOverride {
   project?: boolean;
   delivery?: TargetSpec["delivery"];
   version?: string;
+  /** Written into every trace line, to tell apart copies sharing one trace file. */
+  label?: string;
 }
 
 function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
@@ -132,7 +134,11 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "replace-outputs",
 ];
 
-function playbackPluginSource(events: readonly HookEventName[], contextAdd: ReadonlySet<HookEventName>): string {
+function playbackPluginSource(
+  events: readonly HookEventName[],
+  contextAdd: ReadonlySet<HookEventName>,
+  label?: string,
+): string {
   const definitions = events.map((event) => {
     const capabilities = [
       event === "tool.before"
@@ -205,7 +211,8 @@ function playbackPluginSource(events: readonly HookEventName[], contextAdd: Read
           return block("permission denied by harness playback");
         }
         if (effects.includes("prevent-stop-once") && ("${event}" === "turn.stop" || "${event}" === "agent.stop") &&
-            (event.raw?.stop_hook_active ?? false) !== true) {
+            (event.raw?.stop_hook_active ?? false) !== true && !preventedSessions.has(event.session.id ?? "")) {
+          preventedSessions.add(event.session.id ?? "");
           return preventStop("stop prevented once by harness playback");
         }
         if (effects.includes("notify") && ("${event}" === "turn.stop" || "${event}" === "agent.stop")) {
@@ -230,7 +237,7 @@ function playbackPluginSource(events: readonly HookEventName[], contextAdd: Read
           nativeEvent: event.harness.nativeEvent,
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
-          toolNativeName: event.tool?.nativeName,
+          toolNativeName: event.tool?.nativeName,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
       },
     })`;
@@ -253,6 +260,9 @@ import {
 
 const tracePath = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
 if (!tracePath) throw new Error("HOOKNOSTIC_PLAYBACK_TRACE is required");
+// OpenCode has no stop_hook_active flag and runs hooks in-process; command-hook
+// harnesses start a fresh process per dispatch, where this stays empty.
+const preventedSessions = new Set();
 
 export default definePlugin({
   name: "harness-playback",
@@ -277,7 +287,7 @@ export async function buildPlaybackArtifact(
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events, contextAdd), "utf8");
+  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label), "utf8");
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared

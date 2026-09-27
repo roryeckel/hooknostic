@@ -2,12 +2,16 @@ import type { HarnessAdapter, ShimEntryOptions } from "@hooknostic/core";
 import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
 
 import { generateOpenCodeArtifacts, opencodeHookRuntimePath } from "../generate.js";
-import { projectIntegration } from "../project.js";
 import { planOpenCodeV2Application } from "./apply.js";
 import { decodeOpenCodeV2 } from "./decode.js";
 import { opencodeV2Harness } from "./harness.js";
 import { opencodeV2CapabilityProfiles } from "./profile.js";
-import { opencodeV2Projector, opencodeV2ProjectProfiles, projectOpenCodeV2Components } from "./project.js";
+import {
+  opencodeV2Projector,
+  opencodeV2ProjectProfiles,
+  projectOpenCodeV2Components,
+  projectOpenCodeV2Integration,
+} from "./project.js";
 import { classifyOpenCodeV2Tool, OPENCODE_V2_SHELL_SHAPES, opencodeV2ShellCodec } from "./toolmap.js";
 
 export function opencodeV2ShimEntrySource(options: ShimEntryOptions): string {
@@ -33,7 +37,7 @@ export function opencodeV2Adapter(
     adapterVersion: "0.1.0",
     harness: opencodeV2Harness,
     projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json"],
-    projectIntegration,
+    projectIntegration: projectOpenCodeV2Integration,
     projectComponents: projectOpenCodeV2Components,
     projectComponentProfiles: opencodeV2ProjectProfiles,
     agentPluginProjector: opencodeV2Projector,

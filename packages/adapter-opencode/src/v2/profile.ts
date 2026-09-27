@@ -46,7 +46,21 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           date: "2026-09-26",
           method: "live-probe",
           artifact: ".capture/opencode-v2-audit",
-          what: "Typed missing-file failures dispatch tool.error; plain custom exceptions bypass execute.after. Text and serialized object replacements reach the model while raw structured output survives. Anthropic Messages and OpenAI Responses HTTP separately exercise ordinary/title/generation/compaction context. A foreground subagent returns its result to the parent. Native companion TUI RPC renders a toast and disposes on exit; generated portable notifications remain unsupported.",
+          what: "Typed missing-file failures dispatch tool.error; plain custom exceptions bypass execute.after. Text and serialized object replacements reach the model while raw structured output survives. Anthropic Messages and OpenAI Responses HTTP separately exercise ordinary/title/generation/compaction context. A foreground subagent returns its result to the parent. Native companion TUI RPC renders a toast and disposes on exit; a generated user-only notification remains unsupported.",
+        },
+        {
+          version: "2.0.17",
+          date: "2026-09-26",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2",
+          what: "Persistent serve sessions (stop drive; fixtures/opencode/2.0/stop-audit): after a succeeded execution, synthetic with resume starts exactly one more execution whose request carries the stop reason as a user-role message; resume:false starts none, is not rendered by the real TUI meanwhile, and reaches the model with the next user prompt. A user interrupt, a model failure and a subagent child (session.created parentID) post nothing. synthetic does not run the prompt hook.",
+        },
+        {
+          version: "2.0.17",
+          date: "2026-09-26",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2",
+          what: "Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks.",
         },
         // scheduled-playback:begin
         // scheduled-playback:end
@@ -56,7 +70,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "session.start.observe": {
         level: "approximate",
         rationale:
-          "Via the live session.created subscription. A server session created before lazy plugin setup is missed; plugin setup itself is not a session start.",
+          "Via the live session.created subscription, for sessions created in the plugin's own location. A server session created before lazy plugin setup is missed; plugin setup itself is not a session start.",
       },
       "prompt.before.observe": { level: "exact" },
       "prompt.before.block": {
@@ -96,7 +110,17 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion.",
+          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt.",
+      },
+      "turn.stop.prevent": {
+        level: "approximate",
+        rationale:
+          "No native stop hook. After a succeeded execution, the reason is admitted with session.synthetic and resume, which starts a new execution carrying it as a user-role message; the first execution has already completed. Failed and interrupted executions and child sessions (session.created parentID) post nothing, so an interrupt is never overridden. There is no stop_hook_active flag or block cap: a hook that always prevents loops. Requires a session that outlives the event; a child created before plugin setup is not recognized. Best-effort: a silent no-op without a session id or if the post fails.",
+      },
+      "turn.stop.notify": {
+        level: "approximate",
+        rationale:
+          "No user-only channel for server plugins; toast and attention are TUI-only. The message is admitted to the session inbox with session.synthetic resume:false and starts no execution, but neither the TUI nor the message API shows it until the session next runs, when it arrives as a user-role message the model reads. Posted under the same succeeded, top-level-session conditions as turn.stop.prevent. Best-effort.",
       },
       "context.compact.before.observe": {
         level: "exact",
@@ -109,7 +133,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "context.compact.after.observe": {
         level: "emulated",
         rationale:
-          "Via session.compaction.ended on the event subscription after a successful summary; failures are excluded.",
+          "Via session.compaction.ended on the event subscription after a successful summary, for sessions of the plugin's location; failures are excluded.",
       },
       "permission.request.observe": {
         level: "approximate",

@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 export async function driveLifecycle({ executable, root, project, env, model }) {
   const server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
     cwd: project,
-    env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : "context-add" },
+    env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" ? "prevent-stop-once,notify" : "context-add" },
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -49,6 +49,11 @@ export async function driveLifecycle({ executable, root, project, env, model }) 
       const { auditSessions } = await import("./session-audit.mjs");
       const outcomes = await auditSessions({ api, wait, records, model, project, denied: env.HKN_PROBE_EFFECT !== "sessions" });
       await writeFile(join(root, "sessions.json"), JSON.stringify({ outcomes, requests: model.requests, errors: model.errors }, null, 2));
+      return;
+    }
+    if (env.HKN_PROBE_EFFECT === "stop") {
+      const audit = await (await import("./stop-audit.mjs")).auditStops({ api, wait, records, model, project });
+      await writeFile(join(root, "stops.json"), JSON.stringify({ ...audit, records: await records(), requests: model.requests, errors: model.errors }, null, 2));
       return;
     }
     if (env.HKN_PROBE_EFFECT.endsWith("-oauth")) {

@@ -16,10 +16,13 @@ export async function startSessionModel() {
       res.end(JSON.stringify({ error: { message: "hooknostic-model-failure", type: "invalid_request_error" } }));
       return;
     }
-    const tool = agent && !request.messages.some(message => message.role === "tool");
-    const delta = tool ? { role: "assistant", tool_calls: [{ index: 0, id: "call_session_probe", type: "function",
-      function: { name: "shell", arguments: JSON.stringify({ command: `node -e "require('node:fs').appendFileSync('permission-executed.txt','executed\\n')"` }) } }] }
-      : { role: "assistant", content: "session probe complete" };
+    const child = mode === "subagent" && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
+    const tool = agent && !child && !request.messages.some(message => message.role === "tool");
+    const call = mode === "subagent"
+      ? { name: "subagent", arguments: JSON.stringify({ agent: "general", description: "Offline child stop probe", prompt: "hooknostic-child-task: return the scripted child result." }) }
+      : { name: "shell", arguments: JSON.stringify({ command: `node -e "require('node:fs').appendFileSync('permission-executed.txt','executed\\n')"` }) };
+    const delta = tool ? { role: "assistant", tool_calls: [{ index: 0, id: "call_session_probe", type: "function", function: call }] }
+      : { role: "assistant", content: child ? "hooknostic-child-result" : "session probe complete" };
     res.writeHead(200, { "content-type": "text/event-stream" });
     for (const choice of [{ index: 0, delta, finish_reason: null }, { index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }])
       res.write(`data: ${JSON.stringify({ id: "chatcmpl-session", object: "chat.completion.chunk", created: 0, model: "hooknostic-playback", choices: [choice] })}\n\n`);

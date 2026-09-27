@@ -5056,6 +5056,17 @@ function planOpenCodeApplication(result) {
   if (Object.keys(mutations).length > 0) application.mutations = mutations;
   return application;
 }
+var POST_TIMEOUT_MS = 1e4;
+function withTimeout(promise) {
+  promise.catch(() => void 0);
+  let timer;
+  const expiry = new Promise((resolvePromise) => {
+    timer = setTimeout(() => resolvePromise(void 0), POST_TIMEOUT_MS);
+  });
+  return Promise.race([promise, expiry]).finally(() => {
+    if (timer !== void 0) clearTimeout(timer);
+  });
+}
 var EXACT = {
   bash: "shell",
   shell: "shell",
@@ -5223,17 +5234,6 @@ function decodeOpenCode(nativeEvent, invocation) {
 }
 var OPENCODE_V2_SHELL_SHAPES = { shell: { commandKey: "command", cwdKey: "workdir" } };
 var opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
-var POST_TIMEOUT_MS = 1e4;
-function withTimeout(promise) {
-  promise.catch(() => void 0);
-  let timer;
-  const expiry = new Promise((resolvePromise) => {
-    timer = setTimeout(() => resolvePromise(void 0), POST_TIMEOUT_MS);
-  });
-  return Promise.race([promise, expiry]).finally(() => {
-    if (timer !== void 0) clearTimeout(timer);
-  });
-}
 function createHooknosticHooks(plugin, options, pluginInput) {
   const targetId = options.targetId ?? "opencode";
   const invocation = {

@@ -16,9 +16,14 @@ Support has explicit limits:
 - Session-start observation, typed tool-error observation, permission handling,
   model context, and output conversion have approximate coverage. Plain custom
   tool exceptions can bypass observation; permissions cover pending ask decisions.
-- Generated portable notifications, stop prevention, and legacy MCP SSE remain
-  unsupported. A successful native TUI notification probe does not enable
-  generated notification delivery.
+- Stop prevention and notification are approximate. Both post a synthetic
+  user-role message after a succeeded top-level execution; interrupts, model
+  failures and subagent children post nothing. A notice surfaces only when the
+  session next runs: there is no user-only notification channel. Legacy MCP SSE
+  remains unsupported.
+- A checkout nested inside another (a linked worktree in the main checkout)
+  runs its own generated hooks and MCP servers, and each session dispatches only
+  its own location's hooks.
 - MCP calls remain `kind: "other"`; `kind: "mcp"` guards do not cover them.
   A captured native name can be guarded explicitly.
 - WebSocket and other provider paths, provider/custom OAuth, executed websearch,

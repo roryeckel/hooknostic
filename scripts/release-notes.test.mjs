@@ -47,7 +47,7 @@ it("generates release scope and separate reference rows for both OpenCode famili
     }
     const highlights = readFileSync(join(root, "docs/release-highlights.md"), "utf8");
     expect(notes.startsWith(highlights.trim().split("\n")[0])).toBe(true);
-    expect(notes).toContain("Generated portable notifications, stop prevention, and legacy MCP SSE remain");
+    expect(notes).toContain("Stop prevention and notification are approximate. Both post a synthetic");
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/docs/opencode-families.md`);
   } finally {
     rmSync(scratch, { recursive: true, force: true });

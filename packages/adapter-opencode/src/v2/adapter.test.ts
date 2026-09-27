@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR, resolveTargetAdapter } from "@hooknostic/core";
-import { definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+import { definePlugin, hook, notify, preventStop, replaceInput } from "@hooknostic/sdk";
 import { describeAdapterContract } from "@hooknostic/testkit";
 
 import { opencodeHarness } from "../harness.js";
@@ -175,6 +175,186 @@ describe("v2 captured boundary", () => {
       expect(decoded.raw).toBe(raw);
     });
   }
+  describe("turn.stop posting", () => {
+    const bus = (name: string) => JSON.parse(readFileSync(fixtures + name, "utf8")).event as Record<string, unknown>;
+    const withSession = (event: Record<string, unknown>, sessionID: string) => ({
+      ...event,
+      data: { ...(event.data as object), sessionID },
+    });
+    const succeeded = bus("execution-succeeded.input.json");
+    const top = (succeeded.data as { sessionID: string }).sessionID;
+    const childCreated = bus("session-created-child.input.json");
+    const child = (childCreated.data as { sessionID: string }).sessionID;
+    const directory = (childCreated.data as { location: { directory: string } }).location.directory;
+    // A top-level creation in the captured location: the child's envelope without its parent.
+    const created = (sessionID: string, location = directory) => {
+      const { parentID: _parent, ...data } = childCreated.data as Record<string, unknown>;
+      return {
+        ...childCreated,
+        location: { directory: location },
+        data: { ...data, sessionID, location: { directory: location } },
+      };
+    };
+    const capabilities = {
+      "turn.stop.observe": "approximate",
+      "turn.stop.prevent": "approximate",
+      "turn.stop.notify": "approximate",
+      "session.start.observe": "approximate",
+    } as const;
+    const context = (
+      events: Record<string, unknown>[],
+      synthetic: (input: unknown) => unknown,
+      prompts: Record<string, (event: Record<string, unknown>) => Promise<void>> = {},
+    ) => ({
+      location: { directory },
+      session: {
+        hook: async (name: string, callback: (event: Record<string, unknown>) => Promise<void>) => {
+          prompts[name] = callback;
+          return { dispose: async () => {} };
+        },
+        synthetic,
+      },
+      tool: { hook: vi.fn() },
+      event: {
+        async *subscribe() {
+          yield* events;
+        },
+      },
+    });
+    const stopping = definePlugin({
+      name: "stop",
+      hooks: [
+        hook("turn.stop", {
+          id: "notice",
+          capabilities: { "turn.stop.notify": "required" },
+          run: () => notify("notice"),
+        }),
+        hook("turn.stop", {
+          id: "prevent",
+          capabilities: { "turn.stop.prevent": "required" },
+          run: () => preventStop("keep working"),
+        }),
+      ],
+    });
+
+    it("admits notices before the prevention, only after a succeeded top-level execution", async () => {
+      const posts: unknown[] = [];
+      const cleanup = await setupOpenCodeV2(
+        stopping,
+        { capabilities },
+        context(
+          [
+            created(top),
+            childCreated,
+            withSession(succeeded, child),
+            withSession(bus("execution-interrupted-user.input.json"), top),
+            withSession(bus("execution-failed.input.json"), top),
+            succeeded,
+          ],
+          async (input) => {
+            posts.push(input);
+          },
+        ),
+      );
+      await vi.waitFor(() => expect(posts).toHaveLength(2));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await cleanup();
+      expect(posts).toEqual([
+        { sessionID: top, text: "notice", resume: false },
+        { sessionID: top, text: "keep working", resume: true },
+      ]);
+    });
+
+    it("still prevents when the notice before it fails to post", async () => {
+      const synthetic = vi.fn().mockRejectedValueOnce(new Error("server gone")).mockResolvedValue(undefined);
+      const cleanup = await setupOpenCodeV2(stopping, { capabilities }, context([created(top), succeeded], synthetic));
+      await vi.waitFor(() => expect(synthetic).toHaveBeenCalledTimes(2));
+      await cleanup();
+      expect(synthetic).toHaveBeenLastCalledWith({ sessionID: top, text: "keep working", resume: true });
+    });
+
+    it("does not hold another session's events behind a running turn.stop hook", async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const seen: string[] = [];
+      const cleanup = await setupOpenCodeV2(
+        definePlugin({
+          name: "slow",
+          hooks: [
+            hook("turn.stop", {
+              id: "slow",
+              async run(event) {
+                seen.push(`stop:${event.session.id}`);
+                await gate;
+              },
+            }),
+            hook("session.start", {
+              id: "start",
+              run(event) {
+                seen.push(`start:${event.session.id}`);
+              },
+            }),
+          ],
+        }),
+        { capabilities },
+        context([created(top), succeeded, childCreated], vi.fn()),
+      );
+      await vi.waitFor(() => expect(seen).toEqual([`start:${top}`, `stop:${top}`, `start:${child}`]));
+      release();
+      await cleanup();
+    });
+
+    it("ignores sessions created in another location, or never seen here", async () => {
+      const posts: unknown[] = [];
+      const cleanup = await setupOpenCodeV2(
+        stopping,
+        { capabilities },
+        context(
+          [
+            created("ses_foreign", directory + "-elsewhere"),
+            withSession(succeeded, "ses_foreign"),
+            withSession(succeeded, "ses_unseen"),
+          ],
+          async (input) => {
+            posts.push(input);
+          },
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await cleanup();
+      expect(posts).toEqual([]);
+    });
+
+    it("treats a session prompted through this instance as its own", async () => {
+      const posts: unknown[] = [];
+      const prompts: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+      let open!: () => void;
+      const gate = new Promise<void>((resolve) => (open = resolve));
+      const cleanup = await setupOpenCodeV2(
+        stopping,
+        { capabilities },
+        {
+          ...context(
+            [],
+            async (input) => {
+              posts.push(input);
+            },
+            prompts,
+          ),
+          event: {
+            async *subscribe() {
+              await gate;
+              yield withSession(succeeded, "ses_prompted");
+            },
+          },
+        },
+      );
+      await prompts["prompt"]!({ sessionID: "ses_prompted", prompt: { text: "hi" } });
+      open();
+      await vi.waitFor(() => expect(posts).toHaveLength(2));
+      await cleanup();
+    });
+  });
   it("disposes registrations and does not register hooks scoped to another target", async () => {
     const registered: string[] = [],
       disposed: string[] = [];

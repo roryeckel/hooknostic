@@ -440,6 +440,57 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     },
     70000,
   );
+  it("serves a nested checkout from its own copy and each location only its own sessions", async () => {
+    const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
+    const result = await runProcess(process.execPath, ["--experimental-strip-types", driver, "nested"], {
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+      env: process.env,
+      timeoutMs: 120000,
+    });
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    const capture = JSON.parse(await readFile(join(root, "nested.json"), "utf8"));
+    // OpenCode loads both copies for the nested location; each must stay active under its own id.
+    expect(capture.nested.plugins.map((p: { status: string }) => p.status)).toEqual(["active", "active"]);
+    expect(new Set(capture.nested.plugins.map((p: { id: string }) => p.id)).size).toBe(2);
+    expect(capture.outer.plugins).toHaveLength(1);
+    for (const [location, dispatches] of Object.entries(capture) as [string, { dispatches: string[] }][]) {
+      expect(dispatches.dispatches).toContain(`${location}:turn.stop`);
+      expect(
+        dispatches.dispatches.every((row) => row.startsWith(`${location}:`)),
+        dispatches.dispatches.join(", "),
+      ).toBe(true);
+    }
+  }, 150000);
+  it("prevents and notifies only after a succeeded top-level execution", async () => {
+    const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
+    const result = await runProcess(process.execPath, ["--experimental-strip-types", driver, "stop"], {
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+      env: process.env,
+      timeoutMs: 120000,
+    });
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    const { root } = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"root"'))!);
+    const capture = JSON.parse(await readFile(join(root, "stops.json"), "utf8"));
+    expect(capture.errors).toEqual([]);
+    // Prevention starts exactly one more execution, carrying the reason as a
+    // user-role message; the later notice starts none and reaches the model
+    // only when the next user prompt runs.
+    expect(capture.prevent).toMatchObject({ started: 2, succeeded: 2, reasonRequests: 1 });
+    expect(capture.prevent.noticeRequestsBeforeFollowUp).toBe(0);
+    expect(capture.prevent.noticeRequestsAfterFollowUp).toBeGreaterThan(0);
+    expect(capture.interrupt).toMatchObject({ started: 1, interrupted: 1 });
+    expect(capture.fail).toMatchObject({ started: 1, failed: 1 });
+    expect(capture.child.created?.data.parentID).toBe(capture.child.parentID);
+    expect(capture.child.child).toMatchObject({ started: 1, succeeded: 1 });
+    expect(capture.child.parent).toMatchObject({ started: 2, succeeded: 2 });
+    const events = await traceEvents(join(root, "trace.jsonl"));
+    // Every completion is still observed: three for the prevented session, one
+    // each for the interrupt and the failure, and two parent plus one child.
+    expect(events.filter((event) => event === "turn.stop")).toHaveLength(8);
+    // session.synthetic does not run the prompt hook: six real prompts, including the child's.
+    expect(events.filter((event) => event === "prompt.before")).toHaveLength(6);
+  }, 150000);
   it.each(["project-remote", "package-remote"])(
     "%s executes Streamable HTTP with the declared headers",
     async (mode) => {

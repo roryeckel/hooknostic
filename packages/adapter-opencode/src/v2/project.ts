@@ -1,9 +1,35 @@
 import type { AgentPluginPackage, AgentPluginProjectionProfile, AgentPluginProjector } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
-import { projectComponents } from "../project.js";
+import { projectComponents, projectIntegrationWith } from "../project.js";
 import { createOpenCodeAgentPluginProjector, RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT } from "../project-agent-plugin.js";
 import { opencodeV2Harness } from "./harness.js";
+
+// v2 loads .opencode/plugins from every ancestor of the session directory and
+// keeps the outermost copy of an id (.capture/opencode-v2, nested drive), so
+// each checkout's copy takes its own id and serves only sessions whose nearest
+// integration it owns. Expects dirname/resolve and `own` (its checkout root).
+const scopeImports = `import { existsSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";`;
+const scope = `const canonical = (path) => { try { return realpathSync.native(path); } catch { return resolve(path); } };
+const serves = (directory) => {
+  for (let dir = resolve(directory); ; dir = dirname(dir)) {
+    if (existsSync(resolve(dir, ".hooknostic", "integration.json"))) return canonical(dir) === canonical(own);
+    if (dirname(dir) === dir) return true;
+  }
+};
+const suffix = "." + createHash("sha256").update(canonical(own)).digest("hex").slice(0, 12);`;
+
+export const projectOpenCodeV2Integration: NonNullable<HarnessAdapter["projectIntegration"]> = projectIntegrationWith(
+  (importPath) => `${scopeImports}
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import plugin from ${JSON.stringify(importPath)};
+const own = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+${scope}
+export default { id: plugin.id + suffix, setup: (ctx) => (serves(ctx.location.directory) ? plugin.setup(ctx) : undefined) };
+`,
+);
 
 const conversion = `const nativeServer = (server) => {
   const { enabled, timeout, ...rest } = server;
@@ -72,6 +98,13 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
           artifact: ".capture/opencode-v2-remote",
           what: "Generated project and packed relocated package execute Streamable HTTP MCP tools with recorded headers. Project variables expand and missing variables disable only the affected server; package placeholders remain literal. Default and legacy protocol probes do not fall back to SSE after HTTP 405. OAuth is unverified.",
         },
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-09-26",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2",
+          what: "Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session.",
+        },
       ],
     },
   },
@@ -80,8 +113,9 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
 export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = (...args) =>
   projectComponents(
     ...args,
-    (body) => `${body}\n${conversion}
-export default { id: "hooknostic.components", async setup(ctx) {
+    (body) => `${body}\n${scopeImports}\nconst own = root;\n${scope}\n${conversion}
+export default { id: "hooknostic.components" + suffix, async setup(ctx) {
+  if (!serves(ctx.location.directory)) return;
   const config = {}; configure(config);
   await ctx.mcp.transform(editor => {
     for (const [name, server] of Object.entries(config.mcp ?? {})) editor.set(name, nativeServer(server));

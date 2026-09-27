@@ -25,8 +25,14 @@ coverage and output conversion are explicitly approximate; inspect shows the
 details. The first server-created session can precede plugin setup; session-start
 observation is approximate for this reason. Permission evaluation lacks tool
 identity/input: use `raw` for its action/resources, or `tool.before` for tool
-guards. Only pending ask decisions are intercepted. Stop prevention,
-notifications and legacy SSE remain unsupported. SSE receives no fallback
+guards. Only pending ask decisions are intercepted. Stop prevention and
+notification are approximate: both are admitted with `session.synthetic` after a
+succeeded execution of a top-level session, prevention with `resume` and a
+notice without it, and both become user-role messages the model reads. A notice
+starts no execution, and nothing shows it until the session next runs. Failed
+and interrupted executions and subagent children post nothing, and there is no
+`stop_hook_active` flag, so a hook that always prevents loops. Legacy SSE
+remains unsupported. SSE receives no fallback
 GET after a failed POST in the captured baseline. Default MCP OAuth discovery,
 PKCE and refresh are verified against a local issuer through project and packed
 delivery. Provider OAuth and custom OAuth options remain unverified. Context
@@ -34,11 +40,21 @@ coverage includes OpenAI-compatible, Anthropic Messages and OpenAI Responses
 over HTTP; WebSocket and other providers remain unverified. V1 retains its own
 capability matrix.
 
+V2 reads `.opencode/plugins` from every ancestor of the session directory and
+keeps the outermost copy of a plugin id, so a checkout nested in another, such
+as a linked worktree inside the main checkout, would otherwise run the outer
+checkout's generated hooks and MCP servers. Project wiring therefore gives each
+checkout's modules their own id and serves a session only from the copy that
+owns the nearest `.hooknostic/integration.json`. The plugin event subscription
+also delivers every location's sessions, so session-start, turn-stop and
+compaction-after hooks dispatch only for sessions created in or prompted
+through the plugin's own location.
+
 Typed tool failures support approximate `tool.error` observation: a missing-file
 read is captured, while a plain exception from a custom tool bypasses the native
 after callback. Text and object output replacements reach the model, with objects
 serialized as JSON text. A native companion TUI probe delivers a server RPC toast
-and cleans up on exit; generated portable notification delivery remains follow-up
+and cleans up on exit; a generated user-only notification remains follow-up
 work. [Audit procedure and limits](../.capture/opencode-v2-audit/README.md).
 
 Package output includes a v2 default plugin definition. Hooks-only,

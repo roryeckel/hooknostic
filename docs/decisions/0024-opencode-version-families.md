@@ -47,7 +47,19 @@ normalized tool stays unknown/other, with the native fields in raw. Blocking
 changes ask to deny before approval admission. This limited coverage is
 approximate. Completed, failed and interrupted execution events approximate
 turn completion; this includes manual compaction executions and does not
-provide stop prevention.
+provide native stop prevention. Stop prevention and notification are emulated
+by admitting `session.synthetic` messages, only after a succeeded execution of
+a session not created with a `parentID`, so an interrupt, a model failure or a
+subagent child is never re-prompted. Both are approximate: the execution has
+already completed, the text is a user-role message the model reads, and a notice
+stays pending until the session next runs.
+
+V2 project discovery walks every ancestor of the session directory and keeps
+the outermost copy of a plugin id. Its project modules therefore take a
+per-checkout id and serve only sessions whose nearest integration they own,
+the rule the Codex command bootstrap already applies. The event subscription
+is not location-scoped, so bus-driven dispatch is limited to sessions created
+in or prompted through the plugin's own location.
 
 Package/project assembly can share portable file and launcher machinery, but
 each family supplies its own native entry and component registration code.

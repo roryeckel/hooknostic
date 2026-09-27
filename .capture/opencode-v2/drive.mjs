@@ -48,6 +48,7 @@ if (
   effect === "lifecycle" ||
   effect.startsWith("provider-") ||
   effect.startsWith("sessions") ||
+  effect === "stop" ||
   effect === "project-components" ||
   (effect === "project-remote" || effect === "project-oauth") ||
   effect.startsWith("package")
@@ -175,7 +176,7 @@ if (effect === "components" || effect === "tools" || effect.startsWith("mcp-")) 
       .replace('case "tools/call":', 'case "tools/call":\n      appendFileSync(process.env.HKN_MCP_CALLS, JSON.stringify(request) + "\\n");'));
   }
 }
-const model = effect.startsWith("sessions") ? await (await import("./session-model.mjs")).startSessionModel() : effect === "tools" || effect.startsWith("mcp-") || remote || effect.startsWith("results") || effect === "subagent"
+const model = effect.startsWith("sessions") || effect === "stop" || effect === "nested" ? await (await import("./session-model.mjs")).startSessionModel() : effect === "tools" || effect.startsWith("mcp-") || remote || effect.startsWith("results") || effect === "subagent"
   ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect === "subagent" ? "subagent" : effect.startsWith("results"))
   : await startModelPlayback(effect === "provider-anthropic" ? "anthropic-messages" : effect === "provider-responses" ? "openai-responses" : "openai-chat", effect === "fail" ? "fail" : "rewrite", effect === "lifecycle" || effect.startsWith("provider-") ? [
       { kind: "tool", disposition: "rewrite" },
@@ -235,13 +236,23 @@ if (process.platform === "win32" && !process.env.HKN_OPENCODE_BINARY) {
   if (npmRoot.code !== 0) throw new Error(npmRoot.stderr);
   executable = join(npmRoot.stdout.trim(), "@opencode/cli/bin/opencode.exe");
 }
+if (effect === "nested") {
+  const { opencodeAdapter, opencodeV2Harness } = await import("../../packages/adapter-opencode/src/index.ts");
+  const { resolveTargetAdapter } = await import("../../packages/core/src/index.ts");
+  const target = { id: "opencode", version: opencodeV2Harness.referenceVersion, delivery: "project", output: "." };
+  const adapter = resolveTargetAdapter(opencodeAdapter(), target).adapter;
+  const build = (dir, label) => buildPlaybackArtifact(adapter, dir, { delivery: "project", project: true, label });
+  try { await (await import("./nested.mjs")).driveNested({ executable, root, project, env, build }); }
+  finally { await model.close(); }
+  process.exit(0);
+}
 if (effect === "notifications") {
   try { await (await import("./notification-drive.mjs")).driveNotifications({ executable, root, project, env }); }
   finally { await model.close(); }
   if (model.requests.length) throw new Error("Notification probe made a model request");
   process.exit(0);
 }
-if (effect === "lifecycle" || effect.startsWith("sessions") || effect.startsWith("provider-") || effect.endsWith("-oauth")) {
+if (effect === "lifecycle" || effect.startsWith("sessions") || effect === "stop" || effect.startsWith("provider-") || effect.endsWith("-oauth")) {
   const { driveLifecycle } = await import("./lifecycle.mjs");
   try {
     await driveLifecycle({ executable, root, project, env, model });
