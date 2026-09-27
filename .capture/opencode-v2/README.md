@@ -175,6 +175,12 @@ minutes: a notice is deferred to the session's next run.
 A detached `session.synthetic` call also succeeded, so no receiver requirement
 is claimed.
 
+`promote-stops.mjs <stop-root>` promotes the child `session.created`, the
+user-interrupt completion and `stop-audit/outcomes.json`. The `stop-*` mutants
+in `verify-mutations.mjs` remove the success gate, the child gate, the notice's
+`resume: false`, notice ordering, per-post fail-open and the per-session event
+queue; each fails its unit or playback test.
+
 ## Nested checkouts
 
 `nested` builds generated project wiring into an outer checkout and into
@@ -189,8 +195,4 @@ and `turn.stop` for it; `prompt` and tool callbacks stayed location-scoped.
 With per-checkout ids, nearest-integration serving and location filtering, both
 copies are active and every dispatch in each location carries that location's
 label. The `nested-*` and `location-*` mutants in `verify-mutations.mjs` remove
-the serving guard, the id suffix, the components guard and each filter branch. `promote-stops.mjs <stop-root>` promotes the child `session.created`,
-the user-interrupt completion and `stop-audit/outcomes.json`. The `stop-*`
-mutants in `verify-mutations.mjs` remove the success gate, the child gate, the
-notice's `resume: false`, notice ordering, per-post fail-open and the per-session
-event queue; each fails its unit or playback test.
+the serving guard, the id suffix, the components guard and each filter branch.
