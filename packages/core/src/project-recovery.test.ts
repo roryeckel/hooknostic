@@ -98,6 +98,56 @@ it.skipIf(process.platform === "win32")("applies the requested mode despite a re
     }),
   ).resolves.toMatchObject({ changes: [] });
 });
+it.skipIf(process.platform === "win32")("accepts a checkout whose permission bits follow its umask", async () => {
+  // Git checks committed 0644 and 0755 files out as 0666 and 0777 less the
+  // umask: 0666 under umask 000, 0700 under umask 077.
+  const desired = {
+    files: [
+      { path: "a.txt", contents: "same", mode: 0o644 },
+      { path: "b.sh", contents: "same", mode: 0o755 },
+    ],
+    entries: [],
+    guidance: [],
+  };
+  await applyProject(root, owner, await reconcileProject(root, owner, desired));
+  await chmod(join(root, "a.txt"), 0o666);
+  await chmod(join(root, "b.sh"), 0o700);
+  await chmod(join(root, ".hooknostic/integration.json"), 0o664);
+
+  await expect(reconcileProject(root, owner, desired)).resolves.toMatchObject({ changes: [] });
+});
+it.skipIf(process.platform === "win32").each([
+  { mode: 0o644, observed: 0o744, name: "0644 as 0744" },
+  { mode: 0o644, observed: 0o645, name: "0644 as 0645" },
+  { mode: 0o755, observed: 0o655, name: "0755 as 0655" },
+])("rejects an execute change a checkout cannot produce ($name)", async ({ mode, observed }) => {
+  const desired = { files: [{ path: "a.txt", contents: "same", mode }], entries: [], guidance: [] };
+  await applyProject(root, owner, await reconcileProject(root, owner, desired));
+  await chmod(join(root, "a.txt"), observed);
+
+  await expect(reconcileProject(root, owner, desired)).rejects.toThrow("unowned or modified generated file: a.txt");
+});
+it.skipIf(process.platform === "win32")("applies a newly requested non-execute mode exactly", async () => {
+  const desired = (mode: number) => ({ files: [{ path: "a.txt", contents: "same", mode }], entries: [], guidance: [] });
+  await applyProject(root, owner, await reconcileProject(root, owner, desired(0o644)));
+  await chmod(join(root, "a.txt"), 0o666);
+
+  await applyProject(root, owner, await reconcileProject(root, owner, desired(0o600)));
+
+  expect((await stat(join(root, "a.txt"))).mode & 0o777).toBe(0o600);
+  await expect(reconcileProject(root, owner, desired(0o600))).resolves.toMatchObject({ changes: [] });
+
+  await applyProject(root, owner, await reconcileProject(root, owner, desired(0o644)));
+  expect((await stat(join(root, "a.txt"))).mode & 0o777).toBe(0o644);
+});
+it.skipIf(process.platform === "win32")("rejects a checkout that loosened a restrictive mode", async () => {
+  // Git cannot record 0600, so a fresh checkout under umask 022 yields 0644.
+  const desired = { files: [{ path: "a.txt", contents: "same", mode: 0o600 }], entries: [], guidance: [] };
+  await applyProject(root, owner, await reconcileProject(root, owner, desired));
+  await chmod(join(root, "a.txt"), 0o644);
+
+  await expect(reconcileProject(root, owner, desired)).rejects.toThrow("unowned or modified generated file: a.txt");
+});
 it.skipIf(process.platform === "win32")("rolls back a mode-only replacement after a later failure", async () => {
   const modes = (mode: number) => ({
     files: [

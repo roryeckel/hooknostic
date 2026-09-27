@@ -177,6 +177,14 @@ function sameState(left: FileState, right: FileState): boolean {
   // journals always capture it for existing files.
   return left.mode === undefined || right.mode === undefined || left.mode === right.mode;
 }
+// Owned files are committed, and git checks 0644 and 0755 out as 0666 or 0777
+// less the local umask, which cannot add an execute bit. Any other expected mode
+// (e.g. 0600) is compared exactly, as are a new request and a transaction.
+function sameCommittedMode(observed: number, expected: number): boolean {
+  if (expected === 0o644) return (observed & 0o111) === 0;
+  if (expected === 0o755) return (observed & 0o100) !== 0;
+  return observed === expected;
+}
 function beforeState(change: Pick<FileChange, "before" | "beforeMode">): FileState {
   return { contents: change.before, ...(change.beforeMode === undefined ? {} : { mode: change.beforeMode }) };
 }
@@ -340,6 +348,7 @@ export async function reconcileProject(
     let after: Buffer | null = before;
     const beforeMode = observed.mode ?? 0o644;
     let mode = beforeMode;
+    let modeRequested = false;
     if (relinquished.has(path)) {
       if (oldEntries.some((entry) => entry.key !== undefined))
         throw new Error(`cannot relinquish structural ownership as a file: ${path}`);
@@ -352,12 +361,15 @@ export async function reconcileProject(
         before &&
         (!oldWhole ||
           fileHash(before) !== oldWhole.hash ||
-          (process.platform !== "win32" && oldWhole.mode !== undefined && beforeMode !== oldWhole.mode))
+          (process.platform !== "win32" &&
+            oldWhole.mode !== undefined &&
+            !sameCommittedMode(beforeMode, oldWhole.mode)))
       )
         throw new Error(`unowned or modified generated file: ${path}; move it aside before synchronizing`);
       if (whole && "contents" in whole) {
         after = Buffer.from(whole.contents);
         mode = whole.mode ?? 0o644;
+        modeRequested = oldWhole?.mode !== undefined && oldWhole.mode !== mode;
         owned.push({ path, hash: fileHash(after), mode });
       } else after = null;
     } else {
@@ -429,7 +441,10 @@ export async function reconcileProject(
       }
       after = before === null && nextEntries.length === 0 ? null : Buffer.from(text);
     }
-    if (!same(before, after) || (process.platform !== "win32" && before !== null && beforeMode !== mode))
+    if (
+      !same(before, after) ||
+      (process.platform !== "win32" && before !== null && (modeRequested || !sameCommittedMode(beforeMode, mode)))
+    )
       changes.push({ path, before, after, mode, beforeMode });
   }
   const manifest: Manifest = {
@@ -440,7 +455,7 @@ export async function reconcileProject(
   const afterManifest = Buffer.from(JSON.stringify(manifest, null, 2) + "\n");
   if (
     !same(manifestBytes, afterManifest) ||
-    (process.platform !== "win32" && manifestBytes !== null && manifestState.mode !== 0o644)
+    (process.platform !== "win32" && manifestBytes !== null && !sameCommittedMode(manifestState.mode ?? 0o644, 0o644))
   ) {
     changes.push({
       path: STATE,
