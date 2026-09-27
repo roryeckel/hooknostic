@@ -1,0 +1,36 @@
+{
+  "hook": "tool.registry",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-qUpf0b\\project",
+  "event": [
+    {
+      "name": "hooknostic_echo",
+      "options": {
+        "namespace": "hooknostic",
+        "codemode": true
+      },
+      "description": "Echo the hooknostic playback sentinel. Takes no arguments.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "output": {},
+      "id": "hooknostic_hooknostic_echo"
+    },
+    {
+      "name": "custom_echo",
+      "options": {
+        "namespace": "hooknostic",
+        "codemode": true
+      },
+      "description": "Custom tool in the MCP server namespace",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "output": {},
+      "id": "hooknostic_custom_echo"
+    }
+  ]
+}

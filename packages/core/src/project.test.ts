@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 
+import { opencodeV1Adapter } from "../../adapter-opencode/src/index.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";
 import { runProject } from "./project.js";
@@ -15,6 +16,7 @@ import { projectSkillFiles } from "./project-components.js";
 import { readProjectToml } from "./project-toml.js";
 const dirs: string[] = [];
 const registry = defaultAdapterRegistry();
+registry.opencode = opencodeV1Adapter();
 const evaluate = { alias: { "@hooknostic/sdk": fileURLToPath(new URL("../../sdk/src/index.ts", import.meta.url)) } };
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));

@@ -377,6 +377,41 @@ function parseArgs(argv) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.harness === "opencode-v1") opts.harness = "opencode";
+  if (opts.harness === "opencode-v2") {
+    if (opts.transport !== "playback") {
+      console.error("v2 paid drift capture is not established; use the offline playback transport");
+      process.exit(5);
+    }
+    const scratch = opts.scratch ?? mkdtempSync(join(tmpdir(), "hkn-drift-v2-"));
+    mkdirSync(scratch, { recursive: true });
+    const result = await runProcess(
+      process.execPath,
+      ["--experimental-strip-types", join(REPO, ".capture/opencode-v2/drive.mjs"), "observe"],
+      {
+        cwd: REPO,
+        env: { ...withoutCredentials(), HKN_CAPTURE_ROOT: scratch },
+        timeoutMs: DRIVE_TIMEOUT_MS,
+      },
+    );
+    console.log(result.stdout + result.stderr);
+    const path = join(scratch, "captured/events.jsonl");
+    if (result.code !== 0) process.exit(6);
+    const captured = readFileSync(path, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const { compareCaptures, EXPECTED_VARIANTS, readJsonDir } = await import("./compare-capture-shapes.mjs");
+    const comparison = compareCaptures({
+      harness: "opencode-v2",
+      captured,
+      fixtures: readJsonDir(join(REPO, "fixtures/opencode/2.0"), { suffix: ".input.json" }),
+      expectedVariants: EXPECTED_VARIANTS["opencode-v2"],
+    });
+    console.log(comparison.report);
+    process.exit(comparison.verdict === "clean" ? 0 : comparison.verdict === "drift" ? 4 : 5);
+  }
   if (opts.harness === undefined || !["claude", "codex", "opencode"].includes(opts.harness)) {
     process.stderr.write(
       `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|opencode> [--transport playback|llm] [--scratch <dir>]\n`,

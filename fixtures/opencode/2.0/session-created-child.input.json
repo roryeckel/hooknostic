@@ -1,0 +1,42 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-6LfWXj\\project",
+  "event": {
+    "id": "evt_0df8d77a2001u6VYZsFnvBUYGM",
+    "created": 1790456985506,
+    "type": "session.created",
+    "durable": {
+      "aggregateID": "ses_f2072885fffexWkdn0mAKSpU9g",
+      "seq": 0,
+      "version": 1
+    },
+    "location": {
+      "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-6LfWXj\\project"
+    },
+    "data": {
+      "sessionID": "ses_f2072885fffexWkdn0mAKSpU9g",
+      "projectID": "91bcf2fbbc742c415374aa226edca2a5462d97f7",
+      "location": {
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-6LfWXj\\project"
+      },
+      "subpath": "",
+      "parentID": "ses_f20728883ffeb08CXv22083440",
+      "slug": "shiny-circuit",
+      "title": "Offline child stop probe",
+      "agent": "general",
+      "model": {
+        "id": "hooknostic-playback",
+        "providerID": "playback",
+        "variant": "default"
+      },
+      "permissions": [
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "allow"
+        }
+      ],
+      "version": "2.0.17"
+    }
+  }
+}

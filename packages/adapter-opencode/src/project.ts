@@ -7,30 +7,34 @@ import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
-export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
-  const importPath = (path: string): string =>
-    path
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/");
-  const files = [
-    {
-      path: ".opencode/plugins/.gitattributes",
-      contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
-    },
-    ...artifacts
-      .filter((a) => a.path.startsWith(".opencode/plugins/"))
-      .map((a) => ({
-        path: a.path,
-        contents: `export { default } from ${JSON.stringify("../../" + importPath(output + "/" + a.path))};\n`,
-      })),
-  ];
-  return {
-    files,
-    entries: [],
-    guidance: ["Restart OpenCode to reload project modules; execution has not been observed by this command."],
+/** Project wiring whose `.opencode/plugins` module is `wrap(importPathOfArtifact)`. */
+export function projectIntegrationWith(wrap: (importPath: string) => string) {
+  return (artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration => {
+    const importPath = (path: string): string =>
+      path
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+    const files = [
+      {
+        path: ".opencode/plugins/.gitattributes",
+        contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-components.js -text\n",
+      },
+      ...artifacts
+        .filter((a) => a.path.startsWith(".opencode/plugins/"))
+        .map((a) => ({ path: a.path, contents: wrap("../../" + importPath(output + "/" + a.path)) })),
+    ];
+    return {
+      files,
+      entries: [],
+      guidance: ["Restart OpenCode to reload project modules; execution has not been observed by this command."],
+    };
   };
 }
+
+export const projectIntegration = projectIntegrationWith(
+  (importPath) => `export { default } from ${JSON.stringify(importPath)};\n`,
+);
 
 export async function projectComponents(
   source: ProjectComponents,
@@ -38,6 +42,7 @@ export async function projectComponents(
   output: string,
   _config: string,
   options: ProjectComponentOptions,
+  emitMcp?: (body: string) => string,
 ): Promise<ProjectIntegration> {
   // OpenCode discovers .agents/skills natively. Copy the loader's filtered
   // inventory there instead of naming its unfiltered source directory through
@@ -85,7 +90,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const declarations = JSON.parse(${JSON.stringify(JSON.stringify(declarations))});
 ${directEnvironmentResolution}
-export default async () => ({ config(config) {
+${emitMcp ? "const configure = (config) => {" : "export default async () => ({ config(config) {"}
   const mcp = { ...(config.mcp ?? {}) };
   for (const [name, server] of declarations) {
     const value = server.type === "local" ? { ...server,
@@ -95,9 +100,12 @@ export default async () => ({ config(config) {
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
-} });
+${emitMcp ? "};" : "} });"}
 `;
-    result.files.push({ path: ".opencode/plugins/hooknostic-components.js", contents: module });
+    result.files.push({
+      path: ".opencode/plugins/hooknostic-components.js",
+      contents: emitMcp ? emitMcp(module) : module,
+    });
     result.absent = declarations.flatMap(([name]) =>
       ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["mcp", name] })),
     );

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadConfig, rangeWithin } from "@hooknostic/core";
+import { loadConfig, rangeWithin, resolveTargetAdapter, targetSpecFromConfig } from "@hooknostic/core";
 
 import { defaultAdapterRegistry } from "./registry.js";
 
@@ -26,7 +26,8 @@ describe("example configs", () => {
       const loaded = await loadConfig(configPath);
       expect(loaded.diagnostics, `${dir}: config must load cleanly`).toEqual([]);
       for (const [id, target] of Object.entries(loaded.config?.targets ?? {})) {
-        const adapter = registry[id];
+        const registered = registry[target.adapter ?? id];
+        const adapter = registered && resolveTargetAdapter(registered, targetSpecFromConfig(id, target)).adapter;
         expect(adapter, `${dir}: unknown target ${id}`).toBeDefined();
         // Subset rather than equality: a capability can be established on a
         // narrower range than the harness reference (Codex delivers plugin hooks

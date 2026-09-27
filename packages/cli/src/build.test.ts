@@ -2881,9 +2881,14 @@ describe("hooknostic doctor", () => {
     expect(report.command).toBe("doctor");
     expect(report.harnesses.map((h: { adapter: string }) => h.adapter).sort()).toEqual(["claude", "codex", "opencode"]);
     for (const harness of report.harnesses) {
-      expect(["ok", "newer-than-validated", "outside-validated", "not-detected", "unknown-version"]).toContain(
-        harness.status,
-      );
+      expect([
+        "ok",
+        "newer-than-validated",
+        "outside-validated",
+        "outside-recommended",
+        "not-detected",
+        "unknown-version",
+      ]).toContain(harness.status);
       expect(harness.validatedRanges.length).toBeGreaterThan(0);
     }
   }, 60_000);

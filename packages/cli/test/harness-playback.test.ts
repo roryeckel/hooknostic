@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
 import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
-import { opencodeAgentPluginProjector } from "@hooknostic/adapter-opencode";
+import { opencodeAgentPluginProjector, opencodeV1Adapter } from "@hooknostic/adapter-opencode";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
@@ -33,7 +33,12 @@ import {
 } from "./harness-playback.js";
 
 const selected = process.env["HOOKNOSTIC_PLAYBACK"] ?? "";
-const adapter = defaultAdapterRegistry()[selected];
+const adapter =
+  selected === "opencode" || selected === "opencode-v1"
+    ? opencodeV1Adapter()
+    : selected === "opencode-v2"
+      ? undefined
+      : defaultAdapterRegistry()[selected];
 const tempDirs: string[] = [];
 
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
@@ -140,7 +145,7 @@ async function startProjectionMcpTransports(): Promise<{
   };
 }
 
-if (selected !== "" && adapter === undefined) {
+if (selected !== "" && selected !== "opencode-v2" && adapter === undefined) {
   throw new Error(`unknown HOOKNOSTIC_PLAYBACK harness ${JSON.stringify(selected)}`);
 }
 
@@ -180,6 +185,49 @@ describe("scriptedTool schema fidelity", () => {
       command: expect.any(String),
       description: "Playback probe command",
     });
+  });
+});
+
+describe("model playback auxiliary requests", () => {
+  it("answers a request without tools between scripted turns without advancing the script", async () => {
+    const server = await startModelPlayback("openai-chat", "rewrite", [
+      { kind: "tool" },
+      { kind: "text", text: "hooknostic-valid-compaction-summary" },
+    ]);
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "shell",
+          parameters: { type: "object", properties: { command: { type: "string" } } },
+        },
+      },
+    ];
+    const request = (body: Record<string, unknown>) =>
+      fetch(`${server.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    try {
+      const first = await request({ tools });
+      expect(first.status).toBe(200);
+      expect(await first.text()).toContain("call_playback");
+      expect(server.turnCount).toBe(1);
+
+      const auxiliary = await request({ tools: [] });
+      expect(auxiliary.status).toBe(200);
+      expect(await auxiliary.text()).toContain("hooknostic-valid-compaction-summary");
+      expect(server.turnCount).toBe(1);
+      expect(server.errors).toEqual([]);
+
+      const second = await request({ tools });
+      expect(second.status).toBe(200);
+      expect(await second.text()).toContain("hooknostic-valid-compaction-summary");
+      expect(server.turnCount).toBe(2);
+    } finally {
+      await server.close();
+    }
   });
 });
 

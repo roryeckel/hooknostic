@@ -17,28 +17,10 @@
 // The npm lookup is CLI-only; `assessRelease` is pure and unit-tested.
 import { execFileSync } from "node:child_process";
 
+import { harnessLaneId, harnessLanes } from "./harness-lanes.mjs";
 import { isMainModule } from "./is-main-module.mjs";
 
-const packages = {
-  claude: {
-    pkg: "@anthropic-ai/claude-code",
-    module: "../packages/adapter-claude/src/profile.ts",
-    profileExport: "claudeCapabilityProfiles",
-    harnessExport: "claudeHarness",
-  },
-  codex: {
-    pkg: "@openai/codex",
-    module: "../packages/adapter-codex/src/profile.ts",
-    profileExport: "codexCapabilityProfiles",
-    harnessExport: "codexHarness",
-  },
-  opencode: {
-    pkg: "opencode-ai",
-    module: "../packages/adapter-opencode/src/profile.ts",
-    profileExport: "opencodeCapabilityProfiles",
-    harnessExport: "opencodeHarness",
-  },
-};
+const packages = harnessLanes;
 
 /** Fold semver.diff to the coarse classes the workflow branches on. */
 export function classifyJump(from, to, semver) {
@@ -125,7 +107,9 @@ async function main() {
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
 
-  const selected = Object.entries(packages).filter(([id]) => opts.harness === undefined || opts.harness === id);
+  const selected = Object.entries(packages).filter(
+    ([id]) => opts.harness === undefined || harnessLaneId(opts.harness) === id,
+  );
   if (selected.length === 0) {
     process.stderr.write(
       `usage: node --experimental-strip-types ${process.argv[1]} [<${Object.keys(packages).join("|")}>] [--version <v>] [--force] [--matrix]\n`,
@@ -158,7 +142,7 @@ async function main() {
     // dispatches keep their entry even when nothing is newer — the human
     // asked for that leg explicitly.
     if (shouldInclude(assessment, { force: opts.force, pinned: opts.version !== undefined })) {
-      entries.push(assessment);
+      entries.push({ ...assessment, bootstrap: entry.bootstrap ?? "" });
     }
   }
 

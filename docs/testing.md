@@ -74,7 +74,7 @@ scripted namespace-pair emission resolves the router's exact
 output, and the replaced marker must surface nowhere. If upstream starts
 honouring the field, the watch fails and the rating is revisited.
 
-Every playback lane also configures and calls the in-repository stdio MCP
+The Claude, Codex and OpenCode v1 playback lanes also configure and call the in-repository stdio MCP
 fixture server. The dedicated MCP drive requires its tool to reach both
 `tool.before` and `tool.after` as normalized `mcp` events. Claude loads the
 fixture through `--mcp-config`, Codex through `mcp_servers`, and OpenCode
@@ -124,7 +124,8 @@ version:
 | --- | --- |
 | Claude Code | `@anthropic-ai/claude-code` |
 | Codex CLI | `@openai/codex` |
-| OpenCode | `opencode-ai` |
+| OpenCode v1 (`opencode-v1`) | `opencode-ai` |
+| OpenCode v2 (`opencode-v2`) | `@opencode/cli` |
 
 The playback test also calls the adapter's normal detector and fails unless the
 installed binary reports the expected version — `referenceVersion`, or the build
@@ -146,7 +147,11 @@ pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, or `opencode`. The test removes common model credential
+Use `claude`, `codex`, `opencode-v1`, or `opencode-v2`. The historical
+`opencode` lane selector remains a v1 alias. V2 uses
+`packages/cli/test/opencode-v2-playback.test.ts`; see
+[OpenCode families](opencode-families.md) for its independently verified
+capabilities and limits. The test removes common model credential
 variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.

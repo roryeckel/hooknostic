@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_5"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "grep",
+    "input": {
+      "pattern": "hooknostic-after-edit",
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+      "include": "probe.txt"
+    },
+    "kind": "file.read"
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "Found 1 matches\nC:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\probe.txt:\n  Line 1: hooknostic-after-edit"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "event",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f2072885fffexWkdn0mAKSpU9g",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-6LfWXj\\project"
+  },
+  "correlation": {},
+  "event": "session.start"
+}

@@ -1,0 +1,33 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "webfetch",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab772001jp9YCfbug6mo0H",
+    "id": "call_probe_7",
+    "input": {
+      "url": "http://127.0.0.1:60920/probe",
+      "format": "text"
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "url": "http://127.0.0.1:60920/probe",
+        "contentType": "text/plain",
+        "format": "text",
+        "output": "hooknostic-webfetch-result"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "hooknostic-webfetch-result"
+        }
+      ],
+      "metadata": {
+        "contentType": "text/plain"
+      }
+    }
+  }
+}

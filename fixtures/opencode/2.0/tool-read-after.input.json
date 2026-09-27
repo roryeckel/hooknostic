@@ -1,0 +1,34 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "read",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab359001O8IpVlL98rvBtU",
+    "id": "call_probe_2",
+    "input": {
+      "path": "probe.txt"
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "type": "file",
+        "uri": "file:///C:/Users/user/AppData/Local/Temp/hooknostic-v2-enjOe2/project/probe.txt",
+        "name": "probe.txt",
+        "content": "hooknostic-before-edit",
+        "encoding": "utf8",
+        "mime": "text/plain"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Read file probe.txt, lines 1-1\n1: hooknostic-before-edit"
+        }
+      ],
+      "metadata": {
+        "truncated": false
+      }
+    }
+  }
+}

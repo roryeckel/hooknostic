@@ -16,6 +16,7 @@ import {
   hookPluginRoot,
   levelsFromMatrix,
   loadConfig,
+  resolveTargetAdapter,
   stageUserModule,
   targetSpecFromConfig,
 } from "@hooknostic/core";
@@ -191,9 +192,12 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     };
   }
   const adapterId = targetConfig.adapter ?? options.target;
-  const adapter = options.registry[adapterId];
+  let adapter = options.registry[adapterId];
   if (adapter === undefined)
     return { ok: false, errors: [`no adapter is registered as ${JSON.stringify(adapterId)}.`] };
+  const selected = resolveTargetAdapter(adapter, targetSpecFromConfig(options.target, targetConfig));
+  if (!selected.adapter) return { ok: false, errors: selected.diagnostics.map((d) => `${d.code}: ${d.message}`) };
+  adapter = selected.adapter;
   if (config.entry === undefined) {
     return { ok: false, errors: ["the configuration declares no entry, so there are no hooks to dispatch."] };
   }

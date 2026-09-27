@@ -19,7 +19,7 @@
 // Requires GITHUB_TOKEN for the generate-notes API call; without it (local
 // dry runs) section 2 is a placeholder and the script says so.
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,12 +37,13 @@ function escapeHtml(text) {
 
 /**
  * @param {object} input
+ * @param {string} [input.highlights] curated scope and migration notes for this release
  * @param {string} input.harnessTable  markdown table of harness support
  * @param {string} input.generatedBody GitHub generate-notes markdown ("" if unavailable)
  * @param {{sha: string, subject: string, body: string}[]} input.commits first-parent commits, newest first
  * @returns {string}
  */
-export function composeNotes({ harnessTable, generatedBody, commits }) {
+export function composeNotes({ highlights = "", harnessTable, generatedBody, commits }) {
   // A commit already grouped under a PR in the generated body is covered;
   // match by the (#N) reference GitHub appends to squash/merge subjects.
   const covered = new Set([...generatedBody.matchAll(/#(\d+)/g)].map((match) => match[1]));
@@ -52,7 +53,13 @@ export function composeNotes({ harnessTable, generatedBody, commits }) {
   });
 
   const render = (withBodies) => {
-    const parts = ["## Harness support", "", harnessTable.trim(), ""];
+    const parts = [
+      ...(highlights.trim() ? [highlights.trim(), ""] : []),
+      "## Harness support",
+      "",
+      harnessTable.trim(),
+      "",
+    ];
     if (generatedBody.trim() !== "") {
       parts.push(generatedBody.trim(), "");
     }
@@ -117,7 +124,19 @@ async function main() {
 
   // Section 1: reuse the generated support table's summary block.
   const { defaultAdapterRegistry } = await import(new URL("../packages/cli/dist/index.js", import.meta.url).href);
-  const adapters = Object.values(defaultAdapterRegistry());
+  const adapters = Object.values(defaultAdapterRegistry()).flatMap((adapter) =>
+    adapter.harnessFamilies
+      ? adapter.harnessFamilies.map(
+          (harness) =>
+            adapter.resolveTarget({
+              id: adapter.id,
+              version: harness.recommendedRange,
+              delivery: "project",
+              output: ".",
+            }).adapter,
+        )
+      : [adapter],
+  );
   const harnessTable = [
     "| Harness | Recommended target range | Validated ranges | Reference build |",
     "| --- | --- | --- | --- |",
@@ -161,7 +180,11 @@ async function main() {
   const range = previousTag ? `${previousTag}..${sha}` : sha;
   const commits = commitsInRange(range);
 
-  const body = composeNotes({ harnessTable, generatedBody, commits });
+  const highlights = readFileSync(resolve(ROOT, "docs/release-highlights.md"), "utf8").replaceAll(
+    /\]\(([\w/-]+\.md(?:#[\w-]+)?)\)/g,
+    (_, path) => (repo ? `](https://github.com/${repo}/blob/${sha}/docs/${path})` : `](docs/${path})`),
+  );
+  const body = composeNotes({ highlights, harnessTable, generatedBody, commits });
   writeFileSync(resolve(ROOT, output), body, "utf8");
   console.log(`release notes written to ${output} (${body.length} chars, ${commits.length} commits in range)`);
 }

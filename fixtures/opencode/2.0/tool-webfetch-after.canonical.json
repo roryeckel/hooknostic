@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_7"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "webfetch",
+    "input": {
+      "url": "http://127.0.0.1:60920/probe",
+      "format": "text"
+    },
+    "kind": "web.fetch"
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "hooknostic-webfetch-result"
+    }
+  ]
+}

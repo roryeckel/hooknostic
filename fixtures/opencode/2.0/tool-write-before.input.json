@@ -1,0 +1,15 @@
+{
+  "hook": "execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "write",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab27c001iP4AcfUhiAly8M",
+    "id": "call_probe_1",
+    "input": {
+      "path": "probe.txt",
+      "content": "hooknostic-before-edit"
+    }
+  }
+}

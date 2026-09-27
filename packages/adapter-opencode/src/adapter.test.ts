@@ -9,7 +9,7 @@ import { planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeHarness } from "./harness.js";
-import { opencodeAdapter } from "./index.js";
+import { opencodeV1Adapter as opencodeAdapter } from "./index.js";
 import { classifyOpenCodeTool } from "./toolmap.js";
 
 const INVOCATION = { targetId: "opencode", harnessVersion: opencodeHarness.referenceVersion };

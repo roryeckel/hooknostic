@@ -1,0 +1,13 @@
+{
+  "hook": "prompt",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-ttZTN2\\project",
+  "event": {
+    "sessionID": "ses_f23cdab9fffeb00E0A4DGUtHaQ",
+    "messageID": "msg_0dc325507001eatij3lyvii6PW",
+    "prompt": {
+      "text": "\"Use the shell once to create hooknostic-tool.txt, then stop.\"",
+      "files": []
+    },
+    "delivery": "steer"
+  }
+}

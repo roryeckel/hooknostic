@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f2143d024ffezFtQwUphXZeKrT",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-qUpf0b\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_2"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "hooknostic_custom_echo",
+    "input": {},
+    "kind": "other"
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "hooknostic-custom-output"
+    }
+  ]
+}

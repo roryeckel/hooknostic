@@ -4644,7 +4644,7 @@ var init_schemas = __esm({
       }
       const projectAdapters = /* @__PURE__ */ new Set();
       for (const [name, target] of Object.entries(config.targets)) {
-        if (target.delivery !== "project")
+        if (config.project === void 0 || target.delivery !== "project")
           continue;
         const adapter = target.adapter ?? name;
         if (projectAdapters.has(adapter))

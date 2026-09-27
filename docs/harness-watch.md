@@ -10,6 +10,14 @@ Implementation plan: repository issue #1. The policy decisions this page
 summarizes live in ADR-0008 (version facts have one home), ADR-0009 (one
 mutable rolling record), and ADR-0010 (capability coverage policy).
 
+For a release rehearsal, dispatch the candidate branch with `harness=opencode-v2`,
+pin `version` to the v2 reference build from adapter metadata, set `dry_run=true`,
+and leave `force_llm=false`. Verification and free drift capture run; record,
+issue, and comment writers are skipped. Inspect the run's verification summary
+and uploaded drift artifacts. This does not advance either family's rolling
+record. The local lane tests exercise record advancement in a scratch copy and
+check that v1 remains unchanged.
+
 ## Lanes and costs
 
 | Lane | Job(s) | Cost | What it establishes |
@@ -266,3 +274,12 @@ owner's upstream credentials.
    `drift-verdict-<harness>` artifact (raw captures + report), then follow
    the harness-capture skill. Drift is advisory; ranges and fixtures extend
    only with captured evidence.
+
+
+## OpenCode families
+
+The independent `opencode-v1` and `opencode-v2` lanes install `opencode-ai`
+and `@opencode/cli`. Installation, bootstrap paths, profile modules and metadata
+exports live in `scripts/harness-lanes.mjs`. V2 validation updates only its own
+rolling record. `opencode` remains an alias for the v1 automation lane.
+See [OpenCode families](opencode-families.md) for the target selection contract.

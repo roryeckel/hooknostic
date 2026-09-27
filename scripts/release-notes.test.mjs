@@ -2,6 +2,58 @@ import { describe, expect, it } from "vitest";
 
 import { composeNotes } from "./release-notes.mjs";
 
+it("generates release scope and separate reference rows for both OpenCode families", async () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const scratch = mkdtempSync(join(tmpdir(), "hooknostic-release-notes-"));
+  try {
+    const output = join(scratch, "notes.md");
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+    execFileSync(
+      process.execPath,
+      [
+        join(root, "scripts/release-notes.mjs"),
+        "--version",
+        "1.0.0-rehearsal.0",
+        "--sha",
+        sha,
+        "--repo",
+        "owner/example",
+        "--output",
+        output,
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, GITHUB_TOKEN: "" },
+        stdio: "pipe",
+      },
+    );
+    const notes = readFileSync(output, "utf8");
+    const { defaultAdapterRegistry } = await import("../packages/cli/dist/index.js");
+    const adapter = defaultAdapterRegistry().opencode;
+    for (const family of adapter.harnessFamilies) {
+      const selected = adapter.resolveTarget({
+        id: "opencode",
+        version: family.recommendedRange,
+        delivery: "project",
+        output: ".",
+      }).adapter;
+      const ranges = selected
+        .supportedHarnessVersions()
+        .map((range) => `\`${range}\``)
+        .join(", ");
+      expect(notes).toContain(
+        `| ${family.displayName} | \`${family.recommendedRange}\` | ${ranges} | ${family.referenceVersion} |`,
+      );
+    }
+    const highlights = readFileSync(join(root, "docs/release-highlights.md"), "utf8");
+    expect(notes.startsWith(highlights.trim().split("\n")[0])).toBe(true);
+    expect(notes).toContain("Stop prevention and notification are approximate. Both post a synthetic");
+    expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/docs/opencode-families.md`);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
 describe("composeNotes", () => {
@@ -56,3 +108,8 @@ describe("composeNotes", () => {
     expect(notes).toContain("- chore: initial (dddddddd)");
   });
 });
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";

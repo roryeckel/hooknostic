@@ -1,0 +1,47 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "grep",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab3f6001WHuxP2oCJQDh1f",
+    "id": "call_probe_5",
+    "input": {
+      "pattern": "hooknostic-after-edit",
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+      "include": "probe.txt"
+    },
+    "status": "completed",
+    "result": {
+      "output": [
+        {
+          "entry": {
+            "path": "probe.txt",
+            "type": "file"
+          },
+          "line": 1,
+          "offset": 0,
+          "text": "hooknostic-after-edit",
+          "submatches": [
+            {
+              "text": "hooknostic-after-edit",
+              "start": 0,
+              "end": 21
+            }
+          ]
+        }
+      ],
+      "content": [
+        {
+          "type": "text",
+          "text": "Found 1 matches\nC:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\probe.txt:\n  Line 1: hooknostic-after-edit"
+        }
+      ],
+      "metadata": {
+        "matches": 1,
+        "truncated": false
+      }
+    }
+  }
+}

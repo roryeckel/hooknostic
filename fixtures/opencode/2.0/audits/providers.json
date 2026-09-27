@@ -1,0 +1,205 @@
+[
+  {
+    "name": "anthropic-messages",
+    "version": "2.0.17",
+    "date": "2026-09-26",
+    "requestCount": 7,
+    "urls": [
+      "POST /v1/messages",
+      "POST /v1/messages",
+      "POST /v1/messages",
+      "POST /v1/messages",
+      "POST /v1/messages",
+      "POST /v1/messages",
+      "POST /v1/messages"
+    ],
+    "errors": [],
+    "hooks": [
+      "setup",
+      "prompt",
+      "event",
+      "title",
+      "context",
+      "model.request",
+      "execute.before",
+      "evaluate",
+      "execute.after",
+      "cleanup",
+      "generate",
+      "compaction"
+    ],
+    "allRequestsHaveContext": true,
+    "compactionEvents": [
+      {
+        "hook": "event",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-AKtA03\\project",
+        "event": {
+          "id": "evt_0def2889f0023fYnqYMEL2lXgm",
+          "created": 1790446831775,
+          "type": "session.compaction.ended",
+          "durable": {
+            "aggregateID": "ses_f210d7860ffe152kbekbQOzqHZ",
+            "seq": 18,
+            "version": 1
+          },
+          "location": {
+            "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-AKtA03\\project"
+          },
+          "data": {
+            "sessionID": "ses_f210d7860ffe152kbekbQOzqHZ",
+            "reason": "manual",
+            "model": {
+              "id": "hooknostic-playback",
+              "providerID": "playback",
+              "variant": "default"
+            },
+            "text": "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary",
+            "recent": "",
+            "cost": 0,
+            "tokens": {
+              "input": 10,
+              "output": 3,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        }
+      }
+    ],
+    "audits": {
+      "generate": {
+        "response": {
+          "data": {
+            "text": "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary"
+          }
+        },
+        "requests": 1,
+        "contextRequests": 1,
+        "compactContextRequests": 0
+      },
+      "compact": {
+        "response": {
+          "data": {
+            "id": "msg_0def288890013inWw6pHxyXSqM",
+            "sessionID": "ses_f210d7860ffe152kbekbQOzqHZ",
+            "time": {
+              "created": 1790446831754
+            },
+            "type": "compaction",
+            "payload": {},
+            "delivery": "steer"
+          }
+        },
+        "requests": 1,
+        "contextRequests": 1,
+        "compactContextRequests": 1
+      }
+    }
+  },
+  {
+    "name": "openai-responses-http",
+    "version": "2.0.17",
+    "date": "2026-09-26",
+    "requestCount": 7,
+    "urls": [
+      "POST /v1/responses",
+      "POST /v1/responses",
+      "POST /v1/responses",
+      "POST /v1/responses",
+      "POST /v1/responses",
+      "POST /v1/responses",
+      "POST /v1/responses"
+    ],
+    "errors": [],
+    "hooks": [
+      "setup",
+      "prompt",
+      "event",
+      "title",
+      "context",
+      "model.request",
+      "execute.before",
+      "evaluate",
+      "execute.after",
+      "cleanup",
+      "generate",
+      "compaction"
+    ],
+    "allRequestsHaveContext": true,
+    "compactionEvents": [
+      {
+        "hook": "event",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-aaF7tN\\project",
+        "event": {
+          "id": "evt_0def292070012sezacBNu44ZOh",
+          "created": 1790446834183,
+          "type": "session.compaction.ended",
+          "durable": {
+            "aggregateID": "ses_f210d6f95ffeZPBsjThlX58Yx1",
+            "seq": 18,
+            "version": 1
+          },
+          "location": {
+            "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-aaF7tN\\project"
+          },
+          "data": {
+            "sessionID": "ses_f210d6f95ffeZPBsjThlX58Yx1",
+            "reason": "manual",
+            "model": {
+              "id": "hooknostic-playback",
+              "providerID": "playback",
+              "variant": "default"
+            },
+            "providerState": {
+              "responseId": "resp_playback_5"
+            },
+            "text": "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary",
+            "recent": "",
+            "cost": 0,
+            "tokens": {
+              "input": 10,
+              "output": 3,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        }
+      }
+    ],
+    "audits": {
+      "generate": {
+        "response": {
+          "data": {
+            "text": "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary"
+          }
+        },
+        "requests": 1,
+        "contextRequests": 1,
+        "compactContextRequests": 0
+      },
+      "compact": {
+        "response": {
+          "data": {
+            "id": "msg_0def291ee001E8UrpoPdopFmER",
+            "sessionID": "ses_f210d6f95ffeZPBsjThlX58Yx1",
+            "time": {
+              "created": 1790446834159
+            },
+            "type": "compaction",
+            "payload": {},
+            "delivery": "steer"
+          }
+        },
+        "requests": 1,
+        "contextRequests": 1,
+        "compactContextRequests": 1
+      }
+    }
+  }
+]

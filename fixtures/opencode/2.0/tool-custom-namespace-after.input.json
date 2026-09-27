@@ -1,0 +1,22 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-qUpf0b\\project",
+  "event": {
+    "tool": "hooknostic_custom_echo",
+    "sessionID": "ses_f2143d024ffezFtQwUphXZeKrT",
+    "agent": "build",
+    "messageID": "msg_0debc3289001ECtToV2XsMf2w4",
+    "id": "call_probe_2",
+    "input": {},
+    "status": "completed",
+    "result": {
+      "output": "hooknostic-custom-output",
+      "content": [
+        {
+          "type": "text",
+          "text": "hooknostic-custom-output"
+        }
+      ]
+    }
+  }
+}

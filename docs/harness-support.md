@@ -5,6 +5,7 @@
 The single source for these facts is each adapter's `harness` metadata and
 capability profiles (`packages/adapter-*/src/{harness,profile}.ts`). The
 contract suite in `@hooknostic/testkit` audits every row.
+See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.
 
 > [!WARNING]
 > **macOS is untested.** Every record below was established on Windows or Linux.
@@ -16,6 +17,7 @@ contract suite in `@hooknostic/testkit` audits every row.
 | Claude Code (`claude`) | `>=2.1 <3` | `>=2.0 <3` | 2.1.238 | `fixtures/claude/2.1` |
 | Codex CLI (`codex`) | `>=0.148 <1` | `>=0.140 <1` | 0.148.0 | `fixtures/codex/0.148` |
 | OpenCode (`opencode`) | `>=1.18 <2` | `>=1.10 <2` | 1.18.18 | `fixtures/opencode/1.18` |
+| OpenCode v2 (`opencode`) | `>=2.0.17 <3` | `>=2.0.17 <3` | 2.0.17 | `fixtures/opencode/2.0` |
 
 ## Validation evidence
 
@@ -275,4 +277,63 @@ Projection validation records:
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with "Plugin export is not a function". |
 | 1.18.29 | 2026-09-08 | type-derived | `.capture/opencode-agent-plugin` | A remote MCP server is attempted as [StreamableHTTP, SSE] in that order, with declared headers passed to both, which is why sse is emulated rather than unsupported. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A projected server started through the generated launcher received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and its declared working directory; PLUGIN_ROOT resolved to the nested package rather than to the generated module's own directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI. |
+
+### OpenCode v2
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.0.17 | 2026-09-26 | captured | `fixtures/opencode/2.0` | Windows private-server hook captures against a loopback model: session start, prompt, shell before/after, title/context and execution success. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Blocking prevents prompt admission and tool execution; command mutation writes the replacement marker; replacement tool content and system text reach recorded model requests. Private-server reload disposes and re-registers hooks; session IDs remain distinct. |
+| 2.0.17 | 2026-09-26 | captured | `fixtures/opencode/2.0` | File read/write/edit/glob/grep and webfetch hook boundaries, shell workdir, skill loading and Code Mode MCP execution. Websearch and subagent names captured before deliberate blocking; no execution claim. Code Mode emits both outer execute and inner MCP tool hooks; MCP identity is not normalized from the ambiguous tool name. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-mcp` | An MCP tool and a custom tool share the same connected-server namespace and registry shape, so namespace/name inference is declined. A generated portable nativeName guard blocks the inner MCP call: allowed control records one server tools/call, denied run records none; the custom tool completes in both runs. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-session` | Separate generation and successful compaction requests receive portable context; compaction before/after are observed. Ask-only permission denial prevents execution with an allow control. HTTP failure and interruption dispatch turn completion; reload preserves separate session context. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Typed missing-file failures dispatch tool.error; plain custom exceptions bypass execute.after. Text and serialized object replacements reach the model while raw structured output survives. Anthropic Messages and OpenAI Responses HTTP separately exercise ordinary/title/generation/compaction context. A foreground subagent returns its result to the parent. Native companion TUI RPC renders a toast and disposes on exit; a generated user-only notification remains unsupported. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Persistent serve sessions (stop drive; fixtures/opencode/2.0/stop-audit): after a succeeded execution, synthetic with resume starts exactly one more execution whose request carries the stop reason as a user-role message; resume:false starts none, is not rendered by the real TUI meanwhile, and reaches the model with the next user prompt. A user interrupt, a model failure and a subagent child (session.created parentID) post nothing. synthetic does not run the prompt hook. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks. |
+
+#### Project delivery
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | unsupported | — |
+| `agent-plugin.skills` | exact | — |
+| `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
+| `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
+| `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
+| `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
+| `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
+
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Generated project integration and separately installed pnpm tarballs expose skills and connect stdio MCP. Server startup records verify environment expansion, cwd and relocated paths; hooks-only, components-only and combined packages load. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-remote` | Generated project and packed relocated package execute Streamable HTTP MCP tools with recorded headers. Project variables expand and missing variables disable only the affected server; package placeholders remain literal. Default and legacy protocol probes do not fall back to SSE after HTTP 405. OAuth is unverified. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session. |
+
+Project support is independent of package projection.
+
+#### Agent Plugin projection
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | — |
+| `agent-plugin.skills` | emulated | Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. |
+| `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
+| `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
+| `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
+| `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
+| `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Generated project integration and separately installed pnpm tarballs expose skills and connect stdio MCP. Server startup records verify environment expansion, cwd and relocated paths; hooks-only, components-only and combined packages load. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-remote` | Generated project and packed relocated package execute Streamable HTTP MCP tools with recorded headers. Project variables expand and missing variables disable only the affected server; package placeholders remain literal. Default and legacy protocol probes do not fall back to SSE after HTTP 405. OAuth is unverified. |
+| 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session. |
 

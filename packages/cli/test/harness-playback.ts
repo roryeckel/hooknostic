@@ -65,6 +65,8 @@ export interface PlaybackTargetOverride {
   project?: boolean;
   delivery?: TargetSpec["delivery"];
   version?: string;
+  /** Written into every trace line, to tell apart copies sharing one trace file. */
+  label?: string;
 }
 
 function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
@@ -132,7 +134,11 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "replace-outputs",
 ];
 
-function playbackPluginSource(events: readonly HookEventName[], contextAdd: ReadonlySet<HookEventName>): string {
+function playbackPluginSource(
+  events: readonly HookEventName[],
+  contextAdd: ReadonlySet<HookEventName>,
+  label?: string,
+): string {
   const definitions = events.map((event) => {
     const capabilities = [
       event === "tool.before"
@@ -205,7 +211,8 @@ function playbackPluginSource(events: readonly HookEventName[], contextAdd: Read
           return block("permission denied by harness playback");
         }
         if (effects.includes("prevent-stop-once") && ("${event}" === "turn.stop" || "${event}" === "agent.stop") &&
-            (event.raw?.stop_hook_active ?? false) !== true) {
+            (event.raw?.stop_hook_active ?? false) !== true && !preventedSessions.has(event.session.id ?? "")) {
+          preventedSessions.add(event.session.id ?? "");
           return preventStop("stop prevented once by harness playback");
         }
         if (effects.includes("notify") && ("${event}" === "turn.stop" || "${event}" === "agent.stop")) {
@@ -230,7 +237,7 @@ function playbackPluginSource(events: readonly HookEventName[], contextAdd: Read
           nativeEvent: event.harness.nativeEvent,
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
-          toolNativeName: event.tool?.nativeName,
+          toolNativeName: event.tool?.nativeName,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
       },
     })`;
@@ -253,9 +260,13 @@ import {
 
 const tracePath = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
 if (!tracePath) throw new Error("HOOKNOSTIC_PLAYBACK_TRACE is required");
+// OpenCode has no stop_hook_active flag and runs hooks in-process; command-hook
+// harnesses start a fresh process per dispatch, where this stays empty.
+const preventedSessions = new Set();
 
 export default definePlugin({
   name: "harness-playback",
+  version: "0.0.0",
   hooks: [${definitions.join(",")}
   ],
 });
@@ -276,7 +287,7 @@ export async function buildPlaybackArtifact(
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events, contextAdd), "utf8");
+  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label), "utf8");
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared
@@ -320,7 +331,7 @@ export async function buildPlaybackArtifact(
       async run() {},
     }),
   );
-  const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", hooks }));
+  const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", version: "0.0.0", hooks }));
   if (ir === undefined) {
     throw new Error(
       `${adapter.id}: could not build playback IR: ${diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`,
@@ -821,6 +832,22 @@ function responsesTurn(
       { type: "response.output_item.done", output_index: 0, item },
     );
   } else {
+    const text = action.text ?? "playback complete";
+    const item = { type: "message", role: "assistant", id: "msg_playback", status: "in_progress", content: [] };
+    const part = { type: "output_text", text, annotations: [] };
+    events.push(
+      { type: "response.output_item.added", output_index: 0, item },
+      {
+        type: "response.content_part.added",
+        item_id: item.id,
+        output_index: 0,
+        content_index: 0,
+        part: { ...part, text: "" },
+      },
+      { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
+      { type: "response.output_text.done", item_id: item.id, output_index: 0, content_index: 0, text },
+      { type: "response.content_part.done", item_id: item.id, output_index: 0, content_index: 0, part },
+    );
     events.push({
       type: "response.output_item.done",
       output_index: 0,
@@ -927,6 +954,7 @@ export async function startModelPlayback(
     (scenario === "rewrite" || scenario === "block" || scenario === "fail" || scenario === "continuation"
       ? [{ kind: "tool", disposition: scenario }, { kind: "text" }]
       : [{ kind: "text", text: "playback complete" }]);
+  const auxiliaryAction: TurnAction = [...turns].reverse().find((action) => action.kind === "text") ?? { kind: "text" };
   const requests: unknown[] = [];
   const errors: string[] = [];
   const urls: string[] = [];
@@ -1007,7 +1035,7 @@ export async function startModelPlayback(
         // Past the script's last turn the model keeps completing with text:
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
-        const action = turns[Math.min(turn, turns.length) - 1] ?? { kind: "text" as const };
+        const action = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
         if (protocol === "anthropic-messages") {
           anthropicTurn(response, parsed, turn, action);
         } else if (protocol === "openai-responses") {

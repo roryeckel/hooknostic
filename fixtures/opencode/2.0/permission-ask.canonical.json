@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "evaluate",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f2133a2e5ffe63ylGir1zaCb5D",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_session_probe"
+  },
+  "event": "permission.request",
+  "tool": {
+    "kind": "other",
+    "nativeName": "unknown"
+  }
+}

@@ -680,7 +680,13 @@ describe("hooknostic check", () => {
         json: true,
         registry: {
           ...defaultAdapterRegistry(),
-          opencode: { ...defaultAdapterRegistry().opencode!, supportedDeliveries: () => ["project"] },
+          opencode: {
+            ...defaultAdapterRegistry().opencode!,
+            resolveTarget: (target) => {
+              const selected = defaultAdapterRegistry().opencode!.resolveTarget!(target);
+              return { ...selected, adapter: { ...selected.adapter!, supportedDeliveries: () => ["project"] } };
+            },
+          },
         },
         io: capture.io,
         evaluate: EVALUATE,

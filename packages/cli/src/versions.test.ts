@@ -24,6 +24,15 @@ describe("workspace version lockstep", () => {
       const pkg = packageVersion(`packages/adapter-${adapter.id}`);
       expect(adapter.adapterVersion, `adapter-${adapter.id} constant vs package.json`).toBe(pkg);
       expect(pkg, `adapter-${adapter.id} package.json vs root`).toBe(root);
+      for (const family of adapter.harnessFamilies ?? []) {
+        const selected = adapter.resolveTarget!({
+          id: adapter.id,
+          version: family.recommendedRange,
+          delivery: "project",
+          output: ".",
+        });
+        expect(selected.adapter?.adapterVersion, `${family.displayName} constant vs package.json`).toBe(pkg);
+      }
     }
   });
 

@@ -527,3 +527,13 @@ describe("effect payload JSON rule", () => {
     expect(() => effectSchema.safeParse(replaceInput(hostile))).toThrow("not inspectable");
   });
 });
+
+it("allows separate family artifacts but rejects duplicate activation in one project", () => {
+  const target = { adapter: "fake", version: ">=1 <2", delivery: "project", output: "one" };
+  const config = {
+    entry: "hooks.ts",
+    targets: { first: target, second: { ...target, version: ">=2 <3", output: "two" } },
+  };
+  expect(hooknosticConfigSchema.safeParse(config).success).toBe(true);
+  expect(hooknosticConfigSchema.safeParse({ ...config, project: { root: "." } }).success).toBe(false);
+});

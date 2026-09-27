@@ -2,8 +2,9 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { opencodeAdapter, opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { type HarnessAdapter, runProject } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
 
@@ -62,6 +63,62 @@ async function statusFor(installed: string | undefined): Promise<Record<string, 
 }
 
 describe("doctor version comparison", () => {
+  it.each([
+    [opencodeHarness.referenceVersion, opencodeHarness.recommendedRange],
+    [opencodeV2Harness.referenceVersion, opencodeV2Harness.recommendedRange],
+  ])("uses the installed OpenCode family for unconfigured doctor (%s)", async (version, recommendedRange) => {
+    const detect = vi.fn(async () => ({ installed: true, version }));
+    const { io, out } = fakeIO();
+    expect(await runDoctor({ json: true, registry: { opencode: { ...opencodeAdapter(), detect } }, io })).toBe(0);
+    const report = JSON.parse(out.join(""));
+    expect(report.harnesses).toHaveLength(1);
+    expect(report.harnesses[0]).toMatchObject({
+      adapter: "opencode",
+      version,
+      status: "ok",
+      recommendedRange,
+    });
+    expect(detect).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the v2 default when OpenCode is absent, unknown or outside both families", async () => {
+    for (const detection of [{ installed: false }, { installed: true }, { installed: true, version: "3.0.0" }]) {
+      const detect = vi.fn(async () => detection);
+      const { io, out } = fakeIO();
+      await runDoctor({ json: true, registry: { opencode: { ...opencodeAdapter(), detect } }, io });
+      const report = JSON.parse(out.join(""));
+      expect(report.harnesses).toHaveLength(1);
+      expect(report.harnesses[0].recommendedRange).toBe(opencodeV2Harness.recommendedRange);
+      expect(report.harnesses[0].validatedRanges).toEqual([opencodeV2Harness.recommendedRange]);
+      expect(detect).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("keeps a configured v1 target on v1 when the installed binary is v2", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-doctor-opencode-family-"));
+    try {
+      const configPath = join(root, "hooknostic.config.ts");
+      await writeFile(join(root, "hooks.ts"), 'export default { name: "doctor-family", hooks: [] };');
+      await writeFile(
+        configPath,
+        `export default { entry: "./hooks.ts", targets: { legacy: { adapter: "opencode", version: ${JSON.stringify(opencodeHarness.recommendedRange)}, delivery: "package", output: "dist" } } };`,
+      );
+      const detect = vi.fn(async () => ({ installed: true, version: opencodeV2Harness.referenceVersion }));
+      const { io, out } = fakeIO();
+      await runDoctor({ config: configPath, json: true, registry: { opencode: { ...opencodeAdapter(), detect } }, io });
+      const report = JSON.parse(out.join(""));
+      expect(report.harnesses).toHaveLength(1);
+      expect(report.harnesses[0]).toMatchObject({
+        recommendedRange: opencodeHarness.recommendedRange,
+        version: opencodeV2Harness.referenceVersion,
+        status: "newer-than-validated",
+      });
+      expect(detect).toHaveBeenCalledOnce();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("reports ok inside the recommended range", async () => {
     expect(await statusFor("1.3.0")).toMatchObject({ status: "ok", recommendedRange: ">=1.2 <2" });
   });

@@ -1,0 +1,14 @@
+{
+  "hook": "execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "websearch",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab78a001dBOpG9CnVaIKY4",
+    "id": "call_probe_8",
+    "input": {
+      "query": "hooknostic-boundary-probe"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-pfM7ry\\project",
+  "event": {
+    "id": "evt_0decea8f9001oNZrsHAQOdqHWo",
+    "created": 1790444480761,
+    "type": "session.compaction.ended",
+    "durable": {
+      "aggregateID": "ses_f213157d8ffeU0nkpsE6BnqCPr",
+      "seq": 18,
+      "version": 1
+    },
+    "location": {
+      "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-pfM7ry\\project"
+    },
+    "data": {
+      "sessionID": "ses_f213157d8ffeU0nkpsE6BnqCPr",
+      "reason": "manual",
+      "model": {
+        "id": "hooknostic-playback",
+        "providerID": "playback",
+        "variant": "default"
+      },
+      "text": "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary",
+      "recent": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      }
+    }
+  }
+}

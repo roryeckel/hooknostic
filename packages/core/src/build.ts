@@ -34,7 +34,7 @@ import {
 } from "@hooknostic/sdk";
 
 import type { AdapterRegistry, CapabilityMatrix, GeneratedArtifact, HarnessAdapter, TargetSpec } from "./adapter.js";
-import { targetSpecFromConfig } from "./adapter.js";
+import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import {
   type AgentPluginProjectionResolution,
   analyzeAgentPluginProjection,
@@ -618,6 +618,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   diagnostics.push(...configResult.diagnostics);
   if (!configResult.config) return fail();
   const config = configResult.config;
+  const adapterFor = (id: string): HarnessAdapter | undefined => {
+    const target = config.targets[id];
+    if (!target) return undefined;
+    const registered = options.registry[target.adapter ?? id];
+    return registered && (resolveTargetAdapter(registered, targetSpecFromConfig(id, target)).adapter ?? registered);
+  };
   const componentTargetIds = new Set(config.components?.targets ?? Object.keys(config.targets));
   const selectedTargetIds = new Set(options.targets ?? Object.keys(config.targets));
   const selectedPackageProjection = Object.entries(config.targets).some(
@@ -650,9 +656,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         : Object.entries(config.targets).flatMap(([name, target]) =>
             target.delivery !== "project"
               ? []
-              : (options.registry[target.adapter ?? name]?.projectPaths ?? []).map((path) =>
-                  resolve(configDir, config.project!.root, path),
-                ),
+              : (adapterFor(name)?.projectPaths ?? []).map((path) => resolve(configDir, config.project!.root, path)),
           );
     const loaded = await loadAgentPlugin({
       root: agentPluginRoot,
@@ -782,8 +786,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   diagnostics.push(...analysis.diagnostics);
   if ((config.components?.accept ?? []).length > 0) {
     const declared = declaredShortfallIds(
-      Object.entries(config.targets).flatMap(([id, target]) => {
-        const adapter = options.registry[target.adapter ?? id];
+      Object.entries(config.targets).flatMap(([id]) => {
+        const adapter = adapterFor(id);
         return adapter === undefined ? [] : [adapter];
       }),
     );
@@ -814,7 +818,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       const spec = targetSpecFromConfig(id, config.targets[id]!);
       const resolution = analyzeAgentPluginProjection(
         components,
-        options.registry[config.targets[id]!.adapter ?? id]!,
+        adapterFor(id)!,
         spec,
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
@@ -824,7 +828,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       report.targets[id]!.projection = analyzedProjectionReport(
         components,
         resolution,
-        options.registry[config.targets[id]!.adapter ?? id]!.agentPluginProjector?.namespace,
+        adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
       );
       if (hasFatal(resolution.diagnostics)) {
@@ -847,10 +851,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...["integration.json", "transaction.json", "sync.lock", "recovery.lock", "staging", "data"].map((path) =>
               resolve(configDir, config.project!.root, ".hooknostic", path),
             ),
-            ...Object.entries(config.targets).flatMap(([name, target]) =>
-              (options.registry[target.adapter ?? name]?.projectPaths ?? []).map((path) =>
-                resolve(configDir, config.project!.root, path),
-              ),
+            ...Object.entries(config.targets).flatMap(([name]) =>
+              (adapterFor(name)?.projectPaths ?? []).map((path) => resolve(configDir, config.project!.root, path)),
             ),
           ]
         : []),
@@ -964,7 +966,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       const spec = targetSpecFromConfig(id, config.targets[id]!);
       const resolution = analyzeAgentPluginProjection(
         components,
-        options.registry[config.targets[id]!.adapter ?? id]!,
+        adapterFor(id)!,
         spec,
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
@@ -975,7 +977,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       report.targets[id]!.projection = analyzedProjectionReport(
         components,
         resolution,
-        options.registry[config.targets[id]!.adapter ?? id]!.agentPluginProjector?.namespace,
+        adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
@@ -1024,7 +1026,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   const mainGuardTargets: string[] = [];
   try {
     for (const id of Object.keys(analysis.targets)) {
-      const adapter = options.registry[config.targets[id]!.adapter ?? id]!;
+      const adapter = adapterFor(id)!;
       const targetConfig = config.targets[id]!;
       const spec: TargetSpec = targetSpecFromConfig(id, targetConfig);
       const target = report.targets[id]!;

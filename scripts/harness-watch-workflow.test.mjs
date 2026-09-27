@@ -35,6 +35,19 @@ function jobSource(name) {
 }
 
 describe("harness-watch workflow structure", () => {
+  it("rehearses free drift without running any writer job", () => {
+    expect(source).toContain("      dry_run:");
+    for (const name of ["record", "report-failure", "publish-verdict"]) {
+      const job = jobSource(name);
+      expect(job.match(/^ {4}if:.*$/m)?.[0], name).toContain("inputs.dry_run != 'true'");
+    }
+    const gate = jobSource("drift").split("- name: Gate on drift relevance")[1].split("- uses:")[0];
+    expect(gate).toContain('[ "${{ inputs.dry_run }}" = "true" ]');
+    expect(jobSource("drift")).toContain(
+      'if [ "${{ inputs.force_llm }}" = "true" ]; then TRANSPORT=llm; else TRANSPORT=playback; fi',
+    );
+  });
+
   it("detect has no self-referencing env on the detect step", () => {
     const detect = jobSource("detect");
     // The bug: an env block under the step setting COUNT from
@@ -58,7 +71,7 @@ describe("harness-watch workflow structure", () => {
   it("record still runs its per-harness artifact gates after a verify matrix leg fails", () => {
     const record = jobSource("record");
     expect(record).toMatch(
-      /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/,
+      /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' && inputs\.dry_run != 'true' \}\}/,
     );
   });
 
@@ -143,18 +156,20 @@ describe("harness-watch workflow structure", () => {
     expect(drive).toContain("--security-opt no-new-privileges");
     expect(drive).toContain('PLAYBACK_NODE="$(cat .github/node/playback/.node-version)"');
     expect(drive).toContain('"node:${PLAYBACK_NODE}-bookworm"');
-    expect(drive).toContain('opencode) node "$(npm root --global)/opencode-ai/postinstall.mjs"');
-    expect(drive.indexOf("npm install --global --ignore-scripts")).toBeLessThan(
-      drive.indexOf("opencode-ai/postinstall.mjs"),
+    expect(drive).toContain(
+      'opencode|opencode-v1|opencode-v2) node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}"',
     );
-    expect(drive.indexOf("opencode-ai/postinstall.mjs")).toBeLessThan(
+    expect(drive.indexOf("npm install --global --ignore-scripts")).toBeLessThan(
+      drive.indexOf("${{ matrix.pkg }}/${{ matrix.bootstrap }}"),
+    );
+    expect(drive.indexOf("${{ matrix.pkg }}/${{ matrix.bootstrap }}")).toBeLessThan(
       drive.indexOf('HOOKNOSTIC_PLAYBACK_VERSION="$2"'),
     );
     expect(drive).toContain('HOOKNOSTIC_PLAYBACK_VERSION="$2"');
     expect(drive.indexOf('HOOKNOSTIC_PLAYBACK_VERSION="$2"')).toBeLessThan(
       drive.indexOf("exec node --experimental-strip-types"),
     );
-    expect(drive.indexOf("opencode-ai/postinstall.mjs")).toBeLessThan(
+    expect(drive.indexOf("${{ matrix.pkg }}/${{ matrix.bootstrap }}")).toBeLessThan(
       drive.indexOf("exec node --experimental-strip-types"),
     );
     const sidecar = drift.slice(
@@ -177,7 +192,7 @@ describe("harness-watch workflow structure", () => {
     const publish = jobSource("publish-verdict");
     expect(publish).toMatch(/needs: \[detect, record, report-failure, drift\]/);
     expect(publish).toMatch(
-      /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' \}\}/,
+      /if: \$\{\{ always\(\) && needs\.detect\.result == 'success' && needs\.detect\.outputs\.count != '0' && inputs\.dry_run != 'true' \}\}/,
     );
     expect(publish).toMatch(/permissions:\s*\n\s*contents: read\s*\n\s*issues: write\s*\n\s*pull-requests: write/);
     // Every verdict gets a durable destination even with no PR/issue.

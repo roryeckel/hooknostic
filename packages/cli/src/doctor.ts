@@ -4,7 +4,15 @@ import { delimiter, resolve } from "node:path";
 import semver from "semver";
 
 import type { AdapterRegistry, McpServerCommand } from "@hooknostic/core";
-import { buildProject, loadConfig, mcpAmbientCommands, type ProjectCommandResult, runProject } from "@hooknostic/core";
+import {
+  buildProject,
+  loadConfig,
+  mcpAmbientCommands,
+  type ProjectCommandResult,
+  resolveTargetAdapter,
+  runProject,
+  targetSpecFromConfig,
+} from "@hooknostic/core";
 
 import type { CommandIO } from "./check.js";
 
@@ -107,11 +115,27 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     : undefined;
   if (loaded) {
     if (loaded.config) {
-      const selected = new Set(Object.entries(loaded.config.targets).map(([name, target]) => target.adapter ?? name));
-      adapters = adapters.filter((adapter) => selected.has(adapter.id));
+      const selected = Object.entries(loaded.config.targets).flatMap(([name, target]) => {
+        const registered = options.registry[target.adapter ?? name];
+        if (!registered) return [];
+        const adapter = resolveTargetAdapter(registered, targetSpecFromConfig(name, target)).adapter;
+        return adapter ? [{ ...adapter, ...(registered.detect ? { detect: registered.detect } : {}) }] : [];
+      });
+      adapters = [
+        ...new Map(selected.map((adapter) => [`${adapter.id}:${adapter.harness.referenceVersion}`, adapter])).values(),
+      ];
     }
   }
-  for (const adapter of adapters) {
+  for (const registered of adapters) {
+    const detection = registered.detect ? await registered.detect() : undefined;
+    const familyFor = (version: string) =>
+      resolveTargetAdapter(registered, { id: registered.id, version, delivery: "project", output: "." }).adapter;
+    const adapter =
+      options.config === undefined
+        ? (familyFor(detection?.version ?? registered.harness.recommendedRange) ??
+          familyFor(registered.harness.recommendedRange) ??
+          registered)
+        : registered;
     const ranges = adapter.supportedHarnessVersions();
     // Newest validation event across the recommended range's profiles: this is
     // what lets doctor report staleness of OUR validation, not just novelty of
@@ -138,7 +162,7 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       recommendedRange: adapter.harness.recommendedRange,
       ...(newestValidated !== undefined ? { newestValidated } : {}),
     };
-    if (!adapter.detect) {
+    if (!detection) {
       entries.push({
         ...base,
         installed: false,
@@ -147,7 +171,6 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
       });
       continue;
     }
-    const detection = await adapter.detect();
     if (!detection.installed) {
       entries.push({
         ...base,

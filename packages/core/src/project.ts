@@ -1,5 +1,6 @@
 import { dirname, relative, resolve } from "node:path";
 
+import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import { type BuildOptions, buildProject, type McpServerCommand } from "./build.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { loadConfig } from "./load.js";
@@ -71,7 +72,9 @@ export async function runProject(
     for (const target of built?.plan ?? []) {
       const configured = config.targets[target.target]!;
       if (configured.delivery !== "project") continue;
-      const adapter = options.registry[configured.adapter ?? target.target];
+      const registered = options.registry[configured.adapter ?? target.target];
+      const adapter =
+        registered && resolveTargetAdapter(registered, targetSpecFromConfig(target.target, configured)).adapter;
       if (!adapter?.projectIntegration)
         throw new Error(`adapter ${configured.adapter ?? target.target} has no project integrator`);
       const output = relative(root, target.outputDir).replaceAll("\\", "/");

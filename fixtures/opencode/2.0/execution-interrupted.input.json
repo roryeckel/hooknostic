@@ -1,0 +1,18 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-XMmRdw\\project",
+  "event": {
+    "id": "evt_0decc5f52001gavBgdkJ2zDTwO",
+    "created": 1790444330834,
+    "type": "session.execution.interrupted",
+    "durable": {
+      "aggregateID": "ses_f2133a14cffeSkcOg1pfugbYKl",
+      "seq": 14,
+      "version": 1
+    },
+    "data": {
+      "sessionID": "ses_f2133a14cffeSkcOg1pfugbYKl",
+      "reason": "shutdown"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project",
+  "event": {
+    "tool": "skill",
+    "sessionID": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "agent": "build",
+    "messageID": "msg_0deaab7b7001zCHtSSJ1LSytGm",
+    "id": "call_probe_10",
+    "input": {
+      "id": "native"
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "name": "hooknostic-native",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\.agents\\skills\\native",
+        "output": "<skill_content name=\"hooknostic-native\">\n# Skill: hooknostic-native\n\nProbe content.\n\nBase directory for this skill: C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\.agents\\skills\\native\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "<skill_content name=\"hooknostic-native\">\n# Skill: hooknostic-native\n\nProbe content.\n\nBase directory for this skill: C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\.agents\\skills\\native\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>"
+        }
+      ],
+      "metadata": {
+        "name": "hooknostic-native",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\.agents\\skills\\native"
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-yhA8lk\\project",
+  "event": {
+    "tool": "probe_rich",
+    "sessionID": "ses_f211983ecffeJEkZgTbcZuydXb",
+    "agent": "build",
+    "messageID": "msg_0dee67df60017bnELQD8QBi0yO",
+    "id": "call_probe_3",
+    "input": {},
+    "status": "completed",
+    "result": {
+      "output": {
+        "secret": "hooknostic-native-structured"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "hooknostic-native-content"
+        }
+      ],
+      "metadata": {
+        "sentinel": "hooknostic-native-metadata"
+      }
+    }
+  }
+}

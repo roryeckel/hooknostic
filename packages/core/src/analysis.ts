@@ -2,7 +2,7 @@ import type { CapabilityId, HooknosticConfig, RequirementLevel, SupportLevel } f
 import { isCapabilityId, meetsMinimum, observeCapability } from "@hooknostic/sdk";
 
 import type { AdapterRegistry, CapabilityMatrix } from "./adapter.js";
-import { targetSpecFromConfig } from "./adapter.js";
+import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
 import type { PluginIR } from "./ir.js";
@@ -160,7 +160,7 @@ export function analyzeCapabilities(
     const targetConfig = Object.hasOwn(config.targets, targetId) ? config.targets[targetId] : undefined;
     if (!targetConfig) continue;
 
-    const adapter = Object.hasOwn(adapters, targetConfig.adapter ?? targetId)
+    let adapter = Object.hasOwn(adapters, targetConfig.adapter ?? targetId)
       ? adapters[targetConfig.adapter ?? targetId]
       : undefined;
     if (!adapter) {
@@ -185,6 +185,9 @@ export function analyzeCapabilities(
 
     const policy = effectiveCompatibility(config, targetId);
     const spec = targetSpecFromConfig(targetId, targetConfig);
+    const selected = resolveTargetAdapter(adapter, spec);
+    targetDiagnostics.push(...selected.diagnostics);
+    if (selected.adapter !== undefined) adapter = selected.adapter;
     if (!adapter.supportedDeliveries().includes(spec.delivery)) {
       targetDiagnostics.push({
         code: "HN204",
@@ -228,7 +231,9 @@ export function analyzeCapabilities(
         remediation: "remove skillNames; it applies only to a harness whose skill names are not qualified by plugin.",
       });
     }
-    const resolved = adapter.capabilities(spec);
+    const resolved = selected.adapter
+      ? adapter.capabilities(spec)
+      : { matrix: undefined, profilesUsed: [], diagnostics: [] };
     targetDiagnostics.push(...resolved.diagnostics);
 
     const matrix: CapabilityMatrix = resolved.matrix ?? {};

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f21554e9affe0icQ2J3l8N4wDj",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_6"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "shell",
+    "input": {
+      "command": "node -e \"process.stdout.write(process.cwd())\"",
+      "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\working directory"
+    },
+    "kind": "shell",
+    "shell": {
+      "command": "node -e \"process.stdout.write(process.cwd())\"",
+      "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\working directory",
+      "commandKey": "command",
+      "cwdKey": "workdir"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project\\working directory"
+    }
+  ]
+}
