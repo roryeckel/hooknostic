@@ -5,7 +5,7 @@
 //      generated from the adapter metadata. No generic tool produces it.
 //   2. PR-grouped section -- GitHub's own generate-notes API output, taken as
 //      text so composition is deterministic.
-//   3. Other changes -- direct-to-master commits (allowed in this repo, and
+//   3. Direct commits -- direct-to-master commits (allowed in this repo, and
 //      their long-form bodies are load-bearing) that native notes silently
 //      omit: every first-parent commit in range not already covered by a PR
 //      reference in section 2, rendered as a bullet with a <details> body.
@@ -44,11 +44,13 @@ function escapeHtml(text) {
  * @returns {string}
  */
 export function composeNotes({ highlights = "", harnessTable, generatedBody, commits }) {
-  // A commit already grouped under a PR in the generated body is covered;
-  // match by the (#N) reference GitHub appends to squash/merge subjects.
-  const covered = new Set([...generatedBody.matchAll(/#(\d+)/g)].map((match) => match[1]));
+  // A commit already grouped under a PR in the generated body is covered.
+  // generate-notes cites PRs as .../pull/N URLs; bare #N is accepted too. On
+  // the commit side, match the (#N) GitHub appends to squash subjects or the
+  // "Merge pull request #N from ..." subject of a merge commit.
+  const covered = new Set([...generatedBody.matchAll(/(?:#|\/pull\/)(\d+)\b/g)].map((match) => match[1]));
   const direct = commits.filter((commit) => {
-    const ref = commit.subject.match(/\(#(\d+)\)\s*$/);
+    const ref = commit.subject.match(/\(#(\d+)\)\s*$/) ?? commit.subject.match(/^Merge pull request #(\d+) from /);
     return ref === null || !covered.has(ref[1]);
   });
 
@@ -64,7 +66,7 @@ export function composeNotes({ highlights = "", harnessTable, generatedBody, com
       parts.push(generatedBody.trim(), "");
     }
     if (direct.length > 0) {
-      parts.push("## Other changes", "");
+      parts.push("## Direct commits", "");
       for (const commit of direct) {
         const subject = escapeHtml(commit.subject);
         const body = commit.body.trim();

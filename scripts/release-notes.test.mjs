@@ -109,8 +109,60 @@ describe("composeNotes", () => {
       generatedBody: "",
       commits: [{ sha: "d".repeat(40), subject: "chore: initial", body: "" }],
     });
-    expect(notes).toContain("## Other changes");
+    expect(notes).toContain("## Direct commits");
     expect(notes).toContain("- chore: initial (dddddddd)");
+  });
+
+  it("treats merge-commit subjects as covered by the PR they merge", () => {
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody: "## What's Changed\n* feat: merged by @owner in #31",
+      commits: [
+        { sha: "e".repeat(40), subject: "Merge pull request #31 from owner/feature", body: "feat: merged" },
+        { sha: "f".repeat(40), subject: "fix: direct commit", body: "" },
+      ],
+    });
+    expect(notes).not.toContain("Merge pull request #31");
+    expect(notes).toContain("- fix: direct commit (ffffffff)");
+  });
+
+  it("reads PR references from the pull URLs GitHub's generated body uses", () => {
+    // generate-notes cites PRs as full URLs, never as bare #N.
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody:
+        "## What's Changed\n" +
+        "* feat: squashed by @owner in https://github.com/owner/example/pull/32\n" +
+        "* feat: merged by @owner in https://github.com/owner/example/pull/33",
+      commits: [
+        { sha: "1".repeat(40), subject: "feat: squashed (#32)", body: "" },
+        { sha: "2".repeat(40), subject: "Merge pull request #33 from owner/feature", body: "" },
+      ],
+    });
+    expect(notes.match(/feat: squashed/g)).toHaveLength(1);
+    expect(notes).not.toContain("Merge pull request #33");
+    expect(notes).not.toContain("## Direct commits");
+  });
+
+  it("keeps merge commits whose PR the generated body does not list", () => {
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody: "",
+      commits: [{ sha: "3".repeat(40), subject: "Merge pull request #34 from owner/feature", body: "" }],
+    });
+    expect(notes).toContain("## Direct commits");
+    expect(notes).toContain("- Merge pull request #34 from owner/feature (33333333)");
+  });
+
+  it("does not reuse the generated body's Other changes category heading", () => {
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody:
+        "## What's Changed\n### Other changes\n* chore: tidy by @owner in https://github.com/owner/example/pull/35",
+      commits: [{ sha: "4".repeat(40), subject: "fix: direct commit", body: "" }],
+    });
+    expect(notes.match(/Other changes/g)).toHaveLength(1);
+    expect(notes).toContain("## Direct commits\n\n- fix: direct commit (44444444)");
   });
 });
 import { execFileSync } from "node:child_process";
