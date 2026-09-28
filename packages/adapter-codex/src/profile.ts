@@ -152,8 +152,8 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "0.156.1",
-          date: "2026-09-24",
+          version: "0.158.0",
+          date: "2026-09-28",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",

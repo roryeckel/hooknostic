@@ -119,7 +119,7 @@ Projection validation records:
 | 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-code-mode` | Hook EFFECTS inside Code Mode, through the offline playback lane with a code_mode_only catalog (the model was offered exec and no direct exec_command): a generated match: { kind: "shell" } guard, native matcher included, denied a nested tools.exec_command so its marker never appeared, and its input rewrite reached the spawned command. |
 | 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-worktree-hooks` | In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at all when that has none. A Codex artifact generated into a linked worktree is inert there. |
 | 0.156.1 | 2026-09-27 | captured | `fixtures/codex/0.148` | apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path |
-| 0.156.1 | 2026-09-24 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 0.158.0 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
 #### Project delivery
 
