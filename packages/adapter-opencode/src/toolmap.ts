@@ -12,6 +12,10 @@ const EXACT: Record<string, ToolKind> = {
   write: "file.write",
   edit: "file.edit",
   patch: "file.edit",
+  // Offered instead of edit/write when the model id looks like a GPT model;
+  // without this entry the `<server>_<tool>` MCP split below claimed it as
+  // server "apply". Captured 1.18.31: fixtures/opencode/1.18/tool-apply-patch-before.
+  apply_patch: "file.edit",
   multiedit: "file.edit",
   webfetch: "web.fetch",
   websearch: "web.search",

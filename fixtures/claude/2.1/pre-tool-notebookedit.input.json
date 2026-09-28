@@ -1,0 +1,18 @@
+{
+  "session_id": "02f13da2-de42-4c37-b295-38bfcac8f910",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-hkn-file-tools-5QhqkG-claude\\02f13da2-de42-4c37-b295-38bfcac8f910.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-5QhqkG\\claude",
+  "prompt_id": "d5f844ad-6967-4c79-b613-227b4090be0d",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "NotebookEdit",
+  "tool_input": {
+    "notebook_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-5QhqkG\\claude\\seed.ipynb",
+    "cell_id": "probe",
+    "new_source": "print('beta')"
+  },
+  "tool_use_id": "toolu_playback_2"
+}

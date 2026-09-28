@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "01a0e5ff-3497-7c62-8287-9ee2fd4575ae",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-gvXFQ3\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0e5ff-354f-71b1-ad6c-f6f5cdb0a8dc",
+    "toolCallId": "call_playback_1"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "apply_patch",
+    "input": {
+      "command": "*** Begin Patch\n*** Update File: seed.txt\n*** Move to: moved.txt\n@@\n-alpha\n+beta\n*** End Patch\n"
+    }
+  }
+}

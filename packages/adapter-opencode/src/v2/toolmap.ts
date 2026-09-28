@@ -14,6 +14,8 @@ const kinds: Readonly<Record<string, ToolKind>> = {
   grep: "file.read",
   write: "file.write",
   edit: "file.edit",
+  // Replaces edit/write when the model id looks like a GPT model (tool-patch-before).
+  patch: "file.edit",
   webfetch: "web.fetch",
   websearch: "web.search",
   subagent: "agent",

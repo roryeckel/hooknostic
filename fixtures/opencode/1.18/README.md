@@ -65,3 +65,12 @@ Ground truth notes (1.18.x):
 - Session lifecycle arrives via the generic `event` bus callback
   (`session.created` / `session.deleted` / `session.idle` /
   `session.compacted`); there are no subagent or tool-failure callbacks.
+
+**`tool-{read,write,edit,apply-patch}-before.*` are captured.** Taken from a
+real **opencode 1.18.31** session on Windows (2026-09-27) through the tee plugin
+(`.capture/opencode-capture`) against the loopback playback model
+(`.capture/file-tools`): the envelopes are the harness's own, the argument
+*values* are scripted. They pin the file tools' path key (`filePath`), and that
+a GPT-like model id (`gpt-5-playback`) swaps `edit`/`write` for `apply_patch`,
+whose `patchText` holds a Codex-grammar patch. Before this capture the adapter
+split `apply_patch` as an MCP tool named `patch` on server `apply`.

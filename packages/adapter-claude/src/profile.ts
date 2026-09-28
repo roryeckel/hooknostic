@@ -47,6 +47,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/harness-playback",
           what: "Windows PTY approval probe: PreToolUse permissionDecision ask overrides preallowed Bash and requires confirmation; escalate is rejected as invalid",
         },
+        {
+          version: "2.1.283",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

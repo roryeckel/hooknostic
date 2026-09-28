@@ -2,11 +2,18 @@ import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
 import { shellCodec } from "@hooknostic/sdk";
 
 /**
- * Codex tool-name classification (names observed on 0.148.0; the
- * `exec_command` argument shape below on 0.151.0): shell paths surface as `Bash` /
+ * Codex tool-name classification: shell paths surface as `Bash` /
  * `exec_command`; `apply_patch` is the edit path; local function tools like
  * `update_plan` stay "other"; `spawn_agent` is the subagent tool; MCP tools
  * follow the `mcp__<server>__<tool>` convention.
+ *
+ * Captured at the hook boundary on 0.156.1 (`.capture/file-tools/README.md`):
+ * `apply_patch` and `view_image` reach PreToolUse under their own names. Codex
+ * has no dedicated read or write tool -- reads go through the shell. `Write`,
+ * `Edit` and `Agent` are matcher aliases Codex accepts for Claude-style hook
+ * configurations and never serializes as a payload's `tool_name`
+ * (codex-rs `hook_names.rs`); they stay here as defensive entries, like `Read`,
+ * which has no observation at all.
  */
 export const CODEX_TOOL_KINDS: Record<string, ToolKind> = {
   Bash: "shell",

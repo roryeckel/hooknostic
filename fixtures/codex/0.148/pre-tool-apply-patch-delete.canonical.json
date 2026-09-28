@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "01a0e5ff-4682-7ba3-9255-1aff196e8adf",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-Nbg7nU\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0e5ff-476a-7452-99a6-0a0056a31b12",
+    "toolCallId": "call_playback_1"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "apply_patch",
+    "input": {
+      "command": "*** Begin Patch\n*** Delete File: doomed.txt\n*** End Patch\n"
+    }
+  }
+}

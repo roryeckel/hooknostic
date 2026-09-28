@@ -1,0 +1,16 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7hrVx0\\opencode",
+  "input": {
+    "tool": "edit",
+    "sessionID": "ses_f19ff5c04ffeNb4FZ4N0evldzp",
+    "callID": "call_playback"
+  },
+  "output": {
+    "args": {
+      "filePath": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7hrVx0\\opencode\\seed.txt",
+      "oldString": "alpha",
+      "newString": "beta"
+    }
+  }
+}

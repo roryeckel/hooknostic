@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "PostToolUse"
+  },
+  "session": {
+    "id": "01a0e5ff-21a6-7c82-9a6d-f60e101638c2",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-L0NpWa\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0e5ff-2282-7002-9e52-3b9a1daa2444",
+    "toolCallId": "call_playback_1"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "apply_patch",
+    "input": {
+      "command": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** End Patch\n"
+    }
+  },
+  "output": "Exit code: 0\nWall time: 0 seconds\nOutput:\nSuccess. Updated the following files:\nA added.txt\n"
+}

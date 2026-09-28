@@ -11,6 +11,7 @@ fresh scratch state, and the repository's loopback scripted model.
 | context, title | captured | Distinct ordinary-agent and title request callbacks |
 | session-created, execution-succeeded | captured | Public event subscription envelopes |
 | tool-write/read/edit/glob/grep-before/after | captured | Successful file operations from the `tools` drive |
+| tool-patch-before/after | captured | A GPT-like model id (`HKN_MODEL_ID=gpt-5-playback`, `tools-patch` drive, 2026-09-27) replaces edit/write with `patch`; its `patchText` holds a Codex-grammar patch that applied |
 | tool-shell-workdir-before/after | captured | Explicit working directory containing a space; command output confirms cwd |
 | tool-webfetch-before/after | captured | Fetch from the loopback fixture endpoint |
 | tool-websearch/subagent-before | captured | Admission boundary only; capture hook deliberately blocks execution |

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "02f13da2-de42-4c37-b295-38bfcac8f910",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-5QhqkG\\claude"
+  },
+  "correlation": {
+    "turnId": "d5f844ad-6967-4c79-b613-227b4090be0d",
+    "toolCallId": "toolu_playback_2"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "NotebookEdit",
+    "input": {
+      "notebook_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-5QhqkG\\claude\\seed.ipynb",
+      "cell_id": "probe",
+      "new_source": "print('beta')"
+    }
+  }
+}

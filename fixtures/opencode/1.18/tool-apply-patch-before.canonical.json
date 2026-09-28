@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "tool.execute.before"
+  },
+  "session": {
+    "id": "ses_f19fe8938ffeNY6Ne7OCUJJljI",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-YI1EKw\\opencode"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "apply_patch",
+    "input": {
+      "patchText": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: seed.txt\n@@\n-alpha\n+beta\n*** End Patch"
+    }
+  }
+}

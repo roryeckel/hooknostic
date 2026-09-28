@@ -103,8 +103,15 @@ describe("variantOf", () => {
   });
 
   it("discriminates opencode tool callbacks by hook + tool", () => {
-    const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before");
+    // Selected by tool, not by position: file-tool fixtures sort ahead of bash.
+    const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before" && f.input.tool === "bash");
     expect(variantOf("opencode", toolBefore)).toBe("tool.execute.before+bash");
+    expect(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before" && f.input.tool === "apply_patch"),
+      ),
+    ).toBe("tool.execute.before+apply_patch");
     expect(
       variantOf(
         "opencode",

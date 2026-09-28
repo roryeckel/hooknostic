@@ -1,0 +1,19 @@
+{
+  "session_id": "9d03c470-044e-4141-8c5c-56d3a8a405e5",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-hkn-file-tools-kpwePO-claude\\9d03c470-044e-4141-8c5c-56d3a8a405e5.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-kpwePO\\claude",
+  "prompt_id": "128c1db4-eb47-40c7-a254-a89913bd00db",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-kpwePO\\claude\\seed.txt",
+    "old_string": "alpha",
+    "new_string": "beta",
+    "replace_all": false
+  },
+  "tool_use_id": "toolu_playback_2"
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "bc00e548-b04c-434a-b4d8-91c2455de737",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-xxGqCV\\claude"
+  },
+  "correlation": {
+    "turnId": "390c8a28-6d54-4a26-a9bb-c69a17f5e4d7",
+    "toolCallId": "toolu_playback_1"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.write",
+    "nativeName": "Write",
+    "input": {
+      "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-xxGqCV\\claude\\probe-write.txt",
+      "content": "hooknostic probe\n"
+    }
+  }
+}

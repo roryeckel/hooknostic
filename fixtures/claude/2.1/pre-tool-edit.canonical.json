@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "9d03c470-044e-4141-8c5c-56d3a8a405e5",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-kpwePO\\claude"
+  },
+  "correlation": {
+    "turnId": "128c1db4-eb47-40c7-a254-a89913bd00db",
+    "toolCallId": "toolu_playback_2"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "Edit",
+    "input": {
+      "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-kpwePO\\claude\\seed.txt",
+      "old_string": "alpha",
+      "new_string": "beta",
+      "replace_all": false
+    }
+  }
+}
