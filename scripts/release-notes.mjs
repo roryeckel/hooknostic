@@ -9,7 +9,8 @@
 //      their long-form bodies are load-bearing) that native notes silently
 //      omit: every first-parent commit in range that is neither a PR merge
 //      commit nor a squash commit whose PR section 2 lists, rendered as a
-//      bullet with a <details> body.
+//      bullet with a <details> body. Without section 2 (local dry runs), PR
+//      merge commits stay too.
 //
 // The composition is a pure function (composeNotes) with a unit test; the CLI
 // wrapper gathers the inputs. Usage (from the draft-release workflow):
