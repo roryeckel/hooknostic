@@ -1,7 +1,6 @@
 {
   "name": "@hooknostic/agent-plugin",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "description": "Agent Plugins 1.0 loading, validation, and native projection contracts",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
@@ -10,6 +9,10 @@
     "type": "git",
     "url": "git+https://github.com/roryeckel/hooknostic.git",
     "directory": "packages/agent-plugin"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "bugs": "https://github.com/roryeckel/hooknostic/issues",
   "keywords": [

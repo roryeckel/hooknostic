@@ -1,6 +1,6 @@
 {
   "name": "@hooknostic/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Hooknostic compiler: config loading, Plugin IR, capability analysis, diagnostics, build orchestration",
   "type": "module",
