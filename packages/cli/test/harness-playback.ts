@@ -605,15 +605,46 @@ function requestTools(request: Record<string, unknown>): Record<string, unknown>
   return [];
 }
 
+/**
+ * The tools a model request advertised: name, wire type, and the argument keys
+ * its schema declares. Capture drives read this from a discovery turn to script
+ * calls against the harness's own live schemas instead of remembered ones.
+ */
+export function describeTools(
+  request: Record<string, unknown>,
+): { name: string; type?: string; namespace?: string; properties: string[] }[] {
+  return requestTools(request).flatMap((tool) => {
+    const name = toolName(tool);
+    if (name === undefined) return [];
+    const schema = jsonSchemaForTool(tool);
+    const properties =
+      schema["properties"] !== null && typeof schema["properties"] === "object"
+        ? Object.keys(schema["properties"] as object)
+        : [];
+    return [
+      {
+        name,
+        ...(typeof tool["type"] === "string" ? { type: tool["type"] } : {}),
+        ...(tool["namespace"] !== undefined ? { namespace: String(tool["namespace"]) } : {}),
+        properties,
+      },
+    ];
+  });
+}
+
 export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
   marker = "hooknostic-tool.txt",
   preferredTool?: string,
+  explicitArguments?: Record<string, unknown>,
 ): { name: string; namespace?: string; arguments: string } {
   const tools = requestTools(request);
+  // Exact name first: a bare suffix match would resolve `Edit` to whichever of
+  // `Edit`, `MultiEdit` or `NotebookEdit` the harness happened to list first.
   const tool = preferredTool
-    ? tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool))
+    ? (tools.find((candidate) => toolName(candidate) === preferredTool) ??
+      tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool)))
     : tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
   if (tool === undefined) {
     throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
@@ -637,6 +668,9 @@ export function scriptedTool(
           namespace: String(tool["namespace"]),
         }
       : { name };
+  // A capture script names the exact arguments; the harness's own validation
+  // then decides whether the call reaches its hooks at all.
+  if (explicitArguments !== undefined) return { ...namespaceEmission, arguments: JSON.stringify(explicitArguments) };
   const schema = jsonSchemaForTool(tool);
   const properties =
     schema["properties"] !== null && typeof schema["properties"] === "object"
@@ -738,6 +772,13 @@ export interface TurnAction {
   marker?: string;
   /** Exact tool name to call (defaults to the first shell-like tool declared). */
   toolName?: string;
+  /** Exact JSON arguments for the call, replacing the shell-probe builder. */
+  arguments?: Record<string, unknown>;
+  /**
+   * Raw input for a freeform (grammar) tool such as Codex's `apply_patch`,
+   * emitted as a Responses `custom_tool_call`. `openai-responses` only.
+   */
+  freeformInput?: string;
   /** Text emitted for `kind: "text"`. */
   text?: string;
 }
@@ -760,7 +801,13 @@ function anthropicTurn(
   };
   const events: unknown[] = [{ type: "message_start", message }];
   if (action.kind === "tool") {
-    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
+    const tool = scriptedTool(
+      request,
+      action.disposition ?? "rewrite",
+      action.marker,
+      action.toolName,
+      action.arguments,
+    );
     events.push(
       {
         type: "content_block_start",
@@ -811,8 +858,35 @@ function responsesTurn(
 ): void {
   const id = `resp_playback_${turn}`;
   const events: unknown[] = [{ type: "response.created", response: { id } }];
-  if (action.kind === "tool") {
-    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
+  if (action.kind === "tool" && action.freeformInput !== undefined) {
+    // A grammar tool takes raw text, not JSON arguments: the Responses wire
+    // carries it as a custom_tool_call whose `input` is the text itself.
+    const name = action.toolName ?? "apply_patch";
+    if (!requestTools(request).some((candidate) => toolName(candidate) === name)) {
+      throw new Error(`playback request exposed no freeform tool named ${name}`);
+    }
+    const item = {
+      id: `ctc_playback_${turn}`,
+      call_id: `call_playback_${turn}`,
+      type: "custom_tool_call",
+      name,
+      input: action.freeformInput,
+      status: "completed",
+    };
+    events.push(
+      { type: "response.output_item.added", output_index: 0, item: { ...item, input: "" } },
+      { type: "response.custom_tool_call_input.delta", item_id: item.id, output_index: 0, delta: item.input },
+      { type: "response.custom_tool_call_input.done", item_id: item.id, output_index: 0, input: item.input },
+      { type: "response.output_item.done", output_index: 0, item },
+    );
+  } else if (action.kind === "tool") {
+    const tool = scriptedTool(
+      request,
+      action.disposition ?? "rewrite",
+      action.marker,
+      action.toolName,
+      action.arguments,
+    );
     const item = {
       id: "fc_playback",
       call_id: "call_playback",
@@ -886,7 +960,13 @@ function chatTurn(response: ServerResponse, request: Record<string, unknown>, tu
   };
   const events: unknown[] = [];
   if (action.kind === "tool") {
-    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
+    const tool = scriptedTool(
+      request,
+      action.disposition ?? "rewrite",
+      action.marker,
+      action.toolName,
+      action.arguments,
+    );
     events.push(
       {
         ...base,
@@ -949,6 +1029,8 @@ export async function startModelPlayback(
   protocol: ModelProtocol,
   scenario: PlaybackScenario = "rewrite",
   script?: ScenarioScript,
+  /** Fields merged over the served model info (e.g. Codex `input_modalities`). */
+  modelInfoOverrides: Record<string, unknown> = {},
 ): Promise<ModelPlayback> {
   const turns: ScenarioScript =
     script ??
@@ -1009,6 +1091,7 @@ export async function startModelPlayback(
           max_output_tokens: 4_096,
           supports_parallel_tool_calls: false,
           supports_reasoning_summaries: false,
+          ...modelInfoOverrides,
         };
         response.end(
           JSON.stringify({
