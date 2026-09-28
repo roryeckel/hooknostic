@@ -33,6 +33,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.238 | 2026-09-27 | live-probe | `.capture/claude-permission-mode` | Interactive sessions start in the prompting mode (hook permission_mode default, PermissionRequest fires), and --permission-mode manual keeps it; an inherited CLAUDE_CODE_CHILD_SESSION turns transcript saving off |
 | 2.1.283 | 2026-09-27 | live-probe | `.capture/claude-permission-mode` | Interactive sessions start in auto mode: the scripted Bash call reaches PreToolUse with permission_mode auto and PermissionRequest never fires; --permission-mode manual restores the prompting mode and PermissionRequest, and the pty playback scenarios pass with it |
 | 2.1.283 | 2026-09-27 | captured | `fixtures/claude/2.1` | Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised |
+| 2.1.283 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
 #### Project delivery
 
