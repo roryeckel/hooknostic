@@ -20,7 +20,7 @@
 // dry runs) section 2 is a placeholder and the script says so.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isMainModule } from "./is-main-module.mjs";
@@ -180,9 +180,13 @@ async function main() {
   const range = previousTag ? `${previousTag}..${sha}` : sha;
   const commits = commitsInRange(range);
 
+  // Links are relative to docs/; normalize so ../README.md leaves docs/.
   const highlights = readFileSync(resolve(ROOT, "docs/release-highlights.md"), "utf8").replaceAll(
-    /\]\(([\w/-]+\.md(?:#[\w-]+)?)\)/g,
-    (_, path) => (repo ? `](https://github.com/${repo}/blob/${sha}/docs/${path})` : `](docs/${path})`),
+    /\]\(([\w./-]+\.md(?:#[\w-]+)?)\)/g,
+    (_, path) => {
+      const target = posix.normalize(`docs/${path}`);
+      return repo ? `](https://github.com/${repo}/blob/${sha}/${target})` : `](${target})`;
+    },
   );
   const body = composeNotes({ highlights, harnessTable, generatedBody, commits });
   writeFileSync(resolve(ROOT, output), body, "utf8");
