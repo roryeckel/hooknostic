@@ -5,10 +5,12 @@
 //      generated from the adapter metadata. No generic tool produces it.
 //   2. PR-grouped section -- GitHub's own generate-notes API output, taken as
 //      text so composition is deterministic.
-//   3. Other changes -- direct-to-master commits (allowed in this repo, and
+//   3. Direct commits -- direct-to-master commits (allowed in this repo, and
 //      their long-form bodies are load-bearing) that native notes silently
-//      omit: every first-parent commit in range not already covered by a PR
-//      reference in section 2, rendered as a bullet with a <details> body.
+//      omit: every first-parent commit in range that is neither a PR merge
+//      commit nor a squash commit whose PR section 2 lists, rendered as a
+//      bullet with a <details> body. Without section 2 (local dry runs), PR
+//      merge commits stay too.
 //
 // The composition is a pure function (composeNotes) with a unit test; the CLI
 // wrapper gathers the inputs. Usage (from the draft-release workflow):
@@ -44,10 +46,19 @@ function escapeHtml(text) {
  * @returns {string}
  */
 export function composeNotes({ highlights = "", harnessTable, generatedBody, commits }) {
-  // A commit already grouped under a PR in the generated body is covered;
-  // match by the (#N) reference GitHub appends to squash/merge subjects.
-  const covered = new Set([...generatedBody.matchAll(/#(\d+)/g)].map((match) => match[1]));
+  // A merge commit always stands for a PR, which the generated body either
+  // lists or excludes on purpose (release.yml's `release`/`skip-changelog`);
+  // either way it is not a direct commit. Only without a generated body (local
+  // dry runs) does it stay, as the sole record of that PR.
+  //
+  // A squash commit is covered when the generated body lists its (#N).
+  // generate-notes ends each entry with "in .../pull/N"; only that trailing
+  // link counts, so a PR or issue cited inside a title covers nothing. Bare
+  // "in #N" is accepted too.
+  const hasGeneratedBody = generatedBody.trim() !== "";
+  const covered = new Set([...generatedBody.matchAll(/\bin (?:\S+\/pull\/|#)(\d+)\s*$/gm)].map((match) => match[1]));
   const direct = commits.filter((commit) => {
+    if (/^Merge pull request #\d+ from /.test(commit.subject)) return !hasGeneratedBody;
     const ref = commit.subject.match(/\(#(\d+)\)\s*$/);
     return ref === null || !covered.has(ref[1]);
   });
@@ -64,7 +75,7 @@ export function composeNotes({ highlights = "", harnessTable, generatedBody, com
       parts.push(generatedBody.trim(), "");
     }
     if (direct.length > 0) {
-      parts.push("## Other changes", "");
+      parts.push("## Direct commits", "");
       for (const commit of direct) {
         const subject = escapeHtml(commit.subject);
         const body = commit.body.trim();
