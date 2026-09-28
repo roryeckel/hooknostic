@@ -97,6 +97,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         {
           version: "0.84.4",
           date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
           method: "captured",
           artifact: ".capture/pi/README.md",
           what: "pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source.",

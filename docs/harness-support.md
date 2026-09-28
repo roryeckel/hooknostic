@@ -346,6 +346,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | Windows --tools powershell loopback session captured the native {command} tool_call and tool_result payloads; shell normalization now uses that observed key |
 | 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | before-agent-start-isolated: before_agent_start captured in a fresh project and agent home against the loopback model: no user skills, context files, or third-party tool snippets; retained alongside the original populated fixture |
 | 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | live extension event payloads incl. in-place tool_call input mutation and tool_result replacement |
 | 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | verified by effect: tool_call block, input rewrite, tool_result replace, system-prompt injection, session_before_compact {cancel:true}, turn injection via sendMessage({triggerTurn:true}), context {messages} replacement; input {action:"handled"} proven NOT a reliable prompt block (mid-stream only, first-token suppression hangs print mode) |
@@ -368,6 +369,7 @@ Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback |
 | 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source. |
 
 Project support is independent of package projection.
@@ -388,6 +390,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback |
 | 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager. |
 | 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model. |
 

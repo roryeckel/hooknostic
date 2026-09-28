@@ -18,16 +18,13 @@ const EXACT: Record<string, ToolKind> = {
 };
 
 /**
- * pi shell tools: `bash` input is `{command, timeout?}` — the `command` key is
- * captured (fixtures/pi/0.84/tool-call-bash.input.json). `powershell` has the
- * same shape per the 0.84.4 type definitions (`PowerShellToolInput =
- * BashToolInput`), which is schema-derived, not captured — per the
- * harness-capture discipline it stays OUT of the shape table until a live
- * capture confirms it, and both codec directions decline rather than assume.
- * Neither tool has a cwd argument key.
+ * pi shell tools use `{command, timeout?}`. The `command` key is captured for
+ * both bash and powershell (fixtures/pi/0.84/tool-call-{bash,powershell}.input.json).
+ * Neither tool has a cwd argument key in the observed payloads.
  */
 export const PI_SHELL_SHAPES: ShellShapes = {
   bash: { commandKey: "command" },
+  powershell: { commandKey: "command" },
 };
 
 export const piShellCodec = shellCodec(PI_SHELL_SHAPES);

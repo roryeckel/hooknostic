@@ -80,6 +80,11 @@ fixture server. The dedicated MCP drive requires its tool to reach both
 fixture through `--mcp-config`, Codex through `mcp_servers`, and OpenCode
 through its local `mcp` configuration; the output-replacement drive remains
 separate because it is a capability-specific assertion.
+Pi's MCP cells are unsupported; its playback lane instead checks project
+`sync`, local-path and npm-coordinate package installation, native skill
+discovery, hook execution, and per-request context as a model-visible user
+message. The npm-coordinate test uses `pnpm pack` and a local read-only
+registry. Windows playback additionally exercises the installed Pi binary.
 
 The loopback suite never switches to a paid model. Every declared driver
 limitation is written to the harness-watch workflow summary as an
@@ -126,6 +131,7 @@ version:
 | Codex CLI | `@openai/codex` |
 | OpenCode v1 (`opencode-v1`) | `opencode-ai` |
 | OpenCode v2 (`opencode-v2`) | `@opencode/cli` |
+| Pi (`pi`) | `@earendil-works/pi-coding-agent` |
 
 The playback test also calls the adapter's normal detector and fails unless the
 installed binary reports the expected version — `referenceVersion`, or the build
@@ -147,7 +153,7 @@ pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, `opencode-v1`, or `opencode-v2`. The historical
+Use `claude`, `codex`, `opencode-v1`, `opencode-v2`, or `pi`. The historical
 `opencode` lane selector remains a v1 alias. V2 uses
 `packages/cli/test/opencode-v2-playback.test.ts`; see
 [OpenCode families](opencode-families.md) for its independently verified

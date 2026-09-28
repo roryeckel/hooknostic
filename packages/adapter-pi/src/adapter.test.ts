@@ -23,8 +23,10 @@ describe("decodePi fixtures", () => {
     "context",
     "tool-call-write",
     "tool-call-bash",
+    "tool-call-powershell",
     "tool-result-write",
     "tool-result-bash",
+    "tool-result-powershell",
     "tool-result-error",
     "agent-settled",
     "session-shutdown",
@@ -128,10 +130,9 @@ describe("classifyPiTool", () => {
   it("classifies shell tools with the captured shape only", () => {
     const bash = classifyPiTool("bash", { command: "ls" });
     expect(bash.shell).toEqual({ command: "ls", commandKey: "command" });
-    // powershell's shape is schema-derived, not captured: both codec
-    // directions decline rather than assume the key.
+    // The Windows loopback fixture captures the same command key.
     const powershell = classifyPiTool("powershell", { command: "ls" });
-    expect(powershell.shell).toBeUndefined();
+    expect(powershell.shell).toEqual({ command: "ls", commandKey: "command" });
   });
 
   it("does not resolve prototype members for a tool named constructor", () => {

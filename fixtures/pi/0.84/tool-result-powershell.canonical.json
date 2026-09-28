@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\pi\\scratch\\powershell-playback"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "powershell",
+    "input": {
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
+    },
+    "shell": {
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\"",
+      "commandKey": "command"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "(no output)"
+    }
+  ]
+}

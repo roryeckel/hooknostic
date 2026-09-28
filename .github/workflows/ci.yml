@@ -181,6 +181,8 @@ jobs:
             os: ubuntu-latest
           - harness: pi
             os: ubuntu-latest
+          - harness: pi
+            os: windows-latest
           - harness: opencode-v1
             os: ubuntu-latest
           - harness: opencode-v2

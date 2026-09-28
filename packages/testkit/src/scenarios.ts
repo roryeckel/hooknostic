@@ -98,21 +98,12 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   },
   {
     id: "model-request-before-context-add",
-    title: "per-request injected context reaches the model as a system message in EVERY agent request",
+    title: "per-request injected context reaches the model in EVERY agent request",
     covers: ["model.request.before.context.add"],
     driver: "loopback",
-    // pi delivers per-request context through the context event's message
-    // array, which is AgentMessage[] (user/assistant/toolResult/custom/thinking
-    // -- no system role). A system-role entry appended to the returned array
-    // is dropped by pi's AgentMessage->Message conversion (observed live on
-    // 0.84.4); the working channel appends a conversation message, which the
-    // model sees verbatim (verified by effect: .capture/pi context-inject
-    // probe). The scenario's system-message assertion checks a shape pi's
-    // channel cannot take, so the scheduled lane records it inconclusive
-    // rather than silently passing on a different channel.
-    inconclusiveByHarness: {
-      pi: "pi's per-request context channel is the message array (AgentMessage[]), which carries no system role; the drive's system-message shape cannot be produced",
-    },
+    // pi's context result appends a custom AgentMessage, converted to a user
+    // message in the provider request. Its drive asserts that model-facing
+    // role in every request rather than demanding a system message.
   },
   {
     id: "tool-before-block",

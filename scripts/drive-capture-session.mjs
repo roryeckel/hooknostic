@@ -5,7 +5,8 @@
 // scripts/compare-capture-shapes.mjs.
 //
 //   node --experimental-strip-types scripts/drive-capture-session.mjs \
-//     <claude|codex|opencode> [--transport playback|llm] [--scratch <dir>]
+//     <claude|codex|opencode|pi> [--transport playback|llm] [--scratch <dir>]
+//     [--pi-tool powershell]  # alternate-tool capture, not a baseline verdict
 //
 // Exit codes (propagated from the comparator):
 //   0 clean            4 drift            5 inconclusive
@@ -22,7 +23,7 @@
 //   is real and its hook payloads are real native output; no secrets.
 // - llm (paid, explicit dispatch only): same session shape, model side is the
 //   owner's OpenAI-compatible endpoint; claude and codex reach it through a
-//   LiteLLM sidecar (/v1/messages and /v1/responses), opencode directly.
+//   LiteLLM sidecar (/v1/messages, /v1/responses, and /v1/chat/completions).
 //   What only this adds: real model tool-call emission patterns through the
 //   real provider path. Probe failure → exit 5, never a false verdict.
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -148,7 +149,7 @@ const PLAYBACK_PROTOCOLS = {
 };
 
 // ---------------------------------------------------------------------------
-// Transport: llm (paid). claude/codex via a LiteLLM sidecar, opencode direct.
+// Transport: llm (paid). All harnesses use the credential-isolating sidecar.
 // ---------------------------------------------------------------------------
 
 /**
@@ -216,7 +217,7 @@ async function probeLlmPath(harness, config) {
     );
     return;
   }
-  // opencode: OpenAI-compatible chat completions directly.
+  // pi and opencode use OpenAI-compatible chat completions.
   await probeEndpoint(
     `${config.proxyUrl}/v1/chat/completions`,
     {
@@ -268,19 +269,24 @@ async function driveClaude(scratch, model) {
   );
 }
 
-async function drivePi(scratch, baseUrl) {
-  const provider = await writePiProviderExtension(scratch, baseUrl);
+async function drivePi(scratch, model, toolName) {
+  const provider = await writePiProviderExtension(scratch, model.baseUrl, {
+    provider: model.provider,
+    model: model.name,
+    apiKey: model.key,
+  });
   return runProcess(
     "pi",
     [
       "--provider",
-      "hooknostic-playback",
+      model.provider,
       "--model",
-      "hooknostic-playback",
+      model.name,
       "-e",
       provider,
       "-e",
       join(scratch, "hooknostic-capture.ts"),
+      ...(toolName === undefined ? [] : ["--tools", toolName]),
       "--approve",
       "--no-session",
       "-p",
@@ -405,13 +411,16 @@ function writeOpencodeConfig(scratch, baseUrl, apiKey, modelLabel) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { harness: undefined, transport: "playback", scratch: undefined };
+  const opts = { harness: undefined, transport: "playback", scratch: undefined, piTool: undefined };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--transport") {
       opts.transport = argv[i + 1];
       i += 1;
     } else if (argv[i] === "--scratch") {
       opts.scratch = argv[i + 1];
+      i += 1;
+    } else if (argv[i] === "--pi-tool") {
+      opts.piTool = argv[i + 1];
       i += 1;
     } else {
       opts.harness = argv[i];
@@ -459,7 +468,7 @@ async function main() {
   }
   if (opts.harness === undefined || !["claude", "codex", "opencode", "pi"].includes(opts.harness)) {
     process.stderr.write(
-      `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|opencode|pi> [--transport playback|llm] [--scratch <dir>]\n`,
+      `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|opencode|pi> [--transport playback|llm] [--scratch <dir>] [--pi-tool powershell]\n`,
     );
     process.exit(2);
   }
@@ -467,11 +476,13 @@ async function main() {
     process.stderr.write(`unknown transport: ${opts.transport}\n`);
     process.exit(2);
   }
-  if (opts.harness === "pi" && opts.transport === "llm") {
-    console.error("Pi paid drift capture is not established; use --transport playback (inconclusive)");
-    process.exit(5);
+  if (
+    opts.piTool !== undefined &&
+    (opts.harness !== "pi" || opts.transport !== "playback" || opts.piTool !== "powershell")
+  ) {
+    process.stderr.write("--pi-tool currently supports only pi playback with powershell\n");
+    process.exit(2);
   }
-
   const scratch = prepareScratch(REPO, opts.harness, opts.scratch);
   console.log(`[drift] harness=${opts.harness} transport=${opts.transport} scratch=${scratch}`);
   if (opts.harness === "opencode") {
@@ -507,14 +518,29 @@ async function main() {
   // loopback server for the playback transport first.
   let server;
   if (opts.transport === "playback") {
-    server = await startModelPlayback(PLAYBACK_PROTOCOLS[opts.harness], "rewrite");
+    server = await startModelPlayback(
+      PLAYBACK_PROTOCOLS[opts.harness],
+      "rewrite",
+      opts.piTool === undefined ? undefined : [{ kind: "tool", toolName: opts.piTool }, { kind: "text" }],
+    );
     console.log(`[drift] loopback model at ${server.baseUrl}`);
   }
 
   let result;
   try {
     if (opts.harness === "pi") {
-      result = await drivePi(scratch, server.baseUrl);
+      result = await drivePi(
+        scratch,
+        opts.transport === "playback"
+          ? { baseUrl: server.baseUrl, provider: "hooknostic-playback", name: "hooknostic-playback", key: "playback" }
+          : {
+              baseUrl: `${modelSide.config.proxyUrl}/v1`,
+              provider: "hooknostic-drift",
+              name: modelSide.config.model,
+              key: modelSide.config.proxyKey,
+            },
+        opts.piTool,
+      );
     } else if (opts.harness === "claude") {
       const url =
         opts.transport === "playback"

@@ -5,7 +5,7 @@
 //
 // The input fixtures are the raw native event objects pi handed to the
 // extension handler, plus the ctx fields the shim receives (cwd, mode).
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -139,6 +139,14 @@ const cases = [];
 {
   const d = join(here, "captured-tool-error");
   cases.push(["tool-result-error", invocation(d, "tool_result")]);
+}
+// --- Windows powershell tool forced through loopback playback ---------------
+{
+  const d = join(here, "scratch", "powershell-playback", "captured");
+  if (existsSync(join(d, "tool_call.jsonl"))) {
+    cases.push(["tool-call-powershell", toolEnvelope(d, "tool_call", "powershell")]);
+    cases.push(["tool-result-powershell", toolEnvelope(d, "tool_result", "powershell")]);
+  }
 }
 // --- compact-cancel run ------------------------------------------------------
 {

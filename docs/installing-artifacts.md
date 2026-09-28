@@ -16,6 +16,7 @@ targets: {
   claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
   codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
   opencode: { version: ">=1.18 <2",  delivery: "project",  output: "./dist/opencode" },
+  pi:       { version: ">=0.84 <1",  delivery: "project",  output: "./dist/pi" },
 }
 ```
 
@@ -29,6 +30,8 @@ For repository integration, prefer [init, sync, and verify](project-integration.
 | `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
 | `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
 | `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
+| `pi` | `project` | `dist/pi/.pi/` | Project extension under `extensions/`, plus copied `skills/` |
+| `pi` | `package` | `dist/pi/` | npm package with a `pi` manifest declaring its bundled extension and skills |
 
 The `project` outputs are directory trees copied to a project root — their generated
 commands and loader paths resolve against the session's project directory. The
@@ -37,15 +40,36 @@ install cache.
 
 OpenCode also supports package delivery for both families; the v2 entry differs from v1. See [OpenCode families](opencode-families.md).
 
-### Scope: packages are user-level, trees are per-project
+## Pi
+
+For a repository, run `hooknostic sync` from the configured project. It writes
+`.pi/extensions/hooknostic.js` and copies selected skills to `.pi/skills/`.
+Start Pi in that project with `--approve`, or use Pi's normal project trust
+flow, and restart or `/reload` after rebuilding. The real Pi playback lane
+verifies that the skill reaches a model request and that the extension rewrites
+a shell command.
+
+For distribution, build the Pi package output and install its npm coordinate
+with `pi install -l npm:<name>@<version>` from the project where it should be
+listed. Pi's project trust flow may request `--approve` for a new project.
+The package's `pi` manifest declares its extension and skill paths. The
+playback lane checks both `pi install -l <local-path>` and an npm-coordinate
+install served by a local read-only registry; both routes load the skill and
+honor the compiled hook. This local registry test makes no publication claim.
+
+Pi 0.84.x has no native MCP channel, so Pi targets report MCP components as
+unsupported. The capability report also marks permission requests unsupported
+and non-string tool-output replacement approximate.
+
+### Scope of Claude, Codex, and OpenCode installations
 
 This is the first thing to settle when choosing between them, and it is a
 property of the harnesses, not of Hooknostic.
 
-**OpenCode is the exception, and it is the whole exception.** Its project plugins
+OpenCode project plugins
 live in `.opencode/plugins/`, read from the project directory with no install
 step, and even `opencode plugin <module>` takes `--global` with `default: false`.
-The rest of this section is about the other two.
+The rest of this section compares Claude and Codex.
 
 **Neither Claude nor Codex installs a plugin per project.** `codex plugin add` writes
 `[marketplaces.*]` and `[plugins."<name>@<marketplace>"]` into
@@ -57,8 +81,8 @@ skill, every MCP server — is offered in **every** session on that machine, and
 an installed skill is observable from an unrelated directory
 (`.capture/codex-plugin-hooks`).
 
-The repo-level trees are the opposite: `.codex/hooks.json` and
-`.opencode/plugins/` are read relative to the session's project directory and
+The repo-level trees are the opposite: `.codex/hooks.json`,
+`.opencode/plugins/`, and `.pi/extensions/` are read relative to the session's project directory and
 apply nowhere else.
 
 **A package may also be unnecessary for skills.** Codex discovers
@@ -458,8 +482,7 @@ published package's declared `dependencies` do resolve, unlike on the local-path
 route above. That does not make `components.runtimePackage` work here — the
 route reads the package's own generated manifest, not the separate runtime
 manifest that component supplies — and bundling remains the recommendation,
-because it is the only thing that works on all three OpenCode routes and on all
-three harnesses.
+because it works on all three OpenCode routes and across the harness adapters.
 
 > **An installed plugin does not follow new publications.** The cache directory
 > is named `@latest`, but it pins the exact version resolved at first load.

@@ -4,7 +4,7 @@
 Claude Code and Codex marketplaces, or maintain integrations directly in your repository.**
 
 Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
-Codex CLI**, and **OpenCode**. Adapters handle native packaging, component configuration,
+Codex CLI**, **OpenCode**, and **Pi**. Adapters handle native packaging, component configuration,
 project discovery, and lifecycle behavior. Before writing output, Hooknostic checks what
 each target can deliver and reports every compatibility shortfall.
 
@@ -19,7 +19,8 @@ hooks are outside the standard's v1 portable component set.
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
 TypeScript hooks ──────────┼─ check / build ─├─ Codex plugin       → marketplace
-Direct skills / MCP ───────┘                 └─ OpenCode package or project artifact
+Direct skills / MCP ───────┘                 ├─ OpenCode package or project artifact
+                                            └─ Pi package or project artifact
                                     sync ─────  native repository wiring
 ```
 
@@ -39,7 +40,7 @@ Before the first npm release, use the [local tarball installation](docs/publishi
 
 | Your goal | Workflow | Start here |
 | --- | --- | --- |
-| Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or OpenCode | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
+| Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or package manager | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
 | Maintain a repository | Keep portable hooks, skills, and MCP; `init --local`, `sync --dry-run`, `sync`, then `verify` | [Repository integration](docs/project-integration.md) |
 | Write portable hooks | Author one TypeScript entry and choose package or project delivery | [First hook walkthrough](docs/getting-started.md) |
 
@@ -118,7 +119,7 @@ export default definePlugin({
 });
 ```
 
-That one file blocks a destructive command on all three harnesses, and rewrites
+That one file blocks a destructive command on all four harnesses, and rewrites
 `npm` to `pnpm` on the ones that support input rewriting — falling back gracefully
 (and visibly) where they don't.
 
@@ -208,6 +209,9 @@ package hooks require a narrower version range than project hooks.
 and Linux observations are recorded separately. OpenCode v2 retains explicit limitations,
 including approximate context/stop behavior and incomplete MCP identity normalization;
 read [OpenCode families](docs/opencode-families.md) before relying on those capabilities.
+Pi supports project and package hooks and skills; its native MCP and permission
+channels are unsupported. See the [support table](docs/harness-support.md) and
+[installation guide](docs/installing-artifacts.md#pi).
 
 The default compatibility minimum is `emulated`. Unsupported components and degraded
 items fail by default; known standard deviations warn and remain visible in the report.

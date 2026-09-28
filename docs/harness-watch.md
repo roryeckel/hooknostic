@@ -54,7 +54,9 @@ Pi's free drift lane can be reproduced with
 It uses an isolated project and agent home, the passive `.capture/pi/` tee,
 and the same loopback provider as Pi playback. Captures stay under the printed
 scratch path; expected lifecycle and bash events are compared with Pi fixtures.
-Pi's generic `llm` driver is not wired and reports exit 5 (inconclusive).
+Pi's `llm` driver uses the same provider extension against the local LiteLLM
+proxy. A loopback proxy test verifies the wiring; a failed proxy probe reports
+exit 5 (inconclusive). The scheduled paid route has not yet been run.
 A direct Halogen Qwen live-provider check passed on the reference build;
 its procedure and limits are recorded in [the Pi capture notes](../.capture/pi/README.md).
 Its rolling record is maintained by the same recorder as the other lanes.

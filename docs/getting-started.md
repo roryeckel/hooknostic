@@ -5,7 +5,9 @@ coding agent. It's the long-form version of what the [tutorials](tutorials/) the
 on. Time: about 15 minutes.
 
 **Prerequisites:** Node.js 22.13 or newer, and at least one supported agent installed
-(Claude Code, OpenAI Codex CLI, or OpenCode).
+(Claude Code, OpenAI Codex CLI, OpenCode, or Pi). The sample config below uses
+the first three; [Pi installation](installing-artifacts.md#pi) covers its project
+and package routes.
 
 For a combined standards-based package, start with [packaging and marketplaces](tutorials/04-packaging-with-agent-plugins.md). For repository integration, use [init, sync, and verify](project-integration.md). This walkthrough retains the hooks-only authoring path.
 
@@ -117,7 +119,7 @@ HN201 capability unsupported
   fallback, exclude codex from this hook, or narrow the build target.
 ```
 
-Our force-push guard only needs `tool.before.block`, which all three harnesses support
+Our force-push guard only needs `tool.before.block`, which all three configured harnesses support
 exactly, so `check` passes clean. Put this command in CI.
 
 ## 5. Build

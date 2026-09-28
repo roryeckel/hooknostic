@@ -68,6 +68,13 @@ export const piAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           {
             version: "0.84.4",
             date: "2026-09-27",
+            method: "live-probe",
+            artifact: ".capture/pi/README.md",
+            what: "projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback",
+          },
+          {
+            version: "0.84.4",
+            date: "2026-09-27",
             method: "captured",
             artifact: ".capture/pi/README.md",
             what: "A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager.",

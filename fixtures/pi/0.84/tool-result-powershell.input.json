@@ -1,0 +1,21 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "powershell",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "(no output)"
+      }
+    ],
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\pi\\scratch\\powershell-playback",
+    "mode": "print"
+  }
+}

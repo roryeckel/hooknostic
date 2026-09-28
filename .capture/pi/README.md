@@ -58,21 +58,26 @@ available. The capture driver checks for the entry before starting Pi.
   toolResult/custom/thinking — no system role): a system-role entry appended
   to the returned `{messages}` is silently dropped by pi's AgentMessage→Message
   conversion before the provider request. The working per-request context
-  channel is a `custom` message, which the model sees verbatim (the
-  `model-request-before-context-add` scenario is recorded inconclusive for pi
-  for this reason — its assertion demands a system message).
+  channel is a `custom` message, which the provider receives as a user-role
+  message. Playback now checks the marker in every model request at that role.
 - The scheduled compaction scenario is recorded inconclusive for pi like the
   other three harnesses (loopback cannot fill a context window
   deterministically); the compaction cells are live-verified by the
   compact-cancel/compact-run probes above.
-- The installed **projected Agent Plugin** package was driven through
-  `pi install -l --approve <path>` in an isolated project and agent home,
-  using a loopback model server. Its skill description reached model input,
-  and its bundled hook rewrote a shell command (verified by the created file's
-  content). Removing the `pi.extensions` declaration made the same test execute
-  the original command, so mere package installation is not taken as evidence
-  that hooks ran. This is the local-path route; npm-published installation is
-  not established by this probe.
+- The projected Agent Plugin package was driven through both
+  `pi install -l --approve <path>` and `pi install -l --approve npm:<name>@<version>`
+  in isolated projects and agent homes. The npm route used `pnpm pack` and a
+  local read-only registry, with metadata and tarball requests observed. Both
+  routes loaded the skill into model input and honored the compiled hook's
+  shell rewrite. Removing `pi.extensions` made the local-path test execute
+  the original command. No public registry publication was attempted.
+- Project `sync` and `verify` were run in a fresh project. The generated
+  extension and skill were observed on disk; a real Pi loopback session saw
+  the skill description in model input and executed the hook's shell rewrite.
+- The Windows `powershell` tool was forced through `--tools powershell` with
+  loopback playback. Its live `tool_call` had input `{command}` and the
+  successful `tool_result` had the same input. Both payloads are curated in
+  `fixtures/pi/0.84/tool-*-powershell.*.json`.
 
 ## Captured facts (pi 0.84.4, Windows, 2026-09-27)
 
@@ -97,7 +102,7 @@ behavior or session artifacts, never by absence of harness errors.
 | `session_shutdown` | `{reason: "quit"\|"reload"\|"new"\|"resume"\|"fork", targetSessionFile?}` | captured |
 | preventStop channel | `pi.sendMessage({...}, {triggerTurn: true})` from `agent_settled` starts another agent turn (2× `agent_start`) — the turn.stop posting equivalent | verified by effect |
 | notify channel | `ctx.ui.notify` is TUI/RPC-only; in print mode (`hasUI: false`) it is a safe no-op (verified: session ran clean, no artifact) | captured + verified by effect |
-| Tool shapes | `bash`/`powershell` `{command, timeout?}` (no cwd key); `read` `{path, offset?, limit?}`; `write` `{path, content}`; `edit` `{path, edits: [{oldText, newText}]}`; `grep` `{pattern, path?, glob?, ignoreCase?, literal?, context?, limit?}`; `find` `{pattern, path?, limit?}`; `ls` `{path?, limit?}` | schema-derived (tools type defs) + captured (bash, write) |
+| Tool shapes | `bash`/`powershell` `{command, timeout?}` (no cwd key); `read` `{path, offset?, limit?}`; `write` `{path, content}`; `edit` `{path, edits: [{oldText, newText}]}`; `grep` `{pattern, path?, glob?, ignoreCase?, literal?, context?, limit?}`; `find` `{pattern, path?, limit?}`; `ls` `{path?, limit?}` | schema-derived (tools type defs) + captured (bash, powershell, write) |
 | Stale ctx | after compaction reload/session replacement, captured `ctx` is **stale** — using it logs "Extension error … ctx is stale". The shim must never cache ctx across such boundaries | captured (twice) |
 | Permission channel | **none exists** in the extension event surface (0.84.4 types enumerate all events; no permission event) | schema-derived |
 | Native MCP | **none** in the harness; MCP arrives via third-party extensions (the capture environment had `npm:pi-mcp-adapter` and `npm:pi-subagents` globally installed, which added `mcp`/`mcpScript`/`subagent` tools to the system prompt — environment contamination noted, not a harness fact) | schema-derived + captured (system prompt) |
@@ -118,6 +123,7 @@ After bundling the repository, run:
 
 ```sh
 node scripts/drive-capture-session.mjs pi --transport playback
+node scripts/drive-capture-session.mjs pi --transport playback --pi-tool powershell --scratch .capture/pi/scratch/powershell-playback
 ```
 
 This starts a loopback model server, loads the tee in passive mode, and drives
@@ -134,9 +140,13 @@ user-installed MCP/subagent tool snippets and repository skills/context files;
 the isolated fixture has neither. Both shapes remain evidence, rather than
 ignoring those fields in the comparator. Unmapped tee events are diagnostic
 only, and compaction/write/error variants not driven by this scenario are
-reported as not exercised. The generic `--transport llm` driver is not wired
-for Pi and returns exit 5 (inconclusive) before contacting a provider. The
-direct live-provider check below is separate from that automation route.
+reported as not exercised. `--pi-tool powershell` forces the alternate tool;
+the generic bash comparator then reports expected differences while the raw
+payloads remain available for curation. The `--transport llm` driver uses a
+local credential-isolating OpenAI-compatible proxy. A loopback proxy test
+verified the wiring and a failed-proxy test verified exit 5; a paid run
+through this route has not been performed. The direct live-provider check
+below is separate from that automation route.
 
 ### Halogen Qwen live-provider check (2026-09-27)
 

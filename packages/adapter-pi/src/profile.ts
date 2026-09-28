@@ -24,6 +24,13 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-09-27",
           method: "captured",
           artifact: "fixtures/pi/0.84",
+          what: "Windows --tools powershell loopback session captured the native {command} tool_call and tool_result payloads; shell normalization now uses that observed key",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/pi/0.84",
           what: "before-agent-start-isolated: before_agent_start captured in a fresh project and agent home against the loopback model: no user skills, context files, or third-party tool snippets; retained alongside the original populated fixture",
         },
         {

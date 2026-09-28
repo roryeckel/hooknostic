@@ -1208,19 +1208,26 @@ export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string
  * credentials and spends nothing. Same mechanism as .capture/pi's
  * provider-ollama.ts (verified live against 0.84.4).
  */
-export async function writePiProviderExtension(artifactDir: string, baseUrl: string): Promise<string> {
+export async function writePiProviderExtension(
+  artifactDir: string,
+  baseUrl: string,
+  options: { provider?: string; model?: string; apiKey?: string } = {},
+): Promise<string> {
+  const provider = options.provider ?? "hooknostic-playback";
+  const model = options.model ?? "hooknostic-playback";
+  const apiKey = options.apiKey ?? "playback";
   const path = join(artifactDir, "playback-provider.js");
   await writeFile(
     path,
     `export default function (pi) {
-  pi.registerProvider("hooknostic-playback", {
+  pi.registerProvider(${JSON.stringify(provider)}, {
     baseUrl: ${JSON.stringify(baseUrl)},
-    apiKey: "playback",
+    apiKey: ${JSON.stringify(apiKey)},
     api: "openai-completions",
     models: [
       {
-        id: "hooknostic-playback",
-        name: "hooknostic playback",
+        id: ${JSON.stringify(model)},
+        name: ${JSON.stringify(model)},
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
