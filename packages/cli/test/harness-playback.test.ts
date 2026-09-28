@@ -1079,9 +1079,10 @@ function requestsWithoutMarker(requests: readonly unknown[], marker: string): nu
 // --- pty-approval lane ----------------------------------------------------
 // Interactive-only cells (Claude permission.request.*, tool.before
 // requestApproval) need a real pseudo-terminal: headless `-p` sessions decide
-// without prompting. The drive starts the interactive TUI under node-pty,
-// walks the first-run dialogs, sends a prompt whose scripted tool call trips
-// the approval prompt, and lets the hook answer it â€” proven by the trace.
+// without prompting. The drive starts the interactive TUI under node-pty in
+// the prompting permission mode, walks the first-run dialogs, sends a prompt
+// whose scripted tool call trips the approval prompt, and lets the hook answer
+// it — proven by the trace.
 let ptyModule: { spawn: (...args: readonly unknown[]) => IPty } | undefined;
 const nodePty = (): { spawn: (...args: readonly unknown[]) => IPty } =>
   createRequire(import.meta.url)("node-pty") as { spawn: (...args: readonly unknown[]) => IPty };
@@ -1117,14 +1118,68 @@ function claudeBinaryPath(): string {
   throw new Error("claude binary not found: set HOOKNOSTIC_CLAUDE_BIN or add claude to PATH");
 }
 
+// The pty drives need the prompting permission mode, and they no longer get it
+// by default: 2.1.283 starts interactive sessions in auto mode, which settles
+// the scripted Bash call without a prompt, so PermissionRequest never fires.
+// `--permission-mode manual` selects the prompting mode on 2.1.238 and 2.1.283
+// alike (hook payloads carry permission_mode "default" and PermissionRequest
+// fires). See .capture/claude-permission-mode.
+const CLAUDE_PTY_PERMISSION_ARGS = ["--permission-mode", "manual"] as const;
+
 function spawnClaudePty(args: string[], options: Parameters<typeof ptySpawn>[2]): IPty {
   const binary = claudeBinaryPath();
+  const argv = [...CLAUDE_PTY_PERMISSION_ARGS, ...args];
   // A Windows npm shim is a batch file, which ConPTY cannot execute directly.
   // Let cmd interpret the shim; native executables still run directly.
   return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(binary)
-    ? ptyModule!.spawn(process.env["ComSpec"] ?? "cmd.exe", ["/d", "/c", binary, ...args], options)
-    : ptyModule!.spawn(binary, args, options);
+    ? ptyModule!.spawn(process.env["ComSpec"] ?? "cmd.exe", ["/d", "/c", binary, ...argv], options)
+    : ptyModule!.spawn(binary, argv, options);
 }
+
+/**
+ * The inherited environment for a pty drive: no credentials, and none of an
+ * enclosing Claude session's variables, so the drive starts a fresh top-level
+ * session as CI does. Run from inside Claude, the child otherwise inherits the
+ * parent's markers: the harness sets CLAUDECODE, CLAUDE_CODE_CHILD_SESSION,
+ * CLAUDE_CODE_SESSION_ID and CLAUDE_PID on its child processes (2.1.283 adds
+ * CLAUDE_CODE_SESSION_ATTENDED, so the set grows), and an inherited
+ * CLAUDE_CODE_CHILD_SESSION turns transcript saving off. An inherited
+ * CLAUDE_CODE_ENTRYPOINT replaces the "cli" the harness would compute, and an
+ * inherited CLAUDE_CODE_MESSAGING_SOCKET is registered as the child's own. So
+ * every CLAUDECODE and CLAUDE_* variable goes, plus
+ * AI_AGENT and TRACEPARENT from the same child-environment builder; the drive
+ * sets what it needs. CLAUDE_CODE_GIT_BASH_PATH stays: it locates the Windows
+ * shell the harness needs, not a session.
+ */
+function withoutClaudeSession(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(env)) {
+    const inherited =
+      name === "CLAUDECODE" || name === "AI_AGENT" || name === "TRACEPARENT" || name.startsWith("CLAUDE_");
+    if (!inherited || name === "CLAUDE_CODE_GIT_BASH_PATH") result[name] = value;
+  }
+  return result;
+}
+
+describe("Claude PTY environment", () => {
+  it("drops an enclosing Claude session's variables and keeps the rest", () => {
+    expect(
+      withoutClaudeSession({
+        PATH: "/bin",
+        CLAUDECODE: "1",
+        CLAUDE_CODE_CHILD_SESSION: "1",
+        CLAUDE_CODE_SESSION_ID: "outer",
+        CLAUDE_CODE_SESSION_ATTENDED: "1",
+        CLAUDE_PID: "1234",
+        CLAUDE_CODE_ENTRYPOINT: "claude-desktop",
+        CLAUDE_CODE_MESSAGING_SOCKET: "outer.sock",
+        AI_AGENT: "agent",
+        TRACEPARENT: "00-outer",
+        CLAUDE_CODE_GIT_BASH_PATH: "C:\\Git\\bin\\bash.exe",
+      }),
+    ).toEqual({ PATH: "/bin", CLAUDE_CODE_GIT_BASH_PATH: "C:\\Git\\bin\\bash.exe" });
+  });
+});
 
 // Constructed playback-only state. See .capture/harness-playback/README.md.
 async function prepareClaudePtyConfig(dir: string): Promise<string> {
@@ -1255,6 +1310,18 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
       // The preselected trust entry moved between versions (2.1.238 fresh
       // defaults to "Yes"; the walk must not assume it).
       await confirmDialogSelection(pty, screen, "Yes,Itrustthisfolder");
+    } else if (
+      !handled.has("classifier-billing") &&
+      current.includes("changingautomodetonolongerchargeforclassifierrequests")
+    ) {
+      handled.add("classifier-billing");
+      // 2.1.283 in auto mode renders this notice because its requests go
+      // through the loopback address, which the notice names. Captured only
+      // after the first tool call's PreToolUse, and never in the forced
+      // prompting mode; walked here by marker so a build that renders it
+      // earlier cannot stall the walk. Enter continues ("Nothing breaks").
+      pty.write("\r");
+      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
     } else if (mainPromptVisible(plainScreen)) {
       // Onboarding is done when the main TUI input line renders. Check this
       // only after known dialogs so stale frames cannot hide a later dialog.
@@ -1264,6 +1331,30 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
     }
   }
 }
+
+describe("Claude PTY first-run walk", () => {
+  it("continues past the auto-mode classifier billing notice", async () => {
+    // Whitespace-stripped frame as 2.1.283 rendered it in
+    // .capture/claude-permission-mode (the port is the loopback's).
+    let frame =
+      "We'rechangingautomodetonolongerchargeforclassifierrequestsinClaudeCode." +
+      "However,thissessionisn'teligiblebecauseyourrequestsgothrough127.0.0.1:52840," +
+      "whichisn'tcompatiblewiththisupdate.Nothingbreaks:automodekeepsworking," +
+      "anditsclassifierrequestsarebilledasbefore.Tofixitandaccessthenewversionofautomode," +
+      "askyourgatewaytoimplement:https://code.claude.com/docs/en/auto-mode-classifier-billing" +
+      "Entertocontinue·Esctocancel";
+    const writes: string[] = [];
+    const pty = {
+      write: (data: string) => {
+        writes.push(data);
+        if (data === "\r") frame += "❯ ? for shortcuts";
+      },
+      kill: () => {},
+    } as unknown as IPty;
+    await walkFirstRunDialogs(pty, () => frame, 5_000);
+    expect(writes).toEqual(["\r"]);
+  });
+});
 
 describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || "disabled"}`, () => {
   it("uses exactly the captured reference harness version", async () => {
@@ -2655,7 +2746,7 @@ scenarioDrive(
         rows: 34,
         cwd: dir,
         env: {
-          ...withoutCredentials(),
+          ...withoutClaudeSession(withoutCredentials()),
           CLAUDE_CONFIG_DIR: configDir,
           ANTHROPIC_API_KEY: "hooknostic-playback",
           ANTHROPIC_BASE_URL: server.baseUrl,
@@ -2795,7 +2886,7 @@ scenarioDrive(
         rows: 34,
         cwd: dir,
         env: {
-          ...withoutCredentials(),
+          ...withoutClaudeSession(withoutCredentials()),
           CLAUDE_CONFIG_DIR: configDir,
           ANTHROPIC_API_KEY: "hooknostic-playback",
           ANTHROPIC_BASE_URL: server.baseUrl,
