@@ -113,6 +113,38 @@ because Codex has no equivalent native field.
   default form in a remote URL or header is now rejected, like the other
   references Codex cannot represent. It used to be sent on as literal text.
 
+## Amendment — 2026-09-28: linked git worktrees
+
+- **Project wiring a harness reads from the root checkout warns HN107.** Codex
+  0.156.1 never loads a linked worktree's own `.codex/hooks.json`, trusted or
+  nested, and runs the root checkout's instead (`.capture/codex-worktree-hooks`).
+  So `sync` into a linked worktree wrote correct wiring that no session there
+  would run, and nothing said so.
+- **A warning, not an error.** The written file is still the right content, and
+  it takes effect once it reaches the root checkout by merge or by a sync there.
+  Refusing would block the normal branch workflow and protect nothing.
+- **Detected in `runProject`, so `sync`, `sync --dry-run`, `verify`, and `doctor`
+  all report it.** `doctor` is where it matters most: Codex prints hook lines
+  for the root checkout's hooks, so a worktree session looks hooked.
+- **Adapters declare the affected paths.** `rootCheckoutProjectPaths` on the
+  adapter lists them. Core warns only when a target's integration writes one of
+  them. Codex declares `.codex/hooks.json` alone. Its other `config.toml` keys
+  stay per-worktree in source, and that is not captured. Claude Code and
+  OpenCode declare nothing: their worktree behaviour is uncaptured, and absence
+  means "not captured", not "read in place".
+- **Detection mirrors the harness, not `git`.** Codex decides from files
+  (codex-rs `resolve_root_git_project_for_trust`, rust-v0.140.0 through
+  0.156.1). It never runs `git`, and it declines bare repositories and metadata
+  that does not point back at the checkout. Core follows the same steps on
+  ordinary paths, including which checks follow symlinks. Anything
+  unverifiable reports no worktree, so the warning errs towards silence. One
+  divergence remains, source-derived and unmirrored: Codex carries paths as
+  URIs and cannot walk up from a drive-shaped POSIX path such as `/C:/repo`.
+  Core would warn there, and Codex would not redirect. The message names the
+  root checkout and the file Codex reads there.
+  For a project root below the worktree top, that file sits at the same
+  relative directory in the root checkout. This mapping is source-derived.
+
 ## Boundaries
 
 Hooknostic compiles artifacts and optionally reconciles explicitly configured

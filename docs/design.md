@@ -620,7 +620,10 @@ it -- one `mcp.json` does not declare, or a remote server with no child to
 receive a value -- so nothing is forwarded for that name. **HN106** an emitted
 Agent Plugin component instance that the target harness treats differently from
 the specification. Each is a deviation declared on the adapter's profile, and it
-is fatal under `components.onDeviation: "error"` (ADR-0019).
+is fatal under `components.onDeviation: "error"` (ADR-0019). **HN107** project
+wiring was written into a linked git worktree at a path the harness reads from the
+root checkout instead, currently Codex's `.codex/hooks.json`. It is a warning, and
+the message names the root checkout (ADR-0015).
 
 #### HN502 — bundled CLI entry point
 

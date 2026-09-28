@@ -98,8 +98,9 @@ a missing tool call.
 - Codex prints `hook: <Event>` lines for the root checkout's hooks, so a worktree
   session looks hooked. Verify by effect, as `docs/installing-artifacts.md`
   already says for skipped hooks.
-- Recorded in the Codex profile and in `docs/installing-artifacts.md`. Hooknostic
-  itself does not yet detect the situation.
+- Recorded in the Codex profile and in `docs/installing-artifacts.md`. Project
+  commands (`sync`, `verify`, `doctor`) warn HN107 when they wire Codex hooks
+  into a linked worktree, and name the root checkout (ADR-0015).
 
 ## Limits
 

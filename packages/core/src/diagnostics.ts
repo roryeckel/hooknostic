@@ -18,6 +18,7 @@ export const DIAGNOSTIC_CODES = {
   HN104: "declared executable mode not applicable to a source discovered in place",
   HN105: "declared MCP environment cannot be forwarded",
   HN106: "Agent Plugin behavior deviates from the specification",
+  HN107: "project wiring is read from the root checkout, not this linked worktree",
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",

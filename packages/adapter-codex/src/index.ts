@@ -85,6 +85,9 @@ export function codexAdapter(): HarnessAdapter {
     adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
     projectPaths: [".codex/hooks.json", ".codex/config.toml", ".agents/skills"],
+    // Live-probed on 0.156.1 (.capture/codex-worktree-hooks). config.toml's
+    // other keys stay per-worktree in source, so only hooks are declared.
+    rootCheckoutProjectPaths: [".codex/hooks.json"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,

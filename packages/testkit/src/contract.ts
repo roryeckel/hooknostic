@@ -63,6 +63,9 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       if (!adapter.supportedDeliveries().includes("project")) return;
       expect(adapter.projectIntegration).toBeTypeOf("function");
       expect(adapter.projectPaths?.length).toBeGreaterThan(0);
+      // HN107 matches these against what integration writes, so a path the
+      // adapter never writes would silently never warn.
+      for (const path of adapter.rootCheckoutProjectPaths ?? []) expect(adapter.projectPaths).toContain(path);
       expect(adapter.projectComponents).toBeTypeOf("function");
       expect(adapter.projectComponentProfiles?.length).toBeGreaterThan(0);
       for (const profile of adapter.projectComponentProfiles ?? []) {
