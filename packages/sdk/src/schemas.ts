@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ALL_CAPABILITY_IDS } from "./capabilities.js";
 import type { PackageMaterializer } from "./config.js";
 import { HOOK_EVENT_NAMES } from "./events.js";
+import { ALL_EVENT_FIELD_IDS, isEventFieldId } from "./fields.js";
 import { findNonJsonPath } from "./json.js";
 import { SUPPORT_LEVELS } from "./support.js";
 import { TOOL_KINDS } from "./tools.js";
@@ -19,6 +20,18 @@ export const capabilityIdSchema = z.enum(ALL_CAPABILITY_IDS);
 export const supportLevelSchema = z.enum(SUPPORT_LEVELS);
 export const requirementLevelSchema = z.enum(["required", "optional"]);
 export const toolKindSchema = z.enum(TOOL_KINDS);
+export const eventFieldIdSchema = z.enum(ALL_EVENT_FIELD_IDS as [string, ...string[]]);
+
+/** `<adapter>:<field id>`: an adapter id as `components.accept` spells one, then a registered field. */
+const fieldAcceptanceSchema = z.string().refine(
+  (value) => {
+    const colon = value.indexOf(":");
+    return (
+      colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1))
+    );
+  },
+  { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" },
+);
 
 // Node clamps longer delays to 1 ms, causing hooks to time out immediately.
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -130,6 +143,7 @@ export const compatibilityPolicySchema = z
     minimum: supportLevelSchema.optional(),
     onBelowMinimum: z.enum(["error", "warn"]).optional(),
     optionalUnavailable: z.enum(["info", "warn", "silent"]).optional(),
+    accept: z.array(fieldAcceptanceSchema).optional(),
   })
   .strict();
 
@@ -435,6 +449,7 @@ export const hookDefinitionSchema = z
     // and would time the hook out permanently.
     timeoutMs: z.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
     capabilities: z.record(capabilityIdSchema, requirementLevelSchema),
+    fields: z.array(eventFieldIdSchema).optional(),
     run: z.custom<(...args: never[]) => unknown>((v) => typeof v === "function", {
       message: "run must be a function",
     }),

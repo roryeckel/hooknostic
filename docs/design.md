@@ -642,7 +642,11 @@ the specification. Each is a deviation declared on the adapter's profile, and it
 is fatal under `components.onDeviation: "error"` (ADR-0019). **HN107** project
 wiring was written into a linked git worktree at a path the harness reads from the
 root checkout instead, currently Codex's `.codex/hooks.json`. It is a warning, and
-the message names the root checkout (ADR-0015).
+the message names the root checkout (ADR-0015). **HN108** a hook declares an optional
+event field (`fields`) that the target produces below exact: an error where the field
+is never produced, the `onBelowMinimum` severity where its level is below
+`compatibility.minimum`, information otherwise or when accepted by id in
+`compatibility.accept` (ADR-0027).
 
 #### HN502 — bundled CLI entry point
 

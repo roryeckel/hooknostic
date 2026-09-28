@@ -147,6 +147,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
+    // Optional event fields (ADR-0027). Tool callbacks carry callID; the
+    // permission.asked bus event carries tool.callID.
+    fields: {
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+    },
     matrix: {
       "session.start.observe": {
         level: "emulated",

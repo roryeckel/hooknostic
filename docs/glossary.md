@@ -124,6 +124,13 @@ items it still emits, such as an OpenCode skill it cannot name for its plugin. D
 the adapter's profile under a qualified id such as `opencode:skill-name-unqualified`,
 reported as HN101, and fatal by default under `components.onDegraded` (ADR-0022).
 
+**Event field** — an optional part of a normalized event, such as `turn.stop`'s
+`lastMessage` or `correlation.turnId`, named by an event-scoped id like
+`turn.stop.lastMessage`. Each adapter rates each field per version range, like a
+capability; a hook lists the fields it reads in `fields`, and one a target cannot
+produce exactly is reported as HN108. Accepted by a qualified id such as
+`opencode:turn.stop.correlation.turnId` in `compatibility.accept` (ADR-0027).
+
 **Root checkout** — the main working tree of a git repository, as opposed to a linked
 worktree made by `git worktree add`. Codex reads project hooks from the root checkout
 even for a session in a linked worktree, so project wiring synchronized into a

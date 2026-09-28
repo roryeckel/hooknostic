@@ -254,6 +254,36 @@ describe("hooknostic dispatch", () => {
     expect(broken.err()).toMatch(/^line 2: not JSON .*\nline 3: not JSON /);
   });
 
+  it("refuses a field the target's decoder never produces, and admits one it derives", async () => {
+    // ADR-0027: the consumer case -- a turn.stop test carried a lastMessage to a
+    // target whose decoder could not produce one, and passed.
+    const dir = await project(HOOKS);
+    const refused = async (target: string, events: unknown[]) => {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events,
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      return outcome.ok ? [] : outcome.errors;
+    };
+    expect(await refused("claude", [{ event: "turn.stop", correlation: { parentAgentId: "a" } }])).toEqual([
+      "event 1: turn.stop.correlation.parentAgentId is never produced by the claude decoder for this target's version range; omit it (see `hooknostic inspect claude`)",
+    ]);
+    expect(await refused("claude", [{ event: "turn.stop", correlation: { toolCallId: "t" } }])).toEqual([
+      'event 1: turn.stop has no field "correlation.toolCallId"',
+    ]);
+    expect(await refused("codex", [{ event: "session.start", correlation: { turnId: "t" } }])).toEqual([
+      "event 1: session.start.correlation.turnId is never produced by the codex decoder for this target's version range; omit it (see `hooknostic inspect codex`)",
+    ]);
+    const turn = { event: "turn.stop", lastMessage: "done", correlation: { turnId: "msg_1" } };
+    expect(await refused("claude", [turn])).toEqual([]);
+    expect(await refused("opencode", [turn])).toEqual([
+      "event 1: turn.stop.lastMessage is never produced by the opencode decoder for this target's version range; omit it (see `hooknostic inspect opencode`)",
+    ]);
+  });
+
   it("refuses a target the hooks could not be built for", async () => {
     const dir = await project(`
       import { definePlugin, hook, notify } from "@hooknostic/sdk";

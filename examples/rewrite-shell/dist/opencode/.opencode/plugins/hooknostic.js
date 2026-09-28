@@ -112,6 +112,49 @@ var HOOK_EVENT_NAMES = [
   "agent.stop",
   "turn.stop"
 ];
+var TOOL_SCOPED_EVENTS = [
+  "tool.before",
+  "tool.after",
+  "tool.error",
+  "permission.request"
+];
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
+
+// ../../packages/sdk/dist/fields.js
+var OPTIONAL_EVENT_FIELDS = {
+  "session.start": ["how"],
+  "session.end": ["reason"],
+  "prompt.before": [],
+  "model.request.before": [],
+  "tool.before": [],
+  "tool.after": [],
+  "tool.error": ["error.message"],
+  "permission.request": [],
+  "context.compact.before": ["trigger"],
+  "context.compact.after": [],
+  "agent.start": ["agent.id", "agent.type"],
+  "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+  "turn.stop": ["lastMessage"]
+};
+var CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+var TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+var ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+var FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/hook.js
 function hookAppliesToTarget(hook2, targetId) {
@@ -135,6 +178,18 @@ function canonicalCapabilities(event, hookId, declared) {
   }
   return canonical;
 }
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const def = {
     event,
@@ -148,6 +203,8 @@ function hook(event, spec) {
     def.targets = spec.targets;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 
@@ -4433,6 +4490,11 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+var fieldAcceptanceSchema = external_exports.string().refine((value) => {
+  const colon = value.indexOf(":");
+  return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+}, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
 var MAX_TIMER_DELAY_MS = 2147483647;
 var packageMaterializerSchema = external_exports.custom((value) => {
   if (typeof value !== "object" || value === null)
@@ -4502,7 +4564,8 @@ var effectSchema = external_exports.discriminatedUnion("kind", [
 var compatibilityPolicySchema = external_exports.object({
   minimum: supportLevelSchema.optional(),
   onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+  accept: external_exports.array(fieldAcceptanceSchema).optional()
 }).strict();
 var runtimePolicySchema = external_exports.object({
   onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4730,6 +4793,7 @@ var hookDefinitionSchema = external_exports.object({
   // and would time the hook out permanently.
   timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+  fields: external_exports.array(eventFieldIdSchema).optional(),
   run: external_exports.custom((v) => typeof v === "function", {
     message: "run must be a function"
   })

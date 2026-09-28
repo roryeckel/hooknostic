@@ -80,6 +80,15 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         // scheduled-playback:end
       ],
     },
+    // Optional event fields (ADR-0027), as the captured tool and permission
+    // fixtures in fixtures/opencode/2.0 carry them.
+    fields: {
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+      "tool.error.error.message": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+    },
     matrix: {
       "session.start.observe": {
         level: "approximate",

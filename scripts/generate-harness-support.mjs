@@ -79,6 +79,15 @@ for (const adapter of adapters) {
     }
   }
   lines.push("");
+  // Optional event fields (ADR-0027): what a hook declaring `fields` gets here.
+  // A field this table omits is never produced, and a hook that declares it
+  // fails the build with HN108 unless the author accepts it.
+  lines.push("#### Optional event fields", "");
+  lines.push("| Field | Support | Rationale |", "| --- | --- | --- |");
+  for (const [field, support] of Object.entries(resolution.fields ?? {})) {
+    lines.push(`| \`${field}\` | ${support.level} | ${support.rationale ?? "—"} |`);
+  }
+  lines.push("", "Fields not listed are never produced; declaring one reports `HN108`.", "");
   if (adapter.projectComponentProfiles) {
     lines.push("#### Project delivery", "");
     componentTables(

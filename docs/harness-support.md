@@ -35,6 +35,40 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.283 | 2026-09-27 | captured | `fixtures/claude/2.1` | Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised |
 | 2.1.283 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `session.end.correlation.turnId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.turnId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `tool.error.correlation.turnId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.turnId` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `context.compact.before.correlation.turnId` | exact | — |
+| `context.compact.after.correlation.turnId` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.turnId` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.turnId` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `turn.stop.lastMessage` | exact | — |
+| `turn.stop.correlation.turnId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
+
 #### Project delivery
 
 | Component | Support | Rationale |
@@ -121,6 +155,35 @@ Projection validation records:
 | 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-worktree-hooks` | In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at all when that has none. A Codex artifact generated into a linked worktree is inert there. |
 | 0.156.1 | 2026-09-27 | captured | `fixtures/codex/0.148` | apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path |
 | 0.158.0 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `prompt.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.turnId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.turnId` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `context.compact.before.correlation.turnId` | exact | — |
+| `context.compact.after.correlation.turnId` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.turnId` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.turnId` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `turn.stop.lastMessage` | exact | — |
+| `turn.stop.correlation.turnId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
@@ -232,6 +295,16 @@ Projection validation records:
 | 1.18.33 | 2026-09-29 | captured | `fixtures/opencode/1.18` | chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated |
 | 1.18.33 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
+
 #### Project delivery
 
 | Component | Support | Rationale |
@@ -308,6 +381,18 @@ Projection validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks. |
 | 2.0.17 | 2026-09-27 | captured | `fixtures/opencode/2.0` | A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch) |
 | 2.0.18 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 

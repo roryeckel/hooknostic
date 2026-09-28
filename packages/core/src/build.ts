@@ -114,6 +114,16 @@ export interface BuildTargetReport {
   requestedVersion: string;
   output: string;
   capabilities: Record<SupportLevel, number>;
+  /**
+   * Declared event fields this target produces below exact, accepted or not,
+   * each qualified as `<adapter>:<field id>` (ADR-0027). Present when any.
+   */
+  fields?: {
+    id: string;
+    hookId: string;
+    support: SupportLevel;
+    accepted: boolean;
+  }[];
   artifacts?: string[];
   projection?: AgentPluginTargetReport;
   project?: {
@@ -809,6 +819,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       requestedVersion: target.requestedVersion,
       output: config.targets[id]?.output ?? "",
       capabilities: target.counts,
+      ...(target.fields.length === 0
+        ? {}
+        : {
+            fields: target.fields.map(({ id, hookId, support, accepted }) => ({ id, hookId, support, accepted })),
+          }),
     };
     if (
       components !== undefined &&

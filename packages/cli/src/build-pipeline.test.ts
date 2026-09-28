@@ -98,6 +98,46 @@ const mainGuardSource = `import { pathToFileURL } from "node:url";
    }
    export default definePlugin({ name: "p", hooks: [hook("session.start", { id: "s", async run() {} })] });`;
 
+describe("event field shortfalls in the build report (ADR-0027)", () => {
+  it("records every declared field below exact, accepted or failing", async () => {
+    const dir = await project();
+    await writeFile(
+      join(dir, "hooks.ts"),
+      `import { definePlugin, hook } from "@hooknostic/sdk";
+       export default definePlugin({ name: "p", hooks: [
+         hook("session.start", { id: "s", fields: ["how", "correlation.turnId"], async run() {} }),
+       ] });`,
+      "utf8",
+    );
+    const adapter = fake({
+      profiles: [{ ...PROFILE, fields: { "session.start.how": { level: "emulated", rationale: "inferred" } } }],
+    });
+    const failing = await build(dir, adapter);
+    expect(failing.ok).toBe(false);
+    expect(failing.report.targets["fake"]?.fields).toEqual([
+      { id: "fake:session.start.how", hookId: "s", support: "emulated", accepted: false },
+      { id: "fake:session.start.correlation.turnId", hookId: "s", support: "unsupported", accepted: false },
+    ]);
+    expect(failing.report.diagnostics.filter((d) => d.code === "HN108").map((d) => d.severity)).toEqual([
+      "info",
+      "error",
+    ]);
+
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        entry: "./hooks.ts",
+        compatibility: { accept: ["fake:session.start.correlation.turnId"] },
+        targets: { fake: { version: ">=1.0 <2", delivery: "package", output: "./dist/fake" } },
+      };`,
+      "utf8",
+    );
+    const accepted = await build(dir, adapter);
+    expect(accepted.ok).toBe(true);
+    expect(accepted.report.targets["fake"]?.fields?.map((f) => f.accepted)).toEqual([false, true]);
+  });
+});
+
 describe("build pipeline hardening", () => {
   it("keeps target aliases out of staging paths and preserves their report identities", async () => {
     const dir = await project();

@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:9954fb2702edc17fd0a8b31a8714f2ec10e772a363da196d6ad6c3179cd7c9c3",
+        "contentDigest": "sha256:073dce1f147e8db29052cd22494093655494aa99168ab2d268ea676435125104",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:1c878f308410df6b99ccfecf3b2b75dbd40508fef69b6054d70314858d238c63",
+        "contentDigest": "sha256:1c53109d8335555aaf0f9e7c2592ba61602e5947263b7b5c6023038d1c6980dc",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -118,7 +118,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:216a6b68a7b9f805939adeb2be2c8b8974ad35f8f58c1e269ab0063c0f62a79e",
+        "contentDigest": "sha256:b0506631883cd3355a963c122639ac12028858bb4e58f922f787aee83f1b17d9",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -173,7 +173,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:077c703761e26d14f7b70e65686bb4c3218100a671af3390f8de790c4e8af781",
+        "contentDigest": "sha256:459039feef70e39904fafa8e592ba2173a0144997f250dbe24248a70ffee58f1",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",

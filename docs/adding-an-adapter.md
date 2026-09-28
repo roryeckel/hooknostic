@@ -103,6 +103,11 @@ profile for a broad range.
 
 - **Tolerant reader**: validate only what the canonical event needs; keep the
   whole native payload in `raw`; never invent correlation IDs.
+- **Rate every optional field you set** in the profile's `fields` matrix
+  (ADR-0027): `exact` when the native payload carries it, a lower level with a
+  rationale when the adapter derives it. The contract suite requires every
+  field a canonical fixture carries to be rated and every rating to be carried
+  by a fixture; an unrated field is one `hooknostic dispatch` refuses.
 - **Strict writer**: emit only documented native fields; preserve
   event-specific blocking distinctions (e.g. never exit-2 where the harness
   doesn't honor it).

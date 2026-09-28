@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import type {
   AdapterRegistry,
   EvaluateOptions,
+  FieldMatrix,
   HarnessAdapter,
   NativeHookResult,
   StagedUserModule,
@@ -21,8 +22,8 @@ import {
   targetSpecFromConfig,
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
-import type { HookEvent, HookEventName, HookResult, PluginSpec } from "@hooknostic/sdk";
-import { baseHookEventSchema, isToolScopedEvent } from "@hooknostic/sdk";
+import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec } from "@hooknostic/sdk";
+import { baseHookEventSchema, fieldsForEvent, isToolScopedEvent, readEventField } from "@hooknostic/sdk";
 
 import type { CommandIO } from "./check.js";
 
@@ -115,7 +116,11 @@ const DERIVED_TOOL_FIELDS = ["kind", "mcp", "shell"];
  * declares them, and the tool is the target's classification of its name and
  * input.
  */
-function completeEvent(value: unknown, adapter: HarnessAdapter): { event: HookEvent } | { problem: string } {
+function completeEvent(
+  value: unknown,
+  adapter: HarnessAdapter,
+  fieldMatrix: FieldMatrix,
+): { event: HookEvent } | { problem: string } {
   if (!isRecord(value)) return { problem: "an event must be a JSON object" };
   for (const key of ["harness", "session", "correlation", "tool"]) {
     if (value[key] !== undefined && !isRecord(value[key])) return { problem: `${key} must be an object` };
@@ -151,6 +156,21 @@ function completeEvent(value: unknown, adapter: HarnessAdapter): { event: HookEv
   for (const [field, check] of Object.entries(fields)) {
     const problem = check(value[field]);
     if (problem !== undefined) return { problem: `${field} ${problem}` };
+  }
+  // An optional field the target's decoder never sets is one no hook there can
+  // receive (ADR-0027), so a test may not hand it one either.
+  const registered = fieldsForEvent(name);
+  for (const key of Object.keys(envelope.data.correlation)) {
+    if (!registered.includes(`correlation.${key}`)) return { problem: `${name} has no field "correlation.${key}"` };
+  }
+  for (const path of registered) {
+    if (readEventField(event, path) === undefined) continue;
+    const id = `${name}.${path}` as EventFieldId;
+    if (fieldMatrix[id] === undefined) {
+      return {
+        problem: `${id} is never produced by the ${adapter.id} decoder for this target's version range; omit it (see \`hooknostic inspect ${adapter.id}\`)`,
+      };
+    }
   }
   if (tool === undefined) return { event: event as unknown as HookEvent };
 
@@ -195,9 +215,11 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
   let adapter = options.registry[adapterId];
   if (adapter === undefined)
     return { ok: false, errors: [`no adapter is registered as ${JSON.stringify(adapterId)}.`] };
-  const selected = resolveTargetAdapter(adapter, targetSpecFromConfig(options.target, targetConfig));
+  const spec = targetSpecFromConfig(options.target, targetConfig);
+  const selected = resolveTargetAdapter(adapter, spec);
   if (!selected.adapter) return { ok: false, errors: selected.diagnostics.map((d) => `${d.code}: ${d.message}`) };
   adapter = selected.adapter;
+  const resolved = adapter.capabilities(spec);
   if (config.entry === undefined) {
     return { ok: false, errors: ["the configuration declares no entry, so there are no hooks to dispatch."] };
   }
@@ -205,7 +227,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
   const events: HookEvent[] = [];
   const problems: string[] = [];
   options.events.forEach((value, index) => {
-    const completed = completeEvent(value, adapter);
+    const completed = completeEvent(value, adapter, resolved.fields ?? {});
     if ("event" in completed) events.push(completed.event);
     else problems.push(`event ${index + 1}: ${completed.problem}`);
   });
@@ -235,9 +257,7 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     const pluginRoot = hookPluginRoot(config, configDir, options.target, adapter);
     const common = {
       targetId: options.target,
-      capabilities: levelsFromMatrix(
-        adapter.capabilities(targetSpecFromConfig(options.target, targetConfig)).matrix ?? {},
-      ),
+      capabilities: levelsFromMatrix(resolved.matrix ?? {}),
       minimumCapabilityLevel: effectiveCompatibility(config, options.target).minimum,
       policy: effectiveRuntime(config),
       ...(adapter.shellCodec === undefined ? {} : { shellCodec: adapter.shellCodec }),
