@@ -1,0 +1,211 @@
+{
+  "harness": "claude",
+  "version": "2.1.238",
+  "platform": "win32",
+  "variants": {
+    "no-switch": {
+      "args": [],
+      "settings": {},
+      "firstRunDialogs": [
+        "trust"
+      ],
+      "startupScreen": {
+        "autoDefaultNotice": false,
+        "autoModeFooter": false,
+        "transcriptSavingOff": false,
+        "inheritedChildSessionMarkerNotice": false
+      },
+      "afterPrompt": {
+        "interstitials": [
+          "native-permission-prompt"
+        ],
+        "autoModeFooter": false,
+        "modelTurns": 1,
+        "modelRequests": 3,
+        "commandExecuted": false
+      },
+      "hookPayloads": {
+        "PreToolUse": [
+          {
+            "hook_event_name": "PreToolUse",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ],
+        "PermissionRequest": [
+          {
+            "hook_event_name": "PermissionRequest",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ]
+      }
+    },
+    "no-switch, nested markers": {
+      "args": [],
+      "settings": {},
+      "injectedEnv": {
+        "CLAUDECODE": "1",
+        "CLAUDE_CODE_CHILD_SESSION": "1"
+      },
+      "firstRunDialogs": [
+        "trust"
+      ],
+      "startupScreen": {
+        "autoDefaultNotice": false,
+        "autoModeFooter": false,
+        "transcriptSavingOff": true,
+        "inheritedChildSessionMarkerNotice": true
+      },
+      "afterPrompt": {
+        "interstitials": [
+          "native-permission-prompt"
+        ],
+        "autoModeFooter": false,
+        "modelTurns": 1,
+        "modelRequests": 3,
+        "commandExecuted": false
+      },
+      "hookPayloads": {
+        "PreToolUse": [
+          {
+            "hook_event_name": "PreToolUse",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ],
+        "PermissionRequest": [
+          {
+            "hook_event_name": "PermissionRequest",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ]
+      }
+    },
+    "--permission-mode manual": {
+      "args": [
+        "--permission-mode",
+        "manual"
+      ],
+      "settings": {},
+      "firstRunDialogs": [
+        "trust"
+      ],
+      "startupScreen": {
+        "autoDefaultNotice": false,
+        "autoModeFooter": false,
+        "transcriptSavingOff": false,
+        "inheritedChildSessionMarkerNotice": false
+      },
+      "afterPrompt": {
+        "interstitials": [
+          "native-permission-prompt"
+        ],
+        "autoModeFooter": false,
+        "modelTurns": 1,
+        "modelRequests": 3,
+        "commandExecuted": false
+      },
+      "hookPayloads": {
+        "PreToolUse": [
+          {
+            "hook_event_name": "PreToolUse",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ],
+        "PermissionRequest": [
+          {
+            "hook_event_name": "PermissionRequest",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ]
+      }
+    },
+    "--permission-mode default": {
+      "args": [
+        "--permission-mode",
+        "default"
+      ],
+      "settings": {},
+      "firstRunDialogs": [
+        "trust"
+      ],
+      "startupScreen": {
+        "autoDefaultNotice": false,
+        "autoModeFooter": false,
+        "transcriptSavingOff": false,
+        "inheritedChildSessionMarkerNotice": false
+      },
+      "afterPrompt": {
+        "interstitials": [
+          "native-permission-prompt"
+        ],
+        "autoModeFooter": false,
+        "modelTurns": 1,
+        "modelRequests": 3,
+        "commandExecuted": false
+      },
+      "hookPayloads": {
+        "PreToolUse": [
+          {
+            "hook_event_name": "PreToolUse",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ],
+        "PermissionRequest": [
+          {
+            "hook_event_name": "PermissionRequest",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ]
+      }
+    },
+    "settings permissions.defaultMode=default": {
+      "args": [],
+      "settings": {
+        "permissions": {
+          "defaultMode": "default"
+        }
+      },
+      "firstRunDialogs": [
+        "trust"
+      ],
+      "startupScreen": {
+        "autoDefaultNotice": false,
+        "autoModeFooter": false,
+        "transcriptSavingOff": false,
+        "inheritedChildSessionMarkerNotice": false
+      },
+      "afterPrompt": {
+        "interstitials": [
+          "native-permission-prompt"
+        ],
+        "autoModeFooter": false,
+        "modelTurns": 1,
+        "modelRequests": 3,
+        "commandExecuted": false
+      },
+      "hookPayloads": {
+        "PreToolUse": [
+          {
+            "hook_event_name": "PreToolUse",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ],
+        "PermissionRequest": [
+          {
+            "hook_event_name": "PermissionRequest",
+            "permission_mode": "default",
+            "tool_name": "Bash"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -110,6 +110,11 @@ interactive TUI under `node-pty`, walks the first-run dialogs by polling for
 their screen markers, sends a prompt whose scripted tool call trips the native
 approval prompt, and lets the generated hook deny it — asserted from the hook
 trace (the request fired) and the filesystem (denied command never executed).
+The drive forces the prompting permission mode: newer builds start interactive
+sessions in auto mode, where no prompt fires. It also drops the `CLAUDECODE`
+and `CLAUDE_*` variables it would inherit (all but `CLAUDE_CODE_GIT_BASH_PATH`),
+so a run from inside a Claude session starts a fresh top-level session as CI
+does (`.capture/claude-permission-mode`).
 Scenario-to-lane mapping lives in the registry's `driverByHarness` overrides,
 and `docs/harness-watch.md` documents which lane runs on which schedule.
 
