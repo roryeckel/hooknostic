@@ -3,7 +3,7 @@ import { canonicalCapability } from "./capabilities.js";
 import type { Effect, EffectForCapability } from "./effects.js";
 import type { HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
 import type { RequirementLevel, SupportLevel } from "./support.js";
-import type { ToolMatch } from "./tools.js";
+import type { MatchedKind, ToolMatch } from "./tools.js";
 
 /**
  * Runtime capability lookup available to handlers for feature detection.
@@ -66,17 +66,31 @@ export function hookAppliesToTarget(hook: { targets?: TargetScope | undefined },
 }
 
 /**
+ * The event a hook's handler receives. On tool-scoped events `tool.kind` is
+ * narrowed to what the hook's `match` admits -- sound because an earlier
+ * hook's input rewrite re-derives a tool's views but never its kind.
+ */
+export type MatchedEvent<E extends HookEventName, M> = E extends ToolScopedEventName
+  ? HookEventMap[E] & { tool: { kind: MatchedKind<M> } }
+  : HookEventMap[E];
+
+/**
  * Authoring shape for a single portable hook. `K` is inferred from the
  * declared capability map, and constrains which effects `run` may return:
  * an undeclared effect is a compile-time error (and independently a runtime
- * HN401, since type information can be bypassed).
+ * HN401, since type information can be bypassed). `M` is inferred from
+ * `match` and narrows the event `run` receives.
  */
-export interface HookSpec<E extends HookEventName, K extends CapabilityKey<E> = never> {
+export interface HookSpec<
+  E extends HookEventName,
+  K extends CapabilityKey<E> = never,
+  M extends ToolMatch = ToolMatch,
+> {
   /** Stable hook identifier used in diagnostics and the build report. */
   id: string;
 
   /** Tool matcher; only meaningful on tool-scoped events. */
-  match?: E extends ToolScopedEventName ? ToolMatch : never;
+  match?: E extends ToolScopedEventName ? M : never;
 
   targets?: TargetScope;
 
@@ -103,7 +117,7 @@ export interface HookSpec<E extends HookEventName, K extends CapabilityKey<E> = 
   capabilities?: Record<K, RequirementLevel>;
 
   run(
-    event: HookEventMap[E],
+    event: MatchedEvent<E, M>,
     ctx: HookContext<CapabilitySpellings<E, K>>,
   ):
     | Promise<EffectForCapability<CanonicalCapability<E, K>> | undefined | void>
@@ -153,10 +167,11 @@ function canonicalCapabilities(
   return canonical as Partial<Record<CapabilityId, RequirementLevel>>;
 }
 
-export function hook<E extends HookEventName, K extends CapabilityKey<E> = never>(
-  event: E,
-  spec: HookSpec<E, K>,
-): HookDefinition {
+export function hook<
+  E extends HookEventName,
+  K extends CapabilityKey<E> = never,
+  const M extends ToolMatch = ToolMatch,
+>(event: E, spec: HookSpec<E, K, M>): HookDefinition {
   const def: HookDefinition = {
     event,
     id: spec.id,

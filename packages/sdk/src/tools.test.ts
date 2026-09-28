@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shellCodec } from "./tools.js";
+import { matchesTool, rawInputString, shellCodec } from "./tools.js";
 
 // A Codex-shaped table exercises every feature: two tools disagreeing on the
 // command key, one carrying a cwd key, and an uncaptured name absent entirely.
@@ -103,5 +103,46 @@ describe("shellCodec", () => {
     );
     expect(lower.classify("Bash", { command: "x" })?.command).toBe("x");
     expect(lower.encode("BASH", { command: "x" }, { command: "y" })).toEqual({ command: "y" });
+  });
+});
+
+describe("rawInputString", () => {
+  it("reads an own string argument by its native key", () => {
+    expect(rawInputString({ input: { file_path: "/repo/.env" } }, "file_path")).toBe("/repo/.env");
+  });
+
+  it("is undefined for anything that is not an own string on a plain object", () => {
+    expect(rawInputString({ input: { file_path: 42 } }, "file_path")).toBeUndefined();
+    expect(rawInputString({ input: {} }, "file_path")).toBeUndefined();
+    // Prototype members are not arguments, whatever they resolve to.
+    expect(rawInputString({ input: {} }, "toString")).toBeUndefined();
+    expect(rawInputString({ input: Object.create({ file_path: "inherited" }) as object }, "file_path")).toBeUndefined();
+    for (const input of [null, "file_path", ["file_path"], new Date()]) {
+      expect(rawInputString({ input }, "file_path")).toBeUndefined();
+    }
+  });
+
+  it("does not read a key a polluted Object.prototype supplies", () => {
+    const proto = Object.prototype as Record<string, unknown>;
+    proto["file_path"] = "polluted";
+    try {
+      expect(rawInputString({ input: {} }, "file_path")).toBeUndefined();
+    } finally {
+      delete proto["file_path"];
+    }
+  });
+});
+
+describe("matchesTool", () => {
+  const tool = { kind: "shell", nativeName: "Bash", input: {} } as const;
+
+  it("accepts single values and readonly lists for both fields", () => {
+    const kinds = ["file.read", "shell"] as const;
+    const names = ["PowerShell", "Bash"] as const;
+    expect(matchesTool({ kind: kinds }, tool)).toBe(true);
+    expect(matchesTool({ nativeName: names }, tool)).toBe(true);
+    expect(matchesTool({ kind: "file.read" }, tool)).toBe(false);
+    expect(matchesTool({ kind: "shell", nativeName: "PowerShell" }, tool)).toBe(false);
+    expect(matchesTool(undefined, tool)).toBe(true);
   });
 });

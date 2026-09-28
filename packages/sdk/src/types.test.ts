@@ -205,6 +205,56 @@ describe("compile-time hook contracts", () => {
     expect(bad.id).toBe("no-match-here");
   });
 
+  it("narrows tool.kind to what the matcher admits", () => {
+    const single = hook("tool.before", {
+      id: "narrow-single",
+      match: { kind: "shell" },
+      capabilities: { block: "required" },
+      async run(event) {
+        const kind: "shell" = event.tool.kind;
+        return block(kind);
+      },
+    });
+
+    const listed = hook("tool.after", {
+      id: "narrow-list",
+      match: { kind: ["file.read", "file.edit"] },
+      async run(event) {
+        const kind: "file.read" | "file.edit" = event.tool.kind;
+        // @ts-expect-error "shell" is outside the matched kinds
+        const outside: "shell" = event.tool.kind;
+        void [kind, outside];
+      },
+    });
+
+    const byName = hook("tool.before", {
+      id: "narrow-by-name",
+      match: { nativeName: "Bash" },
+      async run(event) {
+        // A native-name matcher says nothing about the normalized category.
+        // @ts-expect-error kind stays the whole ToolKind union
+        const kind: "shell" = event.tool.kind;
+        void kind;
+      },
+    });
+
+    const unmatched = hook("tool.before", {
+      id: "unmatched",
+      async run(event) {
+        // @ts-expect-error without a matcher every kind reaches the handler
+        const kind: "shell" = event.tool.kind;
+        void kind;
+      },
+    });
+
+    expect([single, listed, byName, unmatched].map((h) => h.match)).toEqual([
+      { kind: "shell" },
+      { kind: ["file.read", "file.edit"] },
+      { nativeName: "Bash" },
+      undefined,
+    ]);
+  });
+
   it("scopes notify to the stop events", () => {
     const ok = hook("turn.stop", {
       id: "notifier",

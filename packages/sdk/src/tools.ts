@@ -146,23 +146,53 @@ export function shellCodec(
   };
 }
 
+/**
+ * Read one string argument from a tool's native input by its native key.
+ *
+ * The deliberate escape hatch for harness-specific code. Keys differ per
+ * harness (a file tool names its path `file_path` on Claude and `path` on
+ * OpenCode v2), so a portable hook reading one key compiles everywhere and
+ * silently matches nothing on the others. Pair this with a `nativeName` check,
+ * and prefer the normalized views wherever they exist.
+ *
+ * Own properties of a plain-object input only; anything else -- a missing key,
+ * a non-string value, a prototype member -- is `undefined`, never a coercion.
+ */
+export function rawInputString(tool: Pick<ToolInvocation, "input">, key: string): string | undefined {
+  const { input } = tool;
+  if (!isPlainObject(input) || !Object.hasOwn(input, key)) return undefined;
+  const value = input[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 /** Declarative matcher applied to tool-scoped events before handlers run. */
 export interface ToolMatch {
   /** Match one or more normalized categories. */
-  kind?: ToolKind | ToolKind[];
+  kind?: ToolKind | readonly ToolKind[];
   /** Match exact native tool name(s). */
-  nativeName?: string | string[];
+  nativeName?: string | readonly string[];
+}
+
+/**
+ * The tool kinds a matcher admits: exactly the listed ones when it constrains
+ * `kind`, every kind otherwise (a `nativeName`-only matcher says nothing about
+ * the category). Narrows `event.tool.kind` inside a matched hook's handler.
+ */
+export type MatchedKind<M> = M extends { readonly kind: infer K }
+  ? K extends ToolKind
+    ? K
+    : K extends readonly (infer Listed extends ToolKind)[]
+      ? Listed
+      : ToolKind
+  : ToolKind;
+
+function listOf<T>(value: T | readonly T[]): readonly T[] {
+  return Array.isArray(value) ? (value as readonly T[]) : [value as T];
 }
 
 export function matchesTool(match: ToolMatch | undefined, tool: ToolInvocation): boolean {
   if (!match) return true;
-  if (match.kind !== undefined) {
-    const kinds = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds.includes(tool.kind)) return false;
-  }
-  if (match.nativeName !== undefined) {
-    const names = Array.isArray(match.nativeName) ? match.nativeName : [match.nativeName];
-    if (!names.includes(tool.nativeName)) return false;
-  }
+  if (match.kind !== undefined && !listOf(match.kind).includes(tool.kind)) return false;
+  if (match.nativeName !== undefined && !listOf(match.nativeName).includes(tool.nativeName)) return false;
   return true;
 }
