@@ -65,13 +65,20 @@ The probe asserts the dispatch table below. On a different build a failure is a
 finding to record, not a probe to loosen, so the record is written before the
 assertions run.
 
-Redaction replaces every home-directory segment by position, not by the account
-name: a renamed Windows account keeps its original profile folder. A segment
-runs to the next separator or quote, so a path ending at the profile folder is
-caught too. Before writing, the probe fails if any home-directory segment other
-than `user` remains, whatever its length. It also fails if the account or
-profile-folder name appears anywhere else in the text; that search skips names
-under three characters, which would match ordinary words.
+Redaction (`scripts/redact-capture.mjs`, unit-tested in `pnpm test`) rewrites
+only this machine's own home path, in every spelling a record can hold: raw,
+JSON-escaped once, JSON-escaped twice, and with forward slashes. It replaces the
+profile-folder segment with `user`. The key is the profile folder, not the
+account name, because a renamed Windows account keeps its original folder. The
+8.3 spelling Windows may give `tmpdir()` is included.
+
+A match must end where the path segment ends. So `C:\Users\jonas` and
+non-home text such as `docs/Users/Permissions` are left as captured, and code
+after a quoted home path is untouched.
+
+Before writing, the probe fails if the account or profile-folder name still
+appears as a whole word anywhere in the record. Whole words only, so a name that
+is part of ordinary text (`cod` in `codexVersion`) cannot reject a clean record.
 
 ## Observations
 

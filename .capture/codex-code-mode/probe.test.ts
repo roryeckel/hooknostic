@@ -1,7 +1,9 @@
+import { realpathSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir, userInfo } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { expect, test } from "vitest";
+import { leakedNames, redactHomes } from "../../scripts/redact-capture.mjs";
 import {
   playbackModelInfo,
   runProcess,
@@ -189,34 +191,23 @@ async function drive(id: string, spec: Drive) {
   }
 }
 
-// Redact the home-directory segment only (harness-capture skill): drive
-// letter, separators, and escaping stay intact. Matched by position, not by
-// name -- a renamed Windows account keeps its original profile folder, so the
-// account name is not a reliable key. Separators repeat: a path inside a
-// JSON-encoded JS string is escaped twice. A segment runs to the next
-// separator or quote, so a path ending at the profile folder is caught too.
-const HOME_SEGMENTS = [/(Users(?:\\|\/)+)([^\\/"]+)/gi, /(\/home\/)([^\\/"]+)/g];
-
-function redactAccount(json: string): string {
-  return HOME_SEGMENTS.reduce((text, pattern) => text.replace(pattern, "$1user"), json);
-}
-
-/** Every home-directory segment left in the record that is not `user`. */
-function unredactedSegments(record: string): string[] {
-  return HOME_SEGMENTS.flatMap((pattern) =>
-    [...record.matchAll(pattern)].map((match) => match[2]!).filter((segment) => segment !== "user"),
-  );
-}
-
 /**
- * Names that must not survive anywhere, in or out of a path. Only names long
- * enough to search for as text: a short one ("jo") is a substring of ordinary
- * words, and `unredactedSegments` already covers every path position.
+ * This machine's home path in every spelling the record can contain
+ * (scripts/redact-capture.mjs redacts only these). The profile folder, not the
+ * account name, is the key: a renamed Windows account keeps its original
+ * folder. The scratch tree lives under tmpdir(), which Windows may spell with
+ * an 8.3 profile folder, so that spelling is added when it sits beside the home.
  */
-function accountNames(): string[] {
-  return [...new Set([userInfo().username, basename(homedir())])].filter(
-    (name) => name.length >= 3 && name.toLowerCase() !== "user",
-  );
+function capturingHomes(): string[] {
+  const homes = new Set([homedir()]);
+  try {
+    homes.add(realpathSync.native(homedir()));
+  } catch {
+    // The plain spelling is still redacted.
+  }
+  const temp = /^(.*?[\\/]Users[\\/][^\\/]+)(?=[\\/])/i.exec(tmpdir())?.[1];
+  if (temp !== undefined && dirname(temp).toLowerCase() === dirname(homedir()).toLowerCase()) homes.add(temp);
+  return [...homes];
 }
 
 type Observed = Awaited<ReturnType<typeof drive>>;
@@ -266,15 +257,12 @@ test("captures what Codex hooks receive for Code Mode exec and its nested exec_c
     matchers: MATCHERS,
     drives,
   };
-  const record = redactAccount(JSON.stringify(observations, null, 2)) + "\n";
+  const homes = capturingHomes();
+  const record = redactHomes(JSON.stringify(observations, null, 2), homes) + "\n";
   // Before anything is written: a leak fails the capture and leaves the
   // committed record untouched.
-  expect(unredactedSegments(record), "a home-directory segment survived redaction").toEqual([]);
-  for (const name of accountNames()) {
-    expect(record.toLowerCase().includes(name.toLowerCase()), "an account or profile-folder name survived redaction").toBe(
-      false,
-    );
-  }
+  const names = [userInfo().username, ...homes.map((home) => basename(home))];
+  expect(leakedNames(record, names).length, "an account or profile-folder name survived redaction").toBe(0);
   const out = process.env["HOOKNOSTIC_CAPTURE_OUT"] ?? new URL("observations.json", import.meta.url);
   await writeFile(out, record);
   for (const [id, spec] of Object.entries(DRIVES)) expectDispatch(id, spec, drives[id]!);
