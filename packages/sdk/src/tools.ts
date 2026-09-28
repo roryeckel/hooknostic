@@ -204,8 +204,10 @@ const PATCH_MOVE = "*** Move to: ";
  * grammar, so the paths reported are the ones that will be written; captures
  * show OpenCode's `apply_patch`/`patch` tools take the same text. The whole
  * text and the envelope markers are trimmed; file headers match on the trimmed
- * line, so paths carry no surrounding whitespace; an environment header may
- * open the body; `Move to` counts only directly after an `Update File` header.
+ * line -- except inside an Update hunk, where Codex trims only the end, so a
+ * leading space keeps `*** Delete File: x` a context line, not a header; an
+ * environment header may open the body; `Move to` counts only directly after
+ * an `Update File` header.
  * Strict where it matters, because a partial answer is worse than none: any
  * other `***` line is off-grammar and yields `undefined`. Hunk bodies are not
  * validated -- only headers name files. Paths come back in patch order,
@@ -219,15 +221,21 @@ export function parsePatchPaths(text: string): string[] | undefined {
   const body = lines.slice(1, -1);
   if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT)) body.shift();
   const paths: string[] = [];
+  let inUpdateHunk = false;
   let afterUpdateHeader = false;
   for (const line of body) {
-    const trimmed = line.trim();
-    const header = PATCH_FILE_HEADERS.find((prefix) => trimmed.startsWith(prefix));
+    // Codex's streaming parser: trim() in the other modes, trim_end() in an
+    // Update hunk, where a leading space is the context-line prefix.
+    const candidate: string = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header: (typeof PATCH_FILE_HEADERS)[number] | undefined = PATCH_FILE_HEADERS.find((prefix) =>
+      candidate.startsWith(prefix),
+    );
     if (header !== undefined) {
-      const path = trimmed.slice(header.length);
+      const path = candidate.slice(header.length);
       if (path === "") return undefined;
       paths.push(path);
-      afterUpdateHeader = header === PATCH_UPDATE;
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
       continue;
     }
     const untrailed = line.trimEnd();

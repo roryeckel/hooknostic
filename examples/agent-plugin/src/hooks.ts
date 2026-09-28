@@ -25,10 +25,16 @@ export default definePlugin({
       capabilities: { block: "required" },
       run({ tool }) {
         // tool.file names every targeted file, whatever each harness calls the
-        // argument; it is absent for search tools (glob/grep), which take a
-        // pattern rather than a file. A shell command that reads .env is a
+        // argument. It is absent when the tool's shape is uncaptured (Claude's
+        // MultiEdit, say) or a patch does not parse -- and for search tools
+        // (glob/grep), which take a pattern rather than a file. A write or edit
+        // whose targets cannot be read is refused rather than let through
+        // unchecked; a search passes. A shell command that reads .env is a
         // shell call and out of this hook's reach.
-        if (tool.file?.paths.some(isEnvFile)) {
+        if (tool.file === undefined) {
+          return tool.kind === "file.read" ? undefined : block(`Cannot verify which files ${tool.nativeName} targets.`);
+        }
+        if (tool.file.paths.some(isEnvFile)) {
           return block(".env files are off limits to this plugin.");
         }
       },

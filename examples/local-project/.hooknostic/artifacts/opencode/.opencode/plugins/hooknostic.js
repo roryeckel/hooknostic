@@ -4365,16 +4365,18 @@ function parsePatchPaths(text) {
   if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
     body.shift();
   const paths = [];
+  let inUpdateHunk = false;
   let afterUpdateHeader = false;
   for (const line of body) {
-    const trimmed = line.trim();
-    const header = PATCH_FILE_HEADERS.find((prefix) => trimmed.startsWith(prefix));
+    const candidate = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header = PATCH_FILE_HEADERS.find((prefix) => candidate.startsWith(prefix));
     if (header !== void 0) {
-      const path = trimmed.slice(header.length);
+      const path = candidate.slice(header.length);
       if (path === "")
         return void 0;
       paths.push(path);
-      afterUpdateHeader = header === PATCH_UPDATE;
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
       continue;
     }
     const untrailed = line.trimEnd();

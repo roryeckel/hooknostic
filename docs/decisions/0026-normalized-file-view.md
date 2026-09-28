@@ -41,7 +41,9 @@ shell commands.
    (`codex-rs/core/assets/tools/apply_patch.lark`), and captures show OpenCode's
    `apply_patch` (1.x) and `patch` (2.x) tools use the same grammar. It follows
    the parser Codex actually runs rather than the lark file: headers are matched on
-   the trimmed line, and a patch with no file operation targets nothing (`[]`).
+   the trimmed line, except inside an Update hunk, where only the end is trimmed so
+   a space-prefixed `*** Delete File: x` stays a context line; and a patch with no
+   file operation targets nothing (`[]`).
    Anything off-grammar returns `undefined`, and so no view: a missing
    `*** Begin Patch` or `*** End Patch`, an unknown bare `***` line, or a `Move to`
    that does not directly follow an `Update File`. A partial view would be the lie

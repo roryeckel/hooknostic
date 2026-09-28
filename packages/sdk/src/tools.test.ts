@@ -173,6 +173,16 @@ describe("parsePatchPaths", () => {
     expect(parsePatchPaths(text)).toEqual(["a.txt"]);
   });
 
+  it("keeps a space-prefixed context line in an Update hunk out of the paths", () => {
+    // Codex trims only the end of a line inside an Update hunk, so this is
+    // context -- reporting secrets.env would block a benign edit of notes.md.
+    expect(
+      parsePatchPaths(patch("*** Update File: notes.md", "@@", " *** Delete File: secrets.env", "-a", "+b")),
+    ).toEqual(["notes.md"]);
+    // Outside an Update hunk Codex trims both ends, so the same line is a header.
+    expect(parsePatchPaths(patch("*** Add File: a.txt", "+x", " *** Delete File: b.txt"))).toEqual(["a.txt", "b.txt"]);
+  });
+
   it("treats prefixed hunk lines as content, even when they look like markers", () => {
     expect(parsePatchPaths(patch("*** Update File: notes.md", "@@", "- *** old heading", "+ *** new heading"))).toEqual(
       ["notes.md"],
