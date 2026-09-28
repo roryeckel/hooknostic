@@ -135,9 +135,13 @@ because Codex has no equivalent native field.
 - **Detection mirrors the harness, not `git`.** Codex decides from files
   (codex-rs `resolve_root_git_project_for_trust`, rust-v0.140.0 through
   0.156.1). It never runs `git`, and it declines bare repositories and metadata
-  that does not point back at the checkout. Core follows the same steps.
-  Anything unverifiable reports no worktree, so the warning errs towards
-  silence. The message names the root checkout and the file Codex reads there.
+  that does not point back at the checkout. Core follows the same steps on
+  ordinary paths, including which checks follow symlinks. Anything
+  unverifiable reports no worktree, so the warning errs towards silence. One
+  divergence remains, source-derived and unmirrored: Codex carries paths as
+  URIs and cannot walk up from a drive-shaped POSIX path such as `/C:/repo`.
+  Core would warn there, and Codex would not redirect. The message names the
+  root checkout and the file Codex reads there.
   For a project root below the worktree top, that file sits at the same
   relative directory in the root checkout. This mapping is source-derived.
 

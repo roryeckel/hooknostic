@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 
 // Git writes these files; anything larger is not one.
@@ -46,19 +46,25 @@ async function canonical(path: string): Promise<string | undefined> {
  * worktree: it reads files and never runs `git`, and it declines bare
  * repositories and unverifiable metadata. Every failure here returns
  * `undefined`, so a warning built on it errs towards silence.
+ *
+ * One divergence is left in place: Codex carries paths as URIs, and a POSIX
+ * path shaped like a drive (`/C:/repo`) becomes an opaque URI it cannot walk
+ * up from, so Codex never redirects there. This follows plain paths and would
+ * warn. Source-derived and not worth mirroring for such a layout.
  */
 export async function linkedWorktree(dir: string): Promise<LinkedWorktree | undefined> {
-  // The nearest `.git`, skipping a `.git` directory without HEAD (not a repository).
+  // The nearest `.git`, skipping a `.git` directory without HEAD (not a
+  // repository). Codex's directory tests follow symlinks, so `stat` here; only
+  // its metadata-file reads refuse them, which `metadataFile` mirrors.
   let checkout: string | undefined;
-  let dotGitStats: Awaited<ReturnType<typeof lstat>> | undefined;
   for (let base = resolve(dir); ;) {
     try {
-      dotGitStats = await lstat(join(base, ".git"));
-      if (!dotGitStats.isDirectory()) {
+      const dotGit = join(base, ".git");
+      if (!(await stat(dotGit)).isDirectory()) {
         checkout = base;
         break;
       }
-      await lstat(join(base, ".git", "HEAD"));
+      await stat(join(dotGit, "HEAD"));
       checkout = base;
       break;
     } catch {
@@ -68,7 +74,12 @@ export async function linkedWorktree(dir: string): Promise<LinkedWorktree | unde
     if (parent === base) return undefined;
     base = parent;
   }
-  if (checkout === undefined || dotGitStats === undefined || !dotGitStats.isFile()) return undefined;
+  // A `.git` directory is a regular checkout; a symlinked `.git` file is refused.
+  try {
+    if (!(await lstat(join(checkout, ".git"))).isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
 
   const gitDir = await gitdirTarget(join(checkout, ".git"));
   if (gitDir === undefined) return undefined;
@@ -104,7 +115,7 @@ export async function linkedWorktree(dir: string): Promise<LinkedWorktree | unde
   const mainDotGit = join(rootCheckout, ".git");
   let mainGitDir: string | undefined;
   try {
-    mainGitDir = (await lstat(mainDotGit)).isDirectory() ? mainDotGit : await gitdirTarget(mainDotGit);
+    mainGitDir = (await stat(mainDotGit)).isDirectory() ? mainDotGit : await gitdirTarget(mainDotGit);
   } catch {
     return undefined;
   }

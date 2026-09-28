@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -87,6 +87,25 @@ describe("linkedWorktree", () => {
 
     expect(await linkedWorktree(submodule)).toBeUndefined();
     expect(await linkedWorktree(impostor)).toBeUndefined();
+  });
+
+  it("follows directory symlinks where Codex's metadata lookup does", async () => {
+    const { scratch, main } = await repository();
+    const linked = join(scratch, "linked");
+    git(main, ["worktree", "add", "--detach", "--quiet", linked, "HEAD"]);
+    // Move the root checkout's git directory away and link it back. The
+    // worktree's gitdir still names it through main/.git, so Codex redirects.
+    const store = join(scratch, "store");
+    await rename(join(main, ".git"), store);
+    await symlink(store, join(main, ".git"), process.platform === "win32" ? "junction" : "dir");
+    // A linked `.git` directory without HEAD is not a repository: keep walking.
+    const empty = join(scratch, "empty");
+    await mkdir(empty);
+    await mkdir(join(linked, "sub"));
+    await symlink(empty, join(linked, "sub", ".git"), process.platform === "win32" ? "junction" : "dir");
+
+    expect(await linkedWorktree(linked)).toEqual({ checkout: linked, rootCheckout: main });
+    expect(await linkedWorktree(join(linked, "sub"))).toEqual({ checkout: linked, rootCheckout: main });
   });
 
   it("reports nothing for a worktree of a bare repository, which has no root checkout", async () => {
