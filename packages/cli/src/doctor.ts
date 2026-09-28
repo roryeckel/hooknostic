@@ -354,6 +354,10 @@ export async function runDoctor(options: DoctorCommandOptions): Promise<number> 
     options.io.stdout(
       `Project wiring: ${project.ok ? "current" : project.errors.length ? "conflict or invalid" : "drifted"}; hook execution has not been observed.`,
     );
+    // As `sync` prints them. A wiring warning such as HN107 has no other
+    // witness: the harness's own output still looks hooked.
+    for (const diagnostic of project.diagnostics)
+      options.io.stdout(`${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`);
     for (const message of [...project.guidance, ...project.errors]) options.io.stdout(message);
   }
   return ok ? 0 : 2;

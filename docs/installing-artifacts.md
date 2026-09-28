@@ -381,6 +381,8 @@ Two more, measured on codex-cli 0.156.1:
   `.codex/hooks.json` holds, or nothing if it holds none. Codex prints hook lines
   for those hooks, so the session looks hooked. Install the artifact in the root
   checkout, and grant its trust there, before relying on it from any worktree.
+  `hooknostic sync`, `verify`, and `doctor` warn HN107 when they find Codex
+  project wiring in a linked worktree, and name the root checkout.
   ([evidence](../.capture/codex-worktree-hooks/README.md))
 - **Code Mode does not bypass a shell guard.** Current models (the gpt-5.6
   catalog, `tool_mode: "code_mode_only"`) run commands through one JavaScript

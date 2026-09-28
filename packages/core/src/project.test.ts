@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -940,6 +940,49 @@ describe("complete project integration", () => {
     await writeFile(options.configPath, `export default ${JSON.stringify({ ...config, components: undefined })};`);
     expect((await runProject({ ...options, command: "sync" })).errors).toEqual([]);
     expect(readProjectToml(await readFile(path, "utf8")).mcp_servers).toBeUndefined();
+  });
+  it("warns HN107 only for Codex hooks synchronized into a linked worktree, naming the root checkout", async () => {
+    const { root, options } = await fixture();
+    const git = (cwd: string, args: string[]) => {
+      const result = spawnSync("git", args, { cwd, encoding: "utf8", timeout: 10000 });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    git(root, ["init", "--quiet"]);
+    git(root, ["add", "hooks.ts", "hooknostic.config.ts"]);
+    git(root, [
+      "-c",
+      "user.name=Synthetic",
+      "-c",
+      "user.email=synthetic@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "Synthetic linked worktree fixture",
+    ]);
+    const rootHooks = await runProject({ ...options, command: "sync" });
+    expect(rootHooks.errors).toEqual([]);
+    expect(rootHooks.diagnostics.filter((d) => d.code === "HN107")).toEqual([]);
+
+    // The live layout: a worktree nested inside the root checkout.
+    const linked = join(root, ".claude", "worktrees", "linked");
+    git(root, ["worktree", "add", "--detach", "--quiet", linked, "HEAD"]);
+    const linkedOptions = { ...options, configPath: join(linked, "hooknostic.config.ts") };
+    const rootCheckout = await realpath(root);
+    for (const command of ["sync", "verify"] as const) {
+      const result = await runProject({ ...linkedOptions, command });
+      expect(result.errors, command).toEqual([]);
+      expect(result.ok, command).toBe(true);
+      const warnings = result.diagnostics.filter((d) => d.code === "HN107");
+      expect(warnings, command).toHaveLength(1);
+      expect(warnings[0]).toMatchObject({ severity: "warn", target: "codex" });
+      expect(warnings[0]!.message).toContain(`root checkout ${rootCheckout}`);
+      expect(warnings[0]!.message).toContain(`runs the root checkout's ${join(rootCheckout, ".codex", "hooks.json")}`);
+    }
+    // Still written: the artifact is useful once it reaches the root checkout.
+    expect(await readFile(join(linked, ".codex/hooks.json"), "utf8")).toContain("PreToolUse");
+    git(root, ["worktree", "remove", "--force", linked]);
   });
   it("removes a configured project target without disturbing the others", async () => {
     const { root, config, options } = await fixture();
