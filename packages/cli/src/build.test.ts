@@ -3358,12 +3358,18 @@ describe("hooknostic inspect", () => {
     expect(await field("claude", "turn.stop.lastMessage")).toEqual([
       { field: "turn.stop.lastMessage", level: "exact" },
     ]);
+    expect(await field("opencode", "turn.stop.lastMessage", opencodeHarness.recommendedRange)).toEqual([
+      expect.objectContaining({ level: "emulated", rationale: expect.stringContaining("client.session.messages") }),
+    ]);
+    expect(await field("opencode", "turn.stop.lastMessage", opencodeV2Harness.recommendedRange)).toEqual([
+      expect.objectContaining({ level: "emulated", rationale: expect.stringContaining("session.text.ended") }),
+    ]);
     expect(await field("codex", "session.start.correlation.turnId")).toEqual([
       { field: "session.start.correlation.turnId", level: "unsupported" },
     ]);
     const text = captureIO();
-    expect(await runInspect({ target: "claude", registry, io: text.io })).toBe(0);
-    expect(text.out()).toContain("exact        turn.stop.correlation.turnId");
+    expect(await runInspect({ target: "opencode", registry, io: text.io })).toBe(0);
+    expect(text.out()).toContain("emulated     turn.stop.correlation.turnId");
     expect(text.out()).not.toContain("turn.stop.correlation.parentAgentId");
     const typo = captureIO();
     expect(await runInspect({ target: "claude", field: "turn.stop.lastMesage", registry, io: typo.io })).toBe(2);

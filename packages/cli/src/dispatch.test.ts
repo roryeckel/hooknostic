@@ -279,9 +279,7 @@ describe("hooknostic dispatch", () => {
     ]);
     const turn = { event: "turn.stop", lastMessage: "done", correlation: { turnId: "msg_1" } };
     expect(await refused("claude", [turn])).toEqual([]);
-    expect(await refused("opencode", [turn])).toEqual([
-      "event 1: turn.stop.lastMessage is never produced by the opencode decoder for this target's version range; omit it (see `hooknostic inspect opencode`)",
-    ]);
+    expect(await refused("opencode", [turn])).toEqual([]);
   });
 
   it("refuses a target the hooks could not be built for", async () => {

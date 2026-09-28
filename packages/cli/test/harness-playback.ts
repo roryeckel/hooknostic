@@ -174,6 +174,14 @@ function playbackPluginSource(
       // declared-but-unresolved cell would produce unasserted dispatch noise.
       contextAdd.has(event) ? `"${event}.context.add": "optional"` : undefined,
     ].filter(Boolean);
+    // ADR-0027: the turn's fields are declared, so an in-process adapter does
+    // the work of producing them and the trace can show what arrived.
+    const turnFields =
+      event === "turn.stop"
+        ? `fields: ["lastMessage", "correlation.turnId"],\n      `
+        : event === "prompt.before"
+          ? `fields: ["correlation.turnId"],\n      `
+          : "";
     const capabilityBlock =
       capabilities.length > 0
         ? `capabilities: {
@@ -237,14 +245,16 @@ function playbackPluginSource(
     return `
     hook(${JSON.stringify(event)}, {
       id: ${JSON.stringify(`playback-${event}`)},${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
-      ${capabilityBlock}
+      ${turnFields}${capabilityBlock}
       async run(event) {
         appendFileSync(tracePath, JSON.stringify({
           event: event.event,
           nativeEvent: event.harness.nativeEvent,
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
-          toolNativeName: event.tool?.nativeName,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
+          toolNativeName: event.tool?.nativeName,
+          lastMessage: event.lastMessage,
+          turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
       },
     })`;

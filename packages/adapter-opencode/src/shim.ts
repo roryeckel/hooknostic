@@ -7,7 +7,7 @@ import { hookAppliesToTarget } from "@hooknostic/sdk";
 
 import { planOpenCodeApplication } from "./apply.js";
 import { withTimeout } from "./bounded-post.js";
-import type { OpenCodeNativeEvent } from "./decode.js";
+import type { OpenCodeEnrichment, OpenCodeNativeEvent } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { opencodeFileCodec, opencodeShellCodec } from "./toolmap.js";
 
@@ -42,6 +42,12 @@ export interface OpenCodeClient {
       path: { id: string };
       body: { parts: { type: "text"; text: string }[]; noReply?: boolean };
     }) => unknown;
+    /**
+     * Reads a session's messages; answers `{ data, request, response }` with
+     * `data` an array of `{ info, parts }` (captured on 1.18.32,
+     * .capture/opencode-turn-fields). Prototype method, same `this` caveat.
+     */
+    messages?: (options: { path: { id: string } }) => unknown;
   };
   /**
    * Answers a pending permission request ("Respond to a permission request",
@@ -91,13 +97,55 @@ export function createHooknosticHooks(
     plugin.hooks.filter((hook) => hookAppliesToTarget(hook, invocation.targetId)).map((hook) => hook.event),
   );
 
+  // session.idle carries only the session id, so the turn's last message and
+  // prompt id cost a session read. Only a hook that declares one pays for it
+  // (ADR-0027): a read on every idle would be wasted on every other plugin.
+  const readsTurn = plugin.hooks.some(
+    (hook) =>
+      hook.event === "turn.stop" &&
+      hookAppliesToTarget(hook, invocation.targetId) &&
+      (hook.fields ?? []).some(
+        (field) => field === "turn.stop.lastMessage" || field === "turn.stop.correlation.turnId",
+      ),
+  );
+
+  /**
+   * Read the session's messages for a `session.idle`, so the pure decoder can
+   * report the finished turn. Handed to it beside the envelope, never inside
+   * it: `event.raw` stays what the callback received, and a hook that never
+   * declared a turn field does not get the session's history in it. Read
+   * rather than buffered from message.* bus events: in a captured aborted turn
+   * a message.updated arrived after session.idle (.capture/opencode-client).
+   * Best-effort and bounded: a missing client or a failed or slow read leaves
+   * the fields absent.
+   */
+  const enrich = async (native: OpenCodeNativeEvent): Promise<OpenCodeEnrichment> => {
+    if (!readsTurn || native.hook !== "event") return {};
+    const busEvent = (native.input as { event?: { type?: unknown; properties?: { sessionID?: unknown } } } | undefined)
+      ?.event;
+    const id = busEvent?.properties?.sessionID;
+    // Called as `session.messages(...)`, never detached: see postPrompts.
+    const session = pluginInput.client?.session;
+    if (busEvent?.type !== "session.idle" || typeof id !== "string" || typeof session?.messages !== "function") {
+      return {};
+    }
+    try {
+      const response = await withTimeout(Promise.resolve(session.messages({ path: { id } })));
+      const data = response !== null && typeof response === "object" && "data" in response ? response.data : undefined;
+      return Array.isArray(data) ? { messages: data } : {};
+    } catch {
+      return {}; // Fail open: the turn still stops, without its fields.
+    }
+  };
+
   /** A block the plugin meant to deliver, as opposed to a bug escaping. */
   class HooknosticBlock extends Error {}
 
   const run = async (native: OpenCodeNativeEvent): Promise<void> => {
+    const enrichment = await enrich(native);
     let event;
     try {
-      event = decodeOpenCode(native, invocation);
+      event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
       if (error instanceof OpenCodeDecodeError) return; // fail-open
       throw error;

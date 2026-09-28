@@ -198,3 +198,31 @@ label. The `nested-*` and `location-*` mutants in `verify-mutations.mjs` remove
 the serving guard, the id suffix, the components guard and each filter branch.
 
 The distribution example now bundles its MCP server. The package capture driver still substitutes its dependency-free fixture and redirects the MCP argument to that fixture; marketplace registration files are excluded from the source inventory.
+
+## Turn fields
+
+Question: does a v2 plugin see the text of an execution's last assistant message
+and the prompt that started it? `session.execution.succeeded` carries only
+`{ sessionID }`, and `ctx.session` has no message-list API.
+
+`drive.mjs observe` against 2.0.18 (Windows, 2026-09-28; the driver isolates
+HOME, USERPROFILE and all four XDG homes, so a side-by-side OpenCode 1 install
+shares no state). The capture plugin's `ctx.event.subscribe` loop recorded, for
+the one session: `session.inbox.enqueued` (its `inboxID` equal to the prompt
+hook's `messageID`), `session.execution.started`, per model step
+`session.step.started` with a fresh `assistantMessageID`, then
+`session.text.started`, `session.text.delta` and
+`session.text.ended { assistantMessageID, ordinal, text }` for the answer step,
+`session.step.ended`, and finally `session.execution.succeeded`. So plugins do
+receive `session.text.*`, in order, before completion.
+
+The shim therefore buffers `session.text.ended` per running execution, keyed by
+session and reset at `session.execution.started`, and reports the last
+assistant message's segments as `turn.stop.lastMessage`. The prompt hook's
+`messageID` waits for the execution it starts and becomes
+`turn.stop.correlation.turnId`; a synthetic continuation, which runs no prompt
+hook, has none, and a prompt admitted while an execution runs is handed to no
+later execution. What the shim gathered reaches the decoder beside the
+completion envelope, never inside `event.raw`. Both are rated `emulated`, and both are skipped unless a
+`turn.stop` hook declares them. Promoted as `fixtures/opencode/2.0/turn-fields`
+and `execution-succeeded-with-turn`.

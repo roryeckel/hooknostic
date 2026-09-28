@@ -5337,7 +5337,29 @@ function snapshotOpenCodeArgs(args) {
     throw new OpenCodeDecodeError("tool.execute.before arguments cannot be cloned");
   }
 }
-function decodeOpenCode(nativeEvent, invocation) {
+var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function turnFields(messages) {
+  if (!Array.isArray(messages)) return {};
+  let lastMessage;
+  let turnId;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = record(messages[index]);
+    const info = record(entry["info"]);
+    if (info["role"] !== "assistant") break;
+    if (turnId === void 0 && typeof info["parentID"] === "string") turnId = info["parentID"];
+    if (lastMessage === void 0) {
+      const parts = Array.isArray(entry["parts"]) ? entry["parts"] : [];
+      const text = parts.map(record).filter((part) => part["type"] === "text" && part["synthetic"] !== true && part["ignored"] !== true).map((part) => part["text"]).filter((value) => typeof value === "string" && value !== "").join("\n");
+      if (text !== "") lastMessage = text;
+    }
+    if (turnId !== void 0 && lastMessage !== void 0) break;
+  }
+  return {
+    ...lastMessage !== void 0 ? { lastMessage } : {},
+    ...turnId !== void 0 ? { turnId } : {}
+  };
+}
+function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new OpenCodeDecodeError("native event is not an object");
   }
@@ -5403,7 +5425,13 @@ function decodeOpenCode(nativeEvent, invocation) {
     case "chat.message": {
       const parts = Array.isArray(output["parts"]) ? output["parts"] : [];
       const prompt = parts.map((p) => typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
-      return { ...base, event: "prompt.before", prompt };
+      const messageId = record(output["message"])["id"];
+      return {
+        ...base,
+        ...typeof messageId === "string" ? { correlation: { ...base.correlation, turnId: messageId } } : {},
+        event: "prompt.before",
+        prompt
+      };
     }
     case "experimental.chat.system.transform":
       return { ...base, event: "model.request.before" };
@@ -5425,8 +5453,16 @@ function decodeOpenCode(nativeEvent, invocation) {
           return { ...withSession(infoSessionId), event: "session.start" };
         case "session.deleted":
           return { ...withSession(infoSessionId), event: "session.end" };
-        case "session.idle":
-          return { ...withSession(propertySessionId), event: "turn.stop" };
+        case "session.idle": {
+          const { lastMessage, turnId } = turnFields(enrichment.messages);
+          const session = withSession(propertySessionId);
+          return {
+            ...session,
+            ...turnId !== void 0 ? { correlation: { ...session.correlation, turnId } } : {},
+            event: "turn.stop",
+            ...lastMessage !== void 0 ? { lastMessage } : {}
+          };
+        }
         case "session.compacted":
           return { ...withSession(propertySessionId), event: "context.compact.after" };
         case "permission.asked": {
@@ -5469,12 +5505,34 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   const events = new Set(
     plugin.hooks.filter((hook2) => hookAppliesToTarget(hook2, invocation.targetId)).map((hook2) => hook2.event)
   );
+  const readsTurn = plugin.hooks.some(
+    (hook2) => hook2.event === "turn.stop" && hookAppliesToTarget(hook2, invocation.targetId) && (hook2.fields ?? []).some(
+      (field) => field === "turn.stop.lastMessage" || field === "turn.stop.correlation.turnId"
+    )
+  );
+  const enrich = async (native) => {
+    if (!readsTurn || native.hook !== "event") return {};
+    const busEvent = native.input?.event;
+    const id = busEvent?.properties?.sessionID;
+    const session = pluginInput.client?.session;
+    if (busEvent?.type !== "session.idle" || typeof id !== "string" || typeof session?.messages !== "function") {
+      return {};
+    }
+    try {
+      const response = await withTimeout(Promise.resolve(session.messages({ path: { id } })));
+      const data = response !== null && typeof response === "object" && "data" in response ? response.data : void 0;
+      return Array.isArray(data) ? { messages: data } : {};
+    } catch {
+      return {};
+    }
+  };
   class HooknosticBlock extends Error {
   }
   const run = async (native) => {
+    const enrichment = await enrich(native);
     let event;
     try {
-      event = decodeOpenCode(native, invocation);
+      event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
       if (error instanceof OpenCodeDecodeError) return;
       throw error;

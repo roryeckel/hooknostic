@@ -2303,6 +2303,20 @@ scenarioDrive("lifecycle-observe", async () => {
   expect(events).toContain("tool.after");
   expect(events).toContain("turn.stop");
   if (adapter!.shimExecution === "command") expect(events).toContain("session.end");
+
+  // ADR-0027: the playback hooks declare the turn's fields, so every harness
+  // must deliver the model's last text and the prompt's id at the stop -- read
+  // from the payload on Claude and Codex, derived on OpenCode.
+  const trace = (await readFile(build.tracePath, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+  const prompt = trace.find((entry) => entry.event === "prompt.before");
+  expect(prompt?.turnId).toEqual(expect.any(String));
+  expect(trace.filter((entry) => entry.event === "turn.stop").at(-1)).toMatchObject({
+    lastMessage: "playback complete",
+    turnId: prompt?.turnId,
+  });
 });
 
 scenarioDrive("tool-before-block", async () => {
