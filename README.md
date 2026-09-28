@@ -35,8 +35,6 @@ Requires **Node.js 22.13+**. Install the CLI and configuration/hook authoring SD
 npm install --save-dev hooknostic @hooknostic/sdk
 ```
 
-Before the first npm release, use the [local tarball installation](docs/publishing.md#testing-without-publishing-the-everyday-flow).
-
 | Your goal | Workflow | Start here |
 | --- | --- | --- |
 | Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or OpenCode | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
@@ -131,6 +129,11 @@ hooknostic doctor               # diagnose installed versions and activation
 hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts
 hooknostic dispatch --target claude --events events.jsonl
 ```
+
+`build` and `sync` are alternatives, not consecutive steps. In a repository integration,
+`sync` writes the same artifacts as `build` and also records their ownership, so use `sync`
+there. It refuses files that an earlier `build` left without an ownership record; move
+them aside first ([project integration](docs/project-integration.md)).
 
 See the [command reference](docs/configuration.md). Trusted materializers may run during
 compilation, including `check`; review their network/cache behavior like other build code.
