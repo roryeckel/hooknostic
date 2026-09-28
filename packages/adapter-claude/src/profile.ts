@@ -48,6 +48,20 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           what: "Windows PTY approval probe: PreToolUse permissionDecision ask overrides preallowed Bash and requires confirmation; escalate is rejected as invalid",
         },
         {
+          version: "2.1.238",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/claude-permission-mode",
+          what: "Interactive sessions start in the prompting mode (hook permission_mode default, PermissionRequest fires), and --permission-mode manual keeps it; an inherited CLAUDE_CODE_CHILD_SESSION turns transcript saving off",
+        },
+        {
+          version: "2.1.283",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/claude-permission-mode",
+          what: "Interactive sessions start in auto mode: the scripted Bash call reaches PreToolUse with permission_mode auto and PermissionRequest never fires; --permission-mode manual restores the prompting mode and PermissionRequest, and the pty playback scenarios pass with it",
+        },
+        {
           version: "2.1.283",
           date: "2026-09-27",
           method: "captured",
