@@ -1,7 +1,6 @@
 {
   "name": "@hooknostic/sdk",
   "version": "0.2.0",
-  "private": true,
   "description": "Hooknostic authoring API and canonical hook types",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
@@ -10,6 +9,10 @@
     "type": "git",
     "url": "git+https://github.com/roryeckel/hooknostic.git",
     "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "bugs": "https://github.com/roryeckel/hooknostic/issues",
   "keywords": [
