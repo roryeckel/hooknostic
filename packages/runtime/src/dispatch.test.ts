@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { HookEvent, RuntimePolicy, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
+import type { CapabilityId, HookEvent, RuntimePolicy, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
 import {
   addContext,
   block,
@@ -731,6 +731,69 @@ describe("createCapabilitySet", () => {
     expect(set.has("tool.before.input.replace")).toBe(false);
     expect(set.has("tool.before.context.add")).toBe(false);
     expect(set.level("tool.before.context.add")).toBe("unsupported");
+  });
+
+  it("never resolves an Object.prototype member as a support level", () => {
+    const set = createCapabilitySet({ "tool.before.block": "exact" });
+    const probe = "constructor" as CapabilityId;
+    expect(set.has(probe)).toBe(false);
+    expect(set.level(probe)).toBe("unsupported");
+  });
+});
+
+describe("event-relative capability keys", () => {
+  it("stores full ids and resolves either spelling at dispatch", async () => {
+    const observed: unknown[] = [];
+    const def = hook("tool.before", {
+      id: "relative",
+      capabilities: { block: "required", "input.replace": "optional" },
+      async run(_event, ctx) {
+        // Destructured on purpose: the set's methods must not depend on `this`.
+        const { has, level } = ctx.capabilities;
+        observed.push(has("input.replace"), has("tool.before.input.replace"), level("block"));
+        return replaceInput({ command: "rewritten" });
+      },
+    });
+    expect(def.capabilities).toEqual({ "tool.before.block": "required", "tool.before.input.replace": "optional" });
+
+    const result = await dispatch([def], toolBefore({ command: "original" }), OPTIONS);
+    expect(observed).toEqual([true, true, "exact"]);
+    expect(result.errors).toEqual([]);
+    expect(replacedInput(result)).toEqual({ value: { command: "rewritten" } });
+  });
+
+  it("applies the compatibility floor to the declared requirement under either spelling", async () => {
+    const observed: boolean[] = [];
+    await dispatch(
+      [
+        hook("tool.before", {
+          id: "required-relative",
+          capabilities: { "input.replace": "required" },
+          async run(_event, ctx) {
+            observed.push(ctx.capabilities.has("input.replace"), ctx.capabilities.has("tool.before.input.replace"));
+          },
+        }),
+      ],
+      toolBefore({ command: "original" }),
+      {
+        ...OPTIONS,
+        capabilities: { "tool.before.observe": "exact", "tool.before.input.replace": "approximate" },
+        minimumCapabilityLevel: "emulated",
+      },
+    );
+    // Required survives the floor; a lookup that missed the declaration would
+    // have treated it as optional and hidden it.
+    expect(observed).toEqual([true, true]);
+  });
+
+  it("rejects one capability declared under both spellings", () => {
+    expect(() =>
+      hook("tool.before", {
+        id: "twice",
+        capabilities: { block: "required", "tool.before.block": "optional" },
+        async run() {},
+      }),
+    ).toThrow(/declares capability "tool\.before\.block" twice/);
   });
 });
 

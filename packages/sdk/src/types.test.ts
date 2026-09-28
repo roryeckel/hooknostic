@@ -78,6 +78,69 @@ describe("compile-time hook contracts", () => {
     expect(noCapabilities.id).toBe("observe-only");
   });
 
+  it("accepts event-relative capability keys and types has() to the declaration", () => {
+    const relative = hook("tool.before", {
+      id: "relative-keys",
+      capabilities: { block: "required", "input.replace": "optional" },
+      async run(event, ctx) {
+        if (ctx.capabilities.has("input.replace") && event.tool.shell !== undefined) {
+          return updateShell({ command: "pnpm install" });
+        }
+        // Either spelling probes the same declaration.
+        if (ctx.capabilities.has("tool.before.input.replace")) return replaceInput({ command: "x" });
+        return block("no");
+      },
+    });
+
+    const mixed = hook("turn.stop", {
+      id: "mixed-spellings",
+      capabilities: { prevent: "required", "turn.stop.notify": "optional" },
+      async run(_event, ctx) {
+        if (ctx.capabilities.has("notify")) return notify("idle check skipped");
+        return preventStop("keep going");
+      },
+    });
+
+    const undeclaredRelative = hook("tool.before", {
+      id: "undeclared-relative",
+      capabilities: { block: "required" },
+      // @ts-expect-error "block" does not license replaceInput
+      async run() {
+        return replaceInput({ command: "x" });
+      },
+    });
+
+    const foreignSuffix = hook("tool.before", {
+      id: "foreign-suffix",
+      capabilities: {
+        // @ts-expect-error "prevent" is not a tool.before capability
+        prevent: "required",
+      },
+      async run() {},
+    });
+
+    const undeclaredProbe = hook("tool.before", {
+      id: "undeclared-probe",
+      capabilities: { block: "required" },
+      async run(_event, ctx) {
+        // @ts-expect-error input.replace was not declared, so no effect it licenses could be returned
+        ctx.capabilities.has("input.replace");
+        // @ts-expect-error another event's capability can never answer for this hook
+        ctx.capabilities.has("turn.stop.prevent");
+        return block("no");
+      },
+    });
+
+    expect([relative, mixed, undeclaredRelative, foreignSuffix, undeclaredProbe].map((h) => h.id)).toEqual([
+      "relative-keys",
+      "mixed-spellings",
+      "undeclared-relative",
+      "foreign-suffix",
+      "undeclared-probe",
+    ]);
+    expect(relative.capabilities).toEqual({ "tool.before.block": "required", "tool.before.input.replace": "optional" });
+  });
+
   it("rejects capabilities scoped to a different event", () => {
     const wrongScope = hook("tool.after", {
       id: "wrong-scope",

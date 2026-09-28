@@ -86,6 +86,46 @@ describe("buildPluginIR authoring round-trip", () => {
     );
     expect(diagnostics.some((d) => d.code === "HN501" && d.severity === "error")).toBe(true);
   });
+
+  it("carries event-relative capability keys to the IR as full ids", () => {
+    const { ir, diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "relative",
+        hooks: [
+          hook("turn.stop", {
+            id: "stop",
+            capabilities: { prevent: "required", "turn.stop.notify": "optional" },
+            async run() {},
+          }),
+        ],
+      }),
+    );
+    expect(diagnostics).toEqual([]);
+    expect(ir?.hooks[0]?.capabilities).toEqual({ "turn.stop.prevent": "required", "turn.stop.notify": "optional" });
+  });
+
+  it("reports a type-bypassed foreign id by its real name and an unknown key as HN501", () => {
+    const foreign = buildPluginIR(
+      definePlugin({
+        name: "foreign",
+        // Untyped callers: a full id from another event must pass through
+        // canonicalization untouched so the scope check can name it.
+        hooks: [
+          hook("tool.after", { id: "t", capabilities: { "tool.before.block": "required" } as never, async run() {} }),
+        ],
+      }),
+    );
+    expect(foreign.diagnostics[0]).toMatchObject({ code: "HN501", hookId: "t", capability: "tool.before.block" });
+
+    const unknown = buildPluginIR(
+      definePlugin({
+        name: "unknown",
+        hooks: [hook("tool.before", { id: "u", capabilities: { bogus: "required" } as never, async run() {} })],
+      }),
+    );
+    expect(unknown.ir).toBeUndefined();
+    expect(unknown.diagnostics.every((d) => d.code === "HN501")).toBe(true);
+  });
 });
 
 describe("buildPluginIR", () => {

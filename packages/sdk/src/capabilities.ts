@@ -71,10 +71,48 @@ export type ObserveCapability<E extends HookEventName> = `${E}.observe` & Capabi
  */
 export type DeclarableCapability<E extends HookEventName> = Exclude<CapabilityIdForEvent<E>, `${E}.observe`>;
 
+/** Distributes over `C`, so a union of ids strips to a union of suffixes. */
+type StripEvent<C, E extends string> = C extends `${E}.${infer Suffix}` ? Suffix : never;
+
+/**
+ * A declarable capability spelled relative to its event: inside
+ * `hook("tool.before", …)`, `"block"` means `"tool.before.block"`. The event
+ * already scopes the hook, so restating it in every key is noise.
+ */
+export type CapabilitySuffix<E extends HookEventName> = StripEvent<DeclarableCapability<E>, E>;
+
+/**
+ * How a hook may name one of its event's capabilities: the full id or the
+ * event-relative suffix. Authoring sugar only -- `hook()` canonicalizes to full
+ * ids, which is all the compiler, the runtime, and every report ever see.
+ */
+export type CapabilityKey<E extends HookEventName> = DeclarableCapability<E> | CapabilitySuffix<E>;
+
+/** The full capability id a key names at event `E`. */
+export type CanonicalCapability<E extends HookEventName, K extends string> =
+  K extends DeclarableCapability<E> ? K : Extract<DeclarableCapability<E>, `${E}.${K}`>;
+
+/** Both spellings of every capability the keys `K` name at event `E`. */
+export type CapabilitySpellings<E extends HookEventName, K extends string> =
+  CanonicalCapability<E, K> | StripEvent<CanonicalCapability<E, K>, E>;
+
 const CAPABILITY_SET: ReadonlySet<string> = new Set(ALL_CAPABILITY_IDS);
 
 export function isCapabilityId(value: string): value is CapabilityId {
   return CAPABILITY_SET.has(value);
+}
+
+/**
+ * Resolve an authored capability key to a full id at `event`.
+ *
+ * A registered id passes through untouched even when it belongs to another
+ * event, so the compiler's scope check still reports it by its real name. No
+ * event-relative suffix is itself a registered id, so the two spellings cannot
+ * collide. An unknown key comes back as an unregistered `<event>.<key>` string,
+ * which every consumer already rejects.
+ */
+export function canonicalCapability(event: HookEventName, key: string): string {
+  return isCapabilityId(key) ? key : `${event}.${key}`;
 }
 
 /** The implicit `<event>.observe` capability for an event name. */

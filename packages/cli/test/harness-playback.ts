@@ -296,41 +296,42 @@ export async function buildPlaybackArtifact(
   // resolution.
   const contextCapabilityFor = (event: HookEventName): string | undefined =>
     contextAdd.has(event) ? `${event}.context.add` : undefined;
-  const hooks = events.map((event) =>
-    hook(event, {
-      id: `playback-${event}`,
-      ...((): { capabilities: Record<CapabilityId, "optional"> } | Record<string, never> => {
-        const declared: Partial<Record<CapabilityId, "optional">> = {};
-        if (event === "tool.before") {
-          declared["tool.before.block"] = "optional" as const;
-          declared["tool.before.input.replace"] = "optional" as const;
-          declared["tool.before.requestApproval"] = "optional" as const;
-        }
-        if (event === "tool.after") {
-          declared["tool.after.blockContinuation"] = "optional" as const;
-          declared["tool.after.output.replace"] = "optional" as const;
-        }
-        if (event === "permission.request") {
-          declared["permission.request.block"] = "optional" as const;
-        }
-        if (event === "prompt.before") {
-          declared["prompt.before.block"] = "optional" as const;
-        }
-        if (event === "agent.stop") {
-          declared["agent.stop.prevent"] = "optional" as const;
-          declared["agent.stop.notify"] = "optional" as const;
-        }
-        if (event === "turn.stop") {
-          declared["turn.stop.prevent"] = "optional" as const;
-          declared["turn.stop.notify"] = "optional" as const;
-        }
-        const context = contextCapabilityFor(event);
-        if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
-        return Object.keys(declared).length > 0 ? { capabilities: declared as Record<CapabilityId, "optional"> } : {};
-      })(),
-      async run() {},
-    }),
-  );
+  // `event` spans the whole union here, so no single typed capability map fits
+  // `hook()`; the full-id declarations go straight onto the erased definition,
+  // which is the form hook() itself produces.
+  const hooks = events.map((event) => {
+    const definition = hook(event, { id: `playback-${event}`, async run() {} });
+    definition.capabilities = ((): Partial<Record<CapabilityId, "optional">> => {
+      const declared: Partial<Record<CapabilityId, "optional">> = {};
+      if (event === "tool.before") {
+        declared["tool.before.block"] = "optional" as const;
+        declared["tool.before.input.replace"] = "optional" as const;
+        declared["tool.before.requestApproval"] = "optional" as const;
+      }
+      if (event === "tool.after") {
+        declared["tool.after.blockContinuation"] = "optional" as const;
+        declared["tool.after.output.replace"] = "optional" as const;
+      }
+      if (event === "permission.request") {
+        declared["permission.request.block"] = "optional" as const;
+      }
+      if (event === "prompt.before") {
+        declared["prompt.before.block"] = "optional" as const;
+      }
+      if (event === "agent.stop") {
+        declared["agent.stop.prevent"] = "optional" as const;
+        declared["agent.stop.notify"] = "optional" as const;
+      }
+      if (event === "turn.stop") {
+        declared["turn.stop.prevent"] = "optional" as const;
+        declared["turn.stop.notify"] = "optional" as const;
+      }
+      const context = contextCapabilityFor(event);
+      if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
+      return declared;
+    })();
+    return definition;
+  });
   const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", version: "0.0.0", hooks }));
   if (ir === undefined) {
     throw new Error(

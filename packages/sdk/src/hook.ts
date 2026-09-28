@@ -1,15 +1,23 @@
-import type { CapabilityId, DeclarableCapability } from "./capabilities.js";
+import type { CanonicalCapability, CapabilityId, CapabilityKey, CapabilitySpellings } from "./capabilities.js";
+import { canonicalCapability } from "./capabilities.js";
 import type { Effect, EffectForCapability } from "./effects.js";
 import type { HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
 import type { RequirementLevel, SupportLevel } from "./support.js";
 import type { ToolMatch } from "./tools.js";
 
-/** Runtime capability lookup available to handlers for feature detection. */
-export interface CapabilitySet {
+/**
+ * Runtime capability lookup available to handlers for feature detection.
+ *
+ * Inside a hook, `K` is exactly what that hook declared, in either spelling
+ * (`"input.replace"` or `"tool.before.input.replace"`): probing a capability
+ * the hook never declared could only ever answer for an effect it is not
+ * allowed to return, so it is a compile error rather than a silent `false`.
+ */
+export interface CapabilitySet<K extends string = CapabilityId> {
   /** True when the capability is usable on the executing target. */
-  has(id: CapabilityId): boolean;
+  has(id: K): boolean;
   /** The executing target's support level for a capability. */
-  level(id: CapabilityId): SupportLevel;
+  level(id: K): SupportLevel;
 }
 
 /** The Agent Plugin package a hook ships in (ADR-0020). */
@@ -22,8 +30,8 @@ export interface PluginContext {
   root: string;
 }
 
-export interface HookContext {
-  capabilities: CapabilitySet;
+export interface HookContext<K extends string = CapabilityId> {
+  capabilities: CapabilitySet<K>;
   harness: {
     id: string;
     version?: string;
@@ -58,12 +66,12 @@ export function hookAppliesToTarget(hook: { targets?: TargetScope | undefined },
 }
 
 /**
- * Authoring shape for a single portable hook. `C` is inferred from the
+ * Authoring shape for a single portable hook. `K` is inferred from the
  * declared capability map, and constrains which effects `run` may return:
  * an undeclared effect is a compile-time error (and independently a runtime
  * HN401, since type information can be bypassed).
  */
-export interface HookSpec<E extends HookEventName, C extends DeclarableCapability<E> = never> {
+export interface HookSpec<E extends HookEventName, K extends CapabilityKey<E> = never> {
   /** Stable hook identifier used in diagnostics and the build report. */
   id: string;
 
@@ -87,13 +95,21 @@ export interface HookSpec<E extends HookEventName, C extends DeclarableCapabilit
    * Every non-observation capability the hook may rely on. This map is the
    * compiler's static capability manifest and defines which effect helpers
    * the hook is allowed to return.
+   *
+   * Keys may be spelled relative to the hook's event (`block`,
+   * `"input.replace"`) or in full (`"tool.before.block"`); `hook()` stores the
+   * full id either way, and diagnostics always print it.
    */
-  capabilities?: Record<C, RequirementLevel>;
+  capabilities?: Record<K, RequirementLevel>;
 
   run(
     event: HookEventMap[E],
-    ctx: HookContext,
-  ): Promise<EffectForCapability<C> | undefined | void> | EffectForCapability<C> | undefined | void;
+    ctx: HookContext<CapabilitySpellings<E, K>>,
+  ):
+    | Promise<EffectForCapability<CanonicalCapability<E, K>> | undefined | void>
+    | EffectForCapability<CanonicalCapability<E, K>>
+    | undefined
+    | void;
 }
 
 /** Erased runtime representation of an authored hook. */
@@ -110,14 +126,41 @@ export interface HookDefinition {
   ): Promise<Effect | undefined | void> | Effect | undefined | void;
 }
 
-export function hook<E extends HookEventName, C extends DeclarableCapability<E> = never>(
+/**
+ * Rewrite an authored capability map to full ids.
+ *
+ * Here and not in the compiler: `hook()` runs both when the compiler evaluates
+ * the entry and again inside every runtime artifact, and dispatch compares the
+ * declared map against full ids. Canonicalizing once, at the source, keeps both
+ * consumers (and any version skew between them) on one spelling.
+ */
+function canonicalCapabilities(
+  event: HookEventName,
+  hookId: string,
+  declared: Readonly<Record<string, RequirementLevel>> | undefined,
+): Partial<Record<CapabilityId, RequirementLevel>> {
+  const canonical: Record<string, RequirementLevel> = {};
+  const spelledAs = new Map<string, string>();
+  for (const [key, level] of Object.entries(declared ?? {})) {
+    const id = canonicalCapability(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== undefined) {
+      throw new Error(`hook "${hookId}" declares capability "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+    canonical[id] = level;
+  }
+  return canonical as Partial<Record<CapabilityId, RequirementLevel>>;
+}
+
+export function hook<E extends HookEventName, K extends CapabilityKey<E> = never>(
   event: E,
-  spec: HookSpec<E, C>,
+  spec: HookSpec<E, K>,
 ): HookDefinition {
   const def: HookDefinition = {
     event,
     id: spec.id,
-    capabilities: (spec.capabilities ?? {}) as Partial<Record<CapabilityId, RequirementLevel>>,
+    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
     run: spec.run as HookDefinition["run"],
   };
   if (spec.match !== undefined) def.match = spec.match;

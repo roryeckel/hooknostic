@@ -14,6 +14,7 @@ import type {
   ToolInvocation,
 } from "@hooknostic/sdk";
 import {
+  canonicalCapability,
   capabilityForEffect,
   DEFAULT_RUNTIME,
   effectSchema,
@@ -27,14 +28,13 @@ import {
 export type CapabilityLevels = Partial<Record<CapabilityId, SupportLevel>>;
 
 export function createCapabilitySet(levels: CapabilityLevels): CapabilitySet {
+  // Own-property lookup: an id like "constructor" (reachable from untyped
+  // callers) must not resolve an Object.prototype member as a support level.
+  const levelOf = (id: CapabilityId): SupportLevel =>
+    (Object.hasOwn(levels, id) ? levels[id] : undefined) ?? "unsupported";
   return {
-    has(id) {
-      const level = levels[id];
-      return level !== undefined && level !== "unsupported";
-    },
-    level(id) {
-      return levels[id] ?? "unsupported";
-    },
+    has: (id) => levelOf(id) !== "unsupported",
+    level: levelOf,
   };
 }
 
@@ -165,18 +165,22 @@ export async function dispatch(
   };
 
   for (const hook of matching) {
-    const capabilities: CapabilitySet = {
-      has(id) {
-        return this.level(id) !== "unsupported";
-      },
-      level(id) {
-        const level = targetCapabilities.level(id);
-        const minimum = options.minimumCapabilityLevel;
-        if (minimum !== undefined && hook.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
-          return "unsupported";
-        }
-        return level;
-      },
+    // Authors probe with the same keys they declared, which may be spelled
+    // relative to the event ("input.replace"); resolve before either lookup.
+    // Closures rather than `this`-methods, so `const { has } = ctx.capabilities`
+    // works.
+    const levelOf = (id: string): SupportLevel => {
+      const capability = canonicalCapability(event.event, id) as CapabilityId;
+      const level = targetCapabilities.level(capability);
+      const minimum = options.minimumCapabilityLevel;
+      if (minimum !== undefined && hook.capabilities[capability] !== "required" && !meetsMinimum(level, minimum)) {
+        return "unsupported";
+      }
+      return level;
+    };
+    const capabilities: CapabilitySet<string> = {
+      has: (id) => levelOf(id) !== "unsupported",
+      level: levelOf,
     };
     const controller = new AbortController();
     const ctx: HookContext = {
