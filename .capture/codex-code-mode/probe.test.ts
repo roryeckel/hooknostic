@@ -1,9 +1,9 @@
 import { realpathSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir, userInfo } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
-import { leakedNames, redactHomes } from "../../scripts/redact-capture.mjs";
+import { capturingHomes, redactHomes, unredactedHomes } from "../../scripts/redact-capture.mjs";
 import {
   playbackModelInfo,
   runProcess,
@@ -191,25 +191,6 @@ async function drive(id: string, spec: Drive) {
   }
 }
 
-/**
- * This machine's home path in every spelling the record can contain
- * (scripts/redact-capture.mjs redacts only these). The profile folder, not the
- * account name, is the key: a renamed Windows account keeps its original
- * folder. The scratch tree lives under tmpdir(), which Windows may spell with
- * an 8.3 profile folder, so that spelling is added when it sits beside the home.
- */
-function capturingHomes(): string[] {
-  const homes = new Set([homedir()]);
-  try {
-    homes.add(realpathSync.native(homedir()));
-  } catch {
-    // The plain spelling is still redacted.
-  }
-  const temp = /^(.*?[\\/]Users[\\/][^\\/]+)(?=[\\/])/i.exec(tmpdir())?.[1];
-  if (temp !== undefined && dirname(temp).toLowerCase() === dirname(homedir()).toLowerCase()) homes.add(temp);
-  return [...homes];
-}
-
 type Observed = Awaited<ReturnType<typeof drive>>;
 
 // What 0.156.1 did (README). A different result on another build is a finding
@@ -257,12 +238,18 @@ test("captures what Codex hooks receive for Code Mode exec and its nested exec_c
     matchers: MATCHERS,
     drives,
   };
-  const homes = capturingHomes();
-  const record = redactHomes(JSON.stringify(observations, null, 2), homes) + "\n";
-  // Before anything is written: a leak fails the capture and leaves the
-  // committed record untouched.
-  const names = [userInfo().username, ...homes.map((home) => basename(home))];
-  expect(leakedNames(record, names).length, "an account or profile-folder name survived redaction").toBe(0);
+  // The key is the profile folder, not the account name: a renamed Windows
+  // account keeps its original folder (scripts/redact-capture.mjs).
+  const homes = capturingHomes({ home: homedir(), temp: tmpdir(), realpath: realpathSync.native });
+  const redacted = redactHomes(JSON.stringify(observations, null, 2), homes);
+  const record = redacted.text + "\n";
+  // Before anything is written: a near miss or a surviving home path fails the
+  // capture and leaves the committed record untouched.
+  expect(
+    redacted.nearMisses.length,
+    "a path extends the home's profile folder; inspect it by hand rather than guess",
+  ).toBe(0);
+  expect(unredactedHomes(record, homes).length, "a home path survived redaction").toBe(0);
   const out = process.env["HOOKNOSTIC_CAPTURE_OUT"] ?? new URL("observations.json", import.meta.url);
   await writeFile(out, record);
   for (const [id, spec] of Object.entries(DRIVES)) expectDispatch(id, spec, drives[id]!);

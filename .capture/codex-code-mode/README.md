@@ -65,20 +65,32 @@ The probe asserts the dispatch table below. On a different build a failure is a
 finding to record, not a probe to loosen, so the record is written before the
 assertions run.
 
-Redaction (`scripts/redact-capture.mjs`, unit-tested in `pnpm test`) rewrites
-only this machine's own home path, in every spelling a record can hold: raw,
-JSON-escaped once, JSON-escaped twice, and with forward slashes. It replaces the
-profile-folder segment with `user`. The key is the profile folder, not the
-account name, because a renamed Windows account keeps its original folder. The
-8.3 spelling Windows may give `tmpdir()` is included.
+Redaction lives in `scripts/redact-capture.mjs` and is unit-tested in
+`pnpm test`. It rewrites only this machine's own home path, replacing the
+profile-folder segment with `user`.
 
-A match must end where the path segment ends. So `C:\Users\jonas` and
-non-home text such as `docs/Users/Permissions` are left as captured, and code
-after a quoted home path is untouched.
+The key is the profile folder, not the account name, because a renamed Windows
+account keeps its original folder. Two further spellings are included when they
+resolve to the home's own real path: the home's real path, and the 8.3 name
+Windows may give `tmpdir()`. A temp directory relocated under another profile
+(`C:\Users\Public\Temp`) resolves elsewhere and is left alone.
 
-Before writing, the probe fails if the account or profile-folder name still
-appears as a whole word anywhere in the record. Whole words only, so a name that
-is part of ordinary text (`cod` in `codexVersion`) cannot reject a clean record.
+The home path is matched by structure. Each separator matches any run of `\`
+and `/`, which covers every JSON escape depth and mixed separators. Case is
+ignored only for a Windows-style home. A match must not sit inside a longer
+path, and must end at a separator, a quote, whitespace, or the end of the text.
+So non-home text such as `docs/Users/Permissions`, and code after a quoted home
+path, are left as captured.
+
+Before writing, the probe fails in two cases:
+
+- **A near miss:** the home path continues past its profile segment (`jonas`,
+  `jo@corp`). Nothing is rewritten; a person inspects it by hand rather than the
+  probe guessing.
+- **A surviving home path:** a check implemented independently of the redaction
+  (separators normalised, then a whole-path search) still finds the home in any
+  spelling. It searches for the home path, not the account name, so an account
+  named `node` is not confused with the probe's `node -e` commands.
 
 ## Observations
 
