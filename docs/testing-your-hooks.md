@@ -12,8 +12,8 @@ and they need no stand-in for OpenCode's client. The reasoning is recorded in
 Using [`examples/basic`](../examples/basic/), whose hook blocks `git push --force`:
 
 ```jsonl
-{"event":"tool.before","session":{"id":"s1"},"tool":{"kind":"shell","nativeName":"Bash","input":{"command":"git push --force origin main"}}}
-{"event":"tool.before","session":{"id":"s1"},"tool":{"kind":"shell","nativeName":"Bash","input":{"command":"git status"}}}
+{"event":"tool.before","session":{"id":"s1"},"tool":{"nativeName":"Bash","input":{"command":"git push --force origin main"}}}
+{"event":"tool.before","session":{"id":"s1"},"tool":{"nativeName":"Bash","input":{"command":"git status"}}}
 ```
 
 ```sh
