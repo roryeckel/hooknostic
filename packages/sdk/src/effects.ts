@@ -125,11 +125,11 @@ export function replaceOutput(output: unknown): ReplaceOutputEffect {
 }
 
 /**
- * Rewrite the shell command portably. Guard with
- * `ctx.capabilities.has("tool.before.input.replace")` and
- * `event.tool.shell !== undefined` -- see {@link UpdateShellEffect}. Takes a
- * patch object so a working-directory field can be added later without a
- * signature break.
+ * Rewrite the shell command portably. Legal once
+ * `ctx.capabilities.has("input.replace")` and `event.tool.shell !== undefined`
+ * -- an early return on an unreadable command establishes the second -- see
+ * {@link UpdateShellEffect}. Takes a patch object so a working-directory field
+ * can be added later without a signature break.
  */
 export function updateShell(patch: { command: string }): UpdateShellEffect {
   return { kind: "updateShell", command: patch.command };

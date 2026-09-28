@@ -11,7 +11,7 @@ export default definePlugin({
   hooks: [
     hook("session.start", {
       id: "repo-context",
-      capabilities: { "session.start.context.add": "required" },
+      capabilities: { "context.add": "required" },
       async run(event) {
         return addContext(
           [
@@ -25,14 +25,12 @@ export default definePlugin({
     hook("tool.before", {
       id: "cwd-reminder",
       match: { kind: "shell" },
-      capabilities: { "tool.before.context.add": "optional" },
-      async run(event, ctx) {
-        if (!ctx.capabilities.has("tool.before.context.add")) return;
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
-        if (command.startsWith("cd ")) {
+      capabilities: { "context.add": "optional" },
+      run({ tool }, ctx) {
+        if (!ctx.capabilities.has("context.add")) return;
+        // Advice, not a guard: where the shape is uncaptured there is nothing
+        // to advise on, so this hook simply stays quiet (fails open).
+        if (tool.shell?.command.startsWith("cd ")) {
           return addContext("Reminder: prefer absolute paths over cd for tooling commands.");
         }
       },

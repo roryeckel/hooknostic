@@ -1,6 +1,6 @@
 ---
 name: extend-vocabulary
-description: Checklist for growing the portable vocabulary — adding or changing an Effect, capability id, diagnostic code (HNxxx), hook event, ToolKind, ShellShapes entry, or anything in packages/sdk/src/{effects,capabilities,schemas,tools,result}.ts, packages/runtime/src/dispatch.ts, or an adapter's profile.ts/toolmap.ts/apply.ts.
+description: Checklist for growing the portable vocabulary — adding or changing an Effect, capability id, diagnostic code (HNxxx), hook event, ToolKind, ShellShapes or FileShapes entry, a normalized tool view (tool.shell, tool.file), or anything in packages/sdk/src/{effects,capabilities,schemas,tools,result,hook}.ts, packages/runtime/src/dispatch.ts, or an adapter's profile.ts/toolmap.ts/apply.ts.
 ---
 
 # Extending the vocabulary
@@ -61,12 +61,25 @@ decision does not.
 - Code table in `docs/design.md` and `docs/glossary.md`. Codes are stable:
   never renumber (the misfamilied HN502 is documented, not renumbered).
 
-## Shell shape / toolmap entry
+## Shell or file shape / toolmap entry
 
 Capture first — load the `harness-capture` skill. Then: one `ShellShapes`
 entry per captured tool; both codec directions derive from it, and the
-testkit round-trips every shell-bearing fixture. Uncaptured tools stay
-absent.
+testkit round-trips every shell-bearing fixture. File tools go in
+`FileShapes` (`{ pathKey }` or `{ patchKey }`, read side only, ADR-0026); the
+testkit re-classifies every file-bearing fixture and requires a fixture per
+entry. Uncaptured tools stay absent. A new or renamed tool name also needs its
+`ToolKind` entry — capture found OpenCode's patch tools misclassified because
+only the shape had been considered.
+
+## New normalized tool view
+
+A view like `tool.shell`/`tool.file` moves together across: the SDK type and
+codec (`tools.ts`), the strict `toolInvocationSchema` twin (`schemas.ts`), the
+adapter interface (`core/src/adapter.ts`), each adapter's toolmap classifier,
+index and shim, `cli/src/dispatch.ts`, dispatch's `setToolInput` re-derive
+(a rewrite must never leave a view stale), the testkit contract obligations,
+and regenerated canonicals. It is a normalization decision, so it gets an ADR.
 
 ## New adapter
 

@@ -88,7 +88,7 @@ your hook capture, use the SDK's explicit matcher:
 hook("tool.before", {
   id: "deny-known-native-tool",
   match: { nativeName: "hooknostic_hooknostic_echo" },
-  capabilities: { "tool.before.block": "required" },
+  capabilities: { block: "required" },
   run() {
     return block("This tool is disabled.");
   },

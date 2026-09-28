@@ -21,24 +21,15 @@ rewriting is `optional`, and the hook checks at runtime whether it's available.
 hook("tool.before", {
   id: "protect-and-normalize-shell",
   match: { kind: "shell" },
-  capabilities: {
-    "tool.before.block": "required",
-    "tool.before.input.replace": "optional",
-  },
-  async run(event, ctx) {
-    // Normalized read with a raw fallback: where the shape is uncaptured
-    // (`shell` undefined), a guard must not fail open on an empty string.
-    const raw = (event.tool.input as { command?: unknown }).command;
-    const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+  capabilities: { block: "required", "input.replace": "optional" },
+  run({ tool }, ctx) {
+    const command = tool.shell?.command;
+    if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
     if (command.includes("rm -rf /")) {
       return block("Refusing destructive root deletion");
     }
 
-    if (
-      ctx.capabilities.has("tool.before.input.replace") &&
-      event.tool.shell !== undefined &&
-      command.startsWith("npm ")
-    ) {
+    if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
       return updateShell({ command: command.replace(/^npm /, "pnpm ") });
     }
   },
@@ -56,7 +47,7 @@ preserved. One hook body, every captured shell shape.
 | | `required` | `optional` |
 | --- | --- | --- |
 | At build time | Target must support it (to your configured minimum) or the target **fails with a diagnostic** | Never fails a build; an unavailable optional is recorded as info in the report |
-| At runtime | Always available — you may return the effect unconditionally | Ask first: `ctx.capabilities.has(...)` |
+| At runtime | Always available — you may return the effect unconditionally | Ask first: `ctx.capabilities.has("input.replace")` |
 
 The second half of the contract matters as much as the first: an optional capability
 being unavailable does **not** mean returning the effect is quietly ignored. Returning
@@ -64,15 +55,21 @@ a rewrite on a target where you didn't confirm availability is a runtime contrac
 violation (diagnostic HN401, handled per your configured error policy). The
 `ctx.capabilities.has()` check isn't decoration — it's how the hook keeps its promises.
 
-## The second guard: `event.tool.shell !== undefined`
+## The second guard: the early return
 
 `updateShell` needs one more check than the capability, and it is per-invocation,
-not per-target: **the tool's argument shape must be captured.** `event.tool.shell`
-being defined is that signal, for reading and writing alike. Where it's undefined —
-a shell-kind tool whose shape was never observed, such as Codex's tool literally
-named `shell` — returning `updateShell` is HN401. No build-time matrix can carry
-this, because it depends on which tool the harness invoked, which is why the
-capability stays `tool.before.input.replace` and the shape check is a runtime guard.
+not per-target: **the tool's argument shape must be captured.** `tool.shell` being
+defined is that signal, for reading and writing alike. Where it's undefined — a
+shell-kind tool whose shape was never observed, such as Codex's tool literally named
+`shell` — returning `updateShell` is HN401. No build-time matrix can carry this,
+because it depends on which tool the harness invoked, which is why the capability
+stays `input.replace` and the shape check is a runtime guard.
+
+In this hook the guard is the first line: a command it cannot read is refused, so
+every line after it runs with `tool.shell` defined and `updateShell` legal. A hook
+that is only advice — a rewrite with no guard attached — would `return` there instead
+and stay quiet (fail open). Either way the choice is written in the code, not left to
+an empty-string default.
 
 ## The escape hatches
 
@@ -83,8 +80,8 @@ Two, in increasing rawness — the portable path never replaces them:
    yourself but take the key name from the adapter instead of restating it:
 
    ```ts
-   const input = event.tool.input as Record<string, unknown>;
-   return replaceInput({ ...input, [event.tool.shell.commandKey]: next });
+   const input = tool.input as Record<string, unknown>;
+   return replaceInput({ ...input, [tool.shell.commandKey]: next });
    ```
 
    `shell.commandKey` (and `shell.cwdKey`, where the tool has a working-directory
@@ -92,10 +89,11 @@ Two, in increasing rawness — the portable path never replaces them:
    fixtures. Note `replaceInput` replaces the *whole* input object — spread the
    original and change only what you mean to.
 
-2. **Fully native.** When `event.tool.shell` is undefined, the shape is uncaptured:
-   read `event.tool.input` directly, treat the tool as unknown rather than assuming
-   a key, and use `replaceInput` with whatever native shape you have verified
-   yourself.
+2. **Fully native.** When `tool.shell` is undefined, the shape is uncaptured: read
+   `tool.input` directly, treat the tool as unknown rather than assuming a key, and use
+   `replaceInput` with whatever native shape you have verified yourself.
+   `rawInputString(tool, key)` reads one string argument without the cast-and-`typeof`
+   dance — pair it with a `nativeName` check, because the key is per harness.
 
 ## See the degradation ledger
 

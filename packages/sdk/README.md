@@ -15,11 +15,12 @@ export default definePlugin({
   name: "protect-shell",
   hooks: [hook("tool.before", {
     id: "guard",
-    capabilities: { "tool.before.block": "required" },
-    async run(event) {
-      if (event.tool.shell?.command.includes("rm -rf /")) {
-        return block("Review this command before proceeding.");
-      }
+    match: { kind: "shell" },
+    capabilities: { block: "required" },
+    run({ tool }) {
+      const command = tool.shell?.command;
+      if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
+      if (command.includes("rm -rf /")) return block("Review this command before proceeding.");
     },
   })],
 });

@@ -19,6 +19,9 @@ var __export = (target, all) => {
 function isCapabilityId(value) {
   return CAPABILITY_SET.has(value);
 }
+function canonicalCapability(event, key) {
+  return isCapabilityId(key) ? key : `${event}.${key}`;
+}
 var ALL_CAPABILITY_IDS, CAPABILITY_SET;
 var init_capabilities = __esm({
   "../../packages/sdk/dist/capabilities.js"() {
@@ -149,11 +152,25 @@ function hookAppliesToTarget(hook2, targetId) {
     return false;
   return true;
 }
+function canonicalCapabilities(event, hookId, declared) {
+  const canonical = {};
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const [key, level] of Object.entries(declared ?? {})) {
+    const id = canonicalCapability(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares capability "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+    canonical[id] = level;
+  }
+  return canonical;
+}
 function hook(event, spec) {
   const def = {
     event,
     id: spec.id,
-    capabilities: spec.capabilities ?? {},
+    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
     run: spec.run
   };
   if (spec.match !== void 0)
@@ -167,6 +184,7 @@ function hook(event, spec) {
 var init_hook = __esm({
   "../../packages/sdk/dist/hook.js"() {
     "use strict";
+    init_capabilities();
   }
 });
 
@@ -4448,22 +4466,72 @@ function shellCodec(shapes, options) {
     }
   };
 }
+function parsePatchPaths(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2 || lines[0].trim() !== PATCH_BEGIN || lines[lines.length - 1].trim() !== PATCH_END) {
+    return void 0;
+  }
+  const body = lines.slice(1, -1);
+  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
+    body.shift();
+  const paths = [];
+  let afterUpdateHeader = false;
+  for (const line of body) {
+    const trimmed = line.trim();
+    const header = PATCH_FILE_HEADERS.find((prefix) => trimmed.startsWith(prefix));
+    if (header !== void 0) {
+      const path = trimmed.slice(header.length);
+      if (path === "")
+        return void 0;
+      paths.push(path);
+      afterUpdateHeader = header === PATCH_UPDATE;
+      continue;
+    }
+    const untrailed = line.trimEnd();
+    if (untrailed.startsWith(PATCH_MOVE)) {
+      const path = untrailed.slice(PATCH_MOVE.length);
+      if (!afterUpdateHeader || path === "")
+        return void 0;
+      paths.push(path);
+      afterUpdateHeader = false;
+      continue;
+    }
+    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE)
+      return void 0;
+    afterUpdateHeader = false;
+  }
+  return [...new Set(paths)];
+}
+function fileCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      if ("pathKey" in shape) {
+        const path = input[shape.pathKey];
+        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : void 0;
+      }
+      const patch = input[shape.patchKey];
+      const paths = typeof patch === "string" ? parsePatchPaths(patch) : void 0;
+      return paths === void 0 ? void 0 : { paths, patchKey: shape.patchKey };
+    }
+  };
+}
+function listOf(value) {
+  return Array.isArray(value) ? value : [value];
+}
 function matchesTool(match, tool) {
   if (!match)
     return true;
-  if (match.kind !== void 0) {
-    const kinds = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds.includes(tool.kind))
-      return false;
-  }
-  if (match.nativeName !== void 0) {
-    const names = Array.isArray(match.nativeName) ? match.nativeName : [match.nativeName];
-    if (!names.includes(tool.nativeName))
-      return false;
-  }
+  if (match.kind !== void 0 && !listOf(match.kind).includes(tool.kind))
+    return false;
+  if (match.nativeName !== void 0 && !listOf(match.nativeName).includes(tool.nativeName))
+    return false;
   return true;
 }
-var TOOL_KINDS;
+var TOOL_KINDS, PATCH_BEGIN, PATCH_END, PATCH_ENVIRONMENT, PATCH_END_OF_FILE, PATCH_UPDATE, PATCH_FILE_HEADERS, PATCH_MOVE;
 var init_tools = __esm({
   "../../packages/sdk/dist/tools.js"() {
     "use strict";
@@ -4478,6 +4546,13 @@ var init_tools = __esm({
       "mcp",
       "other"
     ];
+    PATCH_BEGIN = "*** Begin Patch";
+    PATCH_END = "*** End Patch";
+    PATCH_ENVIRONMENT = "*** Environment ID:";
+    PATCH_END_OF_FILE = "*** End of File";
+    PATCH_UPDATE = "*** Update File: ";
+    PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE];
+    PATCH_MOVE = "*** Move to: ";
   }
 });
 
@@ -4514,6 +4589,11 @@ var init_schemas = __esm({
         cwd: external_exports.string().optional(),
         commandKey: external_exports.string(),
         cwdKey: external_exports.string().optional()
+      }).strict().optional(),
+      file: external_exports.object({
+        paths: external_exports.array(external_exports.string()),
+        pathKey: external_exports.string().optional(),
+        patchKey: external_exports.string().optional()
       }).strict().optional()
     }).strict();
     baseHookEventSchema = external_exports.object({
@@ -4868,9 +4948,9 @@ var init_hooks = __esm({
         hook("tool.before", {
           id: "sample-guard",
           match: { kind: "shell" },
-          capabilities: { "tool.before.block": "required" },
-          async run(event) {
-            if (event.tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
+          capabilities: { block: "required" },
+          run({ tool }) {
+            if (tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
           }
         })
       ]
@@ -4885,24 +4965,23 @@ import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 init_dist();
 function createCapabilitySet(levels) {
+  const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
-    has(id) {
-      const level = levels[id];
-      return level !== void 0 && level !== "unsupported";
-    },
-    level(id) {
-      return levels[id] ?? "unsupported";
-    }
+    has: (id) => levelOf(id) !== "unsupported",
+    level: levelOf
   };
 }
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, codec) {
+function setToolInput(tool, input, options) {
   tool.input = input;
-  const shell = codec?.classify(tool.nativeName, input);
+  const shell = options.shellCodec?.classify(tool.nativeName, input);
   if (shell !== void 0) tool.shell = shell;
   else delete tool.shell;
+  const file = options.fileCodec?.classify(tool.nativeName, input);
+  if (file !== void 0) tool.file = file;
+  else delete tool.file;
 }
 function truncateNotification(message, limit) {
   if (message.length <= limit) return message;
@@ -4956,96 +5035,37 @@ async function dispatch(hooks, event, options) {
     }
     return false;
   };
-  for (const hook2 of matching) {
-    const capabilities = {
-      has(id) {
-        return this.level(id) !== "unsupported";
-      },
-      level(id) {
-        const level = targetCapabilities.level(id);
-        const minimum = options.minimumCapabilityLevel;
-        if (minimum !== void 0 && hook2.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
-          return "unsupported";
+  const parseReturned = (hookId, value) => {
+    let parsed;
+    try {
+      parsed = effectSchema.safeParse(value);
+    } catch (error) {
+      return {
+        error: {
+          hookId,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hookId}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
         }
-        return level;
-      }
-    };
-    const controller = new AbortController();
-    const ctx = {
-      capabilities,
-      harness: { ...options.harness },
-      signal: controller.signal,
-      // A copy per hook, like `harness`: a handler that mutates it must not
-      // move the root under the hooks after it.
-      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
-    };
-    let outcome;
-    let timedOut = false;
-    let timer;
-    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
-    try {
-      outcome = await Promise.race([
-        Promise.resolve(hook2.run(event, ctx)),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-            reject(new Error(`timed out after ${budgetMs}ms`));
-          }, budgetMs);
-        })
-      ]);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: timedOut ? "timeout" : "error",
-          message: errorMessage(error)
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    } finally {
-      if (timer !== void 0) clearTimeout(timer);
+      };
     }
-    if (outcome === void 0) continue;
-    let parsedEffect;
-    try {
-      parsedEffect = effectSchema.safeParse(outcome);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
+    if (!parsed.success) {
+      const detail = parsed.error.issues[0]?.message;
+      return {
+        error: {
+          hookId,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
+          message: `hook "${hookId}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
+        }
+      };
     }
-    if (!parsedEffect.success) {
-      const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: "unsupported-effect",
-          code: "HN401",
-          message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    }
-    const effect = parsedEffect.data;
+    return { effect: parsed.data };
+  };
+  const applyEffect = (hook2, capabilities, effect) => {
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -5055,11 +5075,9 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (hook2.capabilities[capability] === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -5069,11 +5087,9 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -5083,15 +5099,13 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     let loweredShellInput;
     if (effect.kind === "updateShell") {
       const tool = toolOf(event);
       loweredShellInput = tool !== void 0 ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
       if (loweredShellInput === void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -5101,21 +5115,19 @@ async function dispatch(hooks, event, options) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options.shellCodec);
+        setToolInput(tool, loweredShellInput, options);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5183,8 +5195,105 @@ async function dispatch(hooks, event, options) {
     }
     if (isTerminalEffect(effect)) {
       result.terminatedBy = hook2.id;
-      break;
+      return true;
     }
+    return false;
+  };
+  for (const hook2 of matching) {
+    const levelOf = (id) => {
+      const capability = canonicalCapability(event.event, id);
+      const level = targetCapabilities.level(capability);
+      const minimum = options.minimumCapabilityLevel;
+      if (minimum !== void 0 && hook2.capabilities[capability] !== "required" && !meetsMinimum(level, minimum)) {
+        return "unsupported";
+      }
+      return level;
+    };
+    const capabilities = {
+      has: (id) => levelOf(id) !== "unsupported",
+      level: levelOf
+    };
+    const controller = new AbortController();
+    const ctx = {
+      capabilities,
+      harness: { ...options.harness },
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
+    };
+    let outcome;
+    let timedOut = false;
+    let timer;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    try {
+      outcome = await Promise.race([
+        Promise.resolve(hook2.run(event, ctx)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
+        })
+      ]);
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error)
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+    if (outcome === void 0) continue;
+    let returned;
+    try {
+      returned = Array.isArray(outcome) ? Array.from(outcome) : [outcome];
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    const parsed = returned.filter((value) => value !== void 0).map((value) => parseReturned(hook2.id, value));
+    const terminalAt = parsed.findIndex((entry) => "effect" in entry && isTerminalEffect(entry.effect));
+    if (terminalAt !== -1 && terminalAt < parsed.length - 1) {
+      const early = parsed[terminalAt];
+      const trailing = parsed.length - 1 - terminalAt;
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned "${early.effect.kind}" followed by ${trailing} more effect${trailing === 1 ? "" : "s"}; a terminal effect ends the dispatch, so it must be last in the list.`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    let ended = false;
+    for (const entry of parsed) {
+      ended = "error" in entry ? failDispatch(hook2.id, entry.error, capabilities) : applyEffect(hook2, capabilities, entry.effect);
+      if (ended) break;
+    }
+    if (ended) break;
   }
   return result;
 }
@@ -5366,6 +5475,11 @@ var CODEX_SHELL_SHAPES = {
   exec_command: { commandKey: "cmd", cwdKey: "workdir" }
 };
 var codexShellCodec = shellCodec(CODEX_SHELL_SHAPES);
+var CODEX_FILE_SHAPES = {
+  apply_patch: { patchKey: "command" },
+  view_image: { pathKey: "path" }
+};
+var codexFileCodec = fileCodec(CODEX_FILE_SHAPES);
 function classifyCodexTool(nativeName, input) {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
   if (mcpMatch) {
@@ -5377,11 +5491,13 @@ function classifyCodexTool(nativeName, input) {
     };
   }
   const shell = codexShellCodec.classify(nativeName, input);
+  const file = codexFileCodec.classify(nativeName, input);
   return {
     kind: (Object.hasOwn(CODEX_TOOL_KINDS, nativeName) ? CODEX_TOOL_KINDS[nativeName] : void 0) ?? "other",
     nativeName,
     input,
-    ...shell !== void 0 ? { shell } : {}
+    ...shell !== void 0 ? { shell } : {},
+    ...file !== void 0 ? { file } : {}
   };
 }
 var CodexDecodeError = class extends Error {
@@ -5511,6 +5627,7 @@ async function runCodexCommandShim(source, options) {
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
       shellCodec: codexShellCodec,
+      fileCodec: codexFileCodec,
       ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     trace?.(describeHookResult(result));

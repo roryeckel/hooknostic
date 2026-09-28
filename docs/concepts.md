@@ -125,12 +125,14 @@ Your hook declares which capabilities it relies on, and how much:
 
 ```ts
 capabilities: {
-  "tool.before.block": "required",          // no block support → this target fails the build
-  "tool.before.input.replace": "optional",  // nice to have → feature-detect at runtime
+  block: "required",          // tool.before.block: no block support → this target fails the build
+  "input.replace": "optional", // tool.before.input.replace: nice to have → feature-detect at runtime
 }
 ```
 
-At runtime, `ctx.capabilities.has(...)` tells you whether an optional capability is
+Keys are relative to the hook's event; the full ids (`tool.before.block`) are accepted
+too, and they are what reports and diagnostics print. At runtime,
+`ctx.capabilities.has("input.replace")` tells you whether an optional capability is
 live on the executing target. (Returning an effect you didn't declare — or that the
 target can't support — is a runtime contract violation, HN401, not a silent no-op.)
 

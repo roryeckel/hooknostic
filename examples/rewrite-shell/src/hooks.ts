@@ -14,24 +14,18 @@ export default definePlugin({
     hook("tool.before", {
       id: "protect-and-normalize-shell",
       match: { kind: "shell" },
-      capabilities: {
-        "tool.before.block": "required",
-        "tool.before.input.replace": "optional",
-      },
-      async run(event, ctx) {
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+      capabilities: { block: "required", "input.replace": "optional" },
+      run({ tool }, ctx) {
+        // The normalized command, whichever key the harness uses. Undefined
+        // only for a shell tool whose shape is uncaptured: a guard that cannot
+        // read the command refuses it rather than guessing.
+        const command = tool.shell?.command;
+        if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
 
-        if (
-          ctx.capabilities.has("tool.before.input.replace") &&
-          event.tool.shell !== undefined &&
-          command.startsWith("npm ")
-        ) {
+        if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
           // Portable write-back: the rewrite lands under whichever key this
           // harness uses (`command` on Claude/OpenCode, `cmd` on Codex's
           // exec_command), with every sibling input field preserved.

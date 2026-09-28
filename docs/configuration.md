@@ -30,7 +30,8 @@ defaults to its adapter id; set `adapter` explicitly for multiple named targets.
 Support levels are `exact`, `emulated`, `approximate`, and `unsupported`.
 `compatibility.minimum` defaults to `emulated`; `onBelowMinimum` defaults to `error`.
 Set these globally or on a target. Optional hook capabilities must be checked at
-runtime with `ctx.capabilities.has(...)`.
+runtime with `ctx.capabilities.has(...)`, which accepts the key as declared
+(`"input.replace"`) or its full id (`"tool.before.input.replace"`).
 
 | Component option | Default | Meaning |
 | --- | --- | --- |
