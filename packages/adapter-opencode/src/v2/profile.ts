@@ -70,6 +70,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           what: "A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch)",
         },
         // scheduled-playback:begin
+        {
+          version: "2.0.18",
+          date: "2026-09-28",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
+        },
         // scheduled-playback:end
       ],
     },
