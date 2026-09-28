@@ -8,10 +8,11 @@ import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { IPty, spawn as ptySpawn } from "node-pty";
+import semver from "semver";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
-import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
+import { codexAgentPluginProjector, codexCapabilityProfiles } from "@hooknostic/adapter-codex";
 import { opencodeAgentPluginProjector, opencodeV1Adapter } from "@hooknostic/adapter-opencode";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
@@ -24,6 +25,7 @@ import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
   openCodePlaybackConfigHome,
+  playbackModelInfo,
   type PlaybackScenario,
   prepareOpenCodePluginDependency,
   replayCommandFixtures,
@@ -376,6 +378,12 @@ interface DriveOptions {
    */
   mcpServerPath?: string;
   /**
+   * Codex only: a static `model_catalog_json` for the playback model. The only
+   * route by which a model-info field such as `tool_mode` reaches Codex from
+   * an unauthenticated custom provider (see `playbackModelInfo`).
+   */
+  modelCatalog?: string;
+  /**
    * opencode-serve lane only: a hook event the drive must observe in the trace
    * BEFORE it tears the server down.
    *
@@ -557,6 +565,7 @@ async function runCodexPlayback(
         "model_providers.hooknostic_playback.stream_max_retries=0",
         "-c",
         `projects={${tomlLiteral(build.artifactDir)}={trust_level=${tomlLiteral("trusted")}}}`,
+        ...(options.modelCatalog ? ["-c", `model_catalog_json=${tomlLiteral(options.modelCatalog)}`] : []),
         ...(options.mcpServerPath
           ? [
               // MCP tool calls trip an approval gate under approval_policy
@@ -2146,6 +2155,80 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
       await verifyEffect(projectDir);
     },
     300_000,
+  );
+
+  // Code Mode. gpt-5.6-luna and most current catalog models advertise
+  // tool_mode "code_mode_only": the model's only shell path is one `exec`
+  // custom tool whose JavaScript calls `tools.exec_command`. The outer `exec`
+  // never reaches a hook; each nested call does, as `Bash`/`command`
+  // (.capture/codex-code-mode). This drives a `match: { kind: "shell" }` guard
+  // -- generated native matcher included -- through that path and checks the
+  // effect, not the invocation. The minimum version is the captured record's.
+  const codeModeCapture = codexCapabilityProfiles
+    .flatMap((profile) => profile.source.validatedOn)
+    .find((record) => record.artifact === ".capture/codex-code-mode" && record.method === "captured");
+  it.skipIf(adapter?.id !== "codex").for([
+    ["denies", "block"],
+    ["rewrites", "rewrite"],
+  ] as const)(
+    "%s a nested exec_command inside a Code Mode exec",
+    { timeout: 240_000 },
+    async ([, scenario], context) => {
+      expect(codeModeCapture, "the profile must record the Code Mode capture").toBeDefined();
+      const reported = await runProcess("codex", ["--version"], { cwd: tmpdir(), env: process.env, timeoutMs: 30_000 });
+      const installedVersion = /(\d+\.\d+\.\d+)/.exec(reported.stdout)?.[1];
+      expect(installedVersion, reported.stdout + reported.stderr).toBeTypeOf("string");
+      if (semver.lt(installedVersion!, codeModeCapture!.version)) {
+        context.skip(
+          `Code Mode hook dispatch is captured from ${codeModeCapture!.version}; installed ${installedVersion}`,
+        );
+      }
+
+      const dir = await mkdtemp(join(tmpdir(), `hooknostic-codex-code-mode-${scenario}-`));
+      tempDirs.push(dir);
+      // Targeted at the binary under test so the generator emits its native
+      // PreToolUse matcher, which is what a shell guard on this build ships.
+      const build = await buildPlaybackArtifact(adapter!, dir, { version: installedVersion!, shellMatch: true });
+      const hooksJson = JSON.parse(await readFile(join(dir, ".codex/hooks.json"), "utf8")) as {
+        hooks: { PreToolUse: { matcher?: string }[] };
+      };
+      expect(hooksJson.hooks.PreToolUse[0]?.matcher, "the drive must exercise a generated matcher").toBeTypeOf(
+        "string",
+      );
+      const catalog = join(dir, "model-catalog.json");
+      await writeFile(catalog, JSON.stringify({ models: [playbackModelInfo({ tool_mode: "code_mode_only" })] }));
+
+      let requests: readonly unknown[] = [];
+      await runInstalledHarness(build, scenario, {
+        modelCatalog: catalog,
+        script: [{ kind: "code", disposition: scenario }, { kind: "text" }],
+        verify: async ({ server }) => {
+          requests = server.requests;
+        },
+      });
+
+      // Code Mode was actually in force: the model was offered `exec` and no
+      // direct exec_command, so no direct call can have satisfied the drive.
+      const offered = (
+        requests.find((request) => Array.isArray((request as { tools?: unknown }).tools)) as {
+          tools: { type?: string; name?: string }[];
+        }
+      ).tools.map((tool) => `${tool.type}:${tool.name}`);
+      expect(offered).toContain("custom:exec");
+      expect(offered).not.toContain("function:exec_command");
+
+      if (scenario === "block") {
+        await expect(access(join(dir, "hooknostic-blocked.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+      }
+      const toolBefore = (await readFile(build.tracePath, "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { event: string; toolKind?: string; toolNativeName?: string })
+        .filter((entry) => entry.event === "tool.before");
+      expect(toolBefore).toEqual([expect.objectContaining({ toolKind: "shell", toolNativeName: "Bash" })]);
+    },
   );
 
   it("drives the fixture MCP tool through the generated production artifact", async () => {

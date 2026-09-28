@@ -163,6 +163,10 @@ path per harness:
   cp -r dist/codex/.codex .
   ```
 
+  In a linked git worktree, copy it to the root checkout instead. Codex never
+  loads a worktree's own `.codex/hooks.json`
+  ([details](installing-artifacts.md#codex-cli)).
+
 - **OpenCode** — copy the tree to your repo root:
 
   ```bash

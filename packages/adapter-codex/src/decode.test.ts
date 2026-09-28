@@ -15,6 +15,8 @@ const CASES = [
   "prompt-submit",
   "pre-tool-bash",
   "post-tool-bash",
+  "pre-tool-code-mode",
+  "post-tool-code-mode",
   "permission-request",
   "subagent-start",
   "subagent-stop",
