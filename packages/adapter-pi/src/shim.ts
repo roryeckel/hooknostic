@@ -9,6 +9,7 @@ import { type PiApplication, planPiApplication } from "./apply.js";
 import type { PiNativeEvent } from "./decode.js";
 import { decodePi, PiDecodeError } from "./decode.js";
 import { piShellCodec } from "./toolmap.js";
+import { isPlainRecord, validatePiEffect } from "./validate.js";
 
 export interface PiShimOptions {
   targetId?: string;
@@ -41,12 +42,6 @@ export interface HooknosticExtension {
 }
 
 type PiHandler = (event: unknown, ctx: unknown) => Promise<unknown> | unknown;
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
 
 function isMutablePlainRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -97,14 +92,10 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: piShellCodec,
       validateEffect(effect) {
-        if (effect.kind !== "replaceInput") return undefined;
-        if (!isMutablePlainRecord(native.event["input"])) {
+        if (effect.kind === "replaceInput" && !isMutablePlainRecord(native.event["input"])) {
           return "pi cannot apply a rewrite because the live tool input is not a mutable plain object";
         }
-        if (!isPlainRecord(effect.input)) {
-          return "pi cannot apply a replacement that is not a plain object";
-        }
-        return undefined;
+        return validatePiEffect(effect);
       },
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });

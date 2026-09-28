@@ -74,6 +74,10 @@ Each result is the dispatch's `HookResult` (`event`, `effects`, `terminatedBy`,
 A hook that throws or times out appears in `errors`, as it would under the
 runtime policy in a real harness. That is still a successful dispatch.
 
+Dispatch also runs the adapter's effect validator. For example, Pi rejects a
+replacement input that is not a plain object with HN401. Rejected effects obey
+`onHookError`: continue without the replacement, or block where supported.
+
 ## What carries between events
 
 A command target (Claude Code, Codex) starts a fresh process for every hook
@@ -104,6 +108,10 @@ Behaviour that depends on the host process is also out of reach. That includes
 which executable runs the hook (see [Writing hooks safely](writing-hooks-safely.md)),
 environment a harness sets, and concurrent calls. Events in one run are
 dispatched one at a time, in the same process.
+
+Checks that require a live native object also remain in the shim. Dispatch can
+validate a Pi replacement's shape, but cannot establish whether the harness's
+actual input object is mutable.
 
 ## From code
 

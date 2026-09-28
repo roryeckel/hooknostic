@@ -22,6 +22,7 @@ import { piCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { piAgentPluginProjector } from "./project-agent-plugin.js";
 import { classifyPiTool, PI_SHELL_SHAPES, piShellCodec } from "./toolmap.js";
+import { validatePiEffect } from "./validate.js";
 
 export { piHarness } from "./harness.js";
 export { piCapabilityProfiles } from "./profile.js";
@@ -204,6 +205,7 @@ export function piAdapter(): HarnessAdapter {
         return decodePi(nativeEvent, invocation);
       },
       apply: applyPi,
+      validateEffect: validatePiEffect,
     },
   };
 }

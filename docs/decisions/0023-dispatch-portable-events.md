@@ -35,8 +35,13 @@ cannot pass against hooks that cannot ship there.
 
 **As which target.** The runtime receives what a built shim hands it: capability
 levels resolved from the target's version range, the compatibility floor, the
-runtime policy, the adapter's shell codec, and `ctx.plugin.root` derived the way
+runtime policy, the adapter's shell codec and optional effect validator, and `ctx.plugin.root` derived the way
 the build derives it (ADR-0020).
+
+Adapter effect validation runs after portable validation and shell lowering,
+before canonical mutation. Rejections use HN401 and the same `onHookError`
+policy in both paths. Checks that require a live native object, such as whether
+Pi's input object can be mutated, remain in the shim.
 
 **What comes back.** One result per event: the `HookResult`, plus `native`, the
 adapter's own `apply()` output, which is what that target's shim sends its

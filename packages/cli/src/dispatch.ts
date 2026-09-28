@@ -241,6 +241,9 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
       minimumCapabilityLevel: effectiveCompatibility(config, options.target).minimum,
       policy: effectiveRuntime(config),
       ...(adapter.shellCodec === undefined ? {} : { shellCodec: adapter.shellCodec }),
+      ...(adapter.runtime.validateEffect === undefined
+        ? {}
+        : { validateEffect: adapter.runtime.validateEffect.bind(adapter.runtime) }),
       ...(pluginRoot === undefined ? {} : { plugin: { root: pluginRoot } }),
     };
     const results: DispatchResult[] = [];
