@@ -78,6 +78,27 @@ available. The capture driver checks for the entry before starting Pi.
   loopback playback. Its live `tool_call` had input `{command}` and the
   successful `tool_result` had the same input. Both payloads are curated in
   `fixtures/pi/0.84/tool-*-powershell.*.json`.
+- The original `run-capture.mjs` launched Pi through a shell with an unquoted
+  argument array. Multiword prompts became separate submissions; for example,
+  `before-agent-start.input.json` records only `"Create"` as its prompt.
+  Those payloads remain real captures, but the split invalidates conclusions
+  drawn from their prompt cadence. The driver now preserves the prompt as one
+  argument. A fresh isolated 0.84.4 loopback run observed one `input` event
+  containing the complete prompt, one `before_agent_start`, and one
+  `agent_start`; the tool exchange made two local model requests.
+- With the same single-prompt loopback setup, both `input-handled` and
+  `input-handled-first` returned `{action: "handled"}` on the sole `input`
+  event. Each run exited 0 with no `before_agent_start`, no `agent_start`,
+  and no model request. This verifies print-mode suppression. Interactive
+  modes and a portable `prompt.before.block` mapping remain unverified.
+
+For that recheck, each probe used a fresh temporary project and
+`PI_CODING_AGENT_DIR`. The existing `startModelPlayback("openai-chat",
+"rewrite")` server supplied the model, `writePiProviderExtension` registered
+it through `-e`, and `hooknostic-capture.ts` ran through a second `-e` with
+`HKN_PI_PROBE` set to the probe name. Pi received `--approve --no-session -p`
+with the complete prompt as one argument. The tee records and loopback request
+count established the observations above; no model provider was contacted.
 
 ## Captured facts (pi 0.84.4, Windows, 2026-09-27)
 
@@ -88,7 +109,7 @@ behavior or session artifacts, never by absence of harness errors.
 |---|---|---|
 | Extension loading | discovery loads `*.ts`/`*.js` only from project `.pi/extensions/` and global `<agentDir>/extensions/`, one level deep (no `.mjs`) | schema-derived (loader.js source) + captured (extension loaded via `-e`) |
 | `session_start` | payload `{type, reason: "startup"\|"reload"\|"new"\|"resume"\|"fork", previousSessionFile?}` | captured |
-| `input` | **low-level event: fires per token** in print mode (prompt text arrives word-by-word as multiple `input` events), not once per submission. Not a semantic prompt boundary — `before_agent_start` is. `{action: "handled"}` suppressed the turn **mid-stream only**: suppressing the first token still ran the agent (2× `agent_start`) and the print-mode process hung. Unusable as a block channel — unrated in the profile | captured + verified by effect |
+| `input` | The corrected single-prompt print-mode run delivered one event with the complete prompt. `{action: "handled"}` on that event suppressed the turn before `before_agent_start` and model traffic. The earlier per-token observation came from shell-split CLI arguments. This is a pre-turn input channel; a portable `prompt.before.block` mapping has not been validated across modes | captured + verified by effect |
 | `before_agent_start` | payload `{prompt, systemPrompt, systemPromptOptions, images?}`; result `{message?, systemPrompt?}` — injected system prompt was quoted verbatim by the model; injected message rode along | captured + verified by effect |
 | `context` | payload `{messages}` (deep copy); result `{messages}` **replaces** — injected marker message quoted verbatim by the model | captured + verified by effect |
 | `tool_call` | payload `{type, toolCallId, toolName, input}`; result `{block?, reason?, terminate?}`. Block verified: model reported the block reason, tool never ran. `terminate` (batch early-stop hint) not yet probed | captured + verified by effect |
@@ -186,6 +207,9 @@ already match existing fixtures, so no new shape or capability is claimed.
 
 ### Model-backed probes
 
+Run `pnpm run bundle` first; the capture driver uses the repository's Pi
+playback launcher to preserve CLI arguments on Windows.
+
 ```
 node .capture/pi/run-capture.mjs tee             # passive capture
 node .capture/pi/run-capture.mjs block-bash      # tool_call block probe
@@ -214,12 +238,10 @@ Package-route probe: install `scratch/hkn-probe-package` into
   artifacts of two probe extensions being loaded in one session (`-e` twice
   with the same file loads it once; the duplicates came from earlier runs
   appending to the same capture dir). Fresh clean runs show exactly one
-  `session_start` per session, and `input` firing once per prompt token in
-  print mode (not once per prompt).
-- **`input` `{action: "handled"}` is not a usable block channel**: mid-stream
-  suppression worked (turn never started), but suppressing the first token
-  still ran the agent and the print-mode process hung. Unrated in the
-  profile; `prompt.before.block` stays unsupported on pi 0.84.x.
+  `session_start` per session.
+- Whether `input` `{action: "handled"}` provides the same suppression in
+  interactive and RPC modes. The single-prompt print-mode probe succeeded;
+  `prompt.before.block` remains unrated until the portable mapping is verified.
 - `notify` (user-facing): `ctx.ui.notify` verified to be a safe no-op in
   print mode (`hasUI: false`); TUI/RPC rendering not probed (no fixtures can
   represent it).

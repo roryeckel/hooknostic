@@ -45,7 +45,14 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-09-27",
           method: "live-probe",
           artifact: ".capture/pi/README.md",
-          what: 'verified by effect: tool_call block, input rewrite, tool_result replace, system-prompt injection, session_before_compact {cancel:true}, turn injection via sendMessage({triggerTurn:true}), context {messages} replacement; input {action:"handled"} proven NOT a reliable prompt block (mid-stream only, first-token suppression hangs print mode)',
+          what: "original effect probes verified tool_call block, input rewrite, tool_result replace, system-prompt injection, compaction cancel, turn injection, and context replacement; the driver's shell-split prompts invalidate its input-event cadence conclusion",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "isolated single-prompt loopback runs: one full-text input event per print-mode prompt; {action:handled} on that event suppressed before_agent_start, agent_start, and all model requests in both input probes; other modes remain unverified",
         },
         {
           version: "0.84.4",

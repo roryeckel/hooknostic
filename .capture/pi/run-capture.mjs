@@ -6,17 +6,19 @@
 // Writes to .capture/pi/captured-<probe>/ — gitignored. Raw payloads land
 // there; curated fixtures are copied into fixtures/pi/<version>/ by hand
 // with provenance rows in the fixtures README.
-import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { register } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
+register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url));
+const { runProcess } = await import(pathToFileURL(join(repoRoot, "packages/cli/test/harness-playback.ts")).href);
 const probe = process.argv[2] ?? "tee";
-const dir = join(here, `captured-${probe}`);
-rmSync(dir, { recursive: true, force: true });
+const dir = process.env.HKN_CAPTURE_DIR ?? join(here, `captured-${probe}`);
+if (process.env.HKN_CAPTURE_DIR === undefined) rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 
 const prompts = {
@@ -89,8 +91,14 @@ const args = [
 ];
 
 console.log(`[run-capture] probe=${probe}`);
-const result = spawnSync("pi", args, { cwd: repoRoot, env, encoding: "utf8", shell: true });
-console.log(result.stdout ?? "");
-if (result.stderr) console.error(result.stderr);
-console.log(`[run-capture] exit=${result.status ?? "unknown"}`);
+try {
+  const result = await runProcess("pi", args, { cwd: repoRoot, env, timeoutMs: 120_000 });
+  console.log(result.stdout);
+  if (result.stderr) console.error(result.stderr);
+  console.log(`[run-capture] exit=${result.code ?? "unknown"}`);
+  if (result.code !== 0) process.exitCode = result.code ?? 1;
+} catch (error) {
+  console.error(`[run-capture] Pi failed: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}
 console.log(`[run-capture] captured => ${dir}`);

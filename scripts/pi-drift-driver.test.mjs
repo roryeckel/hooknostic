@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,66 @@ import { expect, it } from "vitest";
 import { runProcess, startModelPlayback } from "../packages/cli/test/harness-playback.js";
 
 const driver = fileURLToPath(new URL("./drive-capture-session.mjs", import.meta.url));
+const captureDriver = fileURLToPath(new URL("../.capture/pi/run-capture.mjs", import.meta.url));
 const run = (...args) => spawnSync(process.execPath, [driver, "pi", ...args], { encoding: "utf8", timeout: 150_000 });
+
+it("passes a quoted, multiword capture prompt to Pi as one argument", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "hooknostic-pi-capture-args-"));
+  try {
+    const bin = join(scratch, "bin");
+    const agentDir = join(scratch, "pi-home");
+    const captured = join(scratch, "captured");
+    mkdirSync(bin);
+    mkdirSync(agentDir);
+    writeFileSync(
+      join(agentDir, "models.json"),
+      JSON.stringify({ providers: { "ollama-localhost": { models: [{ id: "deepseek-v4.1-flash:cloud" }] } } }),
+    );
+    const stub = join(bin, "record-argv.mjs");
+    writeFileSync(
+      stub,
+      'import { writeFileSync } from "node:fs"; writeFileSync(process.env.HKN_CAPTURE_DIR + "/argv.json", JSON.stringify(process.argv.slice(2))); process.exit(Number(process.env.HKN_FAKE_EXIT ?? 0));\n',
+    );
+    if (process.platform === "win32") {
+      writeFileSync(join(bin, "pi.cmd"), '@node "%~dp0\\record-argv.mjs" %*\r\n');
+    } else {
+      const launcher = join(bin, "pi");
+      writeFileSync(launcher, '#!/bin/sh\nexec node "$(dirname "$0")/record-argv.mjs" "$@"\n');
+      chmodSync(launcher, 0o755);
+    }
+    const result = spawnSync(process.execPath, [captureDriver, "tee"], {
+      cwd: scratch,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        PATH: `${bin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
+        PI_CODING_AGENT_DIR: agentDir,
+        HKN_CAPTURE_DIR: captured,
+      },
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const argv = JSON.parse(readFileSync(join(captured, "argv.json"), "utf8"));
+    expect(argv.at(-1)).toBe(
+      "Create a file named hello.txt with the content 'hi from pi', then list the current directory using bash.",
+    );
+    const failed = spawnSync(process.execPath, [captureDriver, "tee"], {
+      cwd: scratch,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        PATH: `${bin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
+        PI_CODING_AGENT_DIR: agentDir,
+        HKN_CAPTURE_DIR: captured,
+        HKN_FAKE_EXIT: "7",
+      },
+    });
+    expect(failed.status, failed.stdout + failed.stderr).toBe(7);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
 
 it("reports an unavailable Pi proxy path as inconclusive", () => {
   const result = spawnSync(process.execPath, [driver, "pi", "--transport", "llm"], {

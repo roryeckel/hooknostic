@@ -10,6 +10,13 @@ to `user` in all path forms; the compact fixture's embedded environment dump
 (a bash toolResult in session content, which contained a live credential)
 is replaced wholesale with a placeholder — content, not wire shape.
 
+The original `run-capture.mjs` split multiword prompts into separate Pi
+submissions. The `before-agent-start` fixture's `"Create"` prompt is one such
+submission; the surrounding payload shapes are still captured evidence, but
+that run cannot establish per-prompt cadence. The isolated loopback fixture
+used an intact prompt, and a later single-prompt loopback probe confirmed one
+full-text `input` event per submitted print-mode prompt.
+
 ## Invocation shape
 
 The shim receives each event as the live native object plus the extension
@@ -21,7 +28,7 @@ Fixture `input.json` files are exactly that shape (post-capture, pre-decode).
 | Case | Class | Notes |
 |---|---|---|
 | `session-start` | captured | reason `"startup"` |
-| `before-agent-start` | captured | full `systemPrompt` incl. project context block; `systemPromptOptions` |
+| `before-agent-start` | captured | `"Create"` is the first shell-split prompt; full `systemPrompt` incl. project context block; `systemPromptOptions` |
 | `before-agent-start-isolated` | captured | 2026-09-27, same reference build, Windows; free loopback drift driver in a fresh temporary project and agent home, without user skills, context files, or third-party tool snippets. Account-name path segments redacted as above. |
 | `agent-start` | captured | |
 | `context` | captured | messages deep copy handed to handler |
@@ -55,5 +62,6 @@ injection via `sendMessage({triggerTurn: true})`) lives in
   `before_provider_headers`, `after_provider_response`, session tree/switch
   events — observed in the type surface; no fixtures (not adapter-observed
   channels, or not yet probed).
-- `input` event — fires per token in print mode; not a semantic boundary;
-  deliberately unfixture'd.
+- `input` event — corrected single-prompt print-mode probe captured the full
+  submitted text in one event; deliberately unfixture'd because the adapter
+  observes `before_agent_start` instead.
