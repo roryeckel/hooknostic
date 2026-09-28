@@ -282,6 +282,23 @@ describe("hooknostic dispatch", () => {
     expect(await refused("opencode", [turn])).toEqual([]);
   });
 
+  it("refuses what build refuses, including a global problem outside the target", async () => {
+    // Accepting a field Claude produces exactly is an HN501 the build reports
+    // globally, not against the target; dispatch must not run hooks past it.
+    const dir = await project(HOOKS, TARGETS, 'compatibility: { accept: ["claude:turn.stop.lastMessage"] },');
+    const outcome = await dispatchEvents({
+      config: join(dir, "hooknostic.config.ts"),
+      target: "claude",
+      events: [{ event: "turn.stop" }],
+      registry: defaultAdapterRegistry(),
+      evaluate: EVALUATE,
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? "" : outcome.errors.join(" ")).toContain(
+      'compatibility.accept names "claude:turn.stop.lastMessage"',
+    );
+  });
+
   it("refuses a target the hooks could not be built for", async () => {
     const dir = await project(`
       import { definePlugin, hook, notify } from "@hooknostic/sdk";

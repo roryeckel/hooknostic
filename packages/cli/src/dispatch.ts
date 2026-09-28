@@ -250,7 +250,9 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     // What `build` would refuse for this target, dispatch refuses too: a test
     // must not pass against hooks that cannot ship there.
     const analysis = analyzeCapabilities(ir.ir, config, options.registry, [options.target]);
-    if (analysis.targets[options.target]?.ok !== true) {
+    // The whole analysis, not only this target's: a global problem such as an
+    // invalid compatibility.accept fails the build, so it fails dispatch too.
+    if (!analysis.ok || analysis.targets[options.target]?.ok !== true) {
       return { ok: false, errors: [formatDiagnostics(analysis.diagnostics.filter((d) => d.severity === "error"))] };
     }
 
