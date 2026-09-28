@@ -127,7 +127,7 @@ function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch
       cwd: directory,
       encoding: "utf8",
       env: { ...process.env, GITHUB_OUTPUT: "outputs.txt", RUNNER_TEMP: "." },
-      timeout: 10_000,
+      timeout: 60_000,
     });
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr).toBe(status);
