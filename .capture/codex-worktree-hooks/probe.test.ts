@@ -126,23 +126,30 @@ async function drive(spec: Drive) {
   }
 }
 
+// What 0.156.1 did (README): a linked worktree's own hooks never ran, and the
+// root checkout's ran for every event whenever it had any, whichever checkout
+// Codex ran in. A different table on another build is a finding to record,
+// not a probe to loosen -- which is why the record is written first.
+function expectedDispatch(spec: Drive) {
+  return { root: spec.hooksIn.includes("root") ? [...EVENTS].sort() : [], worktree: [] };
+}
+
 test("captures which .codex/hooks.json Codex loads in a linked git worktree", async () => {
   const version = await runProcess("codex", ["--version"], { cwd: tmpdir(), env: process.env, timeoutMs: 30_000 });
-  const observations: Record<string, unknown> = {
+  const drives: Record<string, Awaited<ReturnType<typeof drive>>> = {};
+  for (const [id, spec] of Object.entries(DRIVES)) drives[id] = await drive(spec);
+  const observations = {
     codexVersion: version.stdout.trim(),
     platform: process.platform,
     capturedOn: new Date().toLocaleDateString("sv-SE"),
-    drives: {},
+    drives,
   };
-  for (const [id, spec] of Object.entries(DRIVES)) {
-    (observations["drives"] as Record<string, unknown>)[id] = await drive(spec);
-  }
   const out = process.env["HOOKNOSTIC_CAPTURE_OUT"] ?? new URL("observations.json", import.meta.url);
   await writeFile(out, JSON.stringify(observations, null, 2) + "\n");
-  for (const [id, observed] of Object.entries(
-    observations["drives"] as Record<string, { modelErrors: string[]; toolRan: boolean }>,
-  )) {
+  for (const [id, spec] of Object.entries(DRIVES)) {
+    const observed = drives[id]!;
     expect(observed.modelErrors, id).toEqual([]);
     expect(observed.toolRan, `${id}: the scripted shell call never ran, so hook dispatch proves nothing`).toBe(true);
+    expect(observed.dispatchedBy, `${id}: which checkout's hooks ran`).toEqual(expectedDispatch(spec));
   }
 });

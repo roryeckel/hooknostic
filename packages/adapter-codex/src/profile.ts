@@ -105,10 +105,19 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           method: "captured",
           artifact: ".capture/codex-code-mode",
           what:
-            "Code Mode on Windows (loopback model; tool_mode code_mode_only -- the gpt-5.6-luna catalog value -- and code_mode): " +
-            "the model's outer exec custom tool call dispatches no PreToolUse or PostToolUse under any matcher, while each nested " +
-            "tools.exec_command dispatches both as Bash/{command} (tool_use_id exec-<uuid>), selected by the generated " +
-            "Bash|exec_command|shell matcher -- the direct call's payload shape, also with the live call's workdir/shell/yield arguments.",
+            "Code Mode hook payloads on Windows (loopback model; tool_mode code_mode_only -- the gpt-5.6-luna catalog value -- and " +
+            "code_mode): a nested tools.exec_command reaches PreToolUse and PostToolUse as Bash/{command} with tool_use_id " +
+            "exec-<uuid> -- the direct call's payload shape, also with the live call's workdir/shell/yield arguments.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Code Mode dispatch on Windows, the same drives: the model's outer exec custom tool call reached neither a catch-all " +
+            "PreToolUse/PostToolUse group nor one matching exec -- an observed absence, which codex-rs source agrees with " +
+            "(freeform payloads carry no hook payload) -- while the generated Bash|exec_command|shell matcher selected each nested call.",
         },
         {
           version: "0.156.1",
@@ -167,13 +176,14 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         rationale:
           "tool-path coverage, not a security boundary: hosted tools (e.g. web_search) bypass hooks and write_stdin does not re-trigger PreToolUse. " +
           "Under Code Mode (tool_mode code_mode_only, which the gpt-5.6 catalog models carry) the model's exec script never reaches a hook; " +
-          "each tool call the script makes does, one by one (captured 0.156.1, .capture/codex-code-mode).",
+          "each tool call the script makes does, one by one (observed on 0.156.1, .capture/codex-code-mode).",
       },
       "tool.before.block": {
         level: "exact",
         rationale:
           "Code Mode does not route around it: a nested tools.exec_command reaches PreToolUse as Bash/{command}, is selected by the " +
-          "generated shell matcher, and a deny stops it (captured and effect-verified on 0.156.1, .capture/codex-code-mode). The exec " +
+          "generated shell matcher, and a deny stops it (payload captured, dispatch and deny verified live on 0.156.1, " +
+          ".capture/codex-code-mode). The exec " +
           "script has no filesystem, process, or network API of its own (codex-rs source), so its side effects all pass through such calls.",
       },
       "tool.before.requestApproval": {

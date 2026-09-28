@@ -12,13 +12,15 @@ import semver from "semver";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
-import { codexAgentPluginProjector, codexCapabilityProfiles } from "@hooknostic/adapter-codex";
+import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
 import { opencodeAgentPluginProjector, opencodeV1Adapter } from "@hooknostic/adapter-opencode";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
 import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 
+// @ts-expect-error Repository release tooling is plain JavaScript.
+import { codeModeReferenceVersion } from "../../../scripts/verify-code-mode.mjs";
 // @ts-expect-error Repository release tooling is plain JavaScript.
 import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs";
 import { defaultAdapterRegistry } from "../src/registry.js";
@@ -2163,10 +2165,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
   // never reaches a hook; each nested call does, as `Bash`/`command`
   // (.capture/codex-code-mode). This drives a `match: { kind: "shell" }` guard
   // -- generated native matcher included -- through that path and checks the
-  // effect, not the invocation. The minimum version is the captured record's.
-  const codeModeCapture = codexCapabilityProfiles
-    .flatMap((profile) => profile.source.validatedOn)
-    .find((record) => record.artifact === ".capture/codex-code-mode" && record.method === "captured");
+  // effect, not the invocation. The minimum version is the captured record's,
+  // which `referenceVersion` predates: the ordinary lane skips these, and the
+  // dedicated gate (scripts/verify-code-mode.mjs) installs that build and sets
+  // HOOKNOSTIC_REQUIRE_CODE_MODE so a skip there is a failure instead.
   it.skipIf(adapter?.id !== "codex").for([
     ["denies", "block"],
     ["rewrites", "rewrite"],
@@ -2174,14 +2176,14 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
     "%s a nested exec_command inside a Code Mode exec",
     { timeout: 240_000 },
     async ([, scenario], context) => {
-      expect(codeModeCapture, "the profile must record the Code Mode capture").toBeDefined();
+      const baseline = codeModeReferenceVersion(adapter!) as string;
       const reported = await runProcess("codex", ["--version"], { cwd: tmpdir(), env: process.env, timeoutMs: 30_000 });
       const installedVersion = /(\d+\.\d+\.\d+)/.exec(reported.stdout)?.[1];
       expect(installedVersion, reported.stdout + reported.stderr).toBeTypeOf("string");
-      if (semver.lt(installedVersion!, codeModeCapture!.version)) {
-        context.skip(
-          `Code Mode hook dispatch is captured from ${codeModeCapture!.version}; installed ${installedVersion}`,
-        );
+      if (semver.lt(installedVersion!, baseline)) {
+        const reason = `Code Mode hook dispatch is captured from ${baseline}; installed ${installedVersion}`;
+        if (process.env["HOOKNOSTIC_REQUIRE_CODE_MODE"] === "1") throw new Error(reason);
+        context.skip(reason);
       }
 
       const dir = await mkdtemp(join(tmpdir(), `hooknostic-codex-code-mode-${scenario}-`));

@@ -44,6 +44,10 @@ isolated `CODEX_HOME`, credential variables removed, and
 checkout is trusted in every drive, as it was live. `worktreeTrusted` also trusts
 the worktree explicitly. `observations.json` is the record. It carries no paths.
 
+The probe asserts the table below. On a different build a failure is a finding
+to record, not a probe to loosen, so the record is written before the
+assertions run.
+
 ## Observations
 
 | Drive | Layout | `hooks.json` in | Codex cwd | Trusted | Root checkout's hooks ran | Worktree's hooks ran |

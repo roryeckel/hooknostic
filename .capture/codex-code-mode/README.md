@@ -1,9 +1,13 @@
 # Codex Code Mode hook dispatch
 
-Evidence class: **captured** (hook payloads) and **live-probe** (effects), Codex
-CLI **0.156.1** on Windows, 2026-09-27. No model credits: the model is the
-loopback playback server. Secondary evidence, labelled **source-derived** where
-used: codex-rs at `rust-v0.156.1` (`b412ff32`).
+Evidence class: Codex CLI **0.156.1** on Windows, 2026-09-27. No model credits:
+the model is the loopback playback server.
+
+- **captured**: the nested call's hook payloads.
+- **live-probe**: which hook groups fired, including the absence of any dispatch
+  for the outer `exec`, and the guard's effects.
+- **source-derived**, secondary, where labelled: codex-rs at `rust-v0.156.1`
+  (`b412ff32`).
 
 ## Question
 
@@ -57,6 +61,15 @@ whose source mirrors the live emission above
 envelope is constructed. The hook payloads are verbatim. `observations.json` is
 the redacted record.
 
+The probe asserts the dispatch table below. On a different build a failure is a
+finding to record, not a probe to loosen, so the record is written before the
+assertions run.
+
+Redaction replaces every home-directory segment by position, not by the account
+name: a renamed Windows account keeps its original profile folder. The probe
+also refuses to write a record that still contains the account or
+profile-folder name anywhere.
+
 ## Observations
 
 | Drive | `tool_mode` | Model offered | Model called | PreToolUse and PostToolUse received | Groups that fired |
@@ -94,9 +107,15 @@ exec_command inside a Code Mode exec". Both drives do the following:
   `toolKind: "shell"` and `toolNativeName: "Bash"`.
 
 Both drives failed against a mutant that dropped `Bash` from the generated
-matcher's vocabulary, and passed on restore. They skip, with that reason, on a
-binary older than this directory's `captured` profile record, which includes
-CI's default `referenceVersion` lane.
+matcher's vocabulary, and passed on restore.
+
+Their minimum build is this directory's `captured` profile record, derived by
+`codeModeReferenceVersion()` in `scripts/verify-code-mode.mjs`. The ordinary
+playback lane installs the older `referenceVersion`, so the drives skip there,
+with that reason. CI's `code-mode` job installs the derived build on Windows
+and runs `node scripts/verify-code-mode.mjs`, which sets
+`HOOKNOSTIC_REQUIRE_CODE_MODE=1`, so a below-baseline skip becomes a failure.
+The gate cannot pass with nothing exercised.
 
 ## Source-derived (codex-rs `rust-v0.156.1`)
 

@@ -134,7 +134,9 @@ A successful run is a **live-probe** for only the installed version and harness:
   `match: { kind: "shell" }` guard, with its generated native matcher, denies
   and rewrites a nested `tools.exec_command` inside a Code Mode `exec`. The
   catalog is `code_mode_only` and the model is offered no direct shell tool.
-  Below that build the two drives skip with that reason.
+  Below that build the two drives skip with that reason. CI's `code-mode` job
+  runs them on the captured build, where skipping is a failure
+  (`scripts/verify-code-mode.mjs`).
 - on Claude 2.1.260, a projected skill is discovered; projected stdio,
   Streamable HTTP, and SSE MCP servers initialize; the stdio process receives
   Claude's plugin-root/plugin-data values translated into the Agent Plugin

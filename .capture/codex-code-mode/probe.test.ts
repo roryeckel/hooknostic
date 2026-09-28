@@ -1,6 +1,6 @@
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir, userInfo } from "node:os";
+import { basename, join } from "node:path";
 import { expect, test } from "vitest";
 import {
   playbackModelInfo,
@@ -189,29 +189,80 @@ async function drive(id: string, spec: Drive) {
   }
 }
 
-// Redact the capturing account's home-directory segment only (harness-capture
-// skill): drive letter, separators, and escaping stay intact.
+// Redact the home-directory segment only (harness-capture skill): drive
+// letter, separators, and escaping stay intact. Matched by position, not by
+// name -- a renamed Windows account keeps its original profile folder, so the
+// account name is not a reliable key. Separators repeat: a path inside a
+// JSON-encoded JS string is escaped twice.
+const HOME_SEGMENTS = [/(Users(?:\\|\/)+)[^\\/"]+(?=\\|\/)/gi, /(\/home\/)[^\\/"]+(?=\/)/g];
+
 function redactAccount(json: string): string {
-  const name = userInfo().username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Separators repeat: a path inside a JSON-encoded JS string is escaped twice.
-  return json.replace(new RegExp(`(Users(?:\\\\|/)+)${name}(?=\\\\|/)`, "gi"), "$1user");
+  return HOME_SEGMENTS.reduce((text, pattern) => text.replace(pattern, "$1user"), json);
+}
+
+/** Names that must not survive redaction anywhere, in or out of a path. */
+function accountNames(): string[] {
+  return [...new Set([userInfo().username, basename(homedir())])].filter(
+    (name) => name.length >= 3 && name.toLowerCase() !== "user",
+  );
+}
+
+type Observed = Awaited<ReturnType<typeof drive>>;
+
+// What 0.156.1 did (README). A different result on another build is a finding
+// to record, not a probe to loosen -- which is why the record is written first.
+function expectDispatch(id: string, spec: Drive, observed: Observed): void {
+  const codeMode = spec.toolMode !== undefined;
+  expect(observed.modelErrors, id).toEqual([]);
+  expect(observed.markerContents, `${id}: the scripted command did not run`).toBe("hooknostic-original");
+  if (codeMode) {
+    expect(observed.advertisedTools, id).toContain("custom:exec");
+    expect(observed.modelCall, id).toMatchObject({ type: "custom_tool_call", name: "exec" });
+  } else {
+    expect(observed.modelCall, id).toMatchObject({ type: "function_call", name: "exec_command" });
+  }
+  if (spec.toolMode === "code_mode_only") expect(observed.advertisedTools, id).not.toContain("function:exec_command");
+  for (const event of ["PreToolUse", "PostToolUse"] as const) {
+    // The tee has no matcher, so anything dispatched for the outer exec would
+    // appear here as a second payload.
+    const payloads = observed.teed[event];
+    expect(
+      payloads.map((payload) => payload["tool_name"]),
+      `${id}: ${event} payloads`,
+    ).toEqual(["Bash"]);
+    expect(payloads[0]!["tool_input"], `${id}: ${event} input`).toEqual({
+      command: expect.stringContaining(MARKER) as unknown,
+    });
+    expect(payloads[0]!["tool_use_id"], `${id}: ${event} tool_use_id`).toEqual(
+      codeMode ? expect.stringMatching(/^exec-/) : "call_playback",
+    );
+  }
+  expect(observed.matcherDispatch, `${id}: matcher groups that fired`).toEqual([
+    { group: "generated", event: "PreToolUse", tool_name: "Bash" },
+    { group: "generated", event: "PostToolUse", tool_name: "Bash" },
+  ]);
 }
 
 test("captures what Codex hooks receive for Code Mode exec and its nested exec_command", async () => {
   const version = await runProcess("codex", ["--version"], { cwd: tmpdir(), env: process.env, timeoutMs: 30_000 });
-  const observations: Record<string, unknown> = {
+  const drives: Record<string, Observed> = {};
+  for (const [id, spec] of Object.entries(DRIVES)) drives[id] = await drive(id, spec);
+  const observations = {
     codexVersion: version.stdout.trim(),
     platform: process.platform,
     capturedOn: new Date().toLocaleDateString("sv-SE"),
     matchers: MATCHERS,
-    drives: {},
+    drives,
   };
-  for (const [id, spec] of Object.entries(DRIVES)) {
-    (observations["drives"] as Record<string, unknown>)[id] = await drive(id, spec);
+  const record = redactAccount(JSON.stringify(observations, null, 2)) + "\n";
+  // Before anything is written: a leak fails the capture and leaves the
+  // committed record untouched.
+  for (const name of accountNames()) {
+    expect(record.toLowerCase().includes(name.toLowerCase()), "an account or profile-folder name survived redaction").toBe(
+      false,
+    );
   }
   const out = process.env["HOOKNOSTIC_CAPTURE_OUT"] ?? new URL("observations.json", import.meta.url);
-  await writeFile(out, redactAccount(JSON.stringify(observations, null, 2)) + "\n");
-  for (const [id, observed] of Object.entries(observations["drives"] as Record<string, { modelErrors: string[] }>)) {
-    expect(observed.modelErrors, id).toEqual([]);
-  }
+  await writeFile(out, record);
+  for (const [id, spec] of Object.entries(DRIVES)) expectDispatch(id, spec, drives[id]!);
 });
