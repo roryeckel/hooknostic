@@ -1,57 +1,48 @@
-# First public release
+# Optional event fields are rated per target
 
-Hooknostic compiles portable hooks, skills, and MCP servers into native coding-agent
-integrations. Agent Plugins 1.0 packages can be projected for Claude Code and Codex
-marketplaces and OpenCode package delivery. Repository maintainers can use direct sources
-with `init --local`, `sync`, and `verify`.
+Not every harness sends every optional event field. Until now nothing said which:
+OpenCode never set `turn.stop.lastMessage` or `correlation.turnId`, and a hook that
+read them built clean there and received `undefined`. 0.3.0 rates optional fields
+per target the way capabilities are rated, and OpenCode now produces the turn's
+fields ([ADR-0027](decisions/0027-event-field-fidelity.md)).
 
-- Author portable TypeScript hooks and inspect exact, emulated, approximate, or unsupported behavior.
-- Read shell commands through `tool.shell` and every file a tool targets through `tool.file`, including multi-file Codex patches; both views come from captured harness shapes, and `tool.input` stays verbatim. See [writing hooks safely](writing-hooks-safely.md).
-- Declare capabilities relative to the event (`block`, `input.replace`), check them with a typed `ctx.capabilities.has()`, and return several effects from one handler.
-- Keep the standard package source unchanged while adapters translate manifests, skills, MCP, and hooks.
-- Build combined or hookless packages; the combined example bundles its MCP server for installation without workspace dependencies.
-- Inspect component policies and accepted exceptions in diagnostics and build reports.
-- Test hook decisions with portable-event `dispatch`, and verify marketplace installation locally without model spend.
+- Declare the optional fields a hook reads:
+  `hook("turn.stop", { fields: ["lastMessage", "correlation.turnId"], … })`.
+  Keys are event-relative or full ids (`turn.stop.lastMessage`), typed per event.
+- A declared field a target never produces fails the build with **HN108**. A derived
+  one (`emulated`, `approximate`) follows `compatibility.minimum` and
+  `onBelowMinimum`. Accept a shortfall you handle with
+  `compatibility.accept: ["<adapter>:<field id>"]`, globally or per target; an
+  accepted HN108 is still reported, as information, and the build report lists every
+  instance under the target's `fields`.
+- `hooknostic inspect <target> --field turn.stop.lastMessage` shows a rating and its
+  rationale, and the generated support table lists every target's fields.
+- OpenCode 1.x reads the session's messages at `session.idle` for `lastMessage` and
+  `turnId`; OpenCode 2.x assembles them from its event subscription. Both are
+  `emulated`, both are done only when a hook declares the field, and neither puts
+  what it gathered into `event.raw`. `prompt.before.correlation.turnId` is now set on
+  both families, from the user message's id.
 
-Start with the [README](../README.md), [marketplace walkthrough](tutorials/04-packaging-with-agent-plugins.md),
-or [repository integration](project-integration.md). Supported versions and evidence are
-listed in the generated table. macOS has unit/fixture coverage but no real-harness validation.
+## Migrating
 
-The initial owner bootstrap uses verified CI-built tarballs and has no npm provenance
-attestation. Subsequent trusted-publishing releases carry provenance; see [releases](releases.md).
+- A hook that declares no `fields` builds and behaves as before. On OpenCode it
+  still receives no turn fields: declare them to get them.
+- `hooknostic dispatch` now refuses an optional field the target's decoder never
+  produces, and `correlation.toolCallId` on an event without a tool. A test that
+  passed such an event was testing something the harness never sends; drop the
+  field from that target's event.
+- Adapter authors rate the fields their decoder sets in the profile's `fields`
+  matrix; the contract suite holds the ratings to the fixtures.
 
-## OpenCode v2 support
+## Limits
 
-The public adapter remains `opencode`. Your configured version range selects
-v1 or v2; the installed CLI does not override that choice. New configurations
-recommend v2, while explicit v1 targets retain their own implementation and
-validation. To build both, use two named targets with separate output directories.
-A range spanning both families is rejected with HN203.
+- Claude Code and Codex rate only what their captured fixtures carry. `agentId`
+  inside a subagent's tool events and `parentAgentId` anywhere are not claimed.
+- OpenCode 1.x: the session read is bounded at 10 seconds and fails open; an aborted
+  turn still dispatches `turn.stop` twice, each with the text stored at that moment.
+- OpenCode 2.x: an execution no prompt hook started (a stop-prevention continuation)
+  and one started by a prompt admitted while another ran report no `turnId`.
 
-V2 supports portable hooks, skills, and stdio/Streamable HTTP MCP through
-project and package delivery. Coverage includes model context on ordinary,
-title, generation, and compaction requests over the captured HTTP provider
-paths, plus default MCP OAuth against a local test issuer.
-
-Support has explicit limits:
-
-- Session-start observation, typed tool-error observation, permission handling,
-  model context, and output conversion have approximate coverage. Plain custom
-  tool exceptions can bypass observation; permissions cover pending ask decisions.
-- Stop prevention and notification are approximate. Both post a synthetic
-  user-role message after a succeeded top-level execution; interrupts, model
-  failures and subagent children post nothing. A notice surfaces only when the
-  session next runs: there is no user-only notification channel. Legacy MCP SSE
-  remains unsupported.
-- A checkout nested inside another (a linked worktree in the main checkout)
-  runs its own generated hooks and MCP servers, and each session dispatches only
-  its own location's hooks.
-- MCP calls remain `kind: "other"`; `kind: "mcp"` guards do not cover them.
-  A captured native name can be guarded explicitly.
-- WebSocket and other provider paths, provider/custom OAuth, executed websearch,
-  and background or deeply nested subagents remain unverified. macOS has unit
-  and fixture coverage, but no real-harness playback evidence.
-
-See [OpenCode families](opencode-families.md) for migration instructions,
-evidence, and the supported alternatives. The support table below records each
-family's reference build separately; v1 evidence does not establish v2 support.
+Start with the [README](../README.md); [OpenCode families](opencode-families.md) covers
+choosing v1 or v2, and [harness support](harness-support.md) lists each target's field
+ratings.
