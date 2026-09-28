@@ -75,7 +75,9 @@ field one decoder omits would pass the same tests.
    `<adapter>:<event>.<field>`, such as `"opencode:turn.stop.correlation.turnId"`. The
    global and per-target lists add up. An id that names no configured target's
    adapter, or a field no profile of that adapter rates below `exact`, is an HN501
-   error, so a typo cannot silently accept nothing. The option lives in
+   error, so a typo cannot silently accept nothing. Every profile of every version
+   family counts, at either scope, as ADR-0022 has it for components: an accepted
+   id may belong to a range the target does not cover yet. The option lives in
    `compatibility` rather than `components.accept` because a hooks-only build has
    no `components`, and because it extends the hook-fidelity policy that
    `minimum` and `onBelowMinimum` already set.

@@ -256,6 +256,9 @@ export function analyzeCapabilities(
       unsupported: 0,
     };
 
+    // The registered adapter, before a version family is selected: acceptances
+    // are validated against every family's profiles, as the global list is.
+    const registered = adapter;
     const policy = effectiveCompatibility(config, targetId);
     const spec = targetSpecFromConfig(targetId, targetConfig);
     const selected = resolveTargetAdapter(adapter, spec);
@@ -314,10 +317,12 @@ export function analyzeCapabilities(
     const fields: FieldShortfall[] = [];
 
     // An acceptance must name this target's adapter and a field some profile of
-    // it rates below exact; anything else accepts nothing, silently.
+    // it rates below exact; anything else accepts nothing, silently. Any
+    // profile of any family counts, exactly as for the global list (ADR-0022):
+    // an accepted id may belong to a range this target does not cover yet.
     const targetAccept = targetConfig.compatibility?.accept ?? [];
-    if (targetAccept.length > 0 && selected.adapter) {
-      const below = fieldsBelowExact(adapter);
+    if (targetAccept.length > 0) {
+      const below = fieldsBelowExact(registered);
       for (const accepted of targetAccept) {
         const colon = accepted.indexOf(":");
         if (accepted.slice(0, colon) === adapter.id && below.has(accepted.slice(colon + 1))) continue;

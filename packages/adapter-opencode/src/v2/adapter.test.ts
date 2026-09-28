@@ -66,6 +66,43 @@ describe("OpenCode family selection", () => {
   });
 });
 
+describe("field acceptance across families (ADR-0027)", () => {
+  // tool.error.error.message is exact on v2 and never produced on v1, so an
+  // acceptance of it names a real shortfall of the opencode adapter -- in
+  // either scope, whichever family the target selects.
+  const plugin = buildPluginIR(definePlugin({ name: "p", hooks: [hook("prompt.before", { id: "p", run() {} })] })).ir!;
+  const verdict = (accepted: string, scope: "global" | "target") => {
+    const accept = [accepted] as `${string}:tool.error.error.message`[];
+    const result = analyzeCapabilities(
+      plugin,
+      {
+        entry: "hooks.ts",
+        ...(scope === "global" ? { compatibility: { accept } } : {}),
+        targets: {
+          modern: {
+            adapter: "opencode",
+            version: opencodeV2Harness.recommendedRange,
+            delivery: "project",
+            output: "v2",
+            ...(scope === "target" ? { compatibility: { accept } } : {}),
+          },
+        },
+      },
+      { opencode: facade },
+    );
+    return result.diagnostics.filter((d) => d.code === "HN501").length === 0;
+  };
+  it.each([
+    ["opencode:tool.error.error.message", true],
+    ["opencode:turn.stop.correlation.parentAgentId", true],
+    ["opencode:tool.before.correlation.toolCallId", false],
+    ["claude:turn.stop.lastMessage", false],
+  ])("gives %s the same verdict globally and on the target", (accepted, valid) => {
+    expect(verdict(accepted, "global")).toBe(valid);
+    expect(verdict(accepted, "target")).toBe(valid);
+  });
+});
+
 describe("v2 captured boundary", () => {
   it("preserves own __proto__ data and live input identity when replacing tool arguments", async () => {
     const replacement = JSON.parse('{"__proto__":{"injected":"yes"},"command":"echo safe"}');
