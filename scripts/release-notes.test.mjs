@@ -49,6 +49,11 @@ it("generates release scope and separate reference rows for both OpenCode famili
     expect(notes.startsWith(highlights.trim().split("\n")[0])).toBe(true);
     expect(notes).toContain("Stop prevention and notification are approximate. Both post a synthetic");
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/docs/opencode-families.md`);
+    // A release body resolves relative links against /releases/tag/..., so
+    // every highlights link must leave absolute, including ../ paths.
+    const highlightsSection = notes.slice(0, notes.indexOf("\n## Harness support\n"));
+    expect(highlightsSection.match(/\]\((?!https:\/\/)[^)]*\)/g) ?? []).toEqual([]);
+    expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/README.md)`);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

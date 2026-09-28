@@ -6,6 +6,8 @@ marketplaces and OpenCode package delivery. Repository maintainers can use direc
 with `init --local`, `sync`, and `verify`.
 
 - Author portable TypeScript hooks and inspect exact, emulated, approximate, or unsupported behavior.
+- Read shell commands through `tool.shell` and every file a tool targets through `tool.file`, including multi-file Codex patches; both views come from captured harness shapes, and `tool.input` stays verbatim. See [writing hooks safely](writing-hooks-safely.md).
+- Declare capabilities relative to the event (`block`, `input.replace`), check them with a typed `ctx.capabilities.has()`, and return several effects from one handler.
 - Keep the standard package source unchanged while adapters translate manifests, skills, MCP, and hooks.
 - Build combined or hookless packages; the combined example bundles its MCP server for installation without workspace dependencies.
 - Inspect component policies and accepted exceptions in diagnostics and build reports.
