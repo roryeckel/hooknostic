@@ -372,6 +372,26 @@ not running:
   these may not conflict — but do not rely on the flag to test a modified hook
   config.)
 
+Two more, measured on codex-cli 0.156.1:
+
+- **In a linked git worktree, Codex runs the root checkout's hooks, never the
+  worktree's.** Codex never loads a `.codex/hooks.json` copied or generated into
+  a worktree made by `git worktree add`, even when the worktree is explicitly
+  trusted. A session there runs whatever the root checkout's
+  `.codex/hooks.json` holds, or nothing if it holds none. Codex prints hook lines
+  for those hooks, so the session looks hooked. Install the artifact in the root
+  checkout, and grant its trust there, before relying on it from any worktree.
+  `hooknostic sync`, `verify`, and `doctor` warn HN107 when they find Codex
+  project wiring in a linked worktree, and name the root checkout.
+  ([evidence](../.capture/codex-worktree-hooks/README.md))
+- **Code Mode does not bypass a shell guard.** Current models (the gpt-5.6
+  catalog, `tool_mode: "code_mode_only"`) run commands through one JavaScript
+  `exec` tool that calls `tools.exec_command`. The `exec` call itself never
+  reaches a hook. Every command it runs does, as `Bash` with `{ command }`, the
+  same as a direct call, so a `match: { kind: "shell" }` guard sees and can deny
+  each one. It cannot see the script that composes them.
+  ([evidence](../.capture/codex-code-mode/README.md))
+
 ## OpenCode
 
 ### V2 package delivery

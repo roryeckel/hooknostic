@@ -1,9 +1,11 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { codexAdapter, codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeAdapter, opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { type HarnessAdapter, runProject } from "@hooknostic/core";
 import { makeFakeAdapter } from "@hooknostic/testkit";
@@ -160,6 +162,63 @@ describe("doctor version comparison", () => {
       expect(payload.project).toMatchObject({ ok: true, drift: false });
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports Codex wiring synchronized into a linked worktree as HN107, naming the root checkout", async () => {
+    const scratch = await realpath(await mkdtemp(join(tmpdir(), "hooknostic-doctor-worktree-")));
+    try {
+      const main = join(scratch, "main");
+      await mkdir(main);
+      await writeFile(
+        join(main, "hooks.ts"),
+        // What definePlugin/hook return, spelled out: doctor loads without an SDK alias.
+        `export default { name: "worktree-doctor", hooks: [{ event: "tool.before", id: "guard", match: { kind: "shell" }, capabilities: {}, async run() {} }] };`,
+      );
+      await writeFile(
+        join(main, "hooknostic.config.ts"),
+        `export default { project: { root: "." }, entry: "./hooks.ts", targets: { codex: { version: "${codexHarness.recommendedRange}", delivery: "project", output: ".hooknostic/artifacts/codex" } } };`,
+      );
+      const git = (cwd: string, args: string[]) => {
+        const result = spawnSync("git", args, { cwd, encoding: "utf8", timeout: 10_000 });
+        expect(result.status, result.stderr).toBe(0);
+      };
+      git(main, ["init", "--quiet"]);
+      git(main, ["add", "."]);
+      git(main, [
+        "-c",
+        "user.name=Synthetic",
+        "-c",
+        "user.email=synthetic@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "Synthetic doctor worktree fixture",
+      ]);
+      const linked = join(scratch, "linked");
+      git(main, ["worktree", "add", "--detach", "--quiet", linked, "HEAD"]);
+      // No detect(): doctor must not depend on a Codex install for this report.
+      const { detect: _detect, ...codex } = codexAdapter();
+      const registry = { codex };
+      const configPath = join(linked, "hooknostic.config.ts");
+      expect((await runProject({ command: "sync", configPath, registry })).errors).toEqual([]);
+
+      const human = fakeIO();
+      await runDoctor({ config: configPath, registry, io: human.io });
+      const warning = human.out.find((line) => line.startsWith("HN107 warn: "));
+      expect(warning, human.out.join("\n")).toContain(`root checkout ${main}`);
+      expect(warning).toContain(join(main, ".codex", "hooks.json"));
+
+      const machine = fakeIO();
+      await runDoctor({ config: configPath, json: true, registry, io: machine.io });
+      const payload = JSON.parse(machine.out.join(""));
+      expect(payload.project.diagnostics).toEqual([
+        expect.objectContaining({ code: "HN107", severity: "warn", target: "codex" }),
+      ]);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
     }
   });
 });

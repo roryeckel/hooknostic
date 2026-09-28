@@ -183,6 +183,27 @@ These gates use loopback model playback and isolated configuration. They are loc
 no Actions workflow or paid smoke session is launched. Normal `pnpm test` also relocates
 all example outputs and calls the bundled MCP server without source dependencies.
 
+## Codex Code Mode gate
+
+Current Codex models run shell commands through Code Mode, where one `exec` tool
+calls `tools.exec_command` from JavaScript. That dispatch is captured on a build
+newer than `referenceVersion`, so the ordinary Codex playback lane skips its two
+Code Mode drives. After `pnpm run bundle`, print the captured build from the
+profile:
+
+```sh
+node scripts/verify-code-mode.mjs --print-version
+```
+
+Install that exact Codex version, then run `node scripts/verify-code-mode.mjs`.
+It checks the installed version and drives a shell guard's deny and rewrite
+through a nested `exec_command`. Below the baseline the drives fail instead of
+skipping. The gate also fails unless the version check and both drives ran and
+passed, by exact title, so a renamed drive cannot shrink it to nothing. CI runs
+the same gate as its `code-mode` job on Windows, the platform the capture
+covers, with the pinned playback Node version
+([evidence](../.capture/codex-code-mode/README.md)).
+
 ## Actual npm package installation
 
 After `pnpm run bundle`, set `HOOKNOSTIC_PACK=1` and run

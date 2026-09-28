@@ -7,11 +7,13 @@
 //
 // The optional argument is an HKN_CAPTURE_ROOT from
 // `HKN_MODEL_ID=gpt-5-playback .capture/opencode-v2/drive.mjs tools-patch`.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
-import { userInfo } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { capturingHomes, redactHomes, unredactedHomes } from "../../scripts/redact-capture.mjs";
 
 const REPO = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url).href);
@@ -25,13 +27,25 @@ const { decodeOpenCodeV2 } = await import("../../packages/adapter-opencode/src/v
 const { opencodeV2Harness } = await import("../../packages/adapter-opencode/src/v2/harness.ts");
 
 const CAPTURED = join(REPO, ".capture/file-tools/captured");
+const homes = capturingHomes({ home: homedir(), temp: tmpdir(), realpath: realpathSync.native });
 const username = userInfo().username;
-/** Account name to `user` in every form a payload carries it; path shape stays. */
-const redact = (text) =>
-  text
-    .replaceAll(`Users\\\\${username}\\\\`, "Users\\\\user\\\\")
-    .replaceAll(`Users/${username}/`, "Users/user/")
-    .replaceAll(`-Users-${username}-`, "-Users-user-");
+
+/**
+ * The capturing home's account segment to `user`, through the shared,
+ * fail-closed redaction (scripts/redact-capture.mjs). Claude's mangled
+ * project directory (`C--Users-<name>-…`) joins segments with dashes, which
+ * that module's separator match does not cover, so it gets one rewrite of its
+ * own; the whole-name check after both is the backstop for any other form.
+ */
+function redact(text, stem) {
+  const { text: redacted, nearMisses } = redactHomes(text, homes);
+  if (nearMisses.length > 0) throw new Error(`${stem}: ambiguous home paths, review by hand: ${nearMisses.join(", ")}`);
+  const out = redacted.replaceAll(`-Users-${username}-`, "-Users-user-");
+  if (unredactedHomes(out, homes).length > 0 || out.includes(username)) {
+    throw new Error(`${stem}: the capturing account survived redaction`);
+  }
+  return out;
+}
 
 function rows(file) {
   if (!existsSync(file)) throw new Error(`missing capture ${file}`);
@@ -39,8 +53,7 @@ function rows(file) {
 }
 
 function write(dir, stem, input, decode, keepVersion = false) {
-  const text = redact(JSON.stringify(input, null, 2)) + "\n";
-  if (text.includes(username)) throw new Error(`${stem}: account name survived redaction`);
+  const text = redact(JSON.stringify(input, null, 2), stem) + "\n";
   const redacted = JSON.parse(text);
   writeFileSync(join(REPO, "fixtures", dir, `${stem}.input.json`), text, "utf8");
   const { raw, ...canonical } = decode(redacted);

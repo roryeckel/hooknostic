@@ -223,6 +223,41 @@ jobs:
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
 
+  # The ordinary codex playback lane installs referenceVersion, which predates
+  # the Code Mode capture, so its Code Mode drives skip there. This lane
+  # installs the captured Code Mode build -- derived from the profile, never a
+  # literal here -- and fails rather than skips below it. Windows because that
+  # is the only platform Code Mode dispatch is captured on
+  # (.capture/codex-code-mode).
+  code-mode:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
+    name: Codex Code Mode playback
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run bundle
+      - name: Resolve Code Mode baseline from capture metadata
+        id: baseline
+        shell: bash
+        run: |
+          version="$(node scripts/verify-code-mode.mjs --print-version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install Code Mode baseline
+        shell: bash
+        run: npm install --global "@openai/codex@${{ steps.baseline.outputs.version }}"
+      - name: Verify Code Mode guard dispatch with loopback model
+        run: node scripts/verify-code-mode.mjs
+
   marketplace:
     needs: renovate-ready
     if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}

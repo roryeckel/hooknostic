@@ -13,6 +13,8 @@ export default tseslint.config(
       ".capture/**",
       // generated Agent Plugins extension outputs
       "examples/*/com.*/**",
+      // app-created git worktrees: separate checkouts, linted on their own
+      ".claude/worktrees/**",
     ],
   },
   eslint.configs.recommended,

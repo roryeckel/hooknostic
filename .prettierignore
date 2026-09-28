@@ -11,6 +11,7 @@ examples/local-project/.hooknostic/artifacts/**
 fixtures/**
 .capture/**
 examples/*/com.*/
+.claude/worktrees/
 
 # Generated integration output (written by `hooknostic sync`; CONTRIBUTING
 # "Generated output is generated"). Broader than the eslint ignore on purpose:

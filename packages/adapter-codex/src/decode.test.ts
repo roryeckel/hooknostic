@@ -21,6 +21,8 @@ const CASES = [
   "pre-tool-apply-patch-multi",
   "post-tool-apply-patch-add",
   "pre-tool-view-image",
+  "pre-tool-code-mode",
+  "post-tool-code-mode",
   "permission-request",
   "subagent-start",
   "subagent-stop",

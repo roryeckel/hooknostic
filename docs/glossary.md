@@ -124,6 +124,11 @@ items it still emits, such as an OpenCode skill it cannot name for its plugin. D
 the adapter's profile under a qualified id such as `opencode:skill-name-unqualified`,
 reported as HN101, and fatal by default under `components.onDegraded` (ADR-0022).
 
+**Root checkout** — the main working tree of a git repository, as opposed to a linked
+worktree made by `git worktree add`. Codex reads project hooks from the root checkout
+even for a session in a linked worktree, so project wiring synchronized into a
+worktree is reported as HN107 (ADR-0015).
+
 **Skill** — an Agent Plugins portable component (`skills/<name>/SKILL.md`): reusable
 instructions a harness can invoke. Not something Hooknostic generates or modifies.
 

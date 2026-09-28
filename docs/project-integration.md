@@ -77,7 +77,11 @@ uses `.codex/hooks.json`. OpenCode gets a generated discovery module under
 `.opencode/plugins/`. Registration commands and timeout budgets derive from the
 compiled runtime plan. Codex hook commands locate the nearest owned integration,
 validate its configuration identity and runtime hash, and therefore work from
-nested directories. Launch Claude MCP sessions from the project root; restart
+nested directories. Codex does not read `.codex/hooks.json` from a linked git
+worktree. A session there runs the root checkout's file instead
+([evidence](../.capture/codex-worktree-hooks/README.md)). Project commands still
+write the file into the worktree, since it takes effect once it reaches the root
+checkout, but they warn HN107 and name the root checkout. Launch Claude MCP sessions from the project root; restart
 harnesses after changing registrations and review their trust prompts.
 
 Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`.

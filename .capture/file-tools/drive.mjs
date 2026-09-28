@@ -139,13 +139,7 @@ async function session(harness, script, modelLabel = "hooknostic-playback") {
     if (!version) throw new Error("HOOKNOSTIC_PLAYBACK_VERSION is required for opencode-v1");
     await prepareOpenCodePluginDependency(scratch, version);
   }
-  const server = await startModelPlayback(
-    PROTOCOL[harness],
-    "rewrite",
-    typeof script === "function" ? script(scratch) : script,
-    // Codex advertises view_image only to a model that accepts images.
-    harness === "codex" ? { input_modalities: ["text", "image"] } : {},
-  );
+  const server = await startModelPlayback(PROTOCOL[harness], "rewrite", typeof script === "function" ? script(scratch) : script);
   let result;
   try {
     if (harness === "claude") result = await driveClaude(scratch, { url: server.baseUrl }, PROMPT);

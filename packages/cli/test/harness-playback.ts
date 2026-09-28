@@ -67,6 +67,12 @@ export interface PlaybackTargetOverride {
   version?: string;
   /** Written into every trace line, to tell apart copies sharing one trace file. */
   label?: string;
+  /**
+   * Give the tool.before hook `match: { kind: "shell" }`, so the generated
+   * native matcher (where the adapter emits one) is part of what the drive
+   * exercises. The default hook matches every tool and emits no matcher.
+   */
+  shellMatch?: boolean;
 }
 
 function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
@@ -138,6 +144,7 @@ function playbackPluginSource(
   events: readonly HookEventName[],
   contextAdd: ReadonlySet<HookEventName>,
   label?: string,
+  shellMatch = false,
 ): string {
   const definitions = events.map((event) => {
     const capabilities = [
@@ -229,7 +236,7 @@ function playbackPluginSource(
 
     return `
     hook(${JSON.stringify(event)}, {
-      id: ${JSON.stringify(`playback-${event}`)},
+      id: ${JSON.stringify(`playback-${event}`)},${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
       ${capabilityBlock}
       async run(event) {
         appendFileSync(tracePath, JSON.stringify({
@@ -287,7 +294,7 @@ export async function buildPlaybackArtifact(
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label), "utf8");
+  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label, override.shellMatch), "utf8");
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared
@@ -300,7 +307,11 @@ export async function buildPlaybackArtifact(
   // `hook()`; the full-id declarations go straight onto the erased definition,
   // which is the form hook() itself produces.
   const hooks = events.map((event) => {
-    const definition = hook(event, { id: `playback-${event}`, async run() {} });
+    const definition = hook(event, {
+      id: `playback-${event}`,
+      ...(override.shellMatch && event === "tool.before" ? { match: { kind: "shell" as const } } : {}),
+      async run() {},
+    });
     definition.capabilities = ((): Partial<Record<CapabilityId, "optional">> => {
       const declared: Partial<Record<CapabilityId, "optional">> = {};
       if (event === "tool.before") {
@@ -632,6 +643,31 @@ export function describeTools(
   });
 }
 
+function scriptedNodeScript(scenario: PlaybackScenario, marker: string): string {
+  let script: string;
+  if (scenario === "rewrite") {
+    script = `require('node:fs').writeFileSync('${marker}','hooknostic-original')`;
+  } else if (scenario === "block") {
+    script = `require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')`;
+  } else if (scenario === "continuation") {
+    script = `process.stdout.write('hooknostic-block-continuation')`;
+  } else {
+    script = "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
+  }
+  if (process.env["HOOKNOSTIC_PLAYBACK_FILL"] !== undefined) {
+    // Compaction drive: the command emits a huge stdout payload on top of the
+    // marker write so each tool result fills the context window and forces the
+    // harness to compact. The fill marker in the output lets the test assert
+    // the growth reached the model side.
+    script += `;process.stdout.write(process.env['HOOKNOSTIC_PLAYBACK_FILL'])`;
+  }
+  return script;
+}
+
+function scriptedShellCommand(scenario: PlaybackScenario, marker: string): string {
+  return `node -e "${scriptedNodeScript(scenario, marker)}"`;
+}
+
 export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
@@ -705,25 +741,7 @@ export function scriptedTool(
     // fixture tool).
     return { ...namespaceEmission, arguments: JSON.stringify({}) };
   }
-  let script: string;
-  if (scenario === "rewrite") {
-    script = `require('node:fs').writeFileSync('${marker}','hooknostic-original')`;
-  } else if (scenario === "block") {
-    script = `require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')`;
-  } else if (scenario === "continuation") {
-    script = `process.stdout.write('hooknostic-block-continuation')`;
-  } else {
-    script = "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
-  }
-  if (process.env["HOOKNOSTIC_PLAYBACK_FILL"] !== undefined) {
-    // Compaction drive: the command emits a huge stdout payload on top of the
-    // marker write so each tool result fills the context window and forces the
-    // harness to compact. The fill marker in the output lets the test assert
-    // the growth reached the model side.
-    const fill = "hooknostic-fill ".repeat(6_000);
-    script += `;process.stdout.write(process.env['HOOKNOSTIC_PLAYBACK_FILL'])`;
-    void fill;
-  }
+  const script = scriptedNodeScript(scenario, marker);
   const command = `node -e "${script}"`;
   const value = properties[key]?.["type"] === "array" ? ["node", "-e", script] : command;
   // Emit `description` when the tool schema declares one (Claude's Bash does;
@@ -761,14 +779,16 @@ function urlPathToModels(urlPath: string): boolean {
 
 /**
  * What the scripted model does on one agent turn. `tool` emits one tool call
- * (the harness's shell tool by default, or `toolName` â€” e.g. the MCP fixture
- * tool â€” when set), `text` completes the conversation with plain text.
+ * (the harness's shell tool by default, or `toolName` — e.g. the MCP fixture
+ * tool — when set), `text` completes the conversation with plain text, and
+ * `code` emits one Codex Code Mode `exec` custom tool call whose JavaScript
+ * calls the nested `tools.exec_command` (OpenAI Responses only).
  */
 export interface TurnAction {
-  kind: "tool" | "text";
-  /** The disposition of the emitted tool call; only for `kind: "tool"`. */
+  kind: "tool" | "text" | "code";
+  /** The disposition of the emitted tool call; only for `kind: "tool"` / `"code"`. */
   disposition?: PlaybackScenario;
-  /** Marker filename the tool script writes; only for `kind: "tool"`. */
+  /** Marker filename the tool script writes; only for `kind: "tool"` / `"code"`. */
   marker?: string;
   /** Exact tool name to call (defaults to the first shell-like tool declared). */
   toolName?: string;
@@ -781,6 +801,25 @@ export interface TurnAction {
   freeformInput?: string;
   /** Text emitted for `kind: "text"`. */
   text?: string;
+  /** Extra nested `exec_command` arguments beside `cmd`; only for `kind: "code"`. */
+  codeArgs?: Record<string, unknown>;
+}
+
+/**
+ * The Code Mode `exec` source for one scripted nested shell call. The shape
+ * copies the live gpt-5.6-luna emission recorded in
+ * `.capture/codex-code-mode/README.md` (`await tools.exec_command({cmd, ...})`
+ * then `text(r.output)`); under `code_mode_only` the nested `exec_command` is
+ * not declared in the request's `tools`, so there is no schema to read the key
+ * from.
+ */
+export function scriptedCodeModeSource(
+  scenario: PlaybackScenario,
+  marker = "hooknostic-tool.txt",
+  codeArgs: Record<string, unknown> = {},
+): string {
+  const args = { cmd: scriptedShellCommand(scenario, marker), ...codeArgs };
+  return `const r = await tools.exec_command(${JSON.stringify(args)});\ntext(r.output);\n`;
 }
 
 function anthropicTurn(
@@ -858,7 +897,35 @@ function responsesTurn(
 ): void {
   const id = `resp_playback_${turn}`;
   const events: unknown[] = [{ type: "response.created", response: { id } }];
-  if (action.kind === "tool" && action.freeformInput !== undefined) {
+  if (action.kind === "code") {
+    // Code Mode's `exec` is a Responses freeform (custom) tool, so the call is
+    // a `custom_tool_call` item carrying raw JavaScript in `input`, streamed
+    // through `response.custom_tool_call_input.delta` -- the item shape the
+    // live gpt-5.6-luna rollout recorded (.capture/codex-code-mode).
+    if (!requestTools(request).some((tool) => toolName(tool) === "exec" && tool["type"] === "custom")) {
+      throw new Error(`playback request advertised no Code Mode exec tool: ${JSON.stringify(requestTools(request))}`);
+    }
+    const input = scriptedCodeModeSource(action.disposition ?? "rewrite", action.marker, action.codeArgs);
+    const item = {
+      id: "ctc_playback",
+      call_id: "call_playback",
+      type: "custom_tool_call",
+      name: "exec",
+      input,
+      status: "completed",
+    };
+    events.push(
+      { type: "response.output_item.added", output_index: 0, item: { ...item, input: "", status: "in_progress" } },
+      {
+        type: "response.custom_tool_call_input.delta",
+        item_id: item.id,
+        call_id: item.call_id,
+        output_index: 0,
+        delta: input,
+      },
+      { type: "response.output_item.done", output_index: 0, item },
+    );
+  } else if (action.kind === "tool" && action.freeformInput !== undefined) {
     // A grammar tool takes raw text, not JSON arguments: the Responses wire
     // carries it as a custom_tool_call whose `input` is the text itself.
     const name = action.toolName ?? "apply_patch";
@@ -1025,12 +1092,62 @@ function chatTurn(response: ServerResponse, request: Record<string, unknown>, tu
  */
 export type ScenarioScript = readonly TurnAction[];
 
+/**
+ * The playback model's ModelInfo struct, with `overrides` merged over it.
+ *
+ * The default advertises no Code Mode: `tool_mode: "unified"` is not a Codex
+ * ToolMode, which codex-rs deserializes as omitted (Direct unless a feature
+ * flag says otherwise). Codex never refreshes `/models` for this
+ * unauthenticated custom provider, so an override reaches it only through a
+ * static `model_catalog_json` built from this struct -- a Code Mode drive
+ * passes `tool_mode: "code_mode_only"`, the value the real gpt-5.6-luna catalog
+ * entry carries (.capture/codex-code-mode).
+ */
+export function playbackModelInfo(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    slug: "hooknostic-playback",
+    display_name: "Hooknostic Playback",
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [
+      { effort: "minimal", description: "fastest" },
+      { effort: "low", description: "low" },
+      { effort: "medium", description: "default" },
+      { effort: "high", description: "deepest" },
+    ],
+    shell_type: "default",
+    visibility: "list",
+    supported_in_api: true,
+    priority: 1,
+    supports_reasoning_summary_parameter: false,
+    default_reasoning_summary: "none",
+    support_verbosity: false,
+    default_verbosity: "medium",
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text",
+    truncation_policy: { mode: "tokens", limit: 30_000 },
+    supports_image_detail_original: false,
+    max_context_window_tokens: 32_768,
+    auto_compact_token_limit: 24_576,
+    effective_context_window_percent: 100,
+    input_modalities: ["text"],
+    experimental_supported_tools: [],
+    base_instructions: "You are a playback model for hooknostic tests.",
+    supports_search_tool: false,
+    use_responses_lite: false,
+    tool_mode: "unified",
+    multi_agent_reasoning_effort: "medium",
+    context_window: 32_768,
+    max_output_tokens: 4_096,
+    supports_parallel_tool_calls: false,
+    supports_reasoning_summaries: false,
+    ...overrides,
+  };
+}
+
 export async function startModelPlayback(
   protocol: ModelProtocol,
   scenario: PlaybackScenario = "rewrite",
   script?: ScenarioScript,
-  /** Fields merged over the served model info (e.g. Codex `input_modalities`). */
-  modelInfoOverrides: Record<string, unknown> = {},
 ): Promise<ModelPlayback> {
   const turns: ScenarioScript =
     script ??
@@ -1055,44 +1172,7 @@ export async function startModelPlayback(
       const urlPath = request.url?.split("?")[0] ?? "";
       if (urlPathToModels(urlPath)) {
         response.writeHead(200, { "content-type": "application/json" });
-        const modelInfo = {
-          slug: "hooknostic-playback",
-          display_name: "Hooknostic Playback",
-          default_reasoning_level: "medium",
-          supported_reasoning_levels: [
-            { effort: "minimal", description: "fastest" },
-            { effort: "low", description: "low" },
-            { effort: "medium", description: "default" },
-            { effort: "high", description: "deepest" },
-          ],
-          shell_type: "default",
-          visibility: "list",
-          supported_in_api: true,
-          priority: 1,
-          supports_reasoning_summary_parameter: false,
-          default_reasoning_summary: "none",
-          support_verbosity: false,
-          default_verbosity: "medium",
-          apply_patch_tool_type: "freeform",
-          web_search_tool_type: "text",
-          truncation_policy: { mode: "tokens", limit: 30_000 },
-          supports_image_detail_original: false,
-          max_context_window_tokens: 32_768,
-          auto_compact_token_limit: 24_576,
-          effective_context_window_percent: 100,
-          input_modalities: ["text"],
-          experimental_supported_tools: [],
-          base_instructions: "You are a playback model for hooknostic tests.",
-          supports_search_tool: false,
-          use_responses_lite: false,
-          tool_mode: "unified",
-          multi_agent_reasoning_effort: "medium",
-          context_window: 32_768,
-          max_output_tokens: 4_096,
-          supports_parallel_tool_calls: false,
-          supports_reasoning_summaries: false,
-          ...modelInfoOverrides,
-        };
+        const modelInfo = playbackModelInfo();
         response.end(
           JSON.stringify({
             object: "list",
@@ -1120,6 +1200,9 @@ export async function startModelPlayback(
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
         const action = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
+        if (action.kind === "code" && protocol !== "openai-responses") {
+          throw new Error(`Code Mode turns are only scripted for openai-responses, not ${protocol}`);
+        }
         if (protocol === "anthropic-messages") {
           anthropicTurn(response, parsed, turn, action);
         } else if (protocol === "openai-responses") {

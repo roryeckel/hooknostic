@@ -234,6 +234,13 @@ export interface HarnessAdapter {
   readonly harnessFamilies?: readonly HarnessMetadata[];
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
   projectPaths?: readonly string[];
+  /**
+   * Native project paths the harness reads from the root checkout, never from
+   * the linked git worktree a session runs in. Project integration that
+   * writes one of them into a linked worktree warns HN107. Declared only from
+   * captured evidence: absence means "not captured", not "read in place".
+   */
+  rootCheckoutProjectPaths?: readonly string[];
   projectComponents?(
     source: ProjectComponents,
     root: string,
