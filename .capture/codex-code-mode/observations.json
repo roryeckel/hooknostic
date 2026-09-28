@@ -1,0 +1,419 @@
+{
+  "codexVersion": "codex-cli 0.156.1",
+  "platform": "win32",
+  "capturedOn": "2026-09-28",
+  "matchers": {
+    "generated": "Bash|exec_command|shell",
+    "exec": "exec"
+  },
+  "drives": {
+    "direct": {
+      "toolMode": null,
+      "exitCode": 0,
+      "modelErrors": [],
+      "advertisedTools": [
+        "function:exec_command",
+        "function:write_stdin",
+        "function:request_user_input",
+        "custom:apply_patch",
+        "function:view_image",
+        "namespace:multi_agent_v1",
+        "function:get_goal",
+        "function:create_goal",
+        "function:update_goal",
+        "web_search:"
+      ],
+      "modelCall": {
+        "type": "function_call",
+        "id": "fc_playback",
+        "name": "exec_command",
+        "arguments": "{\"cmd\":\"node -e \\\"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\\\"\"}",
+        "call_id": "call_playback"
+      },
+      "toolOutput": {
+        "type": "function_call_output",
+        "id": "fco_01a0e655-63e2-72a1-8a04-21717cf443f0",
+        "call_id": "call_playback",
+        "output": "Chunk ID: c596ef\nWall time: 0.0386 seconds\nProcess exited with code 0\nOriginal token count: 0\nOutput:\n"
+      },
+      "markerContents": "hooknostic-original",
+      "hookLinesPrinted": [
+        "hook: SessionStart",
+        "hook: SessionStart Completed",
+        "hook: UserPromptSubmit",
+        "hook: UserPromptSubmit Completed",
+        "hook: PreToolUse",
+        "hook: PreToolUse",
+        "hook: PreToolUse Completed",
+        "hook: PreToolUse Completed",
+        "hook: PostToolUse",
+        "hook: PostToolUse",
+        "hook: PostToolUse Completed",
+        "hook: PostToolUse Completed",
+        "hook: Stop",
+        "hook: Stop Completed"
+      ],
+      "teed": {
+        "PreToolUse": [
+          {
+            "session_id": "01a0e655-5e4a-7533-9414-49d57261255b",
+            "turn_id": "01a0e655-5e9b-7853-bb25-e1284f64b14b",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-direct-9oMkka\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-45-49-01a0e655-5e4a-7533-9414-49d57261255b.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-direct-9oMkka\\project",
+            "hook_event_name": "PreToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_use_id": "call_playback"
+          }
+        ],
+        "PostToolUse": [
+          {
+            "session_id": "01a0e655-5e4a-7533-9414-49d57261255b",
+            "turn_id": "01a0e655-5e9b-7853-bb25-e1284f64b14b",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-direct-9oMkka\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-45-49-01a0e655-5e4a-7533-9414-49d57261255b.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-direct-9oMkka\\project",
+            "hook_event_name": "PostToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_response": "",
+            "tool_use_id": "call_playback"
+          }
+        ],
+        "otherEvents": [
+          "SessionEnd",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ]
+      },
+      "matcherDispatch": [
+        {
+          "group": "generated",
+          "event": "PreToolUse",
+          "tool_name": "Bash"
+        },
+        {
+          "group": "generated",
+          "event": "PostToolUse",
+          "tool_name": "Bash"
+        }
+      ]
+    },
+    "codeModeOnly": {
+      "toolMode": "code_mode_only",
+      "exitCode": 0,
+      "modelErrors": [],
+      "advertisedTools": [
+        "custom:exec",
+        "function:wait",
+        "function:request_user_input",
+        "web_search:"
+      ],
+      "modelCall": {
+        "type": "custom_tool_call",
+        "id": "ctc_playback",
+        "status": "completed",
+        "call_id": "call_playback",
+        "name": "exec",
+        "input": "const r = await tools.exec_command({\"cmd\":\"node -e \\\"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\\\"\"});\ntext(r.output);\n"
+      },
+      "toolOutput": {
+        "type": "custom_tool_call_output",
+        "id": "ctco_01a0e655-7acc-7bc1-9c16-2fe45794ff3f",
+        "call_id": "call_playback",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "Script completed\nWall time 0.9 seconds\nOutput:\n"
+          }
+        ]
+      },
+      "markerContents": "hooknostic-original",
+      "hookLinesPrinted": [
+        "hook: SessionStart",
+        "hook: SessionStart Completed",
+        "hook: UserPromptSubmit",
+        "hook: UserPromptSubmit Completed",
+        "hook: PreToolUse",
+        "hook: PreToolUse",
+        "hook: PreToolUse Completed",
+        "hook: PreToolUse Completed",
+        "hook: PostToolUse",
+        "hook: PostToolUse",
+        "hook: PostToolUse Completed",
+        "hook: PostToolUse Completed",
+        "hook: Stop",
+        "hook: Stop Completed"
+      ],
+      "teed": {
+        "PreToolUse": [
+          {
+            "session_id": "01a0e655-74c0-7721-be8f-96d8b2dcaed3",
+            "turn_id": "01a0e655-7547-7160-b801-037282acc662",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeModeOnly-MsOHBV\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-45-55-01a0e655-74c0-7721-be8f-96d8b2dcaed3.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeModeOnly-MsOHBV\\project",
+            "hook_event_name": "PreToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_use_id": "exec-50266f82-5801-4e7d-8f10-9c902810474f"
+          }
+        ],
+        "PostToolUse": [
+          {
+            "session_id": "01a0e655-74c0-7721-be8f-96d8b2dcaed3",
+            "turn_id": "01a0e655-7547-7160-b801-037282acc662",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeModeOnly-MsOHBV\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-45-55-01a0e655-74c0-7721-be8f-96d8b2dcaed3.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeModeOnly-MsOHBV\\project",
+            "hook_event_name": "PostToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_response": "",
+            "tool_use_id": "exec-50266f82-5801-4e7d-8f10-9c902810474f"
+          }
+        ],
+        "otherEvents": [
+          "SessionEnd",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ]
+      },
+      "matcherDispatch": [
+        {
+          "group": "generated",
+          "event": "PreToolUse",
+          "tool_name": "Bash"
+        },
+        {
+          "group": "generated",
+          "event": "PostToolUse",
+          "tool_name": "Bash"
+        }
+      ]
+    },
+    "codeMode": {
+      "toolMode": "code_mode",
+      "exitCode": 0,
+      "modelErrors": [],
+      "advertisedTools": [
+        "custom:exec",
+        "function:wait",
+        "function:exec_command",
+        "function:write_stdin",
+        "function:request_user_input",
+        "custom:apply_patch",
+        "function:view_image",
+        "namespace:multi_agent_v1",
+        "function:get_goal",
+        "function:create_goal",
+        "function:update_goal",
+        "web_search:"
+      ],
+      "modelCall": {
+        "type": "custom_tool_call",
+        "id": "ctc_playback",
+        "status": "completed",
+        "call_id": "call_playback",
+        "name": "exec",
+        "input": "const r = await tools.exec_command({\"cmd\":\"node -e \\\"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\\\"\"});\ntext(r.output);\n"
+      },
+      "toolOutput": {
+        "type": "custom_tool_call_output",
+        "id": "ctco_01a0e655-9ef2-7c81-9554-50475f47d9f3",
+        "call_id": "call_playback",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "Script completed\nWall time 0.8 seconds\nOutput:\n"
+          }
+        ]
+      },
+      "markerContents": "hooknostic-original",
+      "hookLinesPrinted": [
+        "hook: SessionStart",
+        "hook: SessionStart Completed",
+        "hook: UserPromptSubmit",
+        "hook: UserPromptSubmit Completed",
+        "hook: PreToolUse",
+        "hook: PreToolUse",
+        "hook: PreToolUse Completed",
+        "hook: PreToolUse Completed",
+        "hook: PostToolUse",
+        "hook: PostToolUse",
+        "hook: PostToolUse Completed",
+        "hook: PostToolUse Completed",
+        "hook: Stop",
+        "hook: Stop Completed"
+      ],
+      "teed": {
+        "PreToolUse": [
+          {
+            "session_id": "01a0e655-9964-7e80-b0c1-f8c8a52aa2ef",
+            "turn_id": "01a0e655-99b1-7be3-afd8-b528d1282ae9",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeMode-2rEMpm\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-46-04-01a0e655-9964-7e80-b0c1-f8c8a52aa2ef.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeMode-2rEMpm\\project",
+            "hook_event_name": "PreToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_use_id": "exec-6ab50f82-fe88-4eed-b616-0d81355d9c66"
+          }
+        ],
+        "PostToolUse": [
+          {
+            "session_id": "01a0e655-9964-7e80-b0c1-f8c8a52aa2ef",
+            "turn_id": "01a0e655-99b1-7be3-afd8-b528d1282ae9",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeMode-2rEMpm\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-46-04-01a0e655-9964-7e80-b0c1-f8c8a52aa2ef.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeMode-2rEMpm\\project",
+            "hook_event_name": "PostToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_response": "",
+            "tool_use_id": "exec-6ab50f82-fe88-4eed-b616-0d81355d9c66"
+          }
+        ],
+        "otherEvents": [
+          "SessionEnd",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ]
+      },
+      "matcherDispatch": [
+        {
+          "group": "generated",
+          "event": "PreToolUse",
+          "tool_name": "Bash"
+        },
+        {
+          "group": "generated",
+          "event": "PostToolUse",
+          "tool_name": "Bash"
+        }
+      ]
+    },
+    "liveShape": {
+      "toolMode": "code_mode_only",
+      "exitCode": 0,
+      "modelErrors": [],
+      "advertisedTools": [
+        "custom:exec",
+        "function:wait",
+        "function:request_user_input",
+        "web_search:"
+      ],
+      "modelCall": {
+        "type": "custom_tool_call",
+        "id": "ctc_playback",
+        "status": "completed",
+        "call_id": "call_playback",
+        "name": "exec",
+        "input": "const r = await tools.exec_command({\"cmd\":\"node -e \\\"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\\\"\",\"workdir\":\"C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Temp\\\\hooknostic-codex-code-mode-liveShape-qu6X59\\\\project\",\"shell\":\"powershell\",\"yield_time_ms\":10000,\"max_output_tokens\":10000});\ntext(r.output);\n"
+      },
+      "toolOutput": {
+        "type": "custom_tool_call_output",
+        "id": "ctco_01a0e655-c0b2-7691-8cd6-26a1fb14c98b",
+        "call_id": "call_playback",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "Script completed\nWall time 0.9 seconds\nOutput:\n"
+          }
+        ]
+      },
+      "markerContents": "hooknostic-original",
+      "hookLinesPrinted": [
+        "hook: SessionStart",
+        "hook: SessionStart Completed",
+        "hook: UserPromptSubmit",
+        "hook: UserPromptSubmit Completed",
+        "hook: PreToolUse",
+        "hook: PreToolUse",
+        "hook: PreToolUse Completed",
+        "hook: PreToolUse Completed",
+        "hook: PostToolUse",
+        "hook: PostToolUse",
+        "hook: PostToolUse Completed",
+        "hook: PostToolUse Completed",
+        "hook: Stop",
+        "hook: Stop Completed"
+      ],
+      "teed": {
+        "PreToolUse": [
+          {
+            "session_id": "01a0e655-baa1-7463-bedc-f4bbb2036a96",
+            "turn_id": "01a0e655-baf1-7902-9652-1d1c9f906627",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-liveShape-qu6X59\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-46-13-01a0e655-baa1-7463-bedc-f4bbb2036a96.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-liveShape-qu6X59\\project",
+            "hook_event_name": "PreToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_use_id": "exec-cbde0d0f-f578-4c94-9d72-249725b6bb99"
+          }
+        ],
+        "PostToolUse": [
+          {
+            "session_id": "01a0e655-baa1-7463-bedc-f4bbb2036a96",
+            "turn_id": "01a0e655-baf1-7902-9652-1d1c9f906627",
+            "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-liveShape-qu6X59\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-46-13-01a0e655-baa1-7463-bedc-f4bbb2036a96.jsonl",
+            "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-liveShape-qu6X59\\project",
+            "hook_event_name": "PostToolUse",
+            "model": "hooknostic-playback",
+            "permission_mode": "bypassPermissions",
+            "tool_name": "Bash",
+            "tool_input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+            },
+            "tool_response": "",
+            "tool_use_id": "exec-cbde0d0f-f578-4c94-9d72-249725b6bb99"
+          }
+        ],
+        "otherEvents": [
+          "SessionEnd",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ]
+      },
+      "matcherDispatch": [
+        {
+          "group": "generated",
+          "event": "PreToolUse",
+          "tool_name": "Bash"
+        },
+        {
+          "group": "generated",
+          "event": "PostToolUse",
+          "tool_name": "Bash"
+        }
+      ]
+    }
+  }
+}

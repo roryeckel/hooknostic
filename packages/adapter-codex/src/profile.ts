@@ -99,6 +99,46 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
             "The same PreToolUse matcher probe on Linux x64 (WSL2) produced an identical dispatch table: " +
             "matched against the hook-boundary name Bash, word lists and anchored regexes match, a bare prefix does not. macOS is uncaptured.",
         },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Code Mode hook payloads on Windows (loopback model; tool_mode code_mode_only -- the gpt-5.6-luna catalog value -- and " +
+            "code_mode): a nested tools.exec_command reaches PreToolUse and PostToolUse as Bash/{command} with tool_use_id " +
+            "exec-<uuid> -- the direct call's payload shape, also with the live call's workdir/shell/yield arguments.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Code Mode dispatch on Windows, the same drives: the model's outer exec custom tool call reached neither a catch-all " +
+            "PreToolUse/PostToolUse group nor one matching exec -- an observed absence, which codex-rs source agrees with " +
+            "(freeform payloads carry no hook payload) -- while the generated Bash|exec_command|shell matcher selected each nested call.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Hook EFFECTS inside Code Mode, through the offline playback lane with a code_mode_only catalog (the model was offered exec " +
+            'and no direct exec_command): a generated match: { kind: "shell" } guard, native matcher included, denied a nested ' +
+            "tools.exec_command so its marker never appeared, and its input rewrite reached the spawned command.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-worktree-hooks",
+          what:
+            "In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly " +
+            "trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at " +
+            "all when that has none. A Codex artifact generated into a linked worktree is inert there.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and
@@ -134,9 +174,18 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.observe": {
         level: "exact",
         rationale:
-          "tool-path coverage, not a security boundary: hosted tools (e.g. web_search) bypass hooks and write_stdin does not re-trigger PreToolUse.",
+          "tool-path coverage, not a security boundary: hosted tools (e.g. web_search) bypass hooks and write_stdin does not re-trigger PreToolUse. " +
+          "Under Code Mode (tool_mode code_mode_only, which the gpt-5.6 catalog models carry) the model's exec script never reaches a hook; " +
+          "each tool call the script makes does, one by one (observed on 0.156.1, .capture/codex-code-mode).",
       },
-      "tool.before.block": { level: "exact" },
+      "tool.before.block": {
+        level: "exact",
+        rationale:
+          "Code Mode does not route around it: a nested tools.exec_command reaches PreToolUse as Bash/{command}, is selected by the " +
+          "generated shell matcher, and a deny stops it (payload captured, dispatch and deny verified live on 0.156.1, " +
+          ".capture/codex-code-mode). The exec " +
+          "script has no filesystem, process, or network API of its own (codex-rs source), so its side effects all pass through such calls.",
+      },
       "tool.before.requestApproval": {
         level: "exact",
         rationale: 'permissionDecision "ask" surfaces a native approval prompt.',

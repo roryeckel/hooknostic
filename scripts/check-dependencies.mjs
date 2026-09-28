@@ -88,7 +88,7 @@ export function inventory(root = repoRoot) {
       const role =
         name === "release-publish.yml"
           ? "publishing"
-          : ["harness-playback", "verify", "drift"].includes(jobName)
+          : ["harness-playback", "code-mode", "verify", "drift"].includes(jobName)
             ? "playback"
             : "ci";
       for (const step of job.steps ?? []) {

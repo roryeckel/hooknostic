@@ -1,0 +1,121 @@
+{
+  "codexVersion": "codex-cli 0.156.1",
+  "platform": "win32",
+  "capturedOn": "2026-09-27",
+  "drives": {
+    "worktreeOnly": {
+      "layout": "sibling",
+      "hooksIn": [
+        "worktree"
+      ],
+      "cwd": "worktree",
+      "trusted": [
+        "root"
+      ],
+      "exitCode": 0,
+      "modelErrors": [],
+      "toolRan": true,
+      "dispatchedBy": {
+        "root": [],
+        "worktree": []
+      }
+    },
+    "both": {
+      "layout": "sibling",
+      "hooksIn": [
+        "root",
+        "worktree"
+      ],
+      "cwd": "worktree",
+      "trusted": [
+        "root"
+      ],
+      "exitCode": 0,
+      "modelErrors": [],
+      "toolRan": true,
+      "dispatchedBy": {
+        "root": [
+          "PostToolUse",
+          "PreToolUse",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ],
+        "worktree": []
+      }
+    },
+    "worktreeTrusted": {
+      "layout": "sibling",
+      "hooksIn": [
+        "root",
+        "worktree"
+      ],
+      "cwd": "worktree",
+      "trusted": [
+        "root",
+        "worktree"
+      ],
+      "exitCode": 0,
+      "modelErrors": [],
+      "toolRan": true,
+      "dispatchedBy": {
+        "root": [
+          "PostToolUse",
+          "PreToolUse",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ],
+        "worktree": []
+      }
+    },
+    "nested": {
+      "layout": "nested",
+      "hooksIn": [
+        "root",
+        "worktree"
+      ],
+      "cwd": "worktree",
+      "trusted": [
+        "root"
+      ],
+      "exitCode": 0,
+      "modelErrors": [],
+      "toolRan": true,
+      "dispatchedBy": {
+        "root": [
+          "PostToolUse",
+          "PreToolUse",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ],
+        "worktree": []
+      }
+    },
+    "rootCheckout": {
+      "layout": "sibling",
+      "hooksIn": [
+        "root",
+        "worktree"
+      ],
+      "cwd": "root",
+      "trusted": [
+        "root"
+      ],
+      "exitCode": 0,
+      "modelErrors": [],
+      "toolRan": true,
+      "dispatchedBy": {
+        "root": [
+          "PostToolUse",
+          "PreToolUse",
+          "SessionStart",
+          "Stop",
+          "UserPromptSubmit"
+        ],
+        "worktree": []
+      }
+    }
+  }
+}
