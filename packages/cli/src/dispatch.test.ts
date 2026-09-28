@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -347,5 +347,27 @@ describe("hooknostic dispatch", () => {
     expect(lines.map((line) => (JSON.parse(line) as DispatchResult).event)).toEqual(["prompt.before"]);
     expect(child.stderr).toContain("noise from console.log");
     expect(child.stderr).toContain("noise from process.stdout");
+  });
+
+  it("answers the testing guide's first run exactly as documented", async () => {
+    // docs/testing-your-hooks.md is the first thing a new user copies; its
+    // input block must dispatch cleanly and produce its output block verbatim.
+    const guide = await readFile(resolve(HERE, "../../../docs/testing-your-hooks.md"), "utf8");
+    const section = guide.slice(guide.indexOf("## A first run"));
+    const [input, output] = [...section.matchAll(/```jsonl\r?\n([\s\S]*?)```/g)].map((m) =>
+      m[1]!
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => JSON.parse(line) as unknown),
+    );
+    const outcome = await dispatchEvents({
+      config: resolve(HERE, "../../../examples/basic/hooknostic.config.ts"),
+      target: "claude",
+      events: input!,
+      registry: defaultAdapterRegistry(),
+      evaluate: EVALUATE,
+    });
+    expect(outcome.ok ? [] : outcome.errors).toEqual([]);
+    expect(outcome.ok && outcome.results).toEqual(output);
   });
 });
