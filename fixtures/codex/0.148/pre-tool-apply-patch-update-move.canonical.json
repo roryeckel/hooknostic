@@ -18,6 +18,13 @@
     "nativeName": "apply_patch",
     "input": {
       "command": "*** Begin Patch\n*** Update File: seed.txt\n*** Move to: moved.txt\n@@\n-alpha\n+beta\n*** End Patch\n"
+    },
+    "file": {
+      "paths": [
+        "seed.txt",
+        "moved.txt"
+      ],
+      "patchKey": "command"
     }
   }
 }

@@ -18,6 +18,12 @@
     "nativeName": "apply_patch",
     "input": {
       "command": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** End Patch\n"
+    },
+    "file": {
+      "paths": [
+        "added.txt"
+      ],
+      "patchKey": "command"
     }
   },
   "output": "Exit code: 0\nWall time: 0 seconds\nOutput:\nSuccess. Updated the following files:\nA added.txt\n"

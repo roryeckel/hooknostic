@@ -18,6 +18,13 @@
     "nativeName": "apply_patch",
     "input": {
       "command": "*** Begin Patch\n*** Add File: one.txt\n+one\n*** Update File: seed.txt\n@@\n-alpha\n+delta\n*** End Patch\n"
+    },
+    "file": {
+      "paths": [
+        "one.txt",
+        "seed.txt"
+      ],
+      "patchKey": "command"
     }
   }
 }

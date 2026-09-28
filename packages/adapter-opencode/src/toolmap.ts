@@ -1,5 +1,5 @@
-import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
-import { shellCodec } from "@hooknostic/sdk";
+import type { FileShapes, ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { fileCodec, shellCodec } from "@hooknostic/sdk";
 
 /** OpenCode tool ids are lowercase (bash, read, edit, …). */
 const EXACT: Record<string, ToolKind> = {
@@ -39,6 +39,23 @@ export const opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
   normalizeName: (name) => name.toLowerCase(),
 });
 
+/**
+ * Captured on 1.18.31 (fixtures/opencode/1.18/tool-{read,write,edit,apply-patch}-before):
+ * the file tools name their target `filePath`; `apply_patch` (offered to
+ * GPT-like model ids) carries a Codex-grammar patch in `patchText`. `patch` and
+ * `multiedit` were never observed and stay absent (ADR-0026).
+ */
+export const OPENCODE_FILE_SHAPES: FileShapes = {
+  read: { pathKey: "filePath" },
+  write: { pathKey: "filePath" },
+  edit: { pathKey: "filePath" },
+  apply_patch: { patchKey: "patchText" },
+};
+
+export const opencodeFileCodec = fileCodec(OPENCODE_FILE_SHAPES, {
+  normalizeName: (name) => name.toLowerCase(),
+});
+
 export function classifyOpenCodeTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
   const lowered = nativeName.toLowerCase();
@@ -46,7 +63,14 @@ export function classifyOpenCodeTool(nativeName: string, input: unknown): ToolIn
   const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : undefined;
   if (known !== undefined) {
     const shell = opencodeShellCodec.classify(nativeName, input);
-    return { kind: known, nativeName, input, ...(shell !== undefined ? { shell } : {}) };
+    const file = opencodeFileCodec.classify(nativeName, input);
+    return {
+      kind: known,
+      nativeName,
+      input,
+      ...(shell !== undefined ? { shell } : {}),
+      ...(file !== undefined ? { file } : {}),
+    };
   }
   // MCP tools surface as `<server>_<tool>`; without a registry we can only
   // best-effort split, keeping the native name authoritative.

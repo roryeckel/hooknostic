@@ -17,6 +17,13 @@
     "nativeName": "apply_patch",
     "input": {
       "patchText": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: seed.txt\n@@\n-alpha\n+beta\n*** End Patch"
+    },
+    "file": {
+      "paths": [
+        "added.txt",
+        "seed.txt"
+      ],
+      "patchKey": "patchText"
     }
   }
 }

@@ -18,7 +18,13 @@
     "input": {
       "path": "probe.txt"
     },
-    "kind": "file.read"
+    "kind": "file.read",
+    "file": {
+      "paths": [
+        "probe.txt"
+      ],
+      "pathKey": "path"
+    }
   },
   "output": [
     {

@@ -9,7 +9,7 @@ import { planOpenCodeApplication } from "./apply.js";
 import { withTimeout } from "./bounded-post.js";
 import type { OpenCodeNativeEvent } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
-import { opencodeShellCodec } from "./toolmap.js";
+import { opencodeFileCodec, opencodeShellCodec } from "./toolmap.js";
 
 export { setupOpenCodeV2 } from "./v2/shim.js";
 
@@ -111,6 +111,7 @@ export function createHooknosticHooks(
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: opencodeShellCodec,
+      fileCodec: opencodeFileCodec,
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     const application = planOpenCodeApplication(result);

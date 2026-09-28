@@ -21,6 +21,12 @@
       "old_string": "alpha",
       "new_string": "beta",
       "replace_all": false
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-kpwePO\\claude\\seed.txt"
+      ],
+      "pathKey": "file_path"
     }
   }
 }

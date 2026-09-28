@@ -58,6 +58,14 @@ Tool events additionally classify the tool being invoked into a portable `kind`
 `mcp`, `other`) so a hook can say "match every shell command" without knowing that
 Claude calls it `Bash`. The native name stays available as `nativeName`.
 
+The *arguments* are not portable, so where a tool's shape has been captured the event
+also carries a normalized view of them: `tool.shell` (the command, whatever key the
+harness uses) and `tool.file` (every path a file tool targets, including the files a
+Codex patch touches). A view is absent when the shape is uncaptured; the raw
+`tool.input` is always there, and the hook decides whether to fail open or closed.
+([Decision 0007](decisions/0007-portable-shell-write-back.md),
+[Decision 0026](decisions/0026-normalized-file-view.md))
+
 Deliberately, the vocabulary is small. A harness-specific event (worktree lifecycle,
 notifications, file watchers, …) only gets a normalized name once at least two
 harnesses share its meaning; until then it stays reachable through the raw payload.

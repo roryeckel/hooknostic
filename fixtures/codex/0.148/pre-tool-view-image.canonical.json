@@ -18,6 +18,12 @@
     "nativeName": "view_image",
     "input": {
       "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex\\probe.png"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex\\probe.png"
+      ],
+      "pathKey": "path"
     }
   }
 }

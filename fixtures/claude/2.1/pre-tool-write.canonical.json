@@ -19,6 +19,12 @@
     "input": {
       "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-xxGqCV\\claude\\probe-write.txt",
       "content": "hooknostic probe\n"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-xxGqCV\\claude\\probe-write.txt"
+      ],
+      "pathKey": "file_path"
     }
   }
 }

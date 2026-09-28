@@ -1,5 +1,5 @@
-import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
-import { shellCodec } from "@hooknostic/sdk";
+import type { FileShapes, ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { fileCodec, shellCodec } from "@hooknostic/sdk";
 
 /**
  * Codex tool-name classification: shell paths surface as `Bash` /
@@ -49,6 +49,20 @@ export const CODEX_SHELL_SHAPES: ShellShapes = {
 
 export const codexShellCodec = shellCodec(CODEX_SHELL_SHAPES);
 
+/**
+ * Captured on 0.156.1 (fixtures/codex/0.148/pre-tool-apply-patch-*,
+ * pre-tool-view-image): `apply_patch` is freeform and reaches hooks as
+ * `{ command: <patch> }`, its paths inside the patch; `view_image` names its file
+ * `path`. The alias names (Write/Edit/Read) never appear in a payload and stay
+ * absent (ADR-0026).
+ */
+export const CODEX_FILE_SHAPES: FileShapes = {
+  apply_patch: { patchKey: "command" },
+  view_image: { pathKey: "path" },
+};
+
+export const codexFileCodec = fileCodec(CODEX_FILE_SHAPES);
+
 export function classifyCodexTool(nativeName: string, input: unknown): ToolInvocation {
   const mcpMatch = /^mcp__(.+)__([^_].*)$/.exec(nativeName);
   if (mcpMatch) {
@@ -60,10 +74,12 @@ export function classifyCodexTool(nativeName: string, input: unknown): ToolInvoc
     };
   }
   const shell = codexShellCodec.classify(nativeName, input);
+  const file = codexFileCodec.classify(nativeName, input);
   return {
     kind: (Object.hasOwn(CODEX_TOOL_KINDS, nativeName) ? CODEX_TOOL_KINDS[nativeName] : undefined) ?? "other",
     nativeName,
     input,
     ...(shell !== undefined ? { shell } : {}),
+    ...(file !== undefined ? { file } : {}),
   };
 }

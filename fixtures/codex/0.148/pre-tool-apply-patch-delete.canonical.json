@@ -18,6 +18,12 @@
     "nativeName": "apply_patch",
     "input": {
       "command": "*** Begin Patch\n*** Delete File: doomed.txt\n*** End Patch\n"
+    },
+    "file": {
+      "paths": [
+        "doomed.txt"
+      ],
+      "patchKey": "command"
     }
   }
 }

@@ -21,7 +21,13 @@ import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
-import { classifyCodexTool, CODEX_SHELL_SHAPES, codexShellCodec } from "./toolmap.js";
+import {
+  classifyCodexTool,
+  CODEX_FILE_SHAPES,
+  CODEX_SHELL_SHAPES,
+  codexFileCodec,
+  codexShellCodec,
+} from "./toolmap.js";
 export { codexHarness } from "./harness.js";
 
 export { applyCodex } from "./apply.js";
@@ -38,7 +44,13 @@ export { codexCapabilityProfiles } from "./profile.js";
 export { codexAgentPluginProjector } from "./project-agent-plugin.js";
 export { runCodexCommandShim } from "./shim.js";
 export type { CodexShimOptions } from "./shim.js";
-export { classifyCodexTool, codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
+export {
+  classifyCodexTool,
+  codexFileCodec,
+  codexShellCodec,
+  CODEX_FILE_SHAPES,
+  CODEX_SHELL_SHAPES,
+} from "./toolmap.js";
 
 function resolveShimPath(): string {
   try {
@@ -99,6 +111,8 @@ export function codexAdapter(): HarnessAdapter {
 
     shellCodec: codexShellCodec,
     shellShapes: CODEX_SHELL_SHAPES,
+    fileCodec: codexFileCodec,
+    fileShapes: CODEX_FILE_SHAPES,
     classifyTool: classifyCodexTool,
 
     supportedHarnessVersions() {

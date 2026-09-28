@@ -5,6 +5,7 @@ import {
   addContext,
   block,
   blockContinuation,
+  fileCodec,
   hook,
   notify,
   preventStop,
@@ -1225,6 +1226,62 @@ describe("shell view coherence across rewrites", () => {
     const event = shellEvent();
     await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
     expect(event.tool.shell).toBeUndefined();
+  });
+});
+
+describe("file view coherence across rewrites (ADR-0026)", () => {
+  const codec = fileCodec({ Read: { pathKey: "file_path" } });
+
+  function readEvent(path: string): ToolBeforeEvent {
+    const event = toolBefore({ file_path: path });
+    event.tool = { kind: "file.read", nativeName: "Read", input: event.tool.input };
+    event.tool.file = codec.classify("Read", event.tool.input)!;
+    return event;
+  }
+
+  it("re-derives tool.file after a replaceInput so a later guard sees the rewritten path", async () => {
+    const seen: (readonly string[] | undefined)[] = [];
+    const event = readEvent("notes.txt");
+    await dispatch(
+      [
+        hook("tool.before", {
+          id: "rewriter",
+          capabilities: { "input.replace": "required" },
+          async run() {
+            return replaceInput({ file_path: ".env" });
+          },
+        }),
+        hook("tool.before", {
+          id: "guard",
+          async run(guarded) {
+            seen.push(guarded.tool.file?.paths);
+          },
+        }),
+      ],
+      event,
+      { ...OPTIONS, fileCodec: codec },
+    );
+    // Without re-derivation the guard would read "notes.txt" while .env is read.
+    expect(seen).toEqual([[".env"]]);
+  });
+
+  it("drops tool.file when no codec was supplied or the input no longer classifies", async () => {
+    const rewrite = (input: unknown) => [
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "input.replace": "required" },
+        async run() {
+          return replaceInput(input);
+        },
+      }),
+    ];
+    const uncodec = readEvent("notes.txt");
+    await dispatch(rewrite({ file_path: ".env" }), uncodec, OPTIONS);
+    expect(uncodec.tool.file).toBeUndefined();
+
+    const mismatched = readEvent("notes.txt");
+    await dispatch(rewrite({ path: ".env" }), mismatched, { ...OPTIONS, fileCodec: codec });
+    expect(mismatched.tool.file).toBeUndefined();
   });
 });
 

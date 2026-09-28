@@ -2,6 +2,7 @@ import type {
   CapabilityId,
   CapabilitySet,
   Effect,
+  FileCodec,
   HandlerError,
   HookContext,
   HookDefinition,
@@ -52,6 +53,11 @@ export interface DispatchOptions {
    * raw `replaceInput` drops `tool.shell` (absent, never stale).
    */
   shellCodec?: ShellCodec;
+  /**
+   * This target's file-view codec (ADR-0026). Without it an input rewrite
+   * drops `tool.file` rather than leaving it stale.
+   */
+  fileCodec?: FileCodec;
   /** The executing artifact's Agent Plugin package, surfaced as `ctx.plugin` (ADR-0020). */
   plugin?: PluginContext;
 }
@@ -61,18 +67,23 @@ function toolOf(event: HookEvent): ToolInvocation | undefined {
 }
 
 /**
- * Replace a tool invocation's input and re-derive the normalized shell view
- * from it. `tool.shell` is documented as derived from `input`; leaving the
+ * Replace a tool invocation's input and re-derive the normalized views (shell
+ * and file) from it. `tool.shell` is documented as derived from `input`; leaving the
  * pre-rewrite value in place would let a rewrite smuggle a command past a
  * later guard hook reading `event.tool.shell.command`. When the new input no
  * longer classifies (or no codec was supplied), the view is deleted -- absence
  * tells a hook to fall back to `input`, where a stale value tells it a lie.
  */
-function setToolInput(tool: ToolInvocation, input: unknown, codec: ShellCodec | undefined): void {
+function setToolInput(tool: ToolInvocation, input: unknown, options: DispatchOptions): void {
   tool.input = input;
-  const shell = codec?.classify(tool.nativeName, input);
+  const shell = options.shellCodec?.classify(tool.nativeName, input);
   if (shell !== undefined) tool.shell = shell;
   else delete tool.shell;
+  // The same rule for the file view: a rewrite must not leave a later guard
+  // reading the paths of an input that no longer exists.
+  const file = options.fileCodec?.classify(tool.nativeName, input);
+  if (file !== undefined) tool.file = file;
+  else delete tool.file;
 }
 
 /**
@@ -278,14 +289,14 @@ export async function dispatch(
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options);
         result.effects.push({ hookId: hook.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === undefined) break; // unreachable: lowering above required it
-        setToolInput(tool, loweredShellInput, options.shellCodec);
+        setToolInput(tool, loweredShellInput, options);
         // Two entries: the portable effect as the hook returned it, then the
         // lowering the adapters actually consume. apply() implementations keep
         // resolving the last replaceInput with no knowledge of updateShell,

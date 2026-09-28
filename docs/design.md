@@ -245,6 +245,16 @@ interface ToolInvocation {
     commandKey: string;
     cwdKey?: string;
   };
+
+  // Normalized file view (ADR-0026), present when the adapter's file shape
+  // table knows this tool: every path the call targets, verbatim, plural
+  // because one patch can touch several files. Read-only; absent means
+  // uncaptured, a search tool, or an unparseable patch -- fall back to `input`.
+  file?: {
+    paths: string[];
+    pathKey?: string; // the native argument naming one file
+    patchKey?: string; // the native argument holding patch text
+  };
 }
 ```
 

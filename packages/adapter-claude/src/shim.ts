@@ -14,7 +14,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyClaude } from "./apply.js";
 import { ClaudeDecodeError, decodeClaude } from "./decode.js";
-import { claudeShellCodec } from "./toolmap.js";
+import { claudeFileCodec, claudeShellCodec } from "./toolmap.js";
 
 export interface ClaudeShimOptions {
   targetId?: string;
@@ -78,6 +78,7 @@ export async function runClaudeCommandShim(source: CommandPluginSource, options:
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: claudeShellCodec,
+      fileCodec: claudeFileCodec,
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     trace?.(describeHookResult(result));

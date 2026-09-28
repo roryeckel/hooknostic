@@ -7,6 +7,8 @@ import type {
 } from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
+  FileCodec,
+  FileShapes,
   HookEvent,
   HookResult,
   RuntimePolicy,
@@ -323,6 +325,16 @@ export interface HarnessAdapter {
    * shell-bearing fixture, or a new entry ships silently untested.
    */
   readonly shellShapes?: ShellShapes;
+
+  /**
+   * The read-only file codec this adapter's shim passes to `dispatch()`, built
+   * with `fileCodec()` from a per-tool shape table (ADR-0026). The contract
+   * suite holds it to every fixture carrying a `tool.file` view.
+   */
+  readonly fileCodec?: FileCodec;
+
+  /** The table the file codec was built from, for table-side coverage. */
+  readonly fileShapes?: FileShapes;
 
   /**
    * The decoder's own classification of a native tool call: kind, MCP

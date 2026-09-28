@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchesTool, rawInputString, shellCodec } from "./tools.js";
+import { fileCodec, matchesTool, parsePatchPaths, rawInputString, shellCodec } from "./tools.js";
 
 // A Codex-shaped table exercises every feature: two tools disagreeing on the
 // command key, one carrying a cwd key, and an uncaptured name absent entirely.
@@ -144,5 +144,88 @@ describe("matchesTool", () => {
     expect(matchesTool({ kind: "file.read" }, tool)).toBe(false);
     expect(matchesTool({ kind: "shell", nativeName: "PowerShell" }, tool)).toBe(false);
     expect(matchesTool(undefined, tool)).toBe(true);
+  });
+});
+
+describe("parsePatchPaths", () => {
+  const patch = (...body: string[]) => ["*** Begin Patch", ...body, "*** End Patch"].join("\n");
+
+  it("collects every file operation's path in patch order", () => {
+    expect(
+      parsePatchPaths(
+        patch(
+          "*** Add File: added.txt",
+          "+hello",
+          "*** Delete File: gone.txt",
+          "*** Update File: src/a.ts",
+          "*** Move to: src/b.ts",
+          "@@",
+          "-old",
+          "+new",
+        ),
+      ),
+    ).toEqual(["added.txt", "gone.txt", "src/a.ts", "src/b.ts"]);
+  });
+
+  it("follows the parser Codex runs on whitespace, line endings and the environment header", () => {
+    const text =
+      "\n*** Begin Patch \r\n*** Environment ID: remote\r\n  *** Add File: a.txt  \r\n+x\r\n *** End Patch\n\n";
+    expect(parsePatchPaths(text)).toEqual(["a.txt"]);
+  });
+
+  it("treats prefixed hunk lines as content, even when they look like markers", () => {
+    expect(parsePatchPaths(patch("*** Update File: notes.md", "@@", "- *** old heading", "+ *** new heading"))).toEqual(
+      ["notes.md"],
+    );
+  });
+
+  it("de-duplicates a path named twice and reports an empty patch as targeting nothing", () => {
+    expect(
+      parsePatchPaths(patch("*** Update File: a.txt", "@@", "-1", "+2", "*** Update File: a.txt", "@@", "-3", "+4")),
+    ).toEqual(["a.txt"]);
+    expect(parsePatchPaths(patch())).toEqual([]);
+  });
+
+  it("declines anything off-grammar rather than report a partial answer", () => {
+    expect(parsePatchPaths("*** Add File: a.txt\n+x\n*** End Patch")).toBeUndefined();
+    expect(parsePatchPaths("*** Begin Patch\n*** Add File: a.txt\n+x")).toBeUndefined();
+    expect(parsePatchPaths(patch("*** Rename File: a.txt"))).toBeUndefined();
+    expect(parsePatchPaths(patch("*** Add File: a.txt", "*** Move to: b.txt"))).toBeUndefined();
+    expect(parsePatchPaths(patch("*** Add File: "))).toBeUndefined();
+    expect(parsePatchPaths("echo not a patch")).toBeUndefined();
+  });
+});
+
+describe("fileCodec", () => {
+  const codec = fileCodec({
+    Read: { pathKey: "file_path" },
+    apply_patch: { patchKey: "command" },
+  });
+
+  it("reads a path argument or a patch argument by the table's key", () => {
+    expect(codec.classify("Read", { file_path: "/repo/.env", offset: 1 })).toEqual({
+      paths: ["/repo/.env"],
+      pathKey: "file_path",
+    });
+    expect(
+      codec.classify("apply_patch", { command: "*** Begin Patch\n*** Delete File: .env\n*** End Patch\n" }),
+    ).toEqual({
+      paths: [".env"],
+      patchKey: "command",
+    });
+  });
+
+  it("declines an uncaptured tool, a mismatched argument, or an unparseable patch", () => {
+    expect(codec.classify("Write", { file_path: "/repo/a" })).toBeUndefined();
+    expect(codec.classify("Read", { path: "/repo/a" })).toBeUndefined();
+    expect(codec.classify("Read", { file_path: 7 })).toBeUndefined();
+    expect(codec.classify("Read", new Map([["file_path", "/repo/a"]]))).toBeUndefined();
+    expect(codec.classify("apply_patch", { command: "rm -rf /" })).toBeUndefined();
+    expect(codec.classify("constructor", {})).toBeUndefined();
+  });
+
+  it("applies normalizeName to the lookup", () => {
+    const lower = fileCodec({ read: { pathKey: "filePath" } }, { normalizeName: (name) => name.toLowerCase() });
+    expect(lower.classify("Read", { filePath: "a.txt" })?.paths).toEqual(["a.txt"]);
   });
 });

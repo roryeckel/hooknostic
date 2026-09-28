@@ -13,6 +13,10 @@
   "tool": {
     "kind": "file.read",
     "nativeName": "Read",
-    "input": { "file_path": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude\\capture.mjs" }
+    "input": { "file_path": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude\\capture.mjs" },
+    "file": {
+      "paths": ["C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude\\capture.mjs"],
+      "pathKey": "file_path"
+    }
   }
 }
