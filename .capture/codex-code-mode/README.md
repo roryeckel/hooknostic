@@ -66,9 +66,12 @@ finding to record, not a probe to loosen, so the record is written before the
 assertions run.
 
 Redaction replaces every home-directory segment by position, not by the account
-name: a renamed Windows account keeps its original profile folder. The probe
-also refuses to write a record that still contains the account or
-profile-folder name anywhere.
+name: a renamed Windows account keeps its original profile folder. A segment
+runs to the next separator or quote, so a path ending at the profile folder is
+caught too. Before writing, the probe fails if any home-directory segment other
+than `user` remains, whatever its length. It also fails if the account or
+profile-folder name appears anywhere else in the text; that search skips names
+under three characters, which would match ordinary words.
 
 ## Observations
 
@@ -115,7 +118,9 @@ playback lane installs the older `referenceVersion`, so the drives skip there,
 with that reason. CI's `code-mode` job installs the derived build on Windows
 and runs `node scripts/verify-code-mode.mjs`, which sets
 `HOOKNOSTIC_REQUIRE_CODE_MODE=1`, so a below-baseline skip becomes a failure.
-The gate cannot pass with nothing exercised.
+It then reads Vitest's JSON report and fails unless the version check and both
+drives ran and passed by exact title, so a renamed drive cannot leave the gate
+passing on the version check alone.
 
 ## Source-derived (codex-rs `rust-v0.156.1`)
 

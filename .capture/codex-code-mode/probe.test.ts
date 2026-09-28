@@ -193,14 +193,26 @@ async function drive(id: string, spec: Drive) {
 // letter, separators, and escaping stay intact. Matched by position, not by
 // name -- a renamed Windows account keeps its original profile folder, so the
 // account name is not a reliable key. Separators repeat: a path inside a
-// JSON-encoded JS string is escaped twice.
-const HOME_SEGMENTS = [/(Users(?:\\|\/)+)[^\\/"]+(?=\\|\/)/gi, /(\/home\/)[^\\/"]+(?=\/)/g];
+// JSON-encoded JS string is escaped twice. A segment runs to the next
+// separator or quote, so a path ending at the profile folder is caught too.
+const HOME_SEGMENTS = [/(Users(?:\\|\/)+)([^\\/"]+)/gi, /(\/home\/)([^\\/"]+)/g];
 
 function redactAccount(json: string): string {
   return HOME_SEGMENTS.reduce((text, pattern) => text.replace(pattern, "$1user"), json);
 }
 
-/** Names that must not survive redaction anywhere, in or out of a path. */
+/** Every home-directory segment left in the record that is not `user`. */
+function unredactedSegments(record: string): string[] {
+  return HOME_SEGMENTS.flatMap((pattern) =>
+    [...record.matchAll(pattern)].map((match) => match[2]!).filter((segment) => segment !== "user"),
+  );
+}
+
+/**
+ * Names that must not survive anywhere, in or out of a path. Only names long
+ * enough to search for as text: a short one ("jo") is a substring of ordinary
+ * words, and `unredactedSegments` already covers every path position.
+ */
 function accountNames(): string[] {
   return [...new Set([userInfo().username, basename(homedir())])].filter(
     (name) => name.length >= 3 && name.toLowerCase() !== "user",
@@ -257,6 +269,7 @@ test("captures what Codex hooks receive for Code Mode exec and its nested exec_c
   const record = redactAccount(JSON.stringify(observations, null, 2)) + "\n";
   // Before anything is written: a leak fails the capture and leaves the
   // committed record untouched.
+  expect(unredactedSegments(record), "a home-directory segment survived redaction").toEqual([]);
   for (const name of accountNames()) {
     expect(record.toLowerCase().includes(name.toLowerCase()), "an account or profile-folder name survived redaction").toBe(
       false,

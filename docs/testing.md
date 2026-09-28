@@ -198,8 +198,11 @@ node scripts/verify-code-mode.mjs --print-version
 Install that exact Codex version, then run `node scripts/verify-code-mode.mjs`.
 It checks the installed version and drives a shell guard's deny and rewrite
 through a nested `exec_command`. Below the baseline the drives fail instead of
-skipping. CI runs the same gate as its `code-mode` job on Windows, the platform
-the capture covers ([evidence](../.capture/codex-code-mode/README.md)).
+skipping. The gate also fails unless the version check and both drives ran and
+passed, by exact title, so a renamed drive cannot shrink it to nothing. CI runs
+the same gate as its `code-mode` job on Windows, the platform the capture
+covers, with the pinned playback Node version
+([evidence](../.capture/codex-code-mode/README.md)).
 
 ## Actual npm package installation
 
