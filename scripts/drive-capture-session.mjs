@@ -228,7 +228,9 @@ export async function driveClaude(scratch, model, prompt = DRIVE_PROMPT) {
       "-p",
       prompt,
       "--model",
-      "hooknostic-drift",
+      // The loopback accepts any name; the LiteLLM sidecar only serves the
+      // configured upstream model, so the llm transport must send that name.
+      model.name ?? "hooknostic-drift",
       "--settings",
       join(scratch, ".claude", "settings.json"),
       "--dangerously-skip-permissions",
@@ -270,6 +272,10 @@ export async function driveCodex(scratch, model, prompt = DRIVE_PROMPT) {
       "never",
       "-c",
       `model="${model.name}"`,
+      // llm transport only (a proxy key marks it): the upstream rejected the
+      // default reasoning field as `reasoning_effort: Input should be a valid
+      // string`, so pin an explicit effort. Playback wiring is unchanged.
+      ...(model.key !== undefined ? ["-c", 'model_reasoning_effort="medium"'] : []),
       "-c",
       'model_provider="hooknostic_drift"',
       "-c",
@@ -471,6 +477,7 @@ async function main() {
           : {
               url: modelSide.config.proxyUrl,
               key: modelSide.config.proxyKey,
+              name: modelSide.config.model,
             };
       result = await driveClaude(scratch, url);
     } else if (opts.harness === "codex") {
