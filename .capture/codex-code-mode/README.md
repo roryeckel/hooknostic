@@ -77,20 +77,34 @@ Windows may give `tmpdir()`. A temp directory relocated under another profile
 
 The home path is matched by structure. Each separator matches any run of `\`
 and `/`, which covers every JSON escape depth and mixed separators. Case is
-ignored only for a Windows-style home. A match must not sit inside a longer
-path, and must end at a separator, a quote, whitespace, or the end of the text.
-So non-home text such as `docs/Users/Permissions`, and code after a quoted home
-path, are left as captured.
+ignored only for a Windows-style home, and the same rule applies to the
+temp-directory comparison. A match must not sit inside a longer path such as
+`docs/home/jo`.
 
-Before writing, the probe fails in two cases:
+A match must also end where the profile segment unambiguously ends: at a
+separator, at a double quote (an escaped one starts with a separator), or at the
+end of the text. Non-home text such as `docs/Users/Permissions` is left as
+captured.
 
-- **A near miss:** the home path continues past its profile segment (`jonas`,
-  `jo@corp`). Nothing is rewritten; a person inspects it by hand rather than the
-  probe guessing.
-- **A surviving home path:** a check implemented independently of the redaction
-  (separators normalised, then a whole-path search) still finds the home in any
-  spelling. It searches for the home path, not the account name, so an account
-  named `node` is not confused with the probe's `node -e` commands.
+Before writing, the probe fails in two cases, and the redaction is deliberately
+biased toward refusing: ambiguity costs a manual look, never a rewrite.
+
+- **A near miss:** anything else follows the profile name, so the redaction
+  cannot tell where the segment ends. That includes another profile's name
+  (`jonas`, `jo@corp`, `jo smith`, `jo's`), prose punctuation (`C:/Users/jo,`),
+  and a single-quoted path (`'C:\\Users\\jo'`). Nothing is rewritten; a person
+  inspects it by hand.
+- **A surviving home path:** a backstop, implemented independently of the
+  redaction and stricter than it, finds the home path anywhere after separators
+  are normalised. That covers a path glued to an option (`-oC:/Users/jo`), which
+  the redaction does not recognise. It searches for the home path, not the
+  account name, so an account named `node` is not confused with the probe's
+  `node -e` commands. A redacted `user` segment is not mistaken for a profile
+  whose name is a prefix of it (`us`).
+
+The probe's own emissions produce none of these ambiguous forms: its scripted
+command quotes with `JSON.stringify`, so paths in the source are double-quoted.
+A future emission that single-quotes a home path would make the probe refuse.
 
 ## Observations
 
