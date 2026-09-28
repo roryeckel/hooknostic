@@ -144,7 +144,22 @@ describe("composeNotes", () => {
     expect(notes).not.toContain("## Direct commits");
   });
 
-  it("keeps merge commits whose PR the generated body does not list", () => {
+  it("drops merge commits for PRs the generated body excludes", () => {
+    // release.yml excludes `release` and `skip-changelog` PRs; their merge
+    // commits must not resurface as direct commits.
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody: "## What's Changed\n* feat: listed by @owner in https://github.com/owner/example/pull/41",
+      commits: [
+        { sha: "9".repeat(40), subject: "Merge pull request #42 from owner/release/v1.0.0", body: "chore: release" },
+        { sha: "0".repeat(40), subject: "fix: direct commit", body: "" },
+      ],
+    });
+    expect(notes).not.toContain("Merge pull request #42");
+    expect(notes).toContain("- fix: direct commit (00000000)");
+  });
+
+  it("keeps merge commits when no generated body is available", () => {
     const notes = composeNotes({
       harnessTable: TABLE,
       generatedBody: "",
@@ -162,17 +177,17 @@ describe("composeNotes", () => {
         "* docs: cite https://github.com/other/repo/pull/36 by @owner in https://github.com/owner/example/pull/38\n" +
         "* fix: follow up #37 by @owner in https://github.com/owner/example/pull/39",
       commits: [
-        { sha: "5".repeat(40), subject: "Merge pull request #36 from owner/one", body: "" },
-        { sha: "6".repeat(40), subject: "Merge pull request #37 from owner/two", body: "" },
-        { sha: "7".repeat(40), subject: "Merge pull request #38 from owner/three", body: "" },
+        { sha: "5".repeat(40), subject: "fix: one (#36)", body: "" },
+        { sha: "6".repeat(40), subject: "fix: two (#37)", body: "" },
+        { sha: "7".repeat(40), subject: "fix: three (#38)", body: "" },
       ],
     });
-    expect(notes).toContain("- Merge pull request #36 from owner/one (55555555)");
-    expect(notes).toContain("- Merge pull request #37 from owner/two (66666666)");
-    expect(notes).not.toContain("Merge pull request #38");
+    expect(notes).toContain("- fix: one (#36) (55555555)");
+    expect(notes).toContain("- fix: two (#37) (66666666)");
+    expect(notes).not.toContain("fix: three");
   });
 
-  it("reads a merge subject's PR number before any trailing (#N)", () => {
+  it("recognizes a merge subject despite a trailing (#N)", () => {
     const notes = composeNotes({
       harnessTable: TABLE,
       generatedBody: "## What's Changed\n* feat: merged by @owner in https://github.com/owner/example/pull/40",

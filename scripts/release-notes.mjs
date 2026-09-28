@@ -7,8 +7,9 @@
 //      text so composition is deterministic.
 //   3. Direct commits -- direct-to-master commits (allowed in this repo, and
 //      their long-form bodies are load-bearing) that native notes silently
-//      omit: every first-parent commit in range not already covered by a PR
-//      reference in section 2, rendered as a bullet with a <details> body.
+//      omit: every first-parent commit in range that is neither a PR merge
+//      commit nor a squash commit whose PR section 2 lists, rendered as a
+//      bullet with a <details> body.
 //
 // The composition is a pure function (composeNotes) with a unit test; the CLI
 // wrapper gathers the inputs. Usage (from the draft-release workflow):
@@ -44,14 +45,20 @@ function escapeHtml(text) {
  * @returns {string}
  */
 export function composeNotes({ highlights = "", harnessTable, generatedBody, commits }) {
-  // A commit already grouped under a PR in the generated body is covered.
+  // A merge commit always stands for a PR, which the generated body either
+  // lists or excludes on purpose (release.yml's `release`/`skip-changelog`);
+  // either way it is not a direct commit. Only without a generated body (local
+  // dry runs) does it stay, as the sole record of that PR.
+  //
+  // A squash commit is covered when the generated body lists its (#N).
   // generate-notes ends each entry with "in .../pull/N"; only that trailing
   // link counts, so a PR or issue cited inside a title covers nothing. Bare
-  // "in #N" is accepted too. On the commit side, a merge commit's
-  // "Merge pull request #N from ..." wins over the (#N) of a squash subject.
+  // "in #N" is accepted too.
+  const hasGeneratedBody = generatedBody.trim() !== "";
   const covered = new Set([...generatedBody.matchAll(/\bin (?:\S+\/pull\/|#)(\d+)\s*$/gm)].map((match) => match[1]));
   const direct = commits.filter((commit) => {
-    const ref = commit.subject.match(/^Merge pull request #(\d+) from /) ?? commit.subject.match(/\(#(\d+)\)\s*$/);
+    if (/^Merge pull request #\d+ from /.test(commit.subject)) return !hasGeneratedBody;
+    const ref = commit.subject.match(/\(#(\d+)\)\s*$/);
     return ref === null || !covered.has(ref[1]);
   });
 
