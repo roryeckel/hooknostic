@@ -741,6 +741,171 @@ describe("createCapabilitySet", () => {
   });
 });
 
+describe("effect lists (ADR-0025)", () => {
+  it("lets one hook notify and then prevent a stop", async () => {
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "notify-and-prevent",
+          capabilities: { prevent: "required", notify: "optional" },
+          async run() {
+            return [notify("lint failed"), preventStop("fix the lint")];
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([]);
+    expect(notifications(result)).toEqual(["lint failed"]);
+    expect(terminalEffect(result)).toEqual({ kind: "preventStop", reason: "fix the lint" });
+    expect(result.terminatedBy).toBe("notify-and-prevent");
+    expect(result.effects.map((entry) => entry.hookId)).toEqual(["notify-and-prevent", "notify-and-prevent"]);
+  });
+
+  it("rejects a list whose terminal effect is not last, before applying any of it", async () => {
+    const ran: string[] = [];
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "misordered",
+          capabilities: { prevent: "required", notify: "optional" },
+          async run() {
+            return [preventStop("stop first"), notify("never shown")];
+          },
+        }),
+        hook("turn.stop", {
+          id: "later",
+          async run() {
+            ran.push("later");
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(result.effects).toEqual([]);
+    expect(result.terminatedBy).toBeUndefined();
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        hookId: "misordered",
+        code: "HN401",
+        message: expect.stringContaining("must be last"),
+      }),
+    ]);
+    // Rejection is fail-open like any HN401: later hooks still run.
+    expect(ran).toEqual(["later"]);
+  });
+
+  it("applies the siblings of a failing element under the default policy", async () => {
+    const event = toolBefore({ command: "npm install" });
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "mixed",
+          capabilities: { block: "required", "input.replace": "required" },
+          async run() {
+            // Two failure paths, each an HN401 for that element only: a value
+            // that is no effect at all, and notify, which tool.before lacks.
+            return [
+              { kind: "bogus" } as never,
+              replaceInput({ command: "pnpm install" }),
+              notify("x") as never,
+              block("then stop"),
+            ];
+          },
+        }),
+      ],
+      event,
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        hookId: "mixed",
+        code: "HN401",
+        message: expect.stringContaining("not a valid effect"),
+      }),
+      expect.objectContaining({ hookId: "mixed", code: "HN401", message: expect.stringContaining("not defined") }),
+    ]);
+    expect(replacedInput(result)).toEqual({ value: { command: "pnpm install" } });
+    expect(terminalEffect(result)).toEqual({ kind: "block", reason: "then stop" });
+    expect(event.tool.input).toEqual({ command: "pnpm install" });
+  });
+
+  it("stops at a failing element when the error policy blocks", async () => {
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "strict",
+          capabilities: { block: "required", "input.replace": "required" },
+          async run() {
+            return [{ kind: "bogus" } as never, replaceInput({ command: "not applied" })];
+          },
+        }),
+      ],
+      toolBefore({ command: "ls" }),
+      { ...OPTIONS, policy: { onHookError: "block" } },
+    );
+    expect(replacedInput(result)).toBeUndefined();
+    expect(terminalEffect(result)?.kind).toBe("block");
+    expect(result.terminatedBy).toBe("strict");
+  });
+
+  it("lowers a portable shell rewrite inside a list and skips undefined entries", async () => {
+    const codec = shellCodec({ Bash: { commandKey: "command" } });
+    const event = toolBefore({ command: "npm test", description: "d" });
+    event.tool.shell = codec.classify("Bash", event.tool.input)!;
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "rewrite-and-explain",
+          capabilities: { "input.replace": "required", "context.add": "optional" },
+          async run() {
+            return [undefined, updateShell({ command: "pnpm test" }), addContext("rewrote npm to pnpm")];
+          },
+        }),
+        hook("tool.before", {
+          id: "empty",
+          async run() {
+            return [];
+          },
+        }),
+      ],
+      event,
+      { ...OPTIONS, shellCodec: codec },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.effects.map((entry) => entry.effect.kind)).toEqual(["updateShell", "replaceInput", "addContext"]);
+    expect(event.tool.input).toEqual({ command: "pnpm test", description: "d" });
+    expect(event.tool.shell?.command).toBe("pnpm test");
+  });
+
+  it("fails open when reading the returned list throws", async () => {
+    // Survives the promise machinery's `then` probe, then throws once the
+    // list itself is read.
+    const proxy = new Proxy([] as unknown[], {
+      get(target, key) {
+        if (key === "then") return undefined;
+        throw new Error(`trapped ${String(key)}`);
+      },
+    });
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "revoked",
+          async run() {
+            return proxy as never;
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "revoked", code: "HN401" })]);
+    expect(result.effects).toEqual([]);
+  });
+});
+
 describe("event-relative capability keys", () => {
   it("stores full ids and resolves either spelling at dispatch", async () => {
     const observed: unknown[] = [];

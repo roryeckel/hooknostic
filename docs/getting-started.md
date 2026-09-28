@@ -67,8 +67,8 @@ Three things to notice:
 - The `capabilities` block declares what the hook *relies on*. This is what lets
   Hooknostic verify, per target, that the hook will actually work — before anything is
   generated.
-- The hook returns an *effect* (`block(...)`) or nothing. It never talks to a harness
-  directly.
+- The hook returns an *effect* (`block(...)`), a list of effects, or nothing. It never
+  talks to a harness directly.
 
 ## 3. Configure your targets
 

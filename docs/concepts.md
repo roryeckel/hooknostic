@@ -81,7 +81,10 @@ do something:
 
 Returning nothing means "continue unchanged" — there is deliberately no `allow()`
 helper, because "explicitly allow" means subtly different (and sometimes
-permission-bypassing) things across harnesses.
+permission-bypassing) things across harnesses. A hook can also return a list —
+`[notify("lint failed"), preventStop("fix it")]` — which applies in order, exactly as
+if consecutive hooks had returned each effect; an effect that ends the dispatch must
+come last. ([Decision 0025](decisions/0025-effect-lists.md))
 
 ## 4. Capabilities: the honest map between the two
 
@@ -186,10 +189,12 @@ context. ([Decision 0002](decisions/0002-invocation-stateless-contract.md))
 hook per lifecycle point and dispatches your handlers itself: sequentially, in the
 order you declared them; input/output replacements take effect immediately so later
 handlers see them; context additions and notifications accumulate; `block`,
-`requestApproval`, `preventStop`, and `blockContinuation` end the dispatch. Same
-rules on every harness.
+`requestApproval`, `preventStop`, and `blockContinuation` end the dispatch. A list
+returned by one hook applies in order under the same rules. Same rules on every
+harness.
 ([Decision 0003](decisions/0003-one-dispatcher-composition.md),
-[Decision 0005](decisions/0005-terminal-effects.md))
+[Decision 0005](decisions/0005-terminal-effects.md),
+[Decision 0025](decisions/0025-effect-lists.md))
 
 ## What Hooknostic is *not*
 

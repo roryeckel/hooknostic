@@ -116,15 +116,22 @@ export interface HookSpec<
    */
   capabilities?: Record<K, RequirementLevel>;
 
+  /**
+   * Return nothing to continue unchanged, one effect, or an ordered list of
+   * effects -- the same as consecutive handlers returning them one at a time,
+   * with a terminal effect (`block`, `preventStop`, …) allowed only last
+   * (ADR-0025). `undefined` list entries are skipped.
+   */
   run(
     event: MatchedEvent<E, M>,
     ctx: HookContext<CapabilitySpellings<E, K>>,
   ):
-    | Promise<EffectForCapability<CanonicalCapability<E, K>> | undefined | void>
-    | EffectForCapability<CanonicalCapability<E, K>>
-    | undefined
-    | void;
+    | HookReturn<EffectForCapability<CanonicalCapability<E, K>>>
+    | Promise<HookReturn<EffectForCapability<CanonicalCapability<E, K>>>>;
 }
+
+/** What a handler may return: nothing, one effect, or an ordered list of effects. */
+export type HookReturn<T extends Effect = Effect> = T | readonly (T | undefined)[] | undefined | void;
 
 /** Erased runtime representation of an authored hook. */
 export interface HookDefinition {
@@ -134,10 +141,7 @@ export interface HookDefinition {
   targets?: TargetScope;
   timeoutMs?: number;
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
-  run(
-    event: HookEventMap[HookEventName],
-    ctx: HookContext,
-  ): Promise<Effect | undefined | void> | Effect | undefined | void;
+  run(event: HookEventMap[HookEventName], ctx: HookContext): HookReturn | Promise<HookReturn>;
 }
 
 /**

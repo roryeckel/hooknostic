@@ -274,7 +274,9 @@ to exist merely because the event exists. Initial family (event-scoped equivalen
 
 Every helper maps to an event-scoped capability. A generic `allow()` helper is
 intentionally omitted: returning no effect means continue, avoiding vendor-specific
-permission-bypass nuances.
+permission-bypass nuances. A handler may return one effect or an ordered list; a list
+means exactly what consecutive handlers returning its elements would, and a terminal
+effect must be its last element ([ADR-0025](decisions/0025-effect-lists.md)).
 
 ## 7. Capability semantics and compatibility analysis
 
@@ -693,7 +695,9 @@ composed HookResult
    (ADR-0005, superseding the earlier rules 4-6).
 5. Post-tool: output replacements apply immediately.
 6. Reserved (folded into rule 4 by ADR-0005).
-7. No effect = continue unchanged.
+7. No effect = continue unchanged. A returned list applies element by element under
+   rules 1–6, each element validated on its own; a terminal effect before the end of
+   the list rejects the whole list as HN401 (ADR-0025).
 8. First terminal effect in declaration order wins; the runtime records the terminator.
 
 ### 10.3 Error and timeout policy

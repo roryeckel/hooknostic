@@ -141,6 +141,27 @@ describe("compile-time hook contracts", () => {
     expect(relative.capabilities).toEqual({ "tool.before.block": "required", "tool.before.input.replace": "optional" });
   });
 
+  it("accepts effect lists when every element is licensed", () => {
+    const ok = hook("turn.stop", {
+      id: "list",
+      capabilities: { prevent: "required", notify: "optional" },
+      async run(_event, ctx) {
+        return [ctx.capabilities.has("notify") ? notify("lint failed") : undefined, preventStop("fix it")];
+      },
+    });
+
+    const undeclared = hook("turn.stop", {
+      id: "list-undeclared",
+      capabilities: { prevent: "required" },
+      // @ts-expect-error notify is undeclared, inside a list as anywhere else
+      async run() {
+        return [notify("lint failed"), preventStop("fix it")];
+      },
+    });
+
+    expect([ok.id, undeclared.id]).toEqual(["list", "list-undeclared"]);
+  });
+
   it("rejects capabilities scoped to a different event", () => {
     const wrongScope = hook("tool.after", {
       id: "wrong-scope",

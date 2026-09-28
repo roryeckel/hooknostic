@@ -77,10 +77,9 @@ export interface BlockContinuationEffect {
  * `addContext`: that is model-facing and this is not, and on the stop events the
  * two are separate native channels.
  *
- * Non-terminal, so notifications accumulate and later handlers still run. Note a
- * handler returns a single effect, so one hook cannot both notify and prevent a
- * stop; that needs two hooks, and the notifying one must be declared first or the
- * terminal effect will cut it off.
+ * Non-terminal, so notifications accumulate and later handlers still run. One
+ * hook can notify and then prevent a stop by returning both, in that order:
+ * `[notify(message), preventStop(reason)]` (ADR-0025).
  */
 export interface NotifyEffect {
   readonly kind: "notify";
