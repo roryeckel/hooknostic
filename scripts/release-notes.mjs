@@ -45,12 +45,13 @@ function escapeHtml(text) {
  */
 export function composeNotes({ highlights = "", harnessTable, generatedBody, commits }) {
   // A commit already grouped under a PR in the generated body is covered.
-  // generate-notes cites PRs as .../pull/N URLs; bare #N is accepted too. On
-  // the commit side, match the (#N) GitHub appends to squash subjects or the
-  // "Merge pull request #N from ..." subject of a merge commit.
-  const covered = new Set([...generatedBody.matchAll(/(?:#|\/pull\/)(\d+)\b/g)].map((match) => match[1]));
+  // generate-notes ends each entry with "in .../pull/N"; only that trailing
+  // link counts, so a PR or issue cited inside a title covers nothing. Bare
+  // "in #N" is accepted too. On the commit side, a merge commit's
+  // "Merge pull request #N from ..." wins over the (#N) of a squash subject.
+  const covered = new Set([...generatedBody.matchAll(/\bin (?:\S+\/pull\/|#)(\d+)\s*$/gm)].map((match) => match[1]));
   const direct = commits.filter((commit) => {
-    const ref = commit.subject.match(/\(#(\d+)\)\s*$/) ?? commit.subject.match(/^Merge pull request #(\d+) from /);
+    const ref = commit.subject.match(/^Merge pull request #(\d+) from /) ?? commit.subject.match(/\(#(\d+)\)\s*$/);
     return ref === null || !covered.has(ref[1]);
   });
 

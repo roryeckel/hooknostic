@@ -154,6 +154,33 @@ describe("composeNotes", () => {
     expect(notes).toContain("- Merge pull request #34 from owner/feature (33333333)");
   });
 
+  it("counts only each entry's own PR link, not references inside titles", () => {
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody:
+        "## What's Changed\n" +
+        "* docs: cite https://github.com/other/repo/pull/36 by @owner in https://github.com/owner/example/pull/38\n" +
+        "* fix: follow up #37 by @owner in https://github.com/owner/example/pull/39",
+      commits: [
+        { sha: "5".repeat(40), subject: "Merge pull request #36 from owner/one", body: "" },
+        { sha: "6".repeat(40), subject: "Merge pull request #37 from owner/two", body: "" },
+        { sha: "7".repeat(40), subject: "Merge pull request #38 from owner/three", body: "" },
+      ],
+    });
+    expect(notes).toContain("- Merge pull request #36 from owner/one (55555555)");
+    expect(notes).toContain("- Merge pull request #37 from owner/two (66666666)");
+    expect(notes).not.toContain("Merge pull request #38");
+  });
+
+  it("reads a merge subject's PR number before any trailing (#N)", () => {
+    const notes = composeNotes({
+      harnessTable: TABLE,
+      generatedBody: "## What's Changed\n* feat: merged by @owner in https://github.com/owner/example/pull/40",
+      commits: [{ sha: "8".repeat(40), subject: "Merge pull request #40 from owner/feature (#99)", body: "" }],
+    });
+    expect(notes).not.toContain("Merge pull request #40");
+  });
+
   it("does not reuse the generated body's Other changes category heading", () => {
     const notes = composeNotes({
       harnessTable: TABLE,
