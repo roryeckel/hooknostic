@@ -1,5 +1,7 @@
 import { block, definePlugin, hook } from "@hooknostic/sdk";
 
+const isEnvFile = (path: string) => /(^|[\\/])\.env(\.|$)/.test(path);
+
 export default definePlugin({
   // name is required here; version/description are inherited from the Agent
   // Plugins manifest when omitted.
@@ -8,21 +10,32 @@ export default definePlugin({
     hook("tool.before", {
       id: "marketplace-probe",
       match: { kind: "shell" },
-      capabilities: { "tool.before.block": "required" },
-      run(event) {
-        if (event.tool.shell?.command.includes("HOOKNOSTIC_BLOCK_PROBE")) {
+      capabilities: { block: "required" },
+      run({ tool }) {
+        if (tool.shell?.command.includes("HOOKNOSTIC_BLOCK_PROBE")) {
           return block("Hooknostic marketplace probe blocked.");
         }
       },
     }),
     hook("tool.before", {
       id: "protect-env-files",
-      match: { kind: "file.read" },
-      capabilities: { "tool.before.block": "required" },
-      async run(event) {
-        const { file_path: filePath = "" } = event.tool.input as { file_path?: string };
-        if (/\.env(\.|$)/.test(filePath)) {
-          return block("Reading .env files is not allowed by this plugin.");
+      // Reads, and edits too: on Codex and on GPT-like models under OpenCode a
+      // file is changed through a patch, which tool.file reads paths out of.
+      match: { kind: ["file.read", "file.write", "file.edit"] },
+      capabilities: { block: "required" },
+      run({ tool }) {
+        // tool.file names every targeted file, whatever each harness calls the
+        // argument. It is absent when the tool's shape is uncaptured (Claude's
+        // MultiEdit, say) or a patch does not parse -- and for search tools
+        // (glob/grep), which take a pattern rather than a file. A write or edit
+        // whose targets cannot be read is refused rather than let through
+        // unchecked; a search passes. A shell command that reads .env is a
+        // shell call and out of this hook's reach.
+        if (tool.file === undefined) {
+          return tool.kind === "file.read" ? undefined : block(`Cannot verify which files ${tool.nativeName} targets.`);
+        }
+        if (tool.file.paths.some(isEnvFile)) {
+          return block(".env files are off limits to this plugin.");
         }
       },
     }),

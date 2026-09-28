@@ -7,7 +7,7 @@ import type { OpenCodeShimOptions } from "../shim.js";
 import type { OpenCodeV2Application } from "./apply.js";
 import { planOpenCodeV2Application } from "./apply.js";
 import { decodeOpenCodeV2, OpenCodeV2DecodeError } from "./decode.js";
-import { opencodeV2ShellCodec } from "./toolmap.js";
+import { opencodeV2FileCodec, opencodeV2ShellCodec } from "./toolmap.js";
 
 type Callback = (event: Record<string, unknown>) => Promise<void>;
 interface Registration {
@@ -94,6 +94,7 @@ export async function setupOpenCodeV2(
       harness: event.harness,
       capabilities: options.capabilities,
       shellCodec: opencodeV2ShellCodec,
+      fileCodec: opencodeV2FileCodec,
       ...(options.policy ? { policy: options.policy } : {}),
       ...(options.minimumCapabilityLevel ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {}),
       ...(options.pluginRoot ? { plugin: { root: options.pluginRoot } } : {}),

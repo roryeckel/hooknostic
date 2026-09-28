@@ -13,14 +13,12 @@ export default definePlugin({
     hook("tool.before", {
       id: "no-force-push",
       match: { kind: "shell" },
-      capabilities: {
-        "tool.before.block": "required",
-      },
-      async run(event) {
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+      capabilities: { block: "required" },
+      run({ tool }) {
+        // Undefined only where the tool's shape is uncaptured: a guard refuses
+        // what it cannot read rather than letting it through unchecked.
+        const command = tool.shell?.command;
+        if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {
           return block("Use --force-with-lease instead of --force.");
         }

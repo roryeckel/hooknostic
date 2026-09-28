@@ -210,6 +210,39 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       expect(uncovered, `shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
     });
 
+    it("re-derives the file view of every fixture through its codec", () => {
+      // ADR-0026: wherever a canonical fixture advertises tool.file, the
+      // adapter's file codec must exist and reproduce it from the fixture's own
+      // input -- the same obligation the shell view carries, read side only.
+      for (const name of fixtureNames) {
+        const tool = loadFixtureFrom<{ tool?: { nativeName: string; input: unknown; file?: unknown } }>(
+          join(options.fixturesDir, name),
+        ).tool;
+        if (tool?.file === undefined) continue;
+        expect(adapter.fileCodec, `${name} has tool.file but adapter has no file codec`).toBeDefined();
+        expect(
+          adapter.fileCodec!.classify(tool.nativeName, tool.input),
+          `${name}: codec does not classify its own fixture`,
+        ).toEqual(tool.file);
+      }
+    });
+
+    it("backs every file shape table entry with a fixture", () => {
+      // Table-side coverage, as for shell shapes: an entry with no fixture
+      // carrying the view is a claim nothing checks.
+      const covered = new Set(
+        fixtureNames
+          .map(
+            (name) =>
+              loadFixtureFrom<{ tool?: { nativeName?: string; file?: unknown } }>(join(options.fixturesDir, name)).tool,
+          )
+          .filter((tool) => tool?.file !== undefined)
+          .map((tool) => tool!.nativeName!.toLowerCase()),
+      );
+      const uncovered = Object.keys(adapter.fileShapes ?? {}).filter((key) => !covered.has(key.toLowerCase()));
+      expect(uncovered, `file shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
+    });
+
     it("keeps its harness metadata consistent with its profiles and fixtures", () => {
       const meta = adapter.harness;
       // fixtureDir pins the one name that was previously derived from nothing.

@@ -62,6 +62,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2",
           what: "Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0",
+          what: "A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch)",
+        },
         // scheduled-playback:begin
         // scheduled-playback:end
       ],

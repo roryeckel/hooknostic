@@ -93,23 +93,15 @@ export default definePlugin({
     hook("tool.before", {
       id: "protect-shell",
       match: { kind: "shell" },
-      capabilities: {
-        "tool.before.block": "required",
-        "tool.before.input.replace": "optional",
-      },
-      async run(event, ctx) {
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+      capabilities: { block: "required", "input.replace": "optional" },
+      run({ tool }, ctx) {
+        // Normalized across harnesses; undefined only where the tool's shape is
+        // uncaptured -- and a guard refuses what it cannot read.
+        const command = tool.shell?.command;
+        if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");
-        if (
-          ctx.capabilities.has("tool.before.input.replace") &&
-          event.tool.shell !== undefined &&
-          command.startsWith("npm ")
-        ) {
-          // Portable write-back: lands under whichever key this harness uses
-          // (according to the captured tool shape), siblings preserved.
+        if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
+          // Lands under whichever key this harness uses, siblings preserved.
           return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
@@ -120,7 +112,11 @@ export default definePlugin({
 
 That one file blocks a destructive command on all three harnesses, and rewrites
 `npm` to `pnpm` on the ones that support input rewriting — falling back gracefully
-(and visibly) where they don't.
+(and visibly) where they don't. Capability keys are relative to the hook's event
+(`block` means `tool.before.block`), and a hook can return several effects at once
+(`[notify(message), preventStop(reason)]`). File tools get the same treatment as shell
+tools: `tool.file?.paths` lists every file a call targets, whatever each harness names
+the argument.
 
 ## Commands at a glance
 

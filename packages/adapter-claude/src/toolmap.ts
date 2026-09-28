@@ -1,5 +1,5 @@
-import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
-import { shellCodec } from "@hooknostic/sdk";
+import type { FileShapes, ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { fileCodec, shellCodec } from "@hooknostic/sdk";
 
 /**
  * Best-effort classification of Claude Code tool names into normalized
@@ -39,6 +39,21 @@ export const CLAUDE_SHELL_SHAPES: ShellShapes = {
 
 export const claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);
 
+/**
+ * Claude's file tools name their one target `file_path`; NotebookEdit names it
+ * `notebook_path`. Each entry is capture-backed: pre-tool-read (2.1.238) and
+ * pre-tool-{write,edit,notebookedit} (2.1.283). MultiEdit was not advertised on
+ * 2.1.283 and Glob/Grep target a pattern, not a file -- all absent (ADR-0026).
+ */
+export const CLAUDE_FILE_SHAPES: FileShapes = {
+  Read: { pathKey: "file_path" },
+  Write: { pathKey: "file_path" },
+  Edit: { pathKey: "file_path" },
+  NotebookEdit: { pathKey: "notebook_path" },
+};
+
+export const claudeFileCodec = fileCodec(CLAUDE_FILE_SHAPES);
+
 export const CLAUDE_MCP_TOOL = /^mcp__(.+)__([^_].*)$/;
 
 export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvocation {
@@ -52,10 +67,12 @@ export function classifyClaudeTool(nativeName: string, input: unknown): ToolInvo
     };
   }
   const shell = claudeShellCodec.classify(nativeName, input);
+  const file = claudeFileCodec.classify(nativeName, input);
   return {
     kind: (Object.hasOwn(CLAUDE_TOOL_KINDS, nativeName) ? CLAUDE_TOOL_KINDS[nativeName] : undefined) ?? "other",
     nativeName,
     input,
     ...(shell !== undefined ? { shell } : {}),
+    ...(file !== undefined ? { file } : {}),
   };
 }

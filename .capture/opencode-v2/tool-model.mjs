@@ -5,7 +5,10 @@ import { join } from "node:path";
 export async function startToolModel(project, mcpOnly = false, remote = false, audit = false) {
   const requests = [], errors = [];
   let index = 0, baseUrl;
-  const actions = audit === "subagent" ? [
+  const actions = audit === "patch" ? [
+    // Offered instead of edit/write when the model id looks like a GPT model.
+    ["patch", { patchText: "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch" }],
+  ] : audit === "subagent" ? [
     ["subagent", { agent: "general", description: "Offline child result capture", prompt: "hooknostic-child-task: return the scripted child result." }],
   ] : audit ? [
     ["read", { path: "definitely-missing-hooknostic.txt" }],

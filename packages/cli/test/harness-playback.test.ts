@@ -192,6 +192,20 @@ describe("scriptedTool schema fidelity", () => {
       description: "Playback probe command",
     });
   });
+
+  it("prefers the exact tool name and passes scripted arguments through verbatim", () => {
+    // MultiEdit listed first: a suffix match alone would pick it for "Edit".
+    const request = {
+      tools: [
+        { name: "MultiEdit", input_schema: { properties: { file_path: {}, edits: {} } } },
+        { name: "Edit", input_schema: { properties: { file_path: {}, old_string: {}, new_string: {} } } },
+      ],
+    };
+    const args = { file_path: "/tmp/seed.txt", old_string: "alpha", new_string: "beta" };
+    const tool = scriptedTool(request, "rewrite", undefined, "Edit", args);
+    expect(tool.name).toBe("Edit");
+    expect(JSON.parse(tool.arguments)).toEqual(args);
+  });
 });
 
 describe("model playback auxiliary requests", () => {

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.before",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f19fd1ef9ffeuEpWao6b0yl5Ii",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_1"
+  },
+  "event": "tool.before",
+  "tool": {
+    "nativeName": "patch",
+    "input": {
+      "patchText": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch"
+    },
+    "kind": "file.edit",
+    "file": {
+      "paths": [
+        "added.txt",
+        "probe.txt"
+      ],
+      "patchKey": "patchText"
+    }
+  }
+}

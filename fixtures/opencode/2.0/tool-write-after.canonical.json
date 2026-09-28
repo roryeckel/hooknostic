@@ -19,7 +19,13 @@
       "path": "probe.txt",
       "content": "hooknostic-before-edit"
     },
-    "kind": "file.write"
+    "kind": "file.write",
+    "file": {
+      "paths": [
+        "probe.txt"
+      ],
+      "pathKey": "path"
+    }
   },
   "output": [
     {

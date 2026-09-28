@@ -1,0 +1,14 @@
+{
+  "session_id": "01a0e5ff-6668-72c3-9073-fcba232c7bd9",
+  "turn_id": "01a0e5ff-6747-7922-a7eb-65d32cecc167",
+  "transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\09\\27\\rollout-2026-09-27T22-11-55-01a0e5ff-6668-72c3-9073-fcba232c7bd9.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex",
+  "hook_event_name": "PreToolUse",
+  "model": "hooknostic-playback",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "view_image",
+  "tool_input": {
+    "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex\\probe.png"
+  },
+  "tool_use_id": "call_playback"
+}

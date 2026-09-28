@@ -53,6 +53,14 @@ export const toolInvocationSchema = z
       })
       .strict()
       .optional(),
+    file: z
+      .object({
+        paths: z.array(z.string()),
+        pathKey: z.string().optional(),
+        patchKey: z.string().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

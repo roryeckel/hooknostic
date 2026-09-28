@@ -42,14 +42,10 @@ export default definePlugin({
     hook("tool.before", {
       id: "no-force-push",
       match: { kind: "shell" },                       // any shell tool, on any harness
-      capabilities: {
-        "tool.before.block": "required",              // we rely on being able to block
-      },
-      async run(event) {
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+      capabilities: { block: "required" },            // we rely on being able to block
+      run({ tool }) {
+        const command = tool.shell?.command;          // normalized: Bash, exec_command, …
+        if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {
           return block("Use --force-with-lease instead of --force.");
         }
@@ -63,12 +59,15 @@ export default definePlugin({
 Three things to notice:
 
 - `match: { kind: "shell" }` uses the portable tool classification — you don't need to
-  know that Claude names its shell tool `Bash`.
+  know that Claude names its shell tool `Bash`. `tool.shell.command` is the command
+  normalized the same way; it is undefined only for a shell tool whose argument shape
+  has not been captured, and this guard refuses what it cannot read.
 - The `capabilities` block declares what the hook *relies on*. This is what lets
   Hooknostic verify, per target, that the hook will actually work — before anything is
-  generated.
-- The hook returns an *effect* (`block(...)`) or nothing. It never talks to a harness
-  directly.
+  generated. Keys are relative to the hook's event: `block` here means
+  `tool.before.block`, the full id diagnostics and reports print.
+- The hook returns an *effect* (`block(...)`), a list of effects, or nothing. It never
+  talks to a harness directly.
 
 ## 3. Configure your targets
 

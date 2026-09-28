@@ -49,6 +49,48 @@ export interface ToolInvocation {
    * a replacement for it.
    */
   shell?: ToolShell;
+
+  /**
+   * The files a file tool targets, normalized, when the adapter knows this
+   * tool's argument shape (ADR-0026).
+   *
+   * `kind` is portable but the path argument is not: Claude names it
+   * `file_path`, OpenCode 1.x `filePath`, OpenCode 2.x `path`, and a Codex or
+   * OpenCode patch tool carries its paths inside the patch text. Absent for an
+   * uncaptured shape, for tools with no target file (glob/grep search), and
+   * for anything the adapter cannot read with certainty -- fall back to
+   * `input`, and decide whether a guard fails open or closed. File access
+   * through a shell command is a shell call and never appears here.
+   */
+  file?: ToolFile;
+}
+
+/**
+ * The normalized file view. `paths` holds every file the call targets, in the
+ * order the tool names them and verbatim as the harness sent them -- relative
+ * paths stay relative. `pathKey`/`patchKey` say which native argument they came
+ * from, as data for the raw escape hatch.
+ */
+export interface ToolFile {
+  paths: string[];
+  /** The native argument naming the one target file, for a path-argument tool. */
+  pathKey?: string;
+  /** The native argument holding the patch the paths were parsed from. */
+  patchKey?: string;
+}
+
+/**
+ * One file tool's argument shape: an argument naming a single file, or an
+ * argument holding patch text in the Codex patch grammar.
+ */
+export type FileShape = { readonly pathKey: string } | { readonly patchKey: string };
+
+/** Native tool name -> file argument shape. Lookup is exact after `normalizeName`. */
+export type FileShapes = Readonly<Record<string, FileShape>>;
+
+export interface FileCodec {
+  /** Derive the file view; `undefined` when uncaptured, mismatched or unparseable. */
+  classify(nativeName: string, input: unknown): ToolFile | undefined;
 }
 
 /**
@@ -102,7 +144,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** Own-property table lookup: a tool named "constructor" must not resolve Object.prototype. */
-function shapeOf(shapes: ShellShapes, key: string): ShellShape | undefined {
+function shapeOf<S>(shapes: Readonly<Record<string, S>>, key: string): S | undefined {
   return Object.hasOwn(shapes, key) ? shapes[key] : undefined;
 }
 
@@ -146,23 +188,142 @@ export function shellCodec(
   };
 }
 
+const PATCH_BEGIN = "*** Begin Patch";
+const PATCH_END = "*** End Patch";
+const PATCH_ENVIRONMENT = "*** Environment ID:";
+const PATCH_END_OF_FILE = "*** End of File";
+const PATCH_UPDATE = "*** Update File: ";
+const PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE] as const;
+const PATCH_MOVE = "*** Move to: ";
+
+/**
+ * Every file a patch in the Codex patch grammar targets, or `undefined` when
+ * the text is not one.
+ *
+ * Mirrors the parser Codex runs (`codex-rs/apply-patch`), not just its lark
+ * grammar, so the paths reported are the ones that will be written; captures
+ * show OpenCode's `apply_patch`/`patch` tools take the same text. The whole
+ * text and the envelope markers are trimmed; file headers match on the trimmed
+ * line -- except inside an Update hunk, where Codex trims only the end, so a
+ * leading space keeps `*** Delete File: x` a context line, not a header; an
+ * environment header may open the body; `Move to` counts only directly after
+ * an `Update File` header.
+ * Strict where it matters, because a partial answer is worse than none: any
+ * other `***` line is off-grammar and yields `undefined`. Hunk bodies are not
+ * validated -- only headers name files. Paths come back in patch order,
+ * de-duplicated; a patch with no file operation targets nothing (`[]`).
+ */
+export function parsePatchPaths(text: string): string[] | undefined {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2 || lines[0]!.trim() !== PATCH_BEGIN || lines[lines.length - 1]!.trim() !== PATCH_END) {
+    return undefined;
+  }
+  const body = lines.slice(1, -1);
+  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT)) body.shift();
+  const paths: string[] = [];
+  let inUpdateHunk = false;
+  let afterUpdateHeader = false;
+  for (const line of body) {
+    // Codex's streaming parser: trim() in the other modes, trim_end() in an
+    // Update hunk, where a leading space is the context-line prefix.
+    const candidate: string = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header: (typeof PATCH_FILE_HEADERS)[number] | undefined = PATCH_FILE_HEADERS.find((prefix) =>
+      candidate.startsWith(prefix),
+    );
+    if (header !== undefined) {
+      const path = candidate.slice(header.length);
+      if (path === "") return undefined;
+      paths.push(path);
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
+      continue;
+    }
+    const untrailed = line.trimEnd();
+    if (untrailed.startsWith(PATCH_MOVE)) {
+      const path = untrailed.slice(PATCH_MOVE.length);
+      if (!afterUpdateHeader || path === "") return undefined;
+      paths.push(path);
+      afterUpdateHeader = false;
+      continue;
+    }
+    // Hunk lines carry a +, - or space prefix, so " *** bold" is content; a bare
+    // unknown marker is what Codex itself would refuse.
+    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE) return undefined;
+    afterUpdateHeader = false;
+  }
+  return [...new Set(paths)];
+}
+
+/**
+ * Build a file codec from a shape table. Read side only (ADR-0026): there is
+ * no portable file rewrite, so unlike {@link shellCodec} there is no encode.
+ * A name absent from the table yields no view -- uncaptured shapes are never
+ * guessed.
+ */
+export function fileCodec(shapes: FileShapes, options?: { normalizeName?: (nativeName: string) => string }): FileCodec {
+  const normalize = options?.normalizeName ?? ((name: string) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === undefined || !isPlainObject(input)) return undefined;
+      if ("pathKey" in shape) {
+        const path = input[shape.pathKey];
+        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : undefined;
+      }
+      const patch = input[shape.patchKey];
+      const paths = typeof patch === "string" ? parsePatchPaths(patch) : undefined;
+      return paths === undefined ? undefined : { paths, patchKey: shape.patchKey };
+    },
+  };
+}
+
+/**
+ * Read one string argument from a tool's native input by its native key.
+ *
+ * The deliberate escape hatch for harness-specific code. Keys differ per
+ * harness (a file tool names its path `file_path` on Claude and `path` on
+ * OpenCode v2), so a portable hook reading one key compiles everywhere and
+ * silently matches nothing on the others. Pair this with a `nativeName` check,
+ * and prefer the normalized views wherever they exist.
+ *
+ * Own properties of a plain-object input only; anything else -- a missing key,
+ * a non-string value, a prototype member -- is `undefined`, never a coercion.
+ */
+export function rawInputString(tool: Pick<ToolInvocation, "input">, key: string): string | undefined {
+  const { input } = tool;
+  if (!isPlainObject(input) || !Object.hasOwn(input, key)) return undefined;
+  const value = input[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 /** Declarative matcher applied to tool-scoped events before handlers run. */
 export interface ToolMatch {
   /** Match one or more normalized categories. */
-  kind?: ToolKind | ToolKind[];
+  kind?: ToolKind | readonly ToolKind[];
   /** Match exact native tool name(s). */
-  nativeName?: string | string[];
+  nativeName?: string | readonly string[];
+}
+
+/**
+ * The tool kinds a matcher admits: exactly the listed ones when it constrains
+ * `kind`, every kind otherwise (a `nativeName`-only matcher says nothing about
+ * the category). Narrows `event.tool.kind` inside a matched hook's handler.
+ */
+export type MatchedKind<M> = M extends { readonly kind: infer K }
+  ? K extends ToolKind
+    ? K
+    : K extends readonly (infer Listed extends ToolKind)[]
+      ? Listed
+      : ToolKind
+  : ToolKind;
+
+function listOf<T>(value: T | readonly T[]): readonly T[] {
+  return Array.isArray(value) ? (value as readonly T[]) : [value as T];
 }
 
 export function matchesTool(match: ToolMatch | undefined, tool: ToolInvocation): boolean {
   if (!match) return true;
-  if (match.kind !== undefined) {
-    const kinds = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds.includes(tool.kind)) return false;
-  }
-  if (match.nativeName !== undefined) {
-    const names = Array.isArray(match.nativeName) ? match.nativeName : [match.nativeName];
-    if (!names.includes(tool.nativeName)) return false;
-  }
+  if (match.kind !== undefined && !listOf(match.kind).includes(tool.kind)) return false;
+  if (match.nativeName !== undefined && !listOf(match.nativeName).includes(tool.nativeName)) return false;
   return true;
 }

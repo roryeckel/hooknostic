@@ -117,6 +117,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
             "scheduled-playback baseline, so harness-watch still owes this build a full " +
             "lane sweep (ADR-0009).",
         },
+        {
+          version: "1.18.31",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/opencode/1.18",
+          what: "read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

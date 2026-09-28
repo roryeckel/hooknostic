@@ -77,10 +77,9 @@ export interface BlockContinuationEffect {
  * `addContext`: that is model-facing and this is not, and on the stop events the
  * two are separate native channels.
  *
- * Non-terminal, so notifications accumulate and later handlers still run. Note a
- * handler returns a single effect, so one hook cannot both notify and prevent a
- * stop; that needs two hooks, and the notifying one must be declared first or the
- * terminal effect will cut it off.
+ * Non-terminal, so notifications accumulate and later handlers still run. One
+ * hook can notify and then prevent a stop by returning both, in that order:
+ * `[notify(message), preventStop(reason)]` (ADR-0025).
  */
 export interface NotifyEffect {
   readonly kind: "notify";
@@ -126,11 +125,11 @@ export function replaceOutput(output: unknown): ReplaceOutputEffect {
 }
 
 /**
- * Rewrite the shell command portably. Guard with
- * `ctx.capabilities.has("tool.before.input.replace")` and
- * `event.tool.shell !== undefined` -- see {@link UpdateShellEffect}. Takes a
- * patch object so a working-directory field can be added later without a
- * signature break.
+ * Rewrite the shell command portably. Legal once
+ * `ctx.capabilities.has("input.replace")` and `event.tool.shell !== undefined`
+ * -- an early return on an unreadable command establishes the second -- see
+ * {@link UpdateShellEffect}. Takes a patch object so a working-directory field
+ * can be added later without a signature break.
  */
 export function updateShell(patch: { command: string }): UpdateShellEffect {
   return { kind: "updateShell", command: patch.command };

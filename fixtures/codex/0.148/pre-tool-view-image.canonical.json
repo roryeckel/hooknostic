@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "01a0e5ff-6668-72c3-9073-fcba232c7bd9",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0e5ff-6747-7922-a7eb-65d32cecc167",
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "view_image",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex\\probe.png"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-n6YLzN\\codex\\probe.png"
+      ],
+      "pathKey": "path"
+    }
+  }
+}

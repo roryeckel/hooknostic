@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { HookEvent, RuntimePolicy, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
+import type { CapabilityId, HookEvent, RuntimePolicy, ToolAfterEvent, ToolBeforeEvent } from "@hooknostic/sdk";
 import {
   addContext,
   block,
   blockContinuation,
+  fileCodec,
   hook,
   notify,
   preventStop,
@@ -732,6 +733,234 @@ describe("createCapabilitySet", () => {
     expect(set.has("tool.before.context.add")).toBe(false);
     expect(set.level("tool.before.context.add")).toBe("unsupported");
   });
+
+  it("never resolves an Object.prototype member as a support level", () => {
+    const set = createCapabilitySet({ "tool.before.block": "exact" });
+    const probe = "constructor" as CapabilityId;
+    expect(set.has(probe)).toBe(false);
+    expect(set.level(probe)).toBe("unsupported");
+  });
+});
+
+describe("effect lists (ADR-0025)", () => {
+  it("lets one hook notify and then prevent a stop", async () => {
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "notify-and-prevent",
+          capabilities: { prevent: "required", notify: "optional" },
+          async run() {
+            return [notify("lint failed"), preventStop("fix the lint")];
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([]);
+    expect(notifications(result)).toEqual(["lint failed"]);
+    expect(terminalEffect(result)).toEqual({ kind: "preventStop", reason: "fix the lint" });
+    expect(result.terminatedBy).toBe("notify-and-prevent");
+    expect(result.effects.map((entry) => entry.hookId)).toEqual(["notify-and-prevent", "notify-and-prevent"]);
+  });
+
+  it("rejects a list whose terminal effect is not last, before applying any of it", async () => {
+    const ran: string[] = [];
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "misordered",
+          capabilities: { prevent: "required", notify: "optional" },
+          async run() {
+            return [preventStop("stop first"), notify("never shown")];
+          },
+        }),
+        hook("turn.stop", {
+          id: "later",
+          async run() {
+            ran.push("later");
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(result.effects).toEqual([]);
+    expect(result.terminatedBy).toBeUndefined();
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        hookId: "misordered",
+        code: "HN401",
+        message: expect.stringContaining("must be last"),
+      }),
+    ]);
+    // Rejection is fail-open like any HN401: later hooks still run.
+    expect(ran).toEqual(["later"]);
+  });
+
+  it("applies the siblings of a failing element under the default policy", async () => {
+    const event = toolBefore({ command: "npm install" });
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "mixed",
+          capabilities: { block: "required", "input.replace": "required" },
+          async run() {
+            // Two failure paths, each an HN401 for that element only: a value
+            // that is no effect at all, and notify, which tool.before lacks.
+            return [
+              { kind: "bogus" } as never,
+              replaceInput({ command: "pnpm install" }),
+              notify("x") as never,
+              block("then stop"),
+            ];
+          },
+        }),
+      ],
+      event,
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        hookId: "mixed",
+        code: "HN401",
+        message: expect.stringContaining("not a valid effect"),
+      }),
+      expect.objectContaining({ hookId: "mixed", code: "HN401", message: expect.stringContaining("not defined") }),
+    ]);
+    expect(replacedInput(result)).toEqual({ value: { command: "pnpm install" } });
+    expect(terminalEffect(result)).toEqual({ kind: "block", reason: "then stop" });
+    expect(event.tool.input).toEqual({ command: "pnpm install" });
+  });
+
+  it("stops at a failing element when the error policy blocks", async () => {
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "strict",
+          capabilities: { block: "required", "input.replace": "required" },
+          async run() {
+            return [{ kind: "bogus" } as never, replaceInput({ command: "not applied" })];
+          },
+        }),
+      ],
+      toolBefore({ command: "ls" }),
+      { ...OPTIONS, policy: { onHookError: "block" } },
+    );
+    expect(replacedInput(result)).toBeUndefined();
+    expect(terminalEffect(result)?.kind).toBe("block");
+    expect(result.terminatedBy).toBe("strict");
+  });
+
+  it("lowers a portable shell rewrite inside a list and skips undefined entries", async () => {
+    const codec = shellCodec({ Bash: { commandKey: "command" } });
+    const event = toolBefore({ command: "npm test", description: "d" });
+    event.tool.shell = codec.classify("Bash", event.tool.input)!;
+    const result = await dispatch(
+      [
+        hook("tool.before", {
+          id: "rewrite-and-explain",
+          capabilities: { "input.replace": "required", "context.add": "optional" },
+          async run() {
+            return [undefined, updateShell({ command: "pnpm test" }), addContext("rewrote npm to pnpm")];
+          },
+        }),
+        hook("tool.before", {
+          id: "empty",
+          async run() {
+            return [];
+          },
+        }),
+      ],
+      event,
+      { ...OPTIONS, shellCodec: codec },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.effects.map((entry) => entry.effect.kind)).toEqual(["updateShell", "replaceInput", "addContext"]);
+    expect(event.tool.input).toEqual({ command: "pnpm test", description: "d" });
+    expect(event.tool.shell?.command).toBe("pnpm test");
+  });
+
+  it("fails open when reading the returned list throws", async () => {
+    // Survives the promise machinery's `then` probe, then throws once the
+    // list itself is read.
+    const proxy = new Proxy([] as unknown[], {
+      get(target, key) {
+        if (key === "then") return undefined;
+        throw new Error(`trapped ${String(key)}`);
+      },
+    });
+    const result = await dispatch(
+      [
+        hook("turn.stop", {
+          id: "revoked",
+          async run() {
+            return proxy as never;
+          },
+        }),
+      ],
+      turnStop(),
+      OPTIONS,
+    );
+    expect(result.errors).toEqual([expect.objectContaining({ hookId: "revoked", code: "HN401" })]);
+    expect(result.effects).toEqual([]);
+  });
+});
+
+describe("event-relative capability keys", () => {
+  it("stores full ids and resolves either spelling at dispatch", async () => {
+    const observed: unknown[] = [];
+    const def = hook("tool.before", {
+      id: "relative",
+      capabilities: { block: "required", "input.replace": "optional" },
+      async run(_event, ctx) {
+        // Destructured on purpose: the set's methods must not depend on `this`.
+        const { has, level } = ctx.capabilities;
+        observed.push(has("input.replace"), has("tool.before.input.replace"), level("block"));
+        return replaceInput({ command: "rewritten" });
+      },
+    });
+    expect(def.capabilities).toEqual({ "tool.before.block": "required", "tool.before.input.replace": "optional" });
+
+    const result = await dispatch([def], toolBefore({ command: "original" }), OPTIONS);
+    expect(observed).toEqual([true, true, "exact"]);
+    expect(result.errors).toEqual([]);
+    expect(replacedInput(result)).toEqual({ value: { command: "rewritten" } });
+  });
+
+  it("applies the compatibility floor to the declared requirement under either spelling", async () => {
+    const observed: boolean[] = [];
+    await dispatch(
+      [
+        hook("tool.before", {
+          id: "required-relative",
+          capabilities: { "input.replace": "required" },
+          async run(_event, ctx) {
+            observed.push(ctx.capabilities.has("input.replace"), ctx.capabilities.has("tool.before.input.replace"));
+          },
+        }),
+      ],
+      toolBefore({ command: "original" }),
+      {
+        ...OPTIONS,
+        capabilities: { "tool.before.observe": "exact", "tool.before.input.replace": "approximate" },
+        minimumCapabilityLevel: "emulated",
+      },
+    );
+    // Required survives the floor; a lookup that missed the declaration would
+    // have treated it as optional and hidden it.
+    expect(observed).toEqual([true, true]);
+  });
+
+  it("rejects one capability declared under both spellings", () => {
+    expect(() =>
+      hook("tool.before", {
+        id: "twice",
+        capabilities: { block: "required", "tool.before.block": "optional" },
+        async run() {},
+      }),
+    ).toThrow(/declares capability "tool\.before\.block" twice/);
+  });
 });
 
 describe("policy-aware hook capability detection", () => {
@@ -997,6 +1226,62 @@ describe("shell view coherence across rewrites", () => {
     const event = shellEvent();
     await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
     expect(event.tool.shell).toBeUndefined();
+  });
+});
+
+describe("file view coherence across rewrites (ADR-0026)", () => {
+  const codec = fileCodec({ Read: { pathKey: "file_path" } });
+
+  function readEvent(path: string): ToolBeforeEvent {
+    const event = toolBefore({ file_path: path });
+    event.tool = { kind: "file.read", nativeName: "Read", input: event.tool.input };
+    event.tool.file = codec.classify("Read", event.tool.input)!;
+    return event;
+  }
+
+  it("re-derives tool.file after a replaceInput so a later guard sees the rewritten path", async () => {
+    const seen: (readonly string[] | undefined)[] = [];
+    const event = readEvent("notes.txt");
+    await dispatch(
+      [
+        hook("tool.before", {
+          id: "rewriter",
+          capabilities: { "input.replace": "required" },
+          async run() {
+            return replaceInput({ file_path: ".env" });
+          },
+        }),
+        hook("tool.before", {
+          id: "guard",
+          async run(guarded) {
+            seen.push(guarded.tool.file?.paths);
+          },
+        }),
+      ],
+      event,
+      { ...OPTIONS, fileCodec: codec },
+    );
+    // Without re-derivation the guard would read "notes.txt" while .env is read.
+    expect(seen).toEqual([[".env"]]);
+  });
+
+  it("drops tool.file when no codec was supplied or the input no longer classifies", async () => {
+    const rewrite = (input: unknown) => [
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "input.replace": "required" },
+        async run() {
+          return replaceInput(input);
+        },
+      }),
+    ];
+    const uncodec = readEvent("notes.txt");
+    await dispatch(rewrite({ file_path: ".env" }), uncodec, OPTIONS);
+    expect(uncodec.tool.file).toBeUndefined();
+
+    const mismatched = readEvent("notes.txt");
+    await dispatch(rewrite({ path: ".env" }), mismatched, { ...OPTIONS, fileCodec: codec });
+    expect(mismatched.tool.file).toBeUndefined();
   });
 });
 

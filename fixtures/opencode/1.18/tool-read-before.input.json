@@ -1,0 +1,14 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7ogELI\\opencode",
+  "input": {
+    "tool": "read",
+    "sessionID": "ses_f19ffa8e5ffesTEIEvyjyl7pY6",
+    "callID": "call_playback"
+  },
+  "output": {
+    "args": {
+      "filePath": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7ogELI\\opencode\\seed.txt"
+    }
+  }
+}

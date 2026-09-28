@@ -16,7 +16,7 @@ machinery.
 ```ts
 hook("session.start", {
   id: "repo-context",
-  capabilities: { "session.start.context.add": "required" },
+  capabilities: { "context.add": "required" },
   async run(event) {
     return addContext(
       [
@@ -30,14 +30,12 @@ hook("session.start", {
 hook("tool.before", {
   id: "cwd-reminder",
   match: { kind: "shell" },
-  capabilities: { "tool.before.context.add": "optional" },
-  async run(event, ctx) {
-    if (!ctx.capabilities.has("tool.before.context.add")) return;
-    // Normalized read with a raw fallback: where the shape is uncaptured
-    // (`shell` undefined), a guard must not fail open on an empty string.
-    const raw = (event.tool.input as { command?: unknown }).command;
-    const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
-    if (command.startsWith("cd ")) {
+  capabilities: { "context.add": "optional" },
+  run({ tool }, ctx) {
+    if (!ctx.capabilities.has("context.add")) return;
+    // Advice, not a guard: where the shape is uncaptured there is nothing
+    // to advise on, so this hook simply stays quiet (fails open).
+    if (tool.shell?.command.startsWith("cd ")) {
       return addContext("Reminder: prefer absolute paths over cd for tooling commands.");
     }
   },
@@ -47,7 +45,14 @@ hook("tool.before", {
 The session-start hook *requires* its capability — this plugin's whole point is those
 house rules, so shipping without them would be shipping a lie. The per-tool reminder is
 merely nice to have, so it's `optional` with a runtime check (the pattern from
-[Tutorial 2](02-rewriting-tool-input.md)).
+[Tutorial 2](02-rewriting-tool-input.md)). The capability keys are relative to each
+hook's event: `context.add` is `session.start.context.add` in the first hook and
+`tool.before.context.add` in the second.
+
+Note the two hooks treat an unreadable command differently, on purpose. The guard in
+Tutorial 2 refuses a shell call it cannot read; this reminder just says nothing. Guards
+fail closed, advice fails open — and `tool.shell?.command` makes that a one-token
+decision rather than a default someone forgot to think about.
 
 ## The portability wall
 
@@ -83,7 +88,7 @@ shipping to OpenCode, you'd instead restrict just this hook:
 hook("session.start", {
   id: "repo-context",
   targets: { include: ["claude", "codex"] },
-  capabilities: { "session.start.context.add": "required" },
+  capabilities: { "context.add": "required" },
   // ...
 }),
 ```

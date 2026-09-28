@@ -18,6 +18,10 @@ describe("decodeOpenCode fixtures", () => {
   const CASES = [
     "tool-before",
     "tool-after",
+    "tool-read-before",
+    "tool-write-before",
+    "tool-edit-before",
+    "tool-apply-patch-before",
     "permission-ask",
     "permission-asked",
     "compacting",

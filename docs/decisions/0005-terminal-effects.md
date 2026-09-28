@@ -3,6 +3,8 @@
 **Status:** Accepted — 2026-08-29 · Referenced from code and docs as **ADR-0005**
 **Supersedes:** ADR-0003 composition rules 4–6, and amends rule 3 (context additions
 and notifications now accumulate under *separate* caps). Rules 1, 2, 7 and 8 stand.
+**Amended by:** ADR-0025 — a handler may return an ordered list of effects, so the
+two-hook notify-then-prevent pattern below is no longer required.
 
 **In short:** some effects stop the remaining hooks from running and some don't, and
 until now that list lived in three places that disagreed with each other. Here it is,

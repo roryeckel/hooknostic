@@ -2,6 +2,7 @@ import type {
   CapabilityId,
   CapabilitySet,
   Effect,
+  FileCodec,
   HandlerError,
   HookContext,
   HookDefinition,
@@ -14,6 +15,7 @@ import type {
   ToolInvocation,
 } from "@hooknostic/sdk";
 import {
+  canonicalCapability,
   capabilityForEffect,
   DEFAULT_RUNTIME,
   effectSchema,
@@ -27,14 +29,13 @@ import {
 export type CapabilityLevels = Partial<Record<CapabilityId, SupportLevel>>;
 
 export function createCapabilitySet(levels: CapabilityLevels): CapabilitySet {
+  // Own-property lookup: an id like "constructor" (reachable from untyped
+  // callers) must not resolve an Object.prototype member as a support level.
+  const levelOf = (id: CapabilityId): SupportLevel =>
+    (Object.hasOwn(levels, id) ? levels[id] : undefined) ?? "unsupported";
   return {
-    has(id) {
-      const level = levels[id];
-      return level !== undefined && level !== "unsupported";
-    },
-    level(id) {
-      return levels[id] ?? "unsupported";
-    },
+    has: (id) => levelOf(id) !== "unsupported",
+    level: levelOf,
   };
 }
 
@@ -52,6 +53,11 @@ export interface DispatchOptions {
    * raw `replaceInput` drops `tool.shell` (absent, never stale).
    */
   shellCodec?: ShellCodec;
+  /**
+   * This target's file-view codec (ADR-0026). Without it an input rewrite
+   * drops `tool.file` rather than leaving it stale.
+   */
+  fileCodec?: FileCodec;
   /** The executing artifact's Agent Plugin package, surfaced as `ctx.plugin` (ADR-0020). */
   plugin?: PluginContext;
 }
@@ -61,18 +67,23 @@ function toolOf(event: HookEvent): ToolInvocation | undefined {
 }
 
 /**
- * Replace a tool invocation's input and re-derive the normalized shell view
- * from it. `tool.shell` is documented as derived from `input`; leaving the
+ * Replace a tool invocation's input and re-derive the normalized views (shell
+ * and file) from it. `tool.shell` is documented as derived from `input`; leaving the
  * pre-rewrite value in place would let a rewrite smuggle a command past a
  * later guard hook reading `event.tool.shell.command`. When the new input no
  * longer classifies (or no codec was supplied), the view is deleted -- absence
  * tells a hook to fall back to `input`, where a stale value tells it a lie.
  */
-function setToolInput(tool: ToolInvocation, input: unknown, codec: ShellCodec | undefined): void {
+function setToolInput(tool: ToolInvocation, input: unknown, options: DispatchOptions): void {
   tool.input = input;
-  const shell = codec?.classify(tool.nativeName, input);
+  const shell = options.shellCodec?.classify(tool.nativeName, input);
   if (shell !== undefined) tool.shell = shell;
   else delete tool.shell;
+  // The same rule for the file view: a rewrite must not leave a later guard
+  // reading the paths of an input that no longer exists.
+  const file = options.fileCodec?.classify(tool.nativeName, input);
+  if (file !== undefined) tool.file = file;
+  else delete tool.file;
 }
 
 /**
@@ -164,112 +175,51 @@ export async function dispatch(
     return false; // fail-open: continue with remaining handlers
   };
 
-  for (const hook of matching) {
-    const capabilities: CapabilitySet = {
-      has(id) {
-        return this.level(id) !== "unsupported";
-      },
-      level(id) {
-        const level = targetCapabilities.level(id);
-        const minimum = options.minimumCapabilityLevel;
-        if (minimum !== undefined && hook.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
-          return "unsupported";
-        }
-        return level;
-      },
-    };
-    const controller = new AbortController();
-    const ctx: HookContext = {
-      capabilities,
-      harness: { ...options.harness },
-      signal: controller.signal,
-      // A copy per hook, like `harness`: a handler that mutates it must not
-      // move the root under the hooks after it.
-      ...(options.plugin === undefined ? {} : { plugin: { ...options.plugin } }),
-    };
-
-    let outcome: Effect | undefined | void;
-    let timedOut = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // Per hook, not per dispatch: a hook that shells out to a linter can declare
-    // minutes without licensing a string matcher beside it to hang for the same.
-    // The second `??` is the same guard the two char budgets above carry -- an
-    // explicitly-`undefined` policy key survives the spread, and `setTimeout`
-    // with `undefined` fires in about a millisecond while reporting
-    // "timed out after undefinedms".
-    const budgetMs = hook.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+  /**
+   * Validate one value a handler returned as an effect. A throw during
+   * validation (zod can trip a hostile proxy's traps before jsonValueSchema
+   * rejects it) is itself an HN401: validation is part of the handler boundary
+   * and must not break the fail-open contract.
+   */
+  const parseReturned = (hookId: string, value: unknown): { effect: Effect } | { error: HandlerError } => {
+    let parsed: ReturnType<typeof effectSchema.safeParse>;
     try {
-      outcome = await Promise.race([
-        Promise.resolve(hook.run(event, ctx)),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-            reject(new Error(`timed out after ${budgetMs}ms`));
-          }, budgetMs);
-        }),
-      ]);
+      parsed = effectSchema.safeParse(value);
     } catch (error) {
-      const terminal = failDispatch(
-        hook.id,
-        {
-          hookId: hook.id,
-          kind: timedOut ? "timeout" : "error",
-          message: errorMessage(error),
-        },
-        capabilities,
-      );
-      if (terminal) break;
-      continue;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
-
-    if (outcome === undefined) continue; // no effect means continue unchanged
-
-    // Runtime contract validation: shape, event compatibility, declaration,
-    // and target availability. Type information can be bypassed, so all four
-    // are enforced here regardless of the compile-time story.
-    let parsedEffect: ReturnType<typeof effectSchema.safeParse>;
-    try {
-      // Zod may inspect a hostile proxy before jsonValueSchema can reject it.
-      // Validation itself is part of the handler boundary, so it must not
-      // violate the fail-open contract.
-      parsedEffect = effectSchema.safeParse(outcome);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook.id,
-        {
-          hookId: hook.id,
+      return {
+        error: {
+          hookId,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
+          message: `hook "${hookId}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
         },
-        capabilities,
-      );
-      if (terminal) break;
-      continue;
+      };
     }
-    if (!parsedEffect.success) {
-      const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(
-        hook.id,
-        {
-          hookId: hook.id,
+    if (!parsed.success) {
+      const detail = parsed.error.issues[0]?.message;
+      return {
+        error: {
+          hookId,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `hook "${hook.id}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
+          message: `hook "${hookId}" returned a value that is not a valid effect${detail !== undefined ? `: ${detail}` : "."}`,
         },
-        capabilities,
-      );
-      if (terminal) break;
-      continue;
+      };
     }
-    const effect = parsedEffect.data as Effect;
+    return { effect: parsed.data as Effect };
+  };
 
+  /**
+   * Check one validated effect against the event, the hook's declaration and
+   * the target, then apply it (mutations become visible to later effects and
+   * handlers). Type information can be bypassed, so every rung is enforced
+   * here regardless of the compile-time story. Returns true when the dispatch
+   * ends here: a terminal effect, or a failure the error policy made terminal.
+   */
+  const applyEffect = (hook: HookDefinition, capabilities: CapabilitySet, effect: Effect): boolean => {
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === undefined) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook.id,
         {
           hookId: hook.id,
@@ -279,11 +229,9 @@ export async function dispatch(
         },
         capabilities,
       );
-      if (terminal) break;
-      continue;
     }
     if (hook.capabilities[capability] === undefined) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook.id,
         {
           hookId: hook.id,
@@ -293,11 +241,9 @@ export async function dispatch(
         },
         capabilities,
       );
-      if (terminal) break;
-      continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook.id,
         {
           hookId: hook.id,
@@ -307,13 +253,11 @@ export async function dispatch(
         },
         capabilities,
       );
-      if (terminal) break;
-      continue;
     }
 
     // Lower a portable shell rewrite before the apply switch, so its failure
-    // path shares the ladder's semantics above (record the error, then move to
-    // the next hook or stop, per the error policy). encode() declines exactly
+    // path shares the ladder's semantics above (record the error, then move on
+    // or stop, per the error policy). encode() declines exactly
     // when classify() does, so this failing implies event.tool.shell was
     // undefined -- the documented feature-detect signal.
     let loweredShellInput: unknown;
@@ -324,7 +268,7 @@ export async function dispatch(
           ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command })
           : undefined;
       if (loweredShellInput === undefined) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook.id,
           {
             hookId: hook.id,
@@ -338,8 +282,6 @@ export async function dispatch(
           },
           capabilities,
         );
-        if (terminal) break;
-        continue;
       }
     }
 
@@ -347,14 +289,14 @@ export async function dispatch(
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options);
         result.effects.push({ hookId: hook.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === undefined) break; // unreachable: lowering above required it
-        setToolInput(tool, loweredShellInput, options.shellCodec);
+        setToolInput(tool, loweredShellInput, options);
         // Two entries: the portable effect as the hook returned it, then the
         // lowering the adapters actually consume. apply() implementations keep
         // resolving the last replaceInput with no knowledge of updateShell,
@@ -450,8 +392,133 @@ export async function dispatch(
 
     if (isTerminalEffect(effect)) {
       result.terminatedBy = hook.id;
-      break;
+      return true;
     }
+    return false;
+  };
+
+  for (const hook of matching) {
+    // Authors probe with the same keys they declared, which may be spelled
+    // relative to the event ("input.replace"); resolve before either lookup.
+    // Closures rather than `this`-methods, so `const { has } = ctx.capabilities`
+    // works.
+    const levelOf = (id: string): SupportLevel => {
+      const capability = canonicalCapability(event.event, id) as CapabilityId;
+      const level = targetCapabilities.level(capability);
+      const minimum = options.minimumCapabilityLevel;
+      if (minimum !== undefined && hook.capabilities[capability] !== "required" && !meetsMinimum(level, minimum)) {
+        return "unsupported";
+      }
+      return level;
+    };
+    const capabilities: CapabilitySet<string> = {
+      has: (id) => levelOf(id) !== "unsupported",
+      level: levelOf,
+    };
+    const controller = new AbortController();
+    const ctx: HookContext = {
+      capabilities,
+      harness: { ...options.harness },
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...(options.plugin === undefined ? {} : { plugin: { ...options.plugin } }),
+    };
+
+    let outcome: unknown;
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Per hook, not per dispatch: a hook that shells out to a linter can declare
+    // minutes without licensing a string matcher beside it to hang for the same.
+    // The second `??` is the same guard the two char budgets above carry -- an
+    // explicitly-`undefined` policy key survives the spread, and `setTimeout`
+    // with `undefined` fires in about a millisecond while reporting
+    // "timed out after undefinedms".
+    const budgetMs = hook.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    try {
+      outcome = await Promise.race([
+        Promise.resolve(hook.run(event, ctx)),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
+        }),
+      ]);
+    } catch (error) {
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error),
+        },
+        capabilities,
+      );
+      if (terminal) break;
+      continue;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+
+    if (outcome === undefined) continue; // no effect means continue unchanged
+
+    // A list is the effects consecutive handlers would have returned, applied
+    // in order under this hook's id (ADR-0025). Reading it is part of the
+    // handler boundary: a hostile or revoked proxy must fail open, not throw.
+    let returned: unknown[];
+    try {
+      returned = Array.isArray(outcome) ? Array.from(outcome as readonly unknown[]) : [outcome];
+    } catch (error) {
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`,
+        },
+        capabilities,
+      );
+      if (terminal) break;
+      continue;
+    }
+    const parsed = returned.filter((value) => value !== undefined).map((value) => parseReturned(hook.id, value));
+
+    // Rejected whole, before anything applies: applying the prefix and dropping
+    // the tail would hide the mistake, and applying the tail after a terminal
+    // would break "the terminal effect is the last entry", which every adapter
+    // relies on.
+    const terminalAt = parsed.findIndex((entry) => "effect" in entry && isTerminalEffect(entry.effect));
+    if (terminalAt !== -1 && terminalAt < parsed.length - 1) {
+      const early = parsed[terminalAt] as { effect: Effect };
+      const trailing = parsed.length - 1 - terminalAt;
+      const terminal = failDispatch(
+        hook.id,
+        {
+          hookId: hook.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message:
+            `hook "${hook.id}" returned "${early.effect.kind}" followed by ${trailing} more ` +
+            `effect${trailing === 1 ? "" : "s"}; a terminal effect ends the dispatch, so it must be last in the list.`,
+        },
+        capabilities,
+      );
+      if (terminal) break;
+      continue;
+    }
+
+    let ended = false;
+    for (const entry of parsed) {
+      ended =
+        "error" in entry
+          ? failDispatch(hook.id, entry.error, capabilities)
+          : applyEffect(hook, capabilities, entry.effect);
+      if (ended) break;
+    }
+    if (ended) break;
   }
 
   return result;

@@ -1,0 +1,17 @@
+{
+  "session_id": "bc00e548-b04c-434a-b4d8-91c2455de737",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-hkn-file-tools-xxGqCV-claude\\bc00e548-b04c-434a-b4d8-91c2455de737.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-xxGqCV\\claude",
+  "prompt_id": "390c8a28-6d54-4a26-a9bb-c69a17f5e4d7",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-xxGqCV\\claude\\probe-write.txt",
+    "content": "hooknostic probe\n"
+  },
+  "tool_use_id": "toolu_playback_1"
+}

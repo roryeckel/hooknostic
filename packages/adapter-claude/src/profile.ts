@@ -61,6 +61,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/claude-permission-mode",
           what: "Interactive sessions start in auto mode: the scripted Bash call reaches PreToolUse with permission_mode auto and PermissionRequest never fires; --permission-mode manual restores the prompting mode and PermissionRequest, and the pty playback scenarios pass with it",
         },
+        {
+          version: "2.1.283",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

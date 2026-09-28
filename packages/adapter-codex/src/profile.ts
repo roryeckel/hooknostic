@@ -139,6 +139,13 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
             "trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at " +
             "all when that has none. A Codex artifact generated into a linked worktree is inert there.",
         },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/codex/0.148",
+          what: "apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

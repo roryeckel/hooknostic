@@ -245,6 +245,16 @@ interface ToolInvocation {
     commandKey: string;
     cwdKey?: string;
   };
+
+  // Normalized file view (ADR-0026), present when the adapter's file shape
+  // table knows this tool: every path the call targets, verbatim, plural
+  // because one patch can touch several files. Read-only; absent means
+  // uncaptured, a search tool, or an unparseable patch -- fall back to `input`.
+  file?: {
+    paths: string[];
+    pathKey?: string; // the native argument naming one file
+    patchKey?: string; // the native argument holding patch text
+  };
 }
 ```
 
@@ -274,7 +284,9 @@ to exist merely because the event exists. Initial family (event-scoped equivalen
 
 Every helper maps to an event-scoped capability. A generic `allow()` helper is
 intentionally omitted: returning no effect means continue, avoiding vendor-specific
-permission-bypass nuances.
+permission-bypass nuances. A handler may return one effect or an ordered list; a list
+means exactly what consecutive handlers returning its elements would, and a terminal
+effect must be its last element ([ADR-0025](decisions/0025-effect-lists.md)).
 
 ## 7. Capability semantics and compatibility analysis
 
@@ -313,12 +325,12 @@ hook("tool.before", {
   id: "protect-shell",
 
   capabilities: {
-    "tool.before.block": "required",
-    "tool.before.input.replace": "optional",
+    block: "required", // tool.before.block
+    "input.replace": "optional", // tool.before.input.replace
   },
 
   async run(event, ctx) {
-    // portable implementation
+    // portable implementation; ctx.capabilities.has("input.replace")
   },
 });
 ```
@@ -326,6 +338,13 @@ hook("tool.before", {
 The map is both the compiler's static capability manifest and the definition of which
 effect helpers the hook may return. TypeScript generics make undeclared effects a
 compile-time error where practical; runtime validation remains mandatory.
+
+Keys may be written relative to the hook's event (`block`) or as full ids
+(`tool.before.block`); `hook()` stores the full id, so the IR, build reports and every
+diagnostic print full ids, and declaring one capability under both spellings throws.
+`ctx.capabilities.has()`/`level()` accept exactly the declared capabilities, in either
+spelling: probing an undeclared one could only ever answer for an effect the hook may
+not return, so it is a compile error rather than a silent `false`.
 
 ### 7.4 Required versus optional
 
@@ -335,7 +354,7 @@ compile-time error where practical; runtime validation remains mandatory.
 | `optional` | Hook can operate without it; feature-detect at runtime. | Never blocks the build; recorded as info/metadata. |
 
 ```ts
-if (ctx.capabilities.has("tool.before.input.replace")) {
+if (ctx.capabilities.has("input.replace")) {
   return replaceInput(rewritten);
 }
 return; // continue without the optional enhancement
@@ -696,7 +715,9 @@ composed HookResult
    (ADR-0005, superseding the earlier rules 4-6).
 5. Post-tool: output replacements apply immediately.
 6. Reserved (folded into rule 4 by ADR-0005).
-7. No effect = continue unchanged.
+7. No effect = continue unchanged. A returned list applies element by element under
+   rules 1–6, each element validated on its own; a terminal effect before the end of
+   the list rejects the whole list as HN401 (ADR-0025).
 8. First terminal effect in declaration order wins; the runtime records the terminator.
 
 ### 10.3 Error and timeout policy
@@ -1034,24 +1055,19 @@ export default definePlugin({
     hook("tool.before", {
       id: "protect-and-normalize-shell",
       match: { kind: "shell" },
-      capabilities: {
-        "tool.before.block": "required",
-        "tool.before.input.replace": "optional",
-      },
-      async run(event, ctx) {
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+      // Relative keys: "block" is tool.before.block, the id reports print.
+      capabilities: { block: "required", "input.replace": "optional" },
+      run({ tool }, ctx) {
+        // Undefined only for an uncaptured shape; a guard refuses what it
+        // cannot read. Past this line tool.shell is defined, which is also
+        // what makes updateShell legal below.
+        const command = tool.shell?.command;
+        if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) {
           return block("Refusing destructive root deletion");
         }
 
-        if (
-          ctx.capabilities.has("tool.before.input.replace") &&
-          event.tool.shell !== undefined &&
-          command.startsWith("npm ")
-        ) {
+        if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
           // Portable write-back: the rewrite lands under whichever key this
           // harness uses (`command` on Claude/OpenCode, `cmd` on Codex's
           // exec_command), with every sibling input field preserved.
@@ -1062,9 +1078,9 @@ export default definePlugin({
 
     hook("session.start", {
       id: "repo-context",
-      capabilities: { "session.start.context.add": "optional" },
-      async run(event, ctx) {
-        if (!ctx.capabilities.has("session.start.context.add")) return;
+      capabilities: { "context.add": "optional" },
+      run(event, ctx) {
+        if (!ctx.capabilities.has("context.add")) return;
         return addContext(`Working directory: ${event.session.cwd}`);
       },
     }),

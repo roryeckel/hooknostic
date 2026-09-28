@@ -14,7 +14,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyCodex } from "./apply.js";
 import { CodexDecodeError, decodeCodex } from "./decode.js";
-import { codexShellCodec } from "./toolmap.js";
+import { codexFileCodec, codexShellCodec } from "./toolmap.js";
 
 export interface CodexShimOptions {
   targetId?: string;
@@ -76,6 +76,7 @@ export async function runCodexCommandShim(source: CommandPluginSource, options: 
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: codexShellCodec,
+      fileCodec: codexFileCodec,
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     trace?.(describeHookResult(result));

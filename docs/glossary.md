@@ -18,7 +18,8 @@ adapters map to native event names (`PreToolUse`, `session.created`, …).
 
 **Effect** — the action a hook returns to request something of the harness: `block`,
 `replaceInput`, `addContext`, and friends. Returning nothing means "continue
-unchanged."
+unchanged"; returning a list applies each effect in order, with any terminal effect
+last. ([Decision 0025](decisions/0025-effect-lists.md))
 
 **Capability** — a named, event-scoped permission slot such as `tool.before.block`:
 "at this event, on this harness, can hook code do this?" The core currency of
