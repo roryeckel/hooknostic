@@ -233,7 +233,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "subagents.definition": {
         level: "exact",
         rationale:
-          "Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex reads project configuration only in trusted projects, and its model guidance tells it to spawn only when asked.",
+          "Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex's model guidance tells it to spawn only when asked. Trust gating of project agents is not established: with no trust entry for the project, and only hook trust bypassed, codex exec still discovered its agent.",
       },
       "subagents.native": {
         level: "exact",

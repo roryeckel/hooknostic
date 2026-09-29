@@ -11,10 +11,22 @@ running a command. Paths resolve from `hooknostic.config.ts`.
 | Portable hooks | `entry: "./src/hooks.ts"` | Hooks alone or alongside components |
 | Agent Plugins 1.0 package | `components: { root: "./portable" }` | Standard manifest, skills, MCP, and supported client extensions |
 | Direct project components | `components: { skills: ["./skills"], mcp: "./mcp.json" }` | Repository integration without a package manifest; either field can be used alone |
+| Subagent definitions | `components: { subagents: ["./agents"] }` | [Portable subagents](spec/subagents/0.1.md), alone or beside either of the above |
 
-At least one of `entry` and `components` is required. Package-root and direct-component
-inputs are mutually exclusive. `components.targets` optionally narrows which configured
-targets receive components; hooks retain their configured target set.
+At least one of `entry` and `components` is required. A package root and direct
+`skills`/`mcp` sources are mutually exclusive; `subagents` combines with either.
+`components.targets` optionally narrows which configured targets receive components;
+hooks retain their configured target set.
+
+`components.subagents` names directories of flat `<name>.md` files in the
+[Hooknostic Subagent Definition 0.1](spec/subagents/0.1.md) format: a name, a
+description, harness-only fields under `native`, and the instructions as the body.
+Project delivery writes each harness's own agent file (`.claude/agents/<name>.md`,
+`.codex/agents/<name>.toml`, `.opencode/agents/<name>.md`). Beside a package `root`,
+package delivery translates them into the package instead: a Claude plugin agent, or
+an agent the OpenCode module registers. A Codex plugin has no agents route, so a Codex
+package target reports them as unsupported. `hooknostic inspect <target> --component
+subagents.definition` shows a target's level and evidence.
 
 Every target has a version range, `delivery`, and output directory. A target name
 defaults to its adapter id; set `adapter` explicitly for multiple named targets.

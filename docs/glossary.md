@@ -136,6 +136,13 @@ instructions a harness can invoke. Not something Hooknostic generates or modifie
 agents to external tools and data. Already portable, hence explicitly out of
 Hooknostic's scope.
 
+**Subagent definition** — one Markdown file describing an agent the primary agent can
+hand a task to: Claude Code's subagents, Codex's custom agents, OpenCode's agents with
+`mode: subagent`. No standard covers them, so Hooknostic defines a provisional
+[format](spec/subagents/0.1.md) and compiles it into each harness's own
+([ADR-0027](decisions/0027-portable-subagents.md), proposed). Not to be confused with
+the `agent.*` hook events, which report on whatever agent is running.
+
 **Decision record** — a short document capturing one significant design choice with
 its context and consequences ([docs/decisions/](decisions/)). Known in the wider world
 as an *architecture decision record* (ADR) — the `ADR-000N` ids in code comments refer

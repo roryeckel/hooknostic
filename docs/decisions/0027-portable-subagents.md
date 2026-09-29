@@ -1,8 +1,9 @@
 # ADR-0027: Portable subagent definitions are a Hooknostic component
 
 **Status:** Proposed — 2026-09-29. It needs owner review before acceptance, and the
-open questions below must be settled first. Until it is accepted, nothing in the
-build reads subagent definitions.
+open questions below must be settled first. The decisions are implemented on the
+branch that proposes them, so they can be reviewed as working code; the branch
+merges only once this is accepted.
 
 **In short:** Hooknostic should compile one portable definition of a subagent into
 each harness's native form:
@@ -102,14 +103,20 @@ warning.
    converter, not a rewrite. The file's field names deliberately match the
    vocabulary the harnesses already share.
 
-4. **The source is a direct project source first.**
+4. **The source is Hooknostic input, like hook source.**
    - **Config.** `components.subagents: string[]` names directories of flat
      `<name>.md` files. Its zod twin moves in the same edit (extend-vocabulary
      checklist).
+   - **Beside a package.** It is accepted on its own, beside direct `skills` or
+     `mcp` sources, or beside `components.root`. Beside a root, the definitions
+     are not package content: each projector translates them into its native
+     package, and project targets receive them as from a direct source.
    - **Overlap.** A source directory that overlaps any target's native agents
      directory is refused, so no harness reads the portable file in place.
    - **Inventory.** Configured source directories are excluded from package
-     inventory, as the hook `entry` is.
+     inventory, as the hook `entry` is. Copied verbatim, a definitions directory
+     at `<root>/agents/` would otherwise land on the path its own Claude
+     translation is emitted at.
 
 5. **Project delivery is first.** One owned file per subagent:
 
@@ -143,13 +150,32 @@ warning.
    - **`subagents.native` is `exact`.** Codex's rationale records its strict
      parsing.
 
-7. **Package delivery follows in its own change, after the open questions:**
-   - Claude: plugin `agents/`. Reserve the path against the package root, and
-     merge with a `com.anthropic.claude-code/agents/` overlay.
-   - OpenCode v1: the generated injector assigns `config.agent`.
-   - OpenCode v2: `ctx.agent.transform` using `update`.
-   - Codex: `unsupported`.
-   - Naming: per-harness qualification follows ADR-0021 and ADR-0022.
+7. **Package delivery translates the definitions into each native package:**
+
+   | Harness | Route | Name offered | `subagents.definition` | `subagents.native` |
+   | --- | --- | --- | --- | --- |
+   | Claude | the plugin's `agents/<name>.md` | `<plugin>:<name>`, qualified by Claude | `exact` | `exact`, with a degradation |
+   | Codex | none (openai/codex#18988) | — | `unsupported` | `unsupported` |
+   | OpenCode v1 | the generated module's `config` hook assigns `config.agent` | `<plugin>-<name>` | `emulated`, with a degradation | `exact` |
+   | OpenCode v2 | the generated module's `ctx.agent.transform` upserts through `update` | `<plugin>-<name>` | `emulated`, with a degradation | `unsupported` |
+
+   - **Claude.** A package file at a generated agent's path, including one an
+     overlay hoists there, is a fatal collision (case-folded); nothing is merged.
+     Claude ignores `permissionMode` in a plugin's agent file, where a project
+     agent honours it. The field is still written and reported as the
+     `claude:plugin-agent-field-ignored` degradation.
+   - **OpenCode naming.** Neither OpenCode route qualifies names by plugin, so the
+     projection names each agent `<plugin>-<name>`, as ADR-0021 does for skills. A
+     name that cannot be qualified keeps its bare form and is reported as
+     `opencode:subagent-name-unqualified`.
+   - **OpenCode v2.** The plugin API takes OpenCode's internal agent shape, of
+     which only `id`, `description`, `mode` and `system` were observed. It needs
+     `mode: subagent` just as the project file does. `native.opencode` is omitted
+     and reported.
+   - **Reserved native keys.** They are refused on package targets as on project
+     targets, rather than dropped by a projector.
+   - **Codex.** Each definition is reported as an omission. The build fails
+     unless `onUnsupported: "warn"`.
 
 8. **A consumer must never silently drop a definition.** An undeliverable
    definition goes through the existing shortfall classes and policies.
@@ -165,7 +191,8 @@ warning.
 2. **Package-borne subagents.** There are two ways:
    - **Allow `components.subagents` beside `components.root`.** The definitions
      stay Hooknostic input, exactly as hook source does, and are compiled into
-     the native package. No namespace is needed. This is recommended.
+     the native package. No namespace is needed. This is recommended, and it is
+     what decisions 4 and 7 implement; the owner confirms or reverses it.
    - **Ship them inside the Agent Plugins package under a namespaced extension
      directory.** This is self-contained, but the reverse-domain namespace
      becomes permanent public contract.
@@ -189,8 +216,10 @@ warning.
   already lists renamed `[agents]` keys. Keeping the levels honest requires:
   - component profiles with rolling `validatedOn` records (an ADR-0009
     amendment);
-  - a playback `subagent-definition` scenario per family, in which the child
-    request carries the instruction nonce and the configured model;
+  - playback per family, in which the child request carries the instruction
+    nonce and the configured model. `packages/cli/test/subagent-playback.test.ts`
+    does this for what project delivery synchronizes and, except on Codex, for
+    a built package, in CI's playback lanes and the harness-watch verify lane;
   - drift coverage for the delegation tool's shape.
 - **Model overrides on Codex are a hazard.** A Codex child inherits the parent's
   reasoning effort, and a different model can reject it. A translation that sets
@@ -205,9 +234,10 @@ warning.
   - Per-event agent identity (Claude and Codex `agent_type`, OpenCode v2
     `agent`) makes agent-scoped hooks feasible without cross-invocation state
     (ADR-0002). That is a separate normalization decision.
-- **Existing Claude packages.** A package that already ships `agents/*.md`
-  reaches a Claude plugin through the verbatim copy today, unreported. Delivering
-  subagents as a component closes that reporting gap.
+- **Existing Claude packages.** A package that ships its own `agents/*.md` still
+  reaches a Claude plugin through the verbatim copy, unreported. Such a file
+  is Claude's format, not a portable definition. `components.subagents` is the
+  reported route, and a verbatim file at one of its paths is a fatal collision.
 
 ## Rejected alternatives
 

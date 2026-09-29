@@ -1053,14 +1053,20 @@ describe("subagents in a Claude package projection", () => {
     expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
   });
 
-  it("refuses a package file already at a subagent's path, case-folded", async () => {
-    // Emitting over it would replace an authored file without a word; the two
-    // spellings are one file on a case-insensitive filesystem.
-    const plan = await project(source([file("Agents/Reviewer.md", "authored")]), [subagent("reviewer")]);
+  it.each([
+    // The two spellings are one file on a case-insensitive filesystem.
+    ["a package file, case-folded", "Agents/Reviewer.md", "Agents/Reviewer.md"],
+    // A Claude client-extension overlay is hoisted to the plugin root first.
+    ["an overlay hoisted there", "com.anthropic.claude-code/agents/reviewer.md", "agents/reviewer.md"],
+  ])("refuses %s already at a subagent's path", async (_label, shipped, occupied) => {
+    // Emitting over it would replace an authored file without a word.
+    const plan = await project(source([file(shipped, "authored")]), [subagent("reviewer")]);
     expect(plan.issues).toContainEqual(
-      expect.objectContaining({ severity: "error", component: "subagents.definition", path: "Agents/Reviewer.md" }),
+      expect.objectContaining({ severity: "error", component: "subagents.definition", path: occupied }),
     );
-    expect(plan.files.some((candidate) => candidate.path === "agents/reviewer.md")).toBe(false);
+    // The authored file is kept as shipped; the translation is not emitted.
+    const kept = plan.files.find((candidate) => candidate.path.toLowerCase() === "agents/reviewer.md")!.contents;
+    expect(typeof kept === "string" ? kept : new TextDecoder().decode(kept)).toBe("authored");
   });
 
   it("reports a native field Claude ignores in a plugin's agent, and still writes it", async () => {

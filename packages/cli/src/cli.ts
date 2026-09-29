@@ -33,7 +33,7 @@ Options:
   --target <a,b>      Narrow the configured target set (never adds targets)
   --events <path>     JSON Lines of portable events to dispatch (default: stdin)
   --capability <id>   Inspect a single capability
-  --component <id>    Inspect a single Agent Plugin component
+  --component <id>    Inspect a single component (Agent Plugin or subagent)
   --version <range>   Harness version range for inspect
   --delivery <scope>  Project or package component support for inspect
   --json              Machine-readable output
