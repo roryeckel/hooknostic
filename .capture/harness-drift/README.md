@@ -41,6 +41,12 @@ ValidationRecord.
 - A human who needs to change an adapter claim follows the harness-capture
   skill: preserve the raw evidence, record provenance, update paired fixtures,
   append the appropriate ValidationRecord, and regenerate harness support.
+- Promotion is a separate, reviewed human step. A playback-transport artifact
+  whose payloads a human has inspected may be promoted to fixtures (captured,
+  argument values scripted); `promote-opencode-v1.mjs` does this for the
+  opencode-v1 variants the session exercises, with fail-closed redaction and
+  canonical files from today's decoder. The skill's remaining steps (README
+  provenance row, ValidationRecord, harness-support regeneration) still apply.
 - This procedure does not upgrade the provenance of its template, playback,
   or fixture inputs. The loopback response is constructed even though the
   harness hook payloads are native output.
