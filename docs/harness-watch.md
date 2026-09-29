@@ -228,6 +228,13 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
 The paid sidecar reads `.github/litellm.json`. Its two explicit bridge settings
 keep both Messages and Responses requests on the upstream chat-completions API;
 provider defaults alone can select a native Responses endpoint instead.
+Two model-side shims cover upstream strictness the real harnesses trip over:
+`additional_drop_params` removes `reasoning_effort` (Codex's Responses
+`reasoning` object is forwarded as a non-string value that the upstream
+rejects), and `.github/litellm_callbacks.py` merges system messages into one
+leading message (Claude Code's requests carry a system block after the first
+user turn, which strict chat templates reject). Both only reshape the
+model-side request; harness hook payloads are untouched.
 Configuration references environment variables, so no upstream key is written
 to the config file. Before upgrading the pinned proxy, exercise its real
 streaming and non-streaming translations against a loopback-only stub:
@@ -245,7 +252,7 @@ owner's upstream credentials.
 | `HARNESS_WATCH_PAT` | secret | Fine-grained PAT: this repo, Contents RW + Pull requests RW. Rotate like `RELEASE_PAT` (docs/releases.md). |
 | `HARNESS_WATCH_AUTOMERGE` | repo variable | Opt-in auto-merge of record PRs; absent/false = human merge. |
 | `HARNESS_LLM_BASE_URL` | repo variable | Upstream OpenAI-compatible endpoint for the paid llm drift transport. |
-| `HARNESS_LLM_MODEL` | repo variable | Model name the llm transport drives (`glm-5.3-flash`). |
+| `HARNESS_LLM_MODEL` | repo variable | Model name the llm transport drives. |
 | `HARNESS_LLM_API_KEY` | secret | Spend-capped upstream key; supplied only to the host-side LiteLLM process, outside the harness container. |
 | `harness-watch` | label | Created by the first run if missing. |
 

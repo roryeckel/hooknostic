@@ -228,7 +228,9 @@ export async function driveClaude(scratch, model, prompt = DRIVE_PROMPT) {
       "-p",
       prompt,
       "--model",
-      "hooknostic-drift",
+      // The loopback accepts any name; the LiteLLM sidecar only serves the
+      // configured upstream model, so the llm transport must send that name.
+      model.name ?? "hooknostic-drift",
       "--settings",
       join(scratch, ".claude", "settings.json"),
       "--dangerously-skip-permissions",
@@ -471,6 +473,7 @@ async function main() {
           : {
               url: modelSide.config.proxyUrl,
               key: modelSide.config.proxyKey,
+              name: modelSide.config.model,
             };
       result = await driveClaude(scratch, url);
     } else if (opts.harness === "codex") {
