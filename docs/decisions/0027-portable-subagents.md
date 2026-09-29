@@ -225,7 +225,10 @@ warning.
   youngest native surfaces in all three harnesses. Codex's own documentation
   already lists renamed `[agents]` keys. Keeping the levels honest requires:
   - component profiles with rolling `validatedOn` records (an ADR-0009
-    amendment);
+    amendment). Not done on this branch: it concerns every component, skills
+    and MCP included, which have no rolling records either. Until then a new
+    build is checked by the playback below, which fails on a change, but its
+    pass is not recorded;
   - playback per family, in which the child request carries the instruction
     nonce and the configured model. `packages/cli/test/subagent-playback.test.ts`
     does this for what project delivery synchronizes and, except on Codex, for
@@ -234,16 +237,17 @@ warning.
 - **Model overrides on Codex are a hazard.** A Codex child inherits the parent's
   reasoning effort, and a different model can reject it. A translation that sets
   a Codex model should also set its effort.
-- **Findings for the hook adapters** (outside this ADR, recorded so they are not
-  lost):
+- **Findings for the hook adapters**, and where each went:
   - Codex 0.156.1 dispatches `SubagentStart`/`SubagentStop` once the parent
-    waits. The `agent-subagent` playback never waits, so its Codex "inconclusive"
-    deserves a re-run with a `wait_agent` turn.
-  - `multi_agent_v1wait_agent` is unclassified in `CODEX_TOOL_KINDS`.
-  - Claude dispatches no `SubagentStop` when `maxTurns` ends a subagent.
-  - Per-event agent identity (Claude and Codex `agent_type`, OpenCode v2
-    `agent`) makes agent-scoped hooks feasible without cross-invocation state
-    (ADR-0002). That is a separate normalization decision.
+    waits; 0.148.0 dispatched no hook inside a subagent at all. The captured
+    payloads are now fixtures, and the `agent-subagent` scenario's Codex
+    inconclusive says why. The `agent-scope` scenario observes both events from
+    0.156.1.
+  - `multi_agent_v1wait_agent` is now listed in `CODEX_TOOL_KINDS`, as `other`.
+  - Claude dispatches no `SubagentStop` when `maxTurns` ends a subagent. This is
+    open: ADR-0028 leaves `agent.stop.observe`'s level to the owner.
+  - Per-event agent identity makes agent-scoped hooks feasible without
+    cross-invocation state (ADR-0002). ADR-0028 proposes and implements them.
 - **Existing Claude packages.** A package that ships its own `agents/*.md` still
   reaches a Claude plugin through the verbatim copy, unreported. Such a file
   is Claude's format, not a portable definition. `components.subagents` is the

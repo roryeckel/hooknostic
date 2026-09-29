@@ -204,8 +204,11 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     covers: ["agent.start.observe", "agent.stop.observe"],
     driver: "subagent",
     inconclusiveByHarness: {
+      // .capture/agents: on 0.148.0 no hook fired inside a subagent under the
+      // bypass, while 0.156.1 dispatched both lifecycle events once the parent
+      // waited, which the agent-scope scenario observes from that build on.
       codex:
-        "Codex child sessions do not inherit the parent hook-trust bypass, so the scheduled drive cannot observe child lifecycle hooks",
+        "On the reference build no hook fires inside a subagent under the hook-trust bypass the scheduled drive relies on, so it cannot observe child lifecycle hooks; from 0.156.1 the agent-scope scenario observes both",
     },
   },
   {
