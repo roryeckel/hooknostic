@@ -272,10 +272,6 @@ export async function driveCodex(scratch, model, prompt = DRIVE_PROMPT) {
       "never",
       "-c",
       `model="${model.name}"`,
-      // llm transport only (a proxy key marks it): the upstream rejected the
-      // default reasoning field as `reasoning_effort: Input should be a valid
-      // string`, so pin an explicit effort. Playback wiring is unchanged.
-      ...(model.key !== undefined ? ["-c", 'model_reasoning_effort="medium"'] : []),
       "-c",
       'model_provider="hooknostic_drift"',
       "-c",
