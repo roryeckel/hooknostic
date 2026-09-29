@@ -1,4 +1,4 @@
-# Tutorial 5 — One subagent, every harness
+# Tutorial 5 — One agent, every harness
 
 **Example:** [`examples/local-project`](../../examples/local-project/) ·
 **You'll learn:** writing a portable subagent definition, what each harness makes of
@@ -9,8 +9,8 @@ often its own tools and model. Claude Code calls them subagents, Codex calls the
 agents, and OpenCode calls them agents with `mode: subagent`. Each harness has its own
 file format, and OpenCode has two. No standard covers them: Agent Plugins 1.0 leaves
 agents out on purpose. So Hooknostic defines a small, provisional
-[format](../spec/subagents/0.1.md) and compiles it into each harness's own
-([ADR-0027](../decisions/0027-portable-subagents.md), proposed).
+[format](../spec/agents/0.1.md) and compiles it into each harness's own
+([ADR-0027](../decisions/0027-portable-agents.md), proposed).
 
 ## The definition
 
@@ -54,7 +54,7 @@ something it cannot keep, so these stay in `native` until they converge.
 line beside the example's skills and MCP server:
 
 ```ts
-components: { skills: ["./skills"], mcp: "./mcp.json", subagents: ["./agents"] },
+components: { skills: ["./skills"], mcp: "./mcp.json", agents: ["./agents"] },
 ```
 
 `sync` writes one owned file per harness:
@@ -97,7 +97,7 @@ limit.
 `inspect` shows the recorded evidence for any target:
 
 ```sh
-hooknostic inspect codex --delivery project --component subagents.native --config hooknostic.config.ts
+hooknostic inspect codex --delivery project --component agents.native --config hooknostic.config.ts
 ```
 
 A few `native` details are worth knowing:
@@ -154,7 +154,7 @@ holds it.
 The same directory works beside an Agent Plugins package root:
 
 ```ts
-components: { root: "./portable", subagents: ["./agents"] },
+components: { root: "./portable", agents: ["./agents"] },
 ```
 
 The definitions are not package files. Each projector builds its harness's own
@@ -178,6 +178,6 @@ project target instead.
 Each level in the [support table](../harness-support.md) cites its evidence.
 `.capture/agents` drove every harness family against a local playback model and
 recorded what reached the child. The recorded fields are its instructions, its tool
-declarations and its model. `packages/cli/test/subagent-playback.test.ts` repeats this
+declarations and its model. `packages/cli/test/agent-definition-playback.test.ts` repeats this
 in CI for a synchronized definition and a built package, so a harness release that
 changes the behavior fails a test.

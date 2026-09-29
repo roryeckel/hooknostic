@@ -1,4 +1,5 @@
 import {
+  type AgentDefinition,
   type AgentPluginDegradation,
   type AgentPluginDeviation,
   type AgentPluginIssue,
@@ -16,7 +17,6 @@ import {
   isRootNpmManifestPath,
   materializedPackageFiles,
   parseJsonObject,
-  type SubagentDefinition,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
@@ -28,7 +28,7 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
-import { renderClaudeSubagent } from "./project.js";
+import { renderClaudeAgent } from "./project.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
 const MANIFEST_PATH = ".claude-plugin/plugin.json";
@@ -231,13 +231,13 @@ function componentCounts(
   source: AgentPluginPackage,
   runtimePackage: "absent" | "emitted" | "skipped",
   omittedStdio = 0,
-  subagents: readonly SubagentDefinition[] = [],
+  agents: readonly AgentDefinition[] = [],
 ) {
   const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
   return componentSummary(source, {
     namespace: CLAUDE_AGENT_PLUGIN_NAMESPACE,
     hasRuntimePackage: runtimePackage !== "absent",
-    subagents,
+    agents,
     harness: "claude",
     skipped: (component) => {
       if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
@@ -282,7 +282,7 @@ export async function projectAgentPluginToClaude(
         },
       ],
       summary: {
-        components: componentCounts(source, "skipped", 0, context.subagents),
+        components: componentCounts(source, "skipped", 0, context.agents),
         omissions: [],
         copiedPaths: [],
       },
@@ -522,38 +522,38 @@ export async function projectAgentPluginToClaude(
       files.set(hookFile.path, hookFile);
     }
 
-    // Subagents configured beside the package (ADR-0027). Claude qualifies
+    // Agent definitions configured beside the package (ADR-0027). Claude qualifies
     // each by the plugin, so the authored name is kept. A package already
     // shipping a file at the same path would otherwise be replaced silently,
     // so that is fatal, case-folded like every other generated-path check.
-    for (const subagent of context.subagents ?? []) {
-      const rendered = renderClaudeSubagent(subagent);
+    for (const agent of context.agents ?? []) {
+      const rendered = renderClaudeAgent(agent);
       const path = `${AGENTS_DIRECTORY}/${rendered.file}`;
       const claimed = [...files.keys()].find((existing) => existing.toLowerCase() === path.toLowerCase());
       if (claimed !== undefined) {
         issues.push({
           severity: "error",
           scope: "projection",
-          component: "subagents.definition",
+          component: "agents.definition",
           path: claimed,
-          message: `subagent ${JSON.stringify(subagent.name)} is emitted at ${JSON.stringify(path)}, which the package already provides as ${JSON.stringify(claimed)}; rename the subagent or remove the file.`,
+          message: `agent ${JSON.stringify(agent.name)} is emitted at ${JSON.stringify(path)}, which the package already provides as ${JSON.stringify(claimed)}; rename the agent or remove the file.`,
         });
         continue;
       }
       files.set(path, { path, contents: rendered.contents });
-      const ignored = Object.keys(subagent.native["claude"] ?? {}).filter((key) =>
+      const ignored = Object.keys(agent.native["claude"] ?? {}).filter((key) =>
         PLUGIN_AGENT_IGNORED_FIELDS.includes(key),
       );
       if (
         ignored.length > 0 &&
-        context.support["subagents.native"]?.degradations?.some((item) => item.id === PLUGIN_AGENT_FIELD_IGNORED)
+        context.support["agents.native"]?.degradations?.some((item) => item.id === PLUGIN_AGENT_FIELD_IGNORED)
       ) {
         degradations.push({
           id: PLUGIN_AGENT_FIELD_IGNORED,
-          component: "subagents.native",
-          name: subagent.name,
-          path: subagent.source,
-          reason: `subagent ${JSON.stringify(subagent.name)} sets ${ignored.map((key) => `native.claude.${key}`).join(", ")}, which Claude ignores in a plugin's agent file.`,
+          component: "agents.native",
+          name: agent.name,
+          path: agent.source,
+          reason: `agent ${JSON.stringify(agent.name)} sets ${ignored.map((key) => `native.claude.${key}`).join(", ")}, which Claude ignores in a plugin's agent file.`,
         });
       }
     }
@@ -576,7 +576,7 @@ export async function projectAgentPluginToClaude(
         // Derived from what was reported, so the count and summary.omissions
         // cannot disagree.
         omissions.filter((item) => item.component === "agent-plugin.mcp.stdio").length,
-        context.subagents,
+        context.agents,
       ),
       omissions,
       deviations,
@@ -635,12 +635,12 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         },
         "agent-plugin.client-extension.files": { level: "exact" },
         "agent-plugin.runtime-package": { level: "exact" },
-        "subagents.definition": {
+        "agents.definition": {
           level: "exact",
           rationale:
             "Written to the plugin's agents/<name>.md. Claude offers it to the parent as <plugin>:<name> with its description, and the instructions become its system prompt, as for a project agent.",
         },
-        "subagents.native": {
+        "agents.native": {
           level: "exact",
           rationale:
             "native.claude fields are written verbatim into the plugin's agent frontmatter, where tools and model take effect as in a project agent. Claude ignores permissionMode in a plugin's agent file, which is reported per definition.",
@@ -648,7 +648,7 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             {
               id: PLUGIN_AGENT_FIELD_IGNORED,
               summary:
-                "Claude ignores permissionMode in a plugin's agent file, so a native.claude value for it reaches the file but not the subagent.",
+                "Claude ignores permissionMode in a plugin's agent file, so a native.claude value for it reaches the file but not the agent.",
               evidence: ".capture/agents",
             },
           ],
@@ -662,7 +662,7 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-29",
             method: "live-probe",
             artifact: ".capture/agents",
-            what: "A --plugin-dir plugin's agents/ file was offered to the parent as <plugin>:<name> and delegated to with its instructions, tools and model; the same agent with permissionMode: plan kept no ExitPlanMode in its tools as a plugin agent, where the project agent did. A package built with a portable definition beside its root, loaded the same way, was offered and delegated to as <plugin>:<name>, and ran on its instructions and its native tools and model (packages/cli/test/subagent-playback.test.ts).",
+            what: "A --plugin-dir plugin's agents/ file was offered to the parent as <plugin>:<name> and delegated to with its instructions, tools and model; the same agent with permissionMode: plan kept no ExitPlanMode in its tools as a plugin agent, where the project agent did. A package built with a portable definition beside its root, loaded the same way, was offered and delegated to as <plugin>:<name>, and ran on its instructions and its native tools and model (packages/cli/test/agent-definition-playback.test.ts).",
           },
           {
             version: "2.1.238",

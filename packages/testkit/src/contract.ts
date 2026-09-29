@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { SUBAGENT_COMPONENT_IDS } from "@hooknostic/agent-plugin";
+import { AGENT_COMPONENT_IDS } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter } from "@hooknostic/core";
 import { buildPluginIR, rangeCoversVersion } from "@hooknostic/core";
 import type { HookEventName, ToolInvocation } from "@hooknostic/sdk";
@@ -105,13 +105,13 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
 
     // An absent cell resolves to `unsupported` with no rationale, which
     // `inspect` and the generated support tables then print as a claim nobody
-    // made. Subagents joined the component vocabulary after these profiles were
+    // made. Agent definitions joined the component vocabulary after these profiles were
     // written (ADR-0027), so every profile has to state them -- a new adapter,
     // or a new profile range, cannot inherit that silence.
-    it("states subagent support explicitly in every component profile", () => {
+    it("states agent definition support explicitly in every component profile", () => {
       const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
       for (const profile of profiles) {
-        const missing = SUBAGENT_COMPONENT_IDS.filter((id) => profile.components[id] === undefined);
+        const missing = AGENT_COMPONENT_IDS.filter((id) => profile.components[id] === undefined);
         expect(missing, `${profile.range} leaves ${missing.join(", ")} undeclared`).toEqual([]);
       }
     });

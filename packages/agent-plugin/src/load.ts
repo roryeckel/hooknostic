@@ -6,9 +6,9 @@ import { basename, dirname, isAbsolute, posix, relative, resolve, sep } from "no
 
 import { minimatch } from "minimatch";
 
+import { type AgentDefinition, loadAgentDefinitions } from "./agent-definitions.js";
 import { parseMarkdownFrontmatter } from "./frontmatter.js";
 import { isAgentSkillName } from "./names.js";
-import { loadSubagents, type SubagentDefinition } from "./subagents.js";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -39,7 +39,7 @@ const AUTHOR_KEYS = new Set(["name", "email", "url"]);
 const SKILL_KEYS = new Set(["name", "description", "license", "compatibility", "metadata", "allowed-tools"]);
 const PLUGIN_NAME = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 
-// Its own module so the subagent loader can share the grammar without an import cycle.
+// Its own module so the agent definition loader can share the grammar without an import cycle.
 export { isAgentSkillName };
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -778,8 +778,8 @@ export interface ProjectComponents {
   origin: "package" | "direct";
   skills: ProjectSkill[];
   mcp?: { root: string; config: AgentPluginMcpConfig };
-  /** Portable subagent definitions (ADR-0027); absent when none are configured. */
-  subagents?: SubagentDefinition[];
+  /** Portable agent definitions (ADR-0027); absent when none are configured. */
+  agents?: AgentDefinition[];
 }
 export function packageComponents(source: AgentPluginPackage): ProjectComponents {
   return {
@@ -797,21 +797,21 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
 export async function loadProjectComponents(options: {
   skills?: string[];
   mcp?: string;
-  /** Directories of Hooknostic Subagent Definition files (ADR-0027). */
-  subagents?: string[];
+  /** Directories of Hooknostic Agent Definition files (ADR-0027). */
+  agents?: string[];
   exclude?: string[];
   executableFiles?: string[];
   projectRoot?: string;
 }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
   const source: ProjectComponents = { origin: "direct", skills: [] };
-  if (options.subagents !== undefined) {
-    const loaded = await loadSubagents({
-      directories: options.subagents,
+  if (options.agents !== undefined) {
+    const loaded = await loadAgentDefinitions({
+      directories: options.agents,
       ...(options.exclude === undefined ? {} : { exclude: options.exclude }),
     });
     issues.push(...loaded.issues);
-    source.subagents = loaded.subagents;
+    source.agents = loaded.agents;
   }
   const names = new Set<string>();
   for (const directory of options.skills ?? []) {

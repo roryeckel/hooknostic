@@ -205,7 +205,7 @@ export const hooknosticConfigSchema = z
         root: z.string().min(1).optional(),
         skills: z.array(z.string().min(1)).optional(),
         mcp: z.string().min(1).optional(),
-        subagents: z.array(z.string().min(1)).min(1).optional(),
+        agents: z.array(z.string().min(1)).min(1).optional(),
         mcpOverrides: z.record(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
@@ -334,11 +334,11 @@ export const hooknosticConfigSchema = z
         config.components.root === undefined &&
         config.components.skills === undefined &&
         config.components.mcp === undefined &&
-        config.components.subagents === undefined
+        config.components.agents === undefined
       ) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "components requires root, skills, mcp, or subagents",
+          message: "components requires root, skills, mcp, or agents",
         });
       }
       const configured = new Set(Object.keys(config.targets));

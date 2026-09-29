@@ -1,4 +1,4 @@
-import type { AgentPluginProjectionProfile, SubagentDefinition } from "@hooknostic/agent-plugin";
+import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { contentsText } from "@hooknostic/agent-plugin";
 import type {
@@ -10,11 +10,11 @@ import type {
 } from "@hooknostic/core";
 import {
   launcherEnvironmentReferences,
+  projectAgentFiles,
   projectHookBootstrap,
   projectMcpBootstrap,
   projectMcpLauncher,
   projectSkillFiles,
-  projectSubagentFiles,
   renderTomlDocument,
 } from "@hooknostic/core";
 
@@ -93,7 +93,7 @@ export function projectIntegration(
   };
 }
 
-export const codexSubagents: NonNullable<HarnessAdapter["subagents"]> = {
+export const codexAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".codex/agents",
   // `mcp_servers` would declare servers outside MCP validation and its
   // launcher; `hooks` would add hook layers beside the generated dispatcher.
@@ -107,24 +107,24 @@ export const codexSubagents: NonNullable<HarnessAdapter["subagents"]> = {
  * whole file over one unknown key (`.capture/agents`), so passthrough fields
  * are the author's to spell exactly as Codex's config reference does.
  */
-export function renderCodexSubagent(subagent: SubagentDefinition): { file: string; contents: string } {
-  const native = Object.entries(subagent.native["codex"] ?? {}).filter(
-    ([key]) => !codexSubagents.reservedNativeKeys.includes(key),
+export function renderCodexAgent(agent: AgentDefinition): { file: string; contents: string } {
+  const native = Object.entries(agent.native["codex"] ?? {}).filter(
+    ([key]) => !codexAgents.reservedNativeKeys.includes(key),
   );
   let contents: string;
   try {
     contents = renderTomlDocument({
-      name: subagent.name,
-      description: subagent.description,
-      developer_instructions: subagent.instructions,
+      name: agent.name,
+      description: agent.description,
+      developer_instructions: agent.instructions,
       ...Object.fromEntries(native),
     });
   } catch (error) {
     throw new Error(
-      `subagent ${JSON.stringify(subagent.name)}: native.codex ${error instanceof Error ? error.message : String(error)}`,
+      `agent ${JSON.stringify(agent.name)}: native.codex ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return { file: `${subagent.name}.toml`, contents };
+  return { file: `${agent.name}.toml`, contents };
 }
 
 export async function projectComponents(
@@ -135,21 +135,21 @@ export async function projectComponents(
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".agents/skills");
-  const subagents = projectSubagentFiles(source.subagents ?? [], codexSubagents.projectDirectory, renderCodexSubagent);
-  result.files.push(...subagents.files);
-  if (subagents.files.length > 0) {
+  const agents = projectAgentFiles(source.agents ?? [], codexAgents.projectDirectory, renderCodexAgent);
+  result.files.push(...agents.files);
+  if (agents.files.length > 0) {
     result.guidance.push(
       "Codex reads project agents from .codex/agents; restart it after synchronization, and review project trust in Codex.",
     );
     // A child inherits the parent's reasoning effort, which a different model
     // may refuse; 0.156.1 then fails the spawn outright (.capture/agents).
-    const unpaired = (source.subagents ?? []).filter((subagent) => {
-      const native = subagent.native["codex"] ?? {};
+    const unpaired = (source.agents ?? []).filter((agent) => {
+      const native = agent.native["codex"] ?? {};
       return native["model"] !== undefined && native["model_reasoning_effort"] === undefined;
     });
     if (unpaired.length > 0)
       result.guidance.push(
-        `Codex subagents ${unpaired.map((subagent) => JSON.stringify(subagent.name)).join(", ")} set native.codex.model without model_reasoning_effort; a spawned agent inherits the parent's effort, which a different model can refuse.`,
+        `Codex agents ${unpaired.map((agent) => JSON.stringify(agent.name)).join(", ")} set native.codex.model without model_reasoning_effort; a spawned agent inherits the parent's effort, which a different model can refuse.`,
       );
   }
   const translated = translateMcp(
@@ -230,12 +230,12 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead.",
       },
-      "subagents.definition": {
+      "agents.definition": {
         level: "exact",
         rationale:
           "Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex's model guidance tells it to spawn only when asked. Trust gating of project agents is not established: with no trust entry for the project, and only hook trust bypassed, codex exec still discovered its agent.",
       },
-      "subagents.native": {
+      "agents.native": {
         level: "exact",
         rationale:
           "native.codex fields are written verbatim as agent-file TOML; model and model_reasoning_effort were observed taking effect. sandbox_mode in an agent file did not change the child's policy, which followed the session's. Codex rejects the whole file over one unknown key, so every field must be one Codex's configuration accepts. mcp_servers and hooks are refused, because they belong to their own components.",
@@ -256,7 +256,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "At the reference build, spawn_agent gained agent_type once a project agent existed, and a definition synchronized by Hooknostic's project delivery was delegated to and ran on its developer_instructions and native model, its result returning through wait_agent (packages/cli/test/subagent-playback.test.ts).",
+          what: "At the reference build, spawn_agent gained agent_type once a project agent existed, and a definition synchronized by Hooknostic's project delivery was delegated to and ran on its developer_instructions and native model, its result returning through wait_agent (packages/cli/test/agent-definition-playback.test.ts).",
         },
         {
           version: "0.154.0",

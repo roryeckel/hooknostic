@@ -3,11 +3,11 @@ import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
 import { projectComponents, projectIntegrationWith } from "../project.js";
 import {
+  AGENT_NAME_UNQUALIFIED,
   createOpenCodeAgentPluginProjector,
   type OpenCodePackageAgent,
   RUNTIME_LAUNCHER,
   RUNTIME_PLUGIN_ROOT,
-  SUBAGENT_NAME_UNQUALIFIED,
 } from "../project-agent-plugin.js";
 import { opencodeV2Harness } from "./harness.js";
 
@@ -72,12 +72,12 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
         level: "unsupported",
         rationale: "No portable client-extension namespace is implemented for v2.",
       },
-      "subagents.definition": {
+      "agents.definition": {
         level: "exact",
         rationale:
           "Written to .opencode/agents/<name>.md with mode: subagent, which v2 needs because it defaults an agent to primary. The subagent tool's description offers it to the parent with its description, the instructions replace the provider's base prompt, and tool events inside the child carry the agent's name.",
       },
-      "subagents.native": {
+      "agents.native": {
         level: "exact",
         rationale:
           "native.opencode fields are written verbatim into the frontmatter; model, steps (a hard stop, reported to the parent as completing without a text response) and permissions deny rules were observed taking effect. A v2 subagent keeps its own permissions rather than a subset of its parent's, and subagent and execute stay available unless denied too.",
@@ -91,7 +91,7 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/subagent-playback.test.ts). A plugin's agent transform upserted an unknown id through update; a package built with a portable definition beside its root and named in opencode.json plugins registered it that way as <plugin>-<name>, which was offered, delegated to and ran on its instructions, on the parent's model -- and again, without mode: subagent it could not be selected.",
+          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/agent-definition-playback.test.ts). A plugin's agent transform upserted an unknown id through update; a package built with a portable definition beside its root and named in opencode.json plugins registered it that way as <plugin>-<name>, which was offered, delegated to and ran on its instructions, on the parent's model -- and again, without mode: subagent it could not be selected.",
         },
         {
           version: opencodeV2Harness.referenceVersion,
@@ -221,23 +221,23 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
         rationale:
           "Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain.",
       },
-      "subagents.definition": {
+      "agents.definition": {
         level: "emulated",
         rationale:
           "Registered through the v2 agent domain, whose editor upserts an unknown id, with mode: subagent and the instructions as its system prompt. The id is the name the subagent tool selects, so each is named <plugin>-<name>, the nearest spelling of the plugin-qualified name Claude gives a plugin agent; the qualification is the projection's, not OpenCode's.",
         degradations: [
           {
-            id: SUBAGENT_NAME_UNQUALIFIED,
+            id: AGENT_NAME_UNQUALIFIED,
             summary:
-              "A subagent that cannot be named `<plugin>-<name>` -- the name would pass 64 characters or break the name rules, or duplicate another subagent in the build -- keeps its bare id, which it shares with the project's agents and every other plugin's.",
+              "An agent that cannot be named `<plugin>-<name>` -- the name would pass 64 characters or break the name rules, or duplicate another agent in the build -- keeps its bare id, which it shares with the project's agents and every other plugin's.",
             evidence: ".capture/agents",
           },
         ],
       },
-      "subagents.native": {
+      "agents.native": {
         level: "unsupported",
         rationale:
-          "The agent domain takes OpenCode's internal agent shape, not the frontmatter a project file carries, and only id, description, mode and system were observed taking effect through it. native.opencode fields are omitted and each subagent declaring them is reported; deliver to a project target to keep them.",
+          "The agent domain takes OpenCode's internal agent shape, not the frontmatter a project file carries, and only id, description, mode and system were observed taking effect through it. native.opencode fields are omitted and each agent declaring them is reported; deliver to a project target to keep them.",
       },
     },
   })),

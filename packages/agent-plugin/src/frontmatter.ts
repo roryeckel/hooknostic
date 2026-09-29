@@ -5,7 +5,7 @@ const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 /**
  * Split a Markdown document into its YAML frontmatter and body.
  *
- * `label` names the document in errors (`SKILL.md`, a subagent file). Aliases
+ * `label` names the document in errors (`SKILL.md`, an agent definition). Aliases
  * are refused rather than expanded (`maxAliasCount: 0`): nothing a portable
  * frontmatter needs is worth a billion-laughs expansion inside a build.
  */

@@ -43,19 +43,19 @@ export function qualifiedSkillNames(plugin: string, skills: readonly AgentPlugin
   return qualifyNames(
     plugin,
     skills.map((skill) => skill.name),
-    "skill",
+    "a skill",
   ).map(({ name, kept }, index) => ({ skill: skills[index]!, name, ...(kept === undefined ? {} : { kept }) }));
 }
 
 /**
  * The plugin-qualified spelling of each name, by the rules above, for any item
- * OpenCode keeps in one flat namespace -- skills (ADR-0021) and subagents
- * (ADR-0027) alike. `noun` only words the reason a bare name was kept.
+ * OpenCode keeps in one flat namespace -- skills (ADR-0021) and agents
+ * (ADR-0027) alike. `item` ("a skill", "an agent") only words the reason a bare name was kept.
  */
 export function qualifyNames(
   plugin: string,
   names: readonly string[],
-  noun: string,
+  item: string,
 ): { name: string; kept?: string }[] {
   const prefix = skillPrefix(plugin);
   const planned = names.map((authored): { authored: string; name: string; kept?: string } => {
@@ -83,7 +83,7 @@ export function qualifyNames(
   for (const { name } of planned) taken.set(name, (taken.get(name) ?? 0) + 1);
   return planned.map(({ authored, name, kept }) =>
     name !== authored && (taken.get(name) ?? 0) > 1
-      ? { name: authored, kept: `the package already has a ${noun} named ${JSON.stringify(name)}` }
+      ? { name: authored, kept: `the package already has ${item} named ${JSON.stringify(name)}` }
       : { name, ...(kept === undefined ? {} : { kept }) },
   );
 }

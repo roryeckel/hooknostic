@@ -19,7 +19,7 @@ import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, codexHookRuntimePath, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
-import { codexSubagents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { codexAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
 import {
   classifyCodexTool,
@@ -104,7 +104,7 @@ export function codexAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
-    subagents: codexSubagents,
+    agents: codexAgents,
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.

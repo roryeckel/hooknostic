@@ -895,14 +895,14 @@ it cannot name for its plugin, is an HN101 degradation: fatal by default, and a 
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
 
-Subagent definitions ([ADR-0027](decisions/0027-portable-subagents.md), proposed) are
+Agent definitions ([ADR-0027](decisions/0027-portable-agents.md), proposed) are
 Hooknostic input beside the package, as hook source is, not package content: Agent
-Plugins 1.0 has no agents component. `components.subagents` names directories of
-[Hooknostic Subagent Definition 0.1](spec/subagents/0.1.md) files, parsed into one
-`SubagentDefinition` model that each projector translates into its native package: a
+Plugins 1.0 has no agents component. `components.agents` names directories of
+[Hooknostic Agent Definition 0.1](spec/agents/0.1.md) files, parsed into one
+`AgentDefinition` model that each projector translates into its native package: a
 Claude plugin's `agents/`, or an agent registered by the generated OpenCode module. A
-Codex plugin has no route. Their component ids, `subagents.definition` and
-`subagents.native`, share the profiles, levels and shortfall classes above, and a
+Codex plugin has no route. Their component ids, `agents.definition` and
+`agents.native`, share the profiles, levels and shortfall classes above, and a
 definitions directory inside the package root is excluded from its inventory.
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,

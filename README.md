@@ -15,8 +15,8 @@ a manifest, Agent Skills, MCP servers, and namespaced client extensions. Hooknos
 validates that format and projects it into native harness artifacts. The source package
 stays unchanged. Portable TypeScript hooks can accompany it, or be used on their own;
 hooks are outside the standard's v1 portable component set. So are agents: Hooknostic's
-provisional [subagent definition format](docs/spec/subagents/0.1.md) compiles one
-Markdown file into each harness's own subagent (ADR-0027, proposed).
+provisional [agent definition format](docs/spec/agents/0.1.md) compiles one
+Markdown file into each harness's own agent file (ADR-0027, proposed).
 
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
@@ -74,7 +74,7 @@ export default defineConfig({
 
 Omit `entry` for a hookless package. For direct repository sources, use
 `components.skills` / `components.mcp` and project delivery instead of a package root.
-`components.subagents` adds a directory of subagent definitions to either form.
+`components.agents` adds a directory of agent definitions to either form.
 The [existing combined example](examples/agent-plugin/) includes a bundled MCP server,
 so its generated packages run without workspace dependencies. OpenCode v1 remains
 available through an explicit version range; see [version families](docs/opencode-families.md).

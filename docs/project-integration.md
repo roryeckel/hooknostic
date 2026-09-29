@@ -31,8 +31,8 @@ export default defineConfig({
 `entry` is optional when components are present. Direct components accept skill
 collection directories and an MCP declaration file (`mcp: "./mcp.json"`).
 Alternatively use `components: { root: "./portable-package" }` to load an Agent
-Plugins package. These forms are mutually exclusive. Directories of subagent
-definitions (`subagents: ["./agents"]`) combine with either. Package delivery requires
+Plugins package. These forms are mutually exclusive. Directories of agent
+definitions (`agents: ["./agents"]`) combine with either. Package delivery requires
 package identity when projecting components. `components.targets` selects the
 configured targets receiving components; synchronization still processes the
 entire configured project integration. Targets may have arbitrary names with an
@@ -145,8 +145,8 @@ or servers, non-positive timeouts, unrepresentable adapter options, and unsafe c
 values fail validation. Each target receives a clone; the canonical declaration
 is unchanged and stays standards-compliant.
 
-Subagent definitions (`components.subagents`, [the format](spec/subagents/0.1.md))
-become one owned file per subagent and harness: `.claude/agents/<name>.md`,
+Agent definitions (`components.agents`, [the format](spec/agents/0.1.md))
+become one owned file per agent and harness: `.claude/agents/<name>.md`,
 `.codex/agents/<name>.toml` and `.opencode/agents/<name>.md`. The OpenCode file
 serves both families and always sets `mode: subagent`, because v2 otherwise makes
 the agent primary. Each of these directories also gets a generated `.gitattributes`

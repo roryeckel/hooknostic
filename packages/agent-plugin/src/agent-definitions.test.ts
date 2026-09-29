@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { loadProjectComponents, loadSubagents, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from "./index.js";
+import {
+  loadAgentDefinitions,
+  loadProjectComponents,
+  parseMarkdownFrontmatter,
+  renderMarkdownFrontmatter,
+} from "./index.js";
 
 const roots: string[] = [];
 
@@ -13,7 +18,7 @@ afterEach(async () => {
 });
 
 async function directory(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "hooknostic-subagents-"));
+  const root = await mkdtemp(join(tmpdir(), "hooknostic-agents-"));
   roots.push(root);
   for (const [path, contents] of Object.entries(files)) {
     await mkdir(join(root, path, ".."), { recursive: true });
@@ -24,7 +29,7 @@ async function directory(files: Record<string, string>): Promise<string> {
 
 const reviewer = "---\nname: reviewer\ndescription: Reviews diffs. Use after code changes.\n---\nYou review diffs.\n";
 
-describe("loadSubagents", () => {
+describe("loadAgentDefinitions", () => {
   it("parses the portable core and each harness's native block", async () => {
     const root = await directory({
       "reviewer.md": [
@@ -43,10 +48,10 @@ describe("loadSubagents", () => {
       ].join("\r\n"),
     });
 
-    const loaded = await loadSubagents({ directories: [root] });
+    const loaded = await loadAgentDefinitions({ directories: [root] });
 
     expect(loaded.issues).toEqual([]);
-    expect(loaded.subagents).toEqual([
+    expect(loaded.agents).toEqual([
       {
         name: "reviewer",
         description: "Reviews diffs. Use after code changes.",
@@ -81,14 +86,14 @@ describe("loadSubagents", () => {
   ])("skips a definition with %s, as a warn issue", async (_label, text, message) => {
     const root = await directory({ "reviewer.md": text });
 
-    const loaded = await loadSubagents({ directories: [root] });
+    const loaded = await loadAgentDefinitions({ directories: [root] });
 
-    expect(loaded.subagents).toEqual([]);
+    expect(loaded.agents).toEqual([]);
     expect(loaded.issues).toEqual([
       expect.objectContaining({
         severity: "warn",
-        scope: "subagent",
-        component: "subagents.definition",
+        scope: "agent",
+        component: "agents.definition",
         message: expect.stringContaining(message),
       }),
     ]);
@@ -98,11 +103,11 @@ describe("loadSubagents", () => {
     const first = await directory({ "reviewer.md": reviewer });
     const second = await directory({ "reviewer.md": reviewer });
 
-    const loaded = await loadSubagents({ directories: [first, second] });
+    const loaded = await loadAgentDefinitions({ directories: [first, second] });
 
-    expect(loaded.subagents.map((subagent) => subagent.source)).toEqual([join(first, "reviewer.md")]);
+    expect(loaded.agents.map((agent) => agent.source)).toEqual([join(first, "reviewer.md")]);
     expect(loaded.issues).toEqual([
-      expect.objectContaining({ severity: "error", message: expect.stringContaining("duplicate subagent name") }),
+      expect.objectContaining({ severity: "error", message: expect.stringContaining("duplicate agent name") }),
     ]);
   });
 
@@ -114,9 +119,9 @@ describe("loadSubagents", () => {
       "nested/tester.md": reviewer.replaceAll("reviewer", "tester"),
     });
 
-    const loaded = await loadSubagents({ directories: [root] });
+    const loaded = await loadAgentDefinitions({ directories: [root] });
 
-    expect(loaded.subagents.map((subagent) => subagent.name)).toEqual(["reviewer"]);
+    expect(loaded.agents.map((agent) => agent.name)).toEqual(["reviewer"]);
     expect(loaded.issues).toEqual([
       expect.objectContaining({ severity: "info", message: expect.stringContaining("is not scanned") }),
     ]);
@@ -125,21 +130,21 @@ describe("loadSubagents", () => {
   it("applies exclusion globs to file names", async () => {
     const root = await directory({ "reviewer.md": reviewer, "wip-tester.md": "broken" });
 
-    const loaded = await loadSubagents({ directories: [root], exclude: ["WIP-*"] });
+    const loaded = await loadAgentDefinitions({ directories: [root], exclude: ["WIP-*"] });
 
     expect(loaded.issues).toEqual([]);
-    expect(loaded.subagents.map((subagent) => subagent.name)).toEqual(["reviewer"]);
+    expect(loaded.agents.map((agent) => agent.name)).toEqual(["reviewer"]);
   });
 
   it("reports a missing directory instead of rejecting", async () => {
     const root = await directory({});
 
-    const loaded = await loadSubagents({ directories: [join(root, "missing")] });
+    const loaded = await loadAgentDefinitions({ directories: [join(root, "missing")] });
 
     expect(loaded.issues).toEqual([
       expect.objectContaining({
         severity: "error",
-        message: expect.stringContaining("could not read subagent directory"),
+        message: expect.stringContaining("could not read agent directory"),
       }),
     ]);
   });
@@ -147,10 +152,10 @@ describe("loadSubagents", () => {
   it("is loaded as a direct project component", async () => {
     const root = await directory({ "reviewer.md": reviewer });
 
-    const loaded = await loadProjectComponents({ subagents: [root] });
+    const loaded = await loadProjectComponents({ agents: [root] });
 
     expect(loaded.issues).toEqual([]);
-    expect(loaded.source.subagents?.map((subagent) => subagent.name)).toEqual(["reviewer"]);
+    expect(loaded.source.agents?.map((agent) => agent.name)).toEqual(["reviewer"]);
     expect(loaded.source.skills).toEqual([]);
   });
 });

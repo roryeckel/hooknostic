@@ -81,7 +81,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "The scoped case: a tool.before guard scoped to the delegated subagent blocked its guarded read and let the next through, never touched the parent's subagent call (named by the primary agent, build), and a guard scoped to another agent never ran; a scoped tool.after saw only the subagent's read (packages/cli/test/subagent-playback.test.ts).",
+          what: "The scoped case: a tool.before guard scoped to the delegated subagent blocked its guarded read and let the next through, never touched the parent's subagent call (named by the primary agent, build), and a guard scoped to another agent never ran; a scoped tool.after saw only the subagent's read (packages/cli/test/agent-definition-playback.test.ts).",
         },
         // scheduled-playback:begin
         {

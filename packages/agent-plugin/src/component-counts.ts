@@ -1,4 +1,4 @@
-import type { SubagentDefinition } from "./subagents.js";
+import type { AgentDefinition } from "./agent-definitions.js";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginPackage,
@@ -19,9 +19,9 @@ export interface ComponentDiscoveryOptions {
    */
   namespace?: string;
   hasRuntimePackage?: boolean;
-  /** Subagent definitions configured beside the package (ADR-0027). */
-  subagents?: readonly SubagentDefinition[];
-  /** The harness key whose `native` blocks `subagents.native` counts. */
+  /** Agent definitions configured beside the package (ADR-0027). */
+  agents?: readonly AgentDefinition[];
+  /** The harness key whose `native` blocks `agents.native` counts. */
   harness?: string;
 }
 
@@ -64,12 +64,11 @@ export function discoverComponents(
 
   if (options.hasRuntimePackage === true) discovered.set("agent-plugin.runtime-package", 1);
 
-  const subagents = options.subagents ?? [];
-  if (subagents.length > 0) discovered.set("subagents.definition", subagents.length);
+  const agents = options.agents ?? [];
+  if (agents.length > 0) discovered.set("agents.definition", agents.length);
   const harness = options.harness;
-  const native =
-    harness === undefined ? 0 : subagents.filter((subagent) => Object.hasOwn(subagent.native, harness)).length;
-  if (native > 0) discovered.set("subagents.native", native);
+  const native = harness === undefined ? 0 : agents.filter((agent) => Object.hasOwn(agent.native, harness)).length;
+  if (native > 0) discovered.set("agents.native", native);
 
   return discovered;
 }

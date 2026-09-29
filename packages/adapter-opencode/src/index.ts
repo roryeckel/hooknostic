@@ -26,7 +26,7 @@ import {
 } from "./generate.js";
 import { opencodeHarness } from "./harness.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
-import { opencodeSubagents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { opencodeAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 import {
   classifyOpenCodeTool,
@@ -111,7 +111,7 @@ export function opencodeV1Adapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
-    subagents: opencodeSubagents,
+    agents: opencodeAgents,
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.

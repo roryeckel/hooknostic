@@ -287,7 +287,7 @@ function write(path, contents) {
 }
 
 /**
- * The same agent as a portable Hooknostic Subagent Definition 0.1 file under
+ * The same agent as a portable Hooknostic Agent Definition 0.1 file under
  * `<dir>/portable-agents/`. `withOpenCode: false` leaves out `native.opencode`,
  * for a route that cannot carry native fields and would report them.
  */
@@ -333,7 +333,7 @@ async function syncGenerated(scratch, harness) {
   const { registry, id, version } = buildTarget(harness);
   const target = { version, delivery: "project", output: `.hooknostic/artifacts/${id}` };
   const configPath = join(scratch, "hooknostic.config.ts");
-  const config = { project: { root: "." }, components: { subagents: ["./portable-agents"] }, targets: { [id]: target } };
+  const config = { project: { root: "." }, components: { agents: ["./portable-agents"] }, targets: { [id]: target } };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
   const synced = await runProject({ configPath, registry, command: "sync" });
   if (!synced.ok) throw new Error(`hooknostic sync failed: ${JSON.stringify(synced.errors)}`);
@@ -372,7 +372,7 @@ async function syncScoped(scratch, harness, version) {
   const config = {
     project: { root: "." },
     entry: (id === "opencode" ? SCOPED_ENTRY : SCOPED_LIFECYCLE_ENTRY).replaceAll("\\", "/"),
-    components: { subagents: ["./portable-agents"] },
+    components: { agents: ["./portable-agents"] },
     targets: { [id]: target },
   };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
@@ -416,7 +416,7 @@ async function buildPackaged(dir, harness) {
   const { registry, id, version } = buildTarget(harness);
   const target = { version, delivery: "package", output: `dist/${id}` };
   const configPath = join(dir, "hooknostic.config.ts");
-  const config = { components: { root: `./${PLUGIN}`, subagents: ["./portable-agents"] }, targets: { [id]: target } };
+  const config = { components: { root: `./${PLUGIN}`, agents: ["./portable-agents"] }, targets: { [id]: target } };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
   const built = await buildProject({ configPath, registry });
   if (!built.ok) throw new Error(`hooknostic build failed: ${JSON.stringify(built.report.diagnostics)}`);
@@ -1163,7 +1163,7 @@ function record(harness, caseName, session) {
   );
   const summary = summarize(harness, caseName, session);
   writeFileSync(join(dest, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8");
-  // One machine-readable line for packages/cli/test/subagent-playback.test.ts.
+  // One machine-readable line for packages/cli/test/agent-definition-playback.test.ts.
   console.log(`HKN-SUMMARY ${JSON.stringify(summary)}`);
   const child = summary.child;
   console.log(

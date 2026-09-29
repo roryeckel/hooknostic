@@ -329,23 +329,21 @@ describe("canonical schemas", () => {
     ).toBe(false);
   });
 
-  it("accepts subagent definition directories as a direct component source", () => {
+  it("accepts agent definition directories as a direct component source", () => {
     const project = {
       project: { root: "." },
       targets: { local: { version: ">=1.0 <2", delivery: "project" as const, output: "./dist/local" } },
     };
-    expect(hooknosticConfigSchema.safeParse({ ...project, components: { subagents: ["./agents"] } }).success).toBe(
-      true,
-    );
+    expect(hooknosticConfigSchema.safeParse({ ...project, components: { agents: ["./agents"] } }).success).toBe(true);
     expect(
-      hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], subagents: ["./agents"] } })
+      hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], agents: ["./agents"] } })
         .success,
     ).toBe(true);
-    expect(hooknosticConfigSchema.safeParse({ ...project, components: { subagents: [] } }).success).toBe(false);
+    expect(hooknosticConfigSchema.safeParse({ ...project, components: { agents: [] } }).success).toBe(false);
     // With a package root, for package delivery (ADR-0027): the definitions are
     // translated into each native package rather than shipped as package files.
     expect(
-      hooknosticConfigSchema.safeParse({ ...project, components: { root: ".", subagents: ["./agents"] } }).success,
+      hooknosticConfigSchema.safeParse({ ...project, components: { root: ".", agents: ["./agents"] } }).success,
     ).toBe(true);
   });
 

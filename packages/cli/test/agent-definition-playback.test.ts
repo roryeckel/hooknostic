@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { expectAgentScope } from "./agent-scope.js";
 import { runProcess } from "./harness-playback.js";
 
-// Model-free proof that what a build writes for a subagent reaches the real
+// Model-free proof that what a build writes for an agent definition reaches the real
 // harness (ADR-0027). The .capture/agents drive writes a portable Hooknostic
-// Subagent Definition, delivers it the way a user's build would, then makes the
+// Agent Definition, delivers it the way a user's build would, then makes the
 // installed harness delegate to it against loopback playback models, routing
 // the child's requests to their own script by a per-run nonce. Its README has
 // the method and the provenance boundary.
@@ -40,7 +40,7 @@ const CASES = (lane === "codex" ? ["generated"] : ["generated", "packaged"]).map
   model: name === "packaged" && lane === "opencode-v2" ? "hooknostic-playback" : ALT_MODEL,
 }));
 
-describe.skipIf(lane === undefined)(`subagent playback (${lane ?? "off"})`, () => {
+describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"})`, () => {
   it.each(CASES)(
     "$name: advertises the definition, delegates to it, and runs it on its instructions",
     async ({ name, model }) => {

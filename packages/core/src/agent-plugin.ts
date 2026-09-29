@@ -1,6 +1,7 @@
 import semver from "semver";
 
 import {
+  type AgentDefinition,
   type AgentPluginComponentSupport,
   type AgentPluginDegradation,
   type AgentPluginDegradationDeclaration,
@@ -14,7 +15,6 @@ import {
   COMPONENT_IDS,
   type ComponentId,
   discoverComponents,
-  type SubagentDefinition,
 } from "@hooknostic/agent-plugin";
 import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
@@ -240,14 +240,14 @@ function discoveredComponents(
   source: AgentPluginPackage,
   namespace: string,
   runtimePackage?: AgentPluginRuntimePackage,
-  subagents?: readonly SubagentDefinition[],
+  agents?: readonly AgentDefinition[],
   harness?: string,
 ): ComponentId[] {
   return [
     ...discoverComponents(source, {
       namespace,
       hasRuntimePackage: runtimePackage !== undefined,
-      ...(subagents === undefined ? {} : { subagents }),
+      ...(agents === undefined ? {} : { agents }),
       ...(harness === undefined ? {} : { harness }),
     }).keys(),
   ];
@@ -265,8 +265,8 @@ export function analyzeAgentPluginProjection(
    * does; without it, package delivery accepted any supported level.
    */
   compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
-  /** `components.subagents` definitions, delivered inside the package (ADR-0027). */
-  subagents?: readonly SubagentDefinition[],
+  /** `components.agents` definitions, delivered inside the package (ADR-0027). */
+  agents?: readonly AgentDefinition[],
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -285,7 +285,7 @@ export function analyzeAgentPluginProjection(
             source,
             "",
             runtimePackage,
-            subagents,
+            agents,
             adapter.id,
           )
             .map((component) => JSON.stringify(component))
@@ -297,7 +297,7 @@ export function analyzeAgentPluginProjection(
   }
   const resolved = resolveAgentPluginProjection(target, projector);
   if (!resolved.matrix) return resolved;
-  for (const component of discoveredComponents(source, projector.namespace, runtimePackage, subagents, adapter.id)) {
+  for (const component of discoveredComponents(source, projector.namespace, runtimePackage, agents, adapter.id)) {
     const support = resolved.matrix[component] ?? { level: "unsupported" as const };
     if (support.level === "unsupported") {
       resolved.diagnostics.push({

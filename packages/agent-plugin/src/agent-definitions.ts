@@ -7,15 +7,15 @@ import { parseMarkdownFrontmatter } from "./frontmatter.js";
 import { isAgentSkillName } from "./names.js";
 import type { AgentPluginIssue } from "./types.js";
 
-/** The Hooknostic Subagent Definition version this loader reads (docs/spec/subagents/0.1.md). */
-export const SUBAGENT_FORMAT_VERSION = "0.1" as const;
+/** The Hooknostic Agent Definition version this loader reads (docs/spec/agents/0.1.md). */
+export const AGENT_DEFINITION_FORMAT_VERSION = "0.1" as const;
 
 /**
  * Top-level keys a 0.1 file may not use, because a later version may define
  * them. Named rather than folded into "unknown field" so an author reaching for
  * a portable `model` or `tools` is told where the value belongs today.
  */
-export const SUBAGENT_RESERVED_KEYS = [
+export const AGENT_DEFINITION_RESERVED_KEYS = [
   "readOnly",
   "tools",
   "model",
@@ -27,11 +27,11 @@ export const SUBAGENT_RESERVED_KEYS = [
 ] as const;
 
 /**
- * One subagent definition, parsed into the model the specification defines.
+ * One agent definition, parsed into the model the specification defines.
  * Adapters translate from this, never from the file, so a future source format
  * mapping onto the same model reaches every harness without translator changes.
  */
-export interface SubagentDefinition {
+export interface AgentDefinition {
   name: string;
   description: string;
   /** The Markdown body, line endings normalized to LF. */
@@ -42,7 +42,7 @@ export interface SubagentDefinition {
   source: string;
 }
 
-export interface LoadSubagentsOptions {
+export interface LoadAgentDefinitionsOptions {
   /** Directories holding flat `<name>.md` definition files. */
   directories: readonly string[];
   /** Globs matched case-insensitively against each file name, relative to its directory. */
@@ -50,7 +50,7 @@ export interface LoadSubagentsOptions {
 }
 
 const KEYS = new Set(["name", "description", "native"]);
-const RESERVED = new Set<string>(SUBAGENT_RESERVED_KEYS);
+const RESERVED = new Set<string>(AGENT_DEFINITION_RESERVED_KEYS);
 const HARNESS_KEY = /^[a-z][a-z0-9-]*$/;
 const MATCH = { dot: true, nocase: true, nonegate: true, nocomment: true } as const;
 
@@ -59,13 +59,13 @@ function mapping(value: unknown): value is Record<string, unknown> {
 }
 
 /** Validates one file's frontmatter and body into a definition; throws the first problem found. */
-function parseDefinition(text: string, stem: string, source: string): SubagentDefinition {
-  const { data, body } = parseMarkdownFrontmatter(text, "a subagent definition");
+function parseDefinition(text: string, stem: string, source: string): AgentDefinition {
+  const { data, body } = parseMarkdownFrontmatter(text, "an agent definition");
   if (!mapping(data)) throw new Error("frontmatter must be a mapping");
   for (const key of Object.keys(data)) {
     if (RESERVED.has(key)) {
       throw new Error(
-        `\`${key}\` is reserved for a later version of the subagent format; put a harness's own field under native.<harness>`,
+        `\`${key}\` is reserved for a later version of the agent definition format; put a harness's own field under native.<harness>`,
       );
     }
     if (!KEYS.has(key)) throw new Error(`frontmatter contains an unknown field \`${key}\``);
@@ -108,11 +108,11 @@ function parseDefinition(text: string, stem: string, source: string): SubagentDe
  * are `warn` issues, which a build maps through `components.onInvalid`, exactly
  * as it does a malformed skill.
  */
-export async function loadSubagents(
-  options: LoadSubagentsOptions,
-): Promise<{ subagents: SubagentDefinition[]; issues: AgentPluginIssue[] }> {
+export async function loadAgentDefinitions(
+  options: LoadAgentDefinitionsOptions,
+): Promise<{ agents: AgentDefinition[]; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
-  const subagents: SubagentDefinition[] = [];
+  const agents: AgentDefinition[] = [];
   const names = new Map<string, string>();
   for (const configured of options.directories) {
     const directory = resolve(configured);
@@ -122,10 +122,10 @@ export async function loadSubagents(
     } catch (error) {
       issues.push({
         severity: "error",
-        scope: "subagent",
-        component: "subagents.definition",
+        scope: "agent",
+        component: "agents.definition",
         path: directory,
-        message: `could not read subagent directory ${JSON.stringify(directory)}: ${error instanceof Error ? error.message : String(error)}`,
+        message: `could not read agent directory ${JSON.stringify(directory)}: ${error instanceof Error ? error.message : String(error)}`,
       });
       continue;
     }
@@ -136,25 +136,25 @@ export async function loadSubagents(
       if (entry.isDirectory()) {
         issues.push({
           severity: "info",
-          scope: "subagent",
-          component: "subagents.definition",
+          scope: "agent",
+          component: "agents.definition",
           path,
-          message: `subdirectory ${JSON.stringify(entry.name)} is not scanned; subagent definitions sit directly in ${JSON.stringify(directory)}`,
+          message: `subdirectory ${JSON.stringify(entry.name)} is not scanned; agent definitions sit directly in ${JSON.stringify(directory)}`,
         });
         continue;
       }
       if (!entry.name.toLowerCase().endsWith(".md")) continue;
       const stem = entry.name.slice(0, -".md".length);
-      let definition: SubagentDefinition;
+      let definition: AgentDefinition;
       try {
         definition = parseDefinition(await readFile(path, "utf8"), stem, path);
       } catch (error) {
         issues.push({
           severity: "warn",
-          scope: "subagent",
-          component: "subagents.definition",
+          scope: "agent",
+          component: "agents.definition",
           path,
-          message: `subagent ${JSON.stringify(stem)} is invalid and was skipped: ${error instanceof Error ? error.message : String(error)}`,
+          message: `agent ${JSON.stringify(stem)} is invalid and was skipped: ${error instanceof Error ? error.message : String(error)}`,
         });
         continue;
       }
@@ -162,16 +162,16 @@ export async function loadSubagents(
       if (first !== undefined) {
         issues.push({
           severity: "error",
-          scope: "subagent",
-          component: "subagents.definition",
+          scope: "agent",
+          component: "agents.definition",
           path,
-          message: `duplicate subagent name ${JSON.stringify(definition.name)}, also defined in ${JSON.stringify(first)}`,
+          message: `duplicate agent name ${JSON.stringify(definition.name)}, also defined in ${JSON.stringify(first)}`,
         });
         continue;
       }
       names.set(definition.name, path);
-      subagents.push(definition);
+      agents.push(definition);
     }
   }
-  return { subagents, issues };
+  return { agents, issues };
 }

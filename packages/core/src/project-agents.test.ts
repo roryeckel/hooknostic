@@ -38,9 +38,9 @@ const REVIEWER = [
   "",
 ].join("\n");
 
-/** A hookless project whose only component is the given subagent directory. */
-async function fixture(definitions: Record<string, string>, options: { v2?: boolean; subagents?: string[] } = {}) {
-  const root = await mkdtemp(join(tmpdir(), "hooknostic-subagents-"));
+/** A hookless project whose only component is the given agent definition directory. */
+async function fixture(definitions: Record<string, string>, options: { v2?: boolean; agents?: string[] } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "hooknostic-agents-"));
   dirs.push(root);
   await mkdir(join(root, "agents"), { recursive: true });
   for (const [file, text] of Object.entries(definitions)) await writeFile(join(root, "agents", file), text);
@@ -58,13 +58,13 @@ async function fixture(definitions: Record<string, string>, options: { v2?: bool
       },
     ]),
   );
-  const config = { project: { root: "." }, components: { subagents: options.subagents ?? ["./agents"] }, targets };
+  const config = { project: { root: "." }, components: { agents: options.agents ?? ["./agents"] }, targets };
   const configPath = join(root, "hooknostic.config.ts");
   await writeFile(configPath, `export default ${JSON.stringify(config)};`);
   return { root, options: { configPath, registry, evaluate } };
 }
 
-describe("subagent project delivery", () => {
+describe("agent definition project delivery", () => {
   it("writes each harness's native file, owns it, and detects a changed definition", async () => {
     const { root, options } = await fixture({ "reviewer.md": REVIEWER });
 
@@ -110,8 +110,8 @@ describe("subagent project delivery", () => {
     const built = await buildProject({ ...options, dryRun: true });
     for (const target of ["claude", "codex", "opencode"]) {
       expect(built.report.targets[target]?.project?.components, target).toMatchObject({
-        "subagents.definition": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
-        "subagents.native": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+        "agents.definition": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+        "agents.native": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
       });
     }
 
@@ -146,7 +146,7 @@ describe("subagent project delivery", () => {
       expect.objectContaining({
         code: "HN503",
         severity: "error",
-        component: "subagents.native",
+        component: "agents.native",
         message: expect.stringContaining('unknown harness "cluade"'),
       }),
     );
@@ -163,14 +163,14 @@ describe("subagent project delivery", () => {
     expect(refused).toEqual([
       expect.objectContaining({
         target: "claude",
-        component: "subagents.native",
+        component: "agents.native",
         message: expect.stringContaining("native.claude.hooks"),
       }),
     ]);
   });
 
   it("refuses definitions kept inside a harness's own agents directory", async () => {
-    const { root, options } = await fixture({}, { subagents: ["./.claude/agents"] });
+    const { root, options } = await fixture({}, { agents: ["./.claude/agents"] });
     await mkdir(join(root, ".claude/agents"), { recursive: true });
     await writeFile(join(root, ".claude/agents/reviewer.md"), REVIEWER);
 
@@ -180,25 +180,25 @@ describe("subagent project delivery", () => {
       expect.objectContaining({
         code: "HN501",
         target: "claude",
-        component: "subagents.definition",
+        component: "agents.definition",
         message: expect.stringContaining("where claude reads its own agent files"),
       }),
     );
   });
 });
 
-/** A hookless package build whose subagents are configured beside the package root. */
+/** A hookless package build whose agent definitions are configured beside the package root. */
 async function packageFixture(
   definitions: Record<string, string>,
   options: {
     targets?: Record<string, { version: string }>;
-    subagents?: string;
+    agents?: string;
     components?: Record<string, unknown>;
   } = {},
 ) {
-  const root = await mkdtemp(join(tmpdir(), "hooknostic-package-subagents-"));
+  const root = await mkdtemp(join(tmpdir(), "hooknostic-package-agents-"));
   dirs.push(root);
-  const directory = options.subagents ?? "agents";
+  const directory = options.agents ?? "agents";
   await mkdir(join(root, "pkg"), { recursive: true });
   await mkdir(join(root, directory), { recursive: true });
   await writeFile(
@@ -213,7 +213,7 @@ async function packageFixture(
     ),
   );
   const config = {
-    components: { root: "./pkg", subagents: [`./${directory}`], ...options.components },
+    components: { root: "./pkg", agents: [`./${directory}`], ...options.components },
     targets,
   };
   const configPath = join(root, "hooknostic.config.ts");
@@ -221,7 +221,7 @@ async function packageFixture(
   return { root, options: { configPath, registry, evaluate } };
 }
 
-describe("subagent package delivery", () => {
+describe("agent definition package delivery", () => {
   it("projects definitions configured beside a package into the Claude plugin", async () => {
     const { root, options } = await packageFixture({ "reviewer.md": REVIEWER });
 
@@ -237,8 +237,8 @@ describe("subagent package delivery", () => {
       tools: ["Read", "Grep"],
     });
     expect(built.report.targets["claude"]?.projection?.components).toMatchObject({
-      "subagents.definition": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
-      "subagents.native": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agents.definition": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "agents.native": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
     });
   }, 60_000);
 
@@ -246,7 +246,7 @@ describe("subagent package delivery", () => {
     // Copied verbatim, pkg/agents/reviewer.md would land on the very path the
     // translation is emitted at, and Claude would read the portable file --
     // `native:` block and all -- as its own agent.
-    const { root, options } = await packageFixture({ "reviewer.md": REVIEWER }, { subagents: "pkg/agents" });
+    const { root, options } = await packageFixture({ "reviewer.md": REVIEWER }, { agents: "pkg/agents" });
 
     const built = await buildProject(options);
 
@@ -256,7 +256,7 @@ describe("subagent package delivery", () => {
     expect(agent.data).toMatchObject({ model: "sonnet" });
   }, 60_000);
 
-  it("refuses subagents for a Codex package, which has no agents route, unless told to warn", async () => {
+  it("refuses agent definitions for a Codex package, which has no agents route, unless told to warn", async () => {
     const targets = { codex: { version: CODEX_PLUGIN_MODE_RANGE } };
     const refused = await buildProject({
       ...(await packageFixture({ "reviewer.md": REVIEWER }, { targets })).options,
@@ -264,7 +264,7 @@ describe("subagent package delivery", () => {
     });
     expect(refused.ok).toBe(false);
     expect(refused.report.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "HN205", target: "codex", component: "subagents.definition" }),
+      expect.objectContaining({ code: "HN205", target: "codex", component: "agents.definition" }),
     );
 
     const warned = await buildProject({
@@ -274,7 +274,7 @@ describe("subagent package delivery", () => {
     });
     expect(warned.ok).toBe(true);
     expect(warned.report.targets["codex"]?.projection?.components).toMatchObject({
-      "subagents.definition": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+      "agents.definition": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
     });
   }, 60_000);
 
@@ -290,7 +290,7 @@ describe("subagent package delivery", () => {
       expect.objectContaining({
         code: "HN503",
         target: "claude",
-        component: "subagents.native",
+        component: "agents.native",
         message: expect.stringContaining("native.claude.hooks"),
       }),
     );

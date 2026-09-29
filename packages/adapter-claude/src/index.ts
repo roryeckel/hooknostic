@@ -19,7 +19,7 @@ import { decodeClaude } from "./decode.js";
 import { claudeHookRuntimePath, generateClaudeArtifacts } from "./generate.js";
 import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
-import { claudeSubagents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { claudeAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
 import {
   classifyClaudeTool,
@@ -100,7 +100,7 @@ export function claudeAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
-    subagents: claudeSubagents,
+    agents: claudeAgents,
     agentPluginProjector: claudeAgentPluginProjector,
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",

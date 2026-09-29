@@ -259,7 +259,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         mcpOverrides?: never;
         // Hooknostic input beside the package, like hook source: projectors
         // translate them into each native package (ADR-0027).
-        subagents?: SubagentSources;
+        agents?: AgentSources;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
         /**
@@ -284,7 +284,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         root?: never;
         skills: string[];
         mcp?: string;
-        subagents?: SubagentSources;
+        agents?: AgentSources;
         /** Exact, case-sensitive `<skill>/<path>` POSIX paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
         materialize?: never;
@@ -301,19 +301,19 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         root?: never;
         skills?: never;
         mcp: string;
-        subagents?: SubagentSources;
+        agents?: AgentSources;
         executableFiles?: never;
         materialize?: never;
         mcpEnvironment?: never;
       } & DirectComponentPolicy<TTarget>)
-    // Subagent definitions alone. Like MCP alone, it owns no tree to mark
+    // Agent definitions alone. Like MCP alone, it owns no tree to mark
     // executable, and there is no MCP source for overrides to address.
     | {
         root?: never;
         skills?: never;
         mcp?: never;
         mcpOverrides?: never;
-        subagents: SubagentSources;
+        agents: AgentSources;
         executableFiles?: never;
         materialize?: never;
         mcpEnvironment?: never;
@@ -321,13 +321,13 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
   );
 
 /**
- * Directories of Hooknostic Subagent Definition files: flat `<name>.md` files,
+ * Directories of Hooknostic Agent Definition files: flat `<name>.md` files,
  * YAML frontmatter plus the instructions as the body
- * (`docs/spec/subagents/0.1.md`, ADR-0027). Project delivery writes each
+ * (`docs/spec/agents/0.1.md`, ADR-0027). Project delivery writes each
  * harness's own agent file; beside `root`, package delivery carries them in the
  * projected package where the harness supports it.
  */
-type SubagentSources = [string, ...string[]];
+type AgentSources = [string, ...string[]];
 
 export type TargetsConfig = Record<string, TargetConfig>;
 

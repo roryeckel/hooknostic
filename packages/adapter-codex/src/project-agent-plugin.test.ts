@@ -1226,13 +1226,13 @@ describe("Codex client extension", () => {
   });
 });
 
-describe("subagents in a Codex package projection", () => {
+describe("agent definitions in a Codex package projection", () => {
   // A Codex plugin cannot bundle agents (openai/codex#18988), so the profile
-  // declares both subagent components unsupported and the projection emits none.
-  it("declares subagents unsupported, emits nothing for them, and reports each one", async () => {
-    expect(support["subagents.definition"]?.level).toBe("unsupported");
-    expect(support["subagents.native"]?.level).toBe("unsupported");
-    const subagents = ["reviewer", "planner"].map((name) => ({
+  // declares every agent component unsupported and the projection emits none.
+  it("declares agent definitions unsupported, emits nothing for them, and reports each one", async () => {
+    expect(support["agents.definition"]?.level).toBe("unsupported");
+    expect(support["agents.native"]?.level).toBe("unsupported");
+    const agents = ["reviewer", "planner"].map((name) => ({
       name,
       description: `${name} description`,
       instructions: `${name} instructions\n`,
@@ -1244,12 +1244,12 @@ describe("subagents in a Codex package projection", () => {
       hookArtifacts: [],
       support,
       onUnsupported: "warn",
-      subagents,
+      agents,
     });
     expect(plan.files.filter((candidate) => /(reviewer|planner)\.(md|toml)$/.test(candidate.path))).toEqual([]);
-    expect(plan.summary.components["subagents.definition"]).toEqual({ discovered: 2, emitted: 0, skipped: 2 });
-    expect(plan.summary.components["subagents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
-    expect(plan.summary.omissions.filter((item) => item.component === "subagents.definition")).toEqual([
+    expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 2, emitted: 0, skipped: 2 });
+    expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(plan.summary.omissions.filter((item) => item.component === "agents.definition")).toEqual([
       expect.objectContaining({ name: "reviewer" }),
       expect.objectContaining({ name: "planner" }),
     ]);

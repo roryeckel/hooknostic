@@ -1,10 +1,10 @@
 import { relative } from "node:path";
 
-import type { AgentPluginProjectionProfile, SubagentDefinition } from "@hooknostic/agent-plugin";
+import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { projectMcpLauncher, projectSkillFiles, projectSubagentFiles } from "@hooknostic/core";
+import { projectAgentFiles, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
@@ -37,7 +37,7 @@ export const projectIntegration = projectIntegrationWith(
   (importPath) => `export { default } from ${JSON.stringify(importPath)};\n`,
 );
 
-export const opencodeSubagents: NonNullable<HarnessAdapter["subagents"]> = {
+export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".opencode/agents",
   // The file name is the identity, so `name` has nothing to say and v1 would
   // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
@@ -51,15 +51,15 @@ export const opencodeSubagents: NonNullable<HarnessAdapter["subagents"]> = {
  * the subagent tool cannot select -- and the instructions are the body, which
  * replaces the provider's base prompt (`.capture/agents`).
  */
-export function renderOpenCodeSubagent(subagent: SubagentDefinition): { file: string; contents: string } {
-  const native = Object.entries(subagent.native["opencode"] ?? {}).filter(
-    ([key]) => !opencodeSubagents.reservedNativeKeys.includes(key),
+export function renderOpenCodeAgent(agent: AgentDefinition): { file: string; contents: string } {
+  const native = Object.entries(agent.native["opencode"] ?? {}).filter(
+    ([key]) => !opencodeAgents.reservedNativeKeys.includes(key),
   );
   return {
-    file: `${subagent.name}.md`,
+    file: `${agent.name}.md`,
     contents: renderMarkdownFrontmatter(
-      { description: subagent.description, mode: "subagent", ...Object.fromEntries(native) },
-      subagent.instructions,
+      { description: agent.description, mode: "subagent", ...Object.fromEntries(native) },
+      agent.instructions,
     ),
   };
 }
@@ -76,13 +76,9 @@ export async function projectComponents(
   // inventory there instead of naming its unfiltered source directory through
   // skills.paths, which would re-expose excluded files and rejected siblings.
   const result = projectSkillFiles(source, root, ".agents/skills");
-  const subagents = projectSubagentFiles(
-    source.subagents ?? [],
-    opencodeSubagents.projectDirectory,
-    renderOpenCodeSubagent,
-  );
-  result.files.push(...subagents.files);
-  if (subagents.files.length > 0)
+  const agents = projectAgentFiles(source.agents ?? [], opencodeAgents.projectDirectory, renderOpenCodeAgent);
+  result.files.push(...agents.files);
+  if (agents.files.length > 0)
     result.guidance.push("OpenCode reads project agents from .opencode/agents; restart it after synchronization.");
   if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
@@ -174,12 +170,12 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route.",
       },
-      "subagents.definition": {
+      "agents.definition": {
         level: "exact",
         rationale:
           "Written to .opencode/agents/<name>.md with mode: subagent. The task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended.",
       },
-      "subagents.native": {
+      "agents.native": {
         level: "exact",
         rationale:
           "native.opencode fields are written verbatim into the frontmatter; model and permission were observed taking effect, a denied tool leaving the child's tool list. On 1.18.31 neither steps nor maxSteps stopped the child. OpenCode passes a key it does not know to the provider as a model option.",
@@ -200,7 +196,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "At the reference build, a project agent and a config-hook-injected one behaved as on 1.18.31, and a definition synchronized by Hooknostic's project delivery was offered through the task tool, delegated to, and ran on its instructions and native model (packages/cli/test/subagent-playback.test.ts).",
+          what: "At the reference build, a project agent and a config-hook-injected one behaved as on 1.18.31, and a definition synchronized by Hooknostic's project delivery was offered through the task tool, delegated to, and ran on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts).",
         },
         {
           version: "1.18.29",

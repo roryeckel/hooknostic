@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
+  type AgentDefinition,
   type AgentPluginPackage,
-  type SubagentDefinition,
 } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
@@ -126,7 +126,7 @@ describe("OpenCode v2 project wiring in nested checkouts", () => {
   });
 });
 
-describe("OpenCode v2 package projection of subagents", () => {
+describe("OpenCode v2 package projection of agent definitions", () => {
   const target = {
     id: "opencode",
     version: opencodeV2Harness.recommendedRange,
@@ -142,7 +142,7 @@ describe("OpenCode v2 package projection of subagents", () => {
     files: [{ path: "plugin.json", contents: new TextEncoder().encode("{}"), mode: 0o644 }],
     contentDigest: "sha256:source",
   };
-  const subagent = (name: string, native: SubagentDefinition["native"] = {}): SubagentDefinition => ({
+  const definition = (name: string, native: AgentDefinition["native"] = {}): AgentDefinition => ({
     name,
     description: `${name} description`,
     instructions: `${name} instructions\n`,
@@ -150,13 +150,13 @@ describe("OpenCode v2 package projection of subagents", () => {
     source: `/project/agents/${name}.md`,
   });
 
-  it("upserts each subagent through the agent domain under its plugin-qualified id", async () => {
+  it("upserts each agent definition through the agent domain under its plugin-qualified id", async () => {
     const plan = await opencodeV2Projector.project(pkg, {
       target,
       hookArtifacts: [],
       support,
       onUnsupported: "warn",
-      subagents: [subagent("reviewer", { opencode: { model: "provider/model" } }), subagent("planner")],
+      agents: [definition("reviewer", { opencode: { model: "provider/model" } }), definition("planner")],
     });
     expect(plan.issues).toEqual([]);
     const root = await mkdtemp(join(tmpdir(), "hooknostic-v2-agents-"));
@@ -198,12 +198,10 @@ describe("OpenCode v2 package projection of subagents", () => {
     });
     // The agent domain takes OpenCode's internal shape, so native fields are
     // not carried -- and each definition that has them is reported.
-    expect(support["subagents.native"]?.level).toBe("unsupported");
-    expect(plan.summary.omissions).toEqual([
-      expect.objectContaining({ component: "subagents.native", name: "reviewer" }),
-    ]);
-    expect(plan.summary.components["subagents.definition"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
-    expect(plan.summary.components["subagents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(support["agents.native"]?.level).toBe("unsupported");
+    expect(plan.summary.omissions).toEqual([expect.objectContaining({ component: "agents.native", name: "reviewer" })]);
+    expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
+    expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
   });
 
   it("registers no agents for a package with none", async () => {

@@ -1,4 +1,4 @@
-import type { SubagentDefinition } from "./subagents.js";
+import type { AgentDefinition } from "./agent-definitions.js";
 
 export const AGENT_PLUGIN_MANIFEST_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" as const;
 export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json" as const;
@@ -58,7 +58,7 @@ export interface AgentPluginFile {
 }
 
 export type AgentPluginIssueSeverity = "error" | "warn" | "info";
-export type AgentPluginIssueScope = "manifest" | "skill" | "mcp" | "subagent" | "file" | "projection";
+export type AgentPluginIssueScope = "manifest" | "skill" | "mcp" | "agent" | "file" | "projection";
 
 export interface AgentPluginIssue {
   severity: AgentPluginIssueSeverity;
@@ -121,18 +121,18 @@ export const AGENT_PLUGIN_COMPONENT_IDS = [
 export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number];
 
 /**
- * Subagent definitions (ADR-0027). Not an Agent Plugins 1.0 component -- the
+ * Agent definitions (ADR-0027). Not an Agent Plugins 1.0 component -- the
  * standard leaves agents out until their formats converge -- but delivered and
  * reported through the same profiles, levels and shortfall policy, so both
- * share one id space. `subagents.definition` is the portable core (name,
- * description, instructions); `subagents.native` is the per-harness
+ * share one id space. `agents.definition` is the portable core (name,
+ * description, instructions); `agents.native` is the per-harness
  * passthrough under `native`.
  */
-export const SUBAGENT_COMPONENT_IDS = ["subagents.definition", "subagents.native"] as const;
-export type SubagentComponentId = (typeof SUBAGENT_COMPONENT_IDS)[number];
+export const AGENT_COMPONENT_IDS = ["agents.definition", "agents.native"] as const;
+export type AgentComponentId = (typeof AGENT_COMPONENT_IDS)[number];
 
 /** Every component a projector or project integrator reports on. */
-export const COMPONENT_IDS = [...AGENT_PLUGIN_COMPONENT_IDS, ...SUBAGENT_COMPONENT_IDS] as const;
+export const COMPONENT_IDS = [...AGENT_PLUGIN_COMPONENT_IDS, ...AGENT_COMPONENT_IDS] as const;
 export type ComponentId = (typeof COMPONENT_IDS)[number];
 
 export type AgentPluginProjectionSupportLevel = "exact" | "emulated" | "approximate" | "unsupported";
@@ -281,12 +281,12 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    */
   mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
   /**
-   * Subagent definitions configured beside the package (`components.subagents`,
+   * Agent definitions configured beside the package (`components.agents`,
    * ADR-0027). They are Hooknostic input, like hook source, not package
    * content, so they arrive here rather than in the package: the Agent Plugins
    * 1.0 format has no agents component to carry them.
    */
-  subagents?: readonly SubagentDefinition[];
+  agents?: readonly AgentDefinition[];
 }
 
 export interface AgentPluginProjectionSummary {

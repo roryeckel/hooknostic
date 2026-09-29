@@ -4594,7 +4594,7 @@ var hooknosticConfigSchema = external_exports.object({
     root: external_exports.string().min(1).optional(),
     skills: external_exports.array(external_exports.string().min(1)).optional(),
     mcp: external_exports.string().min(1).optional(),
-    subagents: external_exports.array(external_exports.string().min(1)).min(1).optional(),
+    agents: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     mcpOverrides: external_exports.record(external_exports.string().min(1), projectMcpTargetOverrideSchema).optional(),
     targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
@@ -4682,10 +4682,10 @@ var hooknosticConfigSchema = external_exports.object({
         message: "components.mcpEnvironment requires components.root"
       });
     }
-    if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0 && config.components.subagents === void 0) {
+    if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0 && config.components.agents === void 0) {
       context.addIssue({
         code: external_exports.ZodIssueCode.custom,
-        message: "components requires root, skills, mcp, or subagents"
+        message: "components requires root, skills, mcp, or agents"
       });
     }
     const configured = new Set(Object.keys(config.targets));

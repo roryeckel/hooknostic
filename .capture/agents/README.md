@@ -262,7 +262,7 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
   builds. On 0.148.0, Codex's `spawn_agent` also gained `agent_type` (beside a
   `service_tier` key) once a project agent existed.
 - **The `generated` case.** It writes the same agent as a portable Hooknostic
-  Subagent Definition 0.1 file, synchronizes it into the scratch project with
+  Agent Definition 0.1 file, synchronizes it into the scratch project with
   Hooknostic's own project delivery, and then drives the harness exactly as
   `direct` does. On every family and build above, the synchronized definition
   was advertised to the parent, delegated to, and ran on its instructions and
@@ -302,12 +302,12 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
     a subagent. The drive then delegates to a native agent instead, and the tee
     confirms the child's tool events still name no agent.
 
-`packages/cli/test/subagent-playback.test.ts` runs the `generated` and `packaged`
+`packages/cli/test/agent-definition-playback.test.ts` runs the `generated` and `packaged`
 cases in CI's playback lanes (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the
 harness-watch verify lane, so this evidence is re-established on every change
 and every new harness build. The harness-playback suite's `agent-scope`
 scenario runs the `scoped` case in the Claude, Codex and OpenCode v1 lanes, and
-`subagent-playback.test.ts` runs it in the OpenCode v2 lane. Each package route was checked against a mutant
+`agent-definition-playback.test.ts` runs it in the OpenCode v2 lane. Each package route was checked against a mutant
 that breaks it: the Claude agents directory moved, the OpenCode v1 agent loop
 emptied or its native fields dropped, the v2 transform removed. Each mutant
 failed the test.

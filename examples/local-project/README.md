@@ -16,7 +16,7 @@ and harness activation are explicit human steps; sync does neither.
 
 All three harnesses receive hooks, skills, a synthetic stdio MCP server, and a
 `reviewer` subagent written once in `agents/reviewer.md` as a
-[portable subagent definition](../../docs/spec/subagents/0.1.md). Its `native` block
+[portable agent definition](../../docs/spec/agents/0.1.md). Its `native` block
 limits it to read-only tools on Claude and denies edits and shell on OpenCode. Codex
 has no per-agent tool list, so there it keeps the session's tools and sandbox.
 The server has no dependencies beyond Node and starts only when the harness
