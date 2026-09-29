@@ -4617,13 +4617,6 @@ var hooknosticConfigSchema = external_exports.object({
         message: "components.root is mutually exclusive with direct skills/mcp sources"
       });
     }
-    if (config.components.root !== void 0 && config.components.subagents !== void 0) {
-      context.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        path: ["components", "subagents"],
-        message: "components.subagents cannot be combined with components.root yet"
-      });
-    }
     if (config.components.root !== void 0 && config.components.mcpOverrides !== void 0) {
       context.addIssue({
         code: external_exports.ZodIssueCode.custom,

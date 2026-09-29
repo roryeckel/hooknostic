@@ -32,6 +32,8 @@ const { driveCodex, driveOpencode, prepareScratch, withoutCredentials, writeOpen
   pathToFileURL(join(REPO, "scripts/drive-capture-session.mjs")).href
 );
 const { runProject } = await import(pathToFileURL(join(REPO, "packages/core/src/project.ts")).href);
+const { buildProject } = await import(pathToFileURL(join(REPO, "packages/core/src/build.ts")).href);
+const { AGENT_PLUGIN_MANIFEST_SCHEMA } = await import(pathToFileURL(join(REPO, "packages/agent-plugin/src/types.ts")).href);
 const { defaultAdapterRegistry } = await import(pathToFileURL(join(REPO, "packages/cli/src/registry.ts")).href);
 const { opencodeHarness, opencodeV1Adapter, opencodeV2Harness } = await import(
   pathToFileURL(join(REPO, "packages/adapter-opencode/src/index.ts")).href
@@ -195,6 +197,17 @@ function claudeAgent(extra = []) {
   ].join("\n");
 }
 
+/**
+ * For the plan-* cases: no tool list, so the child's tools are the harness
+ * default, and `permissionMode: plan`, which keeps ExitPlanMode in a subagent's
+ * tools when honoured -- a visible trace of the one field under test.
+ */
+function claudePlanAgent() {
+  return ["---", `name: ${NAME}`, `description: ${DESCRIPTION}`, "permissionMode: plan", "---", INSTRUCTIONS, ""].join(
+    "\n",
+  );
+}
+
 function codexAgent() {
   return [
     `name = "${NAME}"`,
@@ -253,14 +266,14 @@ function write(path, contents) {
 }
 
 /**
- * The `generated` case: the same agent as a portable Hooknostic Subagent
- * Definition 0.1 file, synchronized into the scratch project by Hooknostic's own
- * project delivery, so what the harness reads is what a user's build writes.
+ * The same agent as a portable Hooknostic Subagent Definition 0.1 file under
+ * `<dir>/portable-agents/`. `withOpenCode: false` leaves out `native.opencode`,
+ * for a route that cannot carry native fields and would report them.
  */
-async function syncGenerated(scratch, harness) {
+function writePortableDefinition(dir, harness, withOpenCode = true) {
   const provider = harness === "opencode-v2" ? "playback" : "drift";
   write(
-    join(scratch, "portable-agents", `${NAME}.md`),
+    join(dir, "portable-agents", `${NAME}.md`),
     [
       "---",
       `name: ${NAME}`,
@@ -272,26 +285,63 @@ async function syncGenerated(scratch, harness) {
       "  codex:",
       `    model: ${ALT_MODEL}`,
       "    model_reasoning_effort: low",
-      "  opencode:",
-      `    model: ${provider}/${ALT_MODEL}`,
+      ...(withOpenCode ? ["  opencode:", `    model: ${provider}/${ALT_MODEL}`] : []),
       "---",
       INSTRUCTIONS,
       "",
     ].join("\n"),
   );
+}
+
+/** The adapter registry, target id and version range a drive harness builds for. */
+function buildTarget(harness) {
   const registry = defaultAdapterRegistry();
   if (harness === "opencode-v1") registry.opencode = opencodeV1Adapter();
   const id = harness.startsWith("codex") ? "codex" : harness.startsWith("opencode") ? "opencode" : "claude";
-  const target = {
-    version: harness === "opencode-v2" ? opencodeV2Harness.recommendedRange : registry[id].harness.recommendedRange,
-    delivery: "project",
-    output: `.hooknostic/artifacts/${id}`,
-  };
+  const version = harness === "opencode-v2" ? opencodeV2Harness.recommendedRange : registry[id].harness.recommendedRange;
+  return { registry, id, version };
+}
+
+/**
+ * The `generated` case: the portable definition synchronized into the scratch
+ * project by Hooknostic's own project delivery, so what the harness reads is
+ * what a user's build writes.
+ */
+async function syncGenerated(scratch, harness) {
+  writePortableDefinition(scratch, harness);
+  const { registry, id, version } = buildTarget(harness);
+  const target = { version, delivery: "project", output: `.hooknostic/artifacts/${id}` };
   const configPath = join(scratch, "hooknostic.config.ts");
   const config = { project: { root: "." }, components: { subagents: ["./portable-agents"] }, targets: { [id]: target } };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
   const synced = await runProject({ configPath, registry, command: "sync" });
   if (!synced.ok) throw new Error(`hooknostic sync failed: ${JSON.stringify(synced.errors)}`);
+}
+
+/** The Agent Plugins package the `packaged` case configures the definition beside. */
+const PLUGIN = "hn-plugin";
+
+/**
+ * The `packaged` case: the portable definition configured beside a minimal
+ * Agent Plugins package and built for package delivery, outside any project, so
+ * what the harness loads is the package a user's build writes. OpenCode v2's
+ * package route cannot carry native fields, so its definition has none. Returns
+ * the built package directory.
+ */
+async function buildPackaged(dir, harness) {
+  writePortableDefinition(dir, harness, harness !== "opencode-v2");
+  write(
+    join(dir, PLUGIN, "plugin.json"),
+    `${JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: PLUGIN, version: "1.0.0", description: "Hooknostic capture probe package." }, null, 2)}\n`,
+  );
+  const { registry, id, version } = buildTarget(harness);
+  const target = { version, delivery: "package", output: `dist/${id}` };
+  const configPath = join(dir, "hooknostic.config.ts");
+  const config = { components: { root: `./${PLUGIN}`, subagents: ["./portable-agents"] }, targets: { [id]: target } };
+  writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
+  const built = await buildProject({ configPath, registry });
+  if (!built.ok) throw new Error(`hooknostic build failed: ${JSON.stringify(built.report.diagnostics)}`);
+  return join(dir, target.output);
 }
 
 // ---------------------------------------------------------------------------
@@ -334,15 +384,28 @@ async function claudeSession(caseName) {
   if (caseName === "control") write(join(scratch, ".claude/agents-off", `${NAME}.md`), claudeAgent());
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "generated") await syncGenerated(scratch, "claude");
-  if (caseName === "plugin") {
-    const plugin = join(scratch, "..", "hn-plugin");
-    write(join(plugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: "hn-plugin", version: "0.0.0" }, null, 2));
+  if (caseName === "plan-project") write(join(scratch, ".claude/agents", `${NAME}.md`), claudePlanAgent());
+  if (caseName === "plugin" || caseName === "plan-plugin") {
+    const plugin = join(scratch, "..", PLUGIN);
+    write(join(plugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: PLUGIN, version: "0.0.0" }, null, 2));
     // Fields the docs say a plugin agent ignores ride along, to be observed.
-    write(join(plugin, "agents", `${NAME}.md`), claudeAgent(["permissionMode: plan"]));
+    write(
+      join(plugin, "agents", `${NAME}.md`),
+      caseName === "plan-plugin" ? claudePlanAgent() : claudeAgent(["permissionMode: plan"]),
+    );
     extraArgs.push("--plugin-dir", plugin);
-    subagentType = `hn-plugin:${NAME}`;
+    subagentType = `${PLUGIN}:${NAME}`;
   }
-  const delegates = ["direct", "complete", "plugin", "generated"].includes(caseName);
+  if (caseName === "packaged") {
+    extraArgs.push("--plugin-dir", await buildPackaged(join(scratch, "..", "packaged"), "claude"));
+    subagentType = `${PLUGIN}:${NAME}`;
+  }
+  const delegates = ["direct", "complete", "plugin", "generated", "packaged", "plan-project", "plan-plugin"].includes(
+    caseName,
+  );
+  // A bypassing parent takes precedence over a subagent's own permission
+  // mode, so the plan-* cases run the parent in the default mode instead.
+  const permissions = caseName.startsWith("plan-") ? [] : ["--dangerously-skip-permissions"];
   const parentScript = delegates
     ? [
         {
@@ -365,7 +428,7 @@ async function claudeSession(caseName) {
         MODEL,
         "--settings",
         join(scratch, ".claude", "settings.json"),
-        "--dangerously-skip-permissions",
+        ...permissions,
         "--max-turns",
         "6",
         ...extraArgs,
@@ -495,10 +558,11 @@ async function codexSession(caseName, isolatedHome) {
   return { scratch, captured: join(scratch, "captured"), result, router, delegation: ["spawn_agent", "wait_agent"] };
 }
 
-function patchOpencodeV1Models(scratch) {
+function patchOpencodeV1Models(scratch, pluginPackage) {
   const path = join(scratch, "opencode.json");
   const config = JSON.parse(readFileSync(path, "utf8"));
   config.provider.drift.models[ALT_MODEL] = { name: ALT_MODEL, limit: { context: 32768, output: 4096 } };
+  if (pluginPackage !== undefined) config.plugin = [pluginPackage.replaceAll("\\", "/")];
   writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
 }
 
@@ -532,13 +596,19 @@ async function opencodeV1Session(caseName) {
   if (caseName === "cross") write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "inject") write(join(scratch, ".opencode/plugins/hn-inject.js"), V1_INJECTOR);
   if (caseName === "generated") await syncGenerated(scratch, "opencode-v1");
-  const delegates = ["direct", "maxsteps", "singular", "inject", "generated"].includes(caseName);
+  // Named by path from opencode.json, as a consumer would name the package.
+  const packaged = caseName === "packaged" ? await buildPackaged(join(scratch, "..", "packaged"), "opencode-v1") : undefined;
+  const delegates = ["direct", "maxsteps", "singular", "inject", "generated", "packaged"].includes(caseName);
   const parentScript = delegates
     ? [
         {
           kind: "tool",
           toolName: "task",
-          arguments: { description: "hn probe", prompt: DELEGATION, subagent_type: NAME },
+          arguments: {
+            description: "hn probe",
+            prompt: DELEGATION,
+            subagent_type: packaged === undefined ? NAME : `${PLUGIN}-${NAME}`,
+          },
         },
         { kind: "text", text: "parent complete" },
       ]
@@ -547,7 +617,7 @@ async function opencodeV1Session(caseName) {
   let result;
   try {
     writeOpencodeConfig(scratch, router.baseUrl, "hooknostic-playback", MODEL);
-    patchOpencodeV1Models(scratch);
+    patchOpencodeV1Models(scratch, packaged);
     result = await driveOpencode(scratch, MODEL, PROMPT);
   } finally {
     await router.close();
@@ -629,13 +699,18 @@ async function opencodeV2Session(caseName) {
   if (caseName === "neutral") write(join(project, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "generated") await syncGenerated(project, "opencode-v2");
-  const delegates = ["direct", "readonly", "inject", "generated"].includes(caseName);
+  const packaged = caseName === "packaged" ? await buildPackaged(join(root, "packaged"), "opencode-v2") : undefined;
+  const delegates = ["direct", "readonly", "inject", "generated", "packaged"].includes(caseName);
   const parentScript = delegates
     ? [
         {
           kind: "tool",
           toolName: "subagent",
-          arguments: { agent: NAME, description: "hn probe", prompt: DELEGATION },
+          arguments: {
+            agent: packaged === undefined ? NAME : `${PLUGIN}-${NAME}`,
+            description: "hn probe",
+            prompt: DELEGATION,
+          },
         },
         { kind: "text", text: "parent complete" },
       ]
@@ -645,6 +720,7 @@ async function opencodeV2Session(caseName) {
   write(
     join(project, "opencode.json"),
     JSON.stringify({
+      ...(packaged === undefined ? {} : { plugins: [packaged] }),
       model: `playback/${MODEL}`,
       providers: {
         playback: {
@@ -784,11 +860,11 @@ function record(harness, caseName, session) {
 }
 
 const CASES = {
-  claude: ["direct", "complete", "control", "neutral", "plugin", "generated"],
+  claude: ["direct", "complete", "control", "neutral", "plugin", "generated", "packaged", "plan-project", "plan-plugin"],
   codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated"],
   "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated"],
-  "opencode-v1": ["direct", "maxsteps", "singular", "control", "neutral", "cross", "inject", "generated"],
-  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject", "generated"],
+  "opencode-v1": ["direct", "maxsteps", "singular", "control", "neutral", "cross", "inject", "generated", "packaged"],
+  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject", "generated", "packaged"],
 };
 
 async function main() {

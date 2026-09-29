@@ -10,11 +10,17 @@ import {
   AGENT_PLUGIN_MCP_SCHEMA,
   type AgentPluginFile,
   type AgentPluginPackage,
+  parseMarkdownFrontmatter,
+  type SubagentDefinition,
 } from "@hooknostic/agent-plugin";
 import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { claudeAdapter } from "./index.js";
-import { claudeAgentPluginProjector, projectAgentPluginToClaude } from "./project-agent-plugin.js";
+import {
+  claudeAgentPluginProjector,
+  PLUGIN_AGENT_FIELD_IGNORED,
+  projectAgentPluginToClaude,
+} from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
 const file = (path: string, contents: string | Uint8Array, mode = 0o644): AgentPluginFile => ({
@@ -1003,5 +1009,85 @@ describe("Agent Plugin to Claude projection", () => {
         message: expect.stringContaining("collides with a materialized package tree"),
       }),
     );
+  });
+});
+
+describe("subagents in a Claude package projection", () => {
+  const subagent = (name: string, native: SubagentDefinition["native"] = {}): SubagentDefinition => ({
+    name,
+    description: `${name} description`,
+    instructions: `${name} instructions\n`,
+    native,
+    source: `/project/agents/${name}.md`,
+  });
+  const project = (portable: AgentPluginPackage, subagents: SubagentDefinition[], matrix: typeof support = support) =>
+    projectAgentPluginToClaude(portable, {
+      target,
+      support: matrix,
+      onUnsupported: "error",
+      hookArtifacts: [],
+      subagents,
+    });
+  const frontmatter = (plan: Awaited<ReturnType<typeof project>>, path: string) => {
+    const artifact = plan.files.find((candidate) => candidate.path === path);
+    expect(artifact, path).toBeDefined();
+    const text =
+      typeof artifact!.contents === "string" ? artifact!.contents : new TextDecoder().decode(artifact!.contents);
+    const { data, body } = parseMarkdownFrontmatter(text, path);
+    return { data: data as Record<string, unknown>, body };
+  };
+
+  it("writes each definition to the plugin's agents directory under its authored name", async () => {
+    const plan = await project(source(), [subagent("reviewer", { claude: { model: "sonnet", tools: ["Read"] } })]);
+    expect(plan.issues).toEqual([]);
+    // Claude qualifies a plugin agent itself (`portable-tools:reviewer`), so the
+    // authored name is kept, and native fields ride in the frontmatter.
+    expect(frontmatter(plan, "agents/reviewer.md")).toEqual({
+      data: { name: "reviewer", description: "reviewer description", model: "sonnet", tools: ["Read"] },
+      body: "reviewer instructions\n",
+    });
+    expect(plan.summary.components["subagents.definition"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    expect(plan.summary.components["subagents.native"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    // Generated, not copied: the definition is not package content.
+    expect(plan.summary.copiedPaths).not.toContain("agents/reviewer.md");
+    expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
+  });
+
+  it("refuses a package file already at a subagent's path, case-folded", async () => {
+    // Emitting over it would replace an authored file without a word; the two
+    // spellings are one file on a case-insensitive filesystem.
+    const plan = await project(source([file("Agents/Reviewer.md", "authored")]), [subagent("reviewer")]);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", component: "subagents.definition", path: "Agents/Reviewer.md" }),
+    );
+    expect(plan.files.some((candidate) => candidate.path === "agents/reviewer.md")).toBe(false);
+  });
+
+  it("reports a native field Claude ignores in a plugin's agent, and still writes it", async () => {
+    const plan = await project(source(), [
+      subagent("planner", { claude: { permissionMode: "plan" } }),
+      subagent("reviewer", { claude: { model: "sonnet" } }),
+    ]);
+    expect(plan.summary.degradations).toEqual([
+      expect.objectContaining({
+        id: PLUGIN_AGENT_FIELD_IGNORED,
+        component: "subagents.native",
+        name: "planner",
+        path: "/project/agents/planner.md",
+      }),
+    ]);
+    // The author's field stays in the file: a later Claude may honour it, and
+    // the report says it does not today.
+    expect(frontmatter(plan, "agents/planner.md").data["permissionMode"]).toBe("plan");
+  });
+
+  it("reports nothing once the matrix stops declaring the ignored field", async () => {
+    // The declaration is the switch (ADR-0019): a profile for a Claude that
+    // honours the field drops it, and with it the report.
+    const plan = await project(source(), [subagent("planner", { claude: { permissionMode: "plan" } })], {
+      ...support,
+      "subagents.native": { level: "exact" },
+    });
+    expect(plan.summary.degradations).toBeUndefined();
   });
 });

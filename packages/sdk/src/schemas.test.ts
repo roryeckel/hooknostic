@@ -330,9 +330,11 @@ describe("canonical schemas", () => {
         .success,
     ).toBe(true);
     expect(hooknosticConfigSchema.safeParse({ ...project, components: { subagents: [] } }).success).toBe(false);
-    expect(() =>
-      hooknosticConfigSchema.parse({ ...project, components: { root: ".", subagents: ["./agents"] } }),
-    ).toThrow(/components\.subagents cannot be combined with components\.root yet/);
+    // With a package root, for package delivery (ADR-0027): the definitions are
+    // translated into each native package rather than shipped as package files.
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { root: ".", subagents: ["./agents"] } }).success,
+    ).toBe(true);
   });
 
   it("scopes component delivery invariants to selected targets", () => {

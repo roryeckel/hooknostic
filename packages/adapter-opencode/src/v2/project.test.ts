@@ -5,9 +5,16 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
+import {
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  type AgentPluginPackage,
+  type SubagentDefinition,
+} from "@hooknostic/agent-plugin";
+import { resolveAgentPluginProjection } from "@hooknostic/core";
 
-import { projectOpenCodeV2Components, projectOpenCodeV2Integration } from "./project.js";
+import { opencodeV2Harness } from "./harness.js";
+import { opencodeV2Projector, projectOpenCodeV2Components, projectOpenCodeV2Integration } from "./project.js";
 
 type Plugin = { id: string; setup(ctx: unknown): unknown };
 const roots: string[] = [];
@@ -116,5 +123,92 @@ describe("OpenCode v2 project wiring in nested checkouts", () => {
     const urls = await serve([outer.plugin, outer.components], inside);
     expect(served).toEqual(["outer"]);
     expect(urls).toEqual(["https://outer.invalid/mcp"]);
+  });
+});
+
+describe("OpenCode v2 package projection of subagents", () => {
+  const target = {
+    id: "opencode",
+    version: opencodeV2Harness.recommendedRange,
+    delivery: "package" as const,
+    output: "dist",
+  };
+  const support = resolveAgentPluginProjection(target, opencodeV2Projector).matrix!;
+  const pkg: AgentPluginPackage = {
+    specVersion: "1.0.0",
+    root: "/portable",
+    manifest: { $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable-tools", version: "1.0.0" },
+    skills: [],
+    files: [{ path: "plugin.json", contents: new TextEncoder().encode("{}"), mode: 0o644 }],
+    contentDigest: "sha256:source",
+  };
+  const subagent = (name: string, native: SubagentDefinition["native"] = {}): SubagentDefinition => ({
+    name,
+    description: `${name} description`,
+    instructions: `${name} instructions\n`,
+    native,
+    source: `/project/agents/${name}.md`,
+  });
+
+  it("upserts each subagent through the agent domain under its plugin-qualified id", async () => {
+    const plan = await opencodeV2Projector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+      subagents: [subagent("reviewer", { opencode: { model: "provider/model" } }), subagent("planner")],
+    });
+    expect(plan.issues).toEqual([]);
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-v2-agents-"));
+    roots.push(root);
+    const modulePath = join(root, "hooknostic-agent-plugin.js");
+    const artifact = plan.files.find((file) => file.path === "hooknostic-agent-plugin.js")!;
+    await writeFile(join(root, "package.json"), '{ "type": "module" }\n');
+    await writeFile(modulePath, text(artifact.contents));
+    const plugin = ((await import(pathToFileURL(modulePath).href)) as { default: Plugin }).default;
+    // The editor has no add; update on an unknown id upserts (.capture/agents).
+    const agents: Record<string, Record<string, unknown>> = {};
+    await plugin.setup({
+      agent: {
+        transform: async (
+          edit: (editor: { update(id: string, fn: (agent: Record<string, unknown>) => void): void }) => void,
+        ) =>
+          edit({
+            update: (id, fn) => {
+              const agent = agents[id] ?? {};
+              fn(agent);
+              agents[id] = agent;
+            },
+          }),
+      },
+    });
+    expect(agents).toEqual({
+      "portable-tools-reviewer": {
+        id: "portable-tools-reviewer",
+        description: "reviewer description",
+        mode: "subagent",
+        system: "reviewer instructions\n",
+      },
+      "portable-tools-planner": {
+        id: "portable-tools-planner",
+        description: "planner description",
+        mode: "subagent",
+        system: "planner instructions\n",
+      },
+    });
+    // The agent domain takes OpenCode's internal shape, so native fields are
+    // not carried -- and each definition that has them is reported.
+    expect(support["subagents.native"]?.level).toBe("unsupported");
+    expect(plan.summary.omissions).toEqual([
+      expect.objectContaining({ component: "subagents.native", name: "reviewer" }),
+    ]);
+    expect(plan.summary.components["subagents.definition"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
+    expect(plan.summary.components["subagents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+  });
+
+  it("registers no agents for a package with none", async () => {
+    const plan = await opencodeV2Projector.project(pkg, { target, hookArtifacts: [], support, onUnsupported: "error" });
+    const artifact = plan.files.find((file) => file.path === "hooknostic-agent-plugin.js")!;
+    expect(text(artifact.contents)).not.toContain("ctx.agent");
   });
 });

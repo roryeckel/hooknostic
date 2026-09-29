@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseMarkdownFrontmatter } from "@hooknostic/agent-plugin";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA, parseMarkdownFrontmatter } from "@hooknostic/agent-plugin";
 
+import { CODEX_PLUGIN_MODE_RANGE } from "../../adapter-codex/src/generate.js";
 import { opencodeV1Adapter, opencodeV2Harness } from "../../adapter-opencode/src/index.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";
@@ -184,4 +185,130 @@ describe("subagent project delivery", () => {
       }),
     );
   });
+});
+
+/** A hookless package build whose subagents are configured beside the package root. */
+async function packageFixture(
+  definitions: Record<string, string>,
+  options: {
+    targets?: Record<string, { version: string }>;
+    subagents?: string;
+    components?: Record<string, unknown>;
+  } = {},
+) {
+  const root = await mkdtemp(join(tmpdir(), "hooknostic-package-subagents-"));
+  dirs.push(root);
+  const directory = options.subagents ?? "agents";
+  await mkdir(join(root, "pkg"), { recursive: true });
+  await mkdir(join(root, directory), { recursive: true });
+  await writeFile(
+    join(root, "pkg/plugin.json"),
+    JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "portable-tools", version: "1.0.0" }),
+  );
+  for (const [file, text] of Object.entries(definitions)) await writeFile(join(root, directory, file), text);
+  const registry = defaultAdapterRegistry();
+  const targets = Object.fromEntries(
+    Object.entries(options.targets ?? { claude: { version: registry.claude!.harness.recommendedRange } }).map(
+      ([name, target]) => [name, { ...target, delivery: "package", output: `dist/${name}` }],
+    ),
+  );
+  const config = {
+    components: { root: "./pkg", subagents: [`./${directory}`], ...options.components },
+    targets,
+  };
+  const configPath = join(root, "hooknostic.config.ts");
+  await writeFile(configPath, `export default ${JSON.stringify(config)};`);
+  return { root, options: { configPath, registry, evaluate } };
+}
+
+describe("subagent package delivery", () => {
+  it("projects definitions configured beside a package into the Claude plugin", async () => {
+    const { root, options } = await packageFixture({ "reviewer.md": REVIEWER });
+
+    const built = await buildProject(options);
+
+    expect(built.report.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+    expect(built.ok).toBe(true);
+    const agent = parseMarkdownFrontmatter(await readFile(join(root, "dist/claude/agents/reviewer.md"), "utf8"), "a");
+    expect(agent.data).toEqual({
+      name: "reviewer",
+      description: "Reviews diffs for correctness. Use after code changes.",
+      model: "sonnet",
+      tools: ["Read", "Grep"],
+    });
+    expect(built.report.targets["claude"]?.projection?.components).toMatchObject({
+      "subagents.definition": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      "subagents.native": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+    });
+  }, 60_000);
+
+  it("translates a definitions directory inside the package root instead of shipping it", async () => {
+    // Copied verbatim, pkg/agents/reviewer.md would land on the very path the
+    // translation is emitted at, and Claude would read the portable file --
+    // `native:` block and all -- as its own agent.
+    const { root, options } = await packageFixture({ "reviewer.md": REVIEWER }, { subagents: "pkg/agents" });
+
+    const built = await buildProject(options);
+
+    expect(built.report.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+    const agent = parseMarkdownFrontmatter(await readFile(join(root, "dist/claude/agents/reviewer.md"), "utf8"), "a");
+    expect(agent.data).not.toHaveProperty("native");
+    expect(agent.data).toMatchObject({ model: "sonnet" });
+  }, 60_000);
+
+  it("refuses subagents for a Codex package, which has no agents route, unless told to warn", async () => {
+    const targets = { codex: { version: CODEX_PLUGIN_MODE_RANGE } };
+    const refused = await buildProject({
+      ...(await packageFixture({ "reviewer.md": REVIEWER }, { targets })).options,
+      dryRun: true,
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", target: "codex", component: "subagents.definition" }),
+    );
+
+    const warned = await buildProject({
+      ...(await packageFixture({ "reviewer.md": REVIEWER }, { targets, components: { onUnsupported: "warn" } }))
+        .options,
+      dryRun: true,
+    });
+    expect(warned.ok).toBe(true);
+    expect(warned.report.targets["codex"]?.projection?.components).toMatchObject({
+      "subagents.definition": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+    });
+  }, 60_000);
+
+  it("refuses a native field the harness reserves, as project delivery does", async () => {
+    const { options } = await packageFixture({
+      "reviewer.md": REVIEWER.replace("    model: sonnet\n", "    hooks: {}\n"),
+    });
+
+    const built = await buildProject({ ...options, dryRun: true });
+
+    expect(built.ok).toBe(false);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        target: "claude",
+        component: "subagents.native",
+        message: expect.stringContaining("native.claude.hooks"),
+      }),
+    );
+  }, 60_000);
+
+  it("fails on a native field a Claude plugin agent ignores, unless it is accepted", async () => {
+    const definition = { "reviewer.md": REVIEWER.replace("    model: sonnet\n", "    permissionMode: plan\n") };
+
+    const failed = await buildProject({ ...(await packageFixture(definition)).options, dryRun: true });
+    expect(failed.ok).toBe(false);
+    expect(failed.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN101", severity: "error", target: "claude" }),
+    );
+
+    const accepted = await buildProject({
+      ...(await packageFixture(definition, { components: { accept: ["claude:plugin-agent-field-ignored"] } })).options,
+      dryRun: true,
+    });
+    expect(accepted.ok).toBe(true);
+  }, 60_000);
 });

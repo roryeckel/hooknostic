@@ -295,16 +295,6 @@ export const hooknosticConfigSchema = z
           message: "components.root is mutually exclusive with direct skills/mcp sources",
         });
       }
-      // A direct source for now: package delivery of subagents, and with it a
-      // decision on where they live beside an Agent Plugins package, is still
-      // open (ADR-0027).
-      if (config.components.root !== undefined && config.components.subagents !== undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["components", "subagents"],
-          message: "components.subagents cannot be combined with components.root yet",
-        });
-      }
       if (config.components.root !== undefined && config.components.mcpOverrides !== undefined) {
         context.addIssue({
           code: z.ZodIssueCode.custom,

@@ -1,3 +1,5 @@
+import type { SubagentDefinition } from "./subagents.js";
+
 export const AGENT_PLUGIN_MANIFEST_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" as const;
 export const AGENT_PLUGIN_MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json" as const;
 
@@ -278,6 +280,13 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    * MUST remain literal (ADR-0011, ADR-0018).
    */
   mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Subagent definitions configured beside the package (`components.subagents`,
+   * ADR-0027). They are Hooknostic input, like hook source, not package
+   * content, so they arrive here rather than in the package: the Agent Plugins
+   * 1.0 format has no agents component to carry them.
+   */
+  subagents?: readonly SubagentDefinition[];
 }
 
 export interface AgentPluginProjectionSummary {

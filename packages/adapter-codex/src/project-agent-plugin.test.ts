@@ -1225,3 +1225,33 @@ describe("Codex client extension", () => {
     expect(plan.files.some((candidate) => candidate.path === "generated/shared/data.bin")).toBe(true);
   });
 });
+
+describe("subagents in a Codex package projection", () => {
+  // A Codex plugin cannot bundle agents (openai/codex#18988), so the profile
+  // declares both subagent components unsupported and the projection emits none.
+  it("declares subagents unsupported, emits nothing for them, and reports each one", async () => {
+    expect(support["subagents.definition"]?.level).toBe("unsupported");
+    expect(support["subagents.native"]?.level).toBe("unsupported");
+    const subagents = ["reviewer", "planner"].map((name) => ({
+      name,
+      description: `${name} description`,
+      instructions: `${name} instructions\n`,
+      native: name === "reviewer" ? { codex: { model: "m" } } : {},
+      source: `/project/agents/${name}.md`,
+    }));
+    const plan = await codexAgentPluginProjector.project(source(), {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "warn",
+      subagents,
+    });
+    expect(plan.files.filter((candidate) => /(reviewer|planner)\.(md|toml)$/.test(candidate.path))).toEqual([]);
+    expect(plan.summary.components["subagents.definition"]).toEqual({ discovered: 2, emitted: 0, skipped: 2 });
+    expect(plan.summary.components["subagents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(plan.summary.omissions.filter((item) => item.component === "subagents.definition")).toEqual([
+      expect.objectContaining({ name: "reviewer" }),
+      expect.objectContaining({ name: "planner" }),
+    ]);
+  });
+});

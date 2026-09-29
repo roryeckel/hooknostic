@@ -15,14 +15,17 @@ import {
   type AgentPluginProjectionSummary,
   classifyStdioCwd,
   type ComponentId,
+  discoverComponents,
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
+  loadSubagents,
   type McpServerCommand,
   mcpServerCommands,
   npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
+  type SubagentDefinition,
   validateContainedCommands,
 } from "@hooknostic/agent-plugin";
 import {
@@ -393,8 +396,9 @@ async function canonical(path: string): Promise<string> {
 /**
  * Hooknostic-project paths that must never ship inside a projected package:
  * transaction directories, native project wiring, the build report, every
- * target output, the config file itself, and the hook source entry (its
- * compiled runtime ships instead).
+ * target output, the config file itself, the hook source entry (its compiled
+ * runtime ships instead), and subagent definition directories (their native
+ * translations ship instead, ADR-0027).
  * Package-level junk (`node_modules`, `.env`, …) is excluded by the loader.
  *
  * The loader inventories the root's realpath, so every pattern is derived from
@@ -408,6 +412,7 @@ async function projectionExcludes(
   outputs: readonly string[],
   nativeProjectPaths: readonly string[],
   configured: readonly string[],
+  compiledSources: readonly string[] = [],
 ): Promise<string[]> {
   const root = await canonical(lexicalRoot);
   const configDir = await canonical(dirname(lexicalConfigPath));
@@ -417,6 +422,7 @@ async function projectionExcludes(
   const spellings = async (path: string): Promise<string[]> => [path, await canonical(path)];
   const configPaths = await spellings(join(configDir, basename(lexicalConfigPath)));
   const entryPaths = entry === undefined ? [] : await spellings(resolve(configDir, entry));
+  const sourcePaths = (await Promise.all(compiledSources.map((p) => spellings(resolve(configDir, p))))).flat();
   const exclusions = new Set<string>([".hooknostic-*", ".hooknostic-*/**", "**/.hooknostic-*", "**/.hooknostic-*/**"]);
   const configRelative = relative(root, configDir).replaceAll("\\", "/");
   if (
@@ -432,6 +438,7 @@ async function projectionExcludes(
     ...configPaths,
     ...(await spellings(join(configDir, "hooknostic-build.json"))),
     ...entryPaths,
+    ...sourcePaths,
     // Outputs get both spellings too: canonical, or an output spelled through
     // the root's alias falls outside the canonical root and the next build
     // inventories its own previous output; lexical, or an output spelled
@@ -454,6 +461,33 @@ async function projectionExcludes(
   }
   for (const pattern of configured) exclusions.add(pattern);
   return [...exclusions];
+}
+
+/**
+ * A `native.<harness>` field the adapter reserves -- for the portable
+ * definition, or for another component -- refused for one target. Every route
+ * that delivers native fields checks this, so a package build cannot drop a
+ * field that a project build rejects.
+ */
+function reservedNativeFields(
+  subagents: readonly SubagentDefinition[],
+  adapter: HarnessAdapter,
+  target: string,
+  onInvalid: "error" | "warn" = "error",
+): Diagnostic[] {
+  const reserved = adapter.subagents?.reservedNativeKeys ?? [];
+  return subagents.flatMap((subagent) =>
+    Object.keys(subagent.native[adapter.id] ?? {})
+      .filter((key) => reserved.includes(key))
+      .map((key): Diagnostic => ({
+        code: "HN503",
+        severity: onInvalid,
+        target,
+        component: "subagents.native",
+        location: { file: subagent.source },
+        message: `subagent ${JSON.stringify(subagent.name)} sets native.${adapter.id}.${key}, which ${adapter.id} reserves for the portable definition or another component`,
+      })),
+  );
 }
 
 function artifactDigest(artifacts: readonly GeneratedArtifact[], directories: readonly string[]): string {
@@ -540,20 +574,17 @@ function analyzedProjectionReport(
   resolution: AgentPluginProjectionResolution,
   namespace: string | undefined,
   hasRuntimePackage: boolean,
+  subagents: readonly SubagentDefinition[] | undefined,
+  harness: string,
 ): AgentPluginTargetReport {
-  const discovered = new Map<ComponentId, number>([["agent-plugin.manifest", 1]]);
-  if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
-  for (const type of ["stdio", "streamable-http", "sse"] as const) {
-    const count = Object.values(source.mcp?.mcpServers ?? {}).filter((server) => server.type === type).length;
-    if (count > 0) discovered.set(`agent-plugin.mcp.${type}`, count);
-  }
-  if (namespace !== undefined) {
-    const extensionFiles = source.files.filter((file) => file.path.startsWith(`${namespace}/`)).length;
-    const manifestExtension = source.manifest.extensions?.[namespace] === undefined ? 0 : 1;
-    const extensions = extensionFiles + manifestExtension;
-    if (extensions > 0) discovered.set("agent-plugin.client-extension.files", extensions);
-  }
-  if (hasRuntimePackage) discovered.set("agent-plugin.runtime-package", 1);
+  // The projector's own discovery, so the analyzed counts and the counts a
+  // successful projection replaces them with cannot disagree.
+  const discovered = discoverComponents(source, {
+    ...(namespace === undefined ? {} : { namespace }),
+    hasRuntimePackage,
+    ...(subagents === undefined ? {} : { subagents }),
+    harness,
+  });
   const unsupported = new Set(
     resolution.diagnostics.flatMap((diagnostic) =>
       diagnostic.code === "HN205" && diagnostic.component !== undefined ? [diagnostic.component] : [],
@@ -676,6 +707,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         Object.values(config.targets).map((target) => target.output),
         nativeProjectPaths,
         config.components.exclude ?? [],
+        config.components.subagents ?? [],
       ),
     });
     diagnostics.push(
@@ -722,8 +754,21 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
   }
 
   let componentSource: ProjectComponents | undefined;
-  if (components) componentSource = packageComponents(components);
-  else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
+  if (components) {
+    componentSource = packageComponents(components);
+    // Definitions beside a package are Hooknostic input, like hook source:
+    // projectors translate them into each native package, and project targets
+    // receive them as they would from a direct source (ADR-0027).
+    if (config.components?.subagents !== undefined) {
+      const loaded = await loadSubagents({
+        directories: config.components.subagents.map((path) => resolve(configDir, path)),
+      });
+      diagnostics.push(
+        ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),
+      );
+      componentSource.subagents = loaded.subagents;
+    }
+  } else if (config.components && (selectedPackageProjection || selectedProjectProjection)) {
     const loaded = await loadProjectComponents({
       ...(config.components.skills === undefined
         ? {}
@@ -741,24 +786,24 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     diagnostics.push(
       ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),
     );
-    // The specification requires rejecting a harness key the consumer does not
-    // know: a misspelt `native.cluade` must fail rather than quietly emit
-    // nothing for Claude. Any registered adapter counts, targeted or not.
-    for (const subagent of loaded.source.subagents ?? []) {
-      for (const harness of Object.keys(subagent.native)) {
-        if (Object.hasOwn(options.registry, harness)) continue;
-        diagnostics.push({
-          code: "HN503",
-          severity: config.components.onInvalid ?? "error",
-          component: "subagents.native",
-          location: { file: subagent.source },
-          message: `subagent ${JSON.stringify(subagent.name)} has native fields for unknown harness ${JSON.stringify(harness)}; known: ${Object.keys(options.registry).join(", ")}`,
-        });
-      }
-    }
-    if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
+  // The specification requires rejecting a harness key the consumer does not
+  // know: a misspelt `native.cluade` must fail rather than quietly emit
+  // nothing for Claude. Any registered adapter counts, targeted or not.
+  for (const subagent of componentSource?.subagents ?? []) {
+    for (const harness of Object.keys(subagent.native)) {
+      if (Object.hasOwn(options.registry, harness)) continue;
+      diagnostics.push({
+        code: "HN503",
+        severity: config.components?.onInvalid ?? "error",
+        component: "subagents.native",
+        location: { file: subagent.source },
+        message: `subagent ${JSON.stringify(subagent.name)} has native fields for unknown harness ${JSON.stringify(harness)}; known: ${Object.keys(options.registry).join(", ")}`,
+      });
+    }
+  }
+  if (hasFatal(diagnostics)) return fail();
   if (componentSource !== undefined && (selectedPackageProjection || selectedProjectProjection))
     report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
   if (config.components?.root === undefined && componentSource && selectedPackageProjection) {
@@ -841,6 +886,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
+        componentSource?.subagents,
+      );
+      resolution.diagnostics.push(
+        ...reservedNativeFields(componentSource?.subagents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -848,6 +897,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         resolution,
         adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
+        componentSource?.subagents,
+        adapterFor(id)!.id,
       );
       if (hasFatal(resolution.diagnostics)) {
         diagnostics.push(...resolution.diagnostics);
@@ -990,6 +1041,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
+        componentSource?.subagents,
+      );
+      resolution.diagnostics.push(
+        ...reservedNativeFields(componentSource?.subagents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -998,6 +1053,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         resolution,
         adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
+        componentSource?.subagents,
+        adapterFor(id)!.id,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
@@ -1119,6 +1176,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(config.components!.mcpEnvironment === undefined
               ? {}
               : { mcpEnvironment: config.components!.mcpEnvironment }),
+            ...(componentSource?.subagents === undefined ? {} : { subagents: componentSource.subagents }),
           });
           const projectedDiagnostics = [
             ...diagnosticsFromAgentPluginIssues(plan.issues, id),
@@ -1317,20 +1375,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             // A native block reaches the harness only through a delivered
             // definition, so it is counted after the definitions are settled.
             // Fields the adapter reserves are refused before anything counts.
-            for (const subagent of selectedSource.subagents ?? []) {
-              if (!Object.hasOwn(subagent.native, adapter.id)) continue;
-              for (const key of Object.keys(subagent.native[adapter.id]!)) {
-                if (!(adapter.subagents?.reservedNativeKeys ?? []).includes(key)) continue;
-                diagnostics.push({
-                  code: "HN503",
-                  severity: config.components?.onInvalid ?? "error",
-                  target: id,
-                  component: "subagents.native",
-                  location: { file: subagent.source },
-                  message: `subagent ${JSON.stringify(subagent.name)} sets native.${adapter.id}.${key}, which ${adapter.id} reserves for the portable definition or another component`,
-                });
-              }
-            }
+            diagnostics.push(
+              ...reservedNativeFields(selectedSource.subagents ?? [], adapter, id, config.components?.onInvalid),
+            );
             if (!count("subagents.definition", selectedSource.subagents?.length ?? 0)) selectedSource.subagents = [];
             const nativeBlocks = (selectedSource.subagents ?? []).filter((subagent) =>
               Object.hasOwn(subagent.native, adapter.id),

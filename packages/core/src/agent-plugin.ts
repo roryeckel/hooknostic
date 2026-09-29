@@ -13,6 +13,8 @@ import {
   type AgentPluginRuntimePackage,
   COMPONENT_IDS,
   type ComponentId,
+  discoverComponents,
+  type SubagentDefinition,
 } from "@hooknostic/agent-plugin";
 import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
@@ -238,21 +240,17 @@ function discoveredComponents(
   source: AgentPluginPackage,
   namespace: string,
   runtimePackage?: AgentPluginRuntimePackage,
+  subagents?: readonly SubagentDefinition[],
+  harness?: string,
 ): ComponentId[] {
-  const ids = new Set<ComponentId>(["agent-plugin.manifest"]);
-  if (source.skills.length > 0) ids.add("agent-plugin.skills");
-  for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
-    ids.add(`agent-plugin.mcp.${server.type}` as ComponentId);
-  }
-  if (
-    namespace !== "" &&
-    (source.files.some((file) => file.path.startsWith(`${namespace}/`)) ||
-      source.manifest.extensions?.[namespace] !== undefined)
-  ) {
-    ids.add("agent-plugin.client-extension.files");
-  }
-  if (runtimePackage !== undefined) ids.add("agent-plugin.runtime-package");
-  return [...ids];
+  return [
+    ...discoverComponents(source, {
+      namespace,
+      hasRuntimePackage: runtimePackage !== undefined,
+      ...(subagents === undefined ? {} : { subagents }),
+      ...(harness === undefined ? {} : { harness }),
+    }).keys(),
+  ];
 }
 
 export function analyzeAgentPluginProjection(
@@ -267,6 +265,8 @@ export function analyzeAgentPluginProjection(
    * does; without it, package delivery accepted any supported level.
    */
   compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
+  /** `components.subagents` definitions, delivered inside the package (ADR-0027). */
+  subagents?: readonly SubagentDefinition[],
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -285,6 +285,8 @@ export function analyzeAgentPluginProjection(
             source,
             "",
             runtimePackage,
+            subagents,
+            adapter.id,
           )
             .map((component) => JSON.stringify(component))
             .join(", ")} cannot be projected.`,
@@ -295,7 +297,7 @@ export function analyzeAgentPluginProjection(
   }
   const resolved = resolveAgentPluginProjection(target, projector);
   if (!resolved.matrix) return resolved;
-  for (const component of discoveredComponents(source, projector.namespace, runtimePackage)) {
+  for (const component of discoveredComponents(source, projector.namespace, runtimePackage, subagents, adapter.id)) {
     const support = resolved.matrix[component] ?? { level: "unsupported" as const };
     if (support.level === "unsupported") {
       resolved.diagnostics.push({

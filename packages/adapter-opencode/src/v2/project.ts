@@ -2,7 +2,13 @@ import type { AgentPluginPackage, AgentPluginProjectionProfile, AgentPluginProje
 import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
 import { projectComponents, projectIntegrationWith } from "../project.js";
-import { createOpenCodeAgentPluginProjector, RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT } from "../project-agent-plugin.js";
+import {
+  createOpenCodeAgentPluginProjector,
+  type OpenCodePackageAgent,
+  RUNTIME_LAUNCHER,
+  RUNTIME_PLUGIN_ROOT,
+  SUBAGENT_NAME_UNQUALIFIED,
+} from "../project-agent-plugin.js";
 import { opencodeV2Harness } from "./harness.js";
 
 // v2 loads .opencode/plugins from every ancestor of the session directory and
@@ -85,7 +91,7 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/subagent-playback.test.ts).",
+          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/subagent-playback.test.ts). A plugin's agent transform upserted an unknown id through update; a package built with a portable definition beside its root and named in opencode.json plugins registered it that way as <plugin>-<name>, which was offered, delegated to and ran on its instructions, on the parent's model -- and again, without mode: subagent it could not be selected.",
         },
         {
           version: opencodeV2Harness.referenceVersion,
@@ -163,8 +169,21 @@ export function v2PackageEntry({
   ].join("\n");
 }
 
-function injector(source: AgentPluginPackage, servers: Record<string, unknown>): string {
+function injector(
+  source: AgentPluginPackage,
+  servers: Record<string, unknown>,
+  agents: readonly OpenCodePackageAgent[],
+): string {
   const skills = source.skills.map((skill) => ({ ...skill, id: `${source.manifest.name}/${skill.name}` }));
+  // The agent editor has no add, and update on an unknown id upserts it; the id
+  // is the name the subagent tool selects (.capture/agents). Only these four
+  // fields were observed taking effect, which is why native fields are omitted.
+  const definitions = agents.map((agent) => ({
+    id: agent.name,
+    description: agent.description,
+    mode: "subagent",
+    system: agent.instructions,
+  }));
   return `import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -173,7 +192,7 @@ const root = join(here, "package");
 const launcher = join(here, "hooknostic-runtime", "mcp-launcher.mjs");
 const servers = JSON.parse(${JSON.stringify(JSON.stringify(servers))});
 const skills = ${JSON.stringify(skills)};
-${conversion}
+${definitions.length === 0 ? "" : `const agents = JSON.parse(${JSON.stringify(JSON.stringify(definitions))});\n`}${conversion}
 const resolve = value => value.split(${JSON.stringify(RUNTIME_LAUNCHER)}).join(launcher).split(${JSON.stringify(RUNTIME_PLUGIN_ROOT)}).join(root);
 export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.name}`)}, async setup(ctx) {
   if (Object.keys(servers).length) await ctx.mcp.transform(editor => {
@@ -186,7 +205,7 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
     content: readFileSync(join(root, skill.manifestPath), "utf8").replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n/, ""),
   }));
   if (values.length) await ctx.skill.transform(editor => { for (const skill of values) editor.add(skill); });
-} };\n`;
+${definitions.length === 0 ? "" : "  await ctx.agent.transform(editor => { for (const agent of agents) editor.update(agent.id, target => Object.assign(target, agent)); });\n"}} };\n`;
 }
 
 export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
@@ -202,14 +221,23 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
         rationale:
           "Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain.",
       },
-      // Replaced by captured levels when package projection emits subagents (ADR-0027).
       "subagents.definition": {
-        level: "unsupported",
-        rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "emulated",
+        rationale:
+          "Registered through the v2 agent domain, whose editor upserts an unknown id, with mode: subagent and the instructions as its system prompt. The id is the name the subagent tool selects, so each is named <plugin>-<name>, the nearest spelling of the plugin-qualified name Claude gives a plugin agent; the qualification is the projection's, not OpenCode's.",
+        degradations: [
+          {
+            id: SUBAGENT_NAME_UNQUALIFIED,
+            summary:
+              "A subagent that cannot be named `<plugin>-<name>` -- the name would pass 64 characters or break the name rules, or duplicate another subagent in the build -- keeps its bare id, which it shares with the project's agents and every other plugin's.",
+            evidence: ".capture/agents",
+          },
+        ],
       },
       "subagents.native": {
         level: "unsupported",
-        rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+        rationale:
+          "The agent domain takes OpenCode's internal agent shape, not the frontmatter a project file carries, and only id, description, mode and system were observed taking effect through it. native.opencode fields are omitted and each subagent declaring them is reported; deliver to a project target to keep them.",
       },
     },
   })),

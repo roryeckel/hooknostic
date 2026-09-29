@@ -28,8 +28,10 @@ The playback transport is constructed, as in
 [`../harness-playback/README.md`](../harness-playback/README.md). What the
 harness sent to the model is observed live. That covers the delegation tool's
 live schema, the child's system/developer text, its tool declarations and its
-`model` field. The agent files are hand-written in each harness's native format.
-Hooknostic generated nothing here.
+`model` field. The agent files are hand-written in each harness's native format,
+except in the `generated` and `packaged` cases, which deliver a portable
+definition through Hooknostic's own build
+([below](#reference-builds-generated-definitions-and-packages)).
 
 Every claim below comes from one run of a drive. A different build is a new
 question.
@@ -154,6 +156,11 @@ Notes:
 - **Claude:** `--plugin-dir` with `agents/hn-probe.md` lists the agent as
   `hn-plugin:hn-probe`. Delegating by the qualified name delivered the
   instructions, tool list and model.
+  - **A plugin agent ignores `permissionMode`.** The `plan-*` cases give the
+    agent no tool list and `permissionMode: plan`, and run the parent without
+    `--dangerously-skip-permissions`, since a bypassing parent overrides a
+    subagent's mode. As a project agent, the child's tools included
+    `ExitPlanMode`. As a plugin agent, with the same file, they did not.
 - **OpenCode v1:** a plugin whose `config` hook assigns
   `config.agent["hn-probe"]` produced a discovered, delegable agent with its
   instructions and model.
@@ -189,7 +196,7 @@ Notes:
 - **OpenCode v2:** the child's `execute.before` carries `agent: "hn-probe"`, and
   the parent's carries `agent: "build"`.
 
-### Reference builds and generated definitions
+### Reference builds, generated definitions and packages
 
 The drive was re-run at each adapter's reference build, the version CI's
 playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
@@ -207,14 +214,30 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
   was advertised to the parent, delegated to, and ran on its instructions and
   native model; on Claude it also ran on its native tool list, and its result
   came back.
-- **OpenCode v2 needs `mode: subagent`.** A mutant emitting the v2 file without
-  it failed: v2's `subagent` tool could not select the agent, which confirms
-  the documented `primary` default.
+- **The `packaged` case** (Claude and both OpenCode families; Codex has no
+  package route). It configures the same definition beside a minimal Agent
+  Plugins package, `hn-plugin`, builds that for package delivery outside the
+  project, and loads the built package: Claude through `--plugin-dir`, OpenCode
+  by naming its directory in `opencode.json` (`plugin` on v1, `plugins` on v2).
+  On every build above, the parent was offered the agent under the name the
+  projection gives it, `hn-plugin:hn-probe` on Claude and `hn-plugin-hn-probe`
+  on OpenCode; delegated to, it ran on its instructions and its result came
+  back. On Claude and OpenCode v1 it also ran on its native model (and on
+  Claude its native tool list). OpenCode v2's package route carries no native
+  fields, so there it ran on the parent's model, and the definition is written
+  without them.
+- **OpenCode v2 needs `mode: subagent`, on both routes.** A mutant emitting the
+  v2 file without it failed: v2's `subagent` tool could not select the agent,
+  which confirms the documented `primary` default. A mutant registering the
+  packaged agent through the agent transform without it failed the same way.
 
-`packages/cli/test/subagent-playback.test.ts` runs the `generated` case in CI's
-playback lanes (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the harness-watch verify
-lane, so this evidence is re-established on every change and every new harness
-build.
+`packages/cli/test/subagent-playback.test.ts` runs the `generated` and `packaged`
+cases in CI's playback lanes (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the
+harness-watch verify lane, so this evidence is re-established on every change
+and every new harness build. Each package route was checked against a mutant
+that breaks it: the Claude agents directory moved, the OpenCode v1 agent loop
+emptied or its native fields dropped, the v2 transform removed. Each mutant
+failed the test.
 
 ## Consequences
 

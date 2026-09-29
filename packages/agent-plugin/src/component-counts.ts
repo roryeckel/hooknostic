@@ -1,3 +1,4 @@
+import type { SubagentDefinition } from "./subagents.js";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginPackage,
@@ -5,7 +6,7 @@ import {
   type ComponentId,
 } from "./types.js";
 
-export interface ComponentSummaryOptions {
+export interface ComponentDiscoveryOptions {
   /**
    * The reverse-DNS client-extension namespace this projector supports, if any.
    *
@@ -18,24 +19,29 @@ export interface ComponentSummaryOptions {
    */
   namespace?: string;
   hasRuntimePackage?: boolean;
+  /** Subagent definitions configured beside the package (ADR-0027). */
+  subagents?: readonly SubagentDefinition[];
+  /** The harness key whose `native` blocks `subagents.native` counts. */
+  harness?: string;
+}
+
+export interface ComponentSummaryOptions extends ComponentDiscoveryOptions {
   /** How many of `discovered` this projector will not hand the harness. */
   skipped?: (component: ComponentId, discovered: number) => number;
 }
 
 /**
- * What a projector found in the package, and how much of it the harness gets.
+ * Every component a package build carries, with how many items each has.
  *
- * Discovery mirrors core's own (`discoveredComponents`), which is the point of
- * sharing it: the build report replaces the analyzed counts with the
- * projector's, so a projector counting for itself is a standing chance for a
- * component the analysis phase saw to vanish from the report. Only presence is
- * decided here; the emitted/skipped split is per-harness and comes from
- * `skipped`.
+ * The one discovery the analysis phase, the analyzed report and every projector
+ * share: the build report replaces the analyzed counts with the projector's, so
+ * two discoveries that disagree are a standing chance for a component the
+ * analysis phase saw to vanish from the report.
  */
-export function componentSummary(
+export function discoverComponents(
   source: AgentPluginPackage,
-  options: ComponentSummaryOptions = {},
-): AgentPluginProjectionPlan["summary"]["components"] {
+  options: ComponentDiscoveryOptions = {},
+): Map<ComponentId, number> {
   const namespace = options.namespace ?? "";
   const discovered = new Map<ComponentId, number>([["agent-plugin.manifest", 1]]);
 
@@ -58,8 +64,27 @@ export function componentSummary(
 
   if (options.hasRuntimePackage === true) discovered.set("agent-plugin.runtime-package", 1);
 
+  const subagents = options.subagents ?? [];
+  if (subagents.length > 0) discovered.set("subagents.definition", subagents.length);
+  const harness = options.harness;
+  const native =
+    harness === undefined ? 0 : subagents.filter((subagent) => Object.hasOwn(subagent.native, harness)).length;
+  if (native > 0) discovered.set("subagents.native", native);
+
+  return discovered;
+}
+
+/**
+ * What a projector found in the package, and how much of it the harness gets.
+ * Only presence is decided here; the emitted/skipped split is per-harness and
+ * comes from `skipped`.
+ */
+export function componentSummary(
+  source: AgentPluginPackage,
+  options: ComponentSummaryOptions = {},
+): AgentPluginProjectionPlan["summary"]["components"] {
   const components: AgentPluginProjectionPlan["summary"]["components"] = {};
-  for (const [component, count] of discovered) {
+  for (const [component, count] of discoverComponents(source, options)) {
     const skipped = Math.min(options.skipped?.(component, count) ?? 0, count);
     components[component] = { discovered: count, emitted: count - skipped, skipped };
   }

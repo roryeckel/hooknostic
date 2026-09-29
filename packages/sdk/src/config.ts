@@ -257,9 +257,9 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         skills?: never;
         mcp?: never;
         mcpOverrides?: never;
-        // Subagent definitions are a direct source; package delivery of them
-        // is not implemented yet (ADR-0027).
-        subagents?: never;
+        // Hooknostic input beside the package, like hook source: projectors
+        // translate them into each native package (ADR-0027).
+        subagents?: SubagentSources;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
         /**
@@ -323,7 +323,9 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
 /**
  * Directories of Hooknostic Subagent Definition files: flat `<name>.md` files,
  * YAML frontmatter plus the instructions as the body
- * (`docs/spec/subagents/0.1.md`, ADR-0027). Delivered by project delivery.
+ * (`docs/spec/subagents/0.1.md`, ADR-0027). Project delivery writes each
+ * harness's own agent file; beside `root`, package delivery carries them in the
+ * projected package where the harness supports it.
  */
 type SubagentSources = [string, ...string[]];
 

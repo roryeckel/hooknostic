@@ -529,14 +529,14 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           rationale:
             "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
         },
-        // Replaced by captured levels when package projection emits subagents (ADR-0027).
         "subagents.definition": {
           level: "unsupported",
-          rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+          rationale:
+            "Codex's plugin format has no agents component: OpenAI tracks bundling agents in a plugin as an open request (openai/codex#18988), and no route was probed that Codex reads from an installed plugin. Deliver subagents to a Codex project target, which reads .codex/agents.",
         },
         "subagents.native": {
           level: "unsupported",
-          rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+          rationale: "Native fields ride on a delivered definition, and a Codex plugin cannot deliver one.",
         },
       },
       source: {
@@ -1283,8 +1283,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const counts = componentSummary(source, {
       namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
       hasRuntimePackage: context.runtimePackage !== undefined,
+      ...(context.subagents === undefined ? {} : { subagents: context.subagents }),
+      harness: "codex",
       skipped: (component, discovered) =>
-        component === "agent-plugin.runtime-package"
+        component === "agent-plugin.runtime-package" || component.startsWith("subagents.")
           ? discovered
           : component === "agent-plugin.client-extension.files"
             ? ignoredCompatibilityOverlays
@@ -1294,6 +1296,15 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       omissions.push({
         component: "agent-plugin.runtime-package",
         reason: "Codex is not known to install a plugin's npm dependencies",
+      });
+    }
+    // Analysis already reported the unsupported component; nothing is emitted,
+    // because a plugin has no agents route Codex is known to read.
+    for (const subagent of context.subagents ?? []) {
+      omissions.push({
+        component: "subagents.definition",
+        name: subagent.name,
+        reason: "a Codex plugin has no agents route; deliver subagents to a project target instead",
       });
     }
 
