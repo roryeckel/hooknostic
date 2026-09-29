@@ -901,8 +901,10 @@ Plugins 1.0 has no agents component. `components.agents` names directories of
 [Hooknostic Agent Definition 0.1](spec/agents/0.1.md) files, parsed into one
 `AgentDefinition` model that each projector translates into its native package: a
 Claude plugin's `agents/`, or an agent registered by the generated OpenCode module. A
-Codex plugin has no route. Their component ids, `agents.definition` and
-`agents.native`, share the profiles, levels and shortfall classes above, and a
+Codex plugin has no route. Their component ids share the profiles, levels and
+shortfall classes above: `agents.definition` for every definition,
+`agents.primary` for each one whose `mode` lets a session run as it (unsupported
+on Codex, which has no such agents), and `agents.native` for the passthrough. A
 definitions directory inside the package root is excluded from its inventory.
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,

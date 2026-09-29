@@ -28,7 +28,7 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
-import { renderClaudeAgent } from "./project.js";
+import { PRIMARY_AGENT_DELEGABLE, primaryDelegableDeviations, renderClaudeAgent } from "./project.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
 const MANIFEST_PATH = ".claude-plugin/plugin.json";
@@ -541,6 +541,7 @@ export async function projectAgentPluginToClaude(
         continue;
       }
       files.set(path, { path, contents: rendered.contents });
+      deviations.push(...primaryDelegableDeviations([agent], context.support["agents.primary"]));
       const ignored = Object.keys(agent.native["claude"] ?? {}).filter((key) =>
         PLUGIN_AGENT_IGNORED_FIELDS.includes(key),
       );
@@ -638,7 +639,20 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agents.definition": {
           level: "exact",
           rationale:
-            "Written to the plugin's agents/<name>.md. Claude offers it to the parent as <plugin>:<name> with its description, and the instructions become its system prompt, as for a project agent.",
+            "Written to the plugin's agents/<name>.md, one file whatever the mode. Claude offers it to the parent as <plugin>:<name> with its description, and the instructions become its system prompt, as for a project agent.",
+        },
+        "agents.primary": {
+          level: "exact",
+          rationale:
+            "A plugin's agent runs as a session through claude --agent <plugin>:<name>, or its bare name where no other agent shares it, on its instructions, native tools and model; the session's events name it <plugin>:<name>.",
+          deviations: [
+            {
+              id: PRIMARY_AGENT_DELEGABLE,
+              summary:
+                "Claude has no agent mode, so it also offers a primary-only plugin agent for delegation, and a plugin cannot set the permission rule that would withhold it.",
+              evidence: ".capture/agents",
+            },
+          ],
         },
         "agents.native": {
           level: "exact",
@@ -670,6 +684,20 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "live-probe",
             artifact: ".capture/agents",
             what: "At the reference build a --plugin-dir plugin's agents/ file, and a package built with a portable definition beside its root, were each offered as <plugin>:<name> and delegated to with their instructions, tools and model.",
+          },
+          {
+            version: "2.1.283",
+            date: "2026-09-29",
+            method: "live-probe",
+            artifact: ".capture/agents",
+            what: "A --plugin-dir plugin's agents/ file ran as the session through --agent <plugin>:<name> and through its bare name, on its instructions, tools and model, and every hook event of the session carried agent_type <plugin>:<name>. A plugin whose root settings.json set agent, bare or qualified, started the session as the agent.",
+          },
+          {
+            version: "2.1.238",
+            date: "2026-09-29",
+            method: "live-probe",
+            artifact: ".capture/agents",
+            what: "At the reference build a plugin agent ran as the session through --agent, qualified or bare, and through the plugin's settings.json, as on 2.1.283.",
           },
           {
             version: "2.1.260",

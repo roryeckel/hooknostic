@@ -235,6 +235,11 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex's model guidance tells it to spawn only when asked. Trust gating of project agents is not established: with no trust entry for the project, and only hook trust bypassed, codex exec still discovered its agent.",
       },
+      "agents.primary": {
+        level: "unsupported",
+        rationale:
+          "Codex has no agent a session runs as: codex and codex exec offer --profile, which selects a configuration profile, and no option that starts a session as a custom agent, which is reachable only through spawn_agent. A primary definition is therefore not written, and an all definition is written as a custom agent only.",
+      },
       "agents.native": {
         level: "exact",
         rationale:

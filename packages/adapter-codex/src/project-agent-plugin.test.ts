@@ -1234,6 +1234,7 @@ describe("agent definitions in a Codex package projection", () => {
     expect(support["agents.native"]?.level).toBe("unsupported");
     const agents = ["reviewer", "planner"].map((name) => ({
       name,
+      mode: "subagent" as const,
       description: `${name} description`,
       instructions: `${name} instructions\n`,
       native: name === "reviewer" ? { codex: { model: "m" } } : {},

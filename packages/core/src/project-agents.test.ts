@@ -38,8 +38,32 @@ const REVIEWER = [
   "",
 ].join("\n");
 
+/** A primary-only agent with a native model on every harness. */
+const PLANNER = [
+  "---",
+  "name: planner",
+  "description: Plans a change before any code is written.",
+  "mode: primary",
+  "native:",
+  "  claude:",
+  "    model: opus",
+  "  opencode:",
+  "    model: provider/planner-model",
+  "---",
+  "You plan changes.",
+  "",
+].join("\n");
+
+/** An agent offered both ways. */
+const WRITER = ["---", "name: writer", "description: Writes docs.", "mode: all", "---", "You write docs.", ""].join(
+  "\n",
+);
+
 /** A hookless project whose only component is the given agent definition directory. */
-async function fixture(definitions: Record<string, string>, options: { v2?: boolean; agents?: string[] } = {}) {
+async function fixture(
+  definitions: Record<string, string>,
+  options: { v2?: boolean; agents?: string[]; components?: Record<string, unknown> } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-agents-"));
   dirs.push(root);
   await mkdir(join(root, "agents"), { recursive: true });
@@ -58,7 +82,11 @@ async function fixture(definitions: Record<string, string>, options: { v2?: bool
       },
     ]),
   );
-  const config = { project: { root: "." }, components: { agents: options.agents ?? ["./agents"] }, targets };
+  const config = {
+    project: { root: "." },
+    components: { agents: options.agents ?? ["./agents"], ...options.components },
+    targets,
+  };
   const configPath = join(root, "hooknostic.config.ts");
   await writeFile(configPath, `export default ${JSON.stringify(config)};`);
   return { root, options: { configPath, registry, evaluate } };
@@ -132,6 +160,118 @@ describe("agent definition project delivery", () => {
       "opencode",
     );
     expect(opencode.data).toMatchObject({ mode: "subagent" });
+  }, 60_000);
+
+  it("delivers each mode where the harness can, and says where it cannot", async () => {
+    const { root, options } = await fixture(
+      { "planner.md": PLANNER, "reviewer.md": REVIEWER, "writer.md": WRITER },
+      { components: { onUnsupported: "warn" } },
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+
+    // OpenCode enforces the mode, so it is written as authored.
+    for (const [name, mode] of [
+      ["planner", "primary"],
+      ["reviewer", "subagent"],
+      ["writer", "all"],
+    ] as const) {
+      const opencode = parseMarkdownFrontmatter(
+        await readFile(join(root, `.opencode/agents/${name}.md`), "utf8"),
+        name,
+      );
+      expect(opencode.data, name).toMatchObject({ mode });
+    }
+    // Claude has no mode: one file serves every use.
+    const claude = parseMarkdownFrontmatter(await readFile(join(root, ".claude/agents/planner.md"), "utf8"), "claude");
+    expect(claude.data).toEqual({
+      name: "planner",
+      description: "Plans a change before any code is written.",
+      model: "opus",
+    });
+    // Codex cannot run a session as an agent: the `all` agent is still a
+    // custom agent, and the primary-only one has nothing to deliver.
+    expect(readProjectToml(await readFile(join(root, ".codex/agents/writer.toml"), "utf8"))).toMatchObject({
+      name: "writer",
+    });
+    await expect(readFile(join(root, ".codex/agents/planner.toml"), "utf8")).rejects.toThrow();
+
+    const built = await buildProject({ ...options, dryRun: true });
+    const targets = built.report.targets;
+    expect(targets["codex"]?.project?.components).toMatchObject({
+      "agents.definition": { support: "exact", discovered: 3, emitted: 2, skipped: 1 },
+      "agents.primary": { support: "unsupported", discovered: 2, emitted: 0, skipped: 2 },
+    });
+    expect(targets["codex"]?.project?.omissions).toContainEqual(
+      expect.objectContaining({ component: "agents.definition", name: "planner" }),
+    );
+    for (const target of ["claude", "opencode"]) {
+      expect(targets[target]?.project?.components, target).toMatchObject({
+        "agents.definition": { support: "exact", discovered: 3, emitted: 3, skipped: 0 },
+        "agents.primary": { support: "exact", discovered: 2, emitted: 2, skipped: 0 },
+      });
+    }
+    // Claude offers every agent for delegation, which a primary-only one is
+    // not meant to be; an `all` agent is meant to be.
+    expect(targets["claude"]?.project?.deviations).toEqual([
+      expect.objectContaining({ id: "claude:primary-agent-delegable", component: "agents.primary", name: "planner" }),
+    ]);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN106", severity: "warn", target: "claude" }),
+    );
+  }, 60_000);
+
+  it("refuses a primary definition for Codex unless told to warn", async () => {
+    const { options } = await fixture({ "planner.md": PLANNER });
+
+    const built = await buildProject({ ...options, dryRun: true });
+
+    expect(built.ok).toBe(false);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", severity: "error", target: "codex", component: "agents.primary" }),
+    );
+    expect(
+      built.report.diagnostics.filter((diagnostic) => diagnostic.severity === "error" && diagnostic.target !== "codex"),
+    ).toEqual([]);
+  }, 60_000);
+
+  it("reports a native model OpenCode v2 ignores for a session run as the agent, and only there", async () => {
+    const definitions = {
+      "planner.md": PLANNER,
+      // The same model on a subagent reaches it: nothing to report.
+      "reviewer.md": REVIEWER.replace("    temperature: 0.1\n", "    model: provider/reviewer-model\n"),
+    };
+    const components = { onUnsupported: "warn" };
+
+    const v2 = await buildProject({ ...(await fixture(definitions, { v2: true, components })).options, dryRun: true });
+    expect(v2.ok).toBe(false);
+    expect(v2.report.targets["opencode"]?.project?.degradations).toEqual([
+      expect.objectContaining({
+        id: "opencode:primary-agent-model-ignored",
+        component: "agents.native",
+        name: "planner",
+      }),
+    ]);
+    expect(v2.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN101", severity: "error", target: "opencode" }),
+    );
+
+    const accepted = await buildProject({
+      ...(
+        await fixture(definitions, {
+          v2: true,
+          components: { ...components, accept: ["opencode:primary-agent-model-ignored"] },
+        })
+      ).options,
+      dryRun: true,
+    });
+    expect(accepted.ok).toBe(true);
+
+    // OpenCode v1 runs such a session on the agent's model.
+    const v1 = await buildProject({ ...(await fixture(definitions, { components })).options, dryRun: true });
+    expect(v1.ok).toBe(true);
+    expect(v1.report.targets["opencode"]?.project?.degradations).toBeUndefined();
   }, 60_000);
 
   it("refuses native fields for a harness no adapter knows", async () => {
@@ -293,6 +433,36 @@ describe("agent definition package delivery", () => {
         component: "agents.native",
         message: expect.stringContaining("native.claude.hooks"),
       }),
+    );
+  }, 60_000);
+
+  it("reports a primary-only agent a Claude plugin still offers for delegation", async () => {
+    const { root, options } = await packageFixture({ "planner.md": PLANNER, "writer.md": WRITER });
+
+    const built = await buildProject(options);
+
+    expect(built.ok).toBe(true);
+    expect(await readFile(join(root, "dist/claude/agents/planner.md"), "utf8")).toContain("You plan changes.");
+    expect(built.report.targets["claude"]?.projection?.components).toMatchObject({
+      "agents.definition": { support: "exact", discovered: 2, emitted: 2, skipped: 0 },
+      "agents.primary": { support: "exact", discovered: 2, emitted: 2, skipped: 0 },
+    });
+    expect(built.report.targets["claude"]?.projection?.deviations).toEqual([
+      expect.objectContaining({ id: "claude:primary-agent-delegable", name: "planner" }),
+    ]);
+  }, 60_000);
+
+  it("refuses a primary definition for a Codex package, which has no agents route either", async () => {
+    const targets = { codex: { version: CODEX_PLUGIN_MODE_RANGE } };
+
+    const built = await buildProject({
+      ...(await packageFixture({ "planner.md": PLANNER }, { targets })).options,
+      dryRun: true,
+    });
+
+    expect(built.ok).toBe(false);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", target: "codex", component: "agents.primary" }),
     );
   }, 60_000);
 

@@ -110,8 +110,13 @@ describe("componentSummary", () => {
 });
 
 describe("discoverComponents", () => {
-  const agent = (name: string, native: AgentDefinition["native"] = {}): AgentDefinition => ({
+  const agent = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
     name,
+    mode,
     description: `${name} description`,
     instructions: `${name} instructions`,
     native,
@@ -131,6 +136,14 @@ describe("discoverComponents", () => {
     expect(discoverComponents(source(), { agents, harness: "codex" }).has("agents.native")).toBe(false);
     // Without a harness, native fields are never attributed to one.
     expect(discoverComponents(source(), { agents }).has("agents.native")).toBe(false);
+  });
+
+  it("counts every definition that can run as a session under agents.primary, and only those", () => {
+    const agents = [agent("planner", {}, "primary"), agent("writer", {}, "all"), agent("reviewer")];
+    const discovered = discoverComponents(source(), { agents });
+    expect(discovered.get("agents.definition")).toBe(3);
+    expect(discovered.get("agents.primary")).toBe(2);
+    expect(discoverComponents(source(), { agents: [agent("reviewer")] }).has("agents.primary")).toBe(false);
   });
 
   it("discovers no agent component when none is configured", () => {

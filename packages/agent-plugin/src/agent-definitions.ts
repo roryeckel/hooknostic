@@ -20,11 +20,37 @@ export const AGENT_DEFINITION_RESERVED_KEYS = [
   "tools",
   "model",
   "maxTurns",
-  "mode",
   "skills",
   "mcp",
   "hooks",
 ] as const;
+
+/**
+ * Where a harness offers the agent (ADR-0027, decision 9): for delegation
+ * (`subagent`, the default), as the agent a session runs as (`primary`), or
+ * both (`all`). The values are OpenCode's, the one harness with such a field.
+ */
+export const AGENT_MODES = ["subagent", "primary", "all"] as const;
+export type AgentMode = (typeof AGENT_MODES)[number];
+
+/** Whether a definition in `mode` is offered for delegation. */
+export function servesAsSubagent(mode: AgentMode): boolean {
+  return mode !== "primary";
+}
+
+/** Whether a definition in `mode` is offered as the agent a session runs as. */
+export function servesAsPrimary(mode: AgentMode): boolean {
+  return mode !== "subagent";
+}
+
+/**
+ * The mode a definition keeps on a target that cannot run a session as an
+ * agent: an `all` definition is still a subagent there, and a `primary` one has
+ * nothing left to deliver (`undefined`).
+ */
+export function withoutPrimary(mode: AgentMode): AgentMode | undefined {
+  return mode === "primary" ? undefined : "subagent";
+}
 
 /**
  * One agent definition, parsed into the model the specification defines.
@@ -34,6 +60,8 @@ export const AGENT_DEFINITION_RESERVED_KEYS = [
 export interface AgentDefinition {
   name: string;
   description: string;
+  /** `subagent` when the file does not say. */
+  mode: AgentMode;
   /** The Markdown body, line endings normalized to LF. */
   instructions: string;
   /** Harness-only fields keyed by harness identifier; empty when the file has none. */
@@ -49,7 +77,7 @@ export interface LoadAgentDefinitionsOptions {
   exclude?: readonly string[];
 }
 
-const KEYS = new Set(["name", "description", "native"]);
+const KEYS = new Set(["name", "description", "mode", "native"]);
 const RESERVED = new Set<string>(AGENT_DEFINITION_RESERVED_KEYS);
 const HARNESS_KEY = /^[a-z][a-z0-9-]*$/;
 const MATCH = { dot: true, nocase: true, nonegate: true, nocomment: true } as const;
@@ -70,7 +98,7 @@ function parseDefinition(text: string, stem: string, source: string): AgentDefin
     }
     if (!KEYS.has(key)) throw new Error(`frontmatter contains an unknown field \`${key}\``);
   }
-  const { name, description, native } = data;
+  const { name, description, mode = "subagent", native } = data;
   if (typeof name !== "string" || !isAgentSkillName(name)) {
     throw new Error("name must use lowercase letters and digits in hyphen-separated runs, at most 64 characters");
   }
@@ -79,6 +107,9 @@ function parseDefinition(text: string, stem: string, source: string): AgentDefin
     throw new Error("description must contain 1-1024 characters");
   }
   if (/[\r\n]/.test(description)) throw new Error("description must be a single line");
+  if (!(AGENT_MODES as readonly unknown[]).includes(mode)) {
+    throw new Error(`mode must be one of ${AGENT_MODES.join(", ")}`);
+  }
   const blocks: Record<string, Record<string, unknown>> = Object.create(null) as Record<
     string,
     Record<string, unknown>
@@ -96,7 +127,7 @@ function parseDefinition(text: string, stem: string, source: string): AgentDefin
   }
   const instructions = body.replace(/\r\n?/g, "\n");
   if (instructions.trim() === "") throw new Error("the instructions (the body after the frontmatter) are empty");
-  return { name, description, instructions, native: blocks, source };
+  return { name, description, mode: mode as AgentMode, instructions, native: blocks, source };
 }
 
 /**

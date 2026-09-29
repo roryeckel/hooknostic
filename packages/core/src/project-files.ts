@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree } from "jsonc-parser/lib/esm/main.js";
 
-import type { AgentPluginDeviation, ComponentId } from "@hooknostic/agent-plugin";
+import type { AgentPluginDegradation, AgentPluginDeviation, ComponentId } from "@hooknostic/agent-plugin";
 
 import { editProjectToml, readProjectToml } from "./project-toml.js";
 
@@ -37,6 +37,13 @@ export interface ProjectIntegration {
    * `ProjectComponentOptions.support` (ADR-0019).
    */
   deviations?: AgentPluginDeviation[];
+  /**
+   * Emitted items the harness delivers below their component's level, such as
+   * a native field it ignores in one use of an agent. Core applies
+   * `components.onDegraded`; each id must be declared in
+   * `ProjectComponentOptions.support` (ADR-0022).
+   */
+  degradations?: AgentPluginDegradation[];
   /**
    * Declared-executable files inside a tree this target discovers in place.
    *

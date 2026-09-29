@@ -55,6 +55,8 @@ describe("loadAgentDefinitions", () => {
       {
         name: "reviewer",
         description: "Reviews diffs. Use after code changes.",
+        // A file that does not say is a subagent (ADR-0027, decision 9).
+        mode: "subagent",
         // CRLF from a Windows checkout is normalized, so generated files do not
         // depend on git's line-ending settings.
         instructions: "You review diffs.\n",
@@ -64,8 +66,29 @@ describe("loadAgentDefinitions", () => {
     ]);
   });
 
+  it("reads each mode, and a file that names none is a subagent", async () => {
+    const root = await directory({
+      "planner.md": "---\nname: planner\ndescription: Plans work.\nmode: primary\n---\nYou plan.\n",
+      "reviewer.md": reviewer,
+      "tester.md": "---\nname: tester\ndescription: Tests code.\nmode: subagent\n---\nYou test.\n",
+      "writer.md": "---\nname: writer\ndescription: Writes docs.\nmode: all\n---\nYou write.\n",
+    });
+
+    const loaded = await loadAgentDefinitions({ directories: [root] });
+
+    expect(loaded.issues).toEqual([]);
+    expect(Object.fromEntries(loaded.agents.map((agent) => [agent.name, agent.mode]))).toEqual({
+      planner: "primary",
+      reviewer: "subagent",
+      tester: "subagent",
+      writer: "all",
+    });
+  });
+
   it.each([
     ["no frontmatter", "You review diffs.\n", "must begin with YAML frontmatter"],
+    ["an unknown mode", "---\nname: reviewer\ndescription: d\nmode: main\n---\nx\n", "mode must be one of"],
+    ["an empty mode", "---\nname: reviewer\ndescription: d\nmode:\n---\nx\n", "mode must be one of"],
     ["a reserved key", "---\nname: reviewer\ndescription: d\nmodel: sonnet\n---\nx\n", "`model` is reserved"],
     ["an unknown key", "---\nname: reviewer\ndescription: d\ncolour: red\n---\nx\n", "unknown field `colour`"],
     ["a name unlike the file", "---\nname: other\ndescription: d\n---\nx\n", "must equal the file name"],

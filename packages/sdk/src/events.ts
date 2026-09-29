@@ -55,9 +55,10 @@ export interface BaseHookEvent {
     /**
      * The name of the agent the event ran in, exactly as the harness reports
      * it (ADR-0028): a subagent's name inside one -- plugin-qualified when a
-     * package delivered it -- and, on a harness that names every agent, the
-     * primary agent's. Absent when the harness does not say, which on some
-     * harnesses means the main agent; never inferred.
+     * package delivered it -- and the name of a defined agent a session runs
+     * as, where the harness reports it; a harness that names every agent also
+     * names its own primary agent. Absent when the harness does not say, which
+     * on some harnesses means the main agent; never inferred.
      */
     agentType?: string;
     parentAgentId?: string;

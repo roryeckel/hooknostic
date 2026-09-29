@@ -142,8 +142,13 @@ describe("OpenCode v2 package projection of agent definitions", () => {
     files: [{ path: "plugin.json", contents: new TextEncoder().encode("{}"), mode: 0o644 }],
     contentDigest: "sha256:source",
   };
-  const definition = (name: string, native: AgentDefinition["native"] = {}): AgentDefinition => ({
+  const definition = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
     name,
+    mode,
     description: `${name} description`,
     instructions: `${name} instructions\n`,
     native,
@@ -156,7 +161,7 @@ describe("OpenCode v2 package projection of agent definitions", () => {
       hookArtifacts: [],
       support,
       onUnsupported: "warn",
-      agents: [definition("reviewer", { opencode: { model: "provider/model" } }), definition("planner")],
+      agents: [definition("reviewer", { opencode: { model: "provider/model" } }), definition("planner", {}, "primary")],
     });
     expect(plan.issues).toEqual([]);
     const root = await mkdtemp(join(tmpdir(), "hooknostic-v2-agents-"));
@@ -189,10 +194,11 @@ describe("OpenCode v2 package projection of agent definitions", () => {
         mode: "subagent",
         system: "reviewer instructions\n",
       },
+      // Registered in its own mode: v2 makes it a session's agent, not a subagent.
       "portable-tools-planner": {
         id: "portable-tools-planner",
         description: "planner description",
-        mode: "subagent",
+        mode: "primary",
         system: "planner instructions\n",
       },
     });
@@ -201,6 +207,7 @@ describe("OpenCode v2 package projection of agent definitions", () => {
     expect(support["agents.native"]?.level).toBe("unsupported");
     expect(plan.summary.omissions).toEqual([expect.objectContaining({ component: "agents.native", name: "reviewer" })]);
     expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
+    expect(plan.summary.components["agents.primary"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
     expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
   });
 

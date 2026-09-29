@@ -1013,8 +1013,13 @@ describe("Agent Plugin to Claude projection", () => {
 });
 
 describe("agent definitions in a Claude package projection", () => {
-  const agent = (name: string, native: AgentDefinition["native"] = {}): AgentDefinition => ({
+  const agent = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
     name,
+    mode,
     description: `${name} description`,
     instructions: `${name} instructions\n`,
     native,
@@ -1051,6 +1056,20 @@ describe("agent definitions in a Claude package projection", () => {
     // Generated, not copied: the definition is not package content.
     expect(plan.summary.copiedPaths).not.toContain("agents/reviewer.md");
     expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
+  });
+
+  it("writes one file whatever the mode, and reports a primary-only agent Claude still offers for delegation", async () => {
+    const plan = await project(source(), [agent("planner", {}, "primary"), agent("writer", {}, "all")]);
+    expect(plan.issues).toEqual([]);
+    // Claude has no mode field; the same file runs as a session or a subagent.
+    expect(frontmatter(plan, "agents/planner.md").data).toEqual({
+      name: "planner",
+      description: "planner description",
+    });
+    expect(plan.summary.components["agents.primary"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
+    expect(plan.summary.deviations).toEqual([
+      expect.objectContaining({ id: "primary-agent-delegable", component: "agents.primary", name: "planner" }),
+    ]);
   });
 
   it.each([

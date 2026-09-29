@@ -5599,8 +5599,9 @@ function decodeClaude(nativeEvent, invocation) {
       ...typeof payload.prompt_id === "string" ? { turnId: payload.prompt_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
       ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
-      // Inside a subagent only; the main agent's events carry none (ADR-0028,
-      // fixtures pre-tool-read-subagent and subagent-start).
+      // Inside a subagent, and on every event of a session started as an agent
+      // (--agent, the agent setting); a plain session's events carry none
+      // (ADR-0028, fixtures pre-tool-read-subagent and subagent-start).
       ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
     raw: nativeEvent

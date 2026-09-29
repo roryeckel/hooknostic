@@ -1,6 +1,11 @@
 import { relative } from "node:path";
 
-import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type {
+  AgentDefinition,
+  AgentPluginComponentSupport,
+  AgentPluginDegradation,
+  AgentPluginProjectionProfile,
+} from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
@@ -41,15 +46,16 @@ export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".opencode/agents",
   // The file name is the identity, so `name` has nothing to say and v1 would
   // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
-  // are the instructions, and `mode` is always subagent here.
+  // are the instructions, and `mode` is the portable field's (ADR-0027).
   reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
 };
 
 /**
  * `.opencode/agents/<name>.md` for both families: the file name is the agent,
- * `mode: subagent` is always written -- v2 defaults an agent to primary, which
- * the subagent tool cannot select -- and the instructions are the body, which
- * replaces the provider's base prompt (`.capture/agents`).
+ * the definition's `mode` is always written -- OpenCode's own default is not
+ * `subagent`: v2 makes an agent primary, which its subagent tool cannot select
+ * -- and the instructions are the body, which replaces the provider's base
+ * prompt (`.capture/agents`).
  */
 export function renderOpenCodeAgent(agent: AgentDefinition): { file: string; contents: string } {
   const native = Object.entries(agent.native["opencode"] ?? {}).filter(
@@ -58,10 +64,34 @@ export function renderOpenCodeAgent(agent: AgentDefinition): { file: string; con
   return {
     file: `${agent.name}.md`,
     contents: renderMarkdownFrontmatter(
-      { description: agent.description, mode: "subagent", ...Object.fromEntries(native) },
+      { description: agent.description, mode: agent.mode, ...Object.fromEntries(native) },
       agent.instructions,
     ),
   };
+}
+
+/**
+ * OpenCode 2.0.17 runs a session started as the agent on the configured
+ * `model`, not on the agent's own, which applies only when it runs as a
+ * subagent (`.capture/agents`). Only the v2 project cell declares this.
+ */
+export const PRIMARY_AGENT_MODEL_IGNORED = "primary-agent-model-ignored";
+
+/** The degradation for each primary-capable definition with a native model, where the cell declares it. */
+export function primaryModelDegradations(
+  agents: readonly AgentDefinition[],
+  cell: AgentPluginComponentSupport | undefined,
+): AgentPluginDegradation[] {
+  if (!(cell?.degradations ?? []).some((item) => item.id === PRIMARY_AGENT_MODEL_IGNORED)) return [];
+  return agents
+    .filter((agent) => agent.mode !== "subagent" && agent.native["opencode"]?.["model"] !== undefined)
+    .map((agent) => ({
+      id: PRIMARY_AGENT_MODEL_IGNORED,
+      component: "agents.native",
+      name: agent.name,
+      path: agent.source,
+      reason: `agent ${JSON.stringify(agent.name)} sets native.opencode.model, which OpenCode ignores for a session run as the agent; it applies when the agent runs as a subagent.`,
+    }));
 }
 
 export async function projectComponents(
@@ -80,6 +110,8 @@ export async function projectComponents(
   result.files.push(...agents.files);
   if (agents.files.length > 0)
     result.guidance.push("OpenCode reads project agents from .opencode/agents; restart it after synchronization.");
+  const ignoredModels = primaryModelDegradations(source.agents ?? [], options.support?.["agents.native"]);
+  if (ignoredModels.length > 0) (result.degradations ??= []).push(...ignoredModels);
   if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
@@ -173,7 +205,12 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "agents.definition": {
         level: "exact",
         rationale:
-          "Written to .opencode/agents/<name>.md with mode: subagent. The task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended.",
+          "Written to .opencode/agents/<name>.md with the definition's mode. As a subagent or all, the task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended.",
+      },
+      "agents.primary": {
+        level: "exact",
+        rationale:
+          "With mode: primary or all, opencode run --agent <name> and default_agent run the session as the agent, on its instructions in place of the provider prompt, its model and its permission rules; a primary agent is absent from the task tool, and OpenCode falls back to its default agent when told to run a subagent.",
       },
       "agents.native": {
         level: "exact",
@@ -190,6 +227,20 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           method: "live-probe",
           artifact: ".capture/agents",
           what: "A project .opencode/agents file (and the legacy .opencode/agent directory) was offered to the parent through the task tool with its description; its body replaced the provider prompt, its model reached the child request, permission deny removed edit and bash from the child's tools, steps and maxSteps did not cap the child, and neither .claude/agents nor .agents/agents was read.",
+        },
+        {
+          version: "1.18.31",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, its model and its permission denies; primary agents were absent from the task tool and all agents present, and run --agent on a mode: subagent agent fell back to the default agent with a warning.",
+        },
+        {
+          version: "1.18.18",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build every mode behaved as on 1.18.31: primary and all agents ran as the session, only subagent and all agents were offered for delegation, and a subagent fell back.",
         },
         {
           version: "1.18.18",

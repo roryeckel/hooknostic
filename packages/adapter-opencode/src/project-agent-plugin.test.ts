@@ -826,8 +826,13 @@ describe("Agent Plugin to OpenCode projection", () => {
 });
 
 describe("agent definitions in an OpenCode v1 package projection", () => {
-  const agent = (name: string, native: AgentDefinition["native"] = {}): AgentDefinition => ({
+  const agent = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
     name,
+    mode,
     description: `${name} description`,
     instructions: `${name} instructions\n`,
     native,
@@ -878,6 +883,18 @@ describe("agent definitions in an OpenCode v1 package projection", () => {
     expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
     expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
     expect(agentDegradations(plan)).toEqual([]);
+  });
+
+  it("registers each agent in its own mode", async () => {
+    const plan = await projectWith([agent("planner", {}, "primary"), agent("writer", {}, "all"), agent("reviewer")]);
+    expect(plan.issues).toEqual([]);
+    const registered = (await configured(plan)).agent as Record<string, { mode: string }>;
+    expect(Object.fromEntries(Object.entries(registered).map(([name, entry]) => [name, entry.mode]))).toEqual({
+      "portable-tools-planner": "primary",
+      "portable-tools-writer": "all",
+      "portable-tools-reviewer": "subagent",
+    });
+    expect(plan.summary.components["agents.primary"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
   });
 
   it("keeps a name already qualified by its plugin, and reports a name it cannot qualify", async () => {

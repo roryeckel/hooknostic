@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:ba6d4e2898d13190fee7727bd6741a217a12f474ec4612ea44b64e69620c2eeb",
+        "contentDigest": "sha256:9beab0a4db182ee6d2b9a70f261c0917235a136b82e04f4faaf3e56dbab64a52",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {

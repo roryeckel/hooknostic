@@ -125,10 +125,11 @@ export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number]
  * standard leaves agents out until their formats converge -- but delivered and
  * reported through the same profiles, levels and shortfall policy, so both
  * share one id space. `agents.definition` is the portable core (name,
- * description, instructions); `agents.native` is the per-harness
- * passthrough under `native`.
+ * description, instructions) of every definition; `agents.primary` is the
+ * main-session contract of each definition whose mode is `primary` or `all`;
+ * `agents.native` is the per-harness passthrough under `native`.
  */
-export const AGENT_COMPONENT_IDS = ["agents.definition", "agents.native"] as const;
+export const AGENT_COMPONENT_IDS = ["agents.definition", "agents.primary", "agents.native"] as const;
 export type AgentComponentId = (typeof AGENT_COMPONENT_IDS)[number];
 
 /** Every component a projector or project integrator reports on. */

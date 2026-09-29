@@ -26,7 +26,9 @@ import {
   npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
+  servesAsPrimary,
   validateContainedCommands,
+  withoutPrimary,
 } from "@hooknostic/agent-plugin";
 import {
   type HooknosticConfig,
@@ -123,6 +125,7 @@ export interface BuildTargetReport {
     components: AgentPluginTargetReport["components"];
     omissions: AgentPluginTargetReport["omissions"];
     deviations?: AgentPluginTargetReport["deviations"];
+    degradations?: AgentPluginTargetReport["degradations"];
     guidance: string[];
   };
 }
@@ -1379,6 +1382,26 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ...reservedNativeFields(selectedSource.agents ?? [], adapter, id, config.components?.onInvalid),
             );
             if (!count("agents.definition", selectedSource.agents?.length ?? 0)) selectedSource.agents = [];
+            // A target that cannot run a session as an agent still takes an
+            // `all` definition as a subagent; a `primary` one has nothing left
+            // to deliver, so it leaves the definitions too (ADR-0027,
+            // decision 9). The component-level shortfall is reported above.
+            const primary = (selectedSource.agents ?? []).filter((agent) => servesAsPrimary(agent.mode));
+            if (!count("agents.primary", primary.length)) {
+              selectedSource.agents = (selectedSource.agents ?? []).flatMap((agent) => {
+                const mode = withoutPrimary(agent.mode);
+                if (mode !== undefined) return [{ ...agent, mode }];
+                omissions.push({
+                  component: "agents.definition",
+                  name: agent.name,
+                  reason: `agent ${JSON.stringify(agent.name)} is primary only, and ${adapter.id} cannot run a session as an agent`,
+                });
+                const counted = counts["agents.definition"]!;
+                counted.emitted--;
+                counted.skipped++;
+                return [];
+              });
+            }
             const nativeBlocks = (selectedSource.agents ?? []).filter((agent) =>
               Object.hasOwn(agent.native, adapter.id),
             );
@@ -1465,11 +1488,19 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 support: support.matrix,
                 ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
               }),
+              ...diagnosticsFromAgentPluginDegradations(projected.degradations ?? [], {
+                target: id,
+                adapter: adapter.id,
+                onDegraded: config.components?.onDegraded ?? "error",
+                support: support.matrix,
+                ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
+              }),
             );
             target.project = {
               components: counts,
               omissions,
               deviations: qualifiedDeviations(adapter.id, projected.deviations),
+              ...degradationReport(adapter.id, projected.degradations),
               guidance: projected.guidance,
             };
             if (hasTargetFatal()) {

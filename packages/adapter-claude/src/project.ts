@@ -1,4 +1,9 @@
-import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type {
+  AgentDefinition,
+  AgentPluginComponentSupport,
+  AgentPluginDeviation,
+  AgentPluginProjectionProfile,
+} from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { contentsText, renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
 import type {
@@ -52,9 +57,35 @@ export const claudeAgents: NonNullable<HarnessAdapter["agents"]> = {
 };
 
 /**
- * `.claude/agents/<name>.md`: the portable core as Claude's own frontmatter
- * fields, then `native.claude` verbatim, then the instructions as the body,
- * which Claude uses as the subagent's system prompt (`.capture/agents`).
+ * Claude has no agent mode: every agent file can run as a session (`--agent`,
+ * the `agent` setting) and is offered for delegation. So a `primary`
+ * definition is delegable too, which only a project permission rule,
+ * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0027 decision 9).
+ */
+export const PRIMARY_AGENT_DELEGABLE = "primary-agent-delegable";
+
+/** The deviation for each `primary` definition, where the cell declares it. */
+export function primaryDelegableDeviations(
+  agents: readonly AgentDefinition[],
+  cell: AgentPluginComponentSupport | undefined,
+): AgentPluginDeviation[] {
+  if (!(cell?.deviations ?? []).some((item) => item.id === PRIMARY_AGENT_DELEGABLE)) return [];
+  return agents
+    .filter((agent) => agent.mode === "primary")
+    .map((agent) => ({
+      id: PRIMARY_AGENT_DELEGABLE,
+      component: "agents.primary",
+      name: agent.name,
+      path: agent.source,
+      reason: `agent ${JSON.stringify(agent.name)} is primary only, but Claude also offers it for delegation.`,
+    }));
+}
+
+/**
+ * `.claude/agents/<name>.md` for every mode: the portable core as Claude's own
+ * frontmatter fields, then `native.claude` verbatim, then the instructions as
+ * the body, which Claude uses as the system prompt of a subagent and of a
+ * session run as the agent alike (`.capture/agents`).
  */
 export function renderClaudeAgent(agent: AgentDefinition): { file: string; contents: string } {
   const native = Object.entries(agent.native["claude"] ?? {}).filter(
@@ -81,6 +112,10 @@ export async function projectComponents(
   result.files.push(...agents.files);
   if (agents.files.length > 0)
     result.guidance.push("Claude Code reads project agents from .claude/agents; restart it if that directory is new.");
+  const delegable = primaryDelegableDeviations(source.agents ?? [], options.support?.["agents.primary"]);
+  if (delegable.length > 0) (result.deviations ??= []).push(...delegable);
+  if ((source.agents ?? []).some((agent) => agent.mode !== "subagent"))
+    result.guidance.push("Start a Claude Code session as a primary agent with claude --agent <name>.");
   if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
@@ -171,12 +206,25 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       "agents.definition": {
         level: "exact",
         rationale:
-          "Written to .claude/agents/<name>.md. The parent is offered the subagent by name and description, and the instructions become its system prompt, replacing Claude Code's default; a one-line SDK preamble and Claude's short subagent notes remain around them.",
+          "Written to .claude/agents/<name>.md, one file whatever the mode. The parent is offered the subagent by name and description, and the instructions become its system prompt, replacing Claude Code's default; a one-line SDK preamble and Claude's short subagent notes remain around them.",
+      },
+      "agents.primary": {
+        level: "exact",
+        rationale:
+          "The same file runs as a session through claude --agent <name> or the agent setting: the instructions replace the default system prompt between the one-line SDK preamble and the environment section, and its native tool list and model apply to the session. Every event of that session names the agent as agent_type.",
+        deviations: [
+          {
+            id: PRIMARY_AGENT_DELEGABLE,
+            summary:
+              "Claude has no agent mode, so it also offers a primary-only agent for delegation. Only a project permission rule, Agent(<name>) in permissions.deny, withholds it, and Hooknostic does not write one.",
+            evidence: ".capture/agents",
+          },
+        ],
       },
       "agents.native": {
         level: "exact",
         rationale:
-          "native.claude fields are written verbatim into the frontmatter; tools, model and maxTurns were each observed taking effect. hooks and mcpServers are refused, because they belong to their own components.",
+          "native.claude fields are written verbatim into the frontmatter; tools, model and maxTurns were each observed taking effect, and tools and model apply to a session run as the agent too. hooks and mcpServers are refused, because they belong to their own components.",
       },
     },
     source: {
@@ -195,6 +243,20 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           method: "live-probe",
           artifact: ".capture/agents",
           what: "At the reference build, a project and a plugin agent behaved as on 2.1.283, and a definition synchronized by Hooknostic's project delivery was advertised, delegated to, and ran on its instructions, native model and native tools (packages/cli/test/agent-definition-playback.test.ts).",
+        },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The same project file ran as the session through --agent and through the project's agent setting: its body replaced the default system prompt, its tools list was the session's exact tool set, its model reached every request, and every hook event of the session carried agent_type without agent_id. With permissions.deny: [Agent(<name>)] in the project settings the parent's request no longer listed the agent and its delegation was refused, while --agent still ran it.",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build a project agent ran as the session through --agent and the agent setting as on 2.1.283, and the permission rule withheld it from delegation the same way.",
         },
         {
           version: "2.1.278",

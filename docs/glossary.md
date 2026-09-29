@@ -136,9 +136,11 @@ instructions a harness can invoke. Not something Hooknostic generates or modifie
 agents to external tools and data. Already portable, hence explicitly out of
 Hooknostic's scope.
 
-**Agent definition** — one Markdown file describing an agent the primary agent can
-hand a task to: Claude Code's subagents, Codex's custom agents, OpenCode's agents with
-`mode: subagent`. No standard covers them, so Hooknostic defines a provisional
+**Agent definition** — one Markdown file describing an agent a harness runs: as a
+subagent the main agent hands a task to (Claude Code's subagents, Codex's custom
+agents, OpenCode's agents with `mode: subagent`), as the agent a session runs as
+(`mode: primary`, which Codex does not support), or both (`mode: all`). No standard
+covers them, so Hooknostic defines a provisional
 [format](spec/agents/0.1.md) and compiles it into each harness's own
 ([ADR-0027](decisions/0027-portable-agents.md), proposed). Not to be confused with
 the `agent.*` hook events, which report on whatever agent is running.

@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "./agent-definitions.js";
+import { type AgentDefinition, servesAsPrimary } from "./agent-definitions.js";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginPackage,
@@ -66,6 +66,8 @@ export function discoverComponents(
 
   const agents = options.agents ?? [];
   if (agents.length > 0) discovered.set("agents.definition", agents.length);
+  const primary = agents.filter((agent) => servesAsPrimary(agent.mode)).length;
+  if (primary > 0) discovered.set("agents.primary", primary);
   const harness = options.harness;
   const native = harness === undefined ? 0 : agents.filter((agent) => Object.hasOwn(agent.native, harness)).length;
   if (native > 0) discovered.set("agents.native", native);

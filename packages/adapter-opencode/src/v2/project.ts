@@ -1,7 +1,7 @@
 import type { AgentPluginPackage, AgentPluginProjectionProfile, AgentPluginProjector } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
-import { projectComponents, projectIntegrationWith } from "../project.js";
+import { PRIMARY_AGENT_MODEL_IGNORED, projectComponents, projectIntegrationWith } from "../project.js";
 import {
   AGENT_NAME_UNQUALIFIED,
   createOpenCodeAgentPluginProjector,
@@ -75,17 +75,37 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
       "agents.definition": {
         level: "exact",
         rationale:
-          "Written to .opencode/agents/<name>.md with mode: subagent, which v2 needs because it defaults an agent to primary. The subagent tool's description offers it to the parent with its description, the instructions replace the provider's base prompt, and tool events inside the child carry the agent's name.",
+          "Written to .opencode/agents/<name>.md with the definition's mode, which v2 needs because it defaults an agent to primary. As a subagent or all, the subagent tool's description offers it to the parent with its description, the instructions replace the provider's base prompt, and tool events inside the child carry the agent's name.",
+      },
+      "agents.primary": {
+        level: "exact",
+        rationale:
+          "With mode: primary or all, opencode run --agent <name> and default_agent run the session as the agent, on its instructions in place of the provider prompt, and its tool events name it; a primary agent is absent from the subagent tool. v2 also runs a mode: subagent agent as the session when named, which the contract does not promise.",
       },
       "agents.native": {
         level: "exact",
         rationale:
-          "native.opencode fields are written verbatim into the frontmatter; model, steps (a hard stop, reported to the parent as completing without a text response) and permissions deny rules were observed taking effect. A v2 subagent keeps its own permissions rather than a subset of its parent's, and subagent and execute stay available unless denied too.",
+          "native.opencode fields are written verbatim into the frontmatter; model, steps (a hard stop, reported to the parent as completing without a text response) and permissions deny rules were observed taking effect. A v2 subagent keeps its own permissions rather than a subset of its parent's, and subagent and execute stay available unless denied too. A session run as the agent uses the configured model instead of native.opencode.model, which is reported per definition.",
+        degradations: [
+          {
+            id: PRIMARY_AGENT_MODEL_IGNORED,
+            summary:
+              "OpenCode 2.0.17 runs a session started as the agent on the configured model, so a native.opencode.model reaches the agent only when it runs as a subagent.",
+            evidence: ".capture/agents",
+          },
+        ],
       },
     },
     source: {
       date: "2026-09-26",
       validatedOn: [
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session.",
+        },
         {
           version: opencodeV2Harness.referenceVersion,
           date: "2026-09-29",
@@ -176,12 +196,13 @@ function injector(
 ): string {
   const skills = source.skills.map((skill) => ({ ...skill, id: `${source.manifest.name}/${skill.name}` }));
   // The agent editor has no add, and update on an unknown id upserts it; the id
-  // is the name the subagent tool selects (.capture/agents). Only these four
-  // fields were observed taking effect, which is why native fields are omitted.
+  // is the name the subagent tool selects and --agent runs (.capture/agents).
+  // Only these four fields were observed taking effect, which is why native
+  // fields are omitted.
   const definitions = agents.map((agent) => ({
     id: agent.name,
     description: agent.description,
-    mode: "subagent",
+    mode: agent.mode,
     system: agent.instructions,
   }));
   return `import { readFileSync } from "node:fs";
@@ -224,7 +245,7 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
       "agents.definition": {
         level: "emulated",
         rationale:
-          "Registered through the v2 agent domain, whose editor upserts an unknown id, with mode: subagent and the instructions as its system prompt. The id is the name the subagent tool selects, so each is named <plugin>-<name>, the nearest spelling of the plugin-qualified name Claude gives a plugin agent; the qualification is the projection's, not OpenCode's.",
+          "Registered through the v2 agent domain, whose editor upserts an unknown id, with the definition's mode and the instructions as its system prompt. The id is the name the subagent tool selects, so each is named <plugin>-<name>, the nearest spelling of the plugin-qualified name Claude gives a plugin agent; the qualification is the projection's, not OpenCode's.",
         degradations: [
           {
             id: AGENT_NAME_UNQUALIFIED,
@@ -233,6 +254,11 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
             evidence: ".capture/agents",
           },
         ],
+      },
+      "agents.primary": {
+        level: "emulated",
+        rationale:
+          "An agent registered with mode: primary or all runs as the session through opencode run --agent <plugin>-<name>, on its instructions, and its tool events name it. The name is the projection's qualification, as for agents.definition.",
       },
       "agents.native": {
         level: "unsupported",

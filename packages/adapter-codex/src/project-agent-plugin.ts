@@ -534,6 +534,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           rationale:
             "Codex's plugin format has no agents component: OpenAI tracks bundling agents in a plugin as an open request (openai/codex#18988), and no route was probed that Codex reads from an installed plugin. Deliver agent definitions to a Codex project target, which reads .codex/agents.",
         },
+        "agents.primary": {
+          level: "unsupported",
+          rationale:
+            "Codex has no agent a session runs as, and a Codex plugin cannot deliver an agent definition at all.",
+        },
         "agents.native": {
           level: "unsupported",
           rationale: "Native fields ride on a delivered definition, and a Codex plugin cannot deliver one.",
