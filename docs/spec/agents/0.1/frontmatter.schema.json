@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:hooknostic:spec:subagents:0.1:frontmatter",
-  "title": "Hooknostic Subagent Definition 0.1 frontmatter",
-  "description": "The YAML frontmatter of a subagent definition file (provisional; see docs/spec/subagents/0.1.md). The instructions are the Markdown body after the frontmatter and are not part of this schema.",
+  "$id": "urn:hooknostic:spec:agents:0.1:frontmatter",
+  "title": "Hooknostic Agent Definition 0.1 frontmatter",
+  "description": "The YAML frontmatter of an agent definition file (provisional; see docs/spec/agents/0.1.md). The instructions are the Markdown body after the frontmatter and are not part of this schema.",
   "type": "object",
   "properties": {
     "name": {
@@ -10,14 +10,19 @@
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-      "description": "The subagent's name; equals the file stem."
+      "description": "The agent's name; equals the file stem."
     },
     "description": {
       "type": "string",
       "minLength": 1,
       "maxLength": 1024,
       "pattern": "^[^\\r\\n]*$",
-      "description": "Single-line routing text: when the primary agent should delegate to this subagent."
+      "description": "Single-line routing text: when to use this agent."
+    },
+    "mode": {
+      "enum": ["subagent", "primary", "all"],
+      "default": "subagent",
+      "description": "Where the agent is offered: for delegation (subagent), as the agent a session runs as (primary), or both (all)."
     },
     "native": {
       "type": "object",

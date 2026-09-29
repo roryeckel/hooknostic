@@ -35,8 +35,8 @@ Read these when you want to know *why* something works the way it does, not just
 | [0024 — OpenCode version families](0024-opencode-version-families.md) | How does one adapter target incompatible native implementations without conflating their evidence? |
 | [0025 — A handler may return an ordered list of effects](0025-effect-lists.md) | How does one hook both notify the user and keep the agent working? |
 | [0026 — A normalized, read-only view of the files a tool targets](0026-normalized-file-view.md) | How does a file guard read the target path when every harness names it differently? |
-| [0027 — Portable subagent definitions (proposed)](0027-portable-subagents.md) | Can one definition become a Claude subagent, a Codex custom agent and an OpenCode agent, and what survives the translation? |
-| [0028 — Agent-scoped hooks (proposed)](0028-agent-scoped-hooks.md) | How does a hook run only inside one subagent, and on which harnesses can it tell? |
+| [0027 — Portable agent definitions (proposed)](0027-portable-agents.md) | Can one definition become a Claude subagent, a Codex custom agent and an OpenCode agent, or the agent a session runs as, and what survives the translation? |
+| [0028 — Agent-scoped hooks (proposed)](0028-agent-scoped-hooks.md) | How does a hook run only inside one agent, and on which harnesses can it tell? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

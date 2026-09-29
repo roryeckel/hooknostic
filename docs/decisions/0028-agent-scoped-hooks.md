@@ -1,7 +1,7 @@
 # ADR-0028: A hook can be scoped to the agent it runs in
 
 **Status:** Proposed — 2026-09-29. It builds on
-[ADR-0027](0027-portable-subagents.md) and, like it, is implemented on the branch
+[ADR-0027](0027-portable-agents.md) and, like it, is implemented on the branch
 that proposes it, for review; it merges only once both are accepted.
 
 **In short:** Hooknostic should normalize the name of the agent an event ran in, as
@@ -12,9 +12,9 @@ reported like any other.
 
 ## Context
 
-ADR-0027 makes subagents something an author defines and ships. A hook still
-cannot tell whose tool call it is looking at. That rules out uses a subagent
-invites:
+ADR-0027 makes agents something an author defines and ships, as subagents or as
+the agent a session runs as. A hook still cannot tell whose tool call it is
+looking at. That rules out uses a defined agent invites:
 
 - **Guarding one subagent.** For example, a reviewer that must not write. Codex
   honours no per-agent tool list or sandbox (`.capture/agents`), so a hook is the
@@ -39,6 +39,16 @@ The Codex 0.148.0 runs relied on `--dangerously-bypass-hook-trust`, with session
 overrides and with an isolated `CODEX_HOME` alike. Whether persisted hook trust
 changes the result is not established.
 
+A session can also run as a defined agent (ADR-0027, decision 9). The same drive
+started one that way:
+
+| | Claude 2.1.238, 2.1.283 | OpenCode 2.0.17 | OpenCode 1.18.31, 1.18.18 |
+| --- | --- | --- | --- |
+| The session's own events | `agent_type` names the agent on `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `Stop`, with no `agent_id` | tool events' `agent` names it | tool events name no agent |
+| A packaged agent reports | `<plugin>:<name>` | its registered id | — |
+
+Codex has no agent a session runs as.
+
 Today `correlation.agentId` normalizes `agent_id`, and `agent.start`/`agent.stop`
 carry `agent.type`. On a tool event, the agent's name survives only in `raw`.
 Hooks already have one precedent for scoping: `targets`, a runtime filter that
@@ -50,10 +60,13 @@ needs no state (design §7.6, ADR-0002).
    additive and optional. It holds the name of the agent the event ran in,
    exactly as the harness reports it.
    - **Claude and Codex.** From `agent_type`, on every event that carries it.
+     Claude also sends it on every event of a session started as an agent.
    - **OpenCode v2.** From `agent` on tool events. That includes the primary
-     agent's name, because v2 reports it.
-   - **Absent means not reported.** On Claude and Codex that is the main agent.
-     On OpenCode v1 it is every tool event.
+     agent's name, because v2 reports it: `build`, or a defined agent the session
+     runs as.
+   - **Absent means not reported.** On Claude that is a session not started as
+     an agent, and on Codex the main agent. On OpenCode v1 it is every tool
+     event.
    - **Never inferred.** It is not derived from session parentage or from an
      instance id, since that would need cross-invocation state (ADR-0002).
    - **Additive.** `raw` and `correlation.agentId` do not change.
@@ -71,7 +84,10 @@ needs no state (design §7.6, ADR-0002).
 
 3. **A target's ability to tell is the capability `<event>.agent.identity`.** It
    exists for the same six events. It means that events inside a subagent are
-   dispatched, and that each dispatched event names the agent it ran in.
+   dispatched, and that each dispatched event names the agent it ran in. Where
+   the harness has agents a session runs as, that includes a session running as
+   one: the evidence above holds for both on Claude and OpenCode v2, and for
+   neither on OpenCode v1, so no level differs between them.
    - **Implied by `agents`.** A hook with `agents` requires it, as a hook
      requires its event's `observe`. Declaring it `optional` beside `agents` is
      an error.
@@ -107,6 +123,10 @@ needs no state (design §7.6, ADR-0002).
      names.
    - A portable `readOnly` posture (ADR-0027 open question 4). It can build on
      this, for example as a generated agent-scoped `tool.before` guard on Codex.
+   - Scoping `session.start`, `prompt.submit` or `turn.stop` to the agent a
+     session runs as. Claude names it on each of them, but OpenCode v2 was
+     captured naming it on tool events only, so no second harness supports it
+     yet.
 
 ## Consequences
 
@@ -126,6 +146,10 @@ needs no state (design §7.6, ADR-0002).
   - **Mutation checks.** A generated runtime that ignored the scope failed the
     scenario: the stray guard blocked the parent's delegation. So did a decoder
     that dropped the field.
+  - **A session running as the agent.** The `scoped-primary` case builds the
+    same hooks and a `primary` definition, and starts the session as the agent.
+    On Claude and OpenCode v2 the scoped guard blocked the session's own guarded
+    call; on OpenCode v1 the build refused the scope, as for a subagent.
 - **Adapters.** Each adapter normalizes one more field, and canonical fixtures
   that carry the native field gain `agentType`. Every OpenCode v2 tool fixture
   does, because v2 always names the running agent.
