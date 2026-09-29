@@ -27,12 +27,22 @@ const CAPTURED = join(resolve(artifact), "captured-opencode-v1");
 const homes = capturingHomes({ home: homedir(), temp: tmpdir(), realpath: realpathSync.native });
 const username = userInfo().username;
 
+// The artifact was captured on another machine (a CI container runs as
+// `node`), so this machine's home and username are not the only accounts
+// that can appear: any home-directory segment other than the redacted `user`
+// fails the promotion. Matched on JSON text, where a Windows backslash is `\\`.
+const FOREIGN_HOME = /(?:\/home\/|\/Users\/|\\\\Users\\\\)([^/\\"]+)/g;
+
 /** Fail-closed redaction (scripts/redact-capture.mjs), as .capture/file-tools/promote.mjs. */
 function redact(text, stem) {
   const { text: redacted, nearMisses } = redactHomes(text, homes);
   if (nearMisses.length > 0) throw new Error(`${stem}: ambiguous home paths, review by hand: ${nearMisses.join(", ")}`);
   if (unredactedHomes(redacted, homes).length > 0 || redacted.includes(username)) {
     throw new Error(`${stem}: the capturing account survived redaction`);
+  }
+  const foreign = [...redacted.matchAll(FOREIGN_HOME)].map((m) => m[1]).filter((name) => name !== "user");
+  if (foreign.length > 0) {
+    throw new Error(`${stem}: home paths of another account, redact by hand: ${[...new Set(foreign)].join(", ")}`);
   }
   return redacted;
 }
@@ -50,22 +60,26 @@ function first(file, predicate) {
 }
 
 const decode = (row) => decodeOpenCode(row, { targetId: "opencode", harnessVersion: opencodeHarness.referenceVersion });
-for (const [stem, file, predicate] of [
+
+// Select, redact, and decode every case before writing anything, so a missing
+// capture or a decode failure leaves the fixtures untouched rather than an
+// input paired with a stale canonical or a partly promoted set.
+const staged = [
   ["chat-message", "chat.message.jsonl", () => true],
   ["session-created", "event.jsonl", (r) => r.input?.event?.type === "session.created"],
   ["session-idle", "event.jsonl", (r) => r.input?.event?.type === "session.idle"],
   ["tool-before", "tool.execute.before.jsonl", (r) => r.input?.tool === "bash"],
   ["tool-after", "tool.execute.after.jsonl", (r) => r.input?.tool === "bash"],
-]) {
-  const text = redact(JSON.stringify(first(file, predicate), null, 2), stem) + "\n";
-  writeFileSync(join(REPO, "fixtures/opencode/1.18", `${stem}.input.json`), text, "utf8");
-  const { raw, ...canonical } = decode(JSON.parse(text));
+].map(([stem, file, predicate]) => {
+  const input = redact(JSON.stringify(first(file, predicate), null, 2), stem) + "\n";
+  const { raw, ...canonical } = decode(JSON.parse(input));
   void raw;
   delete canonical.harness.version;
-  writeFileSync(
-    join(REPO, "fixtures/opencode/1.18", `${stem}.canonical.json`),
-    JSON.stringify(canonical, null, 2) + "\n",
-    "utf8",
-  );
+  return { stem, input, canonical: JSON.stringify(canonical, null, 2) + "\n" };
+});
+
+for (const { stem, input, canonical } of staged) {
+  writeFileSync(join(REPO, "fixtures/opencode/1.18", `${stem}.input.json`), input, "utf8");
+  writeFileSync(join(REPO, "fixtures/opencode/1.18", `${stem}.canonical.json`), canonical, "utf8");
   console.log(`fixtures/opencode/1.18/${stem}`);
 }

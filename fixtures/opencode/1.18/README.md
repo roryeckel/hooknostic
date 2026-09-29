@@ -69,8 +69,9 @@ Ground truth notes (1.18.x):
 **`tool-{read,write,edit,apply-patch}-before.*` are captured.** Taken from a
 real **opencode 1.18.31** session on Windows (2026-09-27) through the tee plugin
 (`.capture/opencode-capture`) against the loopback playback model
-(`.capture/file-tools`): the envelopes are the harness's own, the argument
-*values* are scripted. They pin the file tools' path key (`filePath`), and that
+(`.capture/file-tools`): `input` and `output` are the harness's own, the argument
+*values* are scripted, and `directory` is filled by the tee plugin (see below).
+They pin the file tools' path key (`filePath`), and that
 a GPT-like model id (`gpt-5-playback`) swaps `edit`/`write` for `apply_patch`,
 whose `patchText` holds a Codex-grammar patch. Before this capture the adapter
 split `apply_patch` as an MCP tool named `patch` on server `apply`.
@@ -81,7 +82,7 @@ the top of this file. Taken from a real **opencode 1.18.33** session on Linux
 (2026-09-29) in the harness-watch drift lane
 (https://github.com/roryeckel/hooknostic/actions/runs/36504071099, playback
 transport) and promoted with `.capture/harness-drift/promote-opencode-v1.mjs`:
-the envelopes are the harness's own, the prompt and the bash command are
+`input` and `output` are the harness's own, the prompt and the bash command are
 scripted, and the paths are the container's `/drift/opencode-v1` (no account
 name to redact). What the live shape established against the typings:
 `chat.message` input carries `model` rather than `agent`/`messageID`; bus
@@ -91,3 +92,11 @@ behaviour fixtures derived from the old envelopes (`tool-before-block`,
 `tool-before-rewrite`, `tool-after-replace`, `session-idle-notify*`,
 `session-idle-prevent`) keep the type-derived shape: they pin the decode and
 apply contract, not harness shape.
+
+**The envelope's `directory` is reconstructed in both captured sets above.**
+The tee plugin (`.capture/opencode-capture/hooknostic-capture.js`) fills it from
+`HKN_CAPTURE_CWD` or its own `process.cwd()`, not from the harness, while the
+adapter shim uses the plugin context's `directory`. For every session promoted
+here the tee value was checked against the harness's own record, the
+`plugin-load.jsonl` row's `input.directory`, and they were identical, so the
+derived `cwd` is correct. The field is still not a harness-reported value.
