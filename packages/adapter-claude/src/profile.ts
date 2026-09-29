@@ -68,6 +68,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/claude/2.1",
           what: "Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised",
         },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "Tool payloads inside a delegated project subagent (.capture/agents): they carry agent_id and agent_type, the parent's carry neither. SubagentStart and SubagentStop fired around a child that finished, but no SubagentStop was dispatched when the child's maxTurns ended it",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

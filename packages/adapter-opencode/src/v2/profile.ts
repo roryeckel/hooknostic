@@ -69,6 +69,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/opencode/2.0",
           what: "A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch)",
         },
+        {
+          version: "2.0.17",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0",
+          what: "A read inside a delegated project subagent (tool-read-in-subagent-before/after, .capture/agents): execute.before and execute.after name the subagent in agent, where the parent's own tool events name its primary agent, build.",
+        },
         // scheduled-playback:begin
         {
           version: "2.0.18",

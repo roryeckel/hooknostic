@@ -5486,6 +5486,7 @@ var CODEX_TOOL_KINDS = {
   WebSearch: "web.search",
   spawn_agent: "agent",
   Agent: "agent",
+  multi_agent_v1wait_agent: "other",
   update_plan: "other"
 };
 var CODEX_SHELL_SHAPES = {

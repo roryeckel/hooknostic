@@ -26,6 +26,8 @@ const CASES = [
   "post-compact",
   "subagent-start",
   "subagent-stop",
+  "pre-tool-read-subagent",
+  "post-tool-read-subagent",
   "stop",
 ] as const;
 

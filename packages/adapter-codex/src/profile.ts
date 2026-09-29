@@ -146,6 +146,26 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/codex/0.148",
           what: "apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path",
         },
+        {
+          version: "0.156.1",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/codex/0.148",
+          what:
+            "Subagent hook payloads over the loopback model (.capture/agents): once the parent waited on a spawned custom agent, " +
+            "SubagentStart and SubagentStop fired live with agent_id and agent_type, and the child's own Bash PreToolUse/PostToolUse " +
+            "carried the same identity; the parent's wait reaches hooks as multi_agent_v1wait_agent.",
+        },
+        {
+          version: "0.148.0",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what:
+            "The same drive under --dangerously-bypass-hook-trust, with session -c overrides and with an isolated CODEX_HOME " +
+            "alike: the spawned subagent's shell command ran and wrote its file, and no hook fired inside the child -- no " +
+            "PreToolUse for it, no SubagentStart or SubagentStop. Whether persisted hook trust changes this is not established.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

@@ -648,7 +648,9 @@ export default {
   async setup(ctx) {
     const root = process.env.HKN_CAPTURE_DIR;
     mkdirSync(root, { recursive: true });
-    const record = (hook, event) => appendFileSync(join(root, "events.jsonl"), JSON.stringify({ hook, event }) + "\\n");
+    // The envelope Hooknostic's v2 shim hands its decoder, so a row can become a fixture.
+    const record = (hook, event) =>
+      appendFileSync(join(root, "events.jsonl"), JSON.stringify({ hook, directory: ctx.location?.directory, event }) + "\\n");
     record("setup.surface", { ctx: methods(ctx), agent: ctx.agent === undefined ? null : methods(ctx.agent) });
     if (process.env.HKN_PROBE_EFFECT === "inject" && ctx.agent?.transform) {
       try {

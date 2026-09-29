@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f10fc2403fferD1iCWg5YpcaAk",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.after",
+  "tool": {
+    "nativeName": "read",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project\\seed.txt"
+    },
+    "kind": "file.read",
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project\\seed.txt"
+      ],
+      "pathKey": "path"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "Read file C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project\\seed.txt, lines 1-1\n1: alpha"
+    }
+  ]
+}

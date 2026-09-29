@@ -190,6 +190,13 @@ Notes:
     not reproduce here.
   - The parent's wait call reaches hooks as `tool_name: "multi_agent_v1wait_agent"`,
     while `spawn_agent` is unprefixed.
+  - **On 0.148.0 no hook fired inside the child.** The same `direct` drive, with
+    session `-c` overrides and with an isolated `CODEX_HOME`, ran the child's
+    shell command, which wrote its file. No `PreToolUse` fired for it, and no
+    `SubagentStart` or `SubagentStop`. Both runs relied on
+    `--dangerously-bypass-hook-trust`. Whether persisted hook trust changes this
+    is not established. On this build, then, no hook is shown to cover what a
+    subagent does.
 - **OpenCode v1:** `tool.execute.before`/`after` fire in the child session, which
   has a distinct `sessionID`, but carry only `{tool, sessionID, callID}`. The
   child's `chat.message` carries `agent: "hn-probe"`.
@@ -280,8 +287,14 @@ failed the test.
     its "inconclusive" record deserves a re-run with a wait turn.
   - `multi_agent_v1wait_agent` has no entry in `CODEX_TOOL_KINDS`.
   - Claude dispatches no `SubagentStop` when `maxTurns` ends a subagent.
-- **Candidates for fixture promotion** (not done in this spike):
+- **Promoted fixtures.** `promote.mjs` turns reviewed captures into fixtures,
+  with the account name redacted:
   - the Claude, Codex and OpenCode v2 in-child tool payloads carrying agent
     identity;
-  - the Codex `SubagentStart`/`SubagentStop` payloads, which would upgrade
-    today's schema-derived Codex subagent fixtures to captured.
+  - the Codex `SubagentStart`/`SubagentStop` payloads, the first captured ones
+    beside the schema-derived 0.148 fixtures;
+  - the Codex `wait_agent` payload.
+
+  It reads `claude/direct`, `codex-home/direct` and `opencode-v2/direct`. The v2
+  tee records the `directory` envelope Hooknostic's v2 shim hands its decoder,
+  so its rows decode as they are.
