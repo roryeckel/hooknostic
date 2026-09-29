@@ -166,7 +166,10 @@ function completeEvent(
   for (const path of registered) {
     if (readEventField(event, path) === undefined) continue;
     const id = `${name}.${path}` as EventFieldId;
-    if (fieldMatrix[id] === undefined) {
+    // Absent and explicitly unsupported mean the same (ADR-0027), as they do
+    // in the build's own analysis.
+    const rating = fieldMatrix[id];
+    if (rating === undefined || rating.level === "unsupported") {
       return {
         problem: `${id} is never produced by the ${adapter.id} decoder for this target's version range; omit it (see \`hooknostic inspect ${adapter.id}\`)`,
       };
