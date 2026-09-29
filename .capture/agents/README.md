@@ -21,6 +21,8 @@ these questions about a native agent file:
 - Are the agent's tool restriction, model and turn cap honoured?
 - Can a plugin or package deliver the agent?
 - What do hooks see inside the child?
+- Can the same agent run as the session's main (primary) agent instead, and
+  what do the session and its hooks see then?
 
 ## Provenance boundary
 
@@ -73,6 +75,13 @@ templates attached (`.capture/claude`, `.capture/codex-capture`,
 5. **Run controls.** A negative control puts the same file under
    `<native dir>-off/`. The `neutral` and `cross` cases put it only under
    `.agents/agents/` or `.claude/agents/`.
+6. **Main-session cases.** The `primary-*`, `deny-flag` and OpenCode mode cases
+   run the session itself as the agent, and the prompt asks it to read
+   `seed.txt`. Every request of such a session carries the instruction nonce, so
+   the child backend's script drives it, and the parent lane sees only requests
+   that do not carry it. These cases pass no model flag, so the agent's own model
+   can show. The `primary-hidden` and `all-listed` cases instead run the default
+   agent and look at its delegation tool.
 
 The agent in step 1 is defined like this:
 
@@ -82,6 +91,9 @@ The agent in step 1 is defined like this:
 | Codex | `.codex/agents/hn-probe.toml` | `sandbox_mode = "read-only"` | `model`, and `model_reasoning_effort = "low"` | none (no field) |
 | OpenCode v1 | `.opencode/agents/hn-probe.md` | `permission: {edit: deny, bash: deny}` | `mode: subagent`, `model: drift/<alt>` | `steps: 2` (the `maxsteps` case uses `maxSteps: 2`) |
 | OpenCode v2 | `.opencode/agents/hn-probe.md` | `permissions` deny rules for `edit` and `shell` (`readonly` case) | `mode: subagent`, `model: playback/<alt>` | `steps: 2` |
+
+The main-session cases drop the turn cap, and on OpenCode set the `mode` under
+test. The OpenCode v2 mode agents set no permission rules.
 
 `captured/<harness>/<case>/` is gitignored. Each case writes:
 
@@ -203,6 +215,41 @@ Notes:
 - **OpenCode v2:** the child's `execute.before` carries `agent: "hn-probe"`, and
   the parent's carries `agent: "build"`.
 
+### The agent as the main session
+
+Every case below was run on Claude Code 2.1.283 and 2.1.238, OpenCode 1.18.31
+and 1.18.18, and OpenCode 2.0.17, with the same result on each build of a family.
+
+| | Claude | OpenCode v1 | OpenCode v2 |
+| --- | --- | --- | --- |
+| Start the session as the agent | `--agent hn-probe` (`primary-flag`), or `"agent": "hn-probe"` in the project's `.claude/settings.json` (`primary-setting`) | `run --agent hn-probe`, or `default_agent` in `opencode.json` (`default-agent`) | the same |
+| Which agents run that way | any agent file: Claude has no mode | `mode: primary` or `all`. With `mode: subagent`, `--agent` printed `agent "hn-probe" is a subagent, not a primary agent. Falling back to default agent`, and the session ran as `build` | any, `mode: subagent` included |
+| The session's prompt | the instructions replace the default system prompt, between the one-line SDK preamble and the environment section | the instructions replace the provider prompt | the same |
+| Tool restriction | `tools: Read, Grep` was the session's exact tool set | the `permission` denies removed `bash`, `edit` and `write` | not probed |
+| Model | the agent's | the agent's | **the configured `model`, not the agent's** |
+| Offered to the default agent for delegation | always: see below | `subagent` and `all` in the `task` tool; `primary` not (`all-listed`, `primary-hidden`) | the same, in the `subagent` tool |
+| Package route | a `--plugin-dir` plugin's agent ran through `--agent hn-plugin:hn-probe` or the bare `--agent hn-probe`; a plugin whose root `settings.json` sets `agent`, bare or qualified, started every session as it | a `config` hook's `config.agent["hn-probe"]` with `mode: "primary"` ran through `--agent`; a hook that also set `config.default_agent` started the session as it | an agent the transform `update`d with `mode: "primary"` ran through `--agent`; the editor's `default("hn-probe")` started the session as it |
+| Identity on the session's own events | `agent_type: "hn-probe"` on `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `Stop`, with no `agent_id`; a plugin agent reports `hn-plugin:hn-probe` | `chat.message` carries `agent: "hn-probe"`; tool events carry no agent | tool events carry `agent: "hn-probe"` |
+
+- **Claude withholds an agent from delegation only by permission rule.** With
+  `permissions.deny: ["Agent(hn-probe)"]` in the project settings (`deny`), the
+  parent's request no longer listed the agent, and its scripted `Agent` call was
+  refused: "Agent type 'hn-probe' has been denied by permission rule
+  'Agent(hn-probe)' from projectSettings." With the same rule, `--agent hn-probe`
+  still ran the session as the agent (`deny-flag`).
+- **OpenCode v2 ignores the agent's model for a session running as it.** In an
+  earlier run of `primary-flag` with no configured `model`, the session did not
+  fall back to the agent's model either. It reached OpenCode's hosted default
+  provider instead of the loopback server; OpenCode reported a cost of 0, and no
+  credential was involved. The drive now always configures `model`, so no case
+  leaves the loopback server.
+- **The v2 editor's `default`** is `(id) => …default(id === undefined ? undefined : <id>)`.
+  It returned nothing, and the next session started as the agent.
+- **Codex has no route.** `codex --help` and `codex exec --help`, on 0.156.1 and
+  0.148.0, offer `--profile`, which selects a configuration profile, and no option
+  that runs a session as an agent. A custom agent is reachable only through
+  `spawn_agent`.
+
 ### Reference builds, generated definitions and packages
 
 The drive was re-run at each adapter's reference build, the version CI's
@@ -300,6 +347,21 @@ failed the test.
   - Available on Claude, Codex 0.156.1 and OpenCode v2 tool events, which makes
     agent-scoped hooks feasible there without cross-invocation state (ADR-0002).
   - OpenCode v1 exposes it only on `chat.message`.
+  - A session running as an agent is named too: on every Claude event, with no
+    `agent_id` (a subagent's events carry one), and on OpenCode v2 tool events.
+    Scoping a hook to an agent therefore reaches it as the main agent as well.
+- **Main-session use ports to Claude and OpenCode, and not to Codex.** Both
+  OpenCode families and Claude ran a session as the agent from a project file
+  and from a package, on its instructions. OpenCode's `mode` decides where an
+  agent is offered; Claude has no mode, and offers every agent for delegation
+  unless a project permission rule withholds it. OpenCode v1 refuses to run a
+  `subagent` as the session; v2 and Claude run any agent they are named.
+- **A native model does not reach an OpenCode v2 session running as the agent.**
+  The configured `model` wins.
+- **Making an agent the default is a separate, capturable step:** Claude's
+  `agent` setting (a project's, or a plugin's root `settings.json`), OpenCode's
+  `default_agent` (in `opencode.json`, or set by a v1 `config` hook), and the v2
+  editor's `default(<id>)`.
 - **Follow-ups for the existing hook adapters:**
   - The Codex `agent-subagent` playback scenario never calls `wait_agent`.
     0.156.1 dispatches both subagent lifecycle events once the parent waits, so

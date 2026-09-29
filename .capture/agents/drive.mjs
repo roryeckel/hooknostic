@@ -5,7 +5,9 @@
 // name. A routing proxy sends every request that carries the agent's
 // instruction marker, or the delegated task sentinel in a user message, to a
 // child backend with its own script, so parent and child turns never share one
-// turn counter. See README.md for the question, method and provenance boundary.
+// turn counter. The primary-* and mode cases run the session itself as the
+// agent instead, so the child backend drives the whole session. See README.md
+// for the question, method and provenance boundary.
 //
 //   node --experimental-strip-types .capture/agents/drive.mjs <harness> [--only <case>]
 //   harness: claude | codex | codex-home | opencode-v1 | opencode-v2
@@ -25,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url).href);
-const { prepareOpenCodePluginDependency, runProcess, startModelPlayback } = await import(
+const { openCodePlaybackConfigHome, prepareOpenCodePluginDependency, runProcess, startModelPlayback } = await import(
   pathToFileURL(join(REPO, "packages/cli/test/harness-playback.ts")).href
 );
 const { driveCodex, driveOpencode, prepareScratch, withoutCredentials, writeOpencodeConfig } = await import(
@@ -58,6 +60,8 @@ const NAME = "hn-probe";
 const MODEL = "hooknostic-playback";
 const ALT_MODEL = "hooknostic-playback-alt";
 const PROMPT = "Delegate the probe task to the hn-probe agent exactly once, then stop.";
+/** The user turn of a session that runs as the agent itself (the primary-* cases). */
+const PRIMARY_PROMPT = "Read seed.txt, then reply with the single word ready.";
 const DESCRIPTION = `${DESC} Hooknostic capture probe. Use only when explicitly asked.`;
 const INSTRUCTIONS = `${MARKER}\nYou are a hooknostic capture probe. Read seed.txt when asked, then reply with the single word ready.`;
 const DELEGATION = `${TASK} Read seed.txt, then reply with the single word ready.`;
@@ -258,6 +262,23 @@ function opencodeV2Agent(readOnly = false) {
     INSTRUCTIONS,
     "",
   ].join("\n");
+}
+
+/**
+ * For the primary and mode cases: the same agent with no turn cap, so a session
+ * running as the agent is not cut short, and on OpenCode with the `mode` under
+ * test. The tool restriction and model stay, to be observed on the session.
+ */
+function claudePrimaryAgent() {
+  return claudeAgent().replace("maxTurns: 2\n", "");
+}
+
+function opencodeV1ModeAgent(mode) {
+  return opencodeV1Agent().replace("mode: subagent", `mode: ${mode}`).replace("steps: 2\n", "");
+}
+
+function opencodeV2ModeAgent(mode) {
+  return opencodeV2Agent().replace("mode: subagent", `mode: ${mode}`).replace("steps: 2\n", "");
 }
 
 function write(path, contents) {
@@ -469,6 +490,36 @@ async function claudeSession(caseName) {
     extraArgs.push("--plugin-dir", await buildPackaged(join(scratch, "..", "packaged"), "claude"));
     subagentType = `${PLUGIN}:${NAME}`;
   }
+  // The primary-* and deny-flag cases run the session itself as the agent, so
+  // its requests carry the instructions and go to the child backend; the parent
+  // lane sees only requests that do not. They pass no --model, so the agent's
+  // own model can show.
+  const primary = caseName.startsWith("primary-") || caseName === "deny-flag";
+  if (["primary-flag", "primary-setting", "deny", "deny-flag"].includes(caseName)) {
+    write(join(scratch, ".claude/agents", `${NAME}.md`), claudePrimaryAgent());
+  }
+  if (caseName === "primary-flag" || caseName === "deny-flag") extraArgs.push("--agent", NAME);
+  if (caseName === "primary-setting" || caseName.startsWith("deny")) {
+    const settingsPath = join(scratch, ".claude", "settings.json");
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+    if (caseName === "primary-setting") settings.agent = NAME;
+    // The documented way to keep Claude from delegating to an agent.
+    else settings.permissions = { deny: [`Agent(${NAME})`] };
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+  }
+  if (caseName.startsWith("primary-plugin")) {
+    const plugin = join(scratch, "..", PLUGIN);
+    write(join(plugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: PLUGIN, version: "0.0.0" }, null, 2));
+    write(join(plugin, "agents", `${NAME}.md`), claudePrimaryAgent());
+    // A plugin's own default, from settings.json at its root, in either spelling.
+    if (caseName === "primary-plugin-setting") write(join(plugin, "settings.json"), JSON.stringify({ agent: NAME }));
+    if (caseName === "primary-plugin-setting-qualified") {
+      write(join(plugin, "settings.json"), JSON.stringify({ agent: `${PLUGIN}:${NAME}` }));
+    }
+    extraArgs.push("--plugin-dir", plugin);
+    if (caseName === "primary-plugin") extraArgs.push("--agent", `${PLUGIN}:${NAME}`);
+    if (caseName === "primary-plugin-bare") extraArgs.push("--agent", NAME);
+  }
   const delegates = [
     "direct",
     "complete",
@@ -478,6 +529,7 @@ async function claudeSession(caseName) {
     "scoped",
     "plan-project",
     "plan-plugin",
+    "deny",
   ].includes(caseName);
   // A bypassing parent takes precedence over a subagent's own permission
   // mode, so the plan-* cases run the parent in the default mode instead.
@@ -503,9 +555,8 @@ async function claudeSession(caseName) {
       "claude",
       [
         "-p",
-        PROMPT,
-        "--model",
-        MODEL,
+        primary ? PRIMARY_PROMPT : PROMPT,
+        ...(primary ? [] : ["--model", MODEL]),
         "--settings",
         join(scratch, ".claude", "settings.json"),
         ...permissions,
@@ -654,26 +705,62 @@ async function codexSession(caseName, isolatedHome) {
   };
 }
 
-function patchOpencodeV1Models(scratch, pluginPackage) {
+function patchOpencodeV1Models(scratch, pluginPackage, defaultAgent) {
   const path = join(scratch, "opencode.json");
   const config = JSON.parse(readFileSync(path, "utf8"));
   config.provider.drift.models[ALT_MODEL] = { name: ALT_MODEL, limit: { context: 32768, output: 4096 } };
   if (pluginPackage !== undefined) config.plugin = [pluginPackage.replaceAll("\\", "/")];
+  if (defaultAgent !== undefined) config.default_agent = defaultAgent;
   writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
 }
 
-const V1_INJECTOR = `export default async () => ({
+/** A plugin whose `config` hook adds the agent, in `mode`, and optionally makes it the default. */
+function v1Injector(mode = "subagent", makeDefault = false) {
+  return `export default async () => ({
   config: (config) => {
     config.agent = { ...(config.agent ?? {}) };
     config.agent[${JSON.stringify(NAME)}] = {
       description: ${JSON.stringify(DESCRIPTION)},
-      mode: "subagent",
+      mode: ${JSON.stringify(mode)},
       model: ${JSON.stringify(`drift/${ALT_MODEL}`)},
       prompt: ${JSON.stringify(INSTRUCTIONS)},
-    };
+    };${makeDefault ? `\n    config.default_agent = ${JSON.stringify(NAME)};` : ""}
   },
 });
 `;
+}
+
+/**
+ * `opencode run` as driveOpencode starts it, but with no --model, so an agent's
+ * own model can show, and with the caller's arguments (--agent).
+ */
+async function runOpencodeV1(scratch, args) {
+  await runProcess("git", ["init"], { cwd: scratch, env: process.env, timeoutMs: 30_000 });
+  return runProcess("opencode", ["run", ...args, "--print-logs", "--log-level", "DEBUG"], {
+    cwd: scratch,
+    timeoutMs: 180_000,
+    env: { ...withoutCredentials(), PWD: scratch, XDG_CONFIG_HOME: openCodePlaybackConfigHome(scratch) },
+  });
+}
+
+/**
+ * The mode cases, OpenCode v1 and v2 alike: the `mode` the agent file declares.
+ * `*-flag` runs the session as the agent (`--agent`), `default-agent` names it
+ * `default_agent`, and `primary-hidden`/`all-listed` run the default agent to
+ * see whether the delegation tool offers it.
+ */
+const MODE_CASES = {
+  "primary-flag": "primary",
+  "primary-hidden": "primary",
+  "default-agent": "primary",
+  "all-flag": "all",
+  "all-listed": "all",
+  "subagent-flag": "subagent",
+};
+/** Cases whose session is started with `--agent hn-probe`. */
+const AS_AGENT = new Set(["primary-flag", "all-flag", "subagent-flag", "inject-primary"]);
+/** Cases whose session should start as the agent without being told to. */
+const AS_DEFAULT = new Set(["default-agent", "inject-default"]);
 
 async function opencodeV1Session(caseName) {
   // The tee plugin's dependency must match the harness build on PATH; CI's
@@ -690,7 +777,11 @@ async function opencodeV1Session(caseName) {
   if (caseName === "control") write(join(scratch, ".opencode/agents-off", `${NAME}.md`), opencodeV1Agent());
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
-  if (caseName === "inject") write(join(scratch, ".opencode/plugins/hn-inject.js"), V1_INJECTOR);
+  if (caseName === "inject") write(join(scratch, ".opencode/plugins/hn-inject.js"), v1Injector());
+  if (caseName === "inject-primary" || caseName === "inject-default") {
+    write(join(scratch, ".opencode/plugins/hn-inject.js"), v1Injector("primary", caseName === "inject-default"));
+  }
+  if (caseName in MODE_CASES) write(join(scratch, ".opencode/agents", `${NAME}.md`), opencodeV1ModeAgent(MODE_CASES[caseName]));
   if (caseName === "generated") await syncGenerated(scratch, "opencode-v1");
   const scope =
     caseName === "scoped" ? await syncScoped(scratch, "opencode-v1", await installedVersion("opencode")) : undefined;
@@ -720,8 +811,11 @@ async function opencodeV1Session(caseName) {
   let result;
   try {
     writeOpencodeConfig(scratch, router.baseUrl, "hooknostic-playback", MODEL);
-    patchOpencodeV1Models(scratch, packaged);
-    result = await driveOpencode(scratch, MODEL, PROMPT);
+    patchOpencodeV1Models(scratch, packaged, caseName === "default-agent" ? NAME : undefined);
+    result =
+      AS_AGENT.has(caseName) || AS_DEFAULT.has(caseName)
+        ? await runOpencodeV1(scratch, [PRIMARY_PROMPT, ...(AS_AGENT.has(caseName) ? ["--agent", NAME] : [])])
+        : await driveOpencode(scratch, MODEL, PROMPT);
   } finally {
     await router.close();
   }
@@ -756,14 +850,21 @@ export default {
     const record = (hook, event) =>
       appendFileSync(join(root, "events.jsonl"), JSON.stringify({ hook, directory: ctx.location?.directory, event }) + "\\n");
     record("setup.surface", { ctx: methods(ctx), agent: ctx.agent === undefined ? null : methods(ctx.agent) });
-    if (process.env.HKN_PROBE_EFFECT === "inject" && ctx.agent?.transform) {
+    // inject: a subagent; inject-primary: a primary agent; inject-default: a
+    // primary agent the editor's default() then selects.
+    const effect = process.env.HKN_PROBE_EFFECT ?? "";
+    if (effect.startsWith("inject") && ctx.agent?.transform) {
       try {
         await ctx.agent.transform((editor) => {
-          record("agent.editor", { methods: methods(editor), list: editor.list?.().map((agent) => agent.id ?? agent.name) });
+          record("agent.editor", {
+            methods: methods(editor),
+            list: editor.list?.().map((agent) => agent.id ?? agent.name),
+            default: String(editor.default).slice(0, 400),
+          });
           const definition = {
             id: ${JSON.stringify(NAME)},
             description: ${JSON.stringify(DESCRIPTION)},
-            mode: "subagent",
+            mode: effect === "inject" ? "subagent" : "primary",
             system: ${JSON.stringify(INSTRUCTIONS)},
           };
           for (const [name, call] of [
@@ -778,6 +879,14 @@ export default {
               break;
             } catch (error) {
               record("agent.editor.call", { name, ok: false, error: String(error) });
+            }
+          }
+          if (effect === "inject-default") {
+            try {
+              const returned = editor.default(${JSON.stringify(NAME)});
+              record("agent.editor.default", { ok: true, returned: String(returned) });
+            } catch (error) {
+              record("agent.editor.default", { ok: false, error: String(error) });
             }
           }
         });
@@ -825,6 +934,7 @@ async function opencodeV2Session(caseName) {
   if (caseName === "control") write(join(project, ".opencode/agents-off", `${NAME}.md`), opencodeV2Agent());
   if (caseName === "neutral") write(join(project, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
+  if (caseName in MODE_CASES) write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2ModeAgent(MODE_CASES[caseName]));
   if (caseName === "generated") await syncGenerated(project, "opencode-v2");
   const scope =
     caseName === "scoped" ? await syncScoped(project, "opencode-v2", await installedVersion(executable, env)) : undefined;
@@ -856,6 +966,10 @@ async function opencodeV2Session(caseName) {
     join(project, "opencode.json"),
     JSON.stringify({
       ...(packaged === undefined ? {} : { plugins: [packaged] }),
+      ...(caseName === "default-agent" ? { default_agent: NAME } : {}),
+      // Always set. Without it a session running as the agent does not fall
+      // back to the agent's own model: 2.0.17 reached OpenCode's hosted
+      // default provider instead of the loopback server (README).
       model: `playback/${MODEL}`,
       providers: {
         playback: {
@@ -870,11 +984,20 @@ async function opencodeV2Session(caseName) {
   );
   let result;
   try {
-    result = await runProcess(executable, ["run", "--standalone", "--auto", "--format", "json", PROMPT], {
-      cwd: project,
-      env,
-      timeoutMs: 180_000,
-    });
+    const primary = AS_AGENT.has(caseName) || AS_DEFAULT.has(caseName);
+    result = await runProcess(
+      executable,
+      [
+        "run",
+        "--standalone",
+        "--auto",
+        "--format",
+        "json",
+        ...(AS_AGENT.has(caseName) ? ["--agent", NAME] : []),
+        primary ? PRIMARY_PROMPT : PROMPT,
+      ],
+      { cwd: project, env, timeoutMs: 180_000 },
+    );
   } finally {
     await router.close();
   }
@@ -893,14 +1016,53 @@ function excerpt(text, limit = 1500) {
  * Whether the tee saw the running agent named on a tool event inside the
  * child -- the raw field ADR-0028 normalizes -- whatever Hooknostic decided.
  */
+function rows(file) {
+  return existsSync(file)
+    ? readFileSync(file, "utf8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+    : [];
+}
+
+/**
+ * Every `<hook>:<agent>` pair the tee saw, "-" where the event named none:
+ * Claude's and Codex's `agent_type`, OpenCode v1's `chat.message` agent (its
+ * tool events carry none) and OpenCode v2's tool-event `agent`. In the primary
+ * cases, where the session itself runs as the agent, this is what the session's
+ * own events say about it.
+ */
+function teeIdentity(harness, captured) {
+  const seen = new Set();
+  if (harness === "claude" || harness.startsWith("codex")) {
+    for (const hook of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"]) {
+      for (const row of rows(join(captured, `${hook}.jsonl`))) seen.add(`${hook}:${row.agent_type ?? "-"}`);
+    }
+  } else if (harness === "opencode-v1") {
+    for (const row of rows(join(captured, "chat.message.jsonl"))) {
+      seen.add(`chat.message:${row.output?.message?.agent ?? "-"}`);
+    }
+    for (const row of rows(join(captured, "tool.execute.before.jsonl"))) {
+      seen.add(`tool.execute.before:${row.input?.agent ?? "-"}`);
+    }
+  } else {
+    for (const row of rows(join(captured, "events.jsonl"))) {
+      if (row.hook === "execute.before") seen.add(`execute.before:${row.event?.agent ?? "-"}`);
+    }
+  }
+  return [...seen].sort();
+}
+
+/** Output lines about agent selection or fallbacks, which a summary would otherwise lose. */
+function outputNotes(result) {
+  return (result.stdout + result.stderr)
+    .split(/\r?\n/)
+    .filter((line) => /fall(?:ing)?[ -]?back|is a subagent|primary agent|not found|unknown agent|no agent/i.test(line))
+    .slice(0, 12)
+    .map((line) => line.slice(0, 400));
+}
+
 function childToolIdentity(harness, captured) {
-  const rows = (file) =>
-    existsSync(file)
-      ? readFileSync(file, "utf8")
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .map((line) => JSON.parse(line))
-      : [];
   if (harness === "claude" || harness.startsWith("codex")) {
     return rows(join(captured, "PreToolUse.jsonl")).some((row) => typeof row.agent_type === "string");
   }
@@ -938,6 +1100,8 @@ function summarize(harness, caseName, session) {
       unscoped: router.log.some((entry) => JSON.stringify(entry.body).includes(UNSCOPED_BLOCK)),
     },
     childToolIdentity: childToolIdentity(harness, session.captured),
+    identity: teeIdentity(harness, session.captured),
+    outputNotes: outputNotes(result),
     // What the scoped trace hooks saw, and whether the call they let through ran.
     scopeTrace:
       session.scope?.trace !== undefined && existsSync(session.scope.trace)
@@ -1024,6 +1188,14 @@ const CASES = {
     "scoped",
     "plan-project",
     "plan-plugin",
+    "primary-flag",
+    "primary-setting",
+    "primary-plugin",
+    "primary-plugin-bare",
+    "primary-plugin-setting",
+    "primary-plugin-setting-qualified",
+    "deny",
+    "deny-flag",
   ],
   codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated", "scoped"],
   "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated", "scoped"],
@@ -1038,8 +1210,24 @@ const CASES = {
     "generated",
     "packaged",
     "scoped",
+    ...Object.keys(MODE_CASES),
+    "inject-primary",
+    "inject-default",
   ],
-  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject", "generated", "packaged", "scoped"],
+  "opencode-v2": [
+    "direct",
+    "readonly",
+    "control",
+    "neutral",
+    "cross",
+    "inject",
+    "generated",
+    "packaged",
+    "scoped",
+    ...Object.keys(MODE_CASES),
+    "inject-primary",
+    "inject-default",
+  ],
 };
 
 async function main() {
