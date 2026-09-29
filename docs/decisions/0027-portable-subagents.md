@@ -208,6 +208,16 @@ warning.
      That would be behaviour shaping, not a security boundary (CONTRIBUTING.md).
 5. **Canonical location of the spec and schema.** Their stable URL and whether
    they move to a published package.
+6. **One `native.opencode` for two families.** A harness key is an adapter id, and
+   the `opencode` adapter serves v1 and v2, whose agent fields differ: v1 has a
+   `permission` map, v2 `permissions` rules. A configuration building both families
+   sends the same block to each. The options are a family-qualified key such as
+   `opencode-v2`, or leaving the block family-agnostic and documenting it.
+7. **Per-target shortfall policy.** A package that targets Codex as well cannot ship
+   its subagents to the other harnesses without `onUnsupported: "warn"`, which
+   relaxes every component, not just the subagents. That is today's rule for any
+   unsupported component, such as an SSE server on Codex. Subagents make the
+   combination more common, which may justify a narrower policy.
 
 ## Consequences
 
