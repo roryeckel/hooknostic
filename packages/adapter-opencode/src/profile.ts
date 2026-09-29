@@ -124,6 +124,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/opencode/1.18",
           what: "read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch",
         },
+        {
+          version: "1.18.33",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/opencode/1.18",
+          what: "chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

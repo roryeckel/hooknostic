@@ -1,10 +1,53 @@
 {
   "hook": "event",
-  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "/drift/opencode-v1",
   "input": {
     "event": {
+      "id": "evt_0ea9dc5fb0014Tbywr2Q5JID6K",
       "type": "session.created",
-      "properties": { "info": { "id": "ses_8f2a1c" } }
+      "properties": {
+        "sessionID": "ses_f15623a05ffex44pC5Gqv3MgBx",
+        "info": {
+          "id": "ses_f15623a05ffex44pC5Gqv3MgBx",
+          "slug": "kind-eagle",
+          "version": "1.18.33",
+          "projectID": "global",
+          "directory": "/drift/opencode-v1",
+          "path": "",
+          "title": "New session - 2026-09-29T00:43:23.514Z",
+          "permission": [
+            {
+              "permission": "question",
+              "pattern": "*",
+              "action": "deny"
+            },
+            {
+              "permission": "plan_enter",
+              "pattern": "*",
+              "action": "deny"
+            },
+            {
+              "permission": "plan_exit",
+              "pattern": "*",
+              "action": "deny"
+            }
+          ],
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "time": {
+            "created": 1790642603515,
+            "updated": 1790642603515
+          }
+        }
+      }
     }
   }
 }

@@ -1,15 +1,21 @@
 {
   "hook": "tool.execute.after",
-  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "/drift/opencode-v1",
   "input": {
     "tool": "bash",
-    "sessionID": "ses_8f2a1c",
-    "callID": "call_01hn",
-    "args": { "command": "echo hooknostic-fixture" }
+    "sessionID": "ses_f15623a05ffex44pC5Gqv3MgBx",
+    "callID": "call_playback",
+    "args": {
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
+    }
   },
   "output": {
-    "title": "echo hooknostic-fixture",
-    "output": "hooknostic-fixture\n",
-    "metadata": {}
+    "title": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\"",
+    "metadata": {
+      "output": "(no output)",
+      "exit": 0,
+      "truncated": false
+    },
+    "output": "(no output)"
   }
 }

@@ -74,3 +74,20 @@ real **opencode 1.18.31** session on Windows (2026-09-27) through the tee plugin
 a GPT-like model id (`gpt-5-playback`) swaps `edit`/`write` for `apply_patch`,
 whose `patchText` holds a Codex-grammar patch. Before this capture the adapter
 split `apply_patch` as an MCP tool named `patch` on server `apply`.
+
+**`chat-message`, `session-created`, `session-idle`, `tool-before` and
+`tool-after` are captured**, replacing the type-derived envelopes described at
+the top of this file. Taken from a real **opencode 1.18.33** session on Linux
+(2026-09-29) in the harness-watch drift lane
+(https://github.com/roryeckel/hooknostic/actions/runs/36504071099, playback
+transport) and promoted with `.capture/harness-drift/promote-opencode-v1.mjs`:
+the envelopes are the harness's own, the prompt and the bash command are
+scripted, and the paths are the container's `/drift/opencode-v1` (no account
+name to redact). What the live shape established against the typings:
+`chat.message` input carries `model` rather than `agent`/`messageID`; bus
+events carry `event.id`; the bash tool's schema offers no `description` arg;
+`tool.execute.after` metadata carries `output`/`exit`/`truncated`. The
+behaviour fixtures derived from the old envelopes (`tool-before-block`,
+`tool-before-rewrite`, `tool-after-replace`, `session-idle-notify*`,
+`session-idle-prevent`) keep the type-derived shape: they pin the decode and
+apply contract, not harness shape.

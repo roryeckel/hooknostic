@@ -77,11 +77,10 @@ serialization rules were pinned by this run:
   `"[undefined]"` strings — a host that omits a key and a host that sends
   `undefined` must produce the same shape, or the tee manufactures drift.
 
-Known, honest limitation: the comparator reports **drift** for the two bus
-variants (`session.created`, `session.idle`) and `chat.message`/
-`tool.execute.after` because the committed 1.18 fixtures are type-derived
-envelopes with minimal `properties`/`metadata`, while live 1.18.27 payloads
-carry richer `info`/`metadata` objects. That is the comparator's strict
-additive rule doing its job against sparse fixtures — capture-shaped fixtures
-(when a human runs the harness-capture skill on a live session) will quiet it.
-The tee is not the defect: it records exactly what the harness sent.
+Resolved limitation: the comparator used to report **drift** for the two bus
+variants (`session.created`, `session.idle`), `chat.message`, and bash
+`tool.execute.before`/`after`, because the committed 1.18 fixtures were
+type-derived envelopes with minimal `properties`/`metadata` while live
+payloads carry richer `info`/`metadata` objects. Those five fixtures are now
+captured on 1.18.33 (`fixtures/opencode/1.18/README.md`). The tee was never
+the defect: it records exactly what the harness sent.

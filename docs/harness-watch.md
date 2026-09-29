@@ -186,10 +186,12 @@ job's steps:
 **Advisory only.** The drift lane never writes fixtures and never upgrades
 provenance — a "clean" verdict is a confidence note, not captured evidence;
 drift routes humans to the harness-capture skill. The procedure and its
-provenance boundary are recorded in `.capture/harness-drift/README.md`. Known
-honest limitation: OpenCode's committed 1.18 fixtures are type-derived
-envelopes, so live captures legitimately verdict `drift` until capture-shaped
-fixtures land (documented in `.capture/opencode-capture/README.md`).
+provenance boundary are recorded in `.capture/harness-drift/README.md`. The
+OpenCode 1.18 fixtures the drift session exercises (`chat-message`,
+`session-created`, `session-idle`, `tool-before`, `tool-after`) are captured
+on 1.18.33, promoted from a reviewed drift artifact
+(`.capture/harness-drift/promote-opencode-v1.mjs`); other 1.18 variants the
+session does not exercise keep their recorded provenance.
 
 ## The publish leg, in detail
 

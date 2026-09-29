@@ -1,10 +1,13 @@
 {
   "hook": "event",
-  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "/drift/opencode-v1",
   "input": {
     "event": {
+      "id": "evt_0ea9dcf30002C2AjcmdAdRHA2k",
       "type": "session.idle",
-      "properties": { "sessionID": "ses_8f2a1c" }
+      "properties": {
+        "sessionID": "ses_f15623a05ffex44pC5Gqv3MgBx"
+      }
     }
   }
 }
