@@ -78,6 +78,33 @@ it("rejects extracted evidence, generated manifests, release data and skipped ma
   ).toThrow("Skipped dependency");
 });
 
+it("tolerates the versionless setup-node placeholder but not a literal Node pin", () => {
+  const dep = {
+    manager: "npm",
+    packageFile: "package.json",
+    depName: "pnpm",
+    currentValue: "99.0.0",
+    depType: "packageManager",
+  };
+  const placeholder = {
+    depName: "node",
+    depType: "uses-with",
+    skipReason: "unspecified-version",
+    datasource: "github-releases",
+  };
+  const extract = (node) => ({
+    npm: [{ packageFile: "package.json", deps: [dep] }],
+    "github-actions": [{ packageFile: "package.json", deps: [node] }],
+  });
+  expect(() => checkExtraction([dep], extract(placeholder))).not.toThrow();
+  expect(() => checkExtraction([dep], extract({ ...placeholder, currentValue: "22" }))).toThrow(
+    "Unexpected extracted dependency",
+  );
+  expect(() => checkExtraction([dep], extract({ ...placeholder, skipReason: undefined }))).toThrow(
+    "Unexpected extracted dependency",
+  );
+});
+
 it("keeps intentional catalog lines and the manual Node floor outside automatic major migrations", () => {
   const config = JSON.parse(readFileSync(new URL("../renovate.json", import.meta.url), "utf8"));
   const ruleFor = (type) => config.packageRules.find((rule) => rule.matchDepTypes?.includes(type));

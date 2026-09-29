@@ -140,6 +140,17 @@ export function checkExtraction(expected, packageFiles) {
         if (manager === "npm" && (dep.depType === "engines" || /^(catalog:|workspace:)/.test(dep.currentValue)))
           continue;
         if (manager === "github-actions" && dep.depType === "github-runner" && dep.currentValue === "latest") continue;
+        // Newer Renovate emits a versionless `node` placeholder for every
+        // setup-node step. Ours read a version file owned by the nodenv
+        // manager, and inventory() rejects any literal `node-version`.
+        if (
+          manager === "github-actions" &&
+          dep.depType === "uses-with" &&
+          dep.depName === "node" &&
+          dep.currentValue === undefined &&
+          dep.skipReason === "unspecified-version"
+        )
+          continue;
         const record = { ...dep, manager, packageFile: file.packageFile };
         if (!wanted.has(key(record))) throw new Error(`Unexpected extracted dependency: ${key(record)}`);
         // Token-free extraction still discovers Action refs. Lookups require
