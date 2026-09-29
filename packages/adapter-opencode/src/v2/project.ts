@@ -85,7 +85,7 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>.",
+          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/subagent-playback.test.ts).",
         },
         {
           version: opencodeV2Harness.referenceVersion,

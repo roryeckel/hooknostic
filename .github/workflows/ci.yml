@@ -214,7 +214,7 @@ jobs:
         run: pnpm run bundle
 
       - name: Run model-free playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/subagent-playback.test.ts
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           # Deliberately blank: the test routes model traffic to loopback.

@@ -173,7 +173,7 @@ jobs:
 
       - name: Model-free playback against the newer build
         id: playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/subagent-playback.test.ts
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
           HOOKNOSTIC_PLAYBACK_VERSION: ${{ matrix.latest }}
@@ -508,7 +508,7 @@ jobs:
           Run: $LINK
 
           Runbook:
-          - [ ] Reproduce locally: \`HOOKNOSTIC_PLAYBACK=${{ matrix.harness }} HOOKNOSTIC_PLAYBACK_VERSION=${{ matrix.latest }} pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts\` (bundle first — docs/testing.md)
+          - [ ] Reproduce locally: \`HOOKNOSTIC_PLAYBACK=${{ matrix.harness }} HOOKNOSTIC_PLAYBACK_VERSION=${{ matrix.latest }} pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/subagent-playback.test.ts\` (bundle first — docs/testing.md)
           - [ ] If real harness drift: follow the harness-capture skill; fixtures and ranges extend only with captured evidence
           - [ ] If an adapter regression: fix, mutation-verify, let the next scheduled run close this issue
           - [ ] If install failure: check \`--ignore-scripts\` viability for this package (docs/harness-watch.md)

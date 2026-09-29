@@ -196,6 +196,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           what: "A project .opencode/agents file (and the legacy .opencode/agent directory) was offered to the parent through the task tool with its description; its body replaced the provider prompt, its model reached the child request, permission deny removed edit and bash from the child's tools, steps and maxSteps did not cap the child, and neither .claude/agents nor .agents/agents was read.",
         },
         {
+          version: "1.18.18",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, a project agent and a config-hook-injected one behaved as on 1.18.31, and a definition synchronized by Hooknostic's project delivery was offered through the task tool, delegated to, and ran on its instructions and native model (packages/cli/test/subagent-playback.test.ts).",
+        },
+        {
           version: "1.18.29",
           date: "2026-09-11",
           method: "live-probe",

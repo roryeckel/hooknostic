@@ -196,6 +196,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           what: "A project .claude/agents file was advertised to the parent with its description and selected through Agent's subagent_type; its body replaced the default system prompt, its tools list was the child's exact tool set, its model reached the child request, maxTurns stopped the child at the limit, and hook payloads inside the child carried agent_type.",
         },
         {
+          version: "2.1.238",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, a project and a plugin agent behaved as on 2.1.283, and a definition synchronized by Hooknostic's project delivery was advertised, delegated to, and ran on its instructions, native model and native tools (packages/cli/test/subagent-playback.test.ts).",
+        },
+        {
           version: "2.1.278",
           date: "2026-09-22",
           method: "live-probe",

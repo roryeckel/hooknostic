@@ -189,6 +189,33 @@ Notes:
 - **OpenCode v2:** the child's `execute.before` carries `agent: "hn-probe"`, and
   the parent's carries `agent: "build"`.
 
+### Reference builds and generated definitions
+
+The drive was re-run at each adapter's reference build, the version CI's
+playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
+**1.18.18** and **2.0.17**. Set `HKN_CAPTURE_LABEL` to keep such runs apart in
+`captured/`.
+
+- **Reference builds behave the same.** Claude's project and plugin agents, and
+  OpenCode's project and `config`-injected agents, behaved as on the newer
+  builds. On 0.148.0, Codex's `spawn_agent` also gained `agent_type` (beside a
+  `service_tier` key) once a project agent existed.
+- **The `generated` case.** It writes the same agent as a portable Hooknostic
+  Subagent Definition 0.1 file, synchronizes it into the scratch project with
+  Hooknostic's own project delivery, and then drives the harness exactly as
+  `direct` does. On every family and build above, the synchronized definition
+  was advertised to the parent, delegated to, and ran on its instructions and
+  native model; on Claude it also ran on its native tool list, and its result
+  came back.
+- **OpenCode v2 needs `mode: subagent`.** A mutant emitting the v2 file without
+  it failed: v2's `subagent` tool could not select the agent, which confirms
+  the documented `primary` default.
+
+`packages/cli/test/subagent-playback.test.ts` runs the `generated` case in CI's
+playback lanes (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the harness-watch verify
+lane, so this evidence is re-established on every change and every new harness
+build.
+
 ## Consequences
 
 - **The core ports everywhere.** Every family delivered a named, described

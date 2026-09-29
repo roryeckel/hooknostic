@@ -31,6 +31,11 @@ const { prepareOpenCodePluginDependency, runProcess, startModelPlayback } = awai
 const { driveCodex, driveOpencode, prepareScratch, withoutCredentials, writeOpencodeConfig } = await import(
   pathToFileURL(join(REPO, "scripts/drive-capture-session.mjs")).href
 );
+const { runProject } = await import(pathToFileURL(join(REPO, "packages/core/src/project.ts")).href);
+const { defaultAdapterRegistry } = await import(pathToFileURL(join(REPO, "packages/cli/src/registry.ts")).href);
+const { opencodeHarness, opencodeV1Adapter, opencodeV2Harness } = await import(
+  pathToFileURL(join(REPO, "packages/adapter-opencode/src/index.ts")).href
+);
 
 // A drive started from inside a Claude Code session inherits that session's
 // CLAUDE*/CLAUDECODE variables, which make the probe a child session.
@@ -247,6 +252,48 @@ function write(path, contents) {
   writeFileSync(path, contents, "utf8");
 }
 
+/**
+ * The `generated` case: the same agent as a portable Hooknostic Subagent
+ * Definition 0.1 file, synchronized into the scratch project by Hooknostic's own
+ * project delivery, so what the harness reads is what a user's build writes.
+ */
+async function syncGenerated(scratch, harness) {
+  const provider = harness === "opencode-v2" ? "playback" : "drift";
+  write(
+    join(scratch, "portable-agents", `${NAME}.md`),
+    [
+      "---",
+      `name: ${NAME}`,
+      `description: ${DESCRIPTION}`,
+      "native:",
+      "  claude:",
+      `    model: ${ALT_MODEL}`,
+      "    tools: [Read, Grep]",
+      "  codex:",
+      `    model: ${ALT_MODEL}`,
+      "    model_reasoning_effort: low",
+      "  opencode:",
+      `    model: ${provider}/${ALT_MODEL}`,
+      "---",
+      INSTRUCTIONS,
+      "",
+    ].join("\n"),
+  );
+  const registry = defaultAdapterRegistry();
+  if (harness === "opencode-v1") registry.opencode = opencodeV1Adapter();
+  const id = harness.startsWith("codex") ? "codex" : harness.startsWith("opencode") ? "opencode" : "claude";
+  const target = {
+    version: harness === "opencode-v2" ? opencodeV2Harness.recommendedRange : registry[id].harness.recommendedRange,
+    delivery: "project",
+    output: `.hooknostic/artifacts/${id}`,
+  };
+  const configPath = join(scratch, "hooknostic.config.ts");
+  const config = { project: { root: "." }, components: { subagents: ["./portable-agents"] }, targets: { [id]: target } };
+  writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
+  const synced = await runProject({ configPath, registry, command: "sync" });
+  if (!synced.ok) throw new Error(`hooknostic sync failed: ${JSON.stringify(synced.errors)}`);
+}
+
 // ---------------------------------------------------------------------------
 // Scripts
 // ---------------------------------------------------------------------------
@@ -286,6 +333,7 @@ async function claudeSession(caseName) {
   if (caseName === "complete") write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent().replace("maxTurns: 2\n", ""));
   if (caseName === "control") write(join(scratch, ".claude/agents-off", `${NAME}.md`), claudeAgent());
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
+  if (caseName === "generated") await syncGenerated(scratch, "claude");
   if (caseName === "plugin") {
     const plugin = join(scratch, "..", "hn-plugin");
     write(join(plugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: "hn-plugin", version: "0.0.0" }, null, 2));
@@ -294,7 +342,7 @@ async function claudeSession(caseName) {
     extraArgs.push("--plugin-dir", plugin);
     subagentType = `hn-plugin:${NAME}`;
   }
-  const delegates = ["direct", "complete", "plugin"].includes(caseName);
+  const delegates = ["direct", "complete", "plugin", "generated"].includes(caseName);
   const parentScript = delegates
     ? [
         {
@@ -395,8 +443,9 @@ async function codexSession(caseName, isolatedHome) {
   write(seed, "alpha\n");
   // sandbox-*: the session runs workspace-write and the agent asks for the
   // opposite extreme, so whichever value the child reports is attributable.
-  const delegating = caseName === "direct" || caseName.startsWith("sandbox-");
-  if (delegating || ["discover", "unknown-key", "untrusted"].includes(caseName)) {
+  const delegating = caseName === "direct" || caseName === "generated" || caseName.startsWith("sandbox-");
+  if (caseName === "generated") await syncGenerated(scratch, isolatedHome ? "codex-home" : "codex");
+  else if (delegating || ["discover", "unknown-key", "untrusted"].includes(caseName)) {
     let agent = codexAgent() + (caseName === "unknown-key" ? 'hooknostic_unknown_key = "x"\n' : "");
     if (caseName === "sandbox-full") agent = agent.replace('sandbox_mode = "read-only"', 'sandbox_mode = "danger-full-access"');
     write(join(scratch, ".codex/agents", `${NAME}.toml`), agent);
@@ -467,8 +516,9 @@ const V1_INJECTOR = `export default async () => ({
 `;
 
 async function opencodeV1Session(caseName) {
-  const version = process.env["HOOKNOSTIC_PLAYBACK_VERSION"];
-  if (!version) throw new Error("HOOKNOSTIC_PLAYBACK_VERSION is required for opencode-v1");
+  // The tee plugin's dependency must match the harness build on PATH; CI's
+  // playback lane installs the reference version, so that is the default.
+  const version = process.env["HOOKNOSTIC_PLAYBACK_VERSION"] || opencodeHarness.referenceVersion;
   const scratch = join(mkdtempSync(join(tmpdir(), "hkn-agents-")), "opencode");
   prepareScratch(REPO, "opencode", scratch);
   await prepareOpenCodePluginDependency(scratch, version);
@@ -481,7 +531,8 @@ async function opencodeV1Session(caseName) {
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "inject") write(join(scratch, ".opencode/plugins/hn-inject.js"), V1_INJECTOR);
-  const delegates = ["direct", "maxsteps", "singular", "inject"].includes(caseName);
+  if (caseName === "generated") await syncGenerated(scratch, "opencode-v1");
+  const delegates = ["direct", "maxsteps", "singular", "inject", "generated"].includes(caseName);
   const parentScript = delegates
     ? [
         {
@@ -577,7 +628,8 @@ async function opencodeV2Session(caseName) {
   if (caseName === "control") write(join(project, ".opencode/agents-off", `${NAME}.md`), opencodeV2Agent());
   if (caseName === "neutral") write(join(project, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
-  const delegates = caseName === "direct" || caseName === "readonly" || caseName === "inject";
+  if (caseName === "generated") await syncGenerated(project, "opencode-v2");
+  const delegates = ["direct", "readonly", "inject", "generated"].includes(caseName);
   const parentScript = delegates
     ? [
         {
@@ -700,7 +752,9 @@ function summarize(harness, caseName, session) {
 }
 
 function record(harness, caseName, session) {
-  const dest = join(OUT, harness, caseName);
+  // HKN_CAPTURE_LABEL keeps runs against another build (a reference version) apart.
+  const label = process.env["HKN_CAPTURE_LABEL"];
+  const dest = join(OUT, harness, label ? `${caseName}@${label}` : caseName);
   rmSync(dest, { recursive: true, force: true });
   mkdirSync(dest, { recursive: true });
   if (existsSync(session.captured)) cpSync(session.captured, join(dest, "tee"), { recursive: true });
@@ -716,6 +770,8 @@ function record(harness, caseName, session) {
   );
   const summary = summarize(harness, caseName, session);
   writeFileSync(join(dest, "summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf8");
+  // One machine-readable line for packages/cli/test/subagent-playback.test.ts.
+  console.log(`HKN-SUMMARY ${JSON.stringify(summary)}`);
   const child = summary.child;
   console.log(
     `[${harness}/${caseName}] exit=${summary.exit} errors=${summary.playbackErrors.length} ` +
@@ -728,11 +784,11 @@ function record(harness, caseName, session) {
 }
 
 const CASES = {
-  claude: ["direct", "complete", "control", "neutral", "plugin"],
-  codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key"],
-  "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted"],
-  "opencode-v1": ["direct", "maxsteps", "singular", "control", "neutral", "cross", "inject"],
-  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject"],
+  claude: ["direct", "complete", "control", "neutral", "plugin", "generated"],
+  codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated"],
+  "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated"],
+  "opencode-v1": ["direct", "maxsteps", "singular", "control", "neutral", "cross", "inject", "generated"],
+  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject", "generated"],
 };
 
 async function main() {

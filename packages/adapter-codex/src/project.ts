@@ -252,6 +252,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           what: "A project .codex/agents TOML file added agent_type to spawn_agent with the agent listed under its description; spawning it delivered developer_instructions to the child after the base instructions, its model reached the child request once model_reasoning_effort was set, an unknown key made Codex ignore the whole file, and the child's reported sandbox_mode followed the session rather than the file.",
         },
         {
+          version: "0.148.0",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, spawn_agent gained agent_type once a project agent existed, and a definition synchronized by Hooknostic's project delivery was delegated to and ran on its developer_instructions and native model, its result returning through wait_agent (packages/cli/test/subagent-playback.test.ts).",
+        },
+        {
           version: "0.154.0",
           date: "2026-09-22",
           method: "live-probe",
