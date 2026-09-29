@@ -1,10 +1,33 @@
 import { realpath } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
-import type { ProjectComponents } from "@hooknostic/agent-plugin";
+import type { ProjectComponents, SubagentDefinition } from "@hooknostic/agent-plugin";
 
 import { bundleMcpLauncher, type McpLauncherServer } from "./mcp-launcher.js";
 import type { ProjectIntegration } from "./project-files.js";
+
+/**
+ * One owned file per subagent under `destination`, plus a `.gitattributes`
+ * naming exactly those files. Ownership compares bytes, so git must never
+ * rewrite their line endings. Naming files rather than `**` leaves an author's
+ * own agents in the same directory alone. Rendering is the adapter's; this only
+ * places what it returns.
+ */
+export function projectSubagentFiles(
+  subagents: readonly SubagentDefinition[],
+  destination: string,
+  render: (subagent: SubagentDefinition) => { file: string; contents: string },
+): ProjectIntegration {
+  if (subagents.length === 0) return { files: [], entries: [], guidance: [] };
+  const rendered = subagents.map(render);
+  const files = rendered.map(({ file, contents }) => ({ path: `${destination}/${file}`, contents, mode: 0o644 }));
+  files.push({
+    path: `${destination}/.gitattributes`,
+    contents: [".gitattributes", ...rendered.map(({ file }) => file)].map((file) => `${file} -text\n`).join(""),
+    mode: 0o644,
+  });
+  return { files, entries: [], guidance: [] };
+}
 export function projectSkillFiles(source: ProjectComponents, root: string, destination: string): ProjectIntegration {
   const relinquishFiles: string[] = [];
   const relinquishPrefixes: string[] = [];

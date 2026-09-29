@@ -729,6 +729,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         ? {}
         : { skills: config.components.skills.map((p) => resolve(configDir, p)) }),
       ...(config.components.mcp === undefined ? {} : { mcp: resolve(configDir, config.components.mcp) }),
+      ...(config.components.subagents === undefined
+        ? {}
+        : { subagents: config.components.subagents.map((p) => resolve(configDir, p)) }),
       ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
       ...(config.components.executableFiles === undefined
         ? {}
@@ -738,6 +741,21 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     diagnostics.push(
       ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),
     );
+    // The specification requires rejecting a harness key the consumer does not
+    // know: a misspelt `native.cluade` must fail rather than quietly emit
+    // nothing for Claude. Any registered adapter counts, targeted or not.
+    for (const subagent of loaded.source.subagents ?? []) {
+      for (const harness of Object.keys(subagent.native)) {
+        if (Object.hasOwn(options.registry, harness)) continue;
+        diagnostics.push({
+          code: "HN503",
+          severity: config.components.onInvalid ?? "error",
+          component: "subagents.native",
+          location: { file: subagent.source },
+          message: `subagent ${JSON.stringify(subagent.name)} has native fields for unknown harness ${JSON.stringify(harness)}; known: ${Object.keys(options.registry).join(", ")}`,
+        });
+      }
+    }
     if (hasFatal(diagnostics)) return fail();
     componentSource = loaded.source;
   }
@@ -846,6 +864,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     protectedPaths: [
       ...(config.components?.skills ?? []).map((path) => resolve(configDir, path)),
       ...(config.components?.mcp ? [resolve(configDir, config.components.mcp)] : []),
+      ...(config.components?.subagents ?? []).map((path) => resolve(configDir, path)),
       ...(config.project
         ? [
             ...["integration.json", "transaction.json", "sync.lock", "recovery.lock", "staging", "data"].map((path) =>
@@ -1276,6 +1295,53 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               const counted = counts["agent-plugin.mcp.stdio"]!;
               counted.emitted--;
               counted.skipped++;
+            }
+            // A portable definition inside the harness's own agents directory
+            // would be read natively as it stands, and its generated
+            // translation would claim the same path. Folded, because the
+            // directory is the same one on a case-insensitive filesystem.
+            if (adapter.subagents !== undefined) {
+              const native = resolve(root, adapter.subagents.projectDirectory).toLowerCase();
+              for (const configured of config.components?.subagents ?? []) {
+                const source = resolve(configDir, configured).toLowerCase();
+                if (source !== native && !isStrictDescendant(native, source)) continue;
+                diagnostics.push({
+                  code: "HN501",
+                  severity: "error",
+                  target: id,
+                  component: "subagents.definition",
+                  message: `components.subagents ${JSON.stringify(configured)} is inside ${adapter.subagents.projectDirectory}, where ${adapter.id} reads its own agent files; keep portable definitions in a directory of their own`,
+                });
+              }
+            }
+            // A native block reaches the harness only through a delivered
+            // definition, so it is counted after the definitions are settled.
+            // Fields the adapter reserves are refused before anything counts.
+            for (const subagent of selectedSource.subagents ?? []) {
+              if (!Object.hasOwn(subagent.native, adapter.id)) continue;
+              for (const key of Object.keys(subagent.native[adapter.id]!)) {
+                if (!(adapter.subagents?.reservedNativeKeys ?? []).includes(key)) continue;
+                diagnostics.push({
+                  code: "HN503",
+                  severity: config.components?.onInvalid ?? "error",
+                  target: id,
+                  component: "subagents.native",
+                  location: { file: subagent.source },
+                  message: `subagent ${JSON.stringify(subagent.name)} sets native.${adapter.id}.${key}, which ${adapter.id} reserves for the portable definition or another component`,
+                });
+              }
+            }
+            if (!count("subagents.definition", selectedSource.subagents?.length ?? 0)) selectedSource.subagents = [];
+            const nativeBlocks = (selectedSource.subagents ?? []).filter((subagent) =>
+              Object.hasOwn(subagent.native, adapter.id),
+            );
+            if (!count("subagents.native", nativeBlocks.length)) {
+              selectedSource.subagents = (selectedSource.subagents ?? []).map((subagent) => ({
+                ...subagent,
+                native: Object.fromEntries(
+                  Object.entries(subagent.native).filter(([harness]) => harness !== adapter.id),
+                ),
+              }));
             }
             count(
               "agent-plugin.runtime-package",

@@ -1,9 +1,10 @@
 import { relative } from "node:path";
 
-import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type { AgentPluginProjectionProfile, SubagentDefinition } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import { renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
+import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
+import { projectMcpLauncher, projectSkillFiles, projectSubagentFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
@@ -36,6 +37,33 @@ export const projectIntegration = projectIntegrationWith(
   (importPath) => `export { default } from ${JSON.stringify(importPath)};\n`,
 );
 
+export const opencodeSubagents: NonNullable<HarnessAdapter["subagents"]> = {
+  projectDirectory: ".opencode/agents",
+  // The file name is the identity, so `name` has nothing to say and v1 would
+  // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
+  // are the instructions, and `mode` is always subagent here.
+  reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
+};
+
+/**
+ * `.opencode/agents/<name>.md` for both families: the file name is the agent,
+ * `mode: subagent` is always written -- v2 defaults an agent to primary, which
+ * the subagent tool cannot select -- and the instructions are the body, which
+ * replaces the provider's base prompt (`.capture/agents`).
+ */
+export function renderOpenCodeSubagent(subagent: SubagentDefinition): { file: string; contents: string } {
+  const native = Object.entries(subagent.native["opencode"] ?? {}).filter(
+    ([key]) => !opencodeSubagents.reservedNativeKeys.includes(key),
+  );
+  return {
+    file: `${subagent.name}.md`,
+    contents: renderMarkdownFrontmatter(
+      { description: subagent.description, mode: "subagent", ...Object.fromEntries(native) },
+      subagent.instructions,
+    ),
+  };
+}
+
 export async function projectComponents(
   source: ProjectComponents,
   root: string,
@@ -48,6 +76,14 @@ export async function projectComponents(
   // inventory there instead of naming its unfiltered source directory through
   // skills.paths, which would re-expose excluded files and rejected siblings.
   const result = projectSkillFiles(source, root, ".agents/skills");
+  const subagents = projectSubagentFiles(
+    source.subagents ?? [],
+    opencodeSubagents.projectDirectory,
+    renderOpenCodeSubagent,
+  );
+  result.files.push(...subagents.files);
+  if (subagents.files.length > 0)
+    result.guidance.push("OpenCode reads project agents from .opencode/agents; restart it after synchronization.");
   if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
@@ -138,19 +174,27 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route.",
       },
-      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
       "subagents.definition": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "Written to .opencode/agents/<name>.md with mode: subagent. The task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended.",
       },
       "subagents.native": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "native.opencode fields are written verbatim into the frontmatter; model and permission were observed taking effect, a denied tool leaving the child's tool list. On 1.18.31 neither steps nor maxSteps stopped the child. OpenCode passes a key it does not know to the provider as a model option.",
       },
     },
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: "1.18.31",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "A project .opencode/agents file (and the legacy .opencode/agent directory) was offered to the parent through the task tool with its description; its body replaced the provider prompt, its model reached the child request, permission deny removed edit and bash from the child's tools, steps and maxSteps did not cap the child, and neither .claude/agents nor .agents/agents was read.",
+        },
         {
           version: "1.18.29",
           date: "2026-09-11",

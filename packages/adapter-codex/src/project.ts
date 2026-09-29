@@ -1,13 +1,21 @@
-import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type { AgentPluginProjectionProfile, SubagentDefinition } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { contentsText } from "@hooknostic/agent-plugin";
-import type { GeneratedArtifact, ProjectComponentOptions, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
+import type {
+  GeneratedArtifact,
+  HarnessAdapter,
+  ProjectComponentOptions,
+  ProjectEntry,
+  ProjectIntegration,
+} from "@hooknostic/core";
 import {
   launcherEnvironmentReferences,
   projectHookBootstrap,
   projectMcpBootstrap,
   projectMcpLauncher,
   projectSkillFiles,
+  projectSubagentFiles,
+  renderTomlDocument,
 } from "@hooknostic/core";
 
 import { codexHarness } from "./harness.js";
@@ -85,6 +93,40 @@ export function projectIntegration(
   };
 }
 
+export const codexSubagents: NonNullable<HarnessAdapter["subagents"]> = {
+  projectDirectory: ".codex/agents",
+  // `mcp_servers` would declare servers outside MCP validation and its
+  // launcher; `hooks` would add hook layers beside the generated dispatcher.
+  reservedNativeKeys: ["name", "description", "developer_instructions", "mcp_servers", "hooks"],
+};
+
+/**
+ * `.codex/agents/<name>.toml`: `name`, `description` and the instructions as
+ * `developer_instructions`, which Codex adds to its own base instructions
+ * rather than replacing them, then `native.codex` verbatim. Codex rejects the
+ * whole file over one unknown key (`.capture/agents`), so passthrough fields
+ * are the author's to spell exactly as Codex's config reference does.
+ */
+export function renderCodexSubagent(subagent: SubagentDefinition): { file: string; contents: string } {
+  const native = Object.entries(subagent.native["codex"] ?? {}).filter(
+    ([key]) => !codexSubagents.reservedNativeKeys.includes(key),
+  );
+  let contents: string;
+  try {
+    contents = renderTomlDocument({
+      name: subagent.name,
+      description: subagent.description,
+      developer_instructions: subagent.instructions,
+      ...Object.fromEntries(native),
+    });
+  } catch (error) {
+    throw new Error(
+      `subagent ${JSON.stringify(subagent.name)}: native.codex ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return { file: `${subagent.name}.toml`, contents };
+}
+
 export async function projectComponents(
   source: ProjectComponents,
   root: string,
@@ -93,6 +135,23 @@ export async function projectComponents(
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".agents/skills");
+  const subagents = projectSubagentFiles(source.subagents ?? [], codexSubagents.projectDirectory, renderCodexSubagent);
+  result.files.push(...subagents.files);
+  if (subagents.files.length > 0) {
+    result.guidance.push(
+      "Codex reads project agents from .codex/agents; restart it after synchronization, and review project trust in Codex.",
+    );
+    // A child inherits the parent's reasoning effort, which a different model
+    // may refuse; 0.156.1 then fails the spawn outright (.capture/agents).
+    const unpaired = (source.subagents ?? []).filter((subagent) => {
+      const native = subagent.native["codex"] ?? {};
+      return native["model"] !== undefined && native["model_reasoning_effort"] === undefined;
+    });
+    if (unpaired.length > 0)
+      result.guidance.push(
+        `Codex subagents ${unpaired.map((subagent) => JSON.stringify(subagent.name)).join(", ")} set native.codex.model without model_reasoning_effort; a spawned agent inherits the parent's effort, which a different model can refuse.`,
+      );
+  }
   const translated = translateMcp(
     source.mcp ? { mcp: source.mcp.config } : {},
     new Set(options.mcpProjectCwdServers),
@@ -171,19 +230,27 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead.",
       },
-      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
       "subagents.definition": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex reads project configuration only in trusted projects, and its model guidance tells it to spawn only when asked.",
       },
       "subagents.native": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "native.codex fields are written verbatim as agent-file TOML; model and model_reasoning_effort were observed taking effect. sandbox_mode in an agent file did not change the child's policy, which followed the session's. Codex rejects the whole file over one unknown key, so every field must be one Codex's configuration accepts. mcp_servers and hooks are refused, because they belong to their own components.",
       },
     },
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: "0.156.1",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "A project .codex/agents TOML file added agent_type to spawn_agent with the agent listed under its description; spawning it delivered developer_instructions to the child after the base instructions, its model reached the child request once model_reasoning_effort was set, an unknown key made Codex ignore the whole file, and the child's reported sandbox_mode followed the session rather than the file.",
+        },
         {
           version: "0.154.0",
           date: "2026-09-22",

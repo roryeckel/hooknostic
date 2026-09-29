@@ -5,5 +5,7 @@ export * from "./materialize/placement.js";
 export * from "./placeholders.js";
 export * from "./mcp-commands.js";
 export * from "./runtime-package.js";
+export * from "./frontmatter.js";
 export * from "./skills.js";
+export * from "./subagents.js";
 export * from "./types.js";

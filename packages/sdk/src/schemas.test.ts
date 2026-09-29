@@ -317,6 +317,24 @@ describe("canonical schemas", () => {
     ).toBe(false);
   });
 
+  it("accepts subagent definition directories as a direct component source", () => {
+    const project = {
+      project: { root: "." },
+      targets: { local: { version: ">=1.0 <2", delivery: "project" as const, output: "./dist/local" } },
+    };
+    expect(hooknosticConfigSchema.safeParse({ ...project, components: { subagents: ["./agents"] } }).success).toBe(
+      true,
+    );
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], subagents: ["./agents"] } })
+        .success,
+    ).toBe(true);
+    expect(hooknosticConfigSchema.safeParse({ ...project, components: { subagents: [] } }).success).toBe(false);
+    expect(() =>
+      hooknosticConfigSchema.parse({ ...project, components: { root: ".", subagents: ["./agents"] } }),
+    ).toThrow(/components\.subagents cannot be combined with components\.root yet/);
+  });
+
   it("scopes component delivery invariants to selected targets", () => {
     const entry = "./src/hooks.ts";
     const packageTarget = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/package" };

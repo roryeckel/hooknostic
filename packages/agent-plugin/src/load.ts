@@ -5,8 +5,10 @@ import { isIP } from "node:net";
 import { basename, dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 
 import { minimatch } from "minimatch";
-import { parseDocument } from "yaml";
 
+import { parseMarkdownFrontmatter } from "./frontmatter.js";
+import { isAgentSkillName } from "./names.js";
+import { loadSubagents, type SubagentDefinition } from "./subagents.js";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
@@ -36,12 +38,9 @@ const MANIFEST_KEYS = new Set([
 const AUTHOR_KEYS = new Set(["name", "email", "url"]);
 const SKILL_KEYS = new Set(["name", "description", "license", "compatibility", "metadata", "allowed-tools"]);
 const PLUGIN_NAME = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
-const SKILL_NAME = /^(?!.*--)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-/** Whether `name` satisfies the Agent Skills name rules, including the 64-character limit. */
-export function isAgentSkillName(name: string): boolean {
-  return name.length <= 64 && SKILL_NAME.test(name);
-}
+// Its own module so the subagent loader can share the grammar without an import cycle.
+export { isAgentSkillName };
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -447,14 +446,7 @@ function loadMcp(
 }
 
 function extractFrontmatter(text: string): unknown {
-  if (!text.startsWith("---\n") && !text.startsWith("---\r\n")) {
-    throw new Error("SKILL.md must begin with YAML frontmatter");
-  }
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
-  if (!match) throw new Error("SKILL.md has no closing frontmatter delimiter");
-  const document = parseDocument(match[1] ?? "");
-  if (document.errors.length > 0) throw new Error(document.errors[0]!.message);
-  return document.toJS({ maxAliasCount: 0 }) as unknown;
+  return parseMarkdownFrontmatter(text, "SKILL.md").data;
 }
 
 function validateSkillFrontmatter(
@@ -786,6 +778,8 @@ export interface ProjectComponents {
   origin: "package" | "direct";
   skills: ProjectSkill[];
   mcp?: { root: string; config: AgentPluginMcpConfig };
+  /** Portable subagent definitions (ADR-0027); absent when none are configured. */
+  subagents?: SubagentDefinition[];
 }
 export function packageComponents(source: AgentPluginPackage): ProjectComponents {
   return {
@@ -803,12 +797,22 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
 export async function loadProjectComponents(options: {
   skills?: string[];
   mcp?: string;
+  /** Directories of Hooknostic Subagent Definition files (ADR-0027). */
+  subagents?: string[];
   exclude?: string[];
   executableFiles?: string[];
   projectRoot?: string;
 }): Promise<{ source: ProjectComponents; issues: AgentPluginIssue[] }> {
   const issues: AgentPluginIssue[] = [];
   const source: ProjectComponents = { origin: "direct", skills: [] };
+  if (options.subagents !== undefined) {
+    const loaded = await loadSubagents({
+      directories: options.subagents,
+      ...(options.exclude === undefined ? {} : { exclude: options.exclude }),
+    });
+    issues.push(...loaded.issues);
+    source.subagents = loaded.subagents;
+  }
   const names = new Set<string>();
   for (const directory of options.skills ?? []) {
     const data = await inventory(resolve(directory), [...DEFAULT_EXCLUDES, ...(options.exclude ?? [])], issues);

@@ -1,8 +1,14 @@
-import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import type { AgentPluginProjectionProfile, SubagentDefinition } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText } from "@hooknostic/agent-plugin";
-import type { GeneratedArtifact, ProjectComponentOptions, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
-import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import { contentsText, renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
+import type {
+  GeneratedArtifact,
+  HarnessAdapter,
+  ProjectComponentOptions,
+  ProjectEntry,
+  ProjectIntegration,
+} from "@hooknostic/core";
+import { projectMcpLauncher, projectSkillFiles, projectSubagentFiles } from "@hooknostic/core";
 
 import { claudeHarness } from "./harness.js";
 import {
@@ -37,6 +43,32 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
   };
 }
 
+export const claudeSubagents: NonNullable<HarnessAdapter["subagents"]> = {
+  projectDirectory: ".claude/agents",
+  // `hooks` would run commands beside the one generated dispatcher (ADR-0003),
+  // and `mcpServers` would declare servers outside MCP validation and its
+  // launcher; both belong to their own components.
+  reservedNativeKeys: ["name", "description", "hooks", "mcpServers"],
+};
+
+/**
+ * `.claude/agents/<name>.md`: the portable core as Claude's own frontmatter
+ * fields, then `native.claude` verbatim, then the instructions as the body,
+ * which Claude uses as the subagent's system prompt (`.capture/agents`).
+ */
+export function renderClaudeSubagent(subagent: SubagentDefinition): { file: string; contents: string } {
+  const native = Object.entries(subagent.native["claude"] ?? {}).filter(
+    ([key]) => !claudeSubagents.reservedNativeKeys.includes(key),
+  );
+  return {
+    file: `${subagent.name}.md`,
+    contents: renderMarkdownFrontmatter(
+      { name: subagent.name, description: subagent.description, ...Object.fromEntries(native) },
+      subagent.instructions,
+    ),
+  };
+}
+
 export async function projectComponents(
   source: ProjectComponents,
   root: string,
@@ -45,6 +77,16 @@ export async function projectComponents(
   options: ProjectComponentOptions = {},
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".claude/skills");
+  const subagents = projectSubagentFiles(
+    source.subagents ?? [],
+    claudeSubagents.projectDirectory,
+    renderClaudeSubagent,
+  );
+  result.files.push(...subagents.files);
+  if (subagents.files.length > 0)
+    result.guidance.push(
+      "Claude Code reads project subagents from .claude/agents; restart it if that directory is new.",
+    );
   if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
@@ -132,19 +174,27 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly.",
       },
-      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
       "subagents.definition": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "Written to .claude/agents/<name>.md. The parent is offered the subagent by name and description, and the instructions become its system prompt, replacing Claude Code's default; a one-line SDK preamble and Claude's short subagent notes remain around them.",
       },
       "subagents.native": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "native.claude fields are written verbatim into the frontmatter; tools, model and maxTurns were each observed taking effect. hooks and mcpServers are refused, because they belong to their own components.",
       },
     },
     source: {
       date: "2026-09-12",
       validatedOn: [
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "A project .claude/agents file was advertised to the parent with its description and selected through Agent's subagent_type; its body replaced the default system prompt, its tools list was the child's exact tool set, its model reached the child request, maxTurns stopped the child at the limit, and hook payloads inside the child carried agent_type.",
+        },
         {
           version: "2.1.278",
           date: "2026-09-22",

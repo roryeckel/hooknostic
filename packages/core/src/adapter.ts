@@ -255,6 +255,21 @@ export interface HarnessAdapter {
   ): ProjectIntegration;
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
+  /**
+   * How project delivery places subagent definitions (ADR-0027), for the checks
+   * core runs before generation so `check` reports them.
+   */
+  readonly subagents?: {
+    /** The native directory project delivery writes one file per subagent into. */
+    readonly projectDirectory: string;
+    /**
+     * Native fields a `native.<adapter id>` block may not set: those the
+     * portable core owns (name, description, instructions), and those that
+     * would embed another component Hooknostic validates on its own route
+     * (per-agent hooks, MCP servers). Refused as HN503.
+     */
+    readonly reservedNativeKeys: readonly string[];
+  };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;

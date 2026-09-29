@@ -19,7 +19,7 @@ import { decodeCodex } from "./decode.js";
 import { CODEX_NATIVE_EVENT, codexHookRuntimePath, generateCodexArtifacts } from "./generate.js";
 import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
-import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { codexSubagents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
 import {
   classifyCodexTool,
@@ -96,13 +96,15 @@ export function codexAdapter(): HarnessAdapter {
     id: "codex",
     adapterVersion: "0.2.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
-    projectPaths: [".codex/hooks.json", ".codex/config.toml", ".agents/skills"],
+    projectPaths: [".codex/hooks.json", ".codex/config.toml", ".codex/agents", ".agents/skills"],
     // Live-probed on 0.156.1 (.capture/codex-worktree-hooks). config.toml's
-    // other keys stay per-worktree in source, so only hooks are declared.
+    // other keys stay per-worktree in source, so only hooks are declared;
+    // where a worktree session reads .codex/agents from is not captured.
     rootCheckoutProjectPaths: [".codex/hooks.json"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    subagents: codexSubagents,
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.

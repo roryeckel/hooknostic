@@ -46,8 +46,8 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
 | `agent-plugin.runtime-package` | unsupported | The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly. |
-| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
-| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.definition` | exact | Written to .claude/agents/<name>.md. The parent is offered the subagent by name and description, and the instructions become its system prompt, replacing Claude Code's default; a one-line SDK preamble and Claude's short subagent notes remain around them. |
+| `subagents.native` | exact | native.claude fields are written verbatim into the frontmatter; tools, model and maxTurns were each observed taking effect. hooks and mcpServers are refused, because they belong to their own components. |
 
 Known deviations from Agent Plugins 1.0, reported as `HN106`:
 
@@ -60,6 +60,7 @@ Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.283 | 2026-09-29 | live-probe | `.capture/agents` | A project .claude/agents file was advertised to the parent with its description and selected through Agent's subagent_type; its body replaced the default system prompt, its tools list was the child's exact tool set, its model reached the child request, maxTurns stopped the child at the limit, and hook payloads inside the child carried agent_type. |
 | 2.1.278 | 2026-09-22 | live-probe | `.capture/claude-project-mcp-environment` | Direct source: in its own declaration Claude resolved ${NAME:-default} to a defined variable's value, even an empty one, and otherwise to the default; a direct stdio server received the same values through the launcher, and one with an unset ${NAME} and no default did not start. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Project stdio: a synchronized package server received its ${NAME} and ${NAME:-default} args and env values literally through the generated launcher, while Claude expanded the same text in a native declaration; Claude did not expand ${CLAUDE_PROJECT_DIR} in .mcp.json, though it set that variable for the child. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
@@ -137,13 +138,14 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .codex/config.toml and a skills tree. A plugin's extensions."com.openai" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
 | `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead. |
-| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
-| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.definition` | exact | Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex reads project configuration only in trusted projects, and its model guidance tells it to spawn only when asked. |
+| `subagents.native` | exact | native.codex fields are written verbatim as agent-file TOML; model and model_reasoning_effort were observed taking effect. sandbox_mode in an agent file did not change the child's policy, which followed the session's. Codex rejects the whole file over one unknown key, so every field must be one Codex's configuration accepts. mcp_servers and hooks are refused, because they belong to their own components. |
 
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.156.1 | 2026-09-29 | live-probe | `.capture/agents` | A project .codex/agents TOML file added agent_type to spawn_agent with the agent listed under its description; spawning it delivered developer_instructions to the child after the base instructions, its model reached the child request once model_reasoning_effort was set, an unknown key made Codex ignore the whole file, and the child's reported sandbox_mode followed the session rather than the file. |
 | 0.154.0 | 2026-09-22 | live-probe | `.capture/project-integration` | A direct stdio server started although its generated env_vars named a variable absent from Codex's environment, and the launcher resolved ${NAME:-default} for both the set and the unset name. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/codex-project-mcp` | Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
@@ -253,13 +255,14 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace, at project scope or any other. |
 | `agent-plugin.runtime-package` | unsupported | Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route. |
-| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
-| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.definition` | exact | Written to .opencode/agents/<name>.md with mode: subagent. The task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended. |
+| `subagents.native` | exact | native.opencode fields are written verbatim into the frontmatter; model and permission were observed taking effect, a denied tool leaving the child's tool list. On 1.18.31 neither steps nor maxSteps stopped the child. OpenCode passes a key it does not know to the provider as a model option. |
 
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.31 | 2026-09-29 | live-probe | `.capture/agents` | A project .opencode/agents file (and the legacy .opencode/agent directory) was offered to the parent through the task tool with its description; its body replaced the provider prompt, its model reached the child request, permission deny removed edit and bash from the child's tools, steps and maxSteps did not cap the child, and neither .claude/agents nor .agents/agents was read. |
 | 1.18.29 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
 
@@ -334,13 +337,14 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
 | `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
 | `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
-| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
-| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.definition` | exact | Written to .opencode/agents/<name>.md with mode: subagent, which v2 needs because it defaults an agent to primary. The subagent tool's description offers it to the parent with its description, the instructions replace the provider's base prompt, and tool events inside the child carry the agent's name. |
+| `subagents.native` | exact | native.opencode fields are written verbatim into the frontmatter; model, steps (a hard stop, reported to the parent as completing without a text response) and permissions deny rules were observed taking effect. A v2 subagent keeps its own permissions rather than a subset of its parent's, and subagent and execute stay available unless denied too. |
 
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Generated project integration and separately installed pnpm tarballs expose skills and connect stdio MCP. Server startup records verify environment expansion, cwd and relocated paths; hooks-only, components-only and combined packages load. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
@@ -367,6 +371,7 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Generated project integration and separately installed pnpm tarballs expose skills and connect stdio MCP. Server startup records verify environment expansion, cwd and relocated paths; hooks-only, components-only and combined packages load. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |

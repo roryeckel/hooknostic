@@ -66,19 +66,27 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
         level: "unsupported",
         rationale: "No portable client-extension namespace is implemented for v2.",
       },
-      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
       "subagents.definition": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "Written to .opencode/agents/<name>.md with mode: subagent, which v2 needs because it defaults an agent to primary. The subagent tool's description offers it to the parent with its description, the instructions replace the provider's base prompt, and tool events inside the child carry the agent's name.",
       },
       "subagents.native": {
-        level: "unsupported",
-        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+        level: "exact",
+        rationale:
+          "native.opencode fields are written verbatim into the frontmatter; model, steps (a hard stop, reported to the parent as completing without a text response) and permissions deny rules were observed taking effect. A v2 subagent keeps its own permissions rather than a subset of its parent's, and subagent and execute stay available unless denied too.",
       },
     },
     source: {
       date: "2026-09-26",
       validatedOn: [
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>.",
+        },
         {
           version: opencodeV2Harness.referenceVersion,
           date: "2026-09-26",

@@ -4549,6 +4549,7 @@ var hooknosticConfigSchema = external_exports.object({
     root: external_exports.string().min(1).optional(),
     skills: external_exports.array(external_exports.string().min(1)).optional(),
     mcp: external_exports.string().min(1).optional(),
+    subagents: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     mcpOverrides: external_exports.record(external_exports.string().min(1), projectMcpTargetOverrideSchema).optional(),
     targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
     exclude: external_exports.array(external_exports.string().min(1)).optional(),
@@ -4613,6 +4614,13 @@ var hooknosticConfigSchema = external_exports.object({
         message: "components.root is mutually exclusive with direct skills/mcp sources"
       });
     }
+    if (config.components.root !== void 0 && config.components.subagents !== void 0) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["components", "subagents"],
+        message: "components.subagents cannot be combined with components.root yet"
+      });
+    }
     if (config.components.root !== void 0 && config.components.mcpOverrides !== void 0) {
       context.addIssue({
         code: external_exports.ZodIssueCode.custom,
@@ -4636,8 +4644,11 @@ var hooknosticConfigSchema = external_exports.object({
         message: "components.mcpEnvironment requires components.root"
       });
     }
-    if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
-      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+    if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0 && config.components.subagents === void 0) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: "components requires root, skills, mcp, or subagents"
+      });
     }
     const configured = new Set(Object.keys(config.targets));
     const seen = /* @__PURE__ */ new Set();
