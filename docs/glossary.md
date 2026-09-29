@@ -143,6 +143,11 @@ hand a task to: Claude Code's subagents, Codex's custom agents, OpenCode's agent
 ([ADR-0027](decisions/0027-portable-subagents.md), proposed). Not to be confused with
 the `agent.*` hook events, which report on whatever agent is running.
 
+**Agent scope** — a hook's `agents: { include, exclude }`, which runs it only for events
+the harness attributes to the named agents, by the name in `correlation.agentType`
+([ADR-0028](decisions/0028-agent-scoped-hooks.md), proposed). It needs the event's
+`agent.identity` capability, so a target that cannot tell fails the build.
+
 **Decision record** — a short document capturing one significant design choice with
 its context and consequences ([docs/decisions/](decisions/)). Known in the wider world
 as an *architecture decision record* (ADR) — the `ADR-000N` ids in code comments refer

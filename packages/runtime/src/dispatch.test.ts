@@ -1538,3 +1538,59 @@ describe("plugin context (ADR-0020)", () => {
     expect(seen).toEqual([undefined, undefined]);
   });
 });
+
+describe("agent-scoped hooks (ADR-0028)", () => {
+  const inAgent = (agentType?: string): ToolBeforeEvent => {
+    const event = toolBefore({ command: "ls" });
+    if (agentType !== undefined) event.correlation.agentType = agentType;
+    return event;
+  };
+  const ran: string[] = [];
+  const hooks = [
+    hook("tool.before", {
+      id: "reviewer-only",
+      agents: { include: ["reviewer"] },
+      async run() {
+        ran.push("reviewer-only");
+      },
+    }),
+    hook("tool.before", {
+      id: "not-reviewer",
+      agents: { exclude: ["reviewer"] },
+      async run() {
+        ran.push("not-reviewer");
+      },
+    }),
+    hook("tool.before", {
+      id: "everywhere",
+      async run() {
+        ran.push("everywhere");
+      },
+    }),
+  ];
+  const scoped = { ...OPTIONS, capabilities: { ...FULL, "tool.before.agent.identity": "exact" as const } };
+
+  it.each([
+    ["inside the named agent", "reviewer", ["reviewer-only", "everywhere"]],
+    ["inside another agent", "planner", ["not-reviewer", "everywhere"]],
+    // The main agent on Claude and Codex: the harness names no agent.
+    ["where no agent is named", undefined, ["not-reviewer", "everywhere"]],
+  ])("runs by the event's agent: %s", async (_label, agentType, expected) => {
+    ran.length = 0;
+    await dispatch(hooks, inAgent(agentType), scoped);
+    expect(ran).toEqual(expected);
+  });
+
+  it("records the scope's requirement on the event's agent.identity capability", () => {
+    expect(hooks[0]!.capabilities).toEqual({ "tool.before.agent.identity": "required" });
+    expect(hooks[2]!.capabilities).toEqual({});
+    expect(() =>
+      hook("tool.before", {
+        id: "contradiction",
+        agents: { include: ["reviewer"] },
+        capabilities: { "agent.identity": "optional" },
+        async run() {},
+      }),
+    ).toThrow(/requires "tool.before.agent.identity"/);
+  });
+});

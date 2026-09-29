@@ -116,6 +116,39 @@ Each harness refuses (HN503) a `native` key that would override the portable cor
 name, description or instructions. Claude and Codex also refuse per-agent hooks and
 MCP servers, which belong to their own components.
 
+## Guarding the subagent with a hook
+
+A hook can run only inside named agents ([ADR-0028](../decisions/0028-agent-scoped-hooks.md),
+proposed). This is how the reviewer becomes read-only on Codex, where no agent setting
+does it:
+
+```ts
+hook("tool.before", {
+  id: "reviewer-read-only",
+  agents: { include: ["reviewer"] },
+  match: { kind: ["shell", "file.write", "file.edit"] },
+  capabilities: { block: "required" },
+  run: () => block("the reviewer does not change files"),
+});
+```
+
+The hook runs for the reviewer's tool calls and never for the main agent's. The harness
+has to say which agent a tool call belongs to, and not every one does:
+
+| Target | Can scope tool hooks to an agent |
+| --- | --- |
+| Claude Code | yes |
+| Codex 0.156.1 and later | yes; target a range such as `>=0.156.1 <1` |
+| Codex before 0.156.1 | no: no hook was seen to run inside a subagent at all |
+| OpenCode v2 | yes |
+| OpenCode v1 | no: its tool events do not name the agent |
+
+Where it cannot, the build fails with HN201 instead of shipping a guard that never
+runs. The name to list is the one the harness reports: `reviewer` for a project
+agent, the qualified name for one a package delivered (`<plugin>:reviewer` on Claude,
+`<plugin>-reviewer` on OpenCode). Inside the handler, `event.correlation.agentType`
+holds it.
+
 ## Shipping subagents in a package
 
 The same directory works beside an Agent Plugins package root:

@@ -114,12 +114,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "7b953fe6860838b9d21b2a5dad6c17d0ff44871ca3ad4f951834b2d7f20d0c5c",
+      "hash": "377fd89c02f98bd8bb3b75b967f9bb18b524dcfbcf8ef528568539b17bcdbae9",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "d7949a7e3f1ab5e20d6e6d01f21094d17148c2eac87034fcef23824aa5dc815b",
+      "hash": "0e6c91c61dcf0d7133b909bacfd47080735a10b86ab223de948735b243f403b3",
       "mode": 420
     },
     {
@@ -149,7 +149,7 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "e9a14811e346ab3e655bb6e298e8524a4f17c0a6f31c4536243dbd0c2c82e2ad",
+      "hash": "8f6dfbac9a7077522475be11a59822c3a440bc96cbe7844ecea8eab117fc7304",
       "mode": 420
     },
     {

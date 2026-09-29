@@ -37,13 +37,19 @@ export function decodeOpenCodeV2(raw: unknown, invocation: InvocationContext): H
   if (native.hook === "execute.before" || native.hook === "execute.after") {
     if (typeof event.tool !== "string") throw new OpenCodeV2DecodeError("v2 tool event has no tool name");
     const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
-    if (native.hook === "execute.before") return { ...base, event: "tool.before", tool };
+    // v2 names the running agent on every tool event: the subagent inside one,
+    // the primary agent otherwise (ADR-0028, fixtures tool-read-in-subagent-*).
+    const scoped =
+      typeof event.agent === "string"
+        ? { ...base, correlation: { ...base.correlation, agentType: event.agent } }
+        : base;
+    if (native.hook === "execute.before") return { ...scoped, event: "tool.before", tool };
     if (event.status === "error") {
       const message = record(event.error).message;
-      return { ...base, event: "tool.error", tool, error: typeof message === "string" ? { message } : {} };
+      return { ...scoped, event: "tool.error", tool, error: typeof message === "string" ? { message } : {} };
     }
     if (event.status !== "completed") throw new OpenCodeV2DecodeError("unknown v2 tool status");
-    return { ...base, event: "tool.after", tool, output: structuredClone(record(event.result).content) };
+    return { ...scoped, event: "tool.after", tool, output: structuredClone(record(event.result).content) };
   }
   if (native.hook === "prompt")
     return { ...base, event: "prompt.before", prompt: String(record(event.prompt).text ?? "") };

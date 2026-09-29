@@ -238,10 +238,29 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
   which confirms the documented `primary` default. A mutant registering the
   packaged agent through the agent transform without it failed the same way.
 
+- **The `scoped` case** (ADR-0028). It synchronizes the definition together with
+  hooks scoped to the probe (`scoped-hooks.ts`, plus `scoped-lifecycle-hooks.ts`
+  on Claude and Codex), built for the harness build it finds installed.
+  - **The hooks.** A guard blocks the probe's first tool call (its read of
+    `seed.txt`, or on Codex its shell write) and lets the second through. A guard
+    scoped to `hn-nobody` would block anything it ran on. Scoped `tool.after`,
+    `agent.start` and `agent.stop` hooks append what they see to a trace.
+  - **Where the target can tell,** the guard blocked the probe's call and not
+    the parent's delegation, the stray guard never ran, and the trace held only
+    the probe's events. This held on Claude 2.1.283 and 2.1.238, Codex 0.156.1
+    on both routes, and OpenCode 2.0.17. On Codex the guarded write never
+    landed while the allowed one did.
+  - **Where it cannot,** the build refused the scope with HN201. That covers
+    OpenCode 1.18.31 and 1.18.18, and Codex 0.148.0, where no hook runs inside
+    a subagent. The drive then delegates to a native agent instead, and the tee
+    confirms the child's tool events still name no agent.
+
 `packages/cli/test/subagent-playback.test.ts` runs the `generated` and `packaged`
 cases in CI's playback lanes (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the
 harness-watch verify lane, so this evidence is re-established on every change
-and every new harness build. Each package route was checked against a mutant
+and every new harness build. The harness-playback suite's `agent-scope`
+scenario runs the `scoped` case in the Claude, Codex and OpenCode v1 lanes, and
+`subagent-playback.test.ts` runs it in the OpenCode v2 lane. Each package route was checked against a mutant
 that breaks it: the Claude agents directory moved, the OpenCode v1 agent loop
 emptied or its native fields dropped, the v2 transform removed. Each mutant
 failed the test.

@@ -10,7 +10,8 @@
     "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-enjOe2\\project"
   },
   "correlation": {
-    "toolCallId": "call_probe_1"
+    "toolCallId": "call_probe_1",
+    "agentType": "build"
   },
   "event": "tool.after",
   "tool": {

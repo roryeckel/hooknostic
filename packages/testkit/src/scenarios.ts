@@ -209,6 +209,21 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     },
   },
   {
+    // ADR-0028. Drives the .capture/agents `scoped` case: hooks scoped to a
+    // subagent are built for the installed build and must act inside it and
+    // nowhere else; where the target cannot tell, the build must refuse the
+    // scope and the child's tool events must still name no agent.
+    id: "agent-scope",
+    title: "a hook scoped to a subagent acts inside it and nowhere else, or the build refuses the scope",
+    covers: [
+      "tool.before.agent.identity",
+      "tool.after.agent.identity",
+      "agent.start.agent.identity",
+      "agent.stop.agent.identity",
+    ],
+    driver: "subagent",
+  },
+  {
     id: "stop-prevent",
     title: "preventing the first stop makes the harness take another model turn",
     covers: ["agent.stop.prevent", "turn.stop.prevent"],

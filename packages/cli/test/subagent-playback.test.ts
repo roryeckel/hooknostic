@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { expectAgentScope } from "./agent-scope.js";
 import { runProcess } from "./harness-playback.js";
 
 // Model-free proof that what a build writes for a subagent reaches the real
@@ -69,6 +70,14 @@ describe.skipIf(lane === undefined)(`subagent playback (${lane ?? "off"})`, () =
       if (lane === "claude") expect(summary.child.turns[0]!.tools).toEqual(["Read", "Grep"]);
       expect(summary.parent.childResultReturned).toBe(true);
     },
+    300_000,
+  );
+
+  // The harness-playback suite's agent-scope scenario covers the other lanes;
+  // it has no OpenCode v2 adapter lane, so v2 runs the same check here.
+  it.skipIf(lane !== "opencode-v2")(
+    "scoped: a hook scoped to the subagent acts inside it and nowhere else (ADR-0028)",
+    () => expectAgentScope("opencode-v2"),
     300_000,
   );
 });

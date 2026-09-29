@@ -1,14 +1,21 @@
 {
   "schemaVersion": 1,
-  "event": "agent.start",
-  "harness": { "id": "claude", "nativeEvent": "SubagentStart" },
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "SubagentStart"
+  },
   "session": {
     "id": "9c558014-e40f-47b2-a8ce-85948bfa3af8",
     "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude"
   },
   "correlation": {
     "turnId": "a17c3e6c-295a-4735-a7ed-f67648871f97",
-    "agentId": "aa333e83125928997"
+    "agentId": "aa333e83125928997",
+    "agentType": "Explore"
   },
-  "agent": { "id": "aa333e83125928997", "type": "Explore" }
+  "event": "agent.start",
+  "agent": {
+    "id": "aa333e83125928997",
+    "type": "Explore"
+  }
 }

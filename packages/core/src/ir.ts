@@ -1,4 +1,5 @@
 import type {
+  AgentScope,
   CapabilityId,
   HookDefinition,
   PluginSpec,
@@ -6,7 +7,7 @@ import type {
   TargetScope,
   ToolMatch,
 } from "@hooknostic/sdk";
-import { isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
+import { isAgentScopedEvent, isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
 
 import type { Diagnostic } from "./diagnostics.js";
 
@@ -23,6 +24,8 @@ export interface HookIR {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
+  /** Agents the hook runs in or skips (ADR-0028); its identity capability is already declared. */
+  agents?: AgentScope;
   /** Per-hook dispatch budget; falls back to the runtime policy when absent. */
   timeoutMs?: number;
   /**
@@ -102,6 +105,29 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
       return;
     }
 
+    if (h.agents !== undefined && !isAgentScopedEvent(h.event)) {
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        hookId: h.id,
+        event: h.event,
+        message: `hook "${h.id}" is scoped to agents on "${h.event}", an event no harness attributes to an agent.`,
+        remediation: "remove agents, or move the hook to a tool event, agent.start or agent.stop (ADR-0028).",
+      });
+      return;
+    }
+    if (h.agents?.include !== undefined && h.agents.include.length === 0) {
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        hookId: h.id,
+        event: h.event,
+        message: `hook "${h.id}" has an empty agents.include list and can never run.`,
+        remediation: "remove agents.include or list at least one agent name, as the harness reports it.",
+      });
+      return;
+    }
+
     for (const capability of Object.keys(h.capabilities)) {
       if (!capability.startsWith(`${h.event}.`)) {
         diagnostics.push({
@@ -124,6 +150,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
     };
     if (h.match !== undefined) ir.match = h.match;
     if (h.targets !== undefined) ir.targets = h.targets;
+    if (h.agents !== undefined) ir.agents = h.agents;
     if (h.timeoutMs !== undefined) ir.timeoutMs = h.timeoutMs;
     hooks.push(ir);
   });

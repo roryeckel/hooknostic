@@ -10,7 +10,8 @@
   },
   "correlation": {
     "turnId": "01a0eea8-e197-7610-8381-502ebc730e40",
-    "agentId": "01a0eea8-e146-7193-b947-5065e533d9f0"
+    "agentId": "01a0eea8-e146-7193-b947-5065e533d9f0",
+    "agentType": "hn-probe"
   },
   "event": "agent.start",
   "agent": {

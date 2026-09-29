@@ -226,20 +226,19 @@ export function resolveCapabilityMatrix(
 
   // Least-capable guaranteed intersection: a capability's level is the lowest
   // level across all intersecting profiles; missing entries are unsupported.
+  // The cell kept is one a profile declares at that level, so its rationale
+  // survives -- an explicit `unsupported` included, as it does when a single
+  // profile resolves: `inspect` can only explain a cell that exists. A cell
+  // no profile declares at the lowest level stays absent.
   const matrix: CapabilityMatrix = {};
   for (const id of ALL_CAPABILITY_IDS) {
-    let entry: CapabilityEntry | undefined;
-    for (const profile of used) {
-      const candidate = profile.matrix[id] ?? { level: "unsupported" as const };
-      if (entry === undefined) {
-        entry = candidate;
-      } else if (leastCapable(entry.level, candidate.level) === candidate.level) {
-        entry = candidate;
-      }
-    }
-    if (entry && entry.level !== "unsupported") {
-      matrix[id as CapabilityId] = entry;
-    }
+    const cells = used.map((profile) => profile.matrix[id]);
+    const level = cells.reduce<CapabilityEntry["level"]>(
+      (least, cell) => leastCapable(least, cell?.level ?? "unsupported"),
+      "exact",
+    );
+    const entry = cells.find((cell): cell is CapabilityEntry => cell !== undefined && cell.level === level);
+    if (entry !== undefined) matrix[id as CapabilityId] = entry;
   }
   return { matrix, profilesUsed: [...used], diagnostics };
 }

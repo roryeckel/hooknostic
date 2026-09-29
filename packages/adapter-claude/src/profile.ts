@@ -75,6 +75,20 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/claude/2.1",
           what: "Tool payloads inside a delegated project subagent (.capture/agents): they carry agent_id and agent_type, the parent's carry neither. SubagentStart and SubagentStop fired around a child that finished, but no SubagentStop was dispatched when the child's maxTurns ended it",
         },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The scoped case: hooks built with agents: { include: [\"hn-probe\"] } blocked the delegated subagent's first Read and let its second through, never touched the parent's Agent call, and a guard scoped to another agent never ran; scoped tool.after, agent.start and agent.stop hooks saw the subagent's events and no others (packages/cli/test/harness-playback.test.ts, agent-scope).",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, the scoped case behaved the same: the subagent's guarded read was blocked, the parent's call was not, and the scoped traces saw only the subagent.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and
@@ -112,6 +126,10 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.requestApproval": { level: "exact" },
       "tool.before.input.replace": { level: "exact" },
       "tool.before.context.add": { level: "exact" },
+      // Inside a subagent the payload carries agent_type; the main agent's carry
+      // none, so a named agent is never confused with it (ADR-0028,
+      // fixtures pre-tool-read-subagent, 2.1.238 and 2.1.283).
+      "tool.before.agent.identity": { level: "exact" },
 
       "tool.after.observe": { level: "exact" },
       // No documented tool_response replacement channel on PostToolUse.
@@ -122,6 +140,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           "PostToolUse cannot block (the tool already ran, exit 2 is not honored); the reason is surfaced to the model via stderr, which usually but not deterministically stops continuation.",
       },
       "tool.after.context.add": { level: "exact" },
+      "tool.after.agent.identity": { level: "exact" },
 
       "tool.error.observe": { level: "exact" },
       "tool.error.context.add": { level: "exact" },
@@ -141,10 +160,12 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "context.compact.after.observe": { level: "exact" },
 
       "agent.start.observe": { level: "exact" },
+      "agent.start.agent.identity": { level: "exact" },
 
       "agent.stop.observe": { level: "exact" },
       "agent.stop.prevent": { level: "exact" },
       "agent.stop.notify": { level: "exact" },
+      "agent.stop.agent.identity": { level: "exact" },
 
       "turn.stop.observe": { level: "exact" },
       "turn.stop.prevent": { level: "exact" },

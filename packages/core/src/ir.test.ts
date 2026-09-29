@@ -198,6 +198,42 @@ describe("buildPluginIR", () => {
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501", hookId: "s" });
   });
 
+  it("carries an agent scope declared through hook() to the IR (ADR-0028)", () => {
+    const { ir, diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "scoped",
+        hooks: [hook("tool.before", { id: "reviewer", agents: { include: ["reviewer"] }, async run() {} })],
+      }),
+    );
+    expect(diagnostics).toEqual([]);
+    expect(ir?.hooks[0]).toMatchObject({
+      agents: { include: ["reviewer"] },
+      capabilities: { "tool.before.agent.identity": "required" },
+    });
+  });
+
+  it("rejects an agent scope on an event no harness attributes to an agent (bypassing the type layer)", () => {
+    const plugin = definePlugin({
+      name: "bad-agents",
+      hooks: [hook("session.start", { id: "s", async run() {} })],
+    });
+    plugin.hooks[0]!.agents = { include: ["reviewer"] };
+    const result = buildPluginIR(plugin);
+    expect(result.ir).toBeUndefined();
+    expect(result.diagnostics[0]).toMatchObject({ code: "HN501", hookId: "s" });
+  });
+
+  it("rejects an empty agents.include, which could never run", () => {
+    const result = buildPluginIR(
+      definePlugin({
+        name: "empty-agents",
+        hooks: [hook("tool.before", { id: "t", agents: { include: [] }, async run() {} })],
+      }),
+    );
+    expect(result.ir).toBeUndefined();
+    expect(result.diagnostics[0]).toMatchObject({ code: "HN501", hookId: "t" });
+  });
+
   it("rejects capabilities scoped to a different event (bypassing the type layer)", () => {
     const plugin = definePlugin({
       name: "bad-scope",

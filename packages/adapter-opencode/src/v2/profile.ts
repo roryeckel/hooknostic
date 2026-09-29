@@ -76,6 +76,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/opencode/2.0",
           what: "A read inside a delegated project subagent (tool-read-in-subagent-before/after, .capture/agents): execute.before and execute.after name the subagent in agent, where the parent's own tool events name its primary agent, build.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The scoped case: a tool.before guard scoped to the delegated subagent blocked its guarded read and let the next through, never touched the parent's subagent call (named by the primary agent, build), and a guard scoped to another agent never ran; a scoped tool.after saw only the subagent's read (packages/cli/test/subagent-playback.test.ts).",
+        },
         // scheduled-playback:begin
         {
           version: "2.0.18",
@@ -107,7 +114,11 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         level: "exact",
         rationale: "Mutating event.input before execution changes the executed command.",
       },
+      // execute.before/after name the running agent: the subagent inside one, the
+      // primary agent otherwise (ADR-0028, fixtures tool-read-in-subagent-*).
+      "tool.before.agent.identity": { level: "exact" },
       "tool.after.observe": { level: "exact" },
+      "tool.after.agent.identity": { level: "exact" },
       "tool.error.observe": {
         level: "approximate",
         rationale:

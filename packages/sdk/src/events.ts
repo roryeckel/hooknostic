@@ -52,6 +52,14 @@ export interface BaseHookEvent {
     turnId?: string;
     toolCallId?: string;
     agentId?: string;
+    /**
+     * The name of the agent the event ran in, exactly as the harness reports
+     * it (ADR-0028): a subagent's name inside one -- plugin-qualified when a
+     * package delivered it -- and, on a harness that names every agent, the
+     * primary agent's. Absent when the harness does not say, which on some
+     * harnesses means the main agent; never inferred.
+     */
+    agentType?: string;
     parentAgentId?: string;
   };
 
@@ -174,4 +182,21 @@ export type ToolScopedEventName = (typeof TOOL_SCOPED_EVENTS)[number];
 
 export function isToolScopedEvent(event: HookEventName): event is ToolScopedEventName {
   return (TOOL_SCOPED_EVENTS as readonly HookEventName[]).includes(event);
+}
+
+/**
+ * Events a hook may scope to the agents they run in (ADR-0028): the ones that
+ * happen inside a subagent, and its own lifecycle. Each has an
+ * `<event>.agent.identity` capability.
+ */
+export const AGENT_SCOPED_EVENTS = [
+  ...TOOL_SCOPED_EVENTS,
+  "agent.start",
+  "agent.stop",
+] as const satisfies readonly HookEventName[];
+
+export type AgentScopedEventName = (typeof AGENT_SCOPED_EVENTS)[number];
+
+export function isAgentScopedEvent(event: HookEventName): event is AgentScopedEventName {
+  return (AGENT_SCOPED_EVENTS as readonly HookEventName[]).includes(event);
 }

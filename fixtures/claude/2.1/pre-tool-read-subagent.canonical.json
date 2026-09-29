@@ -11,7 +11,8 @@
   "correlation": {
     "turnId": "e1f85ea7-b428-4b41-940e-47716627a3d5",
     "toolCallId": "toolu_playback_1",
-    "agentId": "a4fc130c1dd24337f"
+    "agentId": "a4fc130c1dd24337f",
+    "agentType": "hn-probe"
   },
   "event": "tool.before",
   "tool": {

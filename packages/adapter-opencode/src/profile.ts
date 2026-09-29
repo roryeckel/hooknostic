@@ -20,6 +20,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           what: "live plugin hook payloads incl. in-place args-mutation behaviour",
         },
         {
+          version: "1.18.31",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "Inside a delegated subagent, tool.execute.before and tool.execute.after carry only tool, sessionID and callID, as the parent's do; the running agent is named only on chat.message. A hook scoped to agents therefore cannot build (the scoped case, packages/cli/test/harness-playback.test.ts, agent-scope). The same held on 1.18.18.",
+        },
+        {
           version: "1.18.19",
           date: "2026-08-20",
           method: "type-derived",
@@ -204,8 +211,18 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
         rationale: "mutating output.args in tool.execute.before rewrites the tool input.",
       },
       // No model-visible context channel on tool events → context.add unsupported.
+      "tool.before.agent.identity": {
+        level: "unsupported",
+        rationale:
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0028, .capture/agents).",
+      },
 
       "tool.after.observe": { level: "exact" },
+      "tool.after.agent.identity": {
+        level: "unsupported",
+        rationale:
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0028, .capture/agents).",
+      },
       "tool.after.output.replace": {
         level: "approximate",
         rationale:

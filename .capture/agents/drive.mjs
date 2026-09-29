@@ -318,6 +318,64 @@ async function syncGenerated(scratch, harness) {
   if (!synced.ok) throw new Error(`hooknostic sync failed: ${JSON.stringify(synced.errors)}`);
 }
 
+/** Hooks for the `scoped` case, and the block reasons they leave in model requests. */
+const SCOPED_ENTRY = join(REPO, ".capture/agents/scoped-hooks.ts");
+/** The same, plus subagent lifecycle hooks, where the harness has those events. */
+const SCOPED_LIFECYCLE_ENTRY = join(REPO, ".capture/agents/scoped-lifecycle-hooks.ts");
+const SCOPED_BLOCK = "HKN-SCOPED-BLOCK";
+/** What the scoped child touches second, which its guard must let through. */
+const SCOPED_OTHER = "other.txt";
+const SCOPED_OTHER_WRITE = "hn-other-write.txt";
+const UNSCOPED_BLOCK = "HKN-UNSCOPED-BLOCK";
+
+/** The installed build's version, e.g. "2.1.283", from `<binary> --version`. */
+async function installedVersion(binary, env = process.env) {
+  const reported = await runProcess(binary, ["--version"], { cwd: REPO, env, timeoutMs: 60_000 });
+  const version = /(\d+\.\d+\.\d+)/.exec(reported.stdout + reported.stderr)?.[1];
+  if (version === undefined) throw new Error(`${binary} --version reported no version: ${reported.stdout}`);
+  return version;
+}
+
+/**
+ * The `scoped` case (ADR-0028): the portable definition plus hooks scoped to
+ * it, synchronized together and built for the installed build's exact version,
+ * so the target's own agent-identity level decides whether the scope builds.
+ * A refused build is an outcome, not a failure: the drive then delegates to a
+ * native agent instead, so the tee still shows what the child's hooks carry.
+ */
+async function syncScoped(scratch, harness, version) {
+  writePortableDefinition(scratch, harness);
+  const { registry, id } = buildTarget(harness);
+  const target = { version, delivery: "project", output: `.hooknostic/artifacts/${id}` };
+  const configPath = join(scratch, "hooknostic.config.ts");
+  const config = {
+    project: { root: "." },
+    entry: (id === "opencode" ? SCOPED_ENTRY : SCOPED_LIFECYCLE_ENTRY).replaceAll("\\", "/"),
+    components: { subagents: ["./portable-agents"] },
+    targets: { [id]: target },
+  };
+  writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
+  // The entry sits in this repository, outside any package that depends on the
+  // SDK, so it resolves the workspace source, as core's own tests do.
+  const evaluate = { alias: { "@hooknostic/sdk": join(REPO, "packages/sdk/src/index.ts") } };
+  const synced = await runProject({ configPath, registry, evaluate, command: "sync" });
+  // The child reads this one after seed.txt; the guard lets it through.
+  write(join(scratch, SCOPED_OTHER), "beta\n");
+  // The trace hooks append here; the harness passes the variable on to them.
+  const trace = join(scratch, "..", "scope-trace.jsonl");
+  rmSync(trace, { force: true });
+  process.env["HKN_SCOPE_TRACE"] = trace;
+  return {
+    version,
+    trace,
+    built: synced.ok,
+    refusedBy: synced.diagnostics
+      .filter((diagnostic) => diagnostic.severity === "error")
+      .map((diagnostic) => `${diagnostic.code} ${diagnostic.capability ?? ""}`.trim()),
+    errors: synced.errors,
+  };
+}
+
 /** The Agent Plugins package the `packaged` case configures the definition beside. */
 const PLUGIN = "hn-plugin";
 
@@ -355,6 +413,15 @@ function readTurns(toolName, key, seed) {
   return [read, { ...read }, { ...read }, { kind: "text", text: CHILD_DONE }];
 }
 
+/** The scoped child: seed.txt, which its guard blocks, then a file it allows. */
+function scopedReadTurns(toolName, key, seed) {
+  return [
+    { kind: "tool", toolName, arguments: { [key]: seed } },
+    { kind: "tool", toolName, arguments: { [key]: join(dirname(seed), SCOPED_OTHER) } },
+    { kind: "text", text: CHILD_DONE },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
@@ -384,6 +451,8 @@ async function claudeSession(caseName) {
   if (caseName === "control") write(join(scratch, ".claude/agents-off", `${NAME}.md`), claudeAgent());
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "generated") await syncGenerated(scratch, "claude");
+  const scope = caseName === "scoped" ? await syncScoped(scratch, "claude", await installedVersion("claude")) : undefined;
+  if (scope !== undefined && !scope.built) write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "plan-project") write(join(scratch, ".claude/agents", `${NAME}.md`), claudePlanAgent());
   if (caseName === "plugin" || caseName === "plan-plugin") {
     const plugin = join(scratch, "..", PLUGIN);
@@ -400,9 +469,16 @@ async function claudeSession(caseName) {
     extraArgs.push("--plugin-dir", await buildPackaged(join(scratch, "..", "packaged"), "claude"));
     subagentType = `${PLUGIN}:${NAME}`;
   }
-  const delegates = ["direct", "complete", "plugin", "generated", "packaged", "plan-project", "plan-plugin"].includes(
-    caseName,
-  );
+  const delegates = [
+    "direct",
+    "complete",
+    "plugin",
+    "generated",
+    "packaged",
+    "scoped",
+    "plan-project",
+    "plan-plugin",
+  ].includes(caseName);
   // A bypassing parent takes precedence over a subagent's own permission
   // mode, so the plan-* cases run the parent in the default mode instead.
   const permissions = caseName.startsWith("plan-") ? [] : ["--dangerously-skip-permissions"];
@@ -416,7 +492,11 @@ async function claudeSession(caseName) {
         { kind: "text", text: "parent complete" },
       ]
     : DISCOVERY;
-  const router = await startRouter(PROTOCOL.claude, parentScript, readTurns("Read", "file_path", seed));
+  const router = await startRouter(
+    PROTOCOL.claude,
+    parentScript,
+    (scope ? scopedReadTurns : readTurns)("Read", "file_path", seed),
+  );
   let result;
   try {
     result = await runProcess(
@@ -438,7 +518,7 @@ async function claudeSession(caseName) {
   } finally {
     await router.close();
   }
-  return { scratch, captured: join(scratch, "captured"), result, router, delegation: ["Agent", "Task"] };
+  return { scratch, captured: join(scratch, "captured"), result, router, delegation: ["Agent", "Task"], scope };
 }
 
 /**
@@ -506,9 +586,16 @@ async function codexSession(caseName, isolatedHome) {
   write(seed, "alpha\n");
   // sandbox-*: the session runs workspace-write and the agent asks for the
   // opposite extreme, so whichever value the child reports is attributable.
-  const delegating = caseName === "direct" || caseName === "generated" || caseName.startsWith("sandbox-");
+  const delegating =
+    caseName === "direct" || caseName === "generated" || caseName === "scoped" || caseName.startsWith("sandbox-");
+  const scope =
+    caseName === "scoped"
+      ? await syncScoped(scratch, isolatedHome ? "codex-home" : "codex", await installedVersion("codex"))
+      : undefined;
   if (caseName === "generated") await syncGenerated(scratch, isolatedHome ? "codex-home" : "codex");
-  else if (delegating || ["discover", "unknown-key", "untrusted"].includes(caseName)) {
+  else if (scope?.built === true) {
+    // The synchronized definition is the agent under test.
+  } else if (delegating || ["discover", "unknown-key", "untrusted"].includes(caseName)) {
     let agent = codexAgent() + (caseName === "unknown-key" ? 'hooknostic_unknown_key = "x"\n' : "");
     if (caseName === "sandbox-full") agent = agent.replace('sandbox_mode = "read-only"', 'sandbox_mode = "danger-full-access"');
     write(join(scratch, ".codex/agents", `${NAME}.toml`), agent);
@@ -538,6 +625,8 @@ async function codexSession(caseName, isolatedHome) {
   // `sandbox_mode = "read-only"` it should not appear (checked after the run).
   const shellTurns = [
     { kind: "tool", disposition: "rewrite", marker: CHILD_WRITE },
+    // The scoped case's guard blocks the first write only.
+    ...(scope ? [{ kind: "tool", disposition: "rewrite", marker: SCOPED_OTHER_WRITE }] : []),
     { kind: "text", text: CHILD_DONE },
   ];
   const router = await startRouter(PROTOCOL.codex, parentScript, delegating ? shellTurns : DISCOVERY, onRequest);
@@ -555,7 +644,14 @@ async function codexSession(caseName, isolatedHome) {
   } finally {
     await router.close();
   }
-  return { scratch, captured: join(scratch, "captured"), result, router, delegation: ["spawn_agent", "wait_agent"] };
+  return {
+    scratch,
+    captured: join(scratch, "captured"),
+    result,
+    router,
+    delegation: ["spawn_agent", "wait_agent"],
+    scope,
+  };
 }
 
 function patchOpencodeV1Models(scratch, pluginPackage) {
@@ -596,9 +692,12 @@ async function opencodeV1Session(caseName) {
   if (caseName === "cross") write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "inject") write(join(scratch, ".opencode/plugins/hn-inject.js"), V1_INJECTOR);
   if (caseName === "generated") await syncGenerated(scratch, "opencode-v1");
+  const scope =
+    caseName === "scoped" ? await syncScoped(scratch, "opencode-v1", await installedVersion("opencode")) : undefined;
+  if (scope !== undefined && !scope.built) write(join(scratch, ".opencode/agents", `${NAME}.md`), opencodeV1Agent());
   // Named by path from opencode.json, as a consumer would name the package.
   const packaged = caseName === "packaged" ? await buildPackaged(join(scratch, "..", "packaged"), "opencode-v1") : undefined;
-  const delegates = ["direct", "maxsteps", "singular", "inject", "generated", "packaged"].includes(caseName);
+  const delegates = ["direct", "maxsteps", "singular", "inject", "generated", "packaged", "scoped"].includes(caseName);
   const parentScript = delegates
     ? [
         {
@@ -613,7 +712,11 @@ async function opencodeV1Session(caseName) {
         { kind: "text", text: "parent complete" },
       ]
     : DISCOVERY;
-  const router = await startRouter(PROTOCOL["opencode-v1"], parentScript, readTurns("read", "filePath", seed));
+  const router = await startRouter(
+    PROTOCOL["opencode-v1"],
+    parentScript,
+    (scope ? scopedReadTurns : readTurns)("read", "filePath", seed),
+  );
   let result;
   try {
     writeOpencodeConfig(scratch, router.baseUrl, "hooknostic-playback", MODEL);
@@ -628,6 +731,7 @@ async function opencodeV1Session(caseName) {
     result,
     router,
     delegation: ["task"],
+    scope,
   };
 }
 
@@ -695,46 +799,6 @@ async function opencodeV2Session(caseName) {
   write(join(project, ".opencode/plugins/capture.js"), V2_TEE);
   const seed = join(project, "seed.txt");
   write(seed, "alpha\n");
-  if (caseName === "direct") write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent());
-  if (caseName === "readonly") write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent(true));
-  if (caseName === "control") write(join(project, ".opencode/agents-off", `${NAME}.md`), opencodeV2Agent());
-  if (caseName === "neutral") write(join(project, ".agents/agents", `${NAME}.md`), claudeAgent());
-  if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
-  if (caseName === "generated") await syncGenerated(project, "opencode-v2");
-  const packaged = caseName === "packaged" ? await buildPackaged(join(root, "packaged"), "opencode-v2") : undefined;
-  const delegates = ["direct", "readonly", "inject", "generated", "packaged"].includes(caseName);
-  const parentScript = delegates
-    ? [
-        {
-          kind: "tool",
-          toolName: "subagent",
-          arguments: {
-            agent: packaged === undefined ? NAME : `${PLUGIN}-${NAME}`,
-            description: "hn probe",
-            prompt: DELEGATION,
-          },
-        },
-        { kind: "text", text: "parent complete" },
-      ]
-    : DISCOVERY;
-  const router = await startRouter(PROTOCOL["opencode-v2"], parentScript, readTurns("read", "path", seed));
-  const model = (name) => ({ name, limit: { context: 128000, output: 4096 } });
-  write(
-    join(project, "opencode.json"),
-    JSON.stringify({
-      ...(packaged === undefined ? {} : { plugins: [packaged] }),
-      model: `playback/${MODEL}`,
-      providers: {
-        playback: {
-          name: "Playback",
-          env: ["HKN_PLAYBACK_KEY"],
-          package: "@opencode/ai/providers/openai-compatible",
-          settings: { baseURL: `${router.baseUrl}/v1` },
-          models: { [MODEL]: model("Playback"), [ALT_MODEL]: model("Playback alt") },
-        },
-      },
-    }),
-  );
   const env = {
     ...process.env,
     HOME: root,
@@ -756,6 +820,54 @@ async function opencodeV2Session(caseName) {
     const npmRoot = await runProcess("npm", ["root", "--global"], { cwd: project, env });
     executable = join(npmRoot.stdout.trim(), "@opencode/cli/bin/opencode.exe");
   }
+  if (caseName === "direct") write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent());
+  if (caseName === "readonly") write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent(true));
+  if (caseName === "control") write(join(project, ".opencode/agents-off", `${NAME}.md`), opencodeV2Agent());
+  if (caseName === "neutral") write(join(project, ".agents/agents", `${NAME}.md`), claudeAgent());
+  if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
+  if (caseName === "generated") await syncGenerated(project, "opencode-v2");
+  const scope =
+    caseName === "scoped" ? await syncScoped(project, "opencode-v2", await installedVersion(executable, env)) : undefined;
+  if (scope !== undefined) env["HKN_SCOPE_TRACE"] = scope.trace;
+  if (scope !== undefined && !scope.built) write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent());
+  const packaged = caseName === "packaged" ? await buildPackaged(join(root, "packaged"), "opencode-v2") : undefined;
+  const delegates = ["direct", "readonly", "inject", "generated", "packaged", "scoped"].includes(caseName);
+  const parentScript = delegates
+    ? [
+        {
+          kind: "tool",
+          toolName: "subagent",
+          arguments: {
+            agent: packaged === undefined ? NAME : `${PLUGIN}-${NAME}`,
+            description: "hn probe",
+            prompt: DELEGATION,
+          },
+        },
+        { kind: "text", text: "parent complete" },
+      ]
+    : DISCOVERY;
+  const router = await startRouter(
+    PROTOCOL["opencode-v2"],
+    parentScript,
+    (scope ? scopedReadTurns : readTurns)("read", "path", seed),
+  );
+  const model = (name) => ({ name, limit: { context: 128000, output: 4096 } });
+  write(
+    join(project, "opencode.json"),
+    JSON.stringify({
+      ...(packaged === undefined ? {} : { plugins: [packaged] }),
+      model: `playback/${MODEL}`,
+      providers: {
+        playback: {
+          name: "Playback",
+          env: ["HKN_PLAYBACK_KEY"],
+          package: "@opencode/ai/providers/openai-compatible",
+          settings: { baseURL: `${router.baseUrl}/v1` },
+          models: { [MODEL]: model("Playback"), [ALT_MODEL]: model("Playback alt") },
+        },
+      },
+    }),
+  );
   let result;
   try {
     result = await runProcess(executable, ["run", "--standalone", "--auto", "--format", "json", PROMPT], {
@@ -766,7 +878,7 @@ async function opencodeV2Session(caseName) {
   } finally {
     await router.close();
   }
-  return { scratch: project, captured: join(root, "captured"), result, router, delegation: ["subagent"] };
+  return { scratch: project, captured: join(root, "captured"), result, router, delegation: ["subagent"], scope };
 }
 
 // ---------------------------------------------------------------------------
@@ -775,6 +887,27 @@ async function opencodeV2Session(caseName) {
 
 function excerpt(text, limit = 1500) {
   return text.length > limit ? `${text.slice(0, limit)}… [${text.length} chars]` : text;
+}
+
+/**
+ * Whether the tee saw the running agent named on a tool event inside the
+ * child -- the raw field ADR-0028 normalizes -- whatever Hooknostic decided.
+ */
+function childToolIdentity(harness, captured) {
+  const rows = (file) =>
+    existsSync(file)
+      ? readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+      : [];
+  if (harness === "claude" || harness.startsWith("codex")) {
+    return rows(join(captured, "PreToolUse.jsonl")).some((row) => typeof row.agent_type === "string");
+  }
+  if (harness === "opencode-v1") {
+    return rows(join(captured, "tool.execute.before.jsonl")).some((row) => row.input !== null && "agent" in (row.input ?? {}));
+  }
+  return rows(join(captured, "events.jsonl")).some((row) => row.hook === "execute.before" && row.event?.agent === NAME);
 }
 
 function summarize(harness, caseName, session) {
@@ -796,6 +929,24 @@ function summarize(harness, caseName, session) {
     exit: result.code,
     playbackErrors: router.errors(),
     childWriteLanded: existsSync(join(session.scratch, CHILD_WRITE)),
+    scope: session.scope ?? null,
+    blocks: {
+      scopedInChild: childRequests.some((entry) => JSON.stringify(entry.body).includes(SCOPED_BLOCK)),
+      scopedInParent: router.log.some(
+        (entry) => entry.lane === "parent" && JSON.stringify(entry.body).includes(SCOPED_BLOCK),
+      ),
+      unscoped: router.log.some((entry) => JSON.stringify(entry.body).includes(UNSCOPED_BLOCK)),
+    },
+    childToolIdentity: childToolIdentity(harness, session.captured),
+    // What the scoped trace hooks saw, and whether the call they let through ran.
+    scopeTrace:
+      session.scope?.trace !== undefined && existsSync(session.scope.trace)
+        ? readFileSync(session.scope.trace, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line))
+        : [],
+    otherWriteLanded: existsSync(join(session.scratch, SCOPED_OTHER_WRITE)),
     parent: {
       toolBearingRequests: parentRequests.length,
       advertisedTools: firstParent ? toolDeclarations(firstParent).map(toolName) : [],
@@ -862,11 +1013,33 @@ function record(harness, caseName, session) {
 }
 
 const CASES = {
-  claude: ["direct", "complete", "control", "neutral", "plugin", "generated", "packaged", "plan-project", "plan-plugin"],
-  codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated"],
-  "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated"],
-  "opencode-v1": ["direct", "maxsteps", "singular", "control", "neutral", "cross", "inject", "generated", "packaged"],
-  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject", "generated", "packaged"],
+  claude: [
+    "direct",
+    "complete",
+    "control",
+    "neutral",
+    "plugin",
+    "generated",
+    "packaged",
+    "scoped",
+    "plan-project",
+    "plan-plugin",
+  ],
+  codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated", "scoped"],
+  "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated", "scoped"],
+  "opencode-v1": [
+    "direct",
+    "maxsteps",
+    "singular",
+    "control",
+    "neutral",
+    "cross",
+    "inject",
+    "generated",
+    "packaged",
+    "scoped",
+  ],
+  "opencode-v2": ["direct", "readonly", "control", "neutral", "cross", "inject", "generated", "packaged", "scoped"],
 };
 
 async function main() {

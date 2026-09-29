@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addContext,
+  agentIdentityCapability,
   ALL_CAPABILITY_IDS,
   baseHookEventSchema,
   block,
@@ -13,6 +14,7 @@ import {
   hook,
   HOOK_EVENT_NAMES,
   hooknosticConfigSchema,
+  isAgentScopedEvent,
   isJsonValue,
   isTerminalEffect,
   leastCapable,
@@ -59,6 +61,7 @@ describe("capability registry", () => {
       "agent.stop.observe",
       "agent.stop.prevent",
       "agent.stop.notify",
+      "agent.stop.agent.identity",
     ]);
     expect(capabilitiesForEvent("tool.before")).toEqual([
       "tool.before.observe",
@@ -66,7 +69,16 @@ describe("capability registry", () => {
       "tool.before.requestApproval",
       "tool.before.input.replace",
       "tool.before.context.add",
+      "tool.before.agent.identity",
     ]);
+  });
+
+  it("gives exactly the agent-scoped events an agent.identity capability (ADR-0028)", () => {
+    for (const event of HOOK_EVENT_NAMES) {
+      expect(agentIdentityCapability(event), event).toBe(
+        isAgentScopedEvent(event) ? `${event}.agent.identity` : undefined,
+      );
+    }
   });
 });
 

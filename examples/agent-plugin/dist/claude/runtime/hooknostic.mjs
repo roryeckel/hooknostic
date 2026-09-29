@@ -22,6 +22,10 @@ function isCapabilityId(value) {
 function canonicalCapability(event, key) {
   return isCapabilityId(key) ? key : `${event}.${key}`;
 }
+function agentIdentityCapability(event) {
+  const id = `${event}.agent.identity`;
+  return isCapabilityId(id) ? id : void 0;
+}
 var ALL_CAPABILITY_IDS, CAPABILITY_SET;
 var init_capabilities = __esm({
   "../../packages/sdk/dist/capabilities.js"() {
@@ -40,23 +44,29 @@ var init_capabilities = __esm({
       "tool.before.requestApproval",
       "tool.before.input.replace",
       "tool.before.context.add",
+      "tool.before.agent.identity",
       "tool.after.observe",
       "tool.after.output.replace",
       "tool.after.blockContinuation",
       "tool.after.context.add",
+      "tool.after.agent.identity",
       "tool.error.observe",
       "tool.error.context.add",
+      "tool.error.agent.identity",
       "permission.request.observe",
       "permission.request.block",
       "permission.request.context.add",
+      "permission.request.agent.identity",
       "context.compact.before.observe",
       "context.compact.before.block",
       "context.compact.before.context.add",
       "context.compact.after.observe",
       "agent.start.observe",
+      "agent.start.agent.identity",
       "agent.stop.observe",
       "agent.stop.prevent",
       "agent.stop.notify",
+      "agent.stop.agent.identity",
       "turn.stop.observe",
       "turn.stop.prevent",
       "turn.stop.notify"
@@ -122,7 +132,7 @@ var init_effects = __esm({
 });
 
 // ../../packages/sdk/dist/events.js
-var HOOK_EVENT_NAMES;
+var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS, AGENT_SCOPED_EVENTS;
 var init_events = __esm({
   "../../packages/sdk/dist/events.js"() {
     "use strict";
@@ -141,10 +151,32 @@ var init_events = __esm({
       "agent.stop",
       "turn.stop"
     ];
+    TOOL_SCOPED_EVENTS = [
+      "tool.before",
+      "tool.after",
+      "tool.error",
+      "permission.request"
+    ];
+    AGENT_SCOPED_EVENTS = [
+      ...TOOL_SCOPED_EVENTS,
+      "agent.start",
+      "agent.stop"
+    ];
   }
 });
 
 // ../../packages/sdk/dist/hook.js
+function hookAppliesToAgent(hook2, event) {
+  const scope = hook2.agents;
+  if (scope === void 0)
+    return true;
+  const agent = event.correlation.agentType;
+  if (scope.include !== void 0 && (agent === void 0 || !scope.include.includes(agent)))
+    return false;
+  if (scope.exclude !== void 0 && agent !== void 0 && scope.exclude.includes(agent))
+    return false;
+  return true;
+}
 function hookAppliesToTarget(hook2, targetId) {
   if (hook2.targets?.include && !hook2.targets.include.includes(targetId))
     return false;
@@ -167,16 +199,28 @@ function canonicalCapabilities(event, hookId, declared) {
   return canonical;
 }
 function hook(event, spec) {
+  const capabilities = canonicalCapabilities(event, spec.id, spec.capabilities);
+  if (spec.agents !== void 0) {
+    const identity = agentIdentityCapability(event);
+    if (identity !== void 0) {
+      if (capabilities[identity] === "optional") {
+        throw new Error(`hook "${spec.id}" is scoped to agents, which requires "${identity}"; it cannot also declare it optional.`);
+      }
+      capabilities[identity] = "required";
+    }
+  }
   const def = {
     event,
     id: spec.id,
-    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
+    capabilities,
     run: spec.run
   };
   if (spec.match !== void 0)
     def.match = spec.match;
   if (spec.targets !== void 0)
     def.targets = spec.targets;
+  if (spec.agents !== void 0)
+    def.agents = spec.agents;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
   return def;
@@ -4559,7 +4603,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4614,6 +4658,7 @@ var init_schemas = __esm({
         turnId: external_exports.string().optional(),
         toolCallId: external_exports.string().optional(),
         agentId: external_exports.string().optional(),
+        agentType: external_exports.string().optional(),
         parentAgentId: external_exports.string().optional()
       }).strict(),
       raw: external_exports.unknown()
@@ -4859,6 +4904,10 @@ var init_schemas = __esm({
       include: external_exports.array(external_exports.string().min(1)).optional(),
       exclude: external_exports.array(external_exports.string().min(1)).optional()
     }).strict();
+    agentScopeSchema = external_exports.object({
+      include: external_exports.array(external_exports.string().min(1)).optional(),
+      exclude: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict();
     toolMatchSchema = external_exports.object({
       kind: external_exports.union([toolKindSchema, external_exports.array(toolKindSchema)]).optional(),
       nativeName: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional()
@@ -4868,6 +4917,7 @@ var init_schemas = __esm({
       id: external_exports.string().min(1),
       match: toolMatchSchema.optional(),
       targets: targetScopeSchema.optional(),
+      agents: agentScopeSchema.optional(),
       // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
       // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
       // hook time out on every dispatch instead of never. `positive` also keeps
@@ -5044,6 +5094,7 @@ async function dispatch(hooks, event, options) {
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options.targetId)) return false;
+    if (!hookAppliesToAgent(hook2, event)) return false;
     const tool = toolOf(event);
     if (hook2.match && tool && !matchesTool(hook2.match, tool)) return false;
     return true;
@@ -5560,7 +5611,10 @@ function decodeClaude(nativeEvent, invocation) {
     correlation: {
       ...typeof payload.prompt_id === "string" ? { turnId: payload.prompt_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
-      ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {}
+      ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
+      // Inside a subagent only; the main agent's events carry none (ADR-0028,
+      // fixtures pre-tool-read-subagent and subagent-start).
+      ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
     raw: nativeEvent
   };
@@ -5703,7 +5757,7 @@ async function runClaudeCommandShim(source, options) {
 // hooknostic-shim-entry.ts
 await runClaudeCommandShim(() => Promise.resolve().then(() => (init_hooks(), hooks_exports)), {
   targetId: "claude",
-  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "permission.request.context.add": "exact", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "exact" },
+  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "exact", "tool.after.observe": "exact", "tool.after.blockContinuation": "approximate", "tool.after.context.add": "exact", "tool.after.agent.identity": "exact", "tool.error.observe": "exact", "tool.error.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "permission.request.context.add": "exact", "context.compact.before.observe": "exact", "context.compact.before.block": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "exact", "agent.stop.agent.identity": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "exact" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 },
   pluginRoot: pluginRootFrom(import.meta.url, "..")

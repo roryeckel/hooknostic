@@ -203,6 +203,7 @@ interface BaseHookEvent {
     turnId?: string;
     toolCallId?: string;
     agentId?: string;
+    agentType?: string; // the agent the event ran in, as the harness names it (ADR-0028)
     parentAgentId?: string;
   };
 
@@ -400,6 +401,25 @@ hook("session.start", {
 ```
 
 Intentional scoping is not a portability failure and emits no warnings.
+
+A hook on a tool event, `agent.start` or `agent.stop` can also be scoped to the agents
+it runs in ([ADR-0028](decisions/0028-agent-scoped-hooks.md), proposed):
+
+```ts
+hook("tool.before", {
+  id: "reviewer-read-only",
+  agents: { include: ["reviewer"] },
+  match: { kind: ["shell", "file.write", "file.edit"] },
+  capabilities: { block: "required" },
+  run: () => block("the reviewer does not change files"),
+});
+```
+
+Names compare against `event.correlation.agentType` as the harness reports it. An
+agent scope is a dispatch-time filter like `targets`. Unlike a target scope, it relies
+on the harness: the hook requires its event's `agent.identity` capability, and a target
+that cannot say which agent an event ran in fails the build rather than silently
+never running the hook.
 
 ### 7.7 Capability analysis algorithm
 

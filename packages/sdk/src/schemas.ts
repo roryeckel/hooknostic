@@ -86,6 +86,7 @@ export const baseHookEventSchema = z
         turnId: z.string().optional(),
         toolCallId: z.string().optional(),
         agentId: z.string().optional(),
+        agentType: z.string().optional(),
         parentAgentId: z.string().optional(),
       })
       .strict(),
@@ -419,6 +420,14 @@ export const targetScopeSchema = z
   })
   .strict();
 
+/** ADR-0028: the same shape as targets, naming agents as the harness reports them. */
+export const agentScopeSchema = z
+  .object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export const toolMatchSchema = z
   .object({
     kind: z.union([toolKindSchema, z.array(toolKindSchema)]).optional(),
@@ -433,6 +442,7 @@ export const hookDefinitionSchema = z
     id: z.string().min(1),
     match: toolMatchSchema.optional(),
     targets: targetScopeSchema.optional(),
+    agents: agentScopeSchema.optional(),
     // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
     // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
     // hook time out on every dispatch instead of never. `positive` also keeps

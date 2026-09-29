@@ -21,23 +21,29 @@ var ALL_CAPABILITY_IDS = [
   "tool.before.requestApproval",
   "tool.before.input.replace",
   "tool.before.context.add",
+  "tool.before.agent.identity",
   "tool.after.observe",
   "tool.after.output.replace",
   "tool.after.blockContinuation",
   "tool.after.context.add",
+  "tool.after.agent.identity",
   "tool.error.observe",
   "tool.error.context.add",
+  "tool.error.agent.identity",
   "permission.request.observe",
   "permission.request.block",
   "permission.request.context.add",
+  "permission.request.agent.identity",
   "context.compact.before.observe",
   "context.compact.before.block",
   "context.compact.before.context.add",
   "context.compact.after.observe",
   "agent.start.observe",
+  "agent.start.agent.identity",
   "agent.stop.observe",
   "agent.stop.prevent",
   "agent.stop.notify",
+  "agent.stop.agent.identity",
   "turn.stop.observe",
   "turn.stop.prevent",
   "turn.stop.notify"
@@ -48,6 +54,10 @@ function isCapabilityId(value) {
 }
 function canonicalCapability(event, key) {
   return isCapabilityId(key) ? key : `${event}.${key}`;
+}
+function agentIdentityCapability(event) {
+  const id = `${event}.agent.identity`;
+  return isCapabilityId(id) ? id : void 0;
 }
 
 // ../../packages/sdk/dist/config.js
@@ -112,8 +122,30 @@ var HOOK_EVENT_NAMES = [
   "agent.stop",
   "turn.stop"
 ];
+var TOOL_SCOPED_EVENTS = [
+  "tool.before",
+  "tool.after",
+  "tool.error",
+  "permission.request"
+];
+var AGENT_SCOPED_EVENTS = [
+  ...TOOL_SCOPED_EVENTS,
+  "agent.start",
+  "agent.stop"
+];
 
 // ../../packages/sdk/dist/hook.js
+function hookAppliesToAgent(hook2, event) {
+  const scope = hook2.agents;
+  if (scope === void 0)
+    return true;
+  const agent = event.correlation.agentType;
+  if (scope.include !== void 0 && (agent === void 0 || !scope.include.includes(agent)))
+    return false;
+  if (scope.exclude !== void 0 && agent !== void 0 && scope.exclude.includes(agent))
+    return false;
+  return true;
+}
 function hookAppliesToTarget(hook2, targetId) {
   if (hook2.targets?.include && !hook2.targets.include.includes(targetId))
     return false;
@@ -136,16 +168,28 @@ function canonicalCapabilities(event, hookId, declared) {
   return canonical;
 }
 function hook(event, spec) {
+  const capabilities = canonicalCapabilities(event, spec.id, spec.capabilities);
+  if (spec.agents !== void 0) {
+    const identity = agentIdentityCapability(event);
+    if (identity !== void 0) {
+      if (capabilities[identity] === "optional") {
+        throw new Error(`hook "${spec.id}" is scoped to agents, which requires "${identity}"; it cannot also declare it optional.`);
+      }
+      capabilities[identity] = "required";
+    }
+  }
   const def = {
     event,
     id: spec.id,
-    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
+    capabilities,
     run: spec.run
   };
   if (spec.match !== void 0)
     def.match = spec.match;
   if (spec.targets !== void 0)
     def.targets = spec.targets;
+  if (spec.agents !== void 0)
+    def.agents = spec.agents;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
   return def;
@@ -4473,6 +4517,7 @@ var baseHookEventSchema = external_exports.object({
     turnId: external_exports.string().optional(),
     toolCallId: external_exports.string().optional(),
     agentId: external_exports.string().optional(),
+    agentType: external_exports.string().optional(),
     parentAgentId: external_exports.string().optional()
   }).strict(),
   raw: external_exports.unknown()
@@ -4718,6 +4763,10 @@ var targetScopeSchema = external_exports.object({
   include: external_exports.array(external_exports.string().min(1)).optional(),
   exclude: external_exports.array(external_exports.string().min(1)).optional()
 }).strict();
+var agentScopeSchema = external_exports.object({
+  include: external_exports.array(external_exports.string().min(1)).optional(),
+  exclude: external_exports.array(external_exports.string().min(1)).optional()
+}).strict();
 var toolMatchSchema = external_exports.object({
   kind: external_exports.union([toolKindSchema, external_exports.array(toolKindSchema)]).optional(),
   nativeName: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional()
@@ -4727,6 +4776,7 @@ var hookDefinitionSchema = external_exports.object({
   id: external_exports.string().min(1),
   match: toolMatchSchema.optional(),
   targets: targetScopeSchema.optional(),
+  agents: agentScopeSchema.optional(),
   // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
   // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
   // hook time out on every dispatch instead of never. `positive` also keeps
@@ -4843,6 +4893,7 @@ async function dispatch(hooks, event, options) {
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options.targetId)) return false;
+    if (!hookAppliesToAgent(hook2, event)) return false;
     const tool = toolOf(event);
     if (hook2.match && tool && !matchesTool(hook2.match, tool)) return false;
     return true;
@@ -5534,7 +5585,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
 // hooknostic-shim-entry.ts
 var HooknosticPlugin = async (input) => createHooknosticHooks(hooks_default, {
   targetId: "opencode",
-  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
+  capabilities: { "session.start.observe": "emulated", "session.end.observe": "approximate", "prompt.before.observe": "emulated", "model.request.before.observe": "exact", "model.request.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.input.replace": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.agent.identity": "unsupported", "tool.after.output.replace": "approximate", "permission.request.observe": "emulated", "permission.request.block": "approximate", "context.compact.before.observe": "exact", "context.compact.before.context.add": "exact", "context.compact.after.observe": "emulated", "turn.stop.observe": "approximate", "turn.stop.prevent": "approximate", "turn.stop.notify": "approximate" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 }, input);

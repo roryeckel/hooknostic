@@ -10,7 +10,8 @@
     "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-v2-Hb4wEC\\project"
   },
   "correlation": {
-    "toolCallId": "call_playback"
+    "toolCallId": "call_playback",
+    "agentType": "hn-probe"
   },
   "event": "tool.before",
   "tool": {
