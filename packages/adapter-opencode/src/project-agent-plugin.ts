@@ -431,6 +431,15 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
             rationale:
               "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim.",
           },
+          // Replaced by captured levels when package projection emits subagents (ADR-0027).
+          "subagents.definition": {
+            level: "unsupported",
+            rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+          },
+          "subagents.native": {
+            level: "unsupported",
+            rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+          },
         },
         source: {
           date: "2026-09-08",

@@ -171,6 +171,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead.",
       },
+      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
+      "subagents.definition": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
+      "subagents.native": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
     },
     source: {
       date: "2026-09-11",

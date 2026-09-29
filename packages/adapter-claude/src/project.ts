@@ -132,6 +132,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly.",
       },
+      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
+      "subagents.definition": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
+      "subagents.native": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
     },
     source: {
       date: "2026-09-12",

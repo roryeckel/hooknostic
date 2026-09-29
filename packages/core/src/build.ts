@@ -7,7 +7,6 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "n
 import { minimatch } from "minimatch";
 
 import {
-  type AgentPluginComponentId,
   type AgentPluginDegradation,
   type AgentPluginDeviation,
   type AgentPluginFile,
@@ -15,6 +14,7 @@ import {
   type AgentPluginPackage,
   type AgentPluginProjectionSummary,
   classifyStdioCwd,
+  type ComponentId,
   hasUnportableCommandPath,
   loadAgentPlugin,
   loadProjectComponents,
@@ -92,7 +92,7 @@ export interface AgentPluginTargetReport {
   /** Package directories explicitly retained by the projection. */
   directories?: readonly string[];
   components: Partial<
-    Record<AgentPluginComponentId, { support: SupportLevel; discovered: number; emitted: number; skipped: number }>
+    Record<ComponentId, { support: SupportLevel; discovered: number; emitted: number; skipped: number }>
   >;
   omissions: AgentPluginProjectionSummary["omissions"];
   /**
@@ -515,7 +515,7 @@ function projectionReport(
 ): AgentPluginTargetReport {
   const components: AgentPluginTargetReport["components"] = {};
   for (const [id, counts] of Object.entries(summary.components)) {
-    const component = id as AgentPluginComponentId;
+    const component = id as ComponentId;
     if (counts !== undefined) {
       components[component] = {
         support: resolution.matrix?.[component]?.level ?? "unsupported",
@@ -541,7 +541,7 @@ function analyzedProjectionReport(
   namespace: string | undefined,
   hasRuntimePackage: boolean,
 ): AgentPluginTargetReport {
-  const discovered = new Map<AgentPluginComponentId, number>([["agent-plugin.manifest", 1]]);
+  const discovered = new Map<ComponentId, number>([["agent-plugin.manifest", 1]]);
   if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
   for (const type of ["stdio", "streamable-http", "sse"] as const) {
     const count = Object.values(source.mcp?.mcpServers ?? {}).filter((server) => server.type === type).length;
@@ -1213,7 +1213,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             const selectedSource = selected.source;
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [];
-            const count = (component: AgentPluginComponentId, discovered: number): boolean => {
+            const count = (component: ComponentId, discovered: number): boolean => {
               if (!discovered) return true;
               const cell = support.matrix![component];
               const supported = cell !== undefined && cell.level !== "unsupported";

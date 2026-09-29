@@ -581,6 +581,15 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         },
         "agent-plugin.client-extension.files": { level: "exact" },
         "agent-plugin.runtime-package": { level: "exact" },
+        // Replaced by captured levels when package projection emits subagents (ADR-0027).
+        "subagents.definition": {
+          level: "unsupported",
+          rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+        },
+        "subagents.native": {
+          level: "unsupported",
+          rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+        },
       },
       source: {
         date: "2026-09-04",

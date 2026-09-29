@@ -66,6 +66,15 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
         level: "unsupported",
         rationale: "No portable client-extension namespace is implemented for v2.",
       },
+      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
+      "subagents.definition": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
+      "subagents.native": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
     },
     source: {
       date: "2026-09-26",
@@ -184,6 +193,15 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
         level: "emulated",
         rationale:
           "Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain.",
+      },
+      // Replaced by captured levels when package projection emits subagents (ADR-0027).
+      "subagents.definition": {
+        level: "unsupported",
+        rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
+      "subagents.native": {
+        level: "unsupported",
+        rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
       },
     },
   })),

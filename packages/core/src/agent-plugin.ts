@@ -1,8 +1,6 @@
 import semver from "semver";
 
 import {
-  AGENT_PLUGIN_COMPONENT_IDS,
-  type AgentPluginComponentId,
   type AgentPluginComponentSupport,
   type AgentPluginDegradation,
   type AgentPluginDegradationDeclaration,
@@ -13,6 +11,8 @@ import {
   type AgentPluginProjectionProfile,
   type AgentPluginProjector,
   type AgentPluginRuntimePackage,
+  COMPONENT_IDS,
+  type ComponentId,
 } from "@hooknostic/agent-plugin";
 import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
@@ -21,7 +21,7 @@ import type { Diagnostic } from "./diagnostics.js";
 import { isRangeFullyCovered } from "./matrix.js";
 
 export interface AgentPluginProjectionResolution {
-  matrix?: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  matrix?: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   profilesUsed: AgentPluginProjectionProfile[];
   diagnostics: Diagnostic[];
 }
@@ -82,8 +82,8 @@ export function resolveAgentPluginProjection(
     });
     return { profilesUsed: [...used], diagnostics };
   }
-  const matrix: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>> = {};
-  for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
+  const matrix: Partial<Record<ComponentId, AgentPluginComponentSupport>> = {};
+  for (const id of COMPONENT_IDS) {
     let chosen: AgentPluginComponentSupport | undefined;
     // Every profile's, not the chosen one's: a build must not claim more than
     // the worst version in its range delivers, and a deviation any version in
@@ -120,7 +120,7 @@ export interface AgentPluginDeviationDiagnosticOptions {
   adapter: string;
   onDeviation: "error" | "warn";
   /** The resolved matrix the projector was given; every reported id must be declared in it. */
-  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   /** Qualified ids from `components.accept`, reported as information whatever the policy. */
   accept?: readonly string[];
 }
@@ -131,7 +131,7 @@ export interface AgentPluginDegradationDiagnosticOptions {
   adapter: string;
   onDegraded: "error" | "warn";
   /** The resolved matrix the projector was given; every reported id must be declared in it. */
-  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   /** Qualified ids from `components.accept`, reported as information whatever the policy. */
   accept?: readonly string[];
 }
@@ -178,7 +178,7 @@ function shortfallDiagnostics(
     target: string;
     adapter: string;
     severity: "error" | "warn";
-    support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+    support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
     accept?: readonly string[];
   },
 ): Diagnostic[] {
@@ -238,11 +238,11 @@ function discoveredComponents(
   source: AgentPluginPackage,
   namespace: string,
   runtimePackage?: AgentPluginRuntimePackage,
-): AgentPluginComponentId[] {
-  const ids = new Set<AgentPluginComponentId>(["agent-plugin.manifest"]);
+): ComponentId[] {
+  const ids = new Set<ComponentId>(["agent-plugin.manifest"]);
   if (source.skills.length > 0) ids.add("agent-plugin.skills");
   for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
-    ids.add(`agent-plugin.mcp.${server.type}` as AgentPluginComponentId);
+    ids.add(`agent-plugin.mcp.${server.type}` as ComponentId);
   }
   if (
     namespace !== "" &&

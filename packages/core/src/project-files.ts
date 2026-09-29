@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree } from "jsonc-parser/lib/esm/main.js";
 
-import type { AgentPluginComponentId, AgentPluginDeviation } from "@hooknostic/agent-plugin";
+import type { AgentPluginDeviation, ComponentId } from "@hooknostic/agent-plugin";
 
 import { editProjectToml, readProjectToml } from "./project-toml.js";
 
@@ -21,7 +21,7 @@ export interface ProjectEntry {
   value: unknown;
 }
 export interface ProjectComponentOmission {
-  component: AgentPluginComponentId;
+  component: ComponentId;
   name: string;
   reason: string;
 }

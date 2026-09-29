@@ -1,8 +1,8 @@
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
-  type AgentPluginComponentId,
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
+  type ComponentId,
 } from "./types.js";
 
 export interface ComponentSummaryOptions {
@@ -19,7 +19,7 @@ export interface ComponentSummaryOptions {
   namespace?: string;
   hasRuntimePackage?: boolean;
   /** How many of `discovered` this projector will not hand the harness. */
-  skipped?: (component: AgentPluginComponentId, discovered: number) => number;
+  skipped?: (component: ComponentId, discovered: number) => number;
 }
 
 /**
@@ -37,7 +37,7 @@ export function componentSummary(
   options: ComponentSummaryOptions = {},
 ): AgentPluginProjectionPlan["summary"]["components"] {
   const namespace = options.namespace ?? "";
-  const discovered = new Map<AgentPluginComponentId, number>([["agent-plugin.manifest", 1]]);
+  const discovered = new Map<ComponentId, number>([["agent-plugin.manifest", 1]]);
 
   if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
 

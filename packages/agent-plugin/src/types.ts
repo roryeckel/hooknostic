@@ -56,14 +56,14 @@ export interface AgentPluginFile {
 }
 
 export type AgentPluginIssueSeverity = "error" | "warn" | "info";
-export type AgentPluginIssueScope = "manifest" | "skill" | "mcp" | "file" | "projection";
+export type AgentPluginIssueScope = "manifest" | "skill" | "mcp" | "subagent" | "file" | "projection";
 
 export interface AgentPluginIssue {
   severity: AgentPluginIssueSeverity;
   scope: AgentPluginIssueScope;
   message: string;
   path?: string;
-  component?: AgentPluginComponentId;
+  component?: ComponentId;
 }
 
 export interface AgentPluginPackage {
@@ -117,6 +117,22 @@ export const AGENT_PLUGIN_COMPONENT_IDS = [
 ] as const;
 
 export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number];
+
+/**
+ * Subagent definitions (ADR-0027). Not an Agent Plugins 1.0 component -- the
+ * standard leaves agents out until their formats converge -- but delivered and
+ * reported through the same profiles, levels and shortfall policy, so both
+ * share one id space. `subagents.definition` is the portable core (name,
+ * description, instructions); `subagents.native` is the per-harness
+ * passthrough under `native`.
+ */
+export const SUBAGENT_COMPONENT_IDS = ["subagents.definition", "subagents.native"] as const;
+export type SubagentComponentId = (typeof SUBAGENT_COMPONENT_IDS)[number];
+
+/** Every component a projector or project integrator reports on. */
+export const COMPONENT_IDS = [...AGENT_PLUGIN_COMPONENT_IDS, ...SUBAGENT_COMPONENT_IDS] as const;
+export type ComponentId = (typeof COMPONENT_IDS)[number];
+
 export type AgentPluginProjectionSupportLevel = "exact" | "emulated" | "approximate" | "unsupported";
 
 /**
@@ -162,7 +178,7 @@ export interface AgentPluginComponentSupport {
 export interface AgentPluginDeviation {
   /** A declaration id from the resolved matrix cell for `component`. */
   id: string;
-  component: AgentPluginComponentId;
+  component: ComponentId;
   /** The MCP server, skill or other named item it applies to. */
   name?: string;
   /** Package location, such as `mcp.json#server`. */
@@ -176,7 +192,7 @@ export type AgentPluginDegradation = AgentPluginDeviation;
 
 export interface AgentPluginProjectionProfile {
   range: string;
-  components: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  components: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   source: {
     date: string;
     validatedOn: readonly {
@@ -250,7 +266,7 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    *
    * A component absent from the map is `unsupported`.
    */
-  support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+  support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   onUnsupported: "error" | "warn";
   /**
    * Ambient variable NAMES each MCP server reads, keyed by server name.
@@ -265,8 +281,8 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
 }
 
 export interface AgentPluginProjectionSummary {
-  components: Partial<Record<AgentPluginComponentId, { discovered: number; emitted: number; skipped: number }>>;
-  omissions: { component: AgentPluginComponentId; name?: string; reason: string }[];
+  components: Partial<Record<ComponentId, { discovered: number; emitted: number; skipped: number }>>;
+  omissions: { component: ComponentId; name?: string; reason: string }[];
   /**
    * Emitted items the harness will treat differently from the specification.
    * Reported here, not as issues: core applies `components.onDeviation` and
@@ -320,8 +336,8 @@ export interface AgentPluginProjector<TTarget = AgentPluginProjectionTarget> {
    */
   supportFor?(
     target: TTarget,
-    matrix: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>,
-  ): Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
+    matrix: Partial<Record<ComponentId, AgentPluginComponentSupport>>,
+  ): Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   project(
     source: AgentPluginPackage,
     context: AgentPluginProjectionContext<TTarget>,

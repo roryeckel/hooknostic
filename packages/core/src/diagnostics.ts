@@ -1,4 +1,4 @@
-import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
+import type { ComponentId } from "@hooknostic/agent-plugin";
 import type { CapabilityId, HookEventName, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
 import { RUNTIME_DIAGNOSTIC_CODES } from "@hooknostic/sdk";
 
@@ -54,7 +54,7 @@ export interface Diagnostic {
   hookId?: string;
   event?: HookEventName;
   capability?: CapabilityId;
-  component?: AgentPluginComponentId;
+  component?: ComponentId;
   target?: string;
   /** The hook's declared requirement for the capability. */
   requested?: RequirementLevel;

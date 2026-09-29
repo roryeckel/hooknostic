@@ -1,8 +1,8 @@
 import type {
-  AgentPluginComponentId,
   AgentPluginComponentSupport,
   AgentPluginProjectionProfile,
   AgentPluginProjector,
+  ComponentId,
   ProjectComponents,
 } from "@hooknostic/agent-plugin";
 import type {
@@ -35,7 +35,7 @@ export interface ProjectComponentOptions {
    * An integrator reports a deviation only when its cell here declares it, so
    * the resolution core reports is the one that gates the check.
    */
-  support?: Readonly<Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>>;
+  support?: Readonly<Partial<Record<ComponentId, AgentPluginComponentSupport>>>;
 }
 
 /** A configured build target: config entry keyed by adapter/target id. */

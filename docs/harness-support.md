@@ -46,6 +46,8 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
 | `agent-plugin.runtime-package` | unsupported | The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly. |
+| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Known deviations from Agent Plugins 1.0, reported as `HN106`:
 
@@ -77,6 +79,8 @@ Project support is independent of package projection.
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | exact | — |
 | `agent-plugin.runtime-package` | exact | — |
+| `subagents.definition` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Known deviations from Agent Plugins 1.0, reported as `HN106`:
 
@@ -133,6 +137,8 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .codex/config.toml and a skills tree. A plugin's extensions."com.openai" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
 | `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead. |
+| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Project delivery validation records:
 
@@ -164,6 +170,8 @@ each component.
 | `agent-plugin.mcp.sse` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.client-extension.files` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.runtime-package` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
+| `subagents.definition` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
+| `subagents.native` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 
 Projection validation records:
 
@@ -184,6 +192,8 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
 | `agent-plugin.client-extension.files` | exact | OpenAI documents extensions."com.openai" in a root plugin.json as the preferred source of OpenAI settings, but 0.154.0 did not run a UserPromptSubmit hook declared there while an equivalent native-manifest control did. This projection bridges that implementation gap: the inline object replaces the compatibility overlay, portable identity/skills/MCP remain canonical, authored hooks are combined with generated hooks, and namespace files are hoisted to the package root. Exact because the documented settings arrive intact at the native surface the harness consumes. |
 | `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim. |
+| `subagents.definition` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Projection validation records:
 
@@ -243,6 +253,8 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace, at project scope or any other. |
 | `agent-plugin.runtime-package` | unsupported | Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route. |
+| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Project delivery validation records:
 
@@ -264,6 +276,8 @@ Project support is independent of package projection.
 | `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
 | `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace. |
 | `agent-plugin.runtime-package` | unsupported | Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim. |
+| `subagents.definition` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Known degradations, reported as `HN101`:
 
@@ -320,6 +334,8 @@ Projection validation records:
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
 | `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
 | `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
+| `subagents.definition` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Project delivery does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Project delivery validation records:
 
@@ -344,6 +360,8 @@ Project support is independent of package projection.
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
 | `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
 | `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
+| `subagents.definition` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
+| `subagents.native` | unsupported | Package projection does not emit subagent definitions yet (ADR-0027, proposed). |
 
 Projection validation records:
 

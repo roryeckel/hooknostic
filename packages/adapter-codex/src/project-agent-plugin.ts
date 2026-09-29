@@ -1,15 +1,15 @@
 import type {
-  AgentPluginComponentId,
   AgentPluginIssue,
   AgentPluginPackage,
   AgentPluginProjectionFile,
   AgentPluginProjectionPlan,
   AgentPluginProjector,
+  ComponentId,
 } from "@hooknostic/agent-plugin";
 import {
-  AGENT_PLUGIN_COMPONENT_IDS,
   assertPackageDelivery,
   classifyStdioCwd,
+  COMPONENT_IDS,
   componentSummary,
   contentsText,
   hasUnportableCommandPath,
@@ -359,14 +359,14 @@ export function translateMcp(
 ): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
   launcherServers: McpLauncherServer[];
-  omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
+  omitted: { name: string; component: ComponentId; reason: string }[];
 } {
   // Null-prototype: a schema-valid server named `__proto__` assigned into `{}`
   // invokes the inherited setter, so JSON.stringify would omit it while the
   // summary counted it emitted.
   const servers: Record<string, CodexStdioServer | CodexRemoteServer> = Object.create(null);
   const launcherServers: McpLauncherServer[] = [];
-  const omitted: { name: string; component: AgentPluginComponentId; reason: string }[] = [];
+  const omitted: { name: string; component: ComponentId; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
     if (server.type !== "stdio") {
       if (server.type === "sse") {
@@ -459,7 +459,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // resolves to the least capable level -- which is this one.
       range: ">=0.140 <0.153",
       components: Object.fromEntries(
-        AGENT_PLUGIN_COMPONENT_IDS.map((component) => [
+        COMPONENT_IDS.map((component) => [
           component,
           {
             level: "unsupported" as const,
@@ -528,6 +528,15 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           level: "unsupported",
           rationale:
             "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
+        },
+        // Replaced by captured levels when package projection emits subagents (ADR-0027).
+        "subagents.definition": {
+          level: "unsupported",
+          rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
+        },
+        "subagents.native": {
+          level: "unsupported",
+          rationale: "Package projection does not emit subagent definitions yet (ADR-0027, proposed).",
         },
       },
       source: {
@@ -1179,7 +1188,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     // Per-server, not per-transport: a stdio server is dropped only when its own
     // paths cannot be re-anchored, so the count comes from what was omitted.
-    const skippedByComponent = new Map<AgentPluginComponentId, number>();
+    const skippedByComponent = new Map<ComponentId, number>();
     for (const { component } of omitted) {
       skippedByComponent.set(component, (skippedByComponent.get(component) ?? 0) + 1);
     }

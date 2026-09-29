@@ -138,6 +138,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route.",
       },
+      // Replaced by captured levels when project delivery emits subagents (ADR-0027).
+      "subagents.definition": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
+      "subagents.native": {
+        level: "unsupported",
+        rationale: "Project delivery does not emit subagent definitions yet (ADR-0027, proposed).",
+      },
     },
     source: {
       date: "2026-09-11",
