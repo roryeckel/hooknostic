@@ -1,7 +1,16 @@
-# Hooknostic
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hooknostic-mark-dark.svg">
+    <img src="docs/assets/hooknostic-mark-light.svg" alt="Hooknostic logo" width="112">
+  </picture>
+</p>
 
-**Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
-Claude Code and Codex marketplaces, or maintain integrations directly in your repository.**
+<h1 align="center">Hooknostic</h1>
+
+<p align="center">
+  <strong>Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
+  Claude Code and Codex marketplaces, or maintain integrations directly in your repository.</strong>
+</p>
 
 Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
 Codex CLI**, and **OpenCode**. Adapters handle native packaging, component configuration,
