@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
+import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, RELATIVE_SKILL_TEXT } from "@hooknostic/agent-plugin";
 
 import { opencodeV1Adapter } from "../../adapter-opencode/src/index.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
@@ -45,6 +45,57 @@ export default definePlugin({ name: "sample-project", hooks: [hook("tool.before"
   await writeFile(configPath, `export default ${JSON.stringify(config)};`);
   return { root, config, options: { configPath, registry, evaluate } };
 }
+describe("Claude skill overlays (ADR-0028)", () => {
+  // Claude receives the com.anthropic.claude-code overlay in place of the
+  // portable SKILL.md, so the overlay's text is the one checked and projected.
+  async function overlaid(portable: string, overlay: string) {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-overlay-"));
+    dirs.push(root);
+    await writeFile(
+      join(root, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "overlaid" }),
+    );
+    for (const [dir, body] of [
+      ["skills/review", portable],
+      ["com.anthropic.claude-code/skills/review", overlay],
+    ] as const) {
+      await mkdir(join(root, dir), { recursive: true });
+      await writeFile(join(root, dir, "SKILL.md"), `---\nname: review\ndescription: Review code\n---\n${body}`);
+    }
+    const claude = registry.claude!;
+    const configPath = join(root, "hooknostic.config.ts");
+    await writeFile(
+      configPath,
+      `export default ${JSON.stringify({
+        components: { root: "." },
+        targets: { claude: { version: claude.harness.recommendedRange, delivery: "package", output: "dist/claude" } },
+      })};`,
+    );
+    const built = await buildProject({ configPath, registry, evaluate });
+    return { built, root };
+  }
+
+  it("checks and projects the overlay Claude receives, not the portable skill it replaces", async () => {
+    const { built, root } = await overlaid("Run ${PLUGIN_ROOT}/x.\n", "Run ${SKILL_DIR}/x.\n");
+    expect(built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101")).toEqual([]);
+    expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+    expect(await readFile(join(root, "dist/claude/skills/review/SKILL.md"), "utf8")).toBe(
+      "---\nname: review\ndescription: Review code\n---\nRun ${CLAUDE_SKILL_DIR}/x.\n",
+    );
+  }, 60_000);
+
+  it("reports a reference in the overlay itself", async () => {
+    const { built } = await overlaid("Run ${SKILL_DIR}/x.\n", "Run ${PLUGIN_ROOT}/x.\n");
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN101",
+        target: "claude",
+        message: expect.stringContaining('"${PLUGIN_ROOT}"'),
+      }),
+    );
+  }, 60_000);
+});
+
 describe("complete project integration", () => {
   it("anchors a dot MCP override to its nested source directory for every target", async () => {
     const { root, options } = await fixture({
@@ -223,6 +274,87 @@ describe("complete project integration", () => {
     }
   }, 60_000);
 
+  it("writes each target's skill directory into a skill's body", async () => {
+    const { root, options } = await fixture({ components: { skills: ["./skills"] } });
+    await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
+    const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
+    const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
+    await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
+    await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+    expect(await readFile(join(root, ".claude/skills/sample/SKILL.md"), "utf8")).toBe(
+      frontmatter + body("${CLAUDE_SKILL_DIR}"),
+    );
+    expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
+  }, 60_000);
+
+  it("fails a target whose skill text keeps a reference that target shows as written", async () => {
+    const { root, options } = await fixture({
+      components: { skills: ["./skills"], accept: ["codex:skill-reference-unexpanded"] },
+    });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(
+      join(root, "skills/sample/SKILL.md"),
+      '---\nname: sample\ndescription: Claude-only text\n---\nRun node "${CLAUDE_PLUGIN_ROOT}/x.mjs" in ${HOME}.\n',
+    );
+
+    const built = await buildProject(options);
+    const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
+    // Claude leaves ${CLAUDE_PLUGIN_ROOT} as written outside a plugin, and so
+    // does every other target; ${HOME} is the shell's to expand, not reported.
+    expect(reported.map((diagnostic) => [diagnostic.target, diagnostic.severity]).sort()).toEqual([
+      ["claude", "error"],
+      ["codex", "info"],
+      ["opencode", "error"],
+    ]);
+    expect(reported[0]).toMatchObject({
+      component: "agent-plugin.skills",
+      degradation: expect.stringMatching(/:skill-reference-unexpanded$/),
+      message: expect.stringContaining('"${CLAUDE_PLUGIN_ROOT}"'),
+    });
+    expect(reported.map((diagnostic) => diagnostic.message).join("\n")).not.toContain("HOME");
+    expect(built.report.targets["codex"]?.project?.degradations).toEqual([
+      expect.objectContaining({ id: "codex:skill-reference-unexpanded", name: "sample" }),
+    ]);
+    expect(built.report.targets["claude"]?.status).toBe("failed");
+    expect(built.ok).toBe(false);
+  }, 60_000);
+
+  it("fails every target on a frontmatter reference, which no harness expands", async () => {
+    const { root, options } = await fixture({ components: { skills: ["./skills"] } });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(
+      join(root, "skills/sample/SKILL.md"),
+      "---\nname: sample\ndescription: Run ${PLUGIN_ROOT}/x\n---\nNothing to expand here.\n",
+    );
+
+    const built = await buildProject(options);
+    const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
+    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
+  }, 60_000);
+
+  it("reports a skill directory it cannot rewrite in a skill discovered in place", async () => {
+    const { root, options } = await fixture({ components: { skills: ["./.claude/skills"] } });
+    await mkdir(join(root, ".claude/skills/review"), { recursive: true });
+    const text = '---\nname: review\ndescription: Review a change\n---\nRun node "${SKILL_DIR}/review.mjs".\n';
+    await writeFile(join(root, ".claude/skills/review/SKILL.md"), text);
+
+    const built = await buildProject(options);
+    const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
+    expect(reported).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        target: "claude",
+        message: expect.stringContaining("discovers this skill where it is"),
+      }),
+    ]);
+    // The author's own file is left alone.
+    expect(await readFile(join(root, ".claude/skills/review/SKILL.md"), "utf8")).toBe(text);
+  }, 60_000);
+
   it("carries a skill file's declared mode into the projection", () => {
     // The middle link of the chain the loader and the writer already pin: the
     // loader assigns 0755 from `components.executableFiles`, `applyProject`
@@ -247,6 +379,7 @@ describe("complete project integration", () => {
       },
       join(tmpdir(), "hooknostic-absent-root"),
       ".claude/skills",
+      { target: RELATIVE_SKILL_TEXT, harness: "the target" },
     );
 
     expect(projected.files.map((file) => [file.path, file.mode])).toEqual([

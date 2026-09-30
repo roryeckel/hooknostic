@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "probe/probe-model",
+  "enabled_providers": ["probe"],
+  "provider": {
+    "probe": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Probe",
+      "options": { "baseURL": "http://127.0.0.1:PORT/v1", "apiKey": "probe" },
+      "models": { "probe-model": { "name": "Probe Model", "limit": { "context": 32768, "output": 4096 } } }
+    }
+  }
+}

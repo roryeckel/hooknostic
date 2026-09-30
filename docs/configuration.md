@@ -56,6 +56,24 @@ For strict translation, set `compatibility.minimum: "exact"` and
 `components.onDeviation: "error"`. For a known exception, accept its specific id
 instead of reducing every diagnostic to a warning.
 
+## Skills that run their own scripts
+
+A skill that runs a script it ships names it with `${SKILL_DIR}` in the SKILL.md body:
+
+```markdown
+Run `node "${SKILL_DIR}/scripts/status.mjs" --project "<the user's project directory>"`.
+```
+
+Projection writes each target's form: `${CLAUDE_SKILL_DIR}` on Claude Code, which it
+expands to the skill's absolute directory, and `.` on Codex and OpenCode, whose skill
+instructions resolve relative paths against the skill's directory. Only the body is
+rewritten, on package and project delivery alike. A skill-text reference a target shows
+the model as written, such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}`
+anywhere, fails the build as the `<adapter>:skill-reference-unexpanded` degradation
+(HN101); a shell parameter like `${HOME}` is left to the shell. The model may still run
+the command from the skill's directory, so pass the project to the script rather than
+relying on the working directory ([ADR-0028](decisions/0028-skill-directory-token.md)).
+
 ## Dependencies and included files
 
 - Bundle a Node MCP server when it must run without an install-time package manager.

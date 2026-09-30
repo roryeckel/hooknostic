@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   addContext,
@@ -14,7 +14,7 @@ import {
 import { loadFixture } from "@hooknostic/testkit";
 
 import { opencodeCapabilityProfiles } from "./profile.js";
-import { createHooknosticHooks } from "./shim.js";
+import { createHooknosticHooks, DISPOSE_CAP_MS } from "./shim.js";
 
 const LEVELS = Object.fromEntries(
   Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
@@ -121,6 +121,7 @@ describe("createHooknosticHooks", () => {
   });
   it("registers only the callbacks the plugin needs", () => {
     expect(Object.keys(hooks()).sort()).toEqual([
+      "dispose",
       "event",
       "experimental.chat.system.transform",
       "experimental.session.compacting",
@@ -245,7 +246,7 @@ describe("createHooknosticHooks", () => {
       },
     };
     const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, { ...PLUGIN_INPUT, client });
-    expect(Object.keys(h)).toEqual(["event"]);
+    expect(Object.keys(h)).toEqual(["event", "dispose"]);
     const native = {
       hook: "event",
       directory: PLUGIN_INPUT.directory,
@@ -668,5 +669,151 @@ describe("createHooknosticHooks turn.stop fields (ADR-0027)", () => {
     const { hooks, seen } = fieldHooks(client, ["lastMessage", "correlation.turnId"]);
     await hooks["event"]!(idle, {});
     expect(seen).toEqual([{}]);
+  });
+});
+
+describe("createHooknosticHooks dispose", () => {
+  // OpenCode 1.x starts event handlers without awaiting them and `opencode run`
+  // exits once the session is idle, awaiting each plugin's dispose on the way
+  // out (.capture/opencode-dispose). dispose is where in-flight hooks finish.
+  const idle = { event: { type: "session.idle", properties: { sessionID: "ses_1" } } };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function stopHooks(run: () => Promise<void> | void, timeoutMs?: number) {
+    return createHooknosticHooks(
+      definePlugin({
+        name: "dispose",
+        hooks: [hook("turn.stop", { id: "slow", ...(timeoutMs !== undefined ? { timeoutMs } : {}), run })],
+      }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+  }
+
+  it("waits for an idle dispatch the host did not await", async () => {
+    let done = false;
+    const h = stopHooks(async () => {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 30));
+      done = true;
+    });
+    void h["event"]!(idle, {}); // fire and forget, as the host does
+    expect(done).toBe(false);
+    await h.dispose!();
+    expect(done).toBe(true);
+  });
+
+  it("also waits for a dispatch that starts while it waits", async () => {
+    const finished: string[] = [];
+    let turn = 0;
+    const h = stopHooks(async () => {
+      const id = ++turn;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, id === 1 ? 30 : 60));
+      finished.push(`turn ${id}`);
+    });
+    void h["event"]!(idle, {});
+    const disposed = h.dispose!();
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    void h["event"]!(idle, {});
+    await disposed;
+    expect(finished).toEqual(["turn 1", "turn 2"]);
+  });
+
+  it("gives up at the cap on a hook that outlasts it", async () => {
+    vi.useFakeTimers();
+    const h = stopHooks(() => new Promise<void>(() => {}), 60_000);
+    void h["event"]!(idle, {});
+    let settled = false;
+    void h.dispose!().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(DISPOSE_CAP_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it("waits for the hooks' budget and one host round trip, below the cap", async () => {
+    vi.useFakeTimers();
+    // Two posts that never settle hold the dispatch for 2 x 10 s. The budget is
+    // the hook's 1 s plus one 10 s round trip, so dispose returns at 11 s.
+    const h = createHooknosticHooks(
+      definePlugin({
+        name: "dispose-budget",
+        hooks: [
+          hook("turn.stop", {
+            id: "posts",
+            timeoutMs: 1_000,
+            capabilities: { "turn.stop.notify": "required", "turn.stop.prevent": "required" },
+            run: () => [notify("first"), preventStop("second")],
+          }),
+        ],
+      }),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, client: { session: { promptAsync: () => new Promise(() => {}) } } },
+    );
+    void h["event"]!(idle, {});
+    let settled = false;
+    void h.dispose!().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(11_000 - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it("resolves at once when nothing is in flight", async () => {
+    vi.useFakeTimers();
+    const h = stopHooks(() => undefined);
+    await h["event"]!(idle, {});
+    let settled = false;
+    void h.dispose!().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("never rejects, whether a handler failed or a block was delivered", async () => {
+    const h = createHooknosticHooks(
+      definePlugin({
+        name: "dispose-errors",
+        hooks: [
+          hook("turn.stop", {
+            id: "throws",
+            run() {
+              throw new Error("handler bug");
+            },
+          }),
+          hook("tool.before", {
+            id: "blocks",
+            capabilities: { "tool.before.block": "required" },
+            run: () => block("no"),
+          }),
+        ],
+      }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+    const stop = h["event"]!(idle, {});
+    const blocked = h["tool.execute.before"]!(
+      { tool: "bash", sessionID: "s", callID: "c" },
+      { args: { command: "ls" } },
+    );
+    const disposed = h.dispose!();
+    // The block still reaches the host through the callback it awaits.
+    await expect(blocked).rejects.toThrow("no");
+    await expect(disposed).resolves.toBeUndefined();
+    await expect(stop).resolves.toBeUndefined();
+  });
+
+  it("is not registered when the plugin registers no callback", () => {
+    const h = createHooknosticHooks(
+      definePlugin({
+        name: "none",
+        hooks: [hook("turn.stop", { id: "elsewhere", targets: { include: ["claude"] }, run() {} })],
+      }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+    expect(h.dispose).toBeUndefined();
   });
 });

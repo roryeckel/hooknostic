@@ -1,5 +1,5 @@
 /** How long a single session post may take before the shim gives up on it. */
-const POST_TIMEOUT_MS = 10_000;
+export const POST_TIMEOUT_MS = 10_000;
 
 /**
  * Bound a promise without leaving a dangling rejection behind: racing alone

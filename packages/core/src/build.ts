@@ -66,7 +66,7 @@ import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
 
-export const HOOKNOSTIC_VERSION = "0.3.0";
+export const HOOKNOSTIC_VERSION = "0.4.0";
 
 export interface BuildOptions {
   configPath: string;
@@ -130,6 +130,7 @@ export interface BuildTargetReport {
     components: AgentPluginTargetReport["components"];
     omissions: AgentPluginTargetReport["omissions"];
     deviations?: AgentPluginTargetReport["deviations"];
+    degradations?: AgentPluginTargetReport["degradations"];
     guidance: string[];
   };
 }
@@ -1369,11 +1370,19 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 support: support.matrix,
                 ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
               }),
+              ...diagnosticsFromAgentPluginDegradations(projected.degradations ?? [], {
+                target: id,
+                adapter: adapter.id,
+                onDegraded: config.components?.onDegraded ?? "error",
+                support: support.matrix,
+                ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
+              }),
             );
             target.project = {
               components: counts,
               omissions,
               deviations: qualifiedDeviations(adapter.id, projected.deviations),
+              ...degradationReport(adapter.id, projected.degradations),
               guidance: projected.guidance,
             };
             if (hasTargetFatal()) {
