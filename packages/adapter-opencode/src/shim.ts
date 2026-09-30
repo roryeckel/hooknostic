@@ -82,11 +82,12 @@ type Callback = (input: unknown, output: unknown) => Promise<void>;
  * registers, and `dispose`.
  *
  * `dispose` is a documented extension of `@opencode-ai/plugin`'s `Hooks` type,
- * which (through 1.4.10) does not declare it. OpenCode 1.x calls it when it
- * disposes the instance and awaits it (captured on 1.18.33,
+ * which (through 1.4.10) does not declare it. The measured OpenCode build calls
+ * it when it disposes the instance and awaits it (captured on 1.18.33,
  * .capture/opencode-dispose): the instance finalizer runs
  * `Promise.resolve(hooks.dispose?.())` for each plugin, and a rejection is only
- * logged. It is present whenever the shim registers a callback.
+ * logged. Earlier supported builds have not been verified to call or await
+ * it. It is present whenever the shim registers a callback.
  */
 export interface OpenCodeHooks {
   [hook: string]: Callback | undefined;

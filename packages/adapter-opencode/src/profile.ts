@@ -153,7 +153,8 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
             "dispose the process exited 41 ms after session.idle with a 3 s idle task unfinished. A plugin's dispose is " +
             "called about 45 ms after idle and awaited: the task finished and the process exited 3.07 s after idle; a " +
             "dispose that took 25 s more held it 28 s, so the host does not bound dispose. With the generated shim, a " +
-            "3 s turn.stop hook declaring lastMessage finished before exit; with its dispose removed it never did.",
+            "3 s turn.stop hook declaring lastMessage finished before exit; with its dispose removed it never did. " +
+            "Whether earlier supported builds call and await dispose was not established.",
         },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
@@ -302,7 +303,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once. The bus event carries only the session id; lastMessage and correlation.turnId come from a session read, see the field ratings. OpenCode does not await event handlers, and a one-shot `opencode run` exits at idle; it awaits the plugin's dispose first, which waits for in-flight hooks for up to their budgets plus one 10 s host round trip, 15 s at most. A hook still running then is cut off.",
+          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once. The bus event carries only the session id; lastMessage and correlation.turnId come from a session read, see the field ratings. In the build measured by .capture/opencode-dispose (see its validatedOn record), OpenCode does not await event handlers, and a one-shot `opencode run` exits at idle after awaiting the plugin's dispose. Whether earlier supported builds call and await dispose is unverified: in-flight hooks may still be cut off at idle on those targets. If the host calls dispose, the shim waits for in-flight hooks for up to their budgets plus one 10 s host round trip, 15 s at most. A hook still running then is cut off.",
       },
 
       "turn.stop.prevent": {

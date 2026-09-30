@@ -13,8 +13,11 @@
   such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}` anywhere, fails
   the build as the `<adapter>:skill-reference-unexpanded` degradation (**HN101**).
   Shell parameters such as `${HOME}` are left alone.
-- The OpenCode 1.x plugin now returns `dispose`, which OpenCode awaits before a
-  one-shot `opencode run` exits. It waits for the hooks still running, for up to
+- The OpenCode 1.x plugin now returns `dispose`, which the build measured in
+  [.capture/opencode-dispose](../.capture/opencode-dispose/README.md) awaits before a
+  one-shot `opencode run` exits. Earlier supported builds have not been verified
+  to call or await it, so they may still cut off in-flight hooks. When called,
+  it waits for the hooks still running, for up to
   their timeouts plus one 10 s host round trip and never more than 15 s, so a
   `turn.stop` hook dispatched at `session.idle` finishes instead of being killed.
 

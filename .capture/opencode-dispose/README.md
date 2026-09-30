@@ -93,6 +93,10 @@ OpenCode 2.0.18, times after `session.execution.succeeded`:
 
 ## Consequences
 
+- The 1.x disposal observations apply to the measured build above. Whether
+  earlier supported versions call and await a plugin's `dispose` is unverified;
+  they may still truncate in-flight hooks at idle. Returning the callback does
+  not establish that a host invokes it.
 - The OpenCode 1.x shim returns `dispose` (0.4.0). It waits for every dispatch
   still in flight, including ones that start while it waits, for up to the
   busiest event's summed hook budgets plus one 10 s host round trip, clamped to
