@@ -834,6 +834,23 @@ describe("Agent Plugin to OpenCode projection", () => {
       ],
     });
 
+  it("refuses a materialized tree that lands on a skill whose SKILL.md it rewrites", async () => {
+    // Generated rather than copied (ADR-0028 and the rename), but still the
+    // package's file at that path.
+    const pkg: AgentPluginPackage = {
+      ...source(),
+      files: source().files.map((candidate) =>
+        candidate.path === "skills/review/SKILL.md"
+          ? { ...candidate, contents: encoder.encode("---\nname: review\ndescription: x\n---\nRun ${SKILL_DIR}/x.\n") }
+          : candidate,
+      ),
+    };
+    const plan = await projectWithMaterializedTree(pkg, "skills/review", "SKILL.md");
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", path: "package/skills/review/SKILL.md" }),
+    );
+  });
+
   it("places a materialized package tree inside the nested package, not beside it", async () => {
     const plan = await projectWithMaterializedTree(source(), "generated/dependencies", "library/data.bin");
 

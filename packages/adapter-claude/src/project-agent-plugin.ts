@@ -313,7 +313,10 @@ export async function projectAgentPluginToClaude(
     if (insideRejectedSkill(file.path)) continue;
     const rewritten = skillTexts.rewritten.get(file.path);
     files.set(file.path, { path: file.path, contents: rewritten ?? file.contents, mode: file.mode });
-    if (rewritten === undefined) copiedPaths.add(file.path);
+    // Claimed whether copied or rewritten: a materialized tree landing on a
+    // rewritten SKILL.md collides as it does on a copied one. The summary's
+    // byte-for-byte list leaves the rewritten ones out below.
+    copiedPaths.add(file.path);
   }
 
   for (const file of source.files) {
@@ -542,7 +545,9 @@ export async function projectAgentPluginToClaude(
       omissions,
       deviations,
       ...(skillTexts.degradations.length === 0 ? {} : { degradations: skillTexts.degradations }),
-      copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
+      copiedPaths: [...copiedPaths]
+        .filter((path) => files.has(path) && !skillTexts.rewritten.has(path))
+        .sort((a, b) => a.localeCompare(b)),
     },
   };
 }

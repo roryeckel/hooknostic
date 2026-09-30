@@ -1033,6 +1033,25 @@ describe("Agent Plugin to Claude projection", () => {
     expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
   });
 
+  it("refuses a materialized tree that lands on a skill whose SKILL.md it rewrites", async () => {
+    // A rewritten SKILL.md is generated rather than copied (ADR-0028), but it is
+    // still the package's file at that path, so a tree landing there collides
+    // exactly as it does when the token is absent.
+    for (const body of ["Run ${SKILL_DIR}/x.\n", "Run ./x.\n"]) {
+      const pkg = {
+        ...source(),
+        files: source().files.map((entry) =>
+          entry.path === "skills/review/SKILL.md"
+            ? file(entry.path, `---\nname: review\ndescription: Review code\n---\n${body}`)
+            : entry,
+        ),
+      };
+      const plan = await projectWithMaterializedTree(pkg, "skills/review", "SKILL.md");
+      expect(plan.issues, body).toContainEqual(
+        expect.objectContaining({ severity: "error", path: "skills/review/SKILL.md" }),
+      );
+    }
+  });
   it("refuses a materialized package tree that lands on a generated or native path", async () => {
     // Without this the later `files.set` at each generated path silently drops
     // the runtime, and `runtime/mcp-launcher.mjs` would blame package content.

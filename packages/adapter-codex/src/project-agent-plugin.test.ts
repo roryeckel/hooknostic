@@ -1219,6 +1219,38 @@ describe("Codex client extension", () => {
     expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
   });
 
+  it("refuses a materialized tree that lands on a skill whose SKILL.md it rewrites", async () => {
+    // Generated rather than copied (ADR-0028), but still the package's file.
+    const pkg: AgentPluginPackage = {
+      ...source(),
+      skills: [
+        { name: "status", description: "Status", directory: "skills/status", manifestPath: "skills/status/SKILL.md" },
+      ],
+      files: [
+        ...source().files,
+        {
+          path: "skills/status/SKILL.md",
+          contents: encoder.encode("---\nname: status\ndescription: Status\n---\nRun ${SKILL_DIR}/x.\n"),
+          mode: 0o644,
+        },
+      ],
+    };
+    const plan = await codexAgentPluginProjector.project(pkg, {
+      target,
+      hookArtifacts: [],
+      support,
+      onUnsupported: "error",
+      materializedTrees: [
+        {
+          provider: "fixture",
+          into: "skills/status",
+          files: [{ path: "SKILL.md", contents: encoder.encode("x"), mode: 0o644 }],
+        },
+      ],
+    });
+    expect(plan.issues).toContainEqual(expect.objectContaining({ severity: "error", path: "skills/status/SKILL.md" }));
+  });
+
   it("refuses a materialized package tree that lands on generated output", async () => {
     // `into: "runtime"` is where the generated launcher goes, so the tree
     // would silently replace a file this projection emits.
