@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="hooknostic">
+  <title>hooknostic</title>
+  <style>.front path,.front circle{stroke:#1b1f2a}@media (prefers-color-scheme:dark){.front path,.front circle{stroke:#e6edf3}}</style>
+  <defs>
+    <linearGradient id="hk-fill" x1="0" y1="4" x2="0" y2="62" gradientUnits="userSpaceOnUse" color-interpolation="linearRGB">
+      <stop offset="0" stop-color="#10a37f"/>
+      <stop offset=".5" stop-color="#b9a25a"/>
+      <stop offset="1" stop-color="#d97757"/>
+    </linearGradient>
+    <mask id="hk-side" maskUnits="userSpaceOnUse" x="-10" y="-10" width="84" height="84">
+      <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="translate(4 3)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(3.6 2.6999999999999997)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(3.2 2.4)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(2.8000000000000003 2.1)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(2.4000000000000004 1.7999999999999998)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(2 1.5)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(1.6 1.2)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(1.2000000000000002 0.8999999999999999)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(0.8 0.6)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      <g transform="translate(0.4 0.3)"><circle cx="17" cy="8.5" r="4.5" stroke="#fff" stroke-width="5"/><path d="M17 13V58" stroke="#fff" stroke-width="5"/><path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#fff" stroke-width="5"/><path d="M54 45L51.6 47.6" stroke="#fff" stroke-width="5"/></g>
+      </g>
+    </mask>
+    <filter id="hk-blur" filterUnits="userSpaceOnUse" x="-10" y="-10" width="84" height="84">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+  </defs>
+  <g transform="translate(32 32) scale(.92) translate(-35.25 -32.5)">
+    <g mask="url(#hk-side)">
+      <rect x="-10" y="-10" width="84" height="84" fill="url(#hk-fill)"/>
+      <g filter="url(#hk-blur)" transform="translate(1.5 1.1)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="17" cy="8.5" r="4.5" stroke="#8b93a1" stroke-width="5.5"/>
+      <path d="M17 13V58" stroke="#8b93a1" stroke-width="5.5"/>
+      <path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#8b93a1" stroke-width="5.5"/>
+      <path d="M54 45L51.6 47.6" stroke="#8b93a1" stroke-width="5.5"/>
+      </g>
+    </g>
+    <g class="front" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="17" cy="8.5" r="4.5" stroke="#1b1f2a" stroke-width="5"/>
+      <path d="M17 13V58" stroke="#1b1f2a" stroke-width="5"/>
+      <path d="M17 36A11.5 11.5 0 0 1 40 36V51A7 7 0 0 0 54 51V45" stroke="#1b1f2a" stroke-width="5"/>
+      <path d="M54 45L51.6 47.6" stroke="#1b1f2a" stroke-width="5"/>
+    </g>
+  </g>
+</svg>
