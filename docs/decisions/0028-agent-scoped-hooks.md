@@ -65,7 +65,9 @@ needs no state (design §7.6, ADR-0002).
      agent's name, because v2 reports it: `build`, or a defined agent the session
      runs as.
    - **Absent means not reported.** On Claude that is a session not started as
-     an agent, and on Codex the main agent. On OpenCode v1 it is every tool
+     an agent, and on Codex the main agent -- including a session running on
+     the project's default agent, which Codex only emulates through its
+     configuration (ADR-0027, decision 10). On OpenCode v1 it is every tool
      event.
    - **Never inferred.** It is not derived from session parentage or from an
      instance id, since that would need cross-invocation state (ADR-0002).

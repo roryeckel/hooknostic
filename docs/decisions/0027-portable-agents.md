@@ -20,7 +20,9 @@ also, or only, an agent a session runs as, which Claude and OpenCode support and
 Codex does not. The capture spike (`.capture/agents`) found that the core — name,
 description and instructions — reaches the child on all four harness families,
 and reaches a session run as the agent on Claude and both OpenCode families. Tool
-restrictions, turn caps and sandboxing do not port, so 0.1 leaves them out.
+restrictions, turn caps and sandboxing do not port, so 0.1 leaves them out. A
+project can also name one definition its default agent, which every session
+starts as; Codex emulates that one through its project configuration.
 
 ## Context
 
@@ -170,6 +172,8 @@ The same drive ran a session as the agent:
    - `agents.primary`: the main-session contract, for each definition whose mode
      is `primary` or `all` (decision 9).
    - `agents.native`: passthrough.
+   - `agents.default`: `components.defaultAgent`, the agent every session of the
+     project starts as (decision 10).
 
    A field-level departure is a declared deviation or degradation, never a new
    id. `agents.primary` is an id rather than a deviation because it is a second
@@ -227,8 +231,8 @@ The same drive ran a session as the agent:
      `agents.primary` is `unsupported` there on both routes. A `primary`
      definition is not delivered to Codex at all; an `all` definition is
      delivered as a custom agent. Both are reported through `agents.primary` and
-     fail the build unless `onUnsupported: "warn"`. A Codex configuration profile
-     (`--profile`) might emulate a main-session agent; it was not probed.
+     fail the build unless `onUnsupported: "warn"`. Configuration profiles cannot
+     stand in for one (decision 10), though the project's default agent can.
    - **Claude has no mode.** Every agent file can be run as the session and is
      offered for delegation, so one file serves all three modes. For a `primary`
      definition the delegation is extra, and Claude's `agents.primary` cells
@@ -246,12 +250,53 @@ The same drive ran a session as the agent:
      `opencode:primary-agent-model-ignored`, reported for a `primary` or `all`
      definition that sets `native.opencode.model`. As a subagent, the model
      applies.
-   - **Not the default agent.** A consumer only makes the agent available. Which
-     agent a session starts as stays the harness's and the user's choice (open
-     question 8).
+   - **Not the default agent by itself.** A `mode` only makes the agent
+     available. Which agent a session starts as changes only when the project
+     names one (decision 10).
    - **Hooks.** A session running as the agent names it on its events: every
      Claude event, and OpenCode v2 tool events. ADR-0028's agent scoping
      therefore reaches the agent as the session's agent as well.
+
+10. **A project can name its default agent: `components.defaultAgent`.** Owner
+    decision, 2026-09-29: an optional configuration.
+    - **What it names.** A loaded definition whose mode is `primary` or `all`.
+      Any other name is refused (HN503), since no harness should start a
+      session as a subagent-only agent.
+    - **Project delivery writes each harness's own default:**
+
+      | Harness | Written | `agents.default` |
+      | --- | --- | --- |
+      | Claude | the `agent` key of the project's `.claude/settings.json` | `exact` |
+      | OpenCode v1 | `default_agent`, set by the project's components plugin from its `config` hook | `exact` |
+      | OpenCode v2 | the agent editor's `default(<name>)`, called by the same plugin | `exact` |
+      | Codex | `developer_instructions`, and a native `model` and `model_reasoning_effort`, at the top of the project's `.codex/config.toml` | `emulated` |
+
+      OpenCode's default is set from the plugin rather than written into
+      `opencode.json` or `opencode.jsonc`, as project MCP already is; sync
+      refuses a project whose own configuration names a `default_agent`.
+    - **Codex, emulated.** Codex has no agent a session runs as, but a trusted
+      project's configuration applies those three keys to every session in it
+      (`.capture/agents`, 0.148.0 and 0.156.1). That is a default agent, with
+      differences the rationale records: the instructions follow Codex's base
+      instructions, as a spawned custom agent's do; the session's hook payloads
+      carry no `agent_type`, so a hook scoped to the agent does not run for it;
+      and without project trust the instructions applied while the model did
+      not. No other native key is written there, because at the top level it
+      would reconfigure the whole project: a `sandbox_mode` the agent file
+      ignores would loosen every session. For a `primary` default, which gets
+      no agent file on Codex, those keys are reported as not delivered.
+    - **The default already runs as the session.** On a target without
+      `agents.primary` it is not counted there, so a `primary` default does not
+      fail a Codex build.
+    - **Not a named primary agent on Codex.** Configuration profiles could have
+      offered several, but a project's `[profiles.*]` table is ignored, and
+      0.156.1 reads `--profile` only from a user-level `<name>.config.toml`,
+      which Hooknostic does not write.
+    - **Not from a package.** Every harness with main-session agents could do it
+      from a plugin (a Claude plugin's `settings.json`, a v1 `config` hook, the
+      v2 editor), but a package that did would start every session of every
+      user who enables it as that agent. `agents.default` is `unsupported` on
+      every package target, and reported like any unsupported component.
 
 ## Open questions for acceptance
 
@@ -292,13 +337,10 @@ The same drive ran a session as the agent:
    unsupported component, such as an SSE server on Codex. Agent definitions make
    the combination more common, and a `primary` definition makes it certain for a
    Codex target, which may justify a narrower policy.
-8. **Making an agent the default.** Every route that has main-session agents can
-   also make one the default, and the captures cover each: Claude's `agent`
-   setting (in project settings, or a plugin's root `settings.json`), OpenCode's
-   `default_agent` (in `opencode.json`, or set by a v1 `config` hook), and the v2
-   editor's `default(<id>)`. A package that does so starts every session of every
-   user who enables it as that agent. The recommendation is a separate,
-   explicit option: project delivery first, and a package only by opt-in.
+8. **A default agent from a package.** Decision 10 refuses it on every package
+   target, though each harness with main-session agents could deliver it. A later
+   explicit opt-in could allow it for packages that are meant to take over a
+   session.
 9. **Withholding a `primary` definition from delegation on Claude.** The project
    rule `Agent(<name>)` does it exactly, but every such rule shares one
    `permissions.deny` array, and the ownership manifest can own only one element
@@ -359,5 +401,7 @@ The same drive ran a session as the agent:
   fields diverge, or are absent, on at least one family.
 - **Main-session agents as a component of their own.** An `all` agent would need
   two files, and OpenCode's single `mode` field would be split across them.
+- **A Codex primary agent through configuration profiles.** A project cannot
+  define profiles, and user-level configuration is not Hooknostic's to write.
 - **Keep the name `subagents`.** It would describe a `primary` definition as a
   subagent, in a public config key.
