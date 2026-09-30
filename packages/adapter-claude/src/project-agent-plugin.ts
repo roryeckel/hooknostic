@@ -11,6 +11,7 @@ import {
   assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
+  DEFAULT_AGENT_NOT_PACKAGED,
   hasUnportableCommandPath,
   isJsonObject as object,
   isRejectedSkillPath,
@@ -232,6 +233,7 @@ function componentCounts(
   runtimePackage: "absent" | "emitted" | "skipped",
   omittedStdio = 0,
   agents: readonly AgentDefinition[] = [],
+  defaultAgent?: string,
 ) {
   const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
   return componentSummary(source, {
@@ -239,8 +241,11 @@ function componentCounts(
     hasRuntimePackage: runtimePackage !== "absent",
     agents,
     harness: "claude",
-    skipped: (component) => {
+    ...(defaultAgent === undefined ? {} : { defaultAgent }),
+    skipped: (component, discovered) => {
       if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
+      // A package never sets the default agent (ADR-0027, decision 10).
+      if (component === "agents.default") return discovered;
       // A refused stdio server is discovered but not emitted; without this the
       // report contradicts summary.omissions and .mcp.json alike.
       if (component === "agent-plugin.mcp.stdio") return omittedStdio;
@@ -282,7 +287,7 @@ export async function projectAgentPluginToClaude(
         },
       ],
       summary: {
-        components: componentCounts(source, "skipped", 0, context.agents),
+        components: componentCounts(source, "skipped", 0, context.agents, context.defaultAgent),
         omissions: [],
         copiedPaths: [],
       },
@@ -578,8 +583,14 @@ export async function projectAgentPluginToClaude(
         // cannot disagree.
         omissions.filter((item) => item.component === "agent-plugin.mcp.stdio").length,
         context.agents,
+        context.defaultAgent,
       ),
-      omissions,
+      omissions: [
+        ...omissions,
+        ...(context.defaultAgent === undefined
+          ? []
+          : [{ component: "agents.default" as const, name: context.defaultAgent, reason: DEFAULT_AGENT_NOT_PACKAGED }]),
+      ],
       deviations,
       ...(degradations.length === 0 ? {} : { degradations }),
       copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
@@ -640,6 +651,11 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           level: "exact",
           rationale:
             "Written to the plugin's agents/<name>.md, one file whatever the mode. Claude offers it to the parent as <plugin>:<name> with its description, and the instructions become its system prompt, as for a project agent.",
+        },
+        "agents.default": {
+          level: "unsupported",
+          rationale:
+            "A plugin's root settings.json can set agent, and Claude then starts every session as it (.capture/agents), but Hooknostic does not write it: the plugin would start every session of every user who enables it as that agent. Deliver the default to a project target.",
         },
         "agents.primary": {
           level: "exact",

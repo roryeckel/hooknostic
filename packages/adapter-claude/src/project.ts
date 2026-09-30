@@ -116,6 +116,20 @@ export async function projectComponents(
   if (delegable.length > 0) (result.deviations ??= []).push(...delegable);
   if ((source.agents ?? []).some((agent) => agent.mode !== "subagent"))
     result.guidance.push("Start a Claude Code session as a primary agent with claude --agent <name>.");
+  // The project's own `agent` setting: every session starts as it
+  // (`.capture/agents` primary-setting), and `claude --help` says --agent
+  // overrides it.
+  if (source.defaultAgent !== undefined) {
+    result.entries.push({
+      path: ".claude/settings.json",
+      key: ["agent"],
+      kind: "property",
+      value: source.defaultAgent,
+    });
+    result.guidance.push(
+      `Claude Code sessions in this project now start as the ${source.defaultAgent} agent; claude --agent <name> starts another.`,
+    );
+  }
   if (source.mcp) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
@@ -207,6 +221,11 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         level: "exact",
         rationale:
           "Written to .claude/agents/<name>.md, one file whatever the mode. The parent is offered the subagent by name and description, and the instructions become its system prompt, replacing Claude Code's default; a one-line SDK preamble and Claude's short subagent notes remain around them.",
+      },
+      "agents.default": {
+        level: "exact",
+        rationale:
+          "Written as the agent key of the project's .claude/settings.json, which starts every session in the project as that agent, on its instructions, native tools and model; claude --agent <name> still starts another.",
       },
       "agents.primary": {
         level: "exact",

@@ -904,7 +904,9 @@ Claude plugin's `agents/`, or an agent registered by the generated OpenCode modu
 Codex plugin has no route. Their component ids share the profiles, levels and
 shortfall classes above: `agents.definition` for every definition,
 `agents.primary` for each one whose `mode` lets a session run as it (unsupported
-on Codex, which has no such agents), and `agents.native` for the passthrough. A
+on Codex, which has no such agents), `agents.native` for the passthrough, and
+`agents.default` for `components.defaultAgent`, the agent every session of a project
+starts as, which no package target takes. A
 definitions directory inside the package root is excluded from its inventory.
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,

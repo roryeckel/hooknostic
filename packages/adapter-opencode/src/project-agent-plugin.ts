@@ -12,6 +12,7 @@ import {
   assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
+  DEFAULT_AGENT_NOT_PACKAGED,
   hasUnportableCommandPath,
   isRejectedSkillPath,
   materializedPackageFiles,
@@ -500,6 +501,11 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
               },
             ],
           },
+          "agents.default": {
+            level: "unsupported",
+            rationale:
+              "A plugin's config hook can set default_agent (.capture/agents inject-default), but Hooknostic does not make a package set the default agent: it would start every session of every user who enables the package as that agent. Deliver the default to a project target.",
+          },
           "agents.primary": {
             level: "emulated",
             rationale:
@@ -946,6 +952,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
         hasRuntimePackage: context.runtimePackage !== undefined,
         ...(context.agents === undefined ? {} : { agents: context.agents }),
         harness: "opencode",
+        ...(context.defaultAgent === undefined ? {} : { defaultAgent: context.defaultAgent }),
         skipped: (component, discovered) =>
           component === "agent-plugin.runtime-package"
             ? discovered
@@ -953,16 +960,21 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
               ? omitted.length
               : component === "agents.definition"
                 ? discovered - definitions.length
-                : component === "agents.primary"
-                  ? deliversPrimary
-                    ? 0
-                    : discovered
-                  : component === "agents.native"
-                    ? deliversNative
+                : component === "agents.default"
+                  ? discovered
+                  : component === "agents.primary"
+                    ? deliversPrimary
                       ? 0
                       : discovered
-                    : 0,
+                    : component === "agents.native"
+                      ? deliversNative
+                        ? 0
+                        : discovered
+                      : 0,
       });
+      if (context.defaultAgent !== undefined) {
+        omissions.push({ component: "agents.default", name: context.defaultAgent, reason: DEFAULT_AGENT_NOT_PACKAGED });
+      }
       if (context.runtimePackage !== undefined) {
         omissions.push({
           component: "agent-plugin.runtime-package",

@@ -100,7 +100,7 @@ export async function projectComponents(
   output: string,
   _config: string,
   options: ProjectComponentOptions,
-  emitMcp?: (body: string) => string,
+  emitMcp?: (body: string, options: { defaultAgent?: string }) => string,
 ): Promise<ProjectIntegration> {
   // OpenCode discovers .agents/skills natively. Copy the loader's filtered
   // inventory there instead of naming its unfiltered source directory through
@@ -112,9 +112,12 @@ export async function projectComponents(
     result.guidance.push("OpenCode reads project agents from .opencode/agents; restart it after synchronization.");
   const ignoredModels = primaryModelDegradations(source.agents ?? [], options.support?.["agents.native"]);
   if (ignoredModels.length > 0) (result.degradations ??= []).push(...ignoredModels);
-  if (source.mcp) {
-    const launcher = await projectMcpLauncher(source, root, output);
-    result.files.push(...launcher.files);
+  // The components module also carries the default agent: OpenCode's own
+  // default_agent, set from the project's plugin rather than written into a
+  // configuration file that may be spelled either way (`.capture/agents`
+  // inject-default, both families).
+  if (source.mcp || source.defaultAgent !== undefined) {
+    if (source.mcp) result.files.push(...(await projectMcpLauncher(source, root, output)).files);
     const sourceRoot = relative(root, source.mcp?.root ?? root).replaceAll("\\", "/") || ".";
     const translated = translateMcp(
       source.mcp ? { mcp: source.mcp.config } : {},
@@ -127,7 +130,7 @@ export async function projectComponents(
       return [name, { ...server, ...(timeout === undefined ? {} : { timeout }) }] as const;
     });
     const directEnvironmentResolution =
-      source.origin === "direct"
+      source.mcp && source.origin === "direct"
         ? `
 const expandEnvironment = (value, missing) => value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\\}/g, (reference, name, fallback) => {
   const resolved = process.env[name];
@@ -164,15 +167,25 @@ ${emitMcp ? "const configure = (config) => {" : "export default async () => ({ c
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
-${emitMcp ? "};" : "} });"}
+${source.defaultAgent === undefined ? "" : `  config.default_agent = ${JSON.stringify(source.defaultAgent)};\n`}${emitMcp ? "};" : "} });"}
 `;
     result.files.push({
       path: ".opencode/plugins/hooknostic-components.js",
-      contents: emitMcp ? emitMcp(module) : module,
+      contents: emitMcp
+        ? emitMcp(module, source.defaultAgent === undefined ? {} : { defaultAgent: source.defaultAgent })
+        : module,
     });
-    result.absent = declarations.flatMap(([name]) =>
-      ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["mcp", name] })),
-    );
+    // A project that names its own default keeps it: sync refuses instead.
+    result.absent = [
+      ...declarations.flatMap(([name]) =>
+        ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["mcp", name] })),
+      ),
+      ...(source.defaultAgent === undefined
+        ? []
+        : ["opencode.json", "opencode.jsonc"].map((path) => ({ path, key: ["default_agent"] }))),
+    ];
+    if (source.defaultAgent !== undefined)
+      result.guidance.push(`OpenCode sessions in this project now start as the ${source.defaultAgent} agent.`);
   }
   return result;
 }
@@ -206,6 +219,11 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         level: "exact",
         rationale:
           "Written to .opencode/agents/<name>.md with the definition's mode. As a subagent or all, the task tool's description offers it to the parent with its description, and the instructions replace the provider's base prompt; environment details are appended.",
+      },
+      "agents.default": {
+        level: "exact",
+        rationale:
+          "The project's components plugin sets default_agent from its config hook, and OpenCode starts every session in the project as that agent; sync refuses a project whose opencode.json or opencode.jsonc already names one.",
       },
       "agents.primary": {
         level: "exact",

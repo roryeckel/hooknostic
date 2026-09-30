@@ -77,6 +77,11 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
         rationale:
           "Written to .opencode/agents/<name>.md with the definition's mode, which v2 needs because it defaults an agent to primary. As a subagent or all, the subagent tool's description offers it to the parent with its description, the instructions replace the provider's base prompt, and tool events inside the child carry the agent's name.",
       },
+      "agents.default": {
+        level: "exact",
+        rationale:
+          "The project's components plugin calls the agent editor's default() with the agent's name, and OpenCode starts every session in the project as it; sync refuses a project whose opencode.json or opencode.jsonc already names a default_agent.",
+      },
       "agents.primary": {
         level: "exact",
         rationale:
@@ -104,7 +109,7 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session. A mode: primary definition synchronized by Hooknostic's project delivery, and one a built package registered as <plugin>-<name>, each ran as the session through run --agent on the configured model (packages/cli/test/agent-definition-playback.test.ts).",
+          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session. A mode: primary definition synchronized by Hooknostic's project delivery, and one a built package registered as <plugin>-<name>, each ran as the session through run --agent on the configured model (packages/cli/test/agent-definition-playback.test.ts). A plugin whose agent transform called the editor's default(<name>) started the session as that agent without --agent.",
         },
         {
           version: opencodeV2Harness.referenceVersion,
@@ -156,14 +161,16 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
 export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = (...args) =>
   projectComponents(
     ...args,
-    (body) => `${body}\n${scopeImports}\nconst own = root;\n${scope}\n${conversion}
+    // v2 has no config hook: the default agent goes through the agent editor's
+    // default(), which starts sessions as it (.capture/agents inject-default).
+    (body, { defaultAgent }) => `${body}\n${scopeImports}\nconst own = root;\n${scope}\n${conversion}
 export default { id: "hooknostic.components" + suffix, async setup(ctx) {
   if (!serves(ctx.location.directory)) return;
   const config = {}; configure(config);
   await ctx.mcp.transform(editor => {
     for (const [name, server] of Object.entries(config.mcp ?? {})) editor.set(name, nativeServer(server));
   });
-} };\n`,
+${defaultAgent === undefined ? "" : `  await ctx.agent.transform(editor => editor.default(${JSON.stringify(defaultAgent)}));\n`}} };\n`,
   );
 
 export function v2PackageEntry({
@@ -254,6 +261,11 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
             evidence: ".capture/agents",
           },
         ],
+      },
+      "agents.default": {
+        level: "unsupported",
+        rationale:
+          "The agent editor's default() would do it from a package (.capture/agents inject-default), but Hooknostic does not make a package set the default agent: it would start every session of every user who enables the package as that agent. Deliver the default to a project target.",
       },
       "agents.primary": {
         level: "emulated",

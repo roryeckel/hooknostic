@@ -780,6 +780,8 @@ export interface ProjectComponents {
   mcp?: { root: string; config: AgentPluginMcpConfig };
   /** Portable agent definitions (ADR-0027); absent when none are configured. */
   agents?: AgentDefinition[];
+  /** The name of the definition sessions start as (`components.defaultAgent`), where this target takes it. */
+  defaultAgent?: string;
 }
 export function packageComponents(source: AgentPluginPackage): ProjectComponents {
   return {

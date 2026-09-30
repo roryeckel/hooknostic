@@ -579,6 +579,7 @@ function analyzedProjectionReport(
   hasRuntimePackage: boolean,
   agents: readonly AgentDefinition[] | undefined,
   harness: string,
+  defaultAgent: string | undefined,
 ): AgentPluginTargetReport {
   // The projector's own discovery, so the analyzed counts and the counts a
   // successful projection replaces them with cannot disagree.
@@ -587,6 +588,7 @@ function analyzedProjectionReport(
     hasRuntimePackage,
     ...(agents === undefined ? {} : { agents }),
     harness,
+    ...(defaultAgent === undefined ? {} : { defaultAgent }),
   });
   const unsupported = new Set(
     resolution.diagnostics.flatMap((diagnostic) =>
@@ -806,6 +808,24 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       });
     }
   }
+  // The default must be a definition that can be a session's agent at all; a
+  // subagent-only one would start sessions no harness should start as it.
+  const defaultAgent = config.components?.defaultAgent;
+  if (defaultAgent !== undefined && componentSource !== undefined) {
+    const named = componentSource.agents?.find((agent) => agent.name === defaultAgent);
+    if (named === undefined || !servesAsPrimary(named.mode)) {
+      diagnostics.push({
+        code: "HN503",
+        severity: "error",
+        component: "agents.default",
+        ...(named === undefined ? {} : { location: { file: named.source } }),
+        message:
+          named === undefined
+            ? `components.defaultAgent names ${JSON.stringify(defaultAgent)}, which is not a loaded agent definition`
+            : `components.defaultAgent names ${JSON.stringify(defaultAgent)}, whose mode is subagent; make it primary or all`,
+      });
+    } else componentSource.defaultAgent = defaultAgent;
+  }
   if (hasFatal(diagnostics)) return fail();
   if (componentSource !== undefined && (selectedPackageProjection || selectedProjectProjection))
     report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
@@ -890,6 +910,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
         componentSource?.agents,
+        componentSource?.defaultAgent,
       );
       resolution.diagnostics.push(
         ...reservedNativeFields(componentSource?.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
@@ -902,6 +923,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!) !== undefined,
         componentSource?.agents,
         adapterFor(id)!.id,
+        componentSource?.defaultAgent,
       );
       if (hasFatal(resolution.diagnostics)) {
         diagnostics.push(...resolution.diagnostics);
@@ -1045,6 +1067,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
         componentSource?.agents,
+        componentSource?.defaultAgent,
       );
       resolution.diagnostics.push(
         ...reservedNativeFields(componentSource?.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
@@ -1058,6 +1081,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         effectiveRuntimePackage(config.components!) !== undefined,
         componentSource?.agents,
         adapterFor(id)!.id,
+        componentSource?.defaultAgent,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
@@ -1180,6 +1204,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ? {}
               : { mcpEnvironment: config.components!.mcpEnvironment }),
             ...(componentSource?.agents === undefined ? {} : { agents: componentSource.agents }),
+            ...(componentSource?.defaultAgent === undefined ? {} : { defaultAgent: componentSource.defaultAgent }),
           });
           const projectedDiagnostics = [
             ...diagnosticsFromAgentPluginIssues(plan.issues, id),
@@ -1382,13 +1407,26 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ...reservedNativeFields(selectedSource.agents ?? [], adapter, id, config.components?.onInvalid),
             );
             if (!count("agents.definition", selectedSource.agents?.length ?? 0)) selectedSource.agents = [];
+            // The default agent is settled first: where the target takes it, it
+            // is how a harness without agents a session runs as -- Codex --
+            // still runs every session as that one (ADR-0027, decision 10).
+            const defaultName = selectedSource.defaultAgent;
+            const deliversDefault = count("agents.default", defaultName === undefined ? 0 : 1);
+            if (!deliversDefault) delete selectedSource.defaultAgent;
+            const isDeliveredDefault = (agent: AgentDefinition) => deliversDefault && agent.name === defaultName;
             // A target that cannot run a session as an agent still takes an
             // `all` definition as a subagent; a `primary` one has nothing left
             // to deliver, so it leaves the definitions too (ADR-0027,
             // decision 9). The component-level shortfall is reported above.
-            const primary = (selectedSource.agents ?? []).filter((agent) => servesAsPrimary(agent.mode));
+            // The delivered default is exempt: it already runs as the session.
+            const primaryCell = support.matrix?.["agents.primary"];
+            const primaryRoute = primaryCell !== undefined && primaryCell.level !== "unsupported";
+            const primary = (selectedSource.agents ?? []).filter(
+              (agent) => servesAsPrimary(agent.mode) && (primaryRoute || !isDeliveredDefault(agent)),
+            );
             if (!count("agents.primary", primary.length)) {
               selectedSource.agents = (selectedSource.agents ?? []).flatMap((agent) => {
+                if (isDeliveredDefault(agent)) return [agent];
                 const mode = withoutPrimary(agent.mode);
                 if (mode !== undefined) return [{ ...agent, mode }];
                 omissions.push({

@@ -127,9 +127,10 @@ export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number]
  * share one id space. `agents.definition` is the portable core (name,
  * description, instructions) of every definition; `agents.primary` is the
  * main-session contract of each definition whose mode is `primary` or `all`;
- * `agents.native` is the per-harness passthrough under `native`.
+ * `agents.native` is the per-harness passthrough under `native`;
+ * `agents.default` is `components.defaultAgent`, the agent a session starts as.
  */
-export const AGENT_COMPONENT_IDS = ["agents.definition", "agents.primary", "agents.native"] as const;
+export const AGENT_COMPONENT_IDS = ["agents.definition", "agents.primary", "agents.native", "agents.default"] as const;
 export type AgentComponentId = (typeof AGENT_COMPONENT_IDS)[number];
 
 /** Every component a projector or project integrator reports on. */
@@ -288,6 +289,12 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    * 1.0 format has no agents component to carry them.
    */
   agents?: readonly AgentDefinition[];
+  /**
+   * `components.defaultAgent`. No projector delivers it: a package would start
+   * every session of every user who enables it as that agent (ADR-0027). Each
+   * reports it as the unsupported `agents.default`.
+   */
+  defaultAgent?: string;
 }
 
 export interface AgentPluginProjectionSummary {

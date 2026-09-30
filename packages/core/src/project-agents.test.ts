@@ -274,6 +274,110 @@ describe("agent definition project delivery", () => {
     expect(v1.report.targets["opencode"]?.project?.degradations).toBeUndefined();
   }, 60_000);
 
+  it("starts every session as the default agent, emulating it on Codex", async () => {
+    const { root, options } = await fixture(
+      { "planner.md": PLANNER, "reviewer.md": REVIEWER },
+      { components: { defaultAgent: "planner" } },
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+
+    expect(JSON.parse(await readFile(join(root, ".claude/settings.json"), "utf8"))).toMatchObject({
+      agent: "planner",
+    });
+    expect(await readFile(join(root, ".opencode/plugins/hooknostic-components.js"), "utf8")).toContain(
+      'config.default_agent = "planner";',
+    );
+    // Codex has no agent a session runs as: the project's configuration
+    // carries the agent's instructions instead, and the primary-only planner
+    // gets no custom agent file, since nothing could spawn it as one.
+    expect(readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8"))).toEqual({
+      developer_instructions: "You plan changes.\n",
+    });
+    await expect(readFile(join(root, ".codex/agents/planner.toml"), "utf8")).rejects.toThrow();
+
+    const built = await buildProject({ ...options, dryRun: true });
+    // The delivered default already runs as the session, so Codex's missing
+    // main-session route does not fail the build over it.
+    expect(built.ok).toBe(true);
+    const targets = built.report.targets;
+    expect(targets["codex"]?.project?.components).toMatchObject({
+      "agents.default": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
+    });
+    expect(targets["codex"]?.project?.components?.["agents.primary"]).toBeUndefined();
+    for (const target of ["claude", "opencode"]) {
+      expect(targets[target]?.project?.components?.["agents.default"], target).toEqual({
+        support: "exact",
+        discovered: 1,
+        emitted: 1,
+        skipped: 0,
+      });
+    }
+  }, 60_000);
+
+  it("sets the OpenCode v2 default through the agent editor", async () => {
+    const { root, options } = await fixture(
+      { "planner.md": PLANNER },
+      { v2: true, components: { defaultAgent: "planner", accept: ["opencode:primary-agent-model-ignored"] } },
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+
+    expect(synced.errors).toEqual([]);
+    const module = await readFile(join(root, ".opencode/plugins/hooknostic-components.js"), "utf8");
+    expect(module).toContain('await ctx.agent.transform(editor => editor.default("planner"));');
+  }, 60_000);
+
+  it("writes only the Codex keys a default agent is known to honour, and reports the rest", async () => {
+    const planner = PLANNER.replace(
+      "  opencode:\n",
+      "  codex:\n    model: gpt-planner\n    model_reasoning_effort: low\n    sandbox_mode: danger-full-access\n  opencode:\n",
+    );
+    const { root, options } = await fixture(
+      { "planner.md": planner },
+      { components: { defaultAgent: "planner", onUnsupported: "warn" } },
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+
+    expect(synced.errors).toEqual([]);
+    // At the top of the project's configuration a sandbox_mode would loosen
+    // every session, so it is never written there.
+    expect(readProjectToml(await readFile(join(root, ".codex/config.toml"), "utf8"))).toEqual({
+      developer_instructions: "You plan changes.\n",
+      model: "gpt-planner",
+      model_reasoning_effort: "low",
+    });
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN205",
+        target: "codex",
+        component: "agents.native",
+        message: expect.stringContaining("sandbox_mode"),
+      }),
+    );
+  }, 60_000);
+
+  it.each([
+    ["a name no definition has", "nobody", "not a loaded agent definition"],
+    ["a subagent", "reviewer", "whose mode is subagent"],
+  ])("refuses a default agent that is %s", async (_label, defaultAgent, message) => {
+    const { options } = await fixture({ "reviewer.md": REVIEWER }, { components: { defaultAgent } });
+
+    const built = await buildProject({ ...options, dryRun: true });
+
+    expect(built.ok).toBe(false);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        component: "agents.default",
+        message: expect.stringContaining(message),
+      }),
+    );
+  });
+
   it("refuses native fields for a harness no adapter knows", async () => {
     const { options } = await fixture({
       "reviewer.md": REVIEWER.replace("  claude:\n", "  cluade:\n"),
@@ -450,6 +554,35 @@ describe("agent definition package delivery", () => {
     expect(built.report.targets["claude"]?.projection?.deviations).toEqual([
       expect.objectContaining({ id: "claude:primary-agent-delegable", name: "planner" }),
     ]);
+  }, 60_000);
+
+  it("does not let a package set the default agent", async () => {
+    const definitions = { "planner.md": PLANNER };
+
+    const refused = await buildProject({
+      ...(await packageFixture(definitions, { components: { defaultAgent: "planner" } })).options,
+      dryRun: true,
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN205", target: "claude", component: "agents.default" }),
+    );
+
+    const { root, options } = await packageFixture(definitions, {
+      components: { defaultAgent: "planner", onUnsupported: "warn" },
+    });
+    const warned = await buildProject(options);
+    expect(warned.ok).toBe(true);
+    await expect(readFile(join(root, "dist/claude/settings.json"), "utf8")).rejects.toThrow();
+    expect(warned.report.targets["claude"]?.projection?.components?.["agents.default"]).toEqual({
+      support: "unsupported",
+      discovered: 1,
+      emitted: 0,
+      skipped: 1,
+    });
+    expect(warned.report.targets["claude"]?.projection?.omissions).toContainEqual(
+      expect.objectContaining({ component: "agents.default", name: "planner" }),
+    );
   }, 60_000);
 
   it("refuses a primary definition for a Codex package, which has no agents route either", async () => {

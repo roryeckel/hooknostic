@@ -4614,7 +4614,8 @@ var hooknosticConfigSchema = external_exports.object({
     onInvalid: external_exports.enum(["error", "warn"]).optional(),
     onDeviation: external_exports.enum(["error", "warn"]).optional(),
     onDegraded: external_exports.enum(["error", "warn"]).optional(),
-    accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional()
+    accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
+    defaultAgent: external_exports.string().min(1).optional()
   }).strict().optional()
 }).strict().superRefine((config, context) => {
   if (config.entry === void 0 && config.components === void 0) {
@@ -4670,6 +4671,13 @@ var hooknosticConfigSchema = external_exports.object({
         code: external_exports.ZodIssueCode.custom,
         path: ["components", "executableFiles"],
         message: "components.executableFiles requires components.root or components.skills"
+      });
+    }
+    if (config.components.agents === void 0 && config.components.defaultAgent !== void 0) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["components", "defaultAgent"],
+        message: "components.defaultAgent requires components.agents"
       });
     }
     if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {

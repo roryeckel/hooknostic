@@ -15,6 +15,9 @@ running a command. Paths resolve from `hooknostic.config.ts`.
 
 At least one of `entry` and `components` is required. A package root and direct
 `skills`/`mcp` sources are mutually exclusive; `agents` combines with either.
+`components.defaultAgent` optionally names one of those definitions, whose `mode` is
+`primary` or `all`, as the agent every session of the project starts as. Only project
+targets take it; see [Tutorial 5](tutorials/05-portable-agents.md#making-it-the-default).
 `components.targets` optionally narrows which configured targets receive components;
 hooks retain their configured target set.
 

@@ -242,6 +242,7 @@ function discoveredComponents(
   runtimePackage?: AgentPluginRuntimePackage,
   agents?: readonly AgentDefinition[],
   harness?: string,
+  defaultAgent?: string,
 ): ComponentId[] {
   return [
     ...discoverComponents(source, {
@@ -249,6 +250,7 @@ function discoveredComponents(
       hasRuntimePackage: runtimePackage !== undefined,
       ...(agents === undefined ? {} : { agents }),
       ...(harness === undefined ? {} : { harness }),
+      ...(defaultAgent === undefined ? {} : { defaultAgent }),
     }).keys(),
   ];
 }
@@ -267,6 +269,8 @@ export function analyzeAgentPluginProjection(
   compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
   /** `components.agents` definitions, delivered inside the package (ADR-0027). */
   agents?: readonly AgentDefinition[],
+  /** `components.defaultAgent`, which a package target reports as a component. */
+  defaultAgent?: string,
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -287,6 +291,7 @@ export function analyzeAgentPluginProjection(
             runtimePackage,
             agents,
             adapter.id,
+            defaultAgent,
           )
             .map((component) => JSON.stringify(component))
             .join(", ")} cannot be projected.`,
@@ -297,7 +302,14 @@ export function analyzeAgentPluginProjection(
   }
   const resolved = resolveAgentPluginProjection(target, projector);
   if (!resolved.matrix) return resolved;
-  for (const component of discoveredComponents(source, projector.namespace, runtimePackage, agents, adapter.id)) {
+  for (const component of discoveredComponents(
+    source,
+    projector.namespace,
+    runtimePackage,
+    agents,
+    adapter.id,
+    defaultAgent,
+  )) {
     const support = resolved.matrix[component] ?? { level: "unsupported" as const };
     if (support.level === "unsupported") {
       resolved.diagnostics.push({

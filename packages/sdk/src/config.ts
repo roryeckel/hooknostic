@@ -243,6 +243,16 @@ interface ComponentPolicy<TTarget extends string> {
    * silently accept nothing.
    */
   accept?: string[];
+  /**
+   * The agent every session of the project starts as: the name of a definition
+   * in `agents` whose `mode` is `primary` or `all` (ADR-0027). Project delivery
+   * writes each harness's own default -- Claude's `agent` setting, OpenCode's
+   * default agent -- and on Codex, which has no agent a session runs as, the
+   * agent's instructions into the project configuration. Package targets do
+   * not take it: a package would start every session of every user who enables
+   * it as that agent.
+   */
+  defaultAgent?: string;
 }
 
 type DirectComponentPolicy<TTarget extends string> = {

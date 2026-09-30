@@ -53,6 +53,13 @@ export function withoutPrimary(mode: AgentMode): AgentMode | undefined {
 }
 
 /**
+ * Why no projector delivers `components.defaultAgent` (ADR-0027, decision 10),
+ * for the omission each reports.
+ */
+export const DEFAULT_AGENT_NOT_PACKAGED =
+  "a package does not set the default agent, because it would start every session of every user who enables it as that agent; deliver the default to a project target";
+
+/**
  * One agent definition, parsed into the model the specification defines.
  * Adapters translate from this, never from the file, so a future source format
  * mapping onto the same model reaches every harness without translator changes.

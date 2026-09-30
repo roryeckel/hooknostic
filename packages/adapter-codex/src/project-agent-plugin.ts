@@ -12,6 +12,7 @@ import {
   COMPONENT_IDS,
   componentSummary,
   contentsText,
+  DEFAULT_AGENT_NOT_PACKAGED,
   hasUnportableCommandPath,
   isRejectedSkillPath,
   isRootNpmManifestPath,
@@ -538,6 +539,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           level: "unsupported",
           rationale:
             "Codex has no agent a session runs as, and a Codex plugin cannot deliver an agent definition at all.",
+        },
+        "agents.default": {
+          level: "unsupported",
+          rationale:
+            "A Codex plugin cannot carry configuration or agents, and Hooknostic does not make a package set the default agent anyway. Deliver it to a Codex project target, which emulates it.",
         },
         "agents.native": {
           level: "unsupported",
@@ -1290,6 +1296,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       hasRuntimePackage: context.runtimePackage !== undefined,
       ...(context.agents === undefined ? {} : { agents: context.agents }),
       harness: "codex",
+      ...(context.defaultAgent === undefined ? {} : { defaultAgent: context.defaultAgent }),
       skipped: (component, discovered) =>
         component === "agent-plugin.runtime-package" || component.startsWith("agents.")
           ? discovered
@@ -1311,6 +1318,9 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         name: agent.name,
         reason: "a Codex plugin has no agents route; deliver agent definitions to a project target instead",
       });
+    }
+    if (context.defaultAgent !== undefined) {
+      omissions.push({ component: "agents.default", name: context.defaultAgent, reason: DEFAULT_AGENT_NOT_PACKAGED });
     }
 
     return {

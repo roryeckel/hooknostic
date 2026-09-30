@@ -340,6 +340,15 @@ describe("canonical schemas", () => {
         .success,
     ).toBe(true);
     expect(hooknosticConfigSchema.safeParse({ ...project, components: { agents: [] } }).success).toBe(false);
+    // The default agent names one of those definitions, so it needs them.
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { agents: ["./agents"], defaultAgent: "planner" } })
+        .success,
+    ).toBe(true);
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], defaultAgent: "planner" } })
+        .success,
+    ).toBe(false);
     // With a package root, for package delivery (ADR-0027): the definitions are
     // translated into each native package rather than shipped as package files.
     expect(

@@ -236,6 +236,7 @@ export const hooknosticConfigSchema = z
         onDeviation: z.enum(["error", "warn"]).optional(),
         onDegraded: z.enum(["error", "warn"]).optional(),
         accept: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
+        defaultAgent: z.string().min(1).optional(),
       })
       .strict()
       .optional(),
@@ -315,6 +316,13 @@ export const hooknosticConfigSchema = z
           code: z.ZodIssueCode.custom,
           path: ["components", "executableFiles"],
           message: "components.executableFiles requires components.root or components.skills",
+        });
+      }
+      if (config.components.agents === undefined && config.components.defaultAgent !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "defaultAgent"],
+          message: "components.defaultAgent requires components.agents",
         });
       }
       if (config.components.mcp === undefined && config.components.mcpOverrides !== undefined) {

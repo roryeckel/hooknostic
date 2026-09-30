@@ -167,8 +167,43 @@ A few differences are worth knowing:
   is written as a custom agent only. Both are reported as unsupported (HN205), which
   fails the build unless `onUnsupported: "warn"`.
 
-Hooknostic makes a primary agent available; it does not make it the agent every
-session starts as. That stays your setting.
+### Making it the default
+
+A `mode` only makes an agent available. To start every session of the project as
+the planner, name it in the configuration:
+
+```ts
+components: { skills: ["./skills"], mcp: "./mcp.json", agents: ["./agents"], defaultAgent: "planner" },
+```
+
+`sync` then writes each harness's own default:
+
+| Target | Written | The planner is |
+| --- | --- | --- |
+| Claude Code | `"agent": "planner"` in `.claude/settings.json` | every session's agent; `claude --agent <name>` starts another |
+| OpenCode v1 and v2 | the default agent, set by the generated components plugin | every session's agent |
+| Codex | its instructions, and its native model and effort, in `.codex/config.toml` | an emulation, below |
+
+Codex has no agent a session runs as, but a trusted project's configuration applies
+`developer_instructions`, `model` and `model_reasoning_effort` to every session in
+it, which is what a default agent amounts to. The differences:
+
+- The instructions follow Codex's own base instructions instead of replacing them,
+  as they do for any Codex custom agent.
+- The session's hooks cannot tell it is the planner, so a hook with
+  `agents: { include: ["planner"] }` does not run for it on Codex.
+- No other `native.codex` key is written there. At the top of the project's
+  configuration a key like `sandbox_mode` would change every session, not just the
+  agent's.
+- A `primary` default gets no custom agent file, since nothing on Codex could spawn
+  it as one, and it does not fail the build: it already runs as every session.
+
+The default must be a `primary` or `all` definition. `sync` will not overwrite one the
+project already sets itself: an `agent` in `.claude/settings.json`, a `default_agent` in
+`opencode.json` or `opencode.jsonc`, or `developer_instructions` in `.codex/config.toml`.
+A package never sets the default: it would start every
+session of every user who enables it as that agent, so package targets report
+`agents.default` as unsupported.
 
 ## Guarding the subagent with a hook
 

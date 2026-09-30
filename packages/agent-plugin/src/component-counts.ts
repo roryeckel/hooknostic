@@ -23,6 +23,8 @@ export interface ComponentDiscoveryOptions {
   agents?: readonly AgentDefinition[];
   /** The harness key whose `native` blocks `agents.native` counts. */
   harness?: string;
+  /** `components.defaultAgent`, counted as `agents.default` (ADR-0027). */
+  defaultAgent?: string;
 }
 
 export interface ComponentSummaryOptions extends ComponentDiscoveryOptions {
@@ -71,6 +73,7 @@ export function discoverComponents(
   const harness = options.harness;
   const native = harness === undefined ? 0 : agents.filter((agent) => Object.hasOwn(agent.native, harness)).length;
   if (native > 0) discovered.set("agents.native", native);
+  if (options.defaultAgent !== undefined) discovered.set("agents.default", 1);
 
   return discovered;
 }

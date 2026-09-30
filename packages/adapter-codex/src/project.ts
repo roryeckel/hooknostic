@@ -1,6 +1,6 @@
 import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText } from "@hooknostic/agent-plugin";
+import { contentsText, servesAsSubagent } from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   HarnessAdapter,
@@ -127,6 +127,41 @@ export function renderCodexAgent(agent: AgentDefinition): { file: string; conten
   return { file: `${agent.name}.toml`, contents };
 }
 
+/** The agent-file keys Codex was observed to honour at the top of a project's configuration. */
+const DEFAULT_AGENT_KEYS = ["model", "model_reasoning_effort"];
+
+/**
+ * Codex has no agent a session runs as, but a trusted project's
+ * `.codex/config.toml` applies `developer_instructions`, `model` and
+ * `model_reasoning_effort` to every session in it (`.capture/agents`
+ * project-instructions, 0.148.0 and 0.156.1). That is the default agent,
+ * emulated: the instructions follow Codex's own, as a spawned custom agent's
+ * do. No other native key is written there, because at the top level it would
+ * reconfigure the whole project -- a `sandbox_mode` the agent file ignores
+ * would loosen every session. Those keys stay on the agent's own file, and for
+ * a primary-only definition, which has none, they are reported.
+ */
+export function projectDefaultAgent(agent: AgentDefinition): { entries: ProjectEntry[]; omitted: string[] } {
+  const native = Object.entries(agent.native["codex"] ?? {}).filter(
+    ([key]) => !codexAgents.reservedNativeKeys.includes(key),
+  );
+  const entry = (key: string, value: unknown): ProjectEntry => ({
+    path: ".codex/config.toml",
+    key: [key],
+    kind: "property",
+    format: "toml",
+    value,
+  });
+  return {
+    entries: [
+      entry("developer_instructions", agent.instructions),
+      ...native.filter(([key]) => DEFAULT_AGENT_KEYS.includes(key)).map(([key, value]) => entry(key, value)),
+    ],
+    omitted:
+      agent.mode === "primary" ? native.map(([key]) => key).filter((key) => !DEFAULT_AGENT_KEYS.includes(key)) : [],
+  };
+}
+
 export async function projectComponents(
   source: ProjectComponents,
   root: string,
@@ -135,8 +170,24 @@ export async function projectComponents(
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".agents/skills");
-  const agents = projectAgentFiles(source.agents ?? [], codexAgents.projectDirectory, renderCodexAgent);
+  // A primary-only definition reaches Codex only as the project's default.
+  const subagents = (source.agents ?? []).filter((agent) => servesAsSubagent(agent.mode));
+  const agents = projectAgentFiles(subagents, codexAgents.projectDirectory, renderCodexAgent);
   result.files.push(...agents.files);
+  const defaultAgent = (source.agents ?? []).find((agent) => agent.name === source.defaultAgent);
+  if (defaultAgent !== undefined) {
+    const emulated = projectDefaultAgent(defaultAgent);
+    result.entries.push(...emulated.entries);
+    if (emulated.omitted.length > 0)
+      (result.omissions ??= []).push({
+        component: "agents.native",
+        name: defaultAgent.name,
+        reason: `the default agent ${JSON.stringify(defaultAgent.name)} is primary only, so Codex receives only its instructions, model and model_reasoning_effort; native.codex ${emulated.omitted.join(", ")} reach nothing`,
+      });
+    result.guidance.push(
+      `Codex sessions in this trusted project now run on the ${defaultAgent.name} agent's instructions, after Codex's own; its hooks cannot tell them from any other session.`,
+    );
+  }
   if (agents.files.length > 0) {
     result.guidance.push(
       "Codex reads project agents from .codex/agents; restart it after synchronization, and review project trust in Codex.",
@@ -235,10 +286,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
         rationale:
           "Written to .codex/agents/<name>.toml. Defining one adds an agent_type parameter to spawn_agent, whose description lists the subagent with its description, and the instructions reach the child as developer_instructions added to Codex's own base instructions rather than replacing them. Codex's model guidance tells it to spawn only when asked. Trust gating of project agents is not established: with no trust entry for the project, and only hook trust bypassed, codex exec still discovered its agent.",
       },
+      "agents.default": {
+        level: "emulated",
+        rationale:
+          "Codex has no agent a session runs as, but a trusted project's .codex/config.toml applies developer_instructions, model and model_reasoning_effort to every session in it, on 0.148.0 and 0.156.1. So the default agent is written there: its instructions, which follow Codex's own base instructions as a spawned custom agent's do, and its native model and effort. Other native.codex keys are not, since at the top level they would reconfigure the whole project. The session's hook payloads carry no agent_type, so a hook scoped to the agent does not run for it. Without project trust the instructions applied and the model did not.",
+      },
       "agents.primary": {
         level: "unsupported",
         rationale:
-          "Codex has no agent a session runs as: codex and codex exec offer --profile, which selects a configuration profile, and no option that starts a session as a custom agent, which is reachable only through spawn_agent. A primary definition is therefore not written, and an all definition is written as a custom agent only.",
+          "Codex has no agent a session runs as: codex and codex exec offer --profile, which selects a configuration profile, and no option that starts a session as a custom agent, which is reachable only through spawn_agent. A primary definition is therefore not written, and an all definition is written as a custom agent only; the one named as the project's default agent reaches every session through agents.default instead.",
       },
       "agents.native": {
         level: "exact",
@@ -249,6 +305,20 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: "0.156.1",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "developer_instructions, model and model_reasoning_effort at the top of a trusted project's .codex/config.toml applied to the session: the instructions as a developer message after Codex's base instructions, on that model and effort; its hook payloads carried no agent_type. Without a trust entry the instructions applied and the model did not. A [profiles.*] table in the project configuration was ignored as an unsupported project-local key, and --profile read only a user-level <name>.config.toml.",
+        },
+        {
+          version: "0.148.0",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build the project configuration's developer_instructions, model and model_reasoning_effort applied to the session the same way, and a project [profiles.*] table was ignored.",
+        },
         {
           version: "0.156.1",
           date: "2026-09-29",
