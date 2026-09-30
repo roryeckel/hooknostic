@@ -276,16 +276,6 @@ export async function projectAgentPluginToClaude(
     };
   }
 
-  // A skill's SKILL.md is the one package file whose bytes may change: its
-  // body's ${SKILL_DIR} becomes ${CLAUDE_SKILL_DIR} (ADR-0028). A rewritten
-  // file is generated, not copied.
-  const skillTexts = projectPackageSkillTexts(
-    source.skills,
-    (path) => source.files.find((file) => file.path === path)?.contents,
-    CLAUDE_PLUGIN_SKILL_TEXT,
-    "Claude Code",
-  );
-
   for (const file of source.files) {
     if (
       file.path === "plugin.json" ||
@@ -311,11 +301,10 @@ export async function projectAgentPluginToClaude(
       continue;
     }
     if (insideRejectedSkill(file.path)) continue;
-    const rewritten = skillTexts.rewritten.get(file.path);
-    files.set(file.path, { path: file.path, contents: rewritten ?? file.contents, mode: file.mode });
-    // Claimed whether copied or rewritten: a materialized tree landing on a
-    // rewritten SKILL.md collides as it does on a copied one. The summary's
-    // byte-for-byte list leaves the rewritten ones out below.
+    files.set(file.path, { path: file.path, contents: file.contents, mode: file.mode });
+    // Claimed whether copied or, as a SKILL.md below may be, rewritten: a
+    // materialized tree landing on a rewritten SKILL.md collides as it does on
+    // a copied one. The summary's byte-for-byte list leaves those out.
     copiedPaths.add(file.path);
   }
 
@@ -341,6 +330,23 @@ export async function projectAgentPluginToClaude(
     files.set(path, { path, contents: file.contents, mode: file.mode });
     copiedPaths.add(path);
   }
+
+  // A skill's SKILL.md is the one package file whose bytes may change: its
+  // body's ${SKILL_DIR} becomes ${CLAUDE_SKILL_DIR} (ADR-0028). Projected from
+  // the file Claude receives, after the overlay loop: an overlay at
+  // com.anthropic.claude-code/<path> replaces the portable SKILL.md, so its
+  // text is the one checked and rewritten. A rewritten file is generated, not
+  // copied.
+  const skillTexts = projectPackageSkillTexts(
+    source.skills,
+    (path) => {
+      const contents = files.get(path)?.contents;
+      return typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+    },
+    CLAUDE_PLUGIN_SKILL_TEXT,
+    "Claude Code",
+  );
+  for (const [path, contents] of skillTexts.rewritten) files.set(path, { ...files.get(path)!, contents });
 
   const materialized = materializedPackageFiles(context.materializedTrees, { claimed: copiedPaths });
   issues.push(...materialized.issues);

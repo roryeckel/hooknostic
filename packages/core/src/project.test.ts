@@ -45,6 +45,57 @@ export default definePlugin({ name: "sample-project", hooks: [hook("tool.before"
   await writeFile(configPath, `export default ${JSON.stringify(config)};`);
   return { root, config, options: { configPath, registry, evaluate } };
 }
+describe("Claude skill overlays (ADR-0028)", () => {
+  // Claude receives the com.anthropic.claude-code overlay in place of the
+  // portable SKILL.md, so the overlay's text is the one checked and projected.
+  async function overlaid(portable: string, overlay: string) {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-overlay-"));
+    dirs.push(root);
+    await writeFile(
+      join(root, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "overlaid" }),
+    );
+    for (const [dir, body] of [
+      ["skills/review", portable],
+      ["com.anthropic.claude-code/skills/review", overlay],
+    ] as const) {
+      await mkdir(join(root, dir), { recursive: true });
+      await writeFile(join(root, dir, "SKILL.md"), `---\nname: review\ndescription: Review code\n---\n${body}`);
+    }
+    const claude = registry.claude!;
+    const configPath = join(root, "hooknostic.config.ts");
+    await writeFile(
+      configPath,
+      `export default ${JSON.stringify({
+        components: { root: "." },
+        targets: { claude: { version: claude.harness.recommendedRange, delivery: "package", output: "dist/claude" } },
+      })};`,
+    );
+    const built = await buildProject({ configPath, registry, evaluate });
+    return { built, root };
+  }
+
+  it("checks and projects the overlay Claude receives, not the portable skill it replaces", async () => {
+    const { built, root } = await overlaid("Run ${PLUGIN_ROOT}/x.\n", "Run ${SKILL_DIR}/x.\n");
+    expect(built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101")).toEqual([]);
+    expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+    expect(await readFile(join(root, "dist/claude/skills/review/SKILL.md"), "utf8")).toBe(
+      "---\nname: review\ndescription: Review code\n---\nRun ${CLAUDE_SKILL_DIR}/x.\n",
+    );
+  }, 60_000);
+
+  it("reports a reference in the overlay itself", async () => {
+    const { built } = await overlaid("Run ${SKILL_DIR}/x.\n", "Run ${PLUGIN_ROOT}/x.\n");
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN101",
+        target: "claude",
+        message: expect.stringContaining('"${PLUGIN_ROOT}"'),
+      }),
+    );
+  }, 60_000);
+});
+
 describe("complete project integration", () => {
   it("anchors a dot MCP override to its nested source directory for every target", async () => {
     const { root, options } = await fixture({
