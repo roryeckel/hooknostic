@@ -39,12 +39,11 @@ jobs:
       - uses: pnpm/action-setup@v6
 
       # npm >= 11.5.1 is required for trusted publishing; Node 24 provides it.
-      # setup-node v7 no longer exports a placeholder NODE_AUTH_TOKEN, so the
-      # generated .npmrc carries no dead token for the OIDC flow to trip over.
+      # Omit registry-url: npmjs.org is the default, and setup-node would write
+      # an .npmrc token placeholder even though this workflow authenticates via OIDC.
       - uses: actions/setup-node@v7
         with:
           node-version-file: .github/node/publishing/.node-version
-          registry-url: https://registry.npmjs.org
           cache: pnpm
 
       - name: Validate publication mode
