@@ -19,6 +19,9 @@ import { runProcess } from "./harness-playback.js";
 // - `generated-primary` and `packaged-primary` do the same with a
 //   `mode: primary` definition, and start the session as the agent. Codex has
 //   no agent a session runs as, so its lanes run neither.
+// - `generated-default` names that definition components.defaultAgent and starts
+//   the session with no --agent. Every lane runs it: Codex emulates the default
+//   through its project configuration.
 const LANES: Record<string, string> = {
   claude: "claude",
   codex: "codex",
@@ -71,6 +74,19 @@ const PRIMARY_CASES = (lane === "codex" ? [] : ["generated-primary", "packaged-p
   return { name, agent, model: lane === "opencode-v2" ? "hooknostic-playback" : ALT_MODEL };
 });
 
+// The default agent: named where the lane's harness names a session's agent,
+// on the model each harness gives such a session -- OpenCode v2 its configured
+// one, and the Codex lane its -c session override, which outranks the project
+// configuration the default is written to.
+const DEFAULT_CASE: { model: string; agent?: string } =
+  lane === "claude"
+    ? { model: ALT_MODEL, agent: "SessionStart:hn-probe" }
+    : lane === "opencode-v2"
+      ? { model: "hooknostic-playback", agent: "execute.before:hn-probe" }
+      : lane === "codex"
+        ? { model: "hooknostic-playback" }
+        : { model: ALT_MODEL, agent: "chat.message:hn-probe" };
+
 describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"})`, () => {
   it.each(CASES)(
     "$name: advertises the definition, delegates to it, and runs it on its instructions",
@@ -115,6 +131,23 @@ describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"}
     },
     300_000,
   );
+
+  it("generated-default: starts the session as the project's default agent, with no --agent", async () => {
+    const { summary, output } = await drive("generated-default");
+
+    expect(summary.playbackErrors).toEqual([]);
+    expect(summary.child.turns.length, output).toBeGreaterThan(0);
+    for (const turn of summary.child.turns) {
+      expect(turn.markerInSystem).toBe(true);
+      expect(turn.model).toBe(DEFAULT_CASE.model);
+    }
+    expect(summary.parent.toolBearingRequests, output).toBe(0);
+    if (DEFAULT_CASE.agent === undefined) {
+      // Codex only emulates the default through its configuration: the
+      // session's hooks cannot tell it is the agent (ADR-0027, decision 10).
+      expect(summary.identity.some((row) => row.endsWith(":hn-probe"))).toBe(false);
+    } else expect(summary.identity).toContain(DEFAULT_CASE.agent);
+  }, 300_000);
 
   it.skipIf(lane === "codex")(
     "scoped-primary: a hook scoped to the agent acts in a session running as it (ADR-0028)",

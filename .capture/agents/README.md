@@ -327,6 +327,12 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
     names the agent the projection gives it: `hn-plugin:hn-probe` on Claude and
     `hn-plugin-hn-probe` on OpenCode.
   - **`scoped-primary`** synchronizes it with the `scoped` hooks.
+  - **`generated-default`** also names it `components.defaultAgent` and starts
+    the session with no agent option. Codex runs it too, on the configuration
+    Hooknostic writes for the default. Every family, Codex included, ran the
+    session on its instructions. Claude and OpenCode named it on the session's
+    events and Codex did not. The Codex model was the agent's in `codex-home` and
+    the `-c` override in `codex`, which outranks project configuration.
   - **Results.** On Claude 2.1.283 and 2.1.238, OpenCode 1.18.31 and 1.18.18,
     and OpenCode 2.0.17, each session ran as the agent on its instructions, and
     its own events named it. Claude and OpenCode v1 ran it on its native model,

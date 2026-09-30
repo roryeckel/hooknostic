@@ -251,7 +251,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, its model and its permission denies; primary agents were absent from the task tool and all agents present, and run --agent on a mode: subagent agent fell back to the default agent with a warning. A mode: primary definition synchronized by Hooknostic's project delivery ran as the session through run --agent, on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts).",
+          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, its model and its permission denies; primary agents were absent from the task tool and all agents present, and run --agent on a mode: subagent agent fell back to the default agent with a warning. A mode: primary definition synchronized by Hooknostic's project delivery ran as the session through run --agent, on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). With components.defaultAgent naming a synchronized mode: primary definition, a session started with no --agent ran as it (packages/cli/test/agent-definition-playback.test.ts, generated-default).",
         },
         {
           version: "1.18.18",

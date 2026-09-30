@@ -310,7 +310,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "developer_instructions, model and model_reasoning_effort at the top of a trusted project's .codex/config.toml applied to the session: the instructions as a developer message after Codex's base instructions, on that model and effort; its hook payloads carried no agent_type. Without a trust entry the instructions applied and the model did not. A [profiles.*] table in the project configuration was ignored as an unsupported project-local key, and --profile read only a user-level <name>.config.toml.",
+          what: "developer_instructions, model and model_reasoning_effort at the top of a trusted project's .codex/config.toml applied to the session: the instructions as a developer message after Codex's base instructions, on that model and effort; its hook payloads carried no agent_type. Without a trust entry the instructions applied and the model did not. A [profiles.*] table in the project configuration was ignored as an unsupported project-local key, and --profile read only a user-level <name>.config.toml. With components.defaultAgent naming a synchronized mode: primary definition, a session ran on its instructions with no custom agent file, on its model where the configuration was persisted and on a -c model override where one was given (packages/cli/test/agent-definition-playback.test.ts, generated-default).",
         },
         {
           version: "0.148.0",

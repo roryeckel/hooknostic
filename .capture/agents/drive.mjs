@@ -341,14 +341,18 @@ function buildTarget(harness) {
  * project by Hooknostic's own project delivery, so what the harness reads is
  * what a user's build writes.
  */
-async function syncGenerated(scratch, harness, mode = undefined) {
+async function syncGenerated(scratch, harness, mode = undefined, defaultAgent = undefined) {
   writePortableDefinition(scratch, harness, true, mode);
   const { registry, id, version } = buildTarget(harness);
   const target = { version, delivery: "project", output: `.hooknostic/artifacts/${id}` };
   const configPath = join(scratch, "hooknostic.config.ts");
   const config = {
     project: { root: "." },
-    components: { agents: ["./portable-agents"], ...acceptFor(harness, mode) },
+    components: {
+      agents: ["./portable-agents"],
+      ...acceptFor(harness, mode),
+      ...(defaultAgent === undefined ? {} : { defaultAgent }),
+    },
     targets: { [id]: target },
   };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
@@ -500,6 +504,9 @@ async function claudeSession(caseName) {
   // The *-primary cases deliver a `mode: primary` definition through
   // Hooknostic's own build and start the session as it.
   if (caseName === "generated-primary") await syncGenerated(scratch, "claude", "primary");
+  // generated-default: the same, named components.defaultAgent, and the
+  // session started with no --agent at all.
+  if (caseName === "generated-default") await syncGenerated(scratch, "claude", "primary", NAME);
   const scope = SCOPED.has(caseName)
     ? await syncScoped(scratch, "claude", await installedVersion("claude"), modeOf(caseName))
     : undefined;
@@ -531,7 +538,11 @@ async function claudeSession(caseName) {
   // its requests carry the instructions and go to the child backend; the parent
   // lane sees only requests that do not. They pass no --model, so the agent's
   // own model can show.
-  const primary = caseName.startsWith("primary-") || caseName === "deny-flag" || caseName.endsWith("-primary");
+  const primary =
+    caseName.startsWith("primary-") ||
+    caseName === "deny-flag" ||
+    caseName.endsWith("-primary") ||
+    caseName === "generated-default";
   if (["primary-flag", "primary-setting", "deny", "deny-flag"].includes(caseName)) {
     write(join(scratch, ".claude/agents", `${NAME}.md`), claudePrimaryAgent());
   }
@@ -744,7 +755,11 @@ async function codexSession(caseName, isolatedHome) {
       ? await syncScoped(scratch, isolatedHome ? "codex-home" : "codex", await installedVersion("codex"))
       : undefined;
   if (caseName === "generated") await syncGenerated(scratch, isolatedHome ? "codex-home" : "codex");
-  else if (scope?.built === true) {
+  // A primary default: Codex takes its instructions into the project's
+  // configuration, and every session runs on them.
+  else if (caseName === "generated-default") {
+    await syncGenerated(scratch, isolatedHome ? "codex-home" : "codex", "primary", NAME);
+  } else if (scope?.built === true) {
     // The synchronized definition is the agent under test.
   } else if (delegating || ["discover", "unknown-key", "untrusted"].includes(caseName)) {
     let agent = codexAgent() + (caseName === "unknown-key" ? 'hooknostic_unknown_key = "x"\n' : "");
@@ -780,18 +795,21 @@ async function codexSession(caseName, isolatedHome) {
     ...(scope ? [{ kind: "tool", disposition: "rewrite", marker: SCOPED_OTHER_WRITE }] : []),
     { kind: "text", text: CHILD_DONE },
   ];
-  const router = await startRouter(PROTOCOL.codex, parentScript, delegating ? shellTurns : DISCOVERY, onRequest);
+  const asDefault = caseName === "generated-default";
+  const childScript = delegating ? shellTurns : asDefault ? [{ kind: "text", text: CHILD_DONE }] : DISCOVERY;
+  const router = await startRouter(PROTOCOL.codex, parentScript, childScript, onRequest);
+  const prompt = asDefault ? PRIMARY_PROMPT : PROMPT;
   let result;
   try {
     result = isolatedHome
       ? await runCodexHome(
           scratch,
           router.baseUrl,
-          PROMPT,
+          prompt,
           caseName.startsWith("sandbox-") ? "workspace-write" : undefined,
           caseName !== "untrusted",
         )
-      : await driveCodex(scratch, { baseUrl: `${router.baseUrl}/v1`, name: MODEL }, PROMPT);
+      : await driveCodex(scratch, { baseUrl: `${router.baseUrl}/v1`, name: MODEL }, prompt);
   } finally {
     await router.close();
   }
@@ -868,7 +886,7 @@ const AS_AGENT = new Set([
   "scoped-primary",
 ]);
 /** Cases whose session should start as the agent without being told to. */
-const AS_DEFAULT = new Set(["default-agent", "inject-default"]);
+const AS_DEFAULT = new Set(["default-agent", "inject-default", "generated-default"]);
 
 async function opencodeV1Session(caseName) {
   // The tee plugin's dependency must match the harness build on PATH; CI's
@@ -892,6 +910,7 @@ async function opencodeV1Session(caseName) {
   if (caseName in MODE_CASES) write(join(scratch, ".opencode/agents", `${NAME}.md`), opencodeV1ModeAgent(MODE_CASES[caseName]));
   if (caseName === "generated") await syncGenerated(scratch, "opencode-v1");
   if (caseName === "generated-primary") await syncGenerated(scratch, "opencode-v1", "primary");
+  if (caseName === "generated-default") await syncGenerated(scratch, "opencode-v1", "primary", NAME);
   const scope = SCOPED.has(caseName)
     ? await syncScoped(scratch, "opencode-v1", await installedVersion("opencode"), modeOf(caseName))
     : undefined;
@@ -1056,6 +1075,7 @@ async function opencodeV2Session(caseName) {
   if (caseName in MODE_CASES) write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2ModeAgent(MODE_CASES[caseName]));
   if (caseName === "generated") await syncGenerated(project, "opencode-v2");
   if (caseName === "generated-primary") await syncGenerated(project, "opencode-v2", "primary");
+  if (caseName === "generated-default") await syncGenerated(project, "opencode-v2", "primary", NAME);
   const scope = SCOPED.has(caseName)
     ? await syncScoped(project, "opencode-v2", await installedVersion(executable, env), modeOf(caseName))
     : undefined;
@@ -1328,8 +1348,9 @@ const CASES = {
     "generated-primary",
     "packaged-primary",
     "scoped-primary",
+    "generated-default",
   ],
-  codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated", "scoped"],
+  codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated", "scoped", "generated-default"],
   "codex-home": [
     "direct",
     "sandbox-read-only",
@@ -1338,6 +1359,7 @@ const CASES = {
     "generated",
     "scoped",
     ...CODEX_PRIMARY_CASES,
+    "generated-default",
   ],
   "opencode-v1": [
     "direct",
@@ -1356,6 +1378,7 @@ const CASES = {
     "generated-primary",
     "packaged-primary",
     "scoped-primary",
+    "generated-default",
   ],
   "opencode-v2": [
     "direct",
@@ -1373,6 +1396,7 @@ const CASES = {
     "generated-primary",
     "packaged-primary",
     "scoped-primary",
+    "generated-default",
   ],
 };
 
