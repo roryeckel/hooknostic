@@ -49,7 +49,7 @@ export { generateOpenCodeArtifacts } from "./generate.js";
 export { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
 export { createHooknosticHooks } from "./shim.js";
-export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
+export type { OpenCodeHooks, OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
 export {
   classifyOpenCodeTool,
   opencodeFileCodec,

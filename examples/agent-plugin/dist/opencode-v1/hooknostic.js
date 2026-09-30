@@ -5496,6 +5496,7 @@ var OPENCODE_V2_FILE_SHAPES = {
   patch: { patchKey: "patchText" }
 };
 var opencodeV2FileCodec = fileCodec(OPENCODE_V2_FILE_SHAPES);
+var DISPOSE_CAP_MS = 15e3;
 function createHooknosticHooks(plugin, options, pluginInput) {
   const targetId = options.targetId ?? "opencode";
   const invocation = {
@@ -5636,15 +5637,50 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     } catch {
     }
   };
+  const inflight = /* @__PURE__ */ new Set();
+  const disposeBudgetMs = (() => {
+    const policyMs = options.policy?.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    const perEvent = /* @__PURE__ */ new Map();
+    for (const hook2 of plugin.hooks) {
+      if (!hookAppliesToTarget(hook2, invocation.targetId)) continue;
+      perEvent.set(hook2.event, (perEvent.get(hook2.event) ?? 0) + (hook2.timeoutMs ?? policyMs));
+    }
+    return Math.min(DISPOSE_CAP_MS, Math.max(0, ...perEvent.values()) + POST_TIMEOUT_MS);
+  })();
+  const dispose = async () => {
+    const deadline = Date.now() + disposeBudgetMs;
+    let timer;
+    try {
+      while (inflight.size > 0) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return;
+        const expired = await Promise.race([
+          Promise.allSettled([...inflight]).then(() => false),
+          new Promise((resolvePromise) => {
+            timer = setTimeout(() => resolvePromise(true), remaining);
+          })
+        ]);
+        clearTimeout(timer);
+        if (expired) return;
+      }
+    } catch {
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+  };
   const hooks = {};
   const callback = (hook2) => async (input, output) => {
-    await runFailingOpen({
+    const pending = runFailingOpen({
       hook: hook2,
       directory: pluginInput.directory,
       ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
       input,
       output
     });
+    inflight.add(pending);
+    const settle = () => void inflight.delete(pending);
+    void pending.then(settle, settle);
+    await pending;
   };
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
   if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
@@ -5659,6 +5695,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   if (events.has("session.start") || events.has("session.end") || events.has("turn.stop") || events.has("context.compact.after")) {
     hooks["event"] = callback("event");
   }
+  if (Object.keys(hooks).length > 0) hooks.dispose = dispose;
   return hooks;
 }
 

@@ -50,6 +50,16 @@ also delivers every location's sessions, so session-start, turn-stop and
 compaction-after hooks dispatch only for sessions created in or prompted
 through the plugin's own location.
 
+A one-shot `opencode run` exits as soon as the session is idle, and neither
+family's host waits for a turn-stop hook on its own. On v1 the generated plugin
+returns `dispose`, which OpenCode awaits before it exits. It waits for the hooks
+still running, for up to their timeouts plus one 10 s host round trip, 15 s at
+most, so `run` can take that much longer to return. On v2, hooks run in the
+server process. Through the background service they finish there after `run`
+returns. `run --standalone` terminates its private server without calling plugin
+cleanup, so a hook still running then is cut off.
+[Capture](../.capture/opencode-dispose/README.md).
+
 Typed tool failures support approximate `tool.error` observation: a missing-file
 read is captured, while a plain exception from a custom tool bypasses the native
 after callback. Text and object output replacements reach the model, with objects
