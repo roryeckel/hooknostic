@@ -15,6 +15,8 @@ import {
   isRootNpmManifestPath,
   materializedPackageFiles,
   parseJsonObject,
+  projectPackageSkillTexts,
+  SKILL_REFERENCE_UNEXPANDED,
   validateNpmRuntimePackage,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
@@ -26,6 +28,7 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
+import { CLAUDE_PLUGIN_SKILL_TEXT } from "./skill-text.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
 const MANIFEST_PATH = ".claude-plugin/plugin.json";
@@ -273,6 +276,16 @@ export async function projectAgentPluginToClaude(
     };
   }
 
+  // A skill's SKILL.md is the one package file whose bytes may change: its
+  // body's ${SKILL_DIR} becomes ${CLAUDE_SKILL_DIR} (ADR-0028). A rewritten
+  // file is generated, not copied.
+  const skillTexts = projectPackageSkillTexts(
+    source.skills,
+    (path) => source.files.find((file) => file.path === path)?.contents,
+    CLAUDE_PLUGIN_SKILL_TEXT,
+    "Claude Code",
+  );
+
   for (const file of source.files) {
     if (
       file.path === "plugin.json" ||
@@ -298,8 +311,9 @@ export async function projectAgentPluginToClaude(
       continue;
     }
     if (insideRejectedSkill(file.path)) continue;
-    files.set(file.path, { path: file.path, contents: file.contents, mode: file.mode });
-    copiedPaths.add(file.path);
+    const rewritten = skillTexts.rewritten.get(file.path);
+    files.set(file.path, { path: file.path, contents: rewritten ?? file.contents, mode: file.mode });
+    if (rewritten === undefined) copiedPaths.add(file.path);
   }
 
   for (const file of source.files) {
@@ -527,6 +541,7 @@ export async function projectAgentPluginToClaude(
       ),
       omissions,
       deviations,
+      ...(skillTexts.degradations.length === 0 ? {} : { degradations: skillTexts.degradations }),
       copiedPaths: [...copiedPaths].filter((path) => files.has(path)).sort((a, b) => a.localeCompare(b)),
     },
   };
@@ -545,7 +560,19 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           rationale:
             "Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn.",
         },
-        "agent-plugin.skills": { level: "exact" },
+        "agent-plugin.skills": {
+          level: "exact",
+          rationale:
+            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028).",
+          degradations: [
+            {
+              id: SKILL_REFERENCE_UNEXPANDED,
+              summary:
+                "A SKILL.md that holds ${SKILL_DIR} in its frontmatter, or ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables in skill text, and the projection rewrites ${SKILL_DIR} in the body only.",
+              evidence: ".capture/skill-directory",
+            },
+          ],
+        },
         "agent-plugin.mcp.stdio": {
           level: "exact",
           deviations: [
@@ -585,6 +612,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-04",
         validatedOn: [
+          {
+            version: "2.1.285",
+            date: "2026-09-30",
+            method: "live-probe",
+            artifact: ".capture/skill-directory",
+            what: "A --plugin-dir plugin's skill, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes), ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA} and ${CLAUDE_SESSION_ID} expanded, and ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written, after a Base directory for this skill line.",
+          },
           {
             version: "2.1.260",
             date: "2026-09-27",

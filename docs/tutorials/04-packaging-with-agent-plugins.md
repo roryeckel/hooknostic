@@ -285,6 +285,13 @@ To keep every skill's authored name on OpenCode instead, and accept that another
 plugin's skill of the same name can hide it, set `skillNames: "authored"` on the
 `opencode` target.
 
+A skill that runs a script it ships names it with `${SKILL_DIR}` in its body, as in
+`node "${SKILL_DIR}/scripts/status.mjs"`. Claude's projection writes
+`${CLAUDE_SKILL_DIR}` there and the others write `.`, the form each harness resolves
+([ADR-0028](../decisions/0028-skill-directory-token.md)). A `${CLAUDE_PLUGIN_ROOT}` in a
+skill reaches Codex and OpenCode as written, so it fails the build there as the
+`skill-reference-unexpanded` degradation.
+
 `accept` works the same way for a deviation you have reviewed. Accepted items
 are still reported, as information
 ([ADR-0022](../decisions/0022-shortfall-policy.md)).

@@ -81,6 +81,53 @@ function manifestOf(plan: AgentPluginProjectionPlan): Record<string, unknown> {
 }
 
 describe("Agent Plugin to Codex projection", () => {
+  describe("skill text (ADR-0028)", () => {
+    const withSkill = (body: string): AgentPluginPackage => ({
+      ...source(),
+      skills: [
+        { name: "status", description: "Status", directory: "skills/status", manifestPath: "skills/status/SKILL.md" },
+      ],
+      files: [
+        ...source().files,
+        {
+          path: "skills/status/SKILL.md",
+          contents: encoder.encode(`---\nname: status\ndescription: Status\n---\n${body}`),
+          mode: 0o644,
+        },
+      ],
+    });
+    const text = (plan: AgentPluginProjectionPlan) => {
+      const contents = plan.files.find((candidate) => candidate.path === "skills/status/SKILL.md")!.contents;
+      return typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+    };
+
+    it("writes `.` for ${SKILL_DIR}, a path Codex's models resolve against the skill's directory", async () => {
+      const plan = await project(withSkill('Run `node "${SKILL_DIR}/scripts/status.mjs"`.\n'));
+      expect(text(plan)).toBe('---\nname: status\ndescription: Status\n---\nRun `node "./scripts/status.mjs"`.\n');
+      expect(plan.summary.copiedPaths).not.toContain("skills/status/SKILL.md");
+      expect(plan.summary.degradations).toBeUndefined();
+    });
+
+    it("reports a Claude Code variable Codex shows as written", async () => {
+      const plan = await project(withSkill('Run "${CLAUDE_PLUGIN_ROOT}/x" and "${CLAUDE_SKILL_DIR}/y".\n'));
+      expect(text(plan)).toContain("${CLAUDE_PLUGIN_ROOT}/x");
+      expect(plan.summary.copiedPaths).toContain("skills/status/SKILL.md");
+      expect(plan.summary.degradations).toEqual([
+        {
+          id: "skill-reference-unexpanded",
+          component: "agent-plugin.skills",
+          name: "status",
+          path: "skills/status/SKILL.md",
+          reason:
+            'skill "status" contains "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_SKILL_DIR}", which Codex shows the model as written.',
+        },
+      ]);
+      expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual([
+        "skill-reference-unexpanded",
+      ]);
+    });
+  });
+
   // The native route expands no Agent Plugins placeholder and binds neither
   // variable, but it does join a declared `cwd` to the plugin root and honour it
   // at spawn (.capture/codex-native-mcp). So every server registers the same way

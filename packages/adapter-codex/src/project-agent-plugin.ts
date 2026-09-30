@@ -17,6 +17,9 @@ import {
   isRootNpmManifestPath,
   materializedPackageFiles,
   parseJsonObject,
+  projectPackageSkillTexts,
+  RELATIVE_SKILL_TEXT,
+  SKILL_REFERENCE_UNEXPANDED,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
@@ -503,7 +506,19 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           rationale:
             "Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks.",
         },
-        "agent-plugin.skills": { level: "exact" },
+        "agent-plugin.skills": {
+          level: "exact",
+          rationale:
+            "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A model without those instructions, such as one behind a custom provider, is not told.",
+          degradations: [
+            {
+              id: SKILL_REFERENCE_UNEXPANDED,
+              summary:
+                "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text.",
+              evidence: ".capture/skill-directory",
+            },
+          ],
+        },
         "agent-plugin.mcp.stdio": {
           level: "emulated",
           rationale:
@@ -533,6 +548,13 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-08",
         validatedOn: [
+          {
+            version: "0.154.0",
+            date: "2026-09-30",
+            method: "live-probe",
+            artifact: ".capture/skill-directory",
+            what: "Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none.",
+          },
           {
             version: "0.154.0",
             date: "2026-09-21",
@@ -754,6 +776,16 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     // copying that tree verbatim has Codex discover a skill reported as
     // skipped.
     const insideRejectedSkill = isRejectedSkillPath(source);
+    // A skill's SKILL.md is the one copied file whose bytes may change: its
+    // body's ${SKILL_DIR} becomes `.` (ADR-0028). A rewritten file is
+    // generated, not copied, but still occupies its path for every collision
+    // check below.
+    const skillTexts = projectPackageSkillTexts(
+      source.skills,
+      (path) => source.files.find((file) => file.path === path)?.contents,
+      RELATIVE_SKILL_TEXT,
+      "Codex",
+    );
 
     for (const file of source.files) {
       // The root manifest is what suppresses hooks: a package carrying it and a
@@ -807,7 +839,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         continue;
       }
       if (insideRejectedSkill(file.path)) continue;
-      files.push({ path: file.path, contents: file.contents, mode: file.mode });
+      files.push({ path: file.path, contents: skillTexts.rewritten.get(file.path) ?? file.contents, mode: file.mode });
       copiedPaths.push(file.path);
     }
 
@@ -1298,7 +1330,10 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       summary: {
         components: counts,
         omissions,
-        copiedPaths: [...copiedPaths].sort((a, b) => a.localeCompare(b)),
+        ...(skillTexts.degradations.length === 0 ? {} : { degradations: skillTexts.degradations }),
+        copiedPaths: [...copiedPaths]
+          .filter((path) => !skillTexts.rewritten.has(path))
+          .sort((a, b) => a.localeCompare(b)),
       },
     };
   },

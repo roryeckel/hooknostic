@@ -71,6 +71,51 @@ function parsed(plan: Awaited<ReturnType<typeof projectAgentPluginToClaude>>, pa
 }
 
 describe("Agent Plugin to Claude projection", () => {
+  describe("skill text (ADR-0028)", () => {
+    const withBody = (body: string): AgentPluginPackage => ({
+      ...source(),
+      files: source().files.map((entry) =>
+        entry.path === "skills/review/SKILL.md"
+          ? file(entry.path, `---\nname: review\ndescription: Review code\n---\n${body}`)
+          : entry,
+      ),
+    });
+    const project = (body: string) =>
+      projectAgentPluginToClaude(withBody(body), { target, hookArtifacts: [], support, onUnsupported: "error" });
+    const text = (plan: Awaited<ReturnType<typeof project>>) => {
+      const contents = plan.files.find((candidate) => candidate.path === "skills/review/SKILL.md")!.contents;
+      return typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+    };
+
+    it("writes ${CLAUDE_SKILL_DIR} for ${SKILL_DIR} and reports the file as generated", async () => {
+      const plan = await project('Run `node "${SKILL_DIR}/scripts/status.mjs"`.\n');
+      expect(text(plan)).toBe(
+        '---\nname: review\ndescription: Review code\n---\nRun `node "${CLAUDE_SKILL_DIR}/scripts/status.mjs"`.\n',
+      );
+      expect(plan.summary.copiedPaths).not.toContain("skills/review/SKILL.md");
+      expect(plan.summary.degradations).toBeUndefined();
+    });
+
+    it("keeps Claude's own variables, which it expands, and reports an Agent Plugins placeholder", async () => {
+      const plan = await project('Run "${CLAUDE_PLUGIN_ROOT}/x" with "${PLUGIN_ROOT}/y".\n');
+      expect(text(plan)).toContain("${CLAUDE_PLUGIN_ROOT}/x");
+      expect(plan.summary.copiedPaths).toContain("skills/review/SKILL.md");
+      expect(plan.summary.degradations).toEqual([
+        {
+          id: "skill-reference-unexpanded",
+          component: "agent-plugin.skills",
+          name: "review",
+          path: "skills/review/SKILL.md",
+          reason: 'skill "review" contains "${PLUGIN_ROOT}", which Claude Code shows the model as written.',
+        },
+      ]);
+      // Declared, so core reports it as HN101 rather than a projector defect.
+      expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual([
+        "skill-reference-unexpanded",
+      ]);
+    });
+  });
+
   it("preserves opaque Notification hooks alongside generated hooks through final validation", async () => {
     const notification = [{ hooks: [{ type: "command", command: "echo native" }] }];
     const generated = [{ hooks: [{ type: "command", command: "node runtime/hooknostic.mjs" }] }];

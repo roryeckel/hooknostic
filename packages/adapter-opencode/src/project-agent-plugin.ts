@@ -14,6 +14,8 @@ import {
   isRejectedSkillPath,
   materializedPackageFiles,
   npmPublicationProblems,
+  projectPackageSkillTexts,
+  RELATIVE_SKILL_TEXT,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -26,6 +28,7 @@ import {
   packageEntrySource,
 } from "./generate.js";
 import { qualifiedSkillNames, renameSkillManifest } from "./skill-names.js";
+import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
 
 /**
  * Package delivery emits an npm package, so every path here is package-root
@@ -383,10 +386,19 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
     // Under skillNames: "authored" each skill ships exactly as written, which
     // is exact delivery, and without the declaration nothing is renamed or
     // reported (ADR-0021).
+    // The skill-text degradation (ADR-0028) is not about names, so it stays.
     supportFor: (target, matrix) => {
       const skills = matrix["agent-plugin.skills"];
       if (target.skillNames !== "authored" || skills === undefined || skills.level === "unsupported") return matrix;
-      return { ...matrix, "agent-plugin.skills": { level: "exact" } };
+      const degradations = (skills.degradations ?? []).filter((item) => item.id !== SKILL_NAME_UNQUALIFIED);
+      return {
+        ...matrix,
+        "agent-plugin.skills": {
+          level: "exact",
+          rationale: `Each skill keeps its authored name. ${OPENCODE_SKILL_TEXT_RATIONALE}`,
+          ...(degradations.length === 0 ? {} : { degradations }),
+        },
+      };
     },
     // The hook module and the package share `.opencode/plugins/`.
     profiles: [
@@ -407,9 +419,11 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
                   "A skill that cannot be named `<plugin>-<skill>` -- the name would pass 64 characters or break the Agent Skills name rules, duplicate another skill in the package, or sit on no rewritable frontmatter line -- keeps its bare name in OpenCode's flat skill namespace, where another plugin's skill of that name would hide it.",
                 evidence: ".capture/opencode-skill-namespace",
               },
+              OPENCODE_SKILL_REFERENCE_DEGRADATION,
             ],
             rationale:
-              "OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts.",
+              "OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. " +
+              OPENCODE_SKILL_TEXT_RATIONALE,
           },
           "agent-plugin.mcp.stdio": {
             level: "emulated",
@@ -435,6 +449,13 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
         source: {
           date: "2026-09-08",
           validatedOn: [
+            {
+              version: "1.18.33",
+              date: "2026-09-30",
+              method: "live-probe",
+              artifact: ".capture/skill-directory",
+              what: 'Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory."',
+            },
             {
               version: "1.18.31",
               date: "2026-09-23",
@@ -618,11 +639,19 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
             `qualified by plugin and another plugin's skill of that name would hide it: ${reason}.`,
         });
       }
+      // Then its body: ${SKILL_DIR} becomes `.` (ADR-0028).
+      const skillTexts = projectPackageSkillTexts(
+        source.skills,
+        (path) => renamed.get(path) ?? source.files.find((file) => file.path === path)?.contents,
+        RELATIVE_SKILL_TEXT,
+        "OpenCode",
+      );
+      degradations.push(...skillTexts.degradations);
       const rewrittenPaths: string[] = [];
       for (const file of source.files) {
         if (insideRejectedSkill(file.path)) continue;
         const path = `${PACKAGE_DIR}/${file.path}`;
-        const rewritten = renamed.get(file.path);
+        const rewritten = skillTexts.rewritten.get(file.path) ?? renamed.get(file.path);
         files.push({ path, contents: rewritten ?? file.contents, mode: file.mode });
         (rewritten === undefined ? copiedPaths : rewrittenPaths).push(path);
       }
