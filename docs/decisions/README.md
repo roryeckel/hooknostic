@@ -36,6 +36,7 @@ Read these when you want to know *why* something works the way it does, not just
 | [0025 — A handler may return an ordered list of effects](0025-effect-lists.md) | How does one hook both notify the user and keep the agent working? |
 | [0026 — A normalized, read-only view of the files a tool targets](0026-normalized-file-view.md) | How does a file guard read the target path when every harness names it differently? |
 | [0027 — Hooks declare the optional event fields they read](0027-event-field-fidelity.md) | How do I find out which harness never sends `lastMessage`, before my hook ships there? |
+| [0028 — A portable token for a skill's own directory](0028-skill-directory-token.md) | How does a skill name a script it ships, so every harness finds it? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

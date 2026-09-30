@@ -89,7 +89,7 @@ projection are independent phases composed into one atomic per-target output.
 | --- | --- |
 | Policy engine / guardrail DSL | Interoperability layer, not a security product. |
 | MCP runtime abstraction | MCP is already portable; projectors only translate native configuration. |
-| Agent Skills authoring abstraction | Skills define their own portable convention; projectors validate and copy them. |
+| Agent Skills authoring abstraction | Skills define their own portable convention; projectors validate and copy them, rewriting only the `${SKILL_DIR}` token ([ADR-0028](decisions/0028-skill-directory-token.md)) and OpenCode's names (ADR-0021). |
 | Custom tool abstraction | Separate problem. |
 | Daemon / background service | Unjustified lifecycle/state/socket complexity. |
 | Persistent state API | Portable process-lifetime semantics deferred ([ADR-0002](decisions/0002-invocation-stateless-contract.md)). |
@@ -875,7 +875,8 @@ default; `onInvalid: "warn"` restores the loader's lenient skip-and-continue. An
 component the harness treats differently from the specification is an HN106 deviation:
 a warning by default, and fatal under `onDeviation: "error"`. Nothing is omitted either
 way (ADR-0019). An emitted item the projection cannot translate, such as an OpenCode skill
-it cannot name for its plugin, is an HN101 degradation: fatal by default, and a warning
+it cannot name for its plugin, or a skill whose text keeps a reference the target shows
+the model as written (ADR-0028), is an HN101 degradation: fatal by default, and a warning
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
 
