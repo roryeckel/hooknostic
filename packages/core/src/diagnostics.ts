@@ -1,5 +1,5 @@
 import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
-import type { CapabilityId, HookEventName, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HookEventName, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
 import { RUNTIME_DIAGNOSTIC_CODES } from "@hooknostic/sdk";
 
 /**
@@ -19,6 +19,7 @@ export const DIAGNOSTIC_CODES = {
   HN105: "declared MCP environment cannot be forwarded",
   HN106: "Agent Plugin behavior deviates from the specification",
   HN107: "project wiring is read from the root checkout, not this linked worktree",
+  HN108: "event field not produced exactly",
   HN201: "required capability unsupported",
   HN202: "event unavailable",
   HN203: "target version outside adapter data",
@@ -54,6 +55,8 @@ export interface Diagnostic {
   hookId?: string;
   event?: HookEventName;
   capability?: CapabilityId;
+  /** A declared optional event field, for an HN108 (ADR-0027). */
+  field?: EventFieldId;
   component?: AgentPluginComponentId;
   target?: string;
   /** The hook's declared requirement for the capability. */
@@ -85,11 +88,12 @@ export function formatDiagnostic(d: Diagnostic): string {
   if (d.hookId) lines.push(`  hook "${d.hookId}"`);
   if (d.location || d.hookId) lines.push("");
   if (d.capability) lines.push(`  requires: ${d.capability}${d.requested ? ` (${d.requested})` : ""}`);
+  if (d.field) lines.push(`  reads:    ${d.field}`);
   if (d.component) lines.push(`  component: ${d.component}`);
   if (d.target) lines.push(`  target:   ${d.target}`);
   if (d.support) lines.push(`  support:  ${d.support}`);
   if (d.deviation) lines.push(`  deviation: ${d.deviation}`);
-  if (d.capability || d.component || d.target || d.support || d.deviation) lines.push("");
+  if (d.capability || d.field || d.component || d.target || d.support || d.deviation) lines.push("");
   lines.push(`  ${d.message}`);
   if (d.rationale) {
     lines.push("");

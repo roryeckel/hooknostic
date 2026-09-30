@@ -35,6 +35,40 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.283 | 2026-09-27 | captured | `fixtures/claude/2.1` | Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised |
 | 2.1.283 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `session.end.correlation.turnId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.turnId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `tool.error.correlation.turnId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.turnId` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `context.compact.before.correlation.turnId` | exact | — |
+| `context.compact.after.correlation.turnId` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.turnId` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.turnId` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `turn.stop.lastMessage` | exact | — |
+| `turn.stop.correlation.turnId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
+
 #### Project delivery
 
 | Component | Support | Rationale |
@@ -121,6 +155,35 @@ Projection validation records:
 | 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-worktree-hooks` | In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at all when that has none. A Codex artifact generated into a linked worktree is inert there. |
 | 0.156.1 | 2026-09-27 | captured | `fixtures/codex/0.148` | apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path |
 | 0.158.0 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `prompt.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.turnId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.turnId` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `context.compact.before.correlation.turnId` | exact | — |
+| `context.compact.after.correlation.turnId` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.turnId` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.turnId` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `turn.stop.lastMessage` | exact | — |
+| `turn.stop.correlation.turnId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
@@ -229,8 +292,22 @@ Projection validation records:
 | 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-context-channel` | OpenAI-OAuth path: the same output.system push reaches the model even though prepare() sends no system messages on it, joining the array into the provider-options instructions field instead. Captured effect-level rather than on the wire, because the OAuth path ignores a baseURL override and reaches OpenAI directly: with no plugin the model answered the prompt normally, and with an injected directive it returned the directive's token instead. So the channel is provider-path independent, but its delivered shape is not. |
 | 1.18.31 | 2026-09-15 | live-probe | `.capture/harness-playback` | model.request.before delivery still holds on a build past the one it was established on, through the repeatable offline lane rather than a one-off probe: driven against a loopback model server, a string pushed into output.system arrived as a role:"system" message in EVERY recorded request of the session, which is the per-request cadence cell itself and not merely presence somewhere among them. Deliberately SCOPED -- openai-compatible provider path, wire-level, one capability family. It re-confirms neither the OpenAI-OAuth delivery shape nor the chat.params negative, both of which rest on the 1.18.30 records above; and being a scoped record it does not raise the scheduled-playback baseline, so harness-watch still owes this build a full lane sweep (ADR-0009). |
 | 1.18.31 | 2026-09-27 | captured | `fixtures/opencode/1.18` | read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch |
+| 1.18.32 | 2026-09-28 | captured | `.capture/opencode-turn-fields` | turn fields over the loopback model: at session.idle, client.session.messages answers { data, request, response } with data a list of { info, parts }; one assistant message per model step, each with parentID = the user message id, and the final text part holds the last reply. chat.message input carried no messageID; output.message.id is the user message id (fixtures/opencode/1.18 session-idle-with-messages, chat-message-without-message-id). |
 | 1.18.33 | 2026-09-29 | captured | `fixtures/opencode/1.18` | chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated |
 | 1.18.33 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | the id of the user message chat.message creates (output.message.id), which every assistant message of the turn names as its parentID. Not input.messageID: that is the caller-supplied id, absent in the 1.18.32 capture. |
+| `turn.stop.lastMessage` | emulated | session.idle carries only the session id, so the shim reads the session back with client.session.messages and joins the text parts of the latest assistant message of the turn that has any (synthetic and ignored parts skipped). One assistant message per model step, as on Claude. Absent when the host supplies no client, the read fails or exceeds its 10 s bound, or the turn produced no text. Read only when a turn.stop hook declares this field or correlation.turnId. On an aborted turn the text is whatever was stored at the first of its two idles. |
+| `turn.stop.correlation.turnId` | emulated | the parentID of the turn's last assistant message, from the same session read as lastMessage: the id prompt.before reports for the prompt that started the turn. Absent under the same conditions as lastMessage, or when no assistant message followed the last user message. |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
@@ -307,7 +384,23 @@ Projection validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Persistent serve sessions (stop drive; fixtures/opencode/2.0/stop-audit): after a succeeded execution, synthetic with resume starts exactly one more execution whose request carries the stop reason as a user-role message; resume:false starts none, is not rendered by the real TUI meanwhile, and reaches the model with the next user prompt. A user interrupt, a model failure and a subagent child (session.created parentID) post nothing. synthetic does not run the prompt hook. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks. |
 | 2.0.17 | 2026-09-27 | captured | `fixtures/opencode/2.0` | A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch) |
+| 2.0.18 | 2026-09-28 | captured | `fixtures/opencode/2.0` | Turn fields over the loopback model (observe drive, isolated state): the plugin's event subscription receives session.execution.started, session.step.*, session.text.started/delta/ended ({ sessionID, assistantMessageID, ordinal, text }) and then session.execution.succeeded ({ sessionID } only). Each model step has its own assistantMessageID; the prompt hook's messageID matches session.inbox.enqueued's inboxID (turn-fields/events.jsonl, execution-succeeded-with-turn). |
 | 2.0.18 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | the prompt hook's messageID, the id of the user message it admits. |
+| `turn.stop.lastMessage` | emulated | execution completion carries only the session id. The shim buffers the session.text.ended events of each execution from the event subscription and joins, in ordinal order, the text of the last assistant message that produced any (one message per model step, as on Claude). Only sessions the plugin tracks, only while subscribed, and only when a turn.stop hook declares this field. A failed or interrupted execution reports whatever text had ended. |
+| `turn.stop.correlation.turnId` | emulated | the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none. |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 

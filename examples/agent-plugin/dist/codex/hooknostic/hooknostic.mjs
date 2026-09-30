@@ -122,7 +122,10 @@ var init_effects = __esm({
 });
 
 // ../../packages/sdk/dist/events.js
-var HOOK_EVENT_NAMES;
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
+var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS;
 var init_events = __esm({
   "../../packages/sdk/dist/events.js"() {
     "use strict";
@@ -141,6 +144,53 @@ var init_events = __esm({
       "agent.stop",
       "turn.stop"
     ];
+    TOOL_SCOPED_EVENTS = [
+      "tool.before",
+      "tool.after",
+      "tool.error",
+      "permission.request"
+    ];
+  }
+});
+
+// ../../packages/sdk/dist/fields.js
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
+var OPTIONAL_EVENT_FIELDS, CORRELATION_FIELDS, TOOL_CORRELATION_FIELD, ALL_EVENT_FIELD_IDS, FIELD_SET;
+var init_fields = __esm({
+  "../../packages/sdk/dist/fields.js"() {
+    "use strict";
+    init_events();
+    OPTIONAL_EVENT_FIELDS = {
+      "session.start": ["how"],
+      "session.end": ["reason"],
+      "prompt.before": [],
+      "model.request.before": [],
+      "tool.before": [],
+      "tool.after": [],
+      "tool.error": ["error.message"],
+      "permission.request": [],
+      "context.compact.before": ["trigger"],
+      "context.compact.after": [],
+      "agent.start": ["agent.id", "agent.type"],
+      "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+      "turn.stop": ["lastMessage"]
+    };
+    CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+    TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+    ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+    FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
   }
 });
 
@@ -166,6 +216,18 @@ function canonicalCapabilities(event, hookId, declared) {
   }
   return canonical;
 }
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const def = {
     event,
@@ -179,12 +241,15 @@ function hook(event, spec) {
     def.targets = spec.targets;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 var init_hook = __esm({
   "../../packages/sdk/dist/hook.js"() {
     "use strict";
     init_capabilities();
+    init_fields();
   }
 });
 
@@ -4559,13 +4624,14 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
     init_zod();
     init_capabilities();
     init_events();
+    init_fields();
     init_json();
     init_support();
     init_tools();
@@ -4574,6 +4640,11 @@ var init_schemas = __esm({
     supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
     requirementLevelSchema = external_exports.enum(["required", "optional"]);
     toolKindSchema = external_exports.enum(TOOL_KINDS);
+    eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+    fieldAcceptanceSchema = external_exports.string().refine((value) => {
+      const colon = value.indexOf(":");
+      return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+    }, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
     MAX_TIMER_DELAY_MS = 2147483647;
     packageMaterializerSchema = external_exports.custom((value) => {
       if (typeof value !== "object" || value === null)
@@ -4643,7 +4714,8 @@ var init_schemas = __esm({
     compatibilityPolicySchema = external_exports.object({
       minimum: supportLevelSchema.optional(),
       onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-      optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+      optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+      accept: external_exports.array(fieldAcceptanceSchema).optional()
     }).strict();
     runtimePolicySchema = external_exports.object({
       onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4871,6 +4943,7 @@ var init_schemas = __esm({
       // and would time the hook out permanently.
       timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
       capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+      fields: external_exports.array(eventFieldIdSchema).optional(),
       run: external_exports.custom((v) => typeof v === "function", {
         message: "run must be a function"
       })
@@ -4923,6 +4996,7 @@ var init_dist = __esm({
     init_config();
     init_effects();
     init_events();
+    init_fields();
     init_hook();
     init_json();
     init_plugin();
@@ -5691,8 +5765,8 @@ await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hook
 /*!
 Bundled package notices
 
-@hooknostic/adapter-codex@0.2.0
-@hooknostic/runtime@0.2.0
+@hooknostic/adapter-codex@0.3.0
+@hooknostic/runtime@0.3.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5900,8 +5974,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.2.0
-hooknostic@0.2.0
+@hooknostic/sdk@0.3.0
+hooknostic@0.3.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

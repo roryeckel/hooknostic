@@ -2,6 +2,8 @@ import type { CanonicalCapability, CapabilityId, CapabilityKey, CapabilitySpelli
 import { canonicalCapability } from "./capabilities.js";
 import type { Effect, EffectForCapability } from "./effects.js";
 import type { HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
+import type { EventFieldId, FieldKey } from "./fields.js";
+import { canonicalField } from "./fields.js";
 import type { RequirementLevel, SupportLevel } from "./support.js";
 import type { MatchedKind, ToolMatch } from "./tools.js";
 
@@ -117,6 +119,17 @@ export interface HookSpec<
   capabilities?: Record<K, RequirementLevel>;
 
   /**
+   * The optional event fields the handler reads, such as `"lastMessage"` or
+   * `"correlation.turnId"` (ADR-0027). The build reports HN108 on every target
+   * that cannot produce one exactly, and fails where it is never produced
+   * unless accepted with `compatibility.accept`. An in-process target may do
+   * the work of producing a field only when some hook declares it, so declare
+   * every optional field the hook depends on. Spelled relative to the event or
+   * in full; `hook()` stores the full id.
+   */
+  fields?: readonly NoInfer<FieldKey<E>>[];
+
+  /**
    * Return nothing to continue unchanged, one effect, or an ordered list of
    * effects -- the same as consecutive handlers returning them one at a time,
    * with a terminal effect (`block`, `preventStop`, …) allowed only last
@@ -141,6 +154,8 @@ export interface HookDefinition {
   targets?: TargetScope;
   timeoutMs?: number;
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
+  /** Declared optional fields, as full ids; absent when the hook declared none. */
+  fields?: readonly EventFieldId[];
   run(event: HookEventMap[HookEventName], ctx: HookContext): HookReturn | Promise<HookReturn>;
 }
 
@@ -171,6 +186,20 @@ function canonicalCapabilities(
   return canonical as Partial<Record<CapabilityId, RequirementLevel>>;
 }
 
+/** Rewrite an authored field list to full ids, refusing a field named twice. */
+function canonicalFields(event: HookEventName, hookId: string, declared: readonly string[]): EventFieldId[] {
+  const spelledAs = new Map<string, string>();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== undefined) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()] as EventFieldId[];
+}
+
 export function hook<
   E extends HookEventName,
   K extends CapabilityKey<E> = never,
@@ -185,5 +214,6 @@ export function hook<
   if (spec.match !== undefined) def.match = spec.match;
   if (spec.targets !== undefined) def.targets = spec.targets;
   if (spec.timeoutMs !== undefined) def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== undefined) def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }

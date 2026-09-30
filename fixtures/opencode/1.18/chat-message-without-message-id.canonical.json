@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "event": "prompt.before",
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "chat.message"
+  },
+  "session": {
+    "id": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project"
+  },
+  "correlation": {
+    "turnId": "msg_0e9be5601001jU9sKIkSP3X0wQ"
+  },
+  "prompt": "\"Use the shell once, then answer.\""
+}

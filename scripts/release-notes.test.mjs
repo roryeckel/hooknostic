@@ -47,7 +47,7 @@ it("generates release scope and separate reference rows for both OpenCode famili
     }
     const highlights = readFileSync(join(root, "docs/release-highlights.md"), "utf8");
     expect(notes.startsWith(highlights.trim().split("\n")[0])).toBe(true);
-    expect(notes).toContain("Stop prevention and notification are approximate. Both post a synthetic");
+    expect(notes).toContain("A declared field a target never produces fails the build with **HN108**.");
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/docs/opencode-families.md`);
     // A release body resolves relative links against /releases/tag/..., so
     // every highlights link must leave absolute, including ../ paths.

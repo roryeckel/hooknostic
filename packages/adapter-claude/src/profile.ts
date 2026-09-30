@@ -84,6 +84,40 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       ],
       notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
     },
+    // Optional event fields (ADR-0027): exactly what the captured fixtures in
+    // fixtures/claude/2.1 carry. prompt_id is on every payload except
+    // SessionStart; agent_id is claimed only where a fixture shows it (the
+    // subagent events), not on events fired inside a subagent, which no
+    // capture has recorded.
+    fields: {
+      "session.start.how": { level: "exact" },
+      "session.end.reason": { level: "exact" },
+      "session.end.correlation.turnId": { level: "exact" },
+      "prompt.before.correlation.turnId": { level: "exact" },
+      "tool.before.correlation.turnId": { level: "exact" },
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.turnId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.error.error.message": { level: "exact" },
+      "tool.error.correlation.turnId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+      "permission.request.correlation.turnId": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+      "context.compact.before.trigger": { level: "exact" },
+      "context.compact.before.correlation.turnId": { level: "exact" },
+      "context.compact.after.correlation.turnId": { level: "exact" },
+      "agent.start.agent.id": { level: "exact" },
+      "agent.start.agent.type": { level: "exact" },
+      "agent.start.correlation.turnId": { level: "exact" },
+      "agent.start.correlation.agentId": { level: "exact" },
+      "agent.stop.agent.id": { level: "exact" },
+      "agent.stop.agent.type": { level: "exact" },
+      "agent.stop.lastMessage": { level: "exact" },
+      "agent.stop.correlation.turnId": { level: "exact" },
+      "agent.stop.correlation.agentId": { level: "exact" },
+      "turn.stop.lastMessage": { level: "exact" },
+      "turn.stop.correlation.turnId": { level: "exact" },
+    },
     matrix: {
       "session.start.observe": { level: "exact" },
       "session.start.context.add": { level: "exact" },

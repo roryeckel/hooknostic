@@ -87,11 +87,13 @@ describe("loadConfig", () => {
       minimum: "emulated",
       onBelowMinimum: "error",
       optionalUnavailable: "info",
+      accept: [],
     });
     expect(effectiveCompatibility(config, "opencode")).toEqual({
       minimum: "approximate",
       onBelowMinimum: "warn",
       optionalUnavailable: "info",
+      accept: [],
     });
     expect(effectiveRuntime(config)).toEqual({
       onHookError: "continue",

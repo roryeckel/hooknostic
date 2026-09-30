@@ -6,6 +6,7 @@ import { withTimeout } from "../bounded-post.js";
 import type { OpenCodeShimOptions } from "../shim.js";
 import type { OpenCodeV2Application } from "./apply.js";
 import { planOpenCodeV2Application } from "./apply.js";
+import type { OpenCodeV2Execution } from "./decode.js";
 import { decodeOpenCodeV2, OpenCodeV2DecodeError } from "./decode.js";
 import { opencodeV2FileCodec, opencodeV2ShellCodec } from "./toolmap.js";
 
@@ -46,6 +47,26 @@ export async function setupOpenCodeV2(
     return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
   const here = comparable(ctx.location.directory);
+  // An execution's completion carries only the session id, so the turn's
+  // fields are assembled from what came before it, and only when a hook
+  // declares one (ADR-0027). The prompt hook's ids wait here for the
+  // execution they start; each running execution collects its text.
+  const declares = (field: string) =>
+    plugin.hooks.some(
+      (h) => h.event === "turn.stop" && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(field as never),
+    );
+  const readsText = declares("turn.stop.lastMessage");
+  const readsPrompt = declares("turn.stop.correlation.turnId");
+  const pendingPrompts = new Map<string, NonNullable<OpenCodeV2Execution["prompt"]>>();
+  const executions = new Map<
+    string,
+    { prompt?: NonNullable<OpenCodeV2Execution["prompt"]>; text: Record<string, unknown>[] }
+  >();
+  const completions = new Set([
+    "session.execution.succeeded",
+    "session.execution.failed",
+    "session.execution.interrupted",
+  ]);
   const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
   // Posting after an interrupted or failed execution would override it, and a
   // child's result has already been returned to its parent by the time it stops.
@@ -76,12 +97,18 @@ export async function setupOpenCodeV2(
       if (queues.get(key) === next) queues.delete(key);
     });
   };
-  const run = async (hook: string, native: Record<string, unknown>, modelRequest = false) => {
+  const run = async (
+    hook: string,
+    native: Record<string, unknown>,
+    modelRequest = false,
+    execution?: OpenCodeV2Execution,
+  ) => {
     let event: HookEvent;
     try {
       event = decodeOpenCodeV2(
         { hook, directory: ctx.location.directory, event: native },
         { targetId, ...(options.harnessVersion ? { harnessVersion: options.harnessVersion } : {}) },
+        execution ? { execution } : {},
       );
     } catch (error) {
       if (error instanceof OpenCodeV2DecodeError) return;
@@ -134,8 +161,25 @@ export async function setupOpenCodeV2(
     if (events.has("prompt.before") || subscribes)
       registrations.push(
         await ctx.session.hook("prompt", async (e) => {
-          if (typeof e.sessionID === "string") local.add(e.sessionID);
-          if (events.has("prompt.before")) await run("prompt", e);
+          const sessionID = typeof e.sessionID === "string" ? e.sessionID : undefined;
+          if (sessionID !== undefined) local.add(sessionID);
+          // Recorded before dispatch: the execution it starts cannot begin until
+          // this hook returns. A blocked prompt starts none, so it is dropped.
+          // A prompt admitted while an execution runs is steered into that one,
+          // or queued behind it, and which cannot be told apart here; carrying
+          // it forward could hand its id to a synthetic continuation, which
+          // runs no prompt hook. So it waits for no execution: absent, never
+          // wrong. A pending id from before is dropped for the same reason.
+          if (readsPrompt && sessionID !== undefined) {
+            if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
+            else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
+          }
+          try {
+            if (events.has("prompt.before")) await run("prompt", e);
+          } catch (error) {
+            if (sessionID !== undefined) pendingPrompts.delete(sessionID);
+            throw error;
+          }
         }),
       );
     if (events.has("tool.before"))
@@ -170,7 +214,35 @@ export async function setupOpenCodeV2(
               // Recorded before queueing, so the child's later stop already sees it.
               if (typeof data.parentID === "string") children.add(sessionID);
             } else if (!local.has(sessionID)) continue;
-            enqueue(sessionID, () => run("event", event));
+            // Buffered here, in subscription order, not in the per-session queue:
+            // a completion is queued behind a slow hook, but the text it reports
+            // must be the text that ended before it (captured on 2.0.18:
+            // session.text.ended, then session.step.ended, then succeeded).
+            let execution: OpenCodeV2Execution | undefined;
+            if (readsText || readsPrompt) {
+              if (event.type === "session.execution.started") {
+                const prompt = pendingPrompts.get(sessionID);
+                pendingPrompts.delete(sessionID);
+                executions.set(sessionID, { ...(prompt ? { prompt } : {}), text: [] });
+              } else if (event.type === "session.text.ended" && readsText) {
+                const running = executions.get(sessionID);
+                if (running !== undefined) {
+                  // Only the latest assistant message's segments are kept: a memory
+                  // bound, since the decoder reports only the last message anyway.
+                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                  running.text.push({
+                    assistantMessageID: data.assistantMessageID,
+                    ordinal: data.ordinal,
+                    text: data.text,
+                  });
+                }
+              } else if (completions.has(String(event.type))) {
+                const finished = executions.get(sessionID);
+                executions.delete(sessionID);
+                if (finished !== undefined) execution = finished;
+              }
+            }
+            enqueue(sessionID, () => run("event", event, false, execution));
           }
         } catch {
           /* Subscription disposal and host shutdown must not create an unhandled rejection. */

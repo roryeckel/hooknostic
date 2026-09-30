@@ -11,6 +11,7 @@ import {
   replaceOutput,
   updateShell,
 } from "@hooknostic/sdk";
+import { loadFixture } from "@hooknostic/testkit";
 
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { createHooknosticHooks } from "./shim.js";
@@ -535,5 +536,137 @@ describe("createHooknosticHooks turn.stop posting", () => {
     expect(calls).toHaveLength(6);
     expect(calls.slice(0, 2)).toEqual(calls.slice(2, 4));
     expect(calls.slice(0, 2)).toEqual(calls.slice(4, 6));
+  });
+});
+
+describe("createHooknosticHooks turn.stop fields (ADR-0027)", () => {
+  // The session read captured on 1.18.32 (.capture/opencode-turn-fields), as
+  // client.session.messages answered it.
+  const envelope = loadFixture<{ hook: string; directory: string; input: unknown }>(
+    "opencode",
+    "1.18",
+    "session-idle-with-messages.input.json",
+  );
+  const captured = loadFixture<{ messages: unknown[] }>(
+    "opencode",
+    "1.18",
+    "session-idle-with-messages.enrichment.json",
+  );
+  const idle = envelope.input as { event: { properties: { sessionID: string } } };
+
+  function fieldHooks(client: unknown, fields?: ("lastMessage" | "correlation.turnId")[]) {
+    const seen: { lastMessage?: string; turnId?: string }[] = [];
+    const hooks = createHooknosticHooks(
+      definePlugin({
+        name: "fields",
+        hooks: [
+          hook("turn.stop", {
+            id: "summarize",
+            ...(fields ? { fields } : {}),
+            run(event) {
+              seen.push({
+                ...(event.lastMessage !== undefined ? { lastMessage: event.lastMessage } : {}),
+                ...(event.correlation.turnId !== undefined ? { turnId: event.correlation.turnId } : {}),
+              });
+            },
+          }),
+        ],
+      }),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, client } as never,
+    );
+    return { hooks, seen };
+  }
+
+  function sessionReader(answer: () => unknown) {
+    const reads: unknown[] = [];
+    // A class, so a detached call (no receiver) throws as the real client does.
+    class Session {
+      private readonly tag = "bound";
+      messages(options: unknown): unknown {
+        if (this?.tag !== "bound") throw new TypeError("messages called without a receiver");
+        reads.push(options);
+        return answer();
+      }
+    }
+    return { reads, client: { session: new Session() } };
+  }
+
+  it("reports the turn's last message and prompt id from one session read", async () => {
+    const { reads, client } = sessionReader(() =>
+      Promise.resolve({ data: captured.messages, request: {}, response: {} }),
+    );
+    const { hooks, seen } = fieldHooks(client, ["lastMessage", "correlation.turnId"]);
+    await hooks["event"]!(idle, {});
+    expect(reads).toEqual([{ path: { id: idle.event.properties.sessionID } }]);
+    expect(seen).toEqual([{ lastMessage: "hooknostic-final-answer", turnId: "msg_0e9be5601001jU9sKIkSP3X0wQ" }]);
+  });
+
+  it("keeps the session read out of event.raw, for every turn.stop hook", async () => {
+    // The history is handed to the decoder beside the envelope: raw stays what
+    // the callback received, so a hook that never declared a turn field is not
+    // handed the whole session in it (AGENTS.md: raw is untouched).
+    const { client } = sessionReader(() => Promise.resolve({ data: captured.messages }));
+    const raws: unknown[] = [];
+    const hooks = createHooknosticHooks(
+      definePlugin({
+        name: "raw",
+        hooks: [
+          hook("turn.stop", { id: "declares", fields: ["lastMessage"], run: (event) => void raws.push(event.raw) }),
+          hook("turn.stop", { id: "silent", run: (event) => void raws.push(event.raw) }),
+        ],
+      }),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, client } as never,
+    );
+    const output = {};
+    await hooks["event"]!(idle, output);
+    const received = {
+      hook: "event",
+      directory: PLUGIN_INPUT.directory,
+      worktree: PLUGIN_INPUT.worktree,
+      input: idle,
+      output,
+    };
+    expect(raws).toEqual([received, received]);
+    expect(JSON.stringify(raws)).not.toContain("hooknostic-final-answer");
+  });
+
+  it("does not read the session when no hook declares a turn field", async () => {
+    const { reads, client } = sessionReader(() => Promise.resolve({ data: captured.messages }));
+    const { hooks, seen } = fieldHooks(client);
+    await hooks["event"]!(idle, {});
+    expect(reads).toEqual([]);
+    expect(seen).toEqual([{}]);
+  });
+
+  it("leaves the fields absent when the read fails, stalls, or there is no client", async () => {
+    for (const answer of [() => Promise.reject(new Error("gone")), () => ({ error: "nope" })]) {
+      const { client } = sessionReader(answer);
+      const { hooks, seen } = fieldHooks(client, ["lastMessage"]);
+      await expect(hooks["event"]!(idle, {})).resolves.toBeUndefined();
+      expect(seen).toEqual([{}]);
+    }
+    const { hooks, seen } = fieldHooks(undefined, ["lastMessage"]);
+    await hooks["event"]!(idle, {});
+    expect(seen).toEqual([{}]);
+  });
+
+  it("gives up on a read that never settles", async () => {
+    const { client } = sessionReader(() => new Promise(() => {}));
+    const { hooks, seen } = fieldHooks(client, ["lastMessage"]);
+    await hooks["event"]!(idle, {});
+    expect(seen).toEqual([{}]);
+  }, 40_000);
+
+  it("never reports an earlier turn's reply for a turn that produced none", async () => {
+    const messages = [
+      ...captured.messages,
+      { info: { id: "msg_next", role: "user" }, parts: [{ type: "text", text: "and now?" }] },
+    ];
+    const { client } = sessionReader(() => Promise.resolve({ data: messages }));
+    const { hooks, seen } = fieldHooks(client, ["lastMessage", "correlation.turnId"]);
+    await hooks["event"]!(idle, {});
+    expect(seen).toEqual([{}]);
   });
 });

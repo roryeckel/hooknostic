@@ -109,6 +109,49 @@ var HOOK_EVENT_NAMES = [
   "agent.stop",
   "turn.stop"
 ];
+var TOOL_SCOPED_EVENTS = [
+  "tool.before",
+  "tool.after",
+  "tool.error",
+  "permission.request"
+];
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
+
+// ../../packages/sdk/dist/fields.js
+var OPTIONAL_EVENT_FIELDS = {
+  "session.start": ["how"],
+  "session.end": ["reason"],
+  "prompt.before": [],
+  "model.request.before": [],
+  "tool.before": [],
+  "tool.after": [],
+  "tool.error": ["error.message"],
+  "permission.request": [],
+  "context.compact.before": ["trigger"],
+  "context.compact.after": [],
+  "agent.start": ["agent.id", "agent.type"],
+  "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+  "turn.stop": ["lastMessage"]
+};
+var CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+var TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+var ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+var FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/hook.js
 function hookAppliesToTarget(hook2, targetId) {
@@ -132,6 +175,18 @@ function canonicalCapabilities(event, hookId, declared) {
   }
   return canonical;
 }
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const def = {
     event,
@@ -145,6 +200,8 @@ function hook(event, spec) {
     def.targets = spec.targets;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 
@@ -4430,6 +4487,11 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+var fieldAcceptanceSchema = external_exports.string().refine((value) => {
+  const colon = value.indexOf(":");
+  return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+}, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
 var MAX_TIMER_DELAY_MS = 2147483647;
 var packageMaterializerSchema = external_exports.custom((value) => {
   if (typeof value !== "object" || value === null)
@@ -4499,7 +4561,8 @@ var effectSchema = external_exports.discriminatedUnion("kind", [
 var compatibilityPolicySchema = external_exports.object({
   minimum: supportLevelSchema.optional(),
   onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+  accept: external_exports.array(fieldAcceptanceSchema).optional()
 }).strict();
 var runtimePolicySchema = external_exports.object({
   onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4727,6 +4790,7 @@ var hookDefinitionSchema = external_exports.object({
   // and would time the hook out permanently.
   timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+  fields: external_exports.array(eventFieldIdSchema).optional(),
   run: external_exports.custom((v) => typeof v === "function", {
     message: "run must be a function"
   })
@@ -5209,15 +5273,25 @@ function classifyOpenCodeV2Tool(nativeName, input) {
 }
 var OpenCodeV2DecodeError = class extends Error {
 };
-var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
-function decodeOpenCodeV2(raw, invocation) {
-  const native = record(raw);
+var record2 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function turnFields2(execution) {
+  const messageID = record2(execution?.prompt)["messageID"];
+  const segments = (execution?.text ?? []).map(record2);
+  const last = segments.at(-1)?.["assistantMessageID"];
+  const lastMessage = segments.filter((segment) => segment["assistantMessageID"] === last).sort((a, b) => Number(a["ordinal"] ?? 0) - Number(b["ordinal"] ?? 0)).map((segment) => segment["text"]).filter((text) => typeof text === "string" && text !== "").join("\n");
+  return {
+    ...lastMessage !== "" ? { lastMessage } : {},
+    ...typeof messageID === "string" ? { turnId: messageID } : {}
+  };
+}
+function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
+  const native = record2(raw);
   if (typeof native.hook !== "string" || typeof native.directory !== "string" || !native.event)
     throw new OpenCodeV2DecodeError("v2 invocation requires hook, directory and event");
-  const event = record(native.event);
-  const data = native.hook === "event" ? record(event.data) : event;
+  const event = record2(native.event);
+  const data = native.hook === "event" ? record2(event.data) : event;
   const sessionID = data.sessionID;
-  const location = record(event.location);
+  const location = record2(event.location);
   const base = {
     schemaVersion: 1,
     harness: {
@@ -5237,14 +5311,19 @@ function decodeOpenCodeV2(raw, invocation) {
     const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
     if (native.hook === "execute.before") return { ...base, event: "tool.before", tool };
     if (event.status === "error") {
-      const message = record(event.error).message;
+      const message = record2(event.error).message;
       return { ...base, event: "tool.error", tool, error: typeof message === "string" ? { message } : {} };
     }
     if (event.status !== "completed") throw new OpenCodeV2DecodeError("unknown v2 tool status");
-    return { ...base, event: "tool.after", tool, output: structuredClone(record(event.result).content) };
+    return { ...base, event: "tool.after", tool, output: structuredClone(record2(event.result).content) };
   }
   if (native.hook === "prompt")
-    return { ...base, event: "prompt.before", prompt: String(record(event.prompt).text ?? "") };
+    return {
+      ...base,
+      ...typeof event.messageID === "string" ? { correlation: { ...base.correlation, turnId: event.messageID } } : {},
+      event: "prompt.before",
+      prompt: String(record2(event.prompt).text ?? "")
+    };
   if (["context", "title", "generate"].includes(native.hook)) return { ...base, event: "model.request.before" };
   if (native.hook === "compaction") return { ...base, event: "context.compact.before" };
   if (native.hook === "evaluate" && event.effect === "ask")
@@ -5252,7 +5331,7 @@ function decodeOpenCodeV2(raw, invocation) {
       ...base,
       event: "permission.request",
       correlation: {
-        ...typeof record(event.source).id === "string" ? { toolCallId: record(event.source).id } : {}
+        ...typeof record2(event.source).id === "string" ? { toolCallId: record2(event.source).id } : {}
       },
       // A permission action/resource is not a tool name/input. Keep it in raw.
       tool: { kind: "other", nativeName: "unknown", input: void 0 }
@@ -5261,8 +5340,15 @@ function decodeOpenCodeV2(raw, invocation) {
     if (event.type === "session.created") return { ...base, event: "session.start" };
     if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(
       String(event.type)
-    ))
-      return { ...base, event: "turn.stop" };
+    )) {
+      const { lastMessage, turnId } = turnFields2(enrichment.execution);
+      return {
+        ...base,
+        ...turnId !== void 0 ? { correlation: { ...base.correlation, turnId } } : {},
+        event: "turn.stop",
+        ...lastMessage !== void 0 ? { lastMessage } : {}
+      };
+    }
     if (event.type === "session.compaction.ended") return { ...base, event: "context.compact.after" };
   }
   throw new OpenCodeV2DecodeError(`unmapped v2 callback ${native.hook}`);
@@ -5281,6 +5367,18 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
   const here = comparable(ctx.location.directory);
+  const declares = (field) => plugin.hooks.some(
+    (h) => h.event === "turn.stop" && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(field)
+  );
+  const readsText = declares("turn.stop.lastMessage");
+  const readsPrompt = declares("turn.stop.correlation.turnId");
+  const pendingPrompts = /* @__PURE__ */ new Map();
+  const executions = /* @__PURE__ */ new Map();
+  const completions = /* @__PURE__ */ new Set([
+    "session.execution.succeeded",
+    "session.execution.failed",
+    "session.execution.interrupted"
+  ]);
   const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
   const post = async (native, event, messages) => {
     const sessionID = event.session.id;
@@ -5300,12 +5398,13 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       if (queues.get(key) === next) queues.delete(key);
     });
   };
-  const run = async (hook2, native, modelRequest = false) => {
+  const run = async (hook2, native, modelRequest = false, execution) => {
     let event;
     try {
       event = decodeOpenCodeV2(
         { hook: hook2, directory: ctx.location.directory, event: native },
-        { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} }
+        { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} },
+        execution ? { execution } : {}
       );
     } catch (error) {
       if (error instanceof OpenCodeV2DecodeError) return;
@@ -5352,8 +5451,18 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     if (events.has("prompt.before") || subscribes)
       registrations.push(
         await ctx.session.hook("prompt", async (e) => {
-          if (typeof e.sessionID === "string") local.add(e.sessionID);
-          if (events.has("prompt.before")) await run("prompt", e);
+          const sessionID = typeof e.sessionID === "string" ? e.sessionID : void 0;
+          if (sessionID !== void 0) local.add(sessionID);
+          if (readsPrompt && sessionID !== void 0) {
+            if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
+            else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
+          }
+          try {
+            if (events.has("prompt.before")) await run("prompt", e);
+          } catch (error) {
+            if (sessionID !== void 0) pendingPrompts.delete(sessionID);
+            throw error;
+          }
         })
       );
     if (events.has("tool.before"))
@@ -5386,7 +5495,29 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
               local.add(sessionID);
               if (typeof data.parentID === "string") children.add(sessionID);
             } else if (!local.has(sessionID)) continue;
-            enqueue(sessionID, () => run("event", event));
+            let execution;
+            if (readsText || readsPrompt) {
+              if (event.type === "session.execution.started") {
+                const prompt = pendingPrompts.get(sessionID);
+                pendingPrompts.delete(sessionID);
+                executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
+              } else if (event.type === "session.text.ended" && readsText) {
+                const running = executions.get(sessionID);
+                if (running !== void 0) {
+                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                  running.text.push({
+                    assistantMessageID: data.assistantMessageID,
+                    ordinal: data.ordinal,
+                    text: data.text
+                  });
+                }
+              } else if (completions.has(String(event.type))) {
+                const finished = executions.get(sessionID);
+                executions.delete(sessionID);
+                if (finished !== void 0) execution = finished;
+              }
+            }
+            enqueue(sessionID, () => run("event", event, false, execution));
           }
         } catch {
         }
@@ -5411,8 +5542,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.2.0
-@hooknostic/runtime@0.2.0
+@hooknostic/adapter-opencode@0.3.0
+@hooknostic/runtime@0.3.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5620,8 +5751,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.2.0
-hooknostic@0.2.0
+@hooknostic/sdk@0.3.0
+hooknostic@0.3.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

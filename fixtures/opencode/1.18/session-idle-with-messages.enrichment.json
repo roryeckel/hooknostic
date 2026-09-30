@@ -1,0 +1,201 @@
+{
+  "messages": [
+    {
+      "info": {
+        "id": "msg_0e9be5601001jU9sKIkSP3X0wQ",
+        "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+        "role": "user",
+        "time": {
+          "created": 1790627960321
+        },
+        "summary": {
+          "diffs": [
+            {
+              "file": "hooknostic-tool.txt",
+              "patch": "Index: hooknostic-tool.txt\n===================================================================\n--- hooknostic-tool.txt\t\n+++ hooknostic-tool.txt\t\n@@ -0,0 +1,1 @@\n+hooknostic-original\n\\ No newline at end of file\n",
+              "additions": 1,
+              "deletions": 0,
+              "status": "added"
+            }
+          ]
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "drift",
+          "modelID": "hooknostic-playback"
+        }
+      },
+      "parts": [
+        {
+          "id": "prt_0e9be5609001PA0x2Z8SG6qDP8",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be5601001jU9sKIkSP3X0wQ",
+          "type": "text",
+          "text": "\"Use the shell once, then answer.\""
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_0e9be573d001adPTkYoiBGIF6g",
+        "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+        "role": "assistant",
+        "time": {
+          "created": 1790627960637,
+          "completed": 1790627965254
+        },
+        "parentID": "msg_0e9be5601001jU9sKIkSP3X0wQ",
+        "modelID": "hooknostic-playback",
+        "providerID": "drift",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project",
+          "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls"
+      },
+      "parts": [
+        {
+          "id": "prt_0e9be6355001FgFIw1w0bzbTJJ",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be573d001adPTkYoiBGIF6g",
+          "type": "step-start",
+          "snapshot": "112fe0b6ac2781f0c162c905b5813d9144e04027"
+        },
+        {
+          "id": "prt_0e9be635a001ruDeykanBZPU9V",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be573d001adPTkYoiBGIF6g",
+          "type": "tool",
+          "callID": "call_playback",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
+            },
+            "output": "(no output)",
+            "title": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\"",
+            "metadata": {
+              "output": "(no output)",
+              "exit": 0,
+              "truncated": false
+            },
+            "time": {
+              "start": 1790627963750,
+              "end": 1790627964085
+            }
+          }
+        },
+        {
+          "id": "prt_0e9be6757001n3qO5fQotFsk4m",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be573d001adPTkYoiBGIF6g",
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "de6739fac387146cac5ee246e8ed11be8b65099b",
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        {
+          "id": "prt_0e9be6941001jmhH4Af1OYbPpa",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be573d001adPTkYoiBGIF6g",
+          "type": "patch",
+          "hash": "112fe0b6ac2781f0c162c905b5813d9144e04027",
+          "files": [
+            "C:/Users/user/AppData/Local/Temp/hkn-turn-fields-kYKwTN/project/hooknostic-tool.txt"
+          ]
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_0e9be694b001C11jTt8D4gRi5w",
+        "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+        "role": "assistant",
+        "time": {
+          "created": 1790627965259,
+          "completed": 1790627966492
+        },
+        "parentID": "msg_0e9be5601001jU9sKIkSP3X0wQ",
+        "modelID": "hooknostic-playback",
+        "providerID": "drift",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project",
+          "root": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "stop"
+      },
+      "parts": [
+        {
+          "id": "prt_0e9be6a92001EgeDOyQsqe2huD",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be694b001C11jTt8D4gRi5w",
+          "type": "step-start",
+          "snapshot": "de6739fac387146cac5ee246e8ed11be8b65099b"
+        },
+        {
+          "id": "prt_0e9be6a950014rVm5tEIdj6YHx",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be694b001C11jTt8D4gRi5w",
+          "type": "text",
+          "text": "hooknostic-final-answer",
+          "time": {
+            "start": 1790627965589,
+            "end": 1790627965594
+          }
+        },
+        {
+          "id": "prt_0e9be6cf4001nTeGXazymOMrGC",
+          "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+          "messageID": "msg_0e9be694b001C11jTt8D4gRi5w",
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "de6739fac387146cac5ee246e8ed11be8b65099b",
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

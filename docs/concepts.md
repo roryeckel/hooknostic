@@ -66,6 +66,14 @@ Codex patch touches). A view is absent when the shape is uncaptured; the raw
 ([Decision 0007](decisions/0007-portable-shell-write-back.md),
 [Decision 0026](decisions/0026-normalized-file-view.md))
 
+Optional fields such as `turn.stop`'s `lastMessage` or `correlation.turnId` are rated
+per target like capabilities, because not every harness sends them: OpenCode's stop
+signal carries only a session id, so the adapter derives both. A hook lists the ones it
+reads, `fields: ["lastMessage", "correlation.turnId"]`, and a target that never produces
+one fails the build with HN108 unless you accept it. On an in-process target the
+declaration is also what asks the adapter to do that work.
+([Decision 0027](decisions/0027-event-field-fidelity.md))
+
 Deliberately, the vocabulary is small. A harness-specific event (worktree lifecycle,
 notifications, file watchers, …) only gets a normalized name once at least two
 harnesses share its meaning; until then it stays reachable through the raw payload.

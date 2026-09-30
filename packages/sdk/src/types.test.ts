@@ -408,3 +408,45 @@ describe("compile-time config contracts", () => {
     });
   });
 });
+
+describe("compile-time field declarations (ADR-0027)", () => {
+  it("admits only the event's own optional fields, in either spelling", () => {
+    const ok = hook("turn.stop", {
+      id: "summarize",
+      fields: ["lastMessage", "turn.stop.correlation.turnId"],
+      run(event) {
+        void event.lastMessage;
+      },
+    });
+    const tool = hook("tool.before", { id: "call", fields: ["correlation.toolCallId"], run() {} });
+    // @ts-expect-error session.start has no lastMessage
+    const foreign = hook("session.start", { id: "s", fields: ["lastMessage"], run() {} });
+    // @ts-expect-error toolCallId exists only on tool-scoped events
+    const untooled = hook("turn.stop", { id: "t", fields: ["correlation.toolCallId"], run() {} });
+    // @ts-expect-error a field of another event, spelled in full
+    const scoped = hook("turn.stop", { id: "u", fields: ["agent.stop.lastMessage"], run() {} });
+    // @ts-expect-error required fields are not declarable
+    const required = hook("prompt.before", { id: "p", fields: ["prompt"], run() {} });
+    expect([ok, tool, foreign, untooled, scoped, required]).toHaveLength(6);
+  });
+
+  it("types an acceptance as an adapter-qualified field id", () => {
+    defineConfig({
+      entry: "h.ts",
+      compatibility: { accept: ["opencode:turn.stop.lastMessage"] },
+      targets: {
+        opencode: {
+          version: ">=1 <2",
+          delivery: "project",
+          output: "o",
+          compatibility: {
+            accept: [
+              // @ts-expect-error an acceptance names a registered field
+              "opencode:lastMessage",
+            ],
+          },
+        },
+      },
+    });
+  });
+});

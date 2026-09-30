@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "event",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_f164691e2ffee0EAZ6iVVP1fY2",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-v2-cp6qb1\\project"
+  },
+  "correlation": {
+    "turnId": "msg_0e9b96ec0001iefiJrzfVstGoE"
+  },
+  "event": "turn.stop",
+  "lastMessage": "playback complete"
+}
