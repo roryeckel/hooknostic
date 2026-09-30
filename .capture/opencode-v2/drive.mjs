@@ -264,7 +264,7 @@ if (effect === "notifications") {
 if (effect === "lifecycle" || effect.startsWith("sessions") || effect === "stop" || effect.startsWith("provider-") || effect.endsWith("-oauth")) {
   const { driveLifecycle } = await import("./lifecycle.mjs");
   try {
-    await driveLifecycle({ executable, root, project, env, model });
+    await driveLifecycle({ executable, root, project, env, model, remote });
   } finally {
     await model.close();
     if (remote) await writeFile(join(root, "remote.json"), JSON.stringify({ requests: remote.requests, errors: remote.errors }, null, 2));
