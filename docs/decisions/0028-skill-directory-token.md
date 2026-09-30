@@ -72,9 +72,17 @@ non-goal: skills define their own portable convention.
   - Any `${CLAUDE_...}` variable on Codex and OpenCode.
   - `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` in a Claude project
     skill, where there is no plugin.
-  - `${SKILL_DIR}` in the frontmatter, and `${SKILL_DIR}` anywhere in a project
-    skill the target discovers in place, which Hooknostic does not own and so
-    cannot rewrite.
+  - In the frontmatter, `${SKILL_DIR}` and every `${CLAUDE_...}` variable, on
+    every target, Claude Code included. No harness is measured to expand a
+    reference there: Claude Code 2.1.285, asked to quote a plugin skill's
+    description, returned its `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}` and
+    `${CLAUDE_SESSION_ID}` as written, though it expands all three in the body.
+    That quote is the model's, so it is weaker than reading the prompt, but it
+    is the only view of the listing a session gives, and treating the text as
+    literal is the safe reading if it is wrong. Codex hands the model the whole
+    file as written, and OpenCode expands nothing anywhere.
+  - `${SKILL_DIR}` anywhere in a project skill the target discovers in place,
+    which Hooknostic does not own and so cannot rewrite.
 
   Each is declared on the profiles of the delivery it applies to, with this
   capture as evidence.

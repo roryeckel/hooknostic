@@ -34,8 +34,20 @@ describe("projectSkillText", () => {
     const projected = projectSkillText(encode(text), RELATIVE_SKILL_TEXT);
     expect(decode(projected.contents)).toBe("---\nname: status\ndescription: Runs ${SKILL_DIR}/x\n---\nRun ./x.\n");
     expect(projected.unexpanded).toEqual(["${SKILL_DIR}"]);
+    expect(projected.inFrontmatter).toBe(true);
   });
 
+  it("reports every checked reference in the frontmatter, on every target, without rewriting it", () => {
+    const text =
+      "---\nname: status\ndescription: Run ${PLUGIN_ROOT}/x from ${CLAUDE_SKILL_DIR} in ${HOME}\n---\nNothing here.\n";
+    const relative = projectSkillText(encode(text), RELATIVE_SKILL_TEXT);
+    expect(relative).toEqual({ unexpanded: ["${PLUGIN_ROOT}", "${CLAUDE_SKILL_DIR}"], inFrontmatter: true });
+    // Claude expands ${CLAUDE_SKILL_DIR} in a body, not in a description.
+    expect(projectSkillText(encode(text), CLAUDE_LIKE)).toEqual({
+      unexpanded: ["${PLUGIN_ROOT}", "${CLAUDE_SKILL_DIR}"],
+      inFrontmatter: true,
+    });
+  });
   it("leaves the bytes alone when there is nothing to rewrite", () => {
     const projected = projectSkillText(encode("---\nname: a\ndescription: b\n---\nNo tokens.\n"), RELATIVE_SKILL_TEXT);
     expect(projected).toEqual({ unexpanded: [] });

@@ -43,6 +43,17 @@ export const RELATIVE_SKILL_TEXT: SkillTextTarget = {
   leavesLiteral: (name) => AGENT_PLUGIN_PLACEHOLDER_NAMES.has(name) || name.startsWith("CLAUDE_"),
 };
 
+/**
+ * What the frontmatter keeps as written, on every target: no harness expands a
+ * reference there. Claude Code quoted a plugin skill's description with its
+ * `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_SESSION_ID}` as
+ * written, though it expands them in the body; Codex hands the model the whole
+ * file as written (.capture/skill-directory). The projection never rewrites it.
+ */
+function frontmatterLeavesLiteral(name: string): boolean {
+  return name === "SKILL_DIR" || AGENT_PLUGIN_PLACEHOLDER_NAMES.has(name) || name.startsWith("CLAUDE_");
+}
+
 const FRONTMATTER = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/;
 const REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
@@ -51,10 +62,13 @@ export interface ProjectedSkillText {
   contents?: Uint8Array;
   /**
    * References the target will show as written, each once and in order:
-   * `${SKILL_DIR}` in the frontmatter, which is never rewritten, and every body
-   * reference `leavesLiteral` names.
+   * every checked reference in the frontmatter, which no harness expands and
+   * the projection never rewrites, and every body reference `leavesLiteral`
+   * names.
    */
   unexpanded: string[];
+  /** True when any of `unexpanded` was found in the frontmatter. */
+  inFrontmatter?: true;
 }
 
 /**
@@ -81,15 +95,19 @@ export function projectSkillText(
   const frontmatter = FRONTMATTER.exec(text)?.[0] ?? "";
   const body = text.slice(frontmatter.length);
   const unexpanded = new Set<string>();
-  if (frontmatter.includes(SKILL_DIR_PLACEHOLDER)) unexpanded.add(SKILL_DIR_PLACEHOLDER);
+  for (const [reference, name] of frontmatter.matchAll(REFERENCE)) {
+    if (frontmatterLeavesLiteral(name!)) unexpanded.add(reference);
+  }
+  const inFrontmatter = unexpanded.size > 0 ? ({ inFrontmatter: true } as const) : {};
   const rewrite = options.rewrite ?? true;
   for (const [reference, name] of body.matchAll(REFERENCE)) {
     if (name === "SKILL_DIR" ? !rewrite : target.leavesLiteral(name!)) unexpanded.add(reference);
   }
-  if (!rewrite || !body.includes(SKILL_DIR_PLACEHOLDER)) return { unexpanded: [...unexpanded] };
+  if (!rewrite || !body.includes(SKILL_DIR_PLACEHOLDER)) return { unexpanded: [...unexpanded], ...inFrontmatter };
   return {
     contents: new TextEncoder().encode(frontmatter + body.split(SKILL_DIR_PLACEHOLDER).join(target.skillDirectory)),
     unexpanded: [...unexpanded],
+    ...inFrontmatter,
   };
 }
 
@@ -98,14 +116,16 @@ export function unexpandedSkillReferenceReason(
   skill: string,
   references: readonly string[],
   harness: string,
-  options: { inPlace?: boolean } = {},
+  options: { inPlace?: boolean; inFrontmatter?: boolean } = {},
 ): string {
   const listed = references.map((reference) => JSON.stringify(reference)).join(", ");
-  const why = !references.includes(SKILL_DIR_PLACEHOLDER)
-    ? ""
-    : options.inPlace
+  const why = options.inPlace
+    ? references.includes(SKILL_DIR_PLACEHOLDER)
       ? ` ${harness} discovers this skill where it is, so ${SKILL_DIR_PLACEHOLDER} cannot be rewritten; move the skill outside the destination for Hooknostic to own it.`
-      : ` ${SKILL_DIR_PLACEHOLDER} is rewritten in the body only, never in the frontmatter.`;
+      : ""
+    : options.inFrontmatter
+      ? " No harness expands a reference in the frontmatter, and ${SKILL_DIR} is rewritten in the body only."
+      : "";
   return `skill ${JSON.stringify(skill)} contains ${listed}, which ${harness} shows the model as written.${why}`;
 }
 
@@ -138,7 +158,9 @@ export function projectPackageSkillTexts(
         component: "agent-plugin.skills",
         name: skill.name,
         path: skill.manifestPath,
-        reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, harness),
+        reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, harness, {
+          ...(projected.inFrontmatter ? { inFrontmatter: true } : {}),
+        }),
       });
     }
   }

@@ -16,7 +16,7 @@ lines, each holding one reference: `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}
 node --experimental-strip-types .capture/skill-directory/drive.mjs opencode-v1
 node --experimental-strip-types .capture/skill-directory/drive.mjs opencode-v2
 node --experimental-strip-types .capture/skill-directory/drive.mjs codex
-node --experimental-strip-types .capture/skill-directory/drive.mjs claude   # spends two small Sonnet turns
+node --experimental-strip-types .capture/skill-directory/drive.mjs claude   # spends three small Sonnet turns
 ```
 
 Every state directory (`HOME`, `USERPROFILE`, all four XDG homes, and
@@ -55,6 +55,12 @@ What surrounds the body:
 
 - **Claude Code** prefixes it with `Base directory for this skill: <absolute
   path>` (backslashes on Windows), in both runs, and drops the frontmatter.
+  The frontmatter reaches the model only through the skill listing. Asked to
+  quote, without loading the skill, a plugin skill's description holding
+  `${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_SESSION_ID}`,
+  `${PLUGIN_ROOT}` and `${SKILL_DIR}`, Sonnet returned every one as written
+  (the `claude` drive's third turn). That is the model's quote rather than the
+  prompt itself, so it is weaker evidence than the body rows above.
 - **OpenCode**, both families, wraps it in `<skill_content name="where">`, drops
   the frontmatter, and follows it with `Base directory for this skill: <absolute
   path>` and `Relative paths in this skill (e.g., scripts/, reference/) are
@@ -77,7 +83,8 @@ What surrounds the body:
   `skill-reference-unexpanded` (HN101, an error by default): the Agent Plugins
   placeholders anywhere; any `${CLAUDE_...}` variable on Codex and OpenCode;
   `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` in a Claude project skill;
-  and `${SKILL_DIR}` where it cannot be rewritten. `${HOME}` and other shell
+  `${SKILL_DIR}` and any `${CLAUDE_...}` variable in the frontmatter, on every
+  target; and `${SKILL_DIR}` where it cannot be rewritten. `${HOME}` and other shell
   parameters are not reported: a command the model runs is expanded by its
   shell.
 - Only project skills were measured on Codex and OpenCode. Package skills reach

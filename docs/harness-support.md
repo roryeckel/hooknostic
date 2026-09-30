@@ -92,7 +92,7 @@ Known degradations, reported as `HN101`:
 
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID} in skill text. | `.capture/skill-directory` |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. | `.capture/skill-directory` |
 
 Project delivery validation records:
 
@@ -131,12 +131,13 @@ Known degradations, reported as `HN101`:
 
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${SKILL_DIR} in its frontmatter, or ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables in skill text, and the projection rewrites ${SKILL_DIR} in the body only. | `.capture/skill-directory` |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only. | `.capture/skill-directory` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | Asked, without loading it, to quote a --plugin-dir skill's description holding ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_SESSION_ID}, ${PLUGIN_ROOT} and ${SKILL_DIR}, Sonnet returned every reference as written, on 2.1.285 and again on 2.1.286 through the capture driver: Claude does not expand them in the frontmatter the skill listing shows. The quote is the model's, not the prompt itself. |
 | 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A --plugin-dir plugin's skill, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes), ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA} and ${CLAUDE_SESSION_ID} expanded, and ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written, after a Base directory for this skill line. |
 | 2.1.260 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 2.1.283 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
@@ -273,7 +274,7 @@ Known degradations, reported as `HN101`:
 
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text. | `.capture/skill-directory` |
+| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included. | `.capture/skill-directory` |
 
 Projection validation records:
 

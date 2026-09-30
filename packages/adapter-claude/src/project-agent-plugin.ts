@@ -568,7 +568,7 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             {
               id: SKILL_REFERENCE_UNEXPANDED,
               summary:
-                "A SKILL.md that holds ${SKILL_DIR} in its frontmatter, or ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables in skill text, and the projection rewrites ${SKILL_DIR} in the body only.",
+                "A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only.",
               evidence: ".capture/skill-directory",
             },
           ],
@@ -612,6 +612,13 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-04",
         validatedOn: [
+          {
+            version: "2.1.285",
+            date: "2026-09-30",
+            method: "live-probe",
+            artifact: ".capture/skill-directory",
+            what: "Asked, without loading it, to quote a --plugin-dir skill's description holding ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_SESSION_ID}, ${PLUGIN_ROOT} and ${SKILL_DIR}, Sonnet returned every reference as written, on 2.1.285 and again on 2.1.286 through the capture driver: Claude does not expand them in the frontmatter the skill listing shows. The quote is the model's, not the prompt itself.",
+          },
           {
             version: "2.1.285",
             date: "2026-09-30",

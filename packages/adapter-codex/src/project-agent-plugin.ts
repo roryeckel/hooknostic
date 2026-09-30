@@ -514,7 +514,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             {
               id: SKILL_REFERENCE_UNEXPANDED,
               summary:
-                "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text.",
+                "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included.",
               evidence: ".capture/skill-directory",
             },
           ],

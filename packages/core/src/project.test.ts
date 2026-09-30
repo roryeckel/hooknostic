@@ -271,6 +271,20 @@ describe("complete project integration", () => {
     expect(built.ok).toBe(false);
   }, 60_000);
 
+  it("fails every target on a frontmatter reference, which no harness expands", async () => {
+    const { root, options } = await fixture({ components: { skills: ["./skills"] } });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(
+      join(root, "skills/sample/SKILL.md"),
+      "---\nname: sample\ndescription: Run ${PLUGIN_ROOT}/x\n---\nNothing to expand here.\n",
+    );
+
+    const built = await buildProject(options);
+    const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
+    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
+  }, 60_000);
+
   it("reports a skill directory it cannot rewrite in a skill discovered in place", async () => {
     const { root, options } = await fixture({ components: { skills: ["./.claude/skills"] } });
     await mkdir(join(root, ".claude/skills/review"), { recursive: true });

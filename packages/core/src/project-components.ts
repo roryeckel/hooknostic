@@ -41,7 +41,10 @@ export function projectSkillFiles(
         component: "agent-plugin.skills",
         name: skill.name,
         path: `${path}/SKILL.md`,
-        reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, text.harness, { inPlace }),
+        reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, text.harness, {
+          inPlace,
+          ...(projected.inFrontmatter ? { inFrontmatter: true } : {}),
+        }),
       });
     }
     if (inPlace) {

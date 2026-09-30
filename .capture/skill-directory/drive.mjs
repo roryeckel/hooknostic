@@ -8,7 +8,7 @@
 // opencode-v1, opencode-v2 and codex spend nothing: the harness runs against
 // the loopback playback model, which loads the probe skill through the
 // harness's own skill mechanism, and the request that follows carries what the
-// harness handed the model. `claude` spends two small Sonnet turns on the
+// harness handed the model. `claude` spends three small Sonnet turns on the
 // user's own login (a plugin skill through --plugin-dir, and a project skill)
 // and prints the skill text Claude Code handed the model.
 //
@@ -190,6 +190,14 @@ if (harness === "opencode-v1") {
     JSON.stringify({ name: "skilldir-probe", version: "0.0.0", description: "Skill-directory probe" }),
   );
   writeFileSync(join(plugin, "skills", "where", "SKILL.md"), SKILL);
+  // The frontmatter reaches the model only through the skill listing, so the
+  // third turn asks for a description quoted without loading the skill.
+  mkdirSync(join(plugin, "skills", "fmprobe"), { recursive: true });
+  writeFileSync(
+    join(plugin, "skills", "fmprobe", "SKILL.md"),
+    "---\nname: fmprobe\ndescription: Frontmatter probe. SKILL=${CLAUDE_SKILL_DIR} ROOT=${CLAUDE_PLUGIN_ROOT} " +
+      "SESSION=${CLAUDE_SESSION_ID} AGENT=${PLUGIN_ROOT} PORTABLE=${SKILL_DIR}\n---\n\nDo nothing.\n",
+  );
   mkdirSync(join(project, ".claude", "skills", "where-local"), { recursive: true });
   writeFileSync(
     join(project, ".claude", "skills", "where-local", "SKILL.md"),
@@ -220,6 +228,24 @@ if (harness === "opencode-v1") {
     console.log(`plugin skill:\n${text}`);
   for (const text of await skillText([], "Load the where-local skill with the Skill tool and follow it."))
     console.log(`project skill:\n${text}`);
+  const quoted = await runProcess(
+    "claude",
+    [
+      "--plugin-dir",
+      plugin,
+      "-p",
+      "Without loading or invoking any skill, copy the exact description text of the skill named fmprobe from your list of available skills, character for character, inside a code block. Nothing else.",
+      "--model",
+      "sonnet",
+      "--output-format",
+      "json",
+    ],
+    { cwd: project, env: process.env, timeoutMs: 300_000 },
+  );
+  // `json` output is a list of messages; the last one is the result.
+  const messages = [JSON.parse(quoted.stdout)].flat();
+  const result = messages.find((message) => message.type === "result")?.result;
+  console.log(`frontmatter, as the model quoted it:\n${result}`);
 } else {
   throw new Error(`unknown harness ${harness}`);
 }
