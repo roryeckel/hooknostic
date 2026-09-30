@@ -614,7 +614,14 @@ async function claudeSession(caseName) {
  * as `-c` session overrides a spawned child may not inherit (#33097 lost the
  * session-scoped hook-trust bypass that way). Never touches the real home.
  */
-async function runCodexHome(scratch, baseUrl, prompt, sandbox = "danger-full-access", trusted = true) {
+async function runCodexHome(
+  scratch,
+  baseUrl,
+  prompt,
+  sandbox = "danger-full-access",
+  trusted = true,
+  { args = [], homeLines = [] } = {},
+) {
   const home = join(scratch, "..", "codex-home");
   const literal = (value) => `'${String(value).replaceAll("'", "''")}'`;
   write(
@@ -635,11 +642,12 @@ async function runCodexHome(scratch, baseUrl, prompt, sandbox = "danger-full-acc
       "",
       ...(trusted ? [`[projects.${literal(scratch)}]`, 'trust_level = "trusted"'] : []),
       ...(process.platform === "win32" ? ["", "[windows]", 'sandbox = "unelevated"'] : []),
+      ...homeLines,
       "",
     ].join("\n"),
   );
   await runProcess("git", ["init"], { cwd: scratch, env: process.env, timeoutMs: 30_000 });
-  return runProcess("codex", ["exec", "-", "--dangerously-bypass-hook-trust", "--color", "never"], {
+  return runProcess("codex", ["exec", "-", "--dangerously-bypass-hook-trust", "--color", "never", ...args], {
     cwd: scratch,
     input: prompt,
     timeoutMs: 180_000,
@@ -667,7 +675,62 @@ function spawnedId(body) {
   return undefined;
 }
 
+/**
+ * The Codex main-session cases: Codex has no agent a session runs as, so these
+ * ask whether configuration can stand in for one. `project-instructions`
+ * writes the agent's instructions and model at the top level of the project's
+ * `.codex/config.toml`; `project-profile` writes them as `[profiles.hn-probe]`
+ * there, and `home-profile` in the isolated CODEX_HOME, both run with
+ * `--profile hn-probe`. As in the other primary cases, every request that
+ * carries the instructions reaches the child backend.
+ */
+const CODEX_PRIMARY_CASES = new Set([
+  "project-instructions",
+  "project-instructions-only",
+  "project-instructions-untrusted",
+  "project-profile",
+  "home-profile",
+]);
+
+function codexAgentKeys() {
+  return [
+    'developer_instructions = """',
+    INSTRUCTIONS,
+    '"""',
+    `model = "${ALT_MODEL}"`,
+    'model_reasoning_effort = "low"',
+  ];
+}
+
+async function codexPrimarySession(caseName) {
+  const scratch = join(mkdtempSync(join(tmpdir(), "hkn-agents-")), "codex");
+  prepareScratch(REPO, "codex", scratch);
+  write(join(scratch, "seed.txt"), "alpha\n");
+  const profile = ["[profiles.hn-probe]", ...codexAgentKeys()];
+  if (caseName === "project-instructions" || caseName === "project-instructions-untrusted") {
+    write(join(scratch, ".codex/config.toml"), `${codexAgentKeys().join("\n")}\n`);
+  }
+  // The instructions alone, on the session's own model.
+  if (caseName === "project-instructions-only") {
+    write(join(scratch, ".codex/config.toml"), `${codexAgentKeys().slice(0, 3).join("\n")}\n`);
+  }
+  if (caseName === "project-profile") write(join(scratch, ".codex/config.toml"), `${profile.join("\n")}\n`);
+  const router = await startRouter(PROTOCOL.codex, DISCOVERY, [{ kind: "text", text: CHILD_DONE }]);
+  let result;
+  try {
+    // No trust entry for the untrusted case: project config should not load.
+    result = await runCodexHome(scratch, router.baseUrl, PRIMARY_PROMPT, undefined, !caseName.endsWith("-untrusted"), {
+      args: caseName.startsWith("project-instructions") ? [] : ["--profile", NAME],
+      homeLines: caseName === "home-profile" ? ["", ...profile] : [],
+    });
+  } finally {
+    await router.close();
+  }
+  return { scratch, captured: join(scratch, "captured"), result, router, delegation: ["spawn_agent"] };
+}
+
 async function codexSession(caseName, isolatedHome) {
+  if (CODEX_PRIMARY_CASES.has(caseName)) return codexPrimarySession(caseName);
   const scratch = join(mkdtempSync(join(tmpdir(), "hkn-agents-")), "codex");
   prepareScratch(REPO, "codex", scratch);
   const seed = join(scratch, "seed.txt");
@@ -1267,7 +1330,15 @@ const CASES = {
     "scoped-primary",
   ],
   codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated", "scoped"],
-  "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated", "scoped"],
+  "codex-home": [
+    "direct",
+    "sandbox-read-only",
+    "sandbox-full",
+    "untrusted",
+    "generated",
+    "scoped",
+    ...CODEX_PRIMARY_CASES,
+  ],
   "opencode-v1": [
     "direct",
     "maxsteps",

@@ -249,6 +249,21 @@ and 1.18.18, and OpenCode 2.0.17, with the same result on each build of a family
   0.148.0, offer `--profile`, which selects a configuration profile, and no option
   that runs a session as an agent. A custom agent is reachable only through
   `spawn_agent`.
+- **Codex configuration can stand in for a default agent, and only that.** The
+  `codex-home` cases below ran on 0.156.1 and 0.148.0:
+
+  | Case | Written | Result |
+  | --- | --- | --- |
+  | `project-instructions` | the agent's `developer_instructions`, `model` and `model_reasoning_effort` at the top level of the project's `.codex/config.toml` | the session ran on them: the instructions as a developer message after Codex's own base instructions (as for a spawned custom agent), on the agent's model and effort |
+  | `project-instructions-only` | `developer_instructions` alone | the same, on the session's model |
+  | `project-instructions-untrusted` | as `project-instructions`, with no trust entry for the project | the instructions applied; the model did not |
+  | `project-profile` | the same keys as `[profiles.hn-probe]` in the project config, run with `--profile hn-probe` | ignored: "Ignored unsupported project-local config keys … profiles. If you want these settings to apply, manually set them in your user-level config.toml." |
+  | `home-profile` | the same table in `CODEX_HOME/config.toml` | 0.156.1 refused to start: `--profile` now reads `<CODEX_HOME>/hn-probe.config.toml`, and a legacy `[profiles.*]` table is an error |
+
+  So a project can make every session run on one agent's instructions, which is
+  what a default agent does. It cannot offer several to choose from, because
+  profiles live only in user configuration. The hook payloads of such a session
+  carry no `agent_type`: to its hooks it is the main agent.
 
 ### Reference builds, generated definitions and packages
 
