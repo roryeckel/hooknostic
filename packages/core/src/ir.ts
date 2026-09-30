@@ -25,7 +25,7 @@ export interface HookIR {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
-  /** Agents the hook runs in or skips (ADR-0029); its identity capability is already declared. */
+  /** Agents the hook runs in or skips (ADR-0030); its identity capability is already declared. */
   agents?: AgentScope;
   /** Per-hook dispatch budget; falls back to the runtime policy when absent. */
   timeoutMs?: number;
@@ -115,7 +115,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
         hookId: h.id,
         event: h.event,
         message: `hook "${h.id}" is scoped to agents on "${h.event}", an event no harness attributes to an agent.`,
-        remediation: "remove agents, or move the hook to a tool event, agent.start or agent.stop (ADR-0029).",
+        remediation: "remove agents, or move the hook to a tool event, agent.start or agent.stop (ADR-0030).",
       });
       return;
     }

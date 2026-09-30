@@ -7,12 +7,13 @@ import type {
   AgentPluginProjectionProfile,
 } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
+import { RELATIVE_SKILL_TEXT, renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
 import { projectAgentFiles, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
+import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
 /** Project wiring whose `.opencode/plugins` module is `wrap(importPathOfArtifact)`. */
 export function projectIntegrationWith(wrap: (importPath: string) => string) {
   return (artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration => {
@@ -46,7 +47,7 @@ export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".opencode/agents",
   // The file name is the identity, so `name` has nothing to say and v1 would
   // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
-  // are the instructions, and `mode` is the portable field's (ADR-0028).
+  // are the instructions, and `mode` is the portable field's (ADR-0029).
   reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
 };
 
@@ -105,7 +106,10 @@ export async function projectComponents(
   // OpenCode discovers .agents/skills natively. Copy the loader's filtered
   // inventory there instead of naming its unfiltered source directory through
   // skills.paths, which would re-expose excluded files and rejected siblings.
-  const result = projectSkillFiles(source, root, ".agents/skills");
+  const result = projectSkillFiles(source, root, ".agents/skills", {
+    target: RELATIVE_SKILL_TEXT,
+    harness: "OpenCode",
+  });
   const agents = projectAgentFiles(source.agents ?? [], opencodeAgents.projectDirectory, renderOpenCodeAgent);
   result.files.push(...agents.files);
   if (agents.files.length > 0)
@@ -194,7 +198,11 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
   {
     range: opencodeHarness.recommendedRange,
     components: {
-      "agent-plugin.skills": { level: "exact" },
+      "agent-plugin.skills": {
+        level: "exact",
+        rationale: `Copied into .agents/skills as authored, except that ${OPENCODE_SKILL_TEXT_RATIONALE} A skill already at its destination is discovered in place and not rewritten.`,
+        degradations: [OPENCODE_SKILL_REFERENCE_DEGRADATION],
+      },
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
@@ -239,6 +247,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: "1.18.33",
+          date: "2026-09-30",
+          method: "live-probe",
+          artifact: ".capture/skill-directory",
+          what: 'Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory."',
+        },
         {
           version: "1.18.31",
           date: "2026-09-29",

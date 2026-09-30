@@ -84,7 +84,7 @@ export function decodeOpenCodeV2(
     if (typeof event.tool !== "string") throw new OpenCodeV2DecodeError("v2 tool event has no tool name");
     const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
     // v2 names the running agent on every tool event: the subagent inside one,
-    // the primary agent otherwise (ADR-0029, fixtures tool-read-in-subagent-*).
+    // the primary agent otherwise (ADR-0030, fixtures tool-read-in-subagent-*).
     const scoped =
       typeof event.agent === "string"
         ? { ...base, correlation: { ...base.correlation, agentType: event.agent } }

@@ -5600,8 +5600,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.3.0
-@hooknostic/runtime@0.3.0
+@hooknostic/adapter-opencode@0.4.0
+@hooknostic/runtime@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5809,8 +5809,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.3.0
-hooknostic@0.3.0
+@hooknostic/sdk@0.4.0
+hooknostic@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

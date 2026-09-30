@@ -1,6 +1,11 @@
 import type { AgentDefinition, AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText, servesAsSubagent } from "@hooknostic/agent-plugin";
+import {
+  contentsText,
+  RELATIVE_SKILL_TEXT,
+  servesAsSubagent,
+  SKILL_REFERENCE_UNEXPANDED,
+} from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   HarnessAdapter,
@@ -169,7 +174,7 @@ export async function projectComponents(
   config: string,
   options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
-  const result = projectSkillFiles(source, root, ".agents/skills");
+  const result = projectSkillFiles(source, root, ".agents/skills", { target: RELATIVE_SKILL_TEXT, harness: "Codex" });
   // A primary-only definition reaches Codex only as the project's default.
   const subagents = (source.agents ?? []).filter((agent) => servesAsSubagent(agent.mode));
   const agents = projectAgentFiles(subagents, codexAgents.projectDirectory, renderCodexAgent);
@@ -253,7 +258,19 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
   {
     range: codexHarness.recommendedRange,
     components: {
-      "agent-plugin.skills": { level: "exact" },
+      "agent-plugin.skills": {
+        level: "exact",
+        rationale:
+          "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A skill already at its destination is discovered in place and not rewritten.",
+        degradations: [
+          {
+            id: SKILL_REFERENCE_UNEXPANDED,
+            summary:
+              "A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text.",
+            evidence: ".capture/skill-directory",
+          },
+        ],
+      },
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
@@ -332,6 +349,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           method: "live-probe",
           artifact: ".capture/agents",
           what: "At the reference build, spawn_agent gained agent_type once a project agent existed, and a definition synchronized by Hooknostic's project delivery was delegated to and ran on its developer_instructions and native model, its result returning through wait_agent (packages/cli/test/agent-definition-playback.test.ts).",
+        },
+        {
+          version: "0.154.0",
+          date: "2026-09-30",
+          method: "live-probe",
+          artifact: ".capture/skill-directory",
+          what: "Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none.",
         },
         {
           version: "0.154.0",

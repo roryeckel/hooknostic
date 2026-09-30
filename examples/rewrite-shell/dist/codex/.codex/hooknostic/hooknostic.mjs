@@ -5675,7 +5675,7 @@ function decodeCodex(nativeEvent, invocation) {
       ...typeof payload.turn_id === "string" ? { turnId: payload.turn_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
       ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
-      // Inside a subagent only; the main agent's events carry none (ADR-0029,
+      // Inside a subagent only; the main agent's events carry none (ADR-0030,
       // fixtures pre-tool-bash-subagent and subagent-start-live).
       ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
@@ -5812,8 +5812,8 @@ await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hook
 /*!
 Bundled package notices
 
-@hooknostic/adapter-codex@0.3.0
-@hooknostic/runtime@0.3.0
+@hooknostic/adapter-codex@0.4.0
+@hooknostic/runtime@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -6021,8 +6021,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.3.0
-hooknostic@0.3.0
+@hooknostic/sdk@0.4.0
+hooknostic@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

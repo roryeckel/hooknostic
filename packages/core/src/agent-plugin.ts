@@ -267,7 +267,7 @@ export function analyzeAgentPluginProjection(
    * does; without it, package delivery accepted any supported level.
    */
   compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
-  /** `components.agents` definitions, delivered inside the package (ADR-0028). */
+  /** `components.agents` definitions, delivered inside the package (ADR-0029). */
   agents?: readonly AgentDefinition[],
   /** `components.defaultAgent`, which a package target reports as a component. */
   defaultAgent?: string,

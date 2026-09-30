@@ -38,8 +38,9 @@ export interface ProjectIntegration {
    */
   deviations?: AgentPluginDeviation[];
   /**
-   * Emitted items the harness delivers below their component's level, such as
-   * a native field it ignores in one use of an agent. Core applies
+   * Emitted items the target cannot deliver at their component's level, such
+   * as a skill reference it shows as written or a native field it ignores in
+   * one use of an agent. Core applies
    * `components.onDegraded`; each id must be declared in
    * `ProjectComponentOptions.support` (ADR-0022).
    */

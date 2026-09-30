@@ -82,7 +82,7 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment by Claude's own rules, except that an unset one with no default stops the server. Dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -101,10 +101,17 @@ Known deviations from Agent Plugins 1.0, reported as `HN106`:
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
 | `claude:primary-agent-delegable` | `agents.primary` | Claude has no agent mode, so it also offers a primary-only agent for delegation. Only a project permission rule, Agent(<name>) in permissions.deny, withholds it, and Hooknostic does not write one. | `.capture/agents` |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A project skill under .claude/skills, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes) and ${CLAUDE_SESSION_ID} expanded, and ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written. |
 | 2.1.283 | 2026-09-29 | live-probe | `.capture/agents` | A project .claude/agents file was advertised to the parent with its description and selected through Agent's subagent_type; its body replaced the default system prompt, its tools list was the child's exact tool set, its model reached the child request, maxTurns stopped the child at the limit, and hook payloads inside the child carried agent_type. |
 | 2.1.238 | 2026-09-29 | live-probe | `.capture/agents` | At the reference build, a project and a plugin agent behaved as on 2.1.283, and a definition synchronized by Hooknostic's project delivery was advertised, delegated to, and ran on its instructions, native model and native tools (packages/cli/test/agent-definition-playback.test.ts). |
 | 2.1.283 | 2026-09-29 | live-probe | `.capture/agents` | The same project file ran as the session through --agent and through the project's agent setting: its body replaced the default system prompt, its tools list was the session's exact tool set, its model reached every request, and every hook event of the session carried agent_type without agent_id. With permissions.deny: [Agent(<name>)] in the project settings the parent's request no longer listed the agent and its delegation was refused, while --agent still ran it. A mode: primary definition synchronized by Hooknostic's project delivery ran as the session through --agent, on its instructions, native tools and native model (packages/cli/test/agent-definition-playback.test.ts). With components.defaultAgent naming a synchronized mode: primary definition, a session started with no --agent ran as it (packages/cli/test/agent-definition-playback.test.ts, generated-default). |
@@ -122,7 +129,7 @@ Project support is independent of package projection.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028). |
 | `agent-plugin.mcp.stdio` | exact | — |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -146,12 +153,15 @@ Known degradations, reported as `HN101`:
 
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only. | `.capture/skill-directory` |
 | `claude:plugin-agent-field-ignored` | `agents.native` | Claude ignores permissionMode in a plugin's agent file, so a native.claude value for it reaches the file but not the agent. | `.capture/agents` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | Asked, without loading it, to quote a --plugin-dir skill's description holding ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_SESSION_ID}, ${PLUGIN_ROOT} and ${SKILL_DIR}, Sonnet returned every reference as written, on 2.1.285 and again on 2.1.286 through the capture driver: Claude does not expand them in the frontmatter the skill listing shows. The quote is the model's, not the prompt itself. |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A --plugin-dir plugin's skill, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes), ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA} and ${CLAUDE_SESSION_ID} expanded, and ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written, after a Base directory for this skill line. |
 | 2.1.283 | 2026-09-29 | live-probe | `.capture/agents` | A --plugin-dir plugin's agents/ file was offered to the parent as <plugin>:<name> and delegated to with its instructions, tools and model; the same agent with permissionMode: plan kept no ExitPlanMode in its tools as a plugin agent, where the project agent did. A package built with a portable definition beside its root, loaded the same way, was offered and delegated to as <plugin>:<name>, and ran on its instructions and its native tools and model (packages/cli/test/agent-definition-playback.test.ts). |
 | 2.1.238 | 2026-09-29 | live-probe | `.capture/agents` | At the reference build a --plugin-dir plugin's agents/ file, and a package built with a portable definition beside its root, were each offered as <plugin>:<name> and delegated to with their instructions, tools and model. |
 | 2.1.283 | 2026-09-29 | live-probe | `.capture/agents` | A --plugin-dir plugin's agents/ file ran as the session through --agent <plugin>:<name> and through its bare name, on its instructions, tools and model, and every hook event of the session carried agent_type <plugin>:<name>. A plugin whose root settings.json set agent, bare or qualified, started the session as the agent. A package built with a mode: primary definition beside its root ran as the session through --agent <plugin>:<name>, on its instructions and native tools and model (packages/cli/test/agent-definition-playback.test.ts). |
@@ -227,7 +237,7 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | An owned repository-locating Node bootstrap launches the portable server from its declared source root. Node must be on PATH; project trust remains a human prerequisite. |
 | `agent-plugin.mcp.streamable-http` | exact | Native project TOML url and http_headers preserve remote declarations. |
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
@@ -238,6 +248,12 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | `agents.native` | exact | native.codex fields are written verbatim as agent-file TOML; model and model_reasoning_effort were observed taking effect. sandbox_mode in an agent file did not change the child's policy, which followed the session's. Codex rejects the whole file over one unknown key, so every field must be one Codex's configuration accepts. mcp_servers and hooks are refused, because they belong to their own components. |
 | `agents.default` | emulated | Codex has no agent a session runs as, but a trusted project's .codex/config.toml applies developer_instructions, model and model_reasoning_effort to every session in it, on 0.148.0 and 0.156.1. So the default agent is written there: its instructions, which follow Codex's own base instructions as a spawned custom agent's do, and its native model and effort. Other native.codex keys are not, since at the top level they would reconfigure the whole project. The session's hook payloads carry no agent_type, so a hook scoped to the agent does not run for it. Without project trust the instructions applied and the model did not. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
@@ -246,6 +262,7 @@ Project delivery validation records:
 | 0.148.0 | 2026-09-29 | live-probe | `.capture/agents` | At the reference build the project configuration's developer_instructions, model and model_reasoning_effort applied to the session the same way, and a project [profiles.*] table was ignored. |
 | 0.156.1 | 2026-09-29 | live-probe | `.capture/agents` | A project .codex/agents TOML file added agent_type to spawn_agent with the agent listed under its description; spawning it delivered developer_instructions to the child after the base instructions, its model reached the child request once model_reasoning_effort was set, an unknown key made Codex ignore the whole file, and the child's reported sandbox_mode followed the session rather than the file. |
 | 0.148.0 | 2026-09-29 | live-probe | `.capture/agents` | At the reference build, spawn_agent gained agent_type once a project agent existed, and a definition synchronized by Hooknostic's project delivery was delegated to and ran on its developer_instructions and native model, its result returning through wait_agent (packages/cli/test/agent-definition-playback.test.ts). |
+| 0.154.0 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none. |
 | 0.154.0 | 2026-09-22 | live-probe | `.capture/project-integration` | A direct stdio server started although its generated env_vars named a variable absent from Codex's environment, and the launcher resolved ${NAME:-default} for both the set and the unset name. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/codex-project-mcp` | Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
@@ -290,7 +307,7 @@ Projection validation records:
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A model without those instructions, such as one behind a custom provider, is not told. |
 | `agent-plugin.mcp.stdio` | emulated | The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so the projection emits a Node launcher that resolves the plugin root from its own location, creates and binds a Hooknostic-managed PLUGIN_DATA directory outside the version-scoped install root, and expands args, env values and cwd before spawning the server. The directory is chosen by Hooknostic rather than by Codex, and the server runs one process below the harness, so the contract is emulated rather than native. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
 | `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
@@ -301,10 +318,17 @@ Projection validation records:
 | `agents.native` | unsupported | Native fields ride on a delivered definition, and a Codex plugin cannot deliver one. |
 | `agents.default` | unsupported | A Codex plugin cannot carry configuration or agents, and Hooknostic does not make a package set the default agent anyway. Deliver it to a Codex project target, which emulates it. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included. | `.capture/skill-directory` |
+
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.154.0 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none. |
 | 0.154.0 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | Against the actual projected package, a synthetic ambient variable was absent without components.mcpEnvironment and reached the stdio child when the declaration generated env_vars. |
 | 0.153.2 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | The installed-plugin path at the lower validated edge behaved the same: a synthetic ambient variable was filtered without components.mcpEnvironment and reached the projected stdio child through generated env_vars. |
 | 0.154.0 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables. |
@@ -349,6 +373,7 @@ Projection validation records:
 | 1.18.31 | 2026-09-27 | captured | `fixtures/opencode/1.18` | read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch |
 | 1.18.32 | 2026-09-28 | captured | `.capture/opencode-turn-fields` | turn fields over the loopback model: at session.idle, client.session.messages answers { data, request, response } with data a list of { info, parts }; one assistant message per model step, each with parentID = the user message id, and the final text part holds the last reply. chat.message input carried no messageID; output.message.id is the user message id (fixtures/opencode/1.18 session-idle-with-messages, chat-message-without-message-id). |
 | 1.18.33 | 2026-09-29 | captured | `fixtures/opencode/1.18` | chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/opencode-dispose` | one-shot opencode run over the loopback model, isolated state: the event handler is not awaited, and without dispose the process exited 41 ms after session.idle with a 3 s idle task unfinished. A plugin's dispose is called about 45 ms after idle and awaited: the task finished and the process exited 3.07 s after idle; a dispose that took 25 s more held it 28 s, so the host does not bound dispose. With the generated shim, a 3 s turn.stop hook declaring lastMessage finished before exit; with its dispose removed it never did. Whether earlier supported builds call and await dispose was not established. |
 | 1.18.33 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
 #### Optional event fields
@@ -369,7 +394,7 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -380,10 +405,17 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | `agents.native` | exact | native.opencode fields are written verbatim into the frontmatter; model and permission were observed taking effect, a denied tool leaving the child's tool list. On 1.18.31 neither steps nor maxSteps stopped the child. OpenCode passes a key it does not know to the provider as a model option. |
 | `agents.default` | exact | The project's components plugin sets default_agent from its config hook, and OpenCode starts every session in the project as that agent; sync refuses a project whose opencode.json or opencode.jsonc already names one. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 1.18.31 | 2026-09-29 | live-probe | `.capture/agents` | A project .opencode/agents file (and the legacy .opencode/agent directory) was offered to the parent through the task tool with its description; its body replaced the provider prompt, its model reached the child request, permission deny removed edit and bash from the child's tools, steps and maxSteps did not cap the child, and neither .claude/agents nor .agents/agents was read. |
 | 1.18.31 | 2026-09-29 | live-probe | `.capture/agents` | With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, its model and its permission denies; primary agents were absent from the task tool and all agents present, and run --agent on a mode: subagent agent fell back to the default agent with a warning. A mode: primary definition synchronized by Hooknostic's project delivery ran as the session through run --agent, on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). With components.defaultAgent naming a synchronized mode: primary definition, a session started with no --agent ran as it (packages/cli/test/agent-definition-playback.test.ts, generated-default). |
 | 1.18.18 | 2026-09-29 | live-probe | `.capture/agents` | At the reference build every mode behaved as on 1.18.31: primary and all agents ran as the session, only subagent and all agents were offered for delegation, a subagent fell back, and a synchronized mode: primary definition ran as the session. |
@@ -398,7 +430,7 @@ Project support is independent of package projection.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | — |
-| `agent-plugin.skills` | emulated | OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. |
+| `agent-plugin.skills` | emulated | OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
 | `agent-plugin.mcp.stdio` | emulated | A project plugin has no declarative config, so the servers are contributed by a generated module that resolves the install directory at load time and launches each one through a generated Node launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and expands args, env values and cwd. cwd is emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. The declared environment is applied by the launcher rather than through OpenCode's environment key, whose merge-or-replace behaviour is uncaptured, and the data directory is chosen by Hooknostic rather than by OpenCode, so the contract is emulated. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
@@ -414,12 +446,14 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-name-unqualified` | `agent-plugin.skills` | A skill that cannot be named `<plugin>-<skill>` -- the name would pass 64 characters or break the Agent Skills name rules, duplicate another skill in the package, or sit on no rewritable frontmatter line -- keeps its bare name in OpenCode's flat skill namespace, where another plugin's skill of that name would hide it. | `.capture/opencode-skill-namespace` |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
 | `opencode:agent-name-unqualified` | `agents.definition` | An agent that cannot be named `<plugin>-<name>` -- the name would pass 64 characters or break the name rules, or duplicate another agent in the build -- keeps its bare name, which it shares with the project's agents and every other plugin's. | `.capture/agents` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 1.18.31 | 2026-09-29 | live-probe | `.capture/agents` | A plugin whose config hook assigned config.agent[<name>] with mode: subagent, a model and a prompt produced an agent the task tool offered with its description; delegated to, it ran on the prompt in place of the provider prompt and on that model. A package built with a portable definition beside its root and named by path in opencode.json registered it as <plugin>-<name>, which was offered, delegated to and ran on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). |
 | 1.18.18 | 2026-09-29 | live-probe | `.capture/agents` | At the reference build a config-hook agent, and a package built with a portable definition beside its root, were each offered, delegated to and ran on their instructions and model. |
 | 1.18.31 | 2026-09-29 | live-probe | `.capture/agents` | A plugin whose config hook assigned config.agent[<name>] with mode: primary ran the session as that agent through run --agent, on its prompt and model; a hook that also set config.default_agent started the session as it without --agent. A package built with a mode: primary definition beside its root registered it as <plugin>-<name>, which ran as the session through run --agent on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). The same held on 1.18.18. |
@@ -459,6 +493,7 @@ Projection validation records:
 | 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | The scoped case: a tool.before guard scoped to the delegated subagent blocked its guarded read and let the next through, never touched the parent's subagent call (named by the primary agent, build), and a guard scoped to another agent never ran; a scoped tool.after saw only the subagent's read (packages/cli/test/agent-definition-playback.test.ts). |
 | 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | The scoped-primary case: with the session started as a mode: primary definition, its tool events carried agent: <name>, and hooks scoped to that name blocked the session's own guarded read and let its next through, while a guard scoped to another agent never ran (packages/cli/test/agent-definition-playback.test.ts). |
 | 2.0.18 | 2026-09-28 | captured | `fixtures/opencode/2.0` | Turn fields over the loopback model (observe drive, isolated state): the plugin's event subscription receives session.execution.started, session.step.*, session.text.started/delta/ended ({ sessionID, assistantMessageID, ordinal, text }) and then session.execution.succeeded ({ sessionID } only). Each model step has its own assistantMessageID; the prompt hook's messageID matches session.inbox.enqueued's inboxID (turn-fields/events.jsonl, execution-succeeded-with-turn). |
+| 2.0.18 | 2026-09-30 | live-probe | `.capture/opencode-dispose` | One-shot run over the loopback model, isolated state, Windows: plugins run in a server process, not the run process. With --standalone the private server was terminated when run exited 0.7 s after session.execution.succeeded; the plugin's cleanup was never called and a 3 s task started at succeeded never finished. Through the background service (its own port) run exited 41 ms after succeeded and the task finished in the service 3 s later. |
 | 2.0.18 | 2026-09-28 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 
 #### Optional event fields
@@ -481,7 +516,7 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
 | `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
@@ -496,12 +531,14 @@ Known degradations, reported as `HN101`:
 
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
 | `opencode:primary-agent-model-ignored` | `agents.native` | OpenCode 2.0.17 runs a session started as the agent on the configured model, so a native.opencode.model reaches the agent only when it runs as a subagent. | `.capture/agents` |
 
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.18 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool (argument id) loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session. A mode: primary definition synchronized by Hooknostic's project delivery, and one a built package registered as <plugin>-<name>, each ran as the session through run --agent on the configured model (packages/cli/test/agent-definition-playback.test.ts). A plugin whose agent transform called the editor's default(<name>) started the session as that agent without --agent. With components.defaultAgent naming a synchronized mode: primary definition, a session started with no --agent ran as it (packages/cli/test/agent-definition-playback.test.ts, generated-default). |
 | 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/agent-definition-playback.test.ts). A plugin's agent transform upserted an unknown id through update; a package built with a portable definition beside its root and named in opencode.json plugins registered it that way as <plugin>-<name>, which was offered, delegated to and ran on its instructions, on the parent's model -- and again, without mode: subagent it could not be selected. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
@@ -517,7 +554,7 @@ Project support is independent of package projection.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | — |
-| `agent-plugin.skills` | emulated | Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. |
+| `agent-plugin.skills` | emulated | Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
 | `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
 | `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
@@ -532,12 +569,14 @@ Known degradations, reported as `HN101`:
 
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
 | `opencode:agent-name-unqualified` | `agents.definition` | An agent that cannot be named `<plugin>-<name>` -- the name would pass 64 characters or break the name rules, or duplicate another agent in the build -- keeps its bare id, which it shares with the project's agents and every other plugin's. | `.capture/agents` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.18 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool (argument id) loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session. A mode: primary definition synchronized by Hooknostic's project delivery, and one a built package registered as <plugin>-<name>, each ran as the session through run --agent on the configured model (packages/cli/test/agent-definition-playback.test.ts). A plugin whose agent transform called the editor's default(<name>) started the session as that agent without --agent. With components.defaultAgent naming a synchronized mode: primary definition, a session started with no --agent ran as it (packages/cli/test/agent-definition-playback.test.ts, generated-default). |
 | 2.0.17 | 2026-09-29 | live-probe | `.capture/agents` | A project .opencode/agents file was offered to the parent through the subagent tool with its description; its body replaced the provider prompt, its model reached the child request, steps: 2 ended the child after two turns, permissions deny rules for edit and shell removed edit, write and shell from its tools, and tool events inside the child carried agent: <name>. A definition synchronized by Hooknostic's project delivery was delegated to and ran on its instructions and native model, and without mode: subagent the subagent tool could not select it (packages/cli/test/agent-definition-playback.test.ts). A plugin's agent transform upserted an unknown id through update; a package built with a portable definition beside its root and named in opencode.json plugins registered it that way as <plugin>-<name>, which was offered, delegated to and ran on its instructions, on the parent's model -- and again, without mode: subagent it could not be selected. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |

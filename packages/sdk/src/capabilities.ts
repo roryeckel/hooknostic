@@ -133,7 +133,7 @@ export function observeCapability(event: HookEventName): CapabilityId {
 }
 
 /**
- * The capability a hook's `agents` scope relies on at `event` (ADR-0029): that
+ * The capability a hook's `agents` scope relies on at `event` (ADR-0030): that
  * events inside a subagent are dispatched and name the agent. Undefined for an
  * event no hook may scope to agents.
  */

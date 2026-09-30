@@ -1,7 +1,7 @@
-# ADR-0029: A hook can be scoped to the agent it runs in
+# ADR-0030: A hook can be scoped to the agent it runs in
 
 **Status:** Proposed — 2026-09-29. It builds on
-[ADR-0028](0028-portable-agents.md) and, like it, is implemented on the branch
+[ADR-0029](0029-portable-agents.md) and, like it, is implemented on the branch
 that proposes it, for review; it merges only once both are accepted.
 
 **In short:** Hooknostic should normalize the name of the agent an event ran in, as
@@ -12,13 +12,13 @@ reported like any other.
 
 ## Context
 
-ADR-0028 makes agents something an author defines and ships, as subagents or as
+ADR-0029 makes agents something an author defines and ships, as subagents or as
 the agent a session runs as. A hook still cannot tell whose tool call it is
 looking at. That rules out uses a defined agent invites:
 
 - **Guarding one subagent.** For example, a reviewer that must not write. Codex
   honours no per-agent tool list or sandbox (`.capture/agents`), so a hook is the
-  only route there. This is the route ADR-0028's open question 4 names for a
+  only route there. This is the route ADR-0029's open question 4 names for a
   portable read-only posture.
 - **Auditing or adding context per agent.**
 - **Keeping a guard meant for the main agent off a trusted subagent.**
@@ -39,7 +39,7 @@ The Codex 0.148.0 runs relied on `--dangerously-bypass-hook-trust`, with session
 overrides and with an isolated `CODEX_HOME` alike. Whether persisted hook trust
 changes the result is not established.
 
-A session can also run as a defined agent (ADR-0028, decision 9). The same drive
+A session can also run as a defined agent (ADR-0029, decision 9). The same drive
 started one that way:
 
 | | Claude 2.1.238, 2.1.283 | OpenCode 2.0.17 | OpenCode 1.18.31, 1.18.18 |
@@ -67,7 +67,7 @@ needs no state (design §7.6, ADR-0002).
    - **Absent means not reported.** On Claude that is a session not started as
      an agent, and on Codex the main agent -- including a session running on
      the project's default agent, which Codex only emulates through its
-     configuration (ADR-0028, decision 10). On OpenCode v1 it is every tool
+     configuration (ADR-0029, decision 10). On OpenCode v1 it is every tool
      event.
    - **Never inferred.** It is not derived from session parentage or from an
      instance id, since that would need cross-invocation state (ADR-0002).
@@ -123,7 +123,7 @@ needs no state (design §7.6, ADR-0002).
    - Naming a packaged agent by its portable name. The compiler knows each
      target's qualification, so a later form of `agents` could resolve portable
      names.
-   - A portable `readOnly` posture (ADR-0028 open question 4). It can build on
+   - A portable `readOnly` posture (ADR-0029 open question 4). It can build on
      this, for example as a generated agent-scoped `tool.before` guard on Codex.
    - Scoping `session.start`, `prompt.submit` or `turn.stop` to the agent a
      session runs as. Claude names it on each of them, but OpenCode v2 was

@@ -442,7 +442,7 @@ export const targetScopeSchema = z
   })
   .strict();
 
-/** ADR-0029: the same shape as targets, naming agents as the harness reports them. */
+/** ADR-0030: the same shape as targets, naming agents as the harness reports them. */
 export const agentScopeSchema = z
   .object({
     include: z.array(z.string().min(1)).optional(),

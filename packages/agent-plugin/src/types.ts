@@ -121,7 +121,7 @@ export const AGENT_PLUGIN_COMPONENT_IDS = [
 export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number];
 
 /**
- * Agent definitions (ADR-0028). Not an Agent Plugins 1.0 component -- the
+ * Agent definitions (ADR-0029). Not an Agent Plugins 1.0 component -- the
  * standard leaves agents out until their formats converge -- but delivered and
  * reported through the same profiles, levels and shortfall policy, so both
  * share one id space. `agents.definition` is the portable core (name,
@@ -284,14 +284,14 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
   mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
   /**
    * Agent definitions configured beside the package (`components.agents`,
-   * ADR-0028). They are Hooknostic input, like hook source, not package
+   * ADR-0029). They are Hooknostic input, like hook source, not package
    * content, so they arrive here rather than in the package: the Agent Plugins
    * 1.0 format has no agents component to carry them.
    */
   agents?: readonly AgentDefinition[];
   /**
    * `components.defaultAgent`. No projector delivers it: a package would start
-   * every session of every user who enables it as that agent (ADR-0028). Each
+   * every session of every user who enables it as that agent (ADR-0029). Each
    * reports it as the unsupported `agents.default`.
    */
   defaultAgent?: string;

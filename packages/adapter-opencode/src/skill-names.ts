@@ -50,7 +50,7 @@ export function qualifiedSkillNames(plugin: string, skills: readonly AgentPlugin
 /**
  * The plugin-qualified spelling of each name, by the rules above, for any item
  * OpenCode keeps in one flat namespace -- skills (ADR-0021) and agents
- * (ADR-0028) alike. `item` ("a skill", "an agent") only words the reason a bare name was kept.
+ * (ADR-0029) alike. `item` ("a skill", "an agent") only words the reason a bare name was kept.
  */
 export function qualifyNames(
   plugin: string,

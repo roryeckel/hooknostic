@@ -77,6 +77,51 @@ function parsed(plan: Awaited<ReturnType<typeof projectAgentPluginToClaude>>, pa
 }
 
 describe("Agent Plugin to Claude projection", () => {
+  describe("skill text (ADR-0028)", () => {
+    const withBody = (body: string): AgentPluginPackage => ({
+      ...source(),
+      files: source().files.map((entry) =>
+        entry.path === "skills/review/SKILL.md"
+          ? file(entry.path, `---\nname: review\ndescription: Review code\n---\n${body}`)
+          : entry,
+      ),
+    });
+    const project = (body: string) =>
+      projectAgentPluginToClaude(withBody(body), { target, hookArtifacts: [], support, onUnsupported: "error" });
+    const text = (plan: Awaited<ReturnType<typeof project>>) => {
+      const contents = plan.files.find((candidate) => candidate.path === "skills/review/SKILL.md")!.contents;
+      return typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+    };
+
+    it("writes ${CLAUDE_SKILL_DIR} for ${SKILL_DIR} and reports the file as generated", async () => {
+      const plan = await project('Run `node "${SKILL_DIR}/scripts/status.mjs"`.\n');
+      expect(text(plan)).toBe(
+        '---\nname: review\ndescription: Review code\n---\nRun `node "${CLAUDE_SKILL_DIR}/scripts/status.mjs"`.\n',
+      );
+      expect(plan.summary.copiedPaths).not.toContain("skills/review/SKILL.md");
+      expect(plan.summary.degradations).toBeUndefined();
+    });
+
+    it("keeps Claude's own variables, which it expands, and reports an Agent Plugins placeholder", async () => {
+      const plan = await project('Run "${CLAUDE_PLUGIN_ROOT}/x" with "${PLUGIN_ROOT}/y".\n');
+      expect(text(plan)).toContain("${CLAUDE_PLUGIN_ROOT}/x");
+      expect(plan.summary.copiedPaths).toContain("skills/review/SKILL.md");
+      expect(plan.summary.degradations).toEqual([
+        {
+          id: "skill-reference-unexpanded",
+          component: "agent-plugin.skills",
+          name: "review",
+          path: "skills/review/SKILL.md",
+          reason: 'skill "review" contains "${PLUGIN_ROOT}", which Claude Code shows the model as written.',
+        },
+      ]);
+      // Declared, so core reports it as HN101 rather than a projector defect.
+      expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual([
+        "skill-reference-unexpanded",
+      ]);
+    });
+  });
+
   it("preserves opaque Notification hooks alongside generated hooks through final validation", async () => {
     const notification = [{ hooks: [{ type: "command", command: "echo native" }] }];
     const generated = [{ hooks: [{ type: "command", command: "node runtime/hooknostic.mjs" }] }];
@@ -994,6 +1039,25 @@ describe("Agent Plugin to Claude projection", () => {
     expect(plan.summary.copiedPaths).not.toContain("generated/dependencies/library/data.bin");
   });
 
+  it("refuses a materialized tree that lands on a skill whose SKILL.md it rewrites", async () => {
+    // A rewritten SKILL.md is generated rather than copied (ADR-0028), but it is
+    // still the package's file at that path, so a tree landing there collides
+    // exactly as it does when the token is absent.
+    for (const body of ["Run ${SKILL_DIR}/x.\n", "Run ./x.\n"]) {
+      const pkg = {
+        ...source(),
+        files: source().files.map((entry) =>
+          entry.path === "skills/review/SKILL.md"
+            ? file(entry.path, `---\nname: review\ndescription: Review code\n---\n${body}`)
+            : entry,
+        ),
+      };
+      const plan = await projectWithMaterializedTree(pkg, "skills/review", "SKILL.md");
+      expect(plan.issues, body).toContainEqual(
+        expect.objectContaining({ severity: "error", path: "skills/review/SKILL.md" }),
+      );
+    }
+  });
   it("refuses a materialized package tree that lands on a generated or native path", async () => {
     // Without this the later `files.set` at each generated path silently drops
     // the runtime, and `runtime/mcp-launcher.mjs` would blame package content.

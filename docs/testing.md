@@ -156,7 +156,7 @@ Use `claude`, `codex`, `opencode-v1`, or `opencode-v2`. The historical
 `opencode` lane selector remains a v1 alias. V2 uses
 `packages/cli/test/opencode-v2-playback.test.ts`; see
 [OpenCode families](opencode-families.md) for its independently verified
-capabilities and limits. Agent definitions (ADR-0028) have their own file,
+capabilities and limits. Agent definitions (ADR-0029) have their own file,
 `packages/cli/test/agent-definition-playback.test.ts`, which runs on every lane: it
 synchronizes a portable definition through project delivery, makes the harness
 delegate to it, and asserts the child ran on its instructions and native model

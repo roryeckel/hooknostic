@@ -71,7 +71,7 @@ import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
 
-export const HOOKNOSTIC_VERSION = "0.3.0";
+export const HOOKNOSTIC_VERSION = "0.4.0";
 
 export interface BuildOptions {
   configPath: string;
@@ -411,7 +411,7 @@ async function canonical(path: string): Promise<string> {
  * transaction directories, native project wiring, the build report, every
  * target output, the config file itself, the hook source entry (its compiled
  * runtime ships instead), and agent definition directories (their native
- * translations ship instead, ADR-0028).
+ * translations ship instead, ADR-0029).
  * Package-level junk (`node_modules`, `.env`, …) is excluded by the loader.
  *
  * The loader inventories the root's realpath, so every pattern is derived from
@@ -773,7 +773,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     componentSource = packageComponents(components);
     // Definitions beside a package are Hooknostic input, like hook source:
     // projectors translate them into each native package, and project targets
-    // receive them as they would from a direct source (ADR-0028).
+    // receive them as they would from a direct source (ADR-0029).
     if (config.components?.agents !== undefined) {
       const loaded = await loadAgentDefinitions({
         directories: config.components.agents.map((path) => resolve(configDir, path)),
@@ -1424,14 +1424,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             if (!count("agents.definition", selectedSource.agents?.length ?? 0)) selectedSource.agents = [];
             // The default agent is settled first: where the target takes it, it
             // is how a harness without agents a session runs as -- Codex --
-            // still runs every session as that one (ADR-0028, decision 10).
+            // still runs every session as that one (ADR-0029, decision 10).
             const defaultName = selectedSource.defaultAgent;
             const deliversDefault = count("agents.default", defaultName === undefined ? 0 : 1);
             if (!deliversDefault) delete selectedSource.defaultAgent;
             const isDeliveredDefault = (agent: AgentDefinition) => deliversDefault && agent.name === defaultName;
             // A target that cannot run a session as an agent still takes an
             // `all` definition as a subagent; a `primary` one has nothing left
-            // to deliver, so it leaves the definitions too (ADR-0028,
+            // to deliver, so it leaves the definitions too (ADR-0029,
             // decision 9). The component-level shortfall is reported above.
             // The delivered default is exempt: it already runs as the session.
             const primaryCell = support.matrix?.["agents.primary"];

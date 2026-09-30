@@ -184,7 +184,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.context.add": { level: "exact" },
       // Inside a subagent the payload carries agent_type, and so does every
       // event of a session started as an agent; a plain session's carry none, so
-      // a named agent is never confused with it (ADR-0029, fixtures
+      // a named agent is never confused with it (ADR-0030, fixtures
       // pre-tool-read-subagent, 2.1.238 and 2.1.283; .capture/agents primary-*).
       "tool.before.agent.identity": { level: "exact" },
 

@@ -269,7 +269,7 @@ export interface HarnessAdapter {
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
   /**
-   * How project delivery places agent definitions (ADR-0028), for the checks
+   * How project delivery places agent definitions (ADR-0029), for the checks
    * core runs before generation so `check` reports them.
    */
   readonly agents?: {

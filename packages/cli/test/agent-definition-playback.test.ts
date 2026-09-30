@@ -6,7 +6,7 @@ import { expectAgentScope } from "./agent-scope.js";
 import { runProcess } from "./harness-playback.js";
 
 // Model-free proof that what a build writes for an agent definition reaches the real
-// harness (ADR-0028). The .capture/agents drive writes a portable Hooknostic
+// harness (ADR-0029). The .capture/agents drive writes a portable Hooknostic
 // Agent Definition, delivers it the way a user's build would, then makes the
 // installed harness delegate to it against loopback playback models, routing
 // the child's requests to their own script by a per-run nonce. Its README has
@@ -144,13 +144,13 @@ describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"}
     expect(summary.parent.toolBearingRequests, output).toBe(0);
     if (DEFAULT_CASE.agent === undefined) {
       // Codex only emulates the default through its configuration: the
-      // session's hooks cannot tell it is the agent (ADR-0028, decision 10).
+      // session's hooks cannot tell it is the agent (ADR-0029, decision 10).
       expect(summary.identity.some((row) => row.endsWith(":hn-probe"))).toBe(false);
     } else expect(summary.identity).toContain(DEFAULT_CASE.agent);
   }, 300_000);
 
   it.skipIf(lane === "codex")(
-    "scoped-primary: a hook scoped to the agent acts in a session running as it (ADR-0029)",
+    "scoped-primary: a hook scoped to the agent acts in a session running as it (ADR-0030)",
     () => expectAgentScope(lane!, "scoped-primary"),
     300_000,
   );
@@ -158,7 +158,7 @@ describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"}
   // The harness-playback suite's agent-scope scenario covers the other lanes;
   // it has no OpenCode v2 adapter lane, so v2 runs the same check here.
   it.skipIf(lane !== "opencode-v2")(
-    "scoped: a hook scoped to the subagent acts inside it and nowhere else (ADR-0029)",
+    "scoped: a hook scoped to the subagent acts inside it and nowhere else (ADR-0030)",
     () => expectAgentScope("opencode-v2"),
     300_000,
   );

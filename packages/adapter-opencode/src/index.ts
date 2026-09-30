@@ -49,7 +49,7 @@ export { generateOpenCodeArtifacts } from "./generate.js";
 export { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
 export { createHooknosticHooks } from "./shim.js";
-export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
+export type { OpenCodeHooks, OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
 export {
   classifyOpenCodeTool,
   opencodeFileCodec,
@@ -105,7 +105,7 @@ export function opencodeShimEntrySource(options: {
 export function opencodeV1Adapter(): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.3.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
     harness: opencodeHarness,
     projectPaths: [".opencode/plugins", ".opencode/agents", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration,

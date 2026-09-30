@@ -5665,7 +5665,7 @@ function decodeClaude(nativeEvent, invocation) {
       ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
       // Inside a subagent, and on every event of a session started as an agent
       // (--agent, the agent setting); a plain session's events carry none
-      // (ADR-0029, fixtures pre-tool-read-subagent and subagent-start).
+      // (ADR-0030, fixtures pre-tool-read-subagent and subagent-start).
       ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
     raw: nativeEvent
@@ -5816,8 +5816,8 @@ await runClaudeCommandShim(() => Promise.resolve().then(() => (init_hooks(), hoo
 /*!
 Bundled package notices
 
-@hooknostic/adapter-claude@0.3.0
-@hooknostic/runtime@0.3.0
+@hooknostic/adapter-claude@0.4.0
+@hooknostic/runtime@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -6025,8 +6025,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.3.0
-hooknostic@0.3.0
+@hooknostic/sdk@0.4.0
+hooknostic@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

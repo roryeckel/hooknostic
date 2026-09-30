@@ -19,11 +19,11 @@ export interface ComponentDiscoveryOptions {
    */
   namespace?: string;
   hasRuntimePackage?: boolean;
-  /** Agent definitions configured beside the package (ADR-0028). */
+  /** Agent definitions configured beside the package (ADR-0029). */
   agents?: readonly AgentDefinition[];
   /** The harness key whose `native` blocks `agents.native` counts. */
   harness?: string;
-  /** `components.defaultAgent`, counted as `agents.default` (ADR-0028). */
+  /** `components.defaultAgent`, counted as `agents.default` (ADR-0029). */
   defaultAgent?: string;
 }
 

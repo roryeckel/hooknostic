@@ -259,7 +259,7 @@ interface ComponentPolicy<TTarget extends string> {
   accept?: string[];
   /**
    * The agent every session of the project starts as: the name of a definition
-   * in `agents` whose `mode` is `primary` or `all` (ADR-0028). Project delivery
+   * in `agents` whose `mode` is `primary` or `all` (ADR-0029). Project delivery
    * writes each harness's own default -- Claude's `agent` setting, OpenCode's
    * default agent -- and on Codex, which has no agent a session runs as, the
    * agent's instructions into the project configuration. Package targets do
@@ -282,7 +282,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         mcp?: never;
         mcpOverrides?: never;
         // Hooknostic input beside the package, like hook source: projectors
-        // translate them into each native package (ADR-0028).
+        // translate them into each native package (ADR-0029).
         agents?: AgentSources;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
@@ -347,7 +347,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
 /**
  * Directories of Hooknostic Agent Definition files: flat `<name>.md` files,
  * YAML frontmatter plus the instructions as the body
- * (`docs/spec/agents/0.1.md`, ADR-0028). Project delivery writes each
+ * (`docs/spec/agents/0.1.md`, ADR-0029). Project delivery writes each
  * harness's own agent file; beside `root`, package delivery carries them in the
  * projected package where the harness supports it.
  */

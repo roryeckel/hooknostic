@@ -3142,7 +3142,7 @@ scenarioDrive(
 );
 
 // --- agent-scope (subagent) ------------------------------------------------
-// ADR-0029, asserted in ./agent-scope.ts. The .capture/agents drive routes the
+// ADR-0030, asserted in ./agent-scope.ts. The .capture/agents drive routes the
 // parent and the child to scripts of their own, which the single-script drives
 // above cannot, and builds the scoped hooks for the build it finds installed.
 scenarioDrive("agent-scope", () => expectAgentScope(selected === "opencode" ? "opencode-v1" : selected));

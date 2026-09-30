@@ -26,7 +26,7 @@ export const AGENT_DEFINITION_RESERVED_KEYS = [
 ] as const;
 
 /**
- * Where a harness offers the agent (ADR-0028, decision 9): for delegation
+ * Where a harness offers the agent (ADR-0029, decision 9): for delegation
  * (`subagent`, the default), as the agent a session runs as (`primary`), or
  * both (`all`). The values are OpenCode's, the one harness with such a field.
  */
@@ -53,7 +53,7 @@ export function withoutPrimary(mode: AgentMode): AgentMode | undefined {
 }
 
 /**
- * Why no projector delivers `components.defaultAgent` (ADR-0028, decision 10),
+ * Why no projector delivers `components.defaultAgent` (ADR-0029, decision 10),
  * for the omission each reports.
  */
 export const DEFAULT_AGENT_NOT_PACKAGED =

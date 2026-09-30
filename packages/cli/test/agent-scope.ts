@@ -32,7 +32,7 @@ function laneAdapter(lane: string, version: string): HarnessAdapter {
 }
 
 /**
- * The agent-scope scenario (ADR-0029), for one `.capture/agents` drive lane.
+ * The agent-scope scenario (ADR-0030), for one `.capture/agents` drive lane.
  *
  * The drive builds hooks scoped to its probe agent for the harness build it
  * finds installed, so that build's own `agent.identity` level decides what is

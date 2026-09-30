@@ -115,7 +115,7 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
     // An absent cell resolves to `unsupported` with no rationale, which
     // `inspect` and the generated support tables then print as a claim nobody
     // made. Agent definitions joined the component vocabulary after these profiles were
-    // written (ADR-0028), so every profile has to state them -- a new adapter,
+    // written (ADR-0029), so every profile has to state them -- a new adapter,
     // or a new profile range, cannot inherit that silence.
     it("states agent definition support explicitly in every component profile", () => {
       const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];

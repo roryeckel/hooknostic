@@ -212,7 +212,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     },
   },
   {
-    // ADR-0029. Drives the .capture/agents `scoped` case: hooks scoped to a
+    // ADR-0030. Drives the .capture/agents `scoped` case: hooks scoped to a
     // subagent are built for the installed build and must act inside it and
     // nowhere else; where the target cannot tell, the build must refuse the
     // scope and the child's tool events must still name no agent.

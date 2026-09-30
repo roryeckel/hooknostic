@@ -5,7 +5,7 @@ import type {
   AgentPluginProjectionProfile,
 } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText, renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
+import { contentsText, renderMarkdownFrontmatter, SKILL_REFERENCE_UNEXPANDED } from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   HarnessAdapter,
@@ -22,6 +22,7 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
+import { CLAUDE_PROJECT_SKILL_TEXT } from "./skill-text.js";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const manifest = artifacts.find((a) => a.path === "hooks/hooks.json");
   const entries: ProjectEntry[] = [];
@@ -60,7 +61,7 @@ export const claudeAgents: NonNullable<HarnessAdapter["agents"]> = {
  * Claude has no agent mode: every agent file can run as a session (`--agent`,
  * the `agent` setting) and is offered for delegation. So a `primary`
  * definition is delegable too, which only a project permission rule,
- * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0028 decision 9).
+ * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0029 decision 9).
  */
 export const PRIMARY_AGENT_DELEGABLE = "primary-agent-delegable";
 
@@ -107,7 +108,10 @@ export async function projectComponents(
   _config?: string,
   options: ProjectComponentOptions = {},
 ): Promise<ProjectIntegration> {
-  const result = projectSkillFiles(source, root, ".claude/skills");
+  const result = projectSkillFiles(source, root, ".claude/skills", {
+    target: CLAUDE_PROJECT_SKILL_TEXT,
+    harness: "Claude Code",
+  });
   const agents = projectAgentFiles(source.agents ?? [], claudeAgents.projectDirectory, renderClaudeAgent);
   result.files.push(...agents.files);
   if (agents.files.length > 0)
@@ -175,7 +179,19 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
   {
     range: claudeHarness.recommendedRange,
     components: {
-      "agent-plugin.skills": { level: "exact" },
+      "agent-plugin.skills": {
+        level: "exact",
+        rationale:
+          "Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten.",
+        degradations: [
+          {
+            id: SKILL_REFERENCE_UNEXPANDED,
+            summary:
+              "A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body.",
+            evidence: ".capture/skill-directory",
+          },
+        ],
+      },
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
@@ -249,6 +265,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-12",
       validatedOn: [
+        {
+          version: "2.1.285",
+          date: "2026-09-30",
+          method: "live-probe",
+          artifact: ".capture/skill-directory",
+          what: "A project skill under .claude/skills, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes) and ${CLAUDE_SESSION_ID} expanded, and ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written.",
+        },
         {
           version: "2.1.283",
           date: "2026-09-29",

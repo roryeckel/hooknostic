@@ -11,7 +11,7 @@ configuration was edited.
 ## Question
 
 Hooknostic may gain a portable custom-agent component (the owner's spike for
-ADR-0028). Before anything claims a support level, each harness has to answer
+ADR-0029). Before anything claims a support level, each harness has to answer
 these questions about a native agent file:
 
 - Where does the harness discover it, and is it advertised to the parent?
@@ -300,7 +300,7 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
   which confirms the documented `primary` default. A mutant registering the
   packaged agent through the agent transform without it failed the same way.
 
-- **The `scoped` case** (ADR-0029). It synchronizes the definition together with
+- **The `scoped` case** (ADR-0030). It synchronizes the definition together with
   hooks scoped to the probe (`scoped-hooks.ts`, plus `scoped-lifecycle-hooks.ts`
   on Claude and Codex), built for the harness build it finds installed.
   - **The hooks.** A guard blocks the probe's first tool call (its read of
@@ -317,7 +317,7 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
     a subagent. The drive then delegates to a native agent instead, and the tee
     confirms the child's tool events still name no agent.
 
-- **The `*-primary` cases** (ADR-0028, decision 9) deliver the same definition
+- **The `*-primary` cases** (ADR-0029, decision 9) deliver the same definition
   with `mode: primary`, and start the session as it rather than delegating.
   Codex has none: it has no agent a session runs as.
   - **`generated-primary`** synchronizes it through project delivery. On

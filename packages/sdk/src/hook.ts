@@ -55,7 +55,7 @@ export interface TargetScope {
 }
 
 /**
- * Which agents a hook runs in (ADR-0029), by the name the harness reports as
+ * Which agents a hook runs in (ADR-0030), by the name the harness reports as
  * `correlation.agentType` -- plugin-qualified for an agent a package delivered
  * (`<plugin>:<name>` on Claude, `<plugin>-<name>` on OpenCode).
  */
@@ -67,7 +67,7 @@ export interface AgentScope {
 }
 
 /**
- * True when the hook applies to an event given its agent scoping (ADR-0029).
+ * True when the hook applies to an event given its agent scoping (ADR-0030).
  *
  * An event that names no agent is outside every `include` and inside no
  * `exclude`. The build makes that safe: a scope requires its event's
@@ -129,7 +129,7 @@ export interface HookSpec<
   targets?: TargetScope;
 
   /**
-   * Run only inside, or never inside, the named agents (ADR-0029). Requires
+   * Run only inside, or never inside, the named agents (ADR-0030). Requires
    * the event's `agent.identity` capability, which the build checks for each
    * target like any other required capability.
    */
@@ -249,7 +249,7 @@ export function hook<
   if (spec.agents !== undefined) {
     // The scope is only as good as the target's knowledge of which agent an
     // event ran in, so it requires that, as using an event requires observing
-    // it (ADR-0029). An event with no such capability cannot be scoped; the
+    // it (ADR-0030). An event with no such capability cannot be scoped; the
     // compiler reports that one.
     const identity = agentIdentityCapability(event);
     if (identity !== undefined) {

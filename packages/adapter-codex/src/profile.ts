@@ -9,7 +9,7 @@ const NOTIFY_ACCEPTED_AND_DISCARDED =
 
 /**
  * Every Codex capability cell except agent identity, which splits the data
- * by version (ADR-0029): below 0.156.1 no hook was observed inside a
+ * by version (ADR-0030): below 0.156.1 no hook was observed inside a
  * subagent at all.
  */
 const codexMatrix: CapabilityMatrix = {
@@ -147,7 +147,7 @@ const codexFields: FieldMatrix = {
   "turn.stop.correlation.turnId": { level: "exact" },
 };
 
-/** What a hook scoped to agents relies on, per ADR-0029. */
+/** What a hook scoped to agents relies on, per ADR-0030. */
 const AGENT_IDENTITY_EVENTS = ["tool.before", "tool.after", "agent.start", "agent.stop"] as const;
 
 const NO_HOOK_INSIDE_A_SUBAGENT =

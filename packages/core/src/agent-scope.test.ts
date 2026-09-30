@@ -8,7 +8,7 @@ import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { analyzeCapabilities } from "./analysis.js";
 import { buildPluginIR } from "./ir.js";
 
-// Which real targets can honour a hook scoped to one agent (ADR-0029). The
+// Which real targets can honour a hook scoped to one agent (ADR-0030). The
 // levels come from each adapter's captured evidence; this pins that the
 // analysis turns them into a build decision, with the reason attached.
 const { ir } = buildPluginIR(
