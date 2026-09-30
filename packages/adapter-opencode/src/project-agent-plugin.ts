@@ -47,7 +47,7 @@ export interface OpenCodePackageAgent {
   native: Record<string, unknown>;
 }
 
-/** An agent kept under its bare name in OpenCode's flat agent namespace (ADR-0027). */
+/** An agent kept under its bare name in OpenCode's flat agent namespace (ADR-0028). */
 export const AGENT_NAME_UNQUALIFIED = "agent-name-unqualified";
 
 const delivers = (cell: AgentPluginComponentSupport | undefined): boolean =>
@@ -316,7 +316,7 @@ function injectorSource(
     ...(agentEntries.length === 0
       ? []
       : [
-          "    // Agent definitions configured beside the package (ADR-0027), registered as",
+          "    // Agent definitions configured beside the package (ADR-0028), registered as",
           "    // the project's opencode.json would declare them.",
           "    config.agent = { ...(config.agent ?? {}) };",
           "    for (const [name, agent] of agents) {",
@@ -781,7 +781,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
           message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
         });
       }
-      // Agent definitions configured beside the package (ADR-0027). OpenCode keeps one
+      // Agent definitions configured beside the package (ADR-0028). OpenCode keeps one
       // flat agent namespace, so each is named for its plugin as skills are
       // (ADR-0021) -- switched by the declared degradation, like skills -- and
       // a family whose plugin API cannot take native fields gets none.
@@ -789,7 +789,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
       const deliversPrimary = deliversDefinitions && delivers(context.support["agents.primary"]);
       const deliversNative = deliversDefinitions && delivers(context.support["agents.native"]);
       // Without a main-session route an `all` definition is still a subagent,
-      // and a `primary` one has nothing left to register (ADR-0027, decision 9).
+      // and a `primary` one has nothing left to register (ADR-0028, decision 9).
       const definitions = (deliversDefinitions ? (context.agents ?? []) : []).flatMap((definition) => {
         if (deliversPrimary || !servesAsPrimary(definition.mode)) return [definition];
         const mode = withoutPrimary(definition.mode);

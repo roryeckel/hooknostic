@@ -1,9 +1,9 @@
 import semver from "semver";
 
-import type { CapabilityId } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, leastCapable } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
+import { ALL_CAPABILITY_IDS, ALL_EVENT_FIELD_IDS, leastCapable } from "@hooknostic/sdk";
 
-import type { CapabilityEntry, CapabilityMatrix, CapabilityProfile, CapabilityResolutionResult } from "./adapter.js";
+import type { CapabilityEntry, CapabilityProfile, CapabilityResolutionResult, FieldMatrix } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 
 interface StableInterval {
@@ -221,24 +221,43 @@ export function resolveCapabilityMatrix(
   }
 
   if (used.length === 1) {
-    return { matrix: used[0]!.matrix, profilesUsed: [...used], diagnostics };
+    return { matrix: used[0]!.matrix, fields: used[0]!.fields ?? {}, profilesUsed: [...used], diagnostics };
   }
 
-  // Least-capable guaranteed intersection: a capability's level is the lowest
-  // level across all intersecting profiles; missing entries are unsupported.
-  // The cell kept is one a profile declares at that level, so its rationale
-  // survives -- an explicit `unsupported` included, as it does when a single
-  // profile resolves: `inspect` can only explain a cell that exists. A cell
-  // no profile declares at the lowest level stays absent.
-  const matrix: CapabilityMatrix = {};
-  for (const id of ALL_CAPABILITY_IDS) {
-    const cells = used.map((profile) => profile.matrix[id]);
+  return {
+    matrix: leastCapableMatrix(
+      ALL_CAPABILITY_IDS,
+      used.map((profile) => profile.matrix),
+    ),
+    fields: leastCapableMatrix(
+      ALL_EVENT_FIELD_IDS,
+      used.map((profile) => profile.fields ?? {}),
+    ) as FieldMatrix,
+    profilesUsed: [...used],
+    diagnostics,
+  };
+}
+
+/**
+ * Least-capable guaranteed intersection: an id's level is the lowest level
+ * across all intersecting profiles; missing entries are unsupported. Shared by
+ * capabilities and event fields, which resolve by the same rule (ADR-0027).
+ * Keep a declared cell at that level, including explicit unsupported cells,
+ * so its rationale survives for inspect. If no profile declares it, omit it.
+ */
+function leastCapableMatrix<Id extends CapabilityId | EventFieldId>(
+  ids: readonly Id[],
+  matrices: readonly Partial<Record<Id, CapabilityEntry>>[],
+): Partial<Record<Id, CapabilityEntry>> {
+  const matrix: Partial<Record<Id, CapabilityEntry>> = {};
+  for (const id of ids) {
+    const cells = matrices.map((profileMatrix) => profileMatrix[id]);
     const level = cells.reduce<CapabilityEntry["level"]>(
       (least, cell) => leastCapable(least, cell?.level ?? "unsupported"),
       "exact",
     );
     const entry = cells.find((cell): cell is CapabilityEntry => cell !== undefined && cell.level === level);
-    if (entry !== undefined) matrix[id as CapabilityId] = entry;
+    if (entry !== undefined) matrix[id] = entry;
   }
-  return { matrix, profilesUsed: [...used], diagnostics };
+  return matrix;
 }

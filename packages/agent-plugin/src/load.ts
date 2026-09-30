@@ -778,7 +778,7 @@ export interface ProjectComponents {
   origin: "package" | "direct";
   skills: ProjectSkill[];
   mcp?: { root: string; config: AgentPluginMcpConfig };
-  /** Portable agent definitions (ADR-0027); absent when none are configured. */
+  /** Portable agent definitions (ADR-0028); absent when none are configured. */
   agents?: AgentDefinition[];
   /** The name of the definition sessions start as (`components.defaultAgent`), where this target takes it. */
   defaultAgent?: string;
@@ -799,7 +799,7 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
 export async function loadProjectComponents(options: {
   skills?: string[];
   mcp?: string;
-  /** Directories of Hooknostic Agent Definition files (ADR-0027). */
+  /** Directories of Hooknostic Agent Definition files (ADR-0028). */
   agents?: string[];
   exclude?: string[];
   executableFiles?: string[];

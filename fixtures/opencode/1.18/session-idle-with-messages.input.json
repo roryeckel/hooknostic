@@ -1,0 +1,12 @@
+{
+  "hook": "event",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project",
+  "input": {
+    "event": {
+      "type": "session.idle",
+      "properties": {
+        "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV"
+      }
+    }
+  }
+}

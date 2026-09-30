@@ -75,3 +75,15 @@ Same version/date and Windows platform; procedure: `.capture/opencode-v2-audit`.
 OAuth tokens and authorization material are synthetic fixture values, not account
 credentials. Provider/request summaries are not standalone hook payloads. Their
 complete source recordings remain in the scratch roots printed by the driver.
+
+**Turn fields (2.0.18, Windows, 2026-09-28).** `drive.mjs observe` against
+`@opencode/cli` 2.0.18, with every state directory isolated as the driver
+always does. The plugin's event subscription received
+`session.text.ended { sessionID, assistantMessageID, ordinal, text }` before
+`session.execution.succeeded { sessionID }`, and each model step had its own
+`assistantMessageID` (ADR-0027).
+
+| Fixture | Provenance | Observed boundary |
+| --- | --- | --- |
+| turn-fields/events.jsonl | captured | One session in capture order: the prompt hook, then its inbox, execution, step and text events from the subscription. Deltas and unrelated events omitted |
+| execution-succeeded-with-turn | captured events, constructed enrichment | The captured completion envelope; `.enrichment.json` holds the `execution` the shim hands the decoder beside it (never in `raw`): the prompt hook's `sessionID`/`messageID` and the captured `session.text.ended` data. Canonical `harness.version` is the test's reference build |

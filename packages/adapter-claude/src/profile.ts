@@ -126,6 +126,41 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       ],
       notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
     },
+    // Optional event fields (ADR-0027): exactly what the captured fixtures in
+    // fixtures/claude/2.1 carry. prompt_id is on every payload except
+    // SessionStart; agent_id is captured on subagent lifecycle events and
+    // the subagent's tool events (pre/post-tool-read-subagent, 2.1.283).
+    fields: {
+      "session.start.how": { level: "exact" },
+      "session.end.reason": { level: "exact" },
+      "session.end.correlation.turnId": { level: "exact" },
+      "prompt.before.correlation.turnId": { level: "exact" },
+      "tool.before.correlation.turnId": { level: "exact" },
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.before.correlation.agentId": { level: "exact" },
+      "tool.after.correlation.turnId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.agentId": { level: "exact" },
+      "tool.error.error.message": { level: "exact" },
+      "tool.error.correlation.turnId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+      "permission.request.correlation.turnId": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+      "context.compact.before.trigger": { level: "exact" },
+      "context.compact.before.correlation.turnId": { level: "exact" },
+      "context.compact.after.correlation.turnId": { level: "exact" },
+      "agent.start.agent.id": { level: "exact" },
+      "agent.start.agent.type": { level: "exact" },
+      "agent.start.correlation.turnId": { level: "exact" },
+      "agent.start.correlation.agentId": { level: "exact" },
+      "agent.stop.agent.id": { level: "exact" },
+      "agent.stop.agent.type": { level: "exact" },
+      "agent.stop.lastMessage": { level: "exact" },
+      "agent.stop.correlation.turnId": { level: "exact" },
+      "agent.stop.correlation.agentId": { level: "exact" },
+      "turn.stop.lastMessage": { level: "exact" },
+      "turn.stop.correlation.turnId": { level: "exact" },
+    },
     matrix: {
       "session.start.observe": { level: "exact" },
       "session.start.context.add": { level: "exact" },
@@ -149,7 +184,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.context.add": { level: "exact" },
       // Inside a subagent the payload carries agent_type, and so does every
       // event of a session started as an agent; a plain session's carry none, so
-      // a named agent is never confused with it (ADR-0028, fixtures
+      // a named agent is never confused with it (ADR-0029, fixtures
       // pre-tool-read-subagent, 2.1.238 and 2.1.283; .capture/agents primary-*).
       "tool.before.agent.identity": { level: "exact" },
 

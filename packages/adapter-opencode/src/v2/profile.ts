@@ -90,6 +90,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/agents",
           what: "The scoped-primary case: with the session started as a mode: primary definition, its tool events carried agent: <name>, and hooks scoped to that name blocked the session's own guarded read and let its next through, while a guard scoped to another agent never ran (packages/cli/test/agent-definition-playback.test.ts).",
         },
+        {
+          version: "2.0.18",
+          date: "2026-09-28",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0",
+          what: "Turn fields over the loopback model (observe drive, isolated state): the plugin's event subscription receives session.execution.started, session.step.*, session.text.started/delta/ended ({ sessionID, assistantMessageID, ordinal, text }) and then session.execution.succeeded ({ sessionID } only). Each model step has its own assistantMessageID; the prompt hook's messageID matches session.inbox.enqueued's inboxID (turn-fields/events.jsonl, execution-succeeded-with-turn).",
+        },
         // scheduled-playback:begin
         {
           version: "2.0.18",
@@ -100,6 +107,29 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         },
         // scheduled-playback:end
       ],
+    },
+    // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
+    // capture in .capture/opencode-v2 (observe drive, event subscription).
+    fields: {
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+      "tool.error.error.message": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+      "prompt.before.correlation.turnId": {
+        level: "exact",
+        rationale: "the prompt hook's messageID, the id of the user message it admits.",
+      },
+      "turn.stop.lastMessage": {
+        level: "emulated",
+        rationale:
+          "execution completion carries only the session id. The shim buffers the session.text.ended events of each execution from the event subscription and joins, in ordinal order, the text of the last assistant message that produced any (one message per model step, as on Claude). Only sessions the plugin tracks, only while subscribed, and only when a turn.stop hook declares this field. A failed or interrupted execution reports whatever text had ended.",
+      },
+      "turn.stop.correlation.turnId": {
+        level: "emulated",
+        rationale:
+          "the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none.",
+      },
     },
     matrix: {
       "session.start.observe": {
@@ -122,7 +152,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         rationale: "Mutating event.input before execution changes the executed command.",
       },
       // execute.before/after name the running agent: the subagent inside one, the
-      // primary agent otherwise (ADR-0028, fixtures tool-read-in-subagent-*).
+      // primary agent otherwise (ADR-0029, fixtures tool-read-in-subagent-*).
       "tool.before.agent.identity": { level: "exact" },
       "tool.after.observe": { level: "exact" },
       "tool.after.agent.identity": { level: "exact" },
@@ -149,7 +179,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt.",
+          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt. The completion carries only the session id; lastMessage and correlation.turnId are assembled from earlier events, see the field ratings.",
       },
       "turn.stop.prevent": {
         level: "approximate",

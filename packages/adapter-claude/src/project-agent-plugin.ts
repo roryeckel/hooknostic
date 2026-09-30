@@ -244,7 +244,7 @@ function componentCounts(
     ...(defaultAgent === undefined ? {} : { defaultAgent }),
     skipped: (component, discovered) => {
       if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
-      // A package never sets the default agent (ADR-0027, decision 10).
+      // A package never sets the default agent (ADR-0028, decision 10).
       if (component === "agents.default") return discovered;
       // A refused stdio server is discovered but not emitted; without this the
       // report contradicts summary.omissions and .mcp.json alike.
@@ -527,7 +527,7 @@ export async function projectAgentPluginToClaude(
       files.set(hookFile.path, hookFile);
     }
 
-    // Agent definitions configured beside the package (ADR-0027). Claude qualifies
+    // Agent definitions configured beside the package (ADR-0028). Claude qualifies
     // each by the plugin, so the authored name is kept. A package already
     // shipping a file at the same path would otherwise be replaced silently,
     // so that is fatal, case-folded like every other generated-path check.

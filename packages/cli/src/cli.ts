@@ -25,7 +25,7 @@ Usage:
   hooknostic verify [--config <path>] [--json]
   hooknostic recover [--config <path>] [--json]
   hooknostic doctor  [--config <path>] [--json]
-  hooknostic inspect <target> [--capability <id> | --component <id>] [--version <range>] [--delivery <project|package>] [--config <path>] [--json]
+  hooknostic inspect <target> [--capability <id> | --component <id> | --field <id>] [--version <range>] [--delivery <project|package>] [--config <path>] [--json]
   hooknostic dispatch --target <id> [--events <path>] [--config <path>]
 
 Options:
@@ -34,6 +34,7 @@ Options:
   --events <path>     JSON Lines of portable events to dispatch (default: stdin)
   --capability <id>   Inspect a single capability
   --component <id>    Inspect a single component (Agent Plugin or agent definition)
+  --field <id>        Inspect a single optional event field, e.g. turn.stop.lastMessage
   --version <range>   Harness version range for inspect
   --delivery <scope>  Project or package component support for inspect
   --json              Machine-readable output
@@ -78,6 +79,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
         target: { type: "string" },
         capability: { type: "string" },
         component: { type: "string" },
+        field: { type: "string" },
         delivery: { type: "string" },
         events: { type: "string" },
         version: { type: "string" },
@@ -198,6 +200,7 @@ export async function runCli(argv: string[], options?: RunCliOptions): Promise<n
           target,
           ...(typeof parsed.values["capability"] === "string" ? { capability: parsed.values["capability"] } : {}),
           ...(typeof parsed.values["component"] === "string" ? { component: parsed.values["component"] } : {}),
+          ...(typeof parsed.values["field"] === "string" ? { field: parsed.values["field"] } : {}),
           ...(typeof parsed.values["version"] === "string" ? { version: parsed.values["version"] } : {}),
           ...(parsed.values["json"] ? { json: true } : {}),
           registry,

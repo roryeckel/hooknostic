@@ -125,11 +125,48 @@ var TOOL_SCOPED_EVENTS = [
   "tool.error",
   "permission.request"
 ];
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
 var AGENT_SCOPED_EVENTS = [
   ...TOOL_SCOPED_EVENTS,
   "agent.start",
   "agent.stop"
 ];
+
+// ../../packages/sdk/dist/fields.js
+var OPTIONAL_EVENT_FIELDS = {
+  "session.start": ["how"],
+  "session.end": ["reason"],
+  "prompt.before": [],
+  "model.request.before": [],
+  "tool.before": [],
+  "tool.after": [],
+  "tool.error": ["error.message"],
+  "permission.request": [],
+  "context.compact.before": ["trigger"],
+  "context.compact.after": [],
+  "agent.start": ["agent.id", "agent.type"],
+  "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+  "turn.stop": ["lastMessage"]
+};
+var CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+var TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+var ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+var FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/hook.js
 function hookAppliesToAgent(hook2, event) {
@@ -164,6 +201,18 @@ function canonicalCapabilities(event, hookId, declared) {
   }
   return canonical;
 }
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const capabilities = canonicalCapabilities(event, spec.id, spec.capabilities);
   if (spec.agents !== void 0) {
@@ -189,6 +238,8 @@ function hook(event, spec) {
     def.agents = spec.agents;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 
@@ -4474,6 +4525,11 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+var fieldAcceptanceSchema = external_exports.string().refine((value) => {
+  const colon = value.indexOf(":");
+  return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+}, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
 var MAX_TIMER_DELAY_MS = 2147483647;
 var packageMaterializerSchema = external_exports.custom((value) => {
   if (typeof value !== "object" || value === null)
@@ -4544,7 +4600,8 @@ var effectSchema = external_exports.discriminatedUnion("kind", [
 var compatibilityPolicySchema = external_exports.object({
   minimum: supportLevelSchema.optional(),
   onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+  accept: external_exports.array(fieldAcceptanceSchema).optional()
 }).strict();
 var runtimePolicySchema = external_exports.object({
   onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4789,6 +4846,7 @@ var hookDefinitionSchema = external_exports.object({
   // and would time the hook out permanently.
   timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+  fields: external_exports.array(eventFieldIdSchema).optional(),
   run: external_exports.custom((v) => typeof v === "function", {
     message: "run must be a function"
   })
@@ -5311,7 +5369,29 @@ function snapshotOpenCodeArgs(args) {
     throw new OpenCodeDecodeError("tool.execute.before arguments cannot be cloned");
   }
 }
-function decodeOpenCode(nativeEvent, invocation) {
+var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function turnFields(messages) {
+  if (!Array.isArray(messages)) return {};
+  let lastMessage;
+  let turnId;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = record(messages[index]);
+    const info = record(entry["info"]);
+    if (info["role"] !== "assistant") break;
+    if (turnId === void 0 && typeof info["parentID"] === "string") turnId = info["parentID"];
+    if (lastMessage === void 0) {
+      const parts = Array.isArray(entry["parts"]) ? entry["parts"] : [];
+      const text = parts.map(record).filter((part) => part["type"] === "text" && part["synthetic"] !== true && part["ignored"] !== true).map((part) => part["text"]).filter((value) => typeof value === "string" && value !== "").join("\n");
+      if (text !== "") lastMessage = text;
+    }
+    if (turnId !== void 0 && lastMessage !== void 0) break;
+  }
+  return {
+    ...lastMessage !== void 0 ? { lastMessage } : {},
+    ...turnId !== void 0 ? { turnId } : {}
+  };
+}
+function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new OpenCodeDecodeError("native event is not an object");
   }
@@ -5377,7 +5457,13 @@ function decodeOpenCode(nativeEvent, invocation) {
     case "chat.message": {
       const parts = Array.isArray(output["parts"]) ? output["parts"] : [];
       const prompt = parts.map((p) => typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
-      return { ...base, event: "prompt.before", prompt };
+      const messageId = record(output["message"])["id"];
+      return {
+        ...base,
+        ...typeof messageId === "string" ? { correlation: { ...base.correlation, turnId: messageId } } : {},
+        event: "prompt.before",
+        prompt
+      };
     }
     case "experimental.chat.system.transform":
       return { ...base, event: "model.request.before" };
@@ -5399,8 +5485,16 @@ function decodeOpenCode(nativeEvent, invocation) {
           return { ...withSession(infoSessionId), event: "session.start" };
         case "session.deleted":
           return { ...withSession(infoSessionId), event: "session.end" };
-        case "session.idle":
-          return { ...withSession(propertySessionId), event: "turn.stop" };
+        case "session.idle": {
+          const { lastMessage, turnId } = turnFields(enrichment.messages);
+          const session = withSession(propertySessionId);
+          return {
+            ...session,
+            ...turnId !== void 0 ? { correlation: { ...session.correlation, turnId } } : {},
+            event: "turn.stop",
+            ...lastMessage !== void 0 ? { lastMessage } : {}
+          };
+        }
         case "session.compacted":
           return { ...withSession(propertySessionId), event: "context.compact.after" };
         case "permission.asked": {
@@ -5443,12 +5537,34 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   const events = new Set(
     plugin.hooks.filter((hook2) => hookAppliesToTarget(hook2, invocation.targetId)).map((hook2) => hook2.event)
   );
+  const readsTurn = plugin.hooks.some(
+    (hook2) => hook2.event === "turn.stop" && hookAppliesToTarget(hook2, invocation.targetId) && (hook2.fields ?? []).some(
+      (field) => field === "turn.stop.lastMessage" || field === "turn.stop.correlation.turnId"
+    )
+  );
+  const enrich = async (native) => {
+    if (!readsTurn || native.hook !== "event") return {};
+    const busEvent = native.input?.event;
+    const id = busEvent?.properties?.sessionID;
+    const session = pluginInput.client?.session;
+    if (busEvent?.type !== "session.idle" || typeof id !== "string" || typeof session?.messages !== "function") {
+      return {};
+    }
+    try {
+      const response = await withTimeout(Promise.resolve(session.messages({ path: { id } })));
+      const data = response !== null && typeof response === "object" && "data" in response ? response.data : void 0;
+      return Array.isArray(data) ? { messages: data } : {};
+    } catch {
+      return {};
+    }
+  };
   class HooknosticBlock extends Error {
   }
   const run = async (native) => {
+    const enrichment = await enrich(native);
     let event;
     try {
-      event = decodeOpenCode(native, invocation);
+      event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
       if (error instanceof OpenCodeDecodeError) return;
       throw error;
@@ -5593,8 +5709,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.2.0
-@hooknostic/runtime@0.2.0
+@hooknostic/adapter-opencode@0.3.0
+@hooknostic/runtime@0.3.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5802,8 +5918,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.2.0
-hooknostic@0.2.0
+@hooknostic/sdk@0.3.0
+hooknostic@0.3.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

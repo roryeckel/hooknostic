@@ -2,6 +2,8 @@ import type { CanonicalCapability, CapabilityId, CapabilityKey, CapabilitySpelli
 import { agentIdentityCapability, canonicalCapability } from "./capabilities.js";
 import type { Effect, EffectForCapability } from "./effects.js";
 import type { AgentScopedEventName, HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
+import type { EventFieldId, FieldKey } from "./fields.js";
+import { canonicalField } from "./fields.js";
 import type { RequirementLevel, SupportLevel } from "./support.js";
 import type { MatchedKind, ToolMatch } from "./tools.js";
 
@@ -53,7 +55,7 @@ export interface TargetScope {
 }
 
 /**
- * Which agents a hook runs in (ADR-0028), by the name the harness reports as
+ * Which agents a hook runs in (ADR-0029), by the name the harness reports as
  * `correlation.agentType` -- plugin-qualified for an agent a package delivered
  * (`<plugin>:<name>` on Claude, `<plugin>-<name>` on OpenCode).
  */
@@ -65,7 +67,7 @@ export interface AgentScope {
 }
 
 /**
- * True when the hook applies to an event given its agent scoping (ADR-0028).
+ * True when the hook applies to an event given its agent scoping (ADR-0029).
  *
  * An event that names no agent is outside every `include` and inside no
  * `exclude`. The build makes that safe: a scope requires its event's
@@ -127,7 +129,7 @@ export interface HookSpec<
   targets?: TargetScope;
 
   /**
-   * Run only inside, or never inside, the named agents (ADR-0028). Requires
+   * Run only inside, or never inside, the named agents (ADR-0029). Requires
    * the event's `agent.identity` capability, which the build checks for each
    * target like any other required capability.
    */
@@ -156,6 +158,17 @@ export interface HookSpec<
   capabilities?: Record<K, RequirementLevel>;
 
   /**
+   * The optional event fields the handler reads, such as `"lastMessage"` or
+   * `"correlation.turnId"` (ADR-0027). The build reports HN108 on every target
+   * that cannot produce one exactly, and fails where it is never produced
+   * unless accepted with `compatibility.accept`. An in-process target may do
+   * the work of producing a field only when some hook declares it, so declare
+   * every optional field the hook depends on. Spelled relative to the event or
+   * in full; `hook()` stores the full id.
+   */
+  fields?: readonly NoInfer<FieldKey<E>>[];
+
+  /**
    * Return nothing to continue unchanged, one effect, or an ordered list of
    * effects -- the same as consecutive handlers returning them one at a time,
    * with a terminal effect (`block`, `preventStop`, …) allowed only last
@@ -181,6 +194,8 @@ export interface HookDefinition {
   agents?: AgentScope;
   timeoutMs?: number;
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
+  /** Declared optional fields, as full ids; absent when the hook declared none. */
+  fields?: readonly EventFieldId[];
   run(event: HookEventMap[HookEventName], ctx: HookContext): HookReturn | Promise<HookReturn>;
 }
 
@@ -211,6 +226,20 @@ function canonicalCapabilities(
   return canonical as Partial<Record<CapabilityId, RequirementLevel>>;
 }
 
+/** Rewrite an authored field list to full ids, refusing a field named twice. */
+function canonicalFields(event: HookEventName, hookId: string, declared: readonly string[]): EventFieldId[] {
+  const spelledAs = new Map<string, string>();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== undefined) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()] as EventFieldId[];
+}
+
 export function hook<
   E extends HookEventName,
   K extends CapabilityKey<E> = never,
@@ -220,7 +249,7 @@ export function hook<
   if (spec.agents !== undefined) {
     // The scope is only as good as the target's knowledge of which agent an
     // event ran in, so it requires that, as using an event requires observing
-    // it (ADR-0028). An event with no such capability cannot be scoped; the
+    // it (ADR-0029). An event with no such capability cannot be scoped; the
     // compiler reports that one.
     const identity = agentIdentityCapability(event);
     if (identity !== undefined) {
@@ -242,5 +271,6 @@ export function hook<
   if (spec.targets !== undefined) def.targets = spec.targets;
   if (spec.agents !== undefined) def.agents = spec.agents;
   if (spec.timeoutMs !== undefined) def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== undefined) def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }

@@ -379,7 +379,7 @@ async function installedVersion(binary, env = process.env) {
 }
 
 /**
- * The `scoped` case (ADR-0028): the portable definition plus hooks scoped to
+ * The `scoped` case (ADR-0029): the portable definition plus hooks scoped to
  * it, synchronized together and built for the installed build's exact version,
  * so the target's own agent-identity level decides whether the scope builds.
  * A refused build is an outcome, not a failure: the drive then delegates to a
@@ -1163,7 +1163,7 @@ function excerpt(text, limit = 1500) {
 
 /**
  * Whether the tee saw the running agent named on a tool event inside the
- * child -- the raw field ADR-0028 normalizes -- whatever Hooknostic decided.
+ * child -- the raw field ADR-0029 normalizes -- whatever Hooknostic decided.
  */
 function rows(file) {
   return existsSync(file)

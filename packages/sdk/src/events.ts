@@ -54,7 +54,7 @@ export interface BaseHookEvent {
     agentId?: string;
     /**
      * The name of the agent the event ran in, exactly as the harness reports
-     * it (ADR-0028): a subagent's name inside one -- plugin-qualified when a
+     * it (ADR-0029): a subagent's name inside one -- plugin-qualified when a
      * package delivered it -- and the name of a defined agent a session runs
      * as, where the harness reports it; a harness that names every agent also
      * names its own primary agent. Absent when the harness does not say, which
@@ -186,7 +186,7 @@ export function isToolScopedEvent(event: HookEventName): event is ToolScopedEven
 }
 
 /**
- * Events a hook may scope to the agents they run in (ADR-0028): the ones that
+ * Events a hook may scope to the agents they run in (ADR-0029): the ones that
  * happen inside a subagent, and its own lifecycle. Each has an
  * `<event>.agent.identity` capability.
  */

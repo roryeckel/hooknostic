@@ -1,4 +1,8 @@
+import type { EventFieldId } from "./fields.js";
 import type { SupportLevel } from "./support.js";
+
+/** A field shortfall named for acceptance: `<adapter>:<field id>` (ADR-0027). */
+export type FieldAcceptance = `${string}:${EventFieldId}`;
 
 /**
  * Compatibility policy: the minimum acceptable fidelity for required
@@ -12,12 +16,22 @@ export interface CompatibilityPolicy {
   onBelowMinimum?: "error" | "warn";
   /** How an unavailable optional capability is reported. */
   optionalUnavailable?: "info" | "warn" | "silent";
+  /**
+   * Event-field shortfalls to ship whatever the policy says, each named
+   * `<adapter>:<field id>`, such as `"opencode:turn.stop.correlation.turnId"`
+   * (ADR-0027). An accepted HN108 is still reported, as information, and
+   * still recorded in the build report. The global and per-target lists add
+   * up. An id that no configured target's adapter rates below exact is an
+   * error, so a typo cannot silently accept nothing.
+   */
+  accept?: FieldAcceptance[];
 }
 
 export const DEFAULT_COMPATIBILITY: Required<CompatibilityPolicy> = {
   minimum: "emulated",
   onBelowMinimum: "error",
   optionalUnavailable: "info",
+  accept: [],
 };
 
 export interface RuntimePolicy {
@@ -245,7 +259,7 @@ interface ComponentPolicy<TTarget extends string> {
   accept?: string[];
   /**
    * The agent every session of the project starts as: the name of a definition
-   * in `agents` whose `mode` is `primary` or `all` (ADR-0027). Project delivery
+   * in `agents` whose `mode` is `primary` or `all` (ADR-0028). Project delivery
    * writes each harness's own default -- Claude's `agent` setting, OpenCode's
    * default agent -- and on Codex, which has no agent a session runs as, the
    * agent's instructions into the project configuration. Package targets do
@@ -268,7 +282,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         mcp?: never;
         mcpOverrides?: never;
         // Hooknostic input beside the package, like hook source: projectors
-        // translate them into each native package (ADR-0027).
+        // translate them into each native package (ADR-0028).
         agents?: AgentSources;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
@@ -333,7 +347,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
 /**
  * Directories of Hooknostic Agent Definition files: flat `<name>.md` files,
  * YAML frontmatter plus the instructions as the body
- * (`docs/spec/agents/0.1.md`, ADR-0027). Project delivery writes each
+ * (`docs/spec/agents/0.1.md`, ADR-0028). Project delivery writes each
  * harness's own agent file; beside `root`, package delivery carries them in the
  * projected package where the harness supports it.
  */

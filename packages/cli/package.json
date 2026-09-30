@@ -1,6 +1,6 @@
 {
   "name": "hooknostic",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",

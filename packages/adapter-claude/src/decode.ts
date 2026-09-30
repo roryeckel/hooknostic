@@ -60,7 +60,7 @@ export function decodeClaude(nativeEvent: unknown, invocation: InvocationContext
       ...(typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {}),
       // Inside a subagent, and on every event of a session started as an agent
       // (--agent, the agent setting); a plain session's events carry none
-      // (ADR-0028, fixtures pre-tool-read-subagent and subagent-start).
+      // (ADR-0029, fixtures pre-tool-read-subagent and subagent-start).
       ...(typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}),
     },
     raw: nativeEvent,

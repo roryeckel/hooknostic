@@ -1,4 +1,4 @@
-import type { CapabilityMatrix, CapabilityProfile } from "@hooknostic/core";
+import type { CapabilityMatrix, CapabilityProfile, FieldMatrix } from "@hooknostic/core";
 
 /**
  * Shared by both stop events: `systemMessage` is accepted on the wire and never
@@ -9,7 +9,7 @@ const NOTIFY_ACCEPTED_AND_DISCARDED =
 
 /**
  * Every Codex capability cell except agent identity, which splits the data
- * by version (ADR-0028): below 0.156.1 no hook was observed inside a
+ * by version (ADR-0029): below 0.156.1 no hook was observed inside a
  * subagent at all.
  */
 const codexMatrix: CapabilityMatrix = {
@@ -118,7 +118,36 @@ const codexMatrix: CapabilityMatrix = {
   },
 };
 
-/** What a hook scoped to agents relies on, per ADR-0028. */
+// Optional event fields (ADR-0027): exactly what the fixtures in
+// fixtures/codex/0.148 carry, captured or schema-derived as its README
+// records per fixture. turn_id is absent from SessionStart and SessionEnd,
+// and the PermissionRequest schema has no tool_use_id.
+const codexFields: FieldMatrix = {
+  "session.start.how": { level: "exact" },
+  "session.end.reason": { level: "exact" },
+  "prompt.before.correlation.turnId": { level: "exact" },
+  "tool.before.correlation.turnId": { level: "exact" },
+  "tool.before.correlation.toolCallId": { level: "exact" },
+  "tool.after.correlation.turnId": { level: "exact" },
+  "tool.after.correlation.toolCallId": { level: "exact" },
+  "permission.request.correlation.turnId": { level: "exact" },
+  "context.compact.before.trigger": { level: "exact" },
+  "context.compact.before.correlation.turnId": { level: "exact" },
+  "context.compact.after.correlation.turnId": { level: "exact" },
+  "agent.start.agent.id": { level: "exact" },
+  "agent.start.agent.type": { level: "exact" },
+  "agent.start.correlation.turnId": { level: "exact" },
+  "agent.start.correlation.agentId": { level: "exact" },
+  "agent.stop.agent.id": { level: "exact" },
+  "agent.stop.agent.type": { level: "exact" },
+  "agent.stop.lastMessage": { level: "exact" },
+  "agent.stop.correlation.turnId": { level: "exact" },
+  "agent.stop.correlation.agentId": { level: "exact" },
+  "turn.stop.lastMessage": { level: "exact" },
+  "turn.stop.correlation.turnId": { level: "exact" },
+};
+
+/** What a hook scoped to agents relies on, per ADR-0029. */
 const AGENT_IDENTITY_EVENTS = ["tool.before", "tool.after", "agent.start", "agent.stop"] as const;
 
 const NO_HOOK_INSIDE_A_SUBAGENT =
@@ -238,6 +267,11 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
     },
+    fields: {
+      ...codexFields,
+      "tool.before.correlation.agentId": { level: "unsupported", rationale: NO_HOOK_INSIDE_A_SUBAGENT },
+      "tool.after.correlation.agentId": { level: "unsupported", rationale: NO_HOOK_INSIDE_A_SUBAGENT },
+    },
     matrix: {
       ...codexMatrix,
       ...Object.fromEntries(
@@ -332,6 +366,13 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         // scheduled-playback:end
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
+    },
+    // The child's tool payloads carry agent_id from 0.156.1, captured in
+    // fixtures/codex/0.148/pre/post-tool-bash-subagent (.capture/agents).
+    fields: {
+      ...codexFields,
+      "tool.before.correlation.agentId": { level: "exact" },
+      "tool.after.correlation.agentId": { level: "exact" },
     },
     matrix: { ...codexMatrix, ...agentIdentityFrom0156 },
   },

@@ -60,7 +60,7 @@ export const claudeAgents: NonNullable<HarnessAdapter["agents"]> = {
  * Claude has no agent mode: every agent file can run as a session (`--agent`,
  * the `agent` setting) and is offered for delegation. So a `primary`
  * definition is delegable too, which only a project permission rule,
- * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0027 decision 9).
+ * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0028 decision 9).
  */
 export const PRIMARY_AGENT_DELEGABLE = "primary-agent-delegable";
 

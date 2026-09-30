@@ -14,7 +14,7 @@ agents in `mode: primary`. Codex has no primary agents. Each harness has its own
 format, and OpenCode has two. No standard covers them: Agent Plugins 1.0 leaves agents
 out on purpose. So Hooknostic defines a small, provisional
 [format](../spec/agents/0.1.md) and compiles it into each harness's own
-([ADR-0027](../decisions/0027-portable-agents.md), proposed).
+([ADR-0028](../decisions/0028-portable-agents.md), proposed).
 
 ## The definition
 
@@ -48,7 +48,7 @@ You review the change you are given. You do not edit files.
 
 The format has no other keys. It does not accept `tools`, `model` or `maxTurns` at
 the top level, although every harness has something like them. The captures behind
-ADR-0027 show that they behave differently on each harness. A model id only means
+ADR-0028 show that they behave differently on each harness. A model id only means
 something to one provider. A turn cap stops a Claude child partway and lets it resume,
 stops an OpenCode v2 child hard, and is ignored by OpenCode v1. Codex has no per-agent
 tool list at all. A portable field that behaves differently everywhere would promise
@@ -207,7 +207,7 @@ session of every user who enables it as that agent, so package targets report
 
 ## Guarding the subagent with a hook
 
-A hook can run only inside named agents ([ADR-0028](../decisions/0028-agent-scoped-hooks.md),
+A hook can run only inside named agents ([ADR-0029](../decisions/0029-agent-scoped-hooks.md),
 proposed). This is how the reviewer becomes read-only on Codex, where no agent setting
 does it:
 

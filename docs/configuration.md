@@ -48,6 +48,15 @@ Set these globally or on a target. Optional hook capabilities must be checked at
 runtime with `ctx.capabilities.has(...)`, which accepts the key as declared
 (`"input.replace"`) or its full id (`"tool.before.input.replace"`).
 
+A hook that reads an optional event field lists it in `fields`
+(`fields: ["lastMessage", "correlation.turnId"]`). A declared field a target never
+produces fails the build with HN108; a derived one (`emulated`, `approximate`) follows
+`minimum` and `onBelowMinimum`. `compatibility.accept` lists the field shortfalls you
+have handled, as `<adapter>:<field id>` (`"opencode:turn.stop.correlation.turnId"`);
+an accepted one is still reported, as information. Global and per-target lists add
+up, and an id nothing rates below exact is an error. `hooknostic inspect <target>
+--field <id>` shows a rating and its rationale (ADR-0027).
+
 | Component option | Default | Meaning |
 | --- | --- | --- |
 | `onInvalid` | `error` | Invalid component the loader would skip |

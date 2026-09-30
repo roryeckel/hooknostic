@@ -46,7 +46,7 @@ export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".opencode/agents",
   // The file name is the identity, so `name` has nothing to say and v1 would
   // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
-  // are the instructions, and `mode` is the portable field's (ADR-0027).
+  // are the instructions, and `mode` is the portable field's (ADR-0028).
   reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
 };
 

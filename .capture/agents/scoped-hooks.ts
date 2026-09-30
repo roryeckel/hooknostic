@@ -1,4 +1,4 @@
-// Hooks for the .capture/agents `scoped` case (ADR-0028), all scoped to agents.
+// Hooks for the .capture/agents `scoped` case (ADR-0029), all scoped to agents.
 //
 // - `probe-only` blocks the probe subagent's first tool call -- its read of
 //   seed.txt, or on Codex its shell write -- and lets its second through. The

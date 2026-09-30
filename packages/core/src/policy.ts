@@ -9,10 +9,14 @@ export function effectiveCompatibility(
   config: Pick<HooknosticConfig, "compatibility" | "targets">,
   targetId: string,
 ): Required<CompatibilityPolicy> {
+  const target = config.targets[targetId]?.compatibility;
   return {
     ...DEFAULT_COMPATIBILITY,
     ...config.compatibility,
-    ...config.targets[targetId]?.compatibility,
+    ...target,
+    // Acceptances add up rather than override: a target-level list that
+    // silently dropped the global one would un-accept what the author accepted.
+    accept: [...new Set([...(config.compatibility?.accept ?? []), ...(target?.accept ?? [])])],
   };
 }
 

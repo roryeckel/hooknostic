@@ -7,6 +7,7 @@ import type {
 } from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
+  EventFieldId,
   FileCodec,
   FileShapes,
   HookEvent,
@@ -76,6 +77,14 @@ export interface CapabilityEntry {
 export type CapabilityMatrix = Partial<Record<CapabilityId, CapabilityEntry>>;
 
 /**
+ * How faithfully a target's decoder produces each optional event field
+ * (ADR-0027): `exact` when the native event carries it, a lower level with a
+ * rationale when the adapter derives it. A field absent from the matrix is
+ * never produced. Contract-audited against the adapter's fixtures.
+ */
+export type FieldMatrix = Partial<Record<EventFieldId, CapabilityEntry>>;
+
+/**
  * Per-harness version metadata: the single source the rest of the repository
  * derives its version literals from. Profiles record what was *validated*;
  * this records what is *recommended* and what the tests exercise.
@@ -131,6 +140,8 @@ export interface CapabilityProfile {
   /** Semver range of native harness versions this matrix was validated for. */
   range: string;
   matrix: CapabilityMatrix;
+  /** Optional event field ratings; absent means no field is produced (ADR-0027). */
+  fields?: FieldMatrix;
   /** Provenance: structured validation events, not prose. */
   source: {
     date: string;
@@ -142,6 +153,8 @@ export interface CapabilityProfile {
 
 export interface CapabilityResolutionResult {
   matrix?: CapabilityMatrix;
+  /** Field ratings resolved like `matrix`; present whenever `matrix` is. */
+  fields?: FieldMatrix;
   /** Profiles that intersected the requested range, in declaration order. */
   profilesUsed: CapabilityProfile[];
   diagnostics: Diagnostic[];
@@ -256,7 +269,7 @@ export interface HarnessAdapter {
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
   /**
-   * How project delivery places agent definitions (ADR-0027), for the checks
+   * How project delivery places agent definitions (ADR-0028), for the checks
    * core runs before generation so `check` reports them.
    */
   readonly agents?: {

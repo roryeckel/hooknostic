@@ -73,7 +73,7 @@ describe("capability registry", () => {
     ]);
   });
 
-  it("gives exactly the agent-scoped events an agent.identity capability (ADR-0028)", () => {
+  it("gives exactly the agent-scoped events an agent.identity capability (ADR-0029)", () => {
     for (const event of HOOK_EVENT_NAMES) {
       expect(agentIdentityCapability(event), event).toBe(
         isAgentScopedEvent(event) ? `${event}.agent.identity` : undefined,
@@ -349,7 +349,7 @@ describe("canonical schemas", () => {
       hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], defaultAgent: "planner" } })
         .success,
     ).toBe(false);
-    // With a package root, for package delivery (ADR-0027): the definitions are
+    // With a package root, for package delivery (ADR-0028): the definitions are
     // translated into each native package rather than shipped as package files.
     expect(
       hooknosticConfigSchema.safeParse({ ...project, components: { root: ".", agents: ["./agents"] } }).success,

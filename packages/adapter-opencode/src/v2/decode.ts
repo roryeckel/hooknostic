@@ -8,11 +8,57 @@ export interface OpenCodeV2NativeEvent {
   directory: string;
   event: Record<string, unknown>;
 }
+
+/**
+ * What the shim learned beside the callback, handed to the decoder separately
+ * so `event.raw` stays the envelope the callback received (ADR-0027).
+ */
+export interface OpenCodeV2Enrichment {
+  /**
+   * What the shim saw of the execution a completion ends, gathered when a
+   * turn.stop hook declares a turn field: the prompt hook's ids for the
+   * prompt that started it, and the `session.text.ended` data of its last
+   * assistant message that produced text. The completion event itself carries
+   * only the session id.
+   */
+  execution?: OpenCodeV2Execution;
+}
+
+export interface OpenCodeV2Execution {
+  prompt?: { sessionID?: unknown; messageID?: unknown };
+  text?: Record<string, unknown>[];
+}
 export class OpenCodeV2DecodeError extends Error {}
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
-export function decodeOpenCodeV2(raw: unknown, invocation: InvocationContext): HookEvent {
+/**
+ * The finished execution's turn fields. Text segments are joined in ordinal
+ * order, and only the last assistant message's: OpenCode 2 starts a new
+ * assistant message per model step (captured on 2.0.18), so the last one
+ * holds what the model said last.
+ */
+function turnFields(execution: OpenCodeV2Execution | undefined): { lastMessage?: string; turnId?: string } {
+  const messageID = record(execution?.prompt)["messageID"];
+  const segments = (execution?.text ?? []).map(record);
+  const last = segments.at(-1)?.["assistantMessageID"];
+  const lastMessage = segments
+    .filter((segment) => segment["assistantMessageID"] === last)
+    .sort((a, b) => Number(a["ordinal"] ?? 0) - Number(b["ordinal"] ?? 0))
+    .map((segment) => segment["text"])
+    .filter((text): text is string => typeof text === "string" && text !== "")
+    .join("\n");
+  return {
+    ...(lastMessage !== "" ? { lastMessage } : {}),
+    ...(typeof messageID === "string" ? { turnId: messageID } : {}),
+  };
+}
+
+export function decodeOpenCodeV2(
+  raw: unknown,
+  invocation: InvocationContext,
+  enrichment: OpenCodeV2Enrichment = {},
+): HookEvent {
   const native = record(raw);
   if (typeof native.hook !== "string" || typeof native.directory !== "string" || !native.event)
     throw new OpenCodeV2DecodeError("v2 invocation requires hook, directory and event");
@@ -38,7 +84,7 @@ export function decodeOpenCodeV2(raw: unknown, invocation: InvocationContext): H
     if (typeof event.tool !== "string") throw new OpenCodeV2DecodeError("v2 tool event has no tool name");
     const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
     // v2 names the running agent on every tool event: the subagent inside one,
-    // the primary agent otherwise (ADR-0028, fixtures tool-read-in-subagent-*).
+    // the primary agent otherwise (ADR-0029, fixtures tool-read-in-subagent-*).
     const scoped =
       typeof event.agent === "string"
         ? { ...base, correlation: { ...base.correlation, agentType: event.agent } }
@@ -52,7 +98,12 @@ export function decodeOpenCodeV2(raw: unknown, invocation: InvocationContext): H
     return { ...scoped, event: "tool.after", tool, output: structuredClone(record(event.result).content) };
   }
   if (native.hook === "prompt")
-    return { ...base, event: "prompt.before", prompt: String(record(event.prompt).text ?? "") };
+    return {
+      ...base,
+      ...(typeof event.messageID === "string" ? { correlation: { ...base.correlation, turnId: event.messageID } } : {}),
+      event: "prompt.before",
+      prompt: String(record(event.prompt).text ?? ""),
+    };
   if (["context", "title", "generate"].includes(native.hook)) return { ...base, event: "model.request.before" };
   if (native.hook === "compaction") return { ...base, event: "context.compact.before" };
   if (native.hook === "evaluate" && event.effect === "ask")
@@ -71,8 +122,15 @@ export function decodeOpenCodeV2(raw: unknown, invocation: InvocationContext): H
       ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(
         String(event.type),
       )
-    )
-      return { ...base, event: "turn.stop" };
+    ) {
+      const { lastMessage, turnId } = turnFields(enrichment.execution);
+      return {
+        ...base,
+        ...(turnId !== undefined ? { correlation: { ...base.correlation, turnId } } : {}),
+        event: "turn.stop",
+        ...(lastMessage !== undefined ? { lastMessage } : {}),
+      };
+    }
     if (event.type === "session.compaction.ended") return { ...base, event: "context.compact.after" };
   }
   throw new OpenCodeV2DecodeError(`unmapped v2 callback ${native.hook}`);

@@ -1,4 +1,4 @@
-# ADR-0027: Portable agent definitions are a Hooknostic component
+# ADR-0028: Portable agent definitions are a Hooknostic component
 
 **Status:** Proposed — 2026-09-29. It needs owner review before acceptance, and the
 open questions below must be settled first. The decisions are implemented on the
@@ -254,7 +254,7 @@ The same drive ran a session as the agent:
      available. Which agent a session starts as changes only when the project
      names one (decision 10).
    - **Hooks.** A session running as the agent names it on its events: every
-     Claude event, and OpenCode v2 tool events. ADR-0028's agent scoping
+     Claude event, and OpenCode v2 tool events. ADR-0029's agent scoping
      therefore reaches the agent as the session's agent as well.
 
 10. **A project can name its default agent: `components.defaultAgent`.** Owner
@@ -376,9 +376,9 @@ The same drive ran a session as the agent:
     0.156.1.
   - `multi_agent_v1wait_agent` is now listed in `CODEX_TOOL_KINDS`, as `other`.
   - Claude dispatches no `SubagentStop` when `maxTurns` ends a subagent. This is
-    open: ADR-0028 leaves `agent.stop.observe`'s level to the owner.
+    open: ADR-0029 leaves `agent.stop.observe`'s level to the owner.
   - Per-event agent identity makes agent-scoped hooks feasible without
-    cross-invocation state (ADR-0002). ADR-0028 proposes and implements them,
+    cross-invocation state (ADR-0002). ADR-0029 proposes and implements them,
     for subagents and for a session running as the agent.
 - **Existing Claude packages.** A package that ships its own `agents/*.md` still
   reaches a Claude plugin through the verbatim copy, unreported. Such a file

@@ -1,11 +1,14 @@
+import { existsSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
 import type { HookResult } from "@hooknostic/sdk";
 import { definePlugin, hook, replaceOutput } from "@hooknostic/sdk";
-import { loadFixture } from "@hooknostic/testkit";
+import { fixturePath, loadFixture } from "@hooknostic/testkit";
 
 import { planOpenCodeApplication, serializeOpenCodeOutput } from "./apply.js";
+import type { OpenCodeEnrichment } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
 import { generateOpenCodeArtifacts } from "./generate.js";
 import { opencodeHarness } from "./harness.js";
@@ -28,8 +31,10 @@ describe("decodeOpenCode fixtures", () => {
     "session-created",
     "session-deleted",
     "session-idle",
+    "session-idle-with-messages",
     "session-compacted",
     "chat-message",
+    "chat-message-without-message-id",
     "system-transform",
   ] as const;
 
@@ -41,7 +46,11 @@ describe("decodeOpenCode fixtures", () => {
         name === "permission-ask" ? "permission-ask.type-derived.json" : `${name}.input.json`,
       );
       const canonical = loadFixture<Record<string, unknown>>("opencode", "1.18", `${name}.canonical.json`);
-      const decoded = decodeOpenCode(input, INVOCATION);
+      // What the shim learned beside the callback, if the case needs any (ADR-0027).
+      const enrichment = existsSync(fixturePath("opencode", "1.18", `${name}.enrichment.json`))
+        ? loadFixture<OpenCodeEnrichment>("opencode", "1.18", `${name}.enrichment.json`)
+        : {};
+      const decoded = decodeOpenCode(input, INVOCATION, enrichment);
       expect(decoded).toEqual({
         ...canonical,
         harness: { ...(canonical["harness"] as object), version: opencodeHarness.referenceVersion },

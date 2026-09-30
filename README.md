@@ -25,7 +25,7 @@ validates that format and projects it into native harness artifacts. The source 
 stays unchanged. Portable TypeScript hooks can accompany it, or be used on their own;
 hooks are outside the standard's v1 portable component set. So are agents: Hooknostic's
 provisional [agent definition format](docs/spec/agents/0.1.md) compiles one
-Markdown file into each harness's own agent file (ADR-0027, proposed).
+Markdown file into each harness's own agent file (ADR-0028, proposed).
 
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace

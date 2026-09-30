@@ -1,13 +1,14 @@
 import type {
   AgentScope,
   CapabilityId,
+  EventFieldId,
   HookDefinition,
   PluginSpec,
   RequirementLevel,
   TargetScope,
   ToolMatch,
 } from "@hooknostic/sdk";
-import { isAgentScopedEvent, isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
+import { fieldEvent, isAgentScopedEvent, isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
 
 import type { Diagnostic } from "./diagnostics.js";
 
@@ -24,7 +25,7 @@ export interface HookIR {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
-  /** Agents the hook runs in or skips (ADR-0028); its identity capability is already declared. */
+  /** Agents the hook runs in or skips (ADR-0029); its identity capability is already declared. */
   agents?: AgentScope;
   /** Per-hook dispatch budget; falls back to the runtime policy when absent. */
   timeoutMs?: number;
@@ -33,6 +34,8 @@ export interface HookIR {
    * added during capability analysis, not stored here.
    */
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
+  /** Declared optional event fields, as full ids (ADR-0027). */
+  fields?: EventFieldId[];
 }
 
 export interface PluginIR {
@@ -112,7 +115,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
         hookId: h.id,
         event: h.event,
         message: `hook "${h.id}" is scoped to agents on "${h.event}", an event no harness attributes to an agent.`,
-        remediation: "remove agents, or move the hook to a tool event, agent.start or agent.stop (ADR-0028).",
+        remediation: "remove agents, or move the hook to a tool event, agent.start or agent.stop (ADR-0029).",
       });
       return;
     }
@@ -142,6 +145,20 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
       }
     }
 
+    for (const field of h.fields ?? []) {
+      if (fieldEvent(field) !== h.event) {
+        diagnostics.push({
+          code: "HN501",
+          severity: "error",
+          hookId: h.id,
+          event: h.event,
+          field,
+          message: `hook "${h.id}" declares field "${field}" which is not scoped to its event "${h.event}".`,
+          remediation: "declare only fields of the hook's own event.",
+        });
+      }
+    }
+
     const ir: HookIR = {
       index,
       event: h.event,
@@ -152,6 +169,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
     if (h.targets !== undefined) ir.targets = h.targets;
     if (h.agents !== undefined) ir.agents = h.agents;
     if (h.timeoutMs !== undefined) ir.timeoutMs = h.timeoutMs;
+    if (h.fields !== undefined) ir.fields = [...h.fields];
     hooks.push(ir);
   });
 

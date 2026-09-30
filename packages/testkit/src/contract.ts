@@ -6,8 +6,17 @@ import { describe, expect, it } from "vitest";
 import { AGENT_COMPONENT_IDS } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter } from "@hooknostic/core";
 import { buildPluginIR, rangeCoversVersion } from "@hooknostic/core";
-import type { HookEventName, ToolInvocation } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, DEFAULT_RUNTIME, definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+import type { EventFieldId, HookEventName, ToolInvocation } from "@hooknostic/sdk";
+import {
+  ALL_CAPABILITY_IDS,
+  DEFAULT_RUNTIME,
+  definePlugin,
+  fieldsForEvent,
+  hook,
+  HOOK_EVENT_NAMES,
+  isEventFieldId,
+  readEventField,
+} from "@hooknostic/sdk";
 
 import { loadFixtureFrom } from "./fixtures.js";
 
@@ -106,7 +115,7 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
     // An absent cell resolves to `unsupported` with no rationale, which
     // `inspect` and the generated support tables then print as a claim nobody
     // made. Agent definitions joined the component vocabulary after these profiles were
-    // written (ADR-0027), so every profile has to state them -- a new adapter,
+    // written (ADR-0028), so every profile has to state them -- a new adapter,
     // or a new profile range, cannot inherit that silence.
     it("states agent definition support explicitly in every component profile", () => {
       const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
@@ -162,6 +171,41 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
         const unknown = Object.keys(profile.matrix).filter((id) => !registered.has(id));
         expect(unknown, `profile ${profile.range}: unregistered capability ids: ${unknown.join(", ")}`).toEqual([]);
       }
+    });
+
+    // ADR-0027: a field rating is a claim about the decoder, so the fixtures
+    // are held to it from both sides -- a decoder that produces a field its
+    // profile calls absent would let dispatch refuse a real event, and a rating
+    // no fixture carries is a claim nothing checks.
+    const fieldMatrix = resolved.fields ?? {};
+    const carried = new Map<EventFieldId, string>();
+    for (const name of fixtureNames) {
+      const fixture = loadFixtureFrom<{ event: HookEventName }>(join(options.fixturesDir, name));
+      for (const path of fieldsForEvent(fixture.event)) {
+        if (readEventField(fixture, path) !== undefined) carried.set(`${fixture.event}.${path}` as EventFieldId, name);
+      }
+    }
+
+    it("rates only registered event fields, with a rationale below exact", () => {
+      for (const profile of resolved.profilesUsed) {
+        const unknown = Object.keys(profile.fields ?? {}).filter((id) => !isEventFieldId(id));
+        expect(unknown, `profile ${profile.range}: unregistered field ids: ${unknown.join(", ")}`).toEqual([]);
+      }
+      for (const [id, entry] of Object.entries(fieldMatrix)) {
+        if (entry.level !== "exact") expect(entry.rationale, `field ${id} needs a rationale`).toBeTruthy();
+      }
+    });
+
+    it("rates every event field a fixture carries", () => {
+      const unrated = [...carried]
+        .filter(([id]) => fieldMatrix[id] === undefined)
+        .map(([id, name]) => `${id} (${name})`);
+      expect(unrated, `fields fixtures carry but the profile calls absent: ${unrated.join(", ")}`).toEqual([]);
+    });
+
+    it("backs every rated event field with a fixture", () => {
+      const uncovered = Object.keys(fieldMatrix).filter((id) => !carried.has(id as EventFieldId));
+      expect(uncovered, `rated fields no fixture carries: ${uncovered.join(", ")}`).toEqual([]);
     });
 
     it("round-trips the shell view of every fixture through its codec", () => {

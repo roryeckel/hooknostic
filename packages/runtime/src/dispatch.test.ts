@@ -1539,7 +1539,7 @@ describe("plugin context (ADR-0020)", () => {
   });
 });
 
-describe("agent-scoped hooks (ADR-0028)", () => {
+describe("agent-scoped hooks (ADR-0029)", () => {
   const inAgent = (agentType?: string): ToolBeforeEvent => {
     const event = toolBefore({ command: "ls" });
     if (agentType !== undefined) event.correlation.agentType = agentType;

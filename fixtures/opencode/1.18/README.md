@@ -100,3 +100,14 @@ adapter shim uses the plugin context's `directory`. For every session promoted
 here the tee value was checked against the harness's own record, the
 `plugin-load.jsonl` row's `input.directory`, and they were identical, so the
 derived `cwd` is correct. The field is still not a harness-reported value.
+
+**Turn fields are captured (1.18.32).** `session-idle-with-messages` and
+`chat-message-without-message-id` come from a real **opencode 1.18.32** session
+on Windows (2026-09-28) over the loopback model (`.capture/opencode-turn-fields`).
+The idle envelope is the bus callback's own; `session-idle-with-messages.enrichment.json`
+holds what the shim hands the decoder beside it, the `data` of the
+`client.session.messages` answer it reads at `session.idle` when a hook declares a
+turn field (ADR-0027). It never enters `event.raw`. The capture showed `chat.message` input without `messageID`, so the
+prompt's turn id is `output.message.id`, the id every assistant message of the
+turn names as `parentID`. The 1.18.33 `chat-message` capture above agrees (its input carries no
+`messageID`), and its canonical carries `turnId` from `output.message.id`.

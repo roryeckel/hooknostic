@@ -139,6 +139,18 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           what: "read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch",
         },
         {
+          version: "1.18.32",
+          date: "2026-09-28",
+          method: "captured",
+          artifact: ".capture/opencode-turn-fields",
+          what:
+            "turn fields over the loopback model: at session.idle, client.session.messages answers { data, request, response } " +
+            "with data a list of { info, parts }; one assistant message per model step, each with parentID = the user " +
+            "message id, and the final text part holds the last reply. chat.message input carried no messageID; " +
+            "output.message.id is the user message id (fixtures/opencode/1.18 session-idle-with-messages, " +
+            "chat-message-without-message-id).",
+        },
+        {
           version: "1.18.33",
           date: "2026-09-29",
           method: "captured",
@@ -160,6 +172,29 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
         // scheduled-playback:end
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
+    },
+    // Optional event fields (ADR-0027). Tool callbacks carry callID; the
+    // permission.asked bus event carries tool.callID. The turn fields rest on
+    // .capture/opencode-turn-fields (1.18.32).
+    fields: {
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+      "prompt.before.correlation.turnId": {
+        level: "exact",
+        rationale:
+          "the id of the user message chat.message creates (output.message.id), which every assistant message of the turn names as its parentID. Not input.messageID: that is the caller-supplied id, absent in the 1.18.32 capture.",
+      },
+      "turn.stop.lastMessage": {
+        level: "emulated",
+        rationale:
+          "session.idle carries only the session id, so the shim reads the session back with client.session.messages and joins the text parts of the latest assistant message of the turn that has any (synthetic and ignored parts skipped). One assistant message per model step, as on Claude. Absent when the host supplies no client, the read fails or exceeds its 10 s bound, or the turn produced no text. Read only when a turn.stop hook declares this field or correlation.turnId. On an aborted turn the text is whatever was stored at the first of its two idles.",
+      },
+      "turn.stop.correlation.turnId": {
+        level: "emulated",
+        rationale:
+          "the parentID of the turn's last assistant message, from the same session read as lastMessage: the id prompt.before reports for the prompt that started the turn. Absent under the same conditions as lastMessage, or when no assistant message followed the last user message.",
+      },
     },
     matrix: {
       "session.start.observe": {
@@ -221,14 +256,14 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.agent.identity": {
         level: "unsupported",
         rationale:
-          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0028, .capture/agents).",
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0029, .capture/agents).",
       },
 
       "tool.after.observe": { level: "exact" },
       "tool.after.agent.identity": {
         level: "unsupported",
         rationale:
-          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0028, .capture/agents).",
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0029, .capture/agents).",
       },
       "tool.after.output.replace": {
         level: "approximate",
@@ -279,7 +314,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once.",
+          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once. The bus event carries only the session id; lastMessage and correlation.turnId come from a session read, see the field ratings.",
       },
 
       "turn.stop.prevent": {

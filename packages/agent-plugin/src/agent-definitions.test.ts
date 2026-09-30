@@ -55,7 +55,7 @@ describe("loadAgentDefinitions", () => {
       {
         name: "reviewer",
         description: "Reviews diffs. Use after code changes.",
-        // A file that does not say is a subagent (ADR-0027, decision 9).
+        // A file that does not say is a subagent (ADR-0028, decision 9).
         mode: "subagent",
         // CRLF from a Windows checkout is normalized, so generated files do not
         // depend on git's line-ending settings.
