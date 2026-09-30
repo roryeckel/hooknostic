@@ -105,7 +105,7 @@ export function opencodeShimEntrySource(options: {
 export function opencodeV1Adapter(): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.3.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
     harness: opencodeHarness,
     projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration,

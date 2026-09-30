@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
-  "hooknosticVersion": "0.3.0",
+  "hooknosticVersion": "0.4.0",
   "targets": {
     "claude": {
       "status": "success",
-      "adapter": "claude@0.3.0",
+      "adapter": "claude@0.4.0",
       "requestedVersion": ">=2.1 <3",
       "output": "./dist/claude",
       "capabilities": {
@@ -21,7 +21,7 @@
     },
     "codex": {
       "status": "success",
-      "adapter": "codex@0.3.0",
+      "adapter": "codex@0.4.0",
       "requestedVersion": ">=0.148 <1",
       "output": "./dist/codex",
       "capabilities": {
@@ -37,7 +37,7 @@
     },
     "opencode": {
       "status": "success",
-      "adapter": "opencode@0.3.0",
+      "adapter": "opencode@0.4.0",
       "requestedVersion": ">=1.18 <2",
       "output": "./dist/opencode",
       "capabilities": {
