@@ -28,6 +28,8 @@ const CASES = [
   "subagent-stop",
   "pre-tool-read-subagent",
   "post-tool-read-subagent",
+  "pre-tool-read-primary-agent",
+  "session-start-primary-agent",
   "stop",
 ] as const;
 

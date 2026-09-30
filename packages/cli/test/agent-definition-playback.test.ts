@@ -16,6 +16,9 @@ import { runProcess } from "./harness-playback.js";
 // - `packaged` configures it beside an Agent Plugins package and builds for
 //   package delivery; the harness loads the built package. Codex has no
 //   package route (openai/codex#18988), so its lanes run only `generated`.
+// - `generated-primary` and `packaged-primary` do the same with a
+//   `mode: primary` definition, and start the session as the agent. Codex has
+//   no agent a session runs as, so its lanes run neither.
 const LANES: Record<string, string> = {
   claude: "claude",
   codex: "codex",
@@ -28,8 +31,22 @@ const repository = fileURLToPath(new URL("../../..", import.meta.url));
 
 interface Summary {
   playbackErrors: string[];
-  parent: { descriptionInRequest: boolean; childResultReturned: boolean };
+  parent: { descriptionInRequest: boolean; childResultReturned: boolean; toolBearingRequests: number };
   child: { turns: { model?: string; tools: string[]; markerInSystem: boolean }[] };
+  identity: string[];
+}
+
+async function drive(name: string): Promise<{ summary: Summary; output: string }> {
+  const result = await runProcess(
+    process.execPath,
+    ["--experimental-strip-types", ".capture/agents/drive.mjs", lane!, "--only", name],
+    { cwd: repository, env: process.env, timeoutMs: 240_000 },
+  );
+  const output = result.stdout + result.stderr;
+  expect(result.code, output).toBe(0);
+  const line = result.stdout.split(/\r?\n/).find((entry) => entry.startsWith("HKN-SUMMARY "));
+  expect(line, output).toBeDefined();
+  return { summary: JSON.parse(line!.slice("HKN-SUMMARY ".length)) as Summary, output };
 }
 
 const ALT_MODEL = "hooknostic-playback-alt";
@@ -40,20 +57,25 @@ const CASES = (lane === "codex" ? ["generated"] : ["generated", "packaged"]).map
   model: name === "packaged" && lane === "opencode-v2" ? "hooknostic-playback" : ALT_MODEL,
 }));
 
+// How each lane names the agent a session runs as, and the model such a
+// session uses: OpenCode v2 runs it on the configured model, which the drive's
+// accepted opencode:primary-agent-model-ignored degradation reports.
+const PRIMARY_CASES = (lane === "codex" ? [] : ["generated-primary", "packaged-primary"]).map((name) => {
+  const packaged = name === "packaged-primary";
+  const agent =
+    lane === "claude"
+      ? `PreToolUse:${packaged ? "hn-plugin:hn-probe" : "hn-probe"}`
+      : lane === "opencode-v2"
+        ? `execute.before:${packaged ? "hn-plugin-hn-probe" : "hn-probe"}`
+        : `chat.message:${packaged ? "hn-plugin-hn-probe" : "hn-probe"}`;
+  return { name, agent, model: lane === "opencode-v2" ? "hooknostic-playback" : ALT_MODEL };
+});
+
 describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"})`, () => {
   it.each(CASES)(
     "$name: advertises the definition, delegates to it, and runs it on its instructions",
     async ({ name, model }) => {
-      const result = await runProcess(
-        process.execPath,
-        ["--experimental-strip-types", ".capture/agents/drive.mjs", lane!, "--only", name],
-        { cwd: repository, env: process.env, timeoutMs: 240_000 },
-      );
-      const output = result.stdout + result.stderr;
-      expect(result.code, output).toBe(0);
-      const line = result.stdout.split(/\r?\n/).find((entry) => entry.startsWith("HKN-SUMMARY "));
-      expect(line, output).toBeDefined();
-      const summary = JSON.parse(line!.slice("HKN-SUMMARY ".length)) as Summary;
+      const { summary, output } = await drive(name);
 
       expect(summary.playbackErrors).toEqual([]);
       // The parent was told about the subagent: its description nonce reached
@@ -70,6 +92,33 @@ describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"}
       if (lane === "claude") expect(summary.child.turns[0]!.tools).toEqual(["Read", "Grep"]);
       expect(summary.parent.childResultReturned).toBe(true);
     },
+    300_000,
+  );
+
+  it.each(PRIMARY_CASES)(
+    "$name: runs the session as a primary definition, on its instructions",
+    async ({ name, agent, model }) => {
+      const { summary, output } = await drive(name);
+
+      expect(summary.playbackErrors).toEqual([]);
+      // Every request of the session carried the instructions nonce, so the
+      // session ran as the agent, and none ran as the harness's default agent.
+      expect(summary.child.turns.length, output).toBeGreaterThan(0);
+      for (const turn of summary.child.turns) {
+        expect(turn.markerInSystem).toBe(true);
+        expect(turn.model).toBe(model);
+      }
+      expect(summary.parent.toolBearingRequests, output).toBe(0);
+      if (lane === "claude") expect(summary.child.turns[0]!.tools).toEqual(["Read", "Grep"]);
+      // The session's own events name the agent, as the harness reports it.
+      expect(summary.identity).toContain(agent);
+    },
+    300_000,
+  );
+
+  it.skipIf(lane === "codex")(
+    "scoped-primary: a hook scoped to the agent acts in a session running as it (ADR-0028)",
+    () => expectAgentScope(lane!, "scoped-primary"),
     300_000,
   );
 

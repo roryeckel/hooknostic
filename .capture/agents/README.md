@@ -302,15 +302,37 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
     a subagent. The drive then delegates to a native agent instead, and the tee
     confirms the child's tool events still name no agent.
 
-`packages/cli/test/agent-definition-playback.test.ts` runs the `generated` and `packaged`
-cases in CI's playback lanes (`HOOKNOSTIC_PLAYBACK=<harness>`) and in the
-harness-watch verify lane, so this evidence is re-established on every change
-and every new harness build. The harness-playback suite's `agent-scope`
-scenario runs the `scoped` case in the Claude, Codex and OpenCode v1 lanes, and
-`agent-definition-playback.test.ts` runs it in the OpenCode v2 lane. Each package route was checked against a mutant
-that breaks it: the Claude agents directory moved, the OpenCode v1 agent loop
-emptied or its native fields dropped, the v2 transform removed. Each mutant
-failed the test.
+- **The `*-primary` cases** (ADR-0027, decision 9) deliver the same definition
+  with `mode: primary`, and start the session as it rather than delegating.
+  Codex has none: it has no agent a session runs as.
+  - **`generated-primary`** synchronizes it through project delivery. On
+    OpenCode v2 the build reports `opencode:primary-agent-model-ignored` for its
+    native model, which the drive accepts.
+  - **`packaged-primary`** builds it into the package beside `hn-plugin`, and
+    names the agent the projection gives it: `hn-plugin:hn-probe` on Claude and
+    `hn-plugin-hn-probe` on OpenCode.
+  - **`scoped-primary`** synchronizes it with the `scoped` hooks.
+  - **Results.** On Claude 2.1.283 and 2.1.238, OpenCode 1.18.31 and 1.18.18,
+    and OpenCode 2.0.17, each session ran as the agent on its instructions, and
+    its own events named it. Claude and OpenCode v1 ran it on its native model,
+    and Claude on its native tool list. OpenCode v2 ran it on the configured
+    model, as the degradation says. The scoped guard blocked the session's own
+    guarded read on Claude and OpenCode v2, and the stray guard never ran. On
+    OpenCode v1 the build refused the scope with HN201.
+
+`packages/cli/test/agent-definition-playback.test.ts` runs the `generated` and
+`packaged` cases, and outside Codex the `*-primary` cases, in CI's playback lanes
+(`HOOKNOSTIC_PLAYBACK=<harness>`) and in the harness-watch verify lane, so this
+evidence is re-established on every change and every new harness build. The
+harness-playback suite's `agent-scope` scenario runs the `scoped` case in the
+Claude, Codex and OpenCode v1 lanes, and `agent-definition-playback.test.ts` runs
+it in the OpenCode v2 lane. Each package route was checked against a mutant that
+breaks it: the Claude agents directory moved, the OpenCode v1 agent loop emptied
+or its native fields dropped, the v2 transform removed. Each mutant failed the
+test. So did a mode written as `subagent` whatever the definition said, in the
+OpenCode v1 lane (v1 then refused to run the session as the agent), and a
+Claude decoder that read `agent_type` only beside `agent_id`, which failed
+`scoped-primary`.
 
 ## Consequences
 
@@ -374,8 +396,11 @@ failed the test.
     identity;
   - the Codex `SubagentStart`/`SubagentStop` payloads, the first captured ones
     beside the schema-derived 0.148 fixtures;
-  - the Codex `wait_agent` payload.
+  - the Codex `wait_agent` payload;
+  - Claude's `PreToolUse` and `SessionStart` from a session started with
+    `--agent`, which name the agent without `agent_id`.
 
-  It reads `claude/direct`, `codex-home/direct` and `opencode-v2/direct`. The v2
+  It reads `claude/direct`, `claude/primary-flag`, `codex-home/direct` and
+  `opencode-v2/direct`. The v2
   tee records the `directory` envelope Hooknostic's v2 shim hands its decoder,
   so its rows decode as they are.

@@ -249,14 +249,14 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "The same project file ran as the session through --agent and through the project's agent setting: its body replaced the default system prompt, its tools list was the session's exact tool set, its model reached every request, and every hook event of the session carried agent_type without agent_id. With permissions.deny: [Agent(<name>)] in the project settings the parent's request no longer listed the agent and its delegation was refused, while --agent still ran it.",
+          what: "The same project file ran as the session through --agent and through the project's agent setting: its body replaced the default system prompt, its tools list was the session's exact tool set, its model reached every request, and every hook event of the session carried agent_type without agent_id. With permissions.deny: [Agent(<name>)] in the project settings the parent's request no longer listed the agent and its delegation was refused, while --agent still ran it. A mode: primary definition synchronized by Hooknostic's project delivery ran as the session through --agent, on its instructions, native tools and native model (packages/cli/test/agent-definition-playback.test.ts).",
         },
         {
           version: "2.1.238",
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "At the reference build a project agent ran as the session through --agent and the agent setting as on 2.1.283, and the permission rule withheld it from delegation the same way.",
+          what: "At the reference build a project agent ran as the session through --agent and the agent setting as on 2.1.283, and the permission rule withheld it from delegation the same way; a synchronized mode: primary definition ran as the session.",
         },
         {
           version: "2.1.278",

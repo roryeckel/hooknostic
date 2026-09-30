@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "claude",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "f794ebce-c6f0-4404-886d-5410018ec569",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude"
+  },
+  "correlation": {
+    "turnId": "865d4eb7-c07d-4189-b826-7f860fbf0d16",
+    "toolCallId": "toolu_playback_1",
+    "agentType": "hn-probe"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "Read",
+    "input": {
+      "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude\\seed.txt"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude\\seed.txt"
+      ],
+      "pathKey": "file_path"
+    }
+  }
+}

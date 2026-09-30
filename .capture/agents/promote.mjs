@@ -6,7 +6,8 @@
 //
 //   node --experimental-strip-types .capture/agents/promote.mjs
 //
-// Reads captured/{claude,codex-home,opencode-v2}/direct/tee/, so run those
+// Reads captured/{claude,codex-home,opencode-v2}/direct/tee/ and
+// captured/claude/primary-flag/tee/, so run those
 // drive cases first (see README.md).
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
@@ -75,6 +76,22 @@ for (const [event, stem] of [
   if (row === undefined) throw new Error(`${claudeTee}: no ${event} for Read inside the subagent`);
   write("claude/2.1", stem, row, claude);
 }
+
+// Claude, a session started as the agent (`--agent`, the primary-flag case):
+// every event names the agent, and none carries agent_id, which only a
+// subagent's events do.
+const primaryTee = join(CAPTURED, "claude", "primary-flag", "tee");
+const primaryRead = rows(join(primaryTee, "PreToolUse.jsonl")).find(
+  (r) => r.tool_name === "Read" && r.agent_type === "hn-probe",
+);
+if (primaryRead === undefined) throw new Error(`${primaryTee}: no Read by the session running as the agent`);
+write("claude/2.1", "pre-tool-read-primary-agent", primaryRead, claude);
+write(
+  "claude/2.1",
+  "session-start-primary-agent",
+  one(join(primaryTee, "SessionStart.jsonl"), () => true, "SessionStart"),
+  claude,
+);
 
 // Codex: from the isolated-home lane, where the child's hooks demonstrably ran.
 const codex = (row) => decodeCodex(row, { targetId: "codex", harnessVersion: codexHarness.referenceVersion });

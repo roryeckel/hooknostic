@@ -34,18 +34,20 @@ function laneAdapter(lane: string, version: string): HarnessAdapter {
 /**
  * The agent-scope scenario (ADR-0028), for one `.capture/agents` drive lane.
  *
- * The drive builds hooks scoped to its probe subagent for the harness build it
+ * The drive builds hooks scoped to its probe agent for the harness build it
  * finds installed, so that build's own `agent.identity` level decides what is
- * expected. Where it is supported, a scoped guard must block the subagent's
- * guarded call and nothing of the parent's, a guard scoped to another agent must
- * never act, and scoped traces must see the subagent's events and no others.
- * Where it is not, the build must refuse the scope -- and the child's tool
- * events must still name no agent, so a harness that starts to is noticed.
+ * expected. In the `scoped` case the probe is a subagent; in `scoped-primary`
+ * it is a `mode: primary` definition the session itself runs as. Where the
+ * identity is supported, a scoped guard must block the probe's guarded call and
+ * nothing outside it, a guard scoped to another agent must never act, and
+ * scoped traces must see the probe's events and no others. Where it is not, the
+ * build must refuse the scope -- and the tool events must still name no agent,
+ * so a harness that starts to is noticed.
  */
-export async function expectAgentScope(lane: string): Promise<void> {
+export async function expectAgentScope(lane: string, caseName: "scoped" | "scoped-primary" = "scoped"): Promise<void> {
   const result = await runProcess(
     process.execPath,
-    ["--experimental-strip-types", ".capture/agents/drive.mjs", lane, "--only", "scoped"],
+    ["--experimental-strip-types", ".capture/agents/drive.mjs", lane, "--only", caseName],
     { cwd: repository, env: process.env, timeoutMs: 300_000 },
   );
   const output = result.stdout + result.stderr;
@@ -69,13 +71,16 @@ export async function expectAgentScope(lane: string): Promise<void> {
   }
 
   expect(summary.scope.built, JSON.stringify(summary.scope)).toBe(true);
+  // The child lane carries every request with the probe's instructions: the
+  // subagent's, or the whole session's when it runs as the probe.
   expect(summary.child.requests, output).toBeGreaterThan(0);
   expect(summary.blocks).toEqual({ scopedInChild: true, scopedInParent: false, unscoped: false });
-  expect(summary.parent.childResultReturned).toBe(true);
   expect(summary.scopeTrace.length, output).toBeGreaterThan(0);
   for (const row of summary.scopeTrace) expect(row.agentType, JSON.stringify(row)).toBe("hn-probe");
   const events = summary.scopeTrace.map((row) => row.event);
   expect(events).toContain("tool.after");
+  if (caseName === "scoped-primary") return;
+  expect(summary.parent.childResultReturned).toBe(true);
   if (level("agent.start.agent.identity") !== "unsupported") {
     expect(events).toEqual(expect.arrayContaining(["agent.start", "agent.stop"]));
   }

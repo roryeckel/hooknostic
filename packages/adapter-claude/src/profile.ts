@@ -89,6 +89,27 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/agents",
           what: "At the reference build, the scoped case behaved the same: the subagent's guarded read was blocked, the parent's call was not, and the scoped traces saw only the subagent.",
         },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "A session started with --agent (.capture/agents primary-flag): every event carries agent_type, the agent's name, and none carries agent_id, which a subagent's events do (fixtures pre-tool-read-primary-agent, session-start-primary-agent).",
+        },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The scoped-primary case: hooks scoped to a mode: primary definition, with the session started as it, blocked the session's own guarded read and let its next through, a guard scoped to another agent never ran, and the scoped tool.after trace named the agent (packages/cli/test/agent-definition-playback.test.ts).",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, the scoped-primary case behaved the same: the session's guarded read was blocked and the trace named the agent.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and

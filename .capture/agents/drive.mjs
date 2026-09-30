@@ -291,7 +291,7 @@ function write(path, contents) {
  * `<dir>/portable-agents/`. `withOpenCode: false` leaves out `native.opencode`,
  * for a route that cannot carry native fields and would report them.
  */
-function writePortableDefinition(dir, harness, withOpenCode = true) {
+function writePortableDefinition(dir, harness, withOpenCode = true, mode = undefined) {
   const provider = harness === "opencode-v2" ? "playback" : "drift";
   write(
     join(dir, "portable-agents", `${NAME}.md`),
@@ -299,6 +299,7 @@ function writePortableDefinition(dir, harness, withOpenCode = true) {
       "---",
       `name: ${NAME}`,
       `description: ${DESCRIPTION}`,
+      ...(mode === undefined ? [] : [`mode: ${mode}`]),
       "native:",
       "  claude:",
       `    model: ${ALT_MODEL}`,
@@ -312,6 +313,18 @@ function writePortableDefinition(dir, harness, withOpenCode = true) {
       "",
     ].join("\n"),
   );
+}
+
+/**
+ * Component policy for a definition in `mode`: OpenCode v2 runs a session
+ * started as the agent on the configured model, which the build reports as a
+ * degradation of the definition's native model, and the drive accepts it -- a
+ * primary case on v2 then shows the model the degradation names.
+ */
+function acceptFor(harness, mode) {
+  return harness === "opencode-v2" && mode !== undefined && mode !== "subagent"
+    ? { accept: ["opencode:primary-agent-model-ignored"] }
+    : {};
 }
 
 /** The adapter registry, target id and version range a drive harness builds for. */
@@ -328,12 +341,16 @@ function buildTarget(harness) {
  * project by Hooknostic's own project delivery, so what the harness reads is
  * what a user's build writes.
  */
-async function syncGenerated(scratch, harness) {
-  writePortableDefinition(scratch, harness);
+async function syncGenerated(scratch, harness, mode = undefined) {
+  writePortableDefinition(scratch, harness, true, mode);
   const { registry, id, version } = buildTarget(harness);
   const target = { version, delivery: "project", output: `.hooknostic/artifacts/${id}` };
   const configPath = join(scratch, "hooknostic.config.ts");
-  const config = { project: { root: "." }, components: { agents: ["./portable-agents"] }, targets: { [id]: target } };
+  const config = {
+    project: { root: "." },
+    components: { agents: ["./portable-agents"], ...acceptFor(harness, mode) },
+    targets: { [id]: target },
+  };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
   const synced = await runProject({ configPath, registry, command: "sync" });
   if (!synced.ok) throw new Error(`hooknostic sync failed: ${JSON.stringify(synced.errors)}`);
@@ -364,15 +381,15 @@ async function installedVersion(binary, env = process.env) {
  * A refused build is an outcome, not a failure: the drive then delegates to a
  * native agent instead, so the tee still shows what the child's hooks carry.
  */
-async function syncScoped(scratch, harness, version) {
-  writePortableDefinition(scratch, harness);
+async function syncScoped(scratch, harness, version, mode = undefined) {
+  writePortableDefinition(scratch, harness, true, mode);
   const { registry, id } = buildTarget(harness);
   const target = { version, delivery: "project", output: `.hooknostic/artifacts/${id}` };
   const configPath = join(scratch, "hooknostic.config.ts");
   const config = {
     project: { root: "." },
     entry: (id === "opencode" ? SCOPED_ENTRY : SCOPED_LIFECYCLE_ENTRY).replaceAll("\\", "/"),
-    components: { agents: ["./portable-agents"] },
+    components: { agents: ["./portable-agents"], ...acceptFor(harness, mode) },
     targets: { [id]: target },
   };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
@@ -397,6 +414,14 @@ async function syncScoped(scratch, harness, version) {
   };
 }
 
+/** Cases that build hooks scoped to the probe: as a subagent, or as the session's agent. */
+const SCOPED = new Set(["scoped", "scoped-primary"]);
+
+/** The portable `mode` a case's definition declares, when it is not the default. */
+function modeOf(caseName) {
+  return caseName.endsWith("-primary") ? "primary" : undefined;
+}
+
 /** The Agent Plugins package the `packaged` case configures the definition beside. */
 const PLUGIN = "hn-plugin";
 
@@ -407,8 +432,8 @@ const PLUGIN = "hn-plugin";
  * package route cannot carry native fields, so its definition has none. Returns
  * the built package directory.
  */
-async function buildPackaged(dir, harness) {
-  writePortableDefinition(dir, harness, harness !== "opencode-v2");
+async function buildPackaged(dir, harness, mode = undefined) {
+  writePortableDefinition(dir, harness, harness !== "opencode-v2", mode);
   write(
     join(dir, PLUGIN, "plugin.json"),
     `${JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: PLUGIN, version: "1.0.0", description: "Hooknostic capture probe package." }, null, 2)}\n`,
@@ -472,8 +497,20 @@ async function claudeSession(caseName) {
   if (caseName === "control") write(join(scratch, ".claude/agents-off", `${NAME}.md`), claudeAgent());
   if (caseName === "neutral") write(join(scratch, ".agents/agents", `${NAME}.md`), claudeAgent());
   if (caseName === "generated") await syncGenerated(scratch, "claude");
-  const scope = caseName === "scoped" ? await syncScoped(scratch, "claude", await installedVersion("claude")) : undefined;
-  if (scope !== undefined && !scope.built) write(join(scratch, ".claude/agents", `${NAME}.md`), claudeAgent());
+  // The *-primary cases deliver a `mode: primary` definition through
+  // Hooknostic's own build and start the session as it.
+  if (caseName === "generated-primary") await syncGenerated(scratch, "claude", "primary");
+  const scope = SCOPED.has(caseName)
+    ? await syncScoped(scratch, "claude", await installedVersion("claude"), modeOf(caseName))
+    : undefined;
+  if (scope !== undefined && !scope.built) {
+    write(join(scratch, ".claude/agents", `${NAME}.md`), modeOf(caseName) ? claudePrimaryAgent() : claudeAgent());
+  }
+  if (caseName === "generated-primary" || caseName === "scoped-primary") extraArgs.push("--agent", NAME);
+  if (caseName === "packaged-primary") {
+    extraArgs.push("--plugin-dir", await buildPackaged(join(scratch, "..", "packaged"), "claude", "primary"));
+    extraArgs.push("--agent", `${PLUGIN}:${NAME}`);
+  }
   if (caseName === "plan-project") write(join(scratch, ".claude/agents", `${NAME}.md`), claudePlanAgent());
   if (caseName === "plugin" || caseName === "plan-plugin") {
     const plugin = join(scratch, "..", PLUGIN);
@@ -494,7 +531,7 @@ async function claudeSession(caseName) {
   // its requests carry the instructions and go to the child backend; the parent
   // lane sees only requests that do not. They pass no --model, so the agent's
   // own model can show.
-  const primary = caseName.startsWith("primary-") || caseName === "deny-flag";
+  const primary = caseName.startsWith("primary-") || caseName === "deny-flag" || caseName.endsWith("-primary");
   if (["primary-flag", "primary-setting", "deny", "deny-flag"].includes(caseName)) {
     write(join(scratch, ".claude/agents", `${NAME}.md`), claudePrimaryAgent());
   }
@@ -758,7 +795,15 @@ const MODE_CASES = {
   "subagent-flag": "subagent",
 };
 /** Cases whose session is started with `--agent hn-probe`. */
-const AS_AGENT = new Set(["primary-flag", "all-flag", "subagent-flag", "inject-primary"]);
+const AS_AGENT = new Set([
+  "primary-flag",
+  "all-flag",
+  "subagent-flag",
+  "inject-primary",
+  "generated-primary",
+  "packaged-primary",
+  "scoped-primary",
+]);
 /** Cases whose session should start as the agent without being told to. */
 const AS_DEFAULT = new Set(["default-agent", "inject-default"]);
 
@@ -783,11 +828,21 @@ async function opencodeV1Session(caseName) {
   }
   if (caseName in MODE_CASES) write(join(scratch, ".opencode/agents", `${NAME}.md`), opencodeV1ModeAgent(MODE_CASES[caseName]));
   if (caseName === "generated") await syncGenerated(scratch, "opencode-v1");
-  const scope =
-    caseName === "scoped" ? await syncScoped(scratch, "opencode-v1", await installedVersion("opencode")) : undefined;
-  if (scope !== undefined && !scope.built) write(join(scratch, ".opencode/agents", `${NAME}.md`), opencodeV1Agent());
+  if (caseName === "generated-primary") await syncGenerated(scratch, "opencode-v1", "primary");
+  const scope = SCOPED.has(caseName)
+    ? await syncScoped(scratch, "opencode-v1", await installedVersion("opencode"), modeOf(caseName))
+    : undefined;
+  if (scope !== undefined && !scope.built) {
+    write(
+      join(scratch, ".opencode/agents", `${NAME}.md`),
+      modeOf(caseName) ? opencodeV1ModeAgent("primary") : opencodeV1Agent(),
+    );
+  }
   // Named by path from opencode.json, as a consumer would name the package.
-  const packaged = caseName === "packaged" ? await buildPackaged(join(scratch, "..", "packaged"), "opencode-v1") : undefined;
+  const packaged =
+    caseName === "packaged" || caseName === "packaged-primary"
+      ? await buildPackaged(join(scratch, "..", "packaged"), "opencode-v1", modeOf(caseName))
+      : undefined;
   const delegates = ["direct", "maxsteps", "singular", "inject", "generated", "packaged", "scoped"].includes(caseName);
   const parentScript = delegates
     ? [
@@ -812,9 +867,10 @@ async function opencodeV1Session(caseName) {
   try {
     writeOpencodeConfig(scratch, router.baseUrl, "hooknostic-playback", MODEL);
     patchOpencodeV1Models(scratch, packaged, caseName === "default-agent" ? NAME : undefined);
+    const agent = packaged === undefined ? NAME : `${PLUGIN}-${NAME}`;
     result =
       AS_AGENT.has(caseName) || AS_DEFAULT.has(caseName)
-        ? await runOpencodeV1(scratch, [PRIMARY_PROMPT, ...(AS_AGENT.has(caseName) ? ["--agent", NAME] : [])])
+        ? await runOpencodeV1(scratch, [PRIMARY_PROMPT, ...(AS_AGENT.has(caseName) ? ["--agent", agent] : [])])
         : await driveOpencode(scratch, MODEL, PROMPT);
   } finally {
     await router.close();
@@ -936,11 +992,21 @@ async function opencodeV2Session(caseName) {
   if (caseName === "cross") write(join(project, ".claude/agents", `${NAME}.md`), claudeAgent());
   if (caseName in MODE_CASES) write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2ModeAgent(MODE_CASES[caseName]));
   if (caseName === "generated") await syncGenerated(project, "opencode-v2");
-  const scope =
-    caseName === "scoped" ? await syncScoped(project, "opencode-v2", await installedVersion(executable, env)) : undefined;
+  if (caseName === "generated-primary") await syncGenerated(project, "opencode-v2", "primary");
+  const scope = SCOPED.has(caseName)
+    ? await syncScoped(project, "opencode-v2", await installedVersion(executable, env), modeOf(caseName))
+    : undefined;
   if (scope !== undefined) env["HKN_SCOPE_TRACE"] = scope.trace;
-  if (scope !== undefined && !scope.built) write(join(project, ".opencode/agents", `${NAME}.md`), opencodeV2Agent());
-  const packaged = caseName === "packaged" ? await buildPackaged(join(root, "packaged"), "opencode-v2") : undefined;
+  if (scope !== undefined && !scope.built) {
+    write(
+      join(project, ".opencode/agents", `${NAME}.md`),
+      modeOf(caseName) ? opencodeV2ModeAgent("primary") : opencodeV2Agent(),
+    );
+  }
+  const packaged =
+    caseName === "packaged" || caseName === "packaged-primary"
+      ? await buildPackaged(join(root, "packaged"), "opencode-v2", modeOf(caseName))
+      : undefined;
   const delegates = ["direct", "readonly", "inject", "generated", "packaged", "scoped"].includes(caseName);
   const parentScript = delegates
     ? [
@@ -993,7 +1059,7 @@ async function opencodeV2Session(caseName) {
         "--auto",
         "--format",
         "json",
-        ...(AS_AGENT.has(caseName) ? ["--agent", NAME] : []),
+        ...(AS_AGENT.has(caseName) ? ["--agent", packaged === undefined ? NAME : `${PLUGIN}-${NAME}`] : []),
         primary ? PRIMARY_PROMPT : PROMPT,
       ],
       { cwd: project, env, timeoutMs: 180_000 },
@@ -1196,6 +1262,9 @@ const CASES = {
     "primary-plugin-setting-qualified",
     "deny",
     "deny-flag",
+    "generated-primary",
+    "packaged-primary",
+    "scoped-primary",
   ],
   codex: ["discover", "direct", "control", "neutral", "cross", "unknown-key", "generated", "scoped"],
   "codex-home": ["direct", "sandbox-read-only", "sandbox-full", "untrusted", "generated", "scoped"],
@@ -1213,6 +1282,9 @@ const CASES = {
     ...Object.keys(MODE_CASES),
     "inject-primary",
     "inject-default",
+    "generated-primary",
+    "packaged-primary",
+    "scoped-primary",
   ],
   "opencode-v2": [
     "direct",
@@ -1227,6 +1299,9 @@ const CASES = {
     ...Object.keys(MODE_CASES),
     "inject-primary",
     "inject-default",
+    "generated-primary",
+    "packaged-primary",
+    "scoped-primary",
   ],
 };
 

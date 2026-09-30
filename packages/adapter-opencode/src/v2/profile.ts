@@ -83,6 +83,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/agents",
           what: "The scoped case: a tool.before guard scoped to the delegated subagent blocked its guarded read and let the next through, never touched the parent's subagent call (named by the primary agent, build), and a guard scoped to another agent never ran; a scoped tool.after saw only the subagent's read (packages/cli/test/agent-definition-playback.test.ts).",
         },
+        {
+          version: "2.0.17",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The scoped-primary case: with the session started as a mode: primary definition, its tool events carried agent: <name>, and hooks scoped to that name blocked the session's own guarded read and let its next through, while a guard scoped to another agent never ran (packages/cli/test/agent-definition-playback.test.ts).",
+        },
         // scheduled-playback:begin
         {
           version: "2.0.18",

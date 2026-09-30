@@ -319,8 +319,9 @@ The same drive ran a session as the agent:
     nonce and the configured model. `packages/cli/test/agent-definition-playback.test.ts`
     does this for what project delivery synchronizes and, except on Codex, for
     a built package, in CI's playback lanes and the harness-watch verify lane.
-    It also runs a session as a synchronized `primary` definition, and a scoped
-    hook inside such a session, where the family has main-session agents;
+    On every family with main-session agents it also starts a session as a
+    `primary` definition, synchronized or packaged, and runs a scoped hook
+    inside such a session;
   - drift coverage for the delegation tool's shape.
 - **Model overrides on Codex are a hazard.** A Codex child inherits the parent's
   reasoning effort, and a different model can reject it. A translation that sets

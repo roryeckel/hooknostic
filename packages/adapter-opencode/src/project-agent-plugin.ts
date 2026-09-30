@@ -533,7 +533,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
               date: "2026-09-29",
               method: "live-probe",
               artifact: ".capture/agents",
-              what: "A plugin whose config hook assigned config.agent[<name>] with mode: primary ran the session as that agent through run --agent, on its prompt and model; a hook that also set config.default_agent started the session as it without --agent. The same held on 1.18.18.",
+              what: "A plugin whose config hook assigned config.agent[<name>] with mode: primary ran the session as that agent through run --agent, on its prompt and model; a hook that also set config.default_agent started the session as it without --agent. A package built with a mode: primary definition beside its root registered it as <plugin>-<name>, which ran as the session through run --agent on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). The same held on 1.18.18.",
             },
             {
               version: "1.18.31",

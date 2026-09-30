@@ -27,6 +27,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           what: "Inside a delegated subagent, tool.execute.before and tool.execute.after carry only tool, sessionID and callID, as the parent's do; the running agent is named only on chat.message. A hook scoped to agents therefore cannot build (the scoped case, packages/cli/test/harness-playback.test.ts, agent-scope). The same held on 1.18.18.",
         },
         {
+          version: "1.18.31",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "A session started as a mode: primary agent names it only on chat.message too; its tool events carry no agent, so hooks scoped to it cannot build (the scoped-primary case, packages/cli/test/agent-definition-playback.test.ts). The same held on 1.18.18.",
+        },
+        {
           version: "1.18.19",
           date: "2026-08-20",
           method: "type-derived",

@@ -160,7 +160,9 @@ capabilities and limits. Agent definitions (ADR-0027) have their own file,
 `packages/cli/test/agent-definition-playback.test.ts`, which runs on every lane: it
 synchronizes a portable definition through project delivery, makes the harness
 delegate to it, and asserts the child ran on its instructions and native model
-(`.capture/agents/README.md`). The test removes common model credential
+(`.capture/agents/README.md`). Outside Codex it also starts a session as a
+`mode: primary` definition and asserts the session ran on its instructions. The
+test removes common model credential
 variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.

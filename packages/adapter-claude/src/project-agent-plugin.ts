@@ -690,14 +690,14 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             date: "2026-09-29",
             method: "live-probe",
             artifact: ".capture/agents",
-            what: "A --plugin-dir plugin's agents/ file ran as the session through --agent <plugin>:<name> and through its bare name, on its instructions, tools and model, and every hook event of the session carried agent_type <plugin>:<name>. A plugin whose root settings.json set agent, bare or qualified, started the session as the agent.",
+            what: "A --plugin-dir plugin's agents/ file ran as the session through --agent <plugin>:<name> and through its bare name, on its instructions, tools and model, and every hook event of the session carried agent_type <plugin>:<name>. A plugin whose root settings.json set agent, bare or qualified, started the session as the agent. A package built with a mode: primary definition beside its root ran as the session through --agent <plugin>:<name>, on its instructions and native tools and model (packages/cli/test/agent-definition-playback.test.ts).",
           },
           {
             version: "2.1.238",
             date: "2026-09-29",
             method: "live-probe",
             artifact: ".capture/agents",
-            what: "At the reference build a plugin agent ran as the session through --agent, qualified or bare, and through the plugin's settings.json, as on 2.1.283.",
+            what: "At the reference build a plugin agent ran as the session through --agent, qualified or bare, and through the plugin's settings.json, as on 2.1.283, and so did a built package's mode: primary definition.",
           },
           {
             version: "2.1.260",

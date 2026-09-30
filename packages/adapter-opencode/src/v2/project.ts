@@ -104,7 +104,7 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
           date: "2026-09-29",
           method: "live-probe",
           artifact: ".capture/agents",
-          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session.",
+          what: "With mode: primary or all, a project agent ran as the session through run --agent and through default_agent, on its body in place of the provider prompt, and its tool events carried agent: <name>; the session ran on the configured model rather than the agent's native model. Primary agents were absent from the subagent tool and all agents present, and run --agent also ran a mode: subagent agent as the session. A mode: primary definition synchronized by Hooknostic's project delivery, and one a built package registered as <plugin>-<name>, each ran as the session through run --agent on the configured model (packages/cli/test/agent-definition-playback.test.ts).",
         },
         {
           version: opencodeV2Harness.referenceVersion,

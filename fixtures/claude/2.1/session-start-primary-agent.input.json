@@ -1,0 +1,8 @@
+{
+  "session_id": "f794ebce-c6f0-4404-886d-5410018ec569",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-hkn-agents-Kxoa5r-claude\\f794ebce-c6f0-4404-886d-5410018ec569.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude",
+  "agent_type": "hn-probe",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}
