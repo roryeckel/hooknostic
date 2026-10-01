@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "SubagentStop"
+  },
+  "session": {
+    "id": "01a0eea8-de61-7c23-897f-1595fcddfe96",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0eea8-e197-7610-8381-502ebc730e40",
+    "agentId": "01a0eea8-e146-7193-b947-5065e533d9f0",
+    "agentType": "hn-probe"
+  },
+  "event": "agent.stop",
+  "agent": {
+    "id": "01a0eea8-e146-7193-b947-5065e533d9f0",
+    "type": "hn-probe"
+  },
+  "lastMessage": "HKN-CHILD-DONE-de68224a"
+}

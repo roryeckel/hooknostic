@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree } from "jsonc-parser/lib/esm/main.js";
 
-import type { AgentPluginComponentId, AgentPluginDegradation, AgentPluginDeviation } from "@hooknostic/agent-plugin";
+import type { AgentPluginDegradation, AgentPluginDeviation, ComponentId } from "@hooknostic/agent-plugin";
 
 import { editProjectToml, readProjectToml } from "./project-toml.js";
 
@@ -21,7 +21,7 @@ export interface ProjectEntry {
   value: unknown;
 }
 export interface ProjectComponentOmission {
-  component: AgentPluginComponentId;
+  component: ComponentId;
   name: string;
   reason: string;
 }
@@ -39,7 +39,8 @@ export interface ProjectIntegration {
   deviations?: AgentPluginDeviation[];
   /**
    * Emitted items the target cannot deliver at their component's level, such
-   * as a skill reference it shows as written. Core applies
+   * as a skill reference it shows as written or a native field it ignores in
+   * one use of an agent. Core applies
    * `components.onDegraded`; each id must be declared in
    * `ProjectComponentOptions.support` (ADR-0022).
    */

@@ -1,4 +1,4 @@
-import type { AgentPluginComponentId } from "@hooknostic/agent-plugin";
+import type { ComponentId } from "@hooknostic/agent-plugin";
 import type { CapabilityId, EventFieldId, HookEventName, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
 import { RUNTIME_DIAGNOSTIC_CODES } from "@hooknostic/sdk";
 
@@ -57,7 +57,7 @@ export interface Diagnostic {
   capability?: CapabilityId;
   /** A declared optional event field, for an HN108 (ADR-0027). */
   field?: EventFieldId;
-  component?: AgentPluginComponentId;
+  component?: ComponentId;
   target?: string;
   /** The hook's declared requirement for the capability. */
   requested?: RequirementLevel;

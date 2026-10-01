@@ -40,14 +40,31 @@ export interface SkillRename {
  * does not become `alpha-alpha-maintenance`.
  */
 export function qualifiedSkillNames(plugin: string, skills: readonly AgentPluginSkill[]): SkillRename[] {
+  return qualifyNames(
+    plugin,
+    skills.map((skill) => skill.name),
+    "a skill",
+  ).map(({ name, kept }, index) => ({ skill: skills[index]!, name, ...(kept === undefined ? {} : { kept }) }));
+}
+
+/**
+ * The plugin-qualified spelling of each name, by the rules above, for any item
+ * OpenCode keeps in one flat namespace -- skills (ADR-0021) and agents
+ * (ADR-0029) alike. `item` ("a skill", "an agent") only words the reason a bare name was kept.
+ */
+export function qualifyNames(
+  plugin: string,
+  names: readonly string[],
+  item: string,
+): { name: string; kept?: string }[] {
   const prefix = skillPrefix(plugin);
-  const planned = skills.map((skill): SkillRename => {
-    if (skill.name === prefix || skill.name.startsWith(`${prefix}-`)) return { skill, name: skill.name };
-    const name = `${prefix}-${skill.name}`;
+  const planned = names.map((authored): { authored: string; name: string; kept?: string } => {
+    if (authored === prefix || authored.startsWith(`${prefix}-`)) return { authored, name: authored };
+    const name = `${prefix}-${authored}`;
     if (name.length > MAX_NAME) {
       return {
-        skill,
-        name: skill.name,
+        authored,
+        name: authored,
         kept: `${JSON.stringify(name)} would exceed the ${MAX_NAME}-character Agent Skills name limit`,
       };
     }
@@ -55,23 +72,19 @@ export function qualifiedSkillNames(plugin: string, skills: readonly AgentPlugin
     // which no skill name may contain. Emitting it would ship a skill whose
     // name fails the rule its package was validated against.
     if (!isAgentSkillName(name)) {
-      return { skill, name: skill.name, kept: `${JSON.stringify(name)} is not a valid Agent Skills name` };
+      return { authored, name: authored, kept: `${JSON.stringify(name)} is not a valid Agent Skills name` };
     }
-    return { skill, name };
+    return { authored, name };
   });
   // A package may already ship `status` and `<plugin>-status`. Prefixing the
-  // first would give OpenCode two skills of one name, which is the collision
+  // first would give OpenCode two items of one name, which is the collision
   // this exists to prevent, so both keep what the author wrote.
   const taken = new Map<string, number>();
   for (const { name } of planned) taken.set(name, (taken.get(name) ?? 0) + 1);
-  return planned.map((rename) =>
-    rename.name !== rename.skill.name && (taken.get(rename.name) ?? 0) > 1
-      ? {
-          skill: rename.skill,
-          name: rename.skill.name,
-          kept: `the package already has a skill named ${JSON.stringify(rename.name)}`,
-        }
-      : rename,
+  return planned.map(({ authored, name, kept }) =>
+    name !== authored && (taken.get(name) ?? 0) > 1
+      ? { name: authored, kept: `the package already has ${item} named ${JSON.stringify(name)}` }
+      : { name, ...(kept === undefined ? {} : { kept }) },
   );
 }
 

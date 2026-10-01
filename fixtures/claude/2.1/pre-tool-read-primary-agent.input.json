@@ -1,0 +1,17 @@
+{
+  "session_id": "f794ebce-c6f0-4404-886d-5410018ec569",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--Users-user-AppData-Local-Temp-hkn-agents-Kxoa5r-claude\\f794ebce-c6f0-4404-886d-5410018ec569.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude",
+  "prompt_id": "865d4eb7-c07d-4189-b826-7f860fbf0d16",
+  "permission_mode": "bypassPermissions",
+  "agent_type": "hn-probe",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-Kxoa5r\\claude\\seed.txt"
+  },
+  "tool_use_id": "toolu_playback_1"
+}

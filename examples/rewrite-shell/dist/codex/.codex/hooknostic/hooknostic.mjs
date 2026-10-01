@@ -22,6 +22,10 @@ function isCapabilityId(value) {
 function canonicalCapability(event, key) {
   return isCapabilityId(key) ? key : `${event}.${key}`;
 }
+function agentIdentityCapability(event) {
+  const id = `${event}.agent.identity`;
+  return isCapabilityId(id) ? id : void 0;
+}
 var ALL_CAPABILITY_IDS, CAPABILITY_SET;
 var init_capabilities = __esm({
   "../../packages/sdk/dist/capabilities.js"() {
@@ -40,23 +44,29 @@ var init_capabilities = __esm({
       "tool.before.requestApproval",
       "tool.before.input.replace",
       "tool.before.context.add",
+      "tool.before.agent.identity",
       "tool.after.observe",
       "tool.after.output.replace",
       "tool.after.blockContinuation",
       "tool.after.context.add",
+      "tool.after.agent.identity",
       "tool.error.observe",
       "tool.error.context.add",
+      "tool.error.agent.identity",
       "permission.request.observe",
       "permission.request.block",
       "permission.request.context.add",
+      "permission.request.agent.identity",
       "context.compact.before.observe",
       "context.compact.before.block",
       "context.compact.before.context.add",
       "context.compact.after.observe",
       "agent.start.observe",
+      "agent.start.agent.identity",
       "agent.stop.observe",
       "agent.stop.prevent",
       "agent.stop.notify",
+      "agent.stop.agent.identity",
       "turn.stop.observe",
       "turn.stop.prevent",
       "turn.stop.notify"
@@ -128,7 +138,7 @@ var init_effects = __esm({
 function isToolScopedEvent(event) {
   return TOOL_SCOPED_EVENTS.includes(event);
 }
-var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS;
+var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS, AGENT_SCOPED_EVENTS;
 var init_events = __esm({
   "../../packages/sdk/dist/events.js"() {
     "use strict";
@@ -152,6 +162,11 @@ var init_events = __esm({
       "tool.after",
       "tool.error",
       "permission.request"
+    ];
+    AGENT_SCOPED_EVENTS = [
+      ...TOOL_SCOPED_EVENTS,
+      "agent.start",
+      "agent.stop"
     ];
   }
 });
@@ -198,6 +213,17 @@ var init_fields = __esm({
 });
 
 // ../../packages/sdk/dist/hook.js
+function hookAppliesToAgent(hook2, event) {
+  const scope = hook2.agents;
+  if (scope === void 0)
+    return true;
+  const agent = event.correlation.agentType;
+  if (scope.include !== void 0 && (agent === void 0 || !scope.include.includes(agent)))
+    return false;
+  if (scope.exclude !== void 0 && agent !== void 0 && scope.exclude.includes(agent))
+    return false;
+  return true;
+}
 function hookAppliesToTarget(hook2, targetId) {
   if (hook2.targets?.include && !hook2.targets.include.includes(targetId))
     return false;
@@ -232,16 +258,28 @@ function canonicalFields(event, hookId, declared) {
   return [...spelledAs.keys()];
 }
 function hook(event, spec) {
+  const capabilities = canonicalCapabilities(event, spec.id, spec.capabilities);
+  if (spec.agents !== void 0) {
+    const identity = agentIdentityCapability(event);
+    if (identity !== void 0) {
+      if (capabilities[identity] === "optional") {
+        throw new Error(`hook "${spec.id}" is scoped to agents, which requires "${identity}"; it cannot also declare it optional.`);
+      }
+      capabilities[identity] = "required";
+    }
+  }
   const def = {
     event,
     id: spec.id,
-    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
+    capabilities,
     run: spec.run
   };
   if (spec.match !== void 0)
     def.match = spec.match;
   if (spec.targets !== void 0)
     def.targets = spec.targets;
+  if (spec.agents !== void 0)
+    def.agents = spec.agents;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
   if (spec.fields !== void 0)
@@ -4627,7 +4665,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, agentSelectionSchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4688,6 +4726,7 @@ var init_schemas = __esm({
         turnId: external_exports.string().optional(),
         toolCallId: external_exports.string().optional(),
         agentId: external_exports.string().optional(),
+        agentType: external_exports.string().optional(),
         parentAgentId: external_exports.string().optional()
       }).strict(),
       raw: external_exports.unknown()
@@ -4726,6 +4765,10 @@ var init_schemas = __esm({
       contextCharLimit: external_exports.number().int().positive().optional(),
       notifyCharLimit: external_exports.number().int().positive().optional()
     }).strict();
+    agentSelectionSchema = external_exports.object({
+      include: external_exports.array(external_exports.string().min(1)).optional(),
+      exclude: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict();
     targetConfigSchema = external_exports.object({
       adapter: external_exports.string().min(1).optional(),
       version: external_exports.string().min(1),
@@ -4733,6 +4776,7 @@ var init_schemas = __esm({
       output: external_exports.string().min(1),
       npmName: external_exports.string().min(1).optional(),
       skillNames: external_exports.enum(["qualified", "authored"]).optional(),
+      agents: agentSelectionSchema.optional(),
       compatibility: compatibilityPolicySchema.optional()
     }).strict();
     projectMcpServerOverrideSchema = external_exports.object({
@@ -4768,6 +4812,7 @@ var init_schemas = __esm({
         root: external_exports.string().min(1).optional(),
         skills: external_exports.array(external_exports.string().min(1)).optional(),
         mcp: external_exports.string().min(1).optional(),
+        agents: external_exports.array(external_exports.string().min(1)).min(1).optional(),
         mcpOverrides: external_exports.record(external_exports.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: external_exports.array(external_exports.string().min(1)).min(1).optional(),
         exclude: external_exports.array(external_exports.string().min(1)).optional(),
@@ -4787,7 +4832,8 @@ var init_schemas = __esm({
         onInvalid: external_exports.enum(["error", "warn"]).optional(),
         onDeviation: external_exports.enum(["error", "warn"]).optional(),
         onDegraded: external_exports.enum(["error", "warn"]).optional(),
-        accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional()
+        accept: external_exports.array(external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
+        defaultAgent: external_exports.string().min(1).optional()
       }).strict().optional()
     }).strict().superRefine((config, context) => {
       if (config.entry === void 0 && config.components === void 0) {
@@ -4822,6 +4868,22 @@ var init_schemas = __esm({
         }
       }
       const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+      for (const [name, target] of Object.entries(config.targets)) {
+        if (target.agents === void 0)
+          continue;
+        if (config.components?.agents === void 0)
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "agents"],
+            message: "a target's agents selection requires components.agents"
+          });
+        else if (!componentTargets.has(name))
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "agents"],
+            message: `target ${JSON.stringify(name)} selects agents but is not in components.targets`
+          });
+      }
       if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
         context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "project component delivery requires project.root" });
       }
@@ -4845,6 +4907,13 @@ var init_schemas = __esm({
             message: "components.executableFiles requires components.root or components.skills"
           });
         }
+        if (config.components.agents === void 0 && config.components.defaultAgent !== void 0) {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["components", "defaultAgent"],
+            message: "components.defaultAgent requires components.agents"
+          });
+        }
         if (config.components.mcp === void 0 && config.components.mcpOverrides !== void 0) {
           context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
         }
@@ -4855,8 +4924,11 @@ var init_schemas = __esm({
             message: "components.mcpEnvironment requires components.root"
           });
         }
-        if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0) {
-          context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+        if (config.components.root === void 0 && config.components.skills === void 0 && config.components.mcp === void 0 && config.components.agents === void 0) {
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            message: "components requires root, skills, mcp, or agents"
+          });
         }
         const configured = new Set(Object.keys(config.targets));
         const seen = /* @__PURE__ */ new Set();
@@ -4930,6 +5002,10 @@ var init_schemas = __esm({
       include: external_exports.array(external_exports.string().min(1)).optional(),
       exclude: external_exports.array(external_exports.string().min(1)).optional()
     }).strict();
+    agentScopeSchema = external_exports.object({
+      include: external_exports.array(external_exports.string().min(1)).optional(),
+      exclude: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict();
     toolMatchSchema = external_exports.object({
       kind: external_exports.union([toolKindSchema, external_exports.array(toolKindSchema)]).optional(),
       nativeName: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional()
@@ -4939,6 +5015,7 @@ var init_schemas = __esm({
       id: external_exports.string().min(1),
       match: toolMatchSchema.optional(),
       targets: targetScopeSchema.optional(),
+      agents: agentScopeSchema.optional(),
       // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
       // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
       // hook time out on every dispatch instead of never. `positive` also keeps
@@ -5104,6 +5181,7 @@ async function dispatch(hooks, event, options) {
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options.targetId)) return false;
+    if (!hookAppliesToAgent(hook2, event)) return false;
     const tool = toolOf(event);
     if (hook2.match && tool && !matchesTool(hook2.match, tool)) return false;
     return true;
@@ -5556,6 +5634,7 @@ var CODEX_TOOL_KINDS = {
   WebSearch: "web.search",
   spawn_agent: "agent",
   Agent: "agent",
+  multi_agent_v1wait_agent: "other",
   update_plan: "other"
 };
 var CODEX_SHELL_SHAPES = {
@@ -5616,7 +5695,10 @@ function decodeCodex(nativeEvent, invocation) {
     correlation: {
       ...typeof payload.turn_id === "string" ? { turnId: payload.turn_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
-      ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {}
+      ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
+      // Inside a subagent only; the main agent's events carry none (ADR-0030,
+      // fixtures pre-tool-bash-subagent and subagent-start-live).
+      ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
     raw: nativeEvent
   };
@@ -5744,7 +5826,7 @@ async function runCodexCommandShim(source, options) {
 // hooknostic-shim-entry.ts
 await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hooks_exports)), {
   targetId: "codex",
-  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported", "agent.stop.notify": "unsupported" },
+  capabilities: { "session.start.observe": "exact", "session.start.context.add": "exact", "session.end.observe": "exact", "prompt.before.observe": "exact", "prompt.before.block": "exact", "prompt.before.context.add": "exact", "tool.before.observe": "exact", "tool.before.block": "exact", "tool.before.requestApproval": "exact", "tool.before.input.replace": "exact", "tool.before.context.add": "exact", "tool.before.agent.identity": "unsupported", "tool.after.observe": "exact", "tool.after.output.replace": "unsupported", "tool.after.blockContinuation": "exact", "tool.after.context.add": "exact", "tool.after.agent.identity": "unsupported", "permission.request.observe": "exact", "permission.request.block": "exact", "context.compact.before.observe": "exact", "context.compact.after.observe": "exact", "agent.start.observe": "exact", "agent.start.agent.identity": "unsupported", "agent.stop.observe": "exact", "agent.stop.prevent": "exact", "agent.stop.notify": "unsupported", "agent.stop.agent.identity": "unsupported", "turn.stop.observe": "exact", "turn.stop.prevent": "exact", "turn.stop.notify": "unsupported" },
   minimumCapabilityLevel: "emulated",
   policy: { "onHookError": "continue", "timeoutMs": 5e3, "contextCharLimit": 16e3, "notifyCharLimit": 2e3 }
 });

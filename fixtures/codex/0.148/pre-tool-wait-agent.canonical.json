@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "codex",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "01a0eea8-de61-7c23-897f-1595fcddfe96",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-agents-74z6Ku\\codex"
+  },
+  "correlation": {
+    "turnId": "01a0eea8-dea7-7d30-ad5f-9b3417019885",
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "other",
+    "nativeName": "multi_agent_v1wait_agent",
+    "input": {
+      "targets": [
+        "01a0eea8-e146-7193-b947-5065e533d9f0"
+      ],
+      "timeout_ms": 60000
+    }
+  }
+}

@@ -8,7 +8,7 @@ Pick your path:
 ## Choose a workflow
 
 - [Distribute a standards-based package](tutorials/04-packaging-with-agent-plugins.md): Agent Plugins 1.0 → native Claude/Codex marketplace plugins or OpenCode packages.
-- [Maintain a repository](project-integration.md): direct hooks, skills, and MCP with init, sync, and verify.
+- [Maintain a repository](project-integration.md): direct hooks, skills, MCP, and agents with init, sync, and verify.
 - [Configuration and commands](configuration.md): source forms, delivery, policies, and build reports.
 
 ## 🚀 Start here
@@ -29,6 +29,7 @@ Step-by-step walkthroughs, each built on a runnable project in [`examples/`](../
 | [2. Rewriting tool input](tutorials/02-rewriting-tool-input.md) | Required vs optional capabilities; feature detection; graceful degradation | [`examples/rewrite-shell`](../examples/rewrite-shell/) |
 | [3. Injecting context](tutorials/03-injecting-context.md) | Adding model-visible context; when a target can't do what you want; per-target policies | [`examples/context-injection`](../examples/context-injection/) |
 | [4. Packaging with Agent Plugins](tutorials/04-packaging-with-agent-plugins.md) | Combined hooks, skills, bundled MCP, and Claude/Codex marketplace installation | [`examples/agent-plugin`](../examples/agent-plugin/) |
+| [5. One agent, every harness](tutorials/05-portable-agents.md) | A portable agent definition; what each harness honors; `native` fields; package routes | [`examples/local-project`](../examples/local-project/) |
 
 ## 🛠 Guides
 

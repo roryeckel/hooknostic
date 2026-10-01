@@ -1,17 +1,18 @@
 import type {
-  AgentPluginComponentId,
   AgentPluginIssue,
   AgentPluginPackage,
   AgentPluginProjectionFile,
   AgentPluginProjectionPlan,
   AgentPluginProjector,
+  ComponentId,
 } from "@hooknostic/agent-plugin";
 import {
-  AGENT_PLUGIN_COMPONENT_IDS,
   assertPackageDelivery,
   classifyStdioCwd,
+  COMPONENT_IDS,
   componentSummary,
   contentsText,
+  DEFAULT_AGENT_NOT_PACKAGED,
   hasUnportableCommandPath,
   isRejectedSkillPath,
   isRootNpmManifestPath,
@@ -362,14 +363,14 @@ export function translateMcp(
 ): {
   servers: Record<string, CodexStdioServer | CodexRemoteServer>;
   launcherServers: McpLauncherServer[];
-  omitted: { name: string; component: AgentPluginComponentId; reason: string }[];
+  omitted: { name: string; component: ComponentId; reason: string }[];
 } {
   // Null-prototype: a schema-valid server named `__proto__` assigned into `{}`
   // invokes the inherited setter, so JSON.stringify would omit it while the
   // summary counted it emitted.
   const servers: Record<string, CodexStdioServer | CodexRemoteServer> = Object.create(null);
   const launcherServers: McpLauncherServer[] = [];
-  const omitted: { name: string; component: AgentPluginComponentId; reason: string }[] = [];
+  const omitted: { name: string; component: ComponentId; reason: string }[] = [];
   for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
     if (server.type !== "stdio") {
       if (server.type === "sse") {
@@ -462,7 +463,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       // resolves to the least capable level -- which is this one.
       range: ">=0.140 <0.153",
       components: Object.fromEntries(
-        AGENT_PLUGIN_COMPONENT_IDS.map((component) => [
+        COMPONENT_IDS.map((component) => [
           component,
           {
             level: "unsupported" as const,
@@ -543,6 +544,25 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
           level: "unsupported",
           rationale:
             "Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim.",
+        },
+        "agents.definition": {
+          level: "unsupported",
+          rationale:
+            "Codex's plugin format has no agents component: OpenAI tracks bundling agents in a plugin as an open request (openai/codex#18988), and no route was probed that Codex reads from an installed plugin. Deliver agent definitions to a Codex project target, which reads .codex/agents.",
+        },
+        "agents.primary": {
+          level: "unsupported",
+          rationale:
+            "Codex has no agent a session runs as, and a Codex plugin cannot deliver an agent definition at all.",
+        },
+        "agents.default": {
+          level: "unsupported",
+          rationale:
+            "A Codex plugin cannot carry configuration or agents, and Hooknostic does not make a package set the default agent anyway. Deliver it to a Codex project target, which emulates it.",
+        },
+        "agents.native": {
+          level: "unsupported",
+          rationale: "Native fields ride on a delivered definition, and a Codex plugin cannot deliver one.",
         },
       },
       source: {
@@ -1211,7 +1231,7 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     // Per-server, not per-transport: a stdio server is dropped only when its own
     // paths cannot be re-anchored, so the count comes from what was omitted.
-    const skippedByComponent = new Map<AgentPluginComponentId, number>();
+    const skippedByComponent = new Map<ComponentId, number>();
     for (const { component } of omitted) {
       skippedByComponent.set(component, (skippedByComponent.get(component) ?? 0) + 1);
     }
@@ -1306,8 +1326,11 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const counts = componentSummary(source, {
       namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
       hasRuntimePackage: context.runtimePackage !== undefined,
+      ...(context.agents === undefined ? {} : { agents: context.agents }),
+      harness: "codex",
+      ...(context.defaultAgent === undefined ? {} : { defaultAgent: context.defaultAgent }),
       skipped: (component, discovered) =>
-        component === "agent-plugin.runtime-package"
+        component === "agent-plugin.runtime-package" || component.startsWith("agents.")
           ? discovered
           : component === "agent-plugin.client-extension.files"
             ? ignoredCompatibilityOverlays
@@ -1318,6 +1341,18 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         component: "agent-plugin.runtime-package",
         reason: "Codex is not known to install a plugin's npm dependencies",
       });
+    }
+    // Analysis already reported the unsupported component; nothing is emitted,
+    // because a plugin has no agents route Codex is known to read.
+    for (const agent of context.agents ?? []) {
+      omissions.push({
+        component: "agents.definition",
+        name: agent.name,
+        reason: "a Codex plugin has no agents route; deliver agent definitions to a project target instead",
+      });
+    }
+    if (context.defaultAgent !== undefined) {
+      omissions.push({ component: "agents.default", name: context.defaultAgent, reason: DEFAULT_AGENT_NOT_PACKAGED });
     }
 
     return {

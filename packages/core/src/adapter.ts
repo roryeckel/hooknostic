@@ -1,8 +1,8 @@
 import type {
-  AgentPluginComponentId,
   AgentPluginComponentSupport,
   AgentPluginProjectionProfile,
   AgentPluginProjector,
+  ComponentId,
   ProjectComponents,
 } from "@hooknostic/agent-plugin";
 import type {
@@ -36,7 +36,7 @@ export interface ProjectComponentOptions {
    * An integrator reports a deviation only when its cell here declares it, so
    * the resolution core reports is the one that gates the check.
    */
-  support?: Readonly<Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>>;
+  support?: Readonly<Partial<Record<ComponentId, AgentPluginComponentSupport>>>;
 }
 
 /** A configured build target: config entry keyed by adapter/target id. */
@@ -268,6 +268,21 @@ export interface HarnessAdapter {
   ): ProjectIntegration;
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
+  /**
+   * How project delivery places agent definitions (ADR-0029), for the checks
+   * core runs before generation so `check` reports them.
+   */
+  readonly agents?: {
+    /** The native directory project delivery writes one file per agent definition into. */
+    readonly projectDirectory: string;
+    /**
+     * Native fields a `native.<adapter id>` block may not set: those the
+     * portable core owns (name, description, instructions), and those that
+     * would embed another component Hooknostic validates on its own route
+     * (per-agent hooks, MCP servers). Refused as HN503.
+     */
+    readonly reservedNativeKeys: readonly string[];
+  };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;

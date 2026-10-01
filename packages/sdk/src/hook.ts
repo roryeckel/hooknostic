@@ -1,7 +1,7 @@
 import type { CanonicalCapability, CapabilityId, CapabilityKey, CapabilitySpellings } from "./capabilities.js";
-import { canonicalCapability } from "./capabilities.js";
+import { agentIdentityCapability, canonicalCapability } from "./capabilities.js";
 import type { Effect, EffectForCapability } from "./effects.js";
-import type { HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
+import type { AgentScopedEventName, HookEventMap, HookEventName, ToolScopedEventName } from "./events.js";
 import type { EventFieldId, FieldKey } from "./fields.js";
 import { canonicalField } from "./fields.js";
 import type { RequirementLevel, SupportLevel } from "./support.js";
@@ -55,6 +55,38 @@ export interface TargetScope {
 }
 
 /**
+ * Which agents a hook runs in (ADR-0030), by the name the harness reports as
+ * `correlation.agentType` -- plugin-qualified for an agent a package delivered
+ * (`<plugin>:<name>` on Claude, `<plugin>-<name>` on OpenCode).
+ */
+export interface AgentScope {
+  /** Run only for events that name one of these agents. */
+  include?: string[];
+  /** Skip events that name one of these agents; run for every other event. */
+  exclude?: string[];
+}
+
+/**
+ * True when the hook applies to an event given its agent scoping (ADR-0030).
+ *
+ * An event that names no agent is outside every `include` and inside no
+ * `exclude`. The build makes that safe: a scope requires its event's
+ * `agent.identity` capability, which a target declares only where events
+ * inside a subagent are dispatched and name it.
+ */
+export function hookAppliesToAgent(
+  hook: { agents?: AgentScope | undefined },
+  event: { correlation: { agentType?: string | undefined } },
+): boolean {
+  const scope = hook.agents;
+  if (scope === undefined) return true;
+  const agent = event.correlation.agentType;
+  if (scope.include !== undefined && (agent === undefined || !scope.include.includes(agent))) return false;
+  if (scope.exclude !== undefined && agent !== undefined && scope.exclude.includes(agent)) return false;
+  return true;
+}
+
+/**
  * True when the hook applies to `targetId` given its intentional scoping.
  *
  * This lives in the SDK rather than the compiler because adapter shims need
@@ -95,6 +127,13 @@ export interface HookSpec<
   match?: E extends ToolScopedEventName ? M : never;
 
   targets?: TargetScope;
+
+  /**
+   * Run only inside, or never inside, the named agents (ADR-0030). Requires
+   * the event's `agent.identity` capability, which the build checks for each
+   * target like any other required capability.
+   */
+  agents?: E extends AgentScopedEventName ? AgentScope : never;
 
   /**
    * This hook's own dispatch budget, overriding `runtime.timeoutMs`.
@@ -152,6 +191,7 @@ export interface HookDefinition {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
+  agents?: AgentScope;
   timeoutMs?: number;
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
   /** Declared optional fields, as full ids; absent when the hook declared none. */
@@ -205,14 +245,31 @@ export function hook<
   K extends CapabilityKey<E> = never,
   const M extends ToolMatch = ToolMatch,
 >(event: E, spec: HookSpec<E, K, M>): HookDefinition {
+  const capabilities = canonicalCapabilities(event, spec.id, spec.capabilities);
+  if (spec.agents !== undefined) {
+    // The scope is only as good as the target's knowledge of which agent an
+    // event ran in, so it requires that, as using an event requires observing
+    // it (ADR-0030). An event with no such capability cannot be scoped; the
+    // compiler reports that one.
+    const identity = agentIdentityCapability(event);
+    if (identity !== undefined) {
+      if (capabilities[identity] === "optional") {
+        throw new Error(
+          `hook "${spec.id}" is scoped to agents, which requires "${identity}"; it cannot also declare it optional.`,
+        );
+      }
+      capabilities[identity] = "required";
+    }
+  }
   const def: HookDefinition = {
     event,
     id: spec.id,
-    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
+    capabilities,
     run: spec.run as HookDefinition["run"],
   };
   if (spec.match !== undefined) def.match = spec.match;
   if (spec.targets !== undefined) def.targets = spec.targets;
+  if (spec.agents !== undefined) def.agents = spec.agents;
   if (spec.timeoutMs !== undefined) def.timeoutMs = spec.timeoutMs;
   if (spec.fields !== undefined) def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;

@@ -1,4 +1,6 @@
 import type {
+  AgentMode,
+  AgentPluginComponentSupport,
   AgentPluginDegradation,
   AgentPluginIssue,
   AgentPluginPackage,
@@ -10,12 +12,15 @@ import {
   assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
+  DEFAULT_AGENT_NOT_PACKAGED,
   hasUnportableCommandPath,
   isRejectedSkillPath,
   materializedPackageFiles,
   npmPublicationProblems,
   projectPackageSkillTexts,
   RELATIVE_SKILL_TEXT,
+  servesAsPrimary,
+  withoutPrimary,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -27,8 +32,29 @@ import {
   PACKAGE_PLUGIN_PATH,
   packageEntrySource,
 } from "./generate.js";
-import { qualifiedSkillNames, renameSkillManifest } from "./skill-names.js";
+import { qualifiedSkillNames, qualifyNames, renameSkillManifest } from "./skill-names.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
+
+/**
+ * An agent definition as a package's generated module registers it: `name` is what
+ * OpenCode lists and selects, which is plugin-qualified unless
+ * a degradation says otherwise; `native` is empty where the family cannot carry
+ * native fields.
+ */
+export interface OpenCodePackageAgent {
+  name: string;
+  description: string;
+  /** The definition's mode, less `primary` where this family cannot deliver it. */
+  mode: AgentMode;
+  instructions: string;
+  native: Record<string, unknown>;
+}
+
+/** An agent kept under its bare name in OpenCode's flat agent namespace (ADR-0029). */
+export const AGENT_NAME_UNQUALIFIED = "agent-name-unqualified";
+
+const delivers = (cell: AgentPluginComponentSupport | undefined): boolean =>
+  cell !== undefined && cell.level !== "unsupported";
 
 /**
  * Package delivery emits an npm package, so every path here is package-root
@@ -213,7 +239,16 @@ function injectorSource(
   manifest: AgentPluginPackage["manifest"],
   servers: Record<string, OpenCodeServer>,
   hasSkills: boolean,
+  agents: readonly OpenCodePackageAgent[] = [],
 ): string {
+  // The config form of an agent is the markdown form's fields, with `prompt`
+  // for the body; native fields first, so the portable core wins a collision
+  // core already refuses. Pairs rather than an object literal for the same
+  // __proto__ reason as the servers below.
+  const agentEntries = agents.map((agent) => [
+    agent.name,
+    { ...agent.native, description: agent.description, mode: agent.mode, prompt: agent.instructions },
+  ]);
   const identity = {
     name: manifest.name,
     ...(manifest.version === undefined ? {} : { version: manifest.version }),
@@ -275,9 +310,27 @@ function injectorSource(
     "// Parsed, not written as an object literal: a server named __proto__ is a",
     "// literal key that sets the prototype, and the server would vanish.",
     `const mcpServers = JSON.parse(${JSON.stringify(JSON.stringify(servers, null, 2))});`,
+    ...(agentEntries.length === 0
+      ? []
+      : [`const agents = JSON.parse(${JSON.stringify(JSON.stringify(agentEntries, null, 2))});`]),
     "",
     "export default async () => ({",
     "  config: (config) => {",
+    ...(agentEntries.length === 0
+      ? []
+      : [
+          "    // Agent definitions configured beside the package (ADR-0029), registered as",
+          "    // the project's opencode.json would declare them.",
+          "    config.agent = { ...(config.agent ?? {}) };",
+          "    for (const [name, agent] of agents) {",
+          "      Object.defineProperty(config.agent, name, {",
+          "        value: agent,",
+          "        enumerable: true,",
+          "        writable: true,",
+          "        configurable: true,",
+          "      });",
+          "    }",
+        ]),
     ...(Object.keys(servers).length === 0
       ? []
       : [
@@ -375,7 +428,11 @@ function packageManifest(
 export const SKILL_NAME_UNQUALIFIED = "skill-name-unqualified";
 
 export function createOpenCodeAgentPluginProjector(emitters?: {
-  injector: (source: AgentPluginPackage, servers: Record<string, OpenCodeServer>) => string;
+  injector: (
+    source: AgentPluginPackage,
+    servers: Record<string, OpenCodeServer>,
+    agents: readonly OpenCodePackageAgent[],
+  ) => string;
   entry: (options: { hooks: boolean; components: boolean; name?: string }) => string;
 }): AgentPluginProjector<TargetSpec> {
   return {
@@ -445,6 +502,34 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
             rationale:
               "Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim.",
           },
+          "agents.definition": {
+            level: "emulated",
+            rationale:
+              "The generated module registers each agent through OpenCode's config hook, as a project's opencode.json would declare it, with the definition's mode and the instructions as its prompt. OpenCode lists an agent under its bare config key, so each is named <plugin>-<name>, the nearest spelling of the plugin-qualified name Claude gives a plugin agent; the qualification is the projection's, not OpenCode's.",
+            degradations: [
+              {
+                id: AGENT_NAME_UNQUALIFIED,
+                summary:
+                  "An agent that cannot be named `<plugin>-<name>` -- the name would pass 64 characters or break the name rules, or duplicate another agent in the build -- keeps its bare name, which it shares with the project's agents and every other plugin's.",
+                evidence: ".capture/agents",
+              },
+            ],
+          },
+          "agents.default": {
+            level: "unsupported",
+            rationale:
+              "A plugin's config hook can set default_agent (.capture/agents inject-default), but Hooknostic does not make a package set the default agent: it would start every session of every user who enables the package as that agent. Deliver the default to a project target.",
+          },
+          "agents.primary": {
+            level: "emulated",
+            rationale:
+              "An agent the config hook registers with mode: primary or all runs as the session through opencode run --agent <plugin>-<name>, and default_agent can name it. The name is the projection's qualification, as for agents.definition.",
+          },
+          "agents.native": {
+            level: "exact",
+            rationale:
+              "native.opencode fields are carried into the registered agent verbatim; a model set this way took effect in the child request and in a session run as the agent.",
+          },
         },
         source: {
           date: "2026-09-08",
@@ -455,6 +540,27 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
               method: "live-probe",
               artifact: ".capture/skill-directory",
               what: 'Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory."',
+            },
+            {
+              version: "1.18.31",
+              date: "2026-09-29",
+              method: "live-probe",
+              artifact: ".capture/agents",
+              what: "A plugin whose config hook assigned config.agent[<name>] with mode: subagent, a model and a prompt produced an agent the task tool offered with its description; delegated to, it ran on the prompt in place of the provider prompt and on that model. A package built with a portable definition beside its root and named by path in opencode.json registered it as <plugin>-<name>, which was offered, delegated to and ran on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts).",
+            },
+            {
+              version: "1.18.18",
+              date: "2026-09-29",
+              method: "live-probe",
+              artifact: ".capture/agents",
+              what: "At the reference build a config-hook agent, and a package built with a portable definition beside its root, were each offered, delegated to and ran on their instructions and model.",
+            },
+            {
+              version: "1.18.31",
+              date: "2026-09-29",
+              method: "live-probe",
+              artifact: ".capture/agents",
+              what: "A plugin whose config hook assigned config.agent[<name>] with mode: primary ran the session as that agent through run --agent, on its prompt and model; a hook that also set config.default_agent started the session as it without --agent. A package built with a mode: primary definition beside its root registered it as <plugin>-<name>, which ran as the session through run --agent on its instructions and native model (packages/cli/test/agent-definition-playback.test.ts). The same held on 1.18.18.",
             },
             {
               version: "1.18.31",
@@ -704,11 +810,63 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
           message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
         });
       }
+      // Agent definitions configured beside the package (ADR-0029). OpenCode keeps one
+      // flat agent namespace, so each is named for its plugin as skills are
+      // (ADR-0021) -- switched by the declared degradation, like skills -- and
+      // a family whose plugin API cannot take native fields gets none.
+      const deliversDefinitions = delivers(context.support["agents.definition"]);
+      const deliversPrimary = deliversDefinitions && delivers(context.support["agents.primary"]);
+      const deliversNative = deliversDefinitions && delivers(context.support["agents.native"]);
+      // Without a main-session route an `all` definition is still a subagent,
+      // and a `primary` one has nothing left to register (ADR-0029, decision 9).
+      const definitions = (deliversDefinitions ? (context.agents ?? []) : []).flatMap((definition) => {
+        if (deliversPrimary || !servesAsPrimary(definition.mode)) return [definition];
+        const mode = withoutPrimary(definition.mode);
+        return mode === undefined ? [] : [{ ...definition, mode }];
+      });
+      const qualifyingAgents =
+        context.support["agents.definition"]?.degradations?.some((item) => item.id === AGENT_NAME_UNQUALIFIED) ?? false;
+      const agentNames: { name: string; kept?: string }[] = qualifyingAgents
+        ? qualifyNames(
+            source.manifest.name,
+            definitions.map((definition) => definition.name),
+            "an agent",
+          )
+        : definitions.map((definition) => ({ name: definition.name }));
+      const agents = definitions.map((definition, index): OpenCodePackageAgent => {
+        const { name, kept } = agentNames[index]!;
+        if (kept !== undefined) {
+          degradations.push({
+            id: AGENT_NAME_UNQUALIFIED,
+            component: "agents.definition",
+            name: definition.name,
+            path: definition.source,
+            reason:
+              `agent ${JSON.stringify(definition.name)} keeps its bare name on OpenCode, where agent names are not ` +
+              `qualified by plugin, so it shares one namespace with the project's agents and every other plugin's: ${kept}.`,
+          });
+        }
+        const native = definition.native["opencode"];
+        if (native !== undefined && !deliversNative) {
+          omissions.push({
+            component: "agents.native",
+            name: definition.name,
+            reason: "this OpenCode family's plugin agent API takes its internal agent shape, not native agent fields",
+          });
+        }
+        return {
+          name,
+          description: definition.description,
+          mode: definition.mode,
+          instructions: definition.instructions,
+          native: deliversNative ? (native ?? {}) : {},
+        };
+      });
       files.push({
         path: INJECTOR_PATH,
         contents: emitters
-          ? emitters.injector(source, servers)
-          : injectorSource(source.manifest, servers, source.skills.length > 0),
+          ? emitters.injector(source, servers, agents)
+          : injectorSource(source.manifest, servers, source.skills.length > 0, agents),
       });
       // Either half can be absent: a config needs only one of `entry` or
       // `components`. An entry importing a module the build never produced fails
@@ -821,13 +979,31 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
       // component is never discovered here.
       const counts = componentSummary(source, {
         hasRuntimePackage: context.runtimePackage !== undefined,
+        ...(context.agents === undefined ? {} : { agents: context.agents }),
+        harness: "opencode",
+        ...(context.defaultAgent === undefined ? {} : { defaultAgent: context.defaultAgent }),
         skipped: (component, discovered) =>
           component === "agent-plugin.runtime-package"
             ? discovered
             : component === "agent-plugin.mcp.stdio"
               ? omitted.length
-              : 0,
+              : component === "agents.definition"
+                ? discovered - definitions.length
+                : component === "agents.default"
+                  ? discovered
+                  : component === "agents.primary"
+                    ? deliversPrimary
+                      ? 0
+                      : discovered
+                    : component === "agents.native"
+                      ? deliversNative
+                        ? 0
+                        : discovered
+                      : 0,
       });
+      if (context.defaultAgent !== undefined) {
+        omissions.push({ component: "agents.default", name: context.defaultAgent, reason: DEFAULT_AGENT_NOT_PACKAGED });
+      }
       if (context.runtimePackage !== undefined) {
         omissions.push({
           component: "agent-plugin.runtime-package",

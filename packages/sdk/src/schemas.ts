@@ -99,6 +99,7 @@ export const baseHookEventSchema = z
         turnId: z.string().optional(),
         toolCallId: z.string().optional(),
         agentId: z.string().optional(),
+        agentType: z.string().optional(),
         parentAgentId: z.string().optional(),
       })
       .strict(),
@@ -156,6 +157,14 @@ export const runtimePolicySchema = z
   })
   .strict();
 
+/** ADR-0029, decision 11: authored definition names, in the shape of a hook's `targets`. */
+export const agentSelectionSchema = z
+  .object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export const targetConfigSchema = z
   .object({
     adapter: z.string().min(1).optional(),
@@ -164,6 +173,7 @@ export const targetConfigSchema = z
     output: z.string().min(1),
     npmName: z.string().min(1).optional(),
     skillNames: z.enum(["qualified", "authored"]).optional(),
+    agents: agentSelectionSchema.optional(),
     compatibility: compatibilityPolicySchema.optional(),
   })
   .strict();
@@ -218,6 +228,7 @@ export const hooknosticConfigSchema = z
         root: z.string().min(1).optional(),
         skills: z.array(z.string().min(1)).optional(),
         mcp: z.string().min(1).optional(),
+        agents: z.array(z.string().min(1)).min(1).optional(),
         mcpOverrides: z.record(z.string().min(1), projectMcpTargetOverrideSchema).optional(),
         targets: z.array(z.string().min(1)).min(1).optional(),
         exclude: z.array(z.string().min(1)).optional(),
@@ -248,6 +259,7 @@ export const hooknosticConfigSchema = z
         onDeviation: z.enum(["error", "warn"]).optional(),
         onDegraded: z.enum(["error", "warn"]).optional(),
         accept: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
+        defaultAgent: z.string().min(1).optional(),
       })
       .strict()
       .optional(),
@@ -289,6 +301,23 @@ export const hooknosticConfigSchema = z
       }
     }
     const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+    // A selection on a target that receives no definitions could only read as
+    // a promise, like npmName on a project target.
+    for (const [name, target] of Object.entries(config.targets)) {
+      if (target.agents === undefined) continue;
+      if (config.components?.agents === undefined)
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targets", name, "agents"],
+          message: "a target's agents selection requires components.agents",
+        });
+      else if (!componentTargets.has(name))
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targets", name, "agents"],
+          message: `target ${JSON.stringify(name)} selects agents but is not in components.targets`,
+        });
+    }
     if (
       config.components &&
       !config.project &&
@@ -329,6 +358,13 @@ export const hooknosticConfigSchema = z
           message: "components.executableFiles requires components.root or components.skills",
         });
       }
+      if (config.components.agents === undefined && config.components.defaultAgent !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components", "defaultAgent"],
+          message: "components.defaultAgent requires components.agents",
+        });
+      }
       if (config.components.mcp === undefined && config.components.mcpOverrides !== undefined) {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "components.mcpOverrides requires components.mcp" });
       }
@@ -345,9 +381,13 @@ export const hooknosticConfigSchema = z
       if (
         config.components.root === undefined &&
         config.components.skills === undefined &&
-        config.components.mcp === undefined
+        config.components.mcp === undefined &&
+        config.components.agents === undefined
       ) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "components requires root, skills, or mcp" });
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "components requires root, skills, mcp, or agents",
+        });
       }
       const configured = new Set(Object.keys(config.targets));
       const seen = new Set<string>();
@@ -428,6 +468,14 @@ export const targetScopeSchema = z
   })
   .strict();
 
+/** ADR-0030: the same shape as targets, naming agents as the harness reports them. */
+export const agentScopeSchema = z
+  .object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export const toolMatchSchema = z
   .object({
     kind: z.union([toolKindSchema, z.array(toolKindSchema)]).optional(),
@@ -442,6 +490,7 @@ export const hookDefinitionSchema = z
     id: z.string().min(1),
     match: toolMatchSchema.optional(),
     targets: targetScopeSchema.optional(),
+    agents: agentScopeSchema.optional(),
     // Same bound as runtimePolicySchema.timeoutMs, and for the same reason:
     // Node clamps a longer delay to 1 ms, so an out-of-range budget makes the
     // hook time out on every dispatch instead of never. `positive` also keeps

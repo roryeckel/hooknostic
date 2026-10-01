@@ -37,6 +37,8 @@ Read these when you want to know *why* something works the way it does, not just
 | [0026 — A normalized, read-only view of the files a tool targets](0026-normalized-file-view.md) | How does a file guard read the target path when every harness names it differently? |
 | [0027 — Hooks declare the optional event fields they read](0027-event-field-fidelity.md) | How do I find out which harness never sends `lastMessage`, before my hook ships there? |
 | [0028 — A portable token for a skill's own directory](0028-skill-directory-token.md) | How does a skill name a script it ships, so every harness finds it? |
+| [0029 — Portable agent definitions (proposed)](0029-portable-agents.md) | Can one definition become a Claude subagent, a Codex custom agent and an OpenCode agent, or the agent a session runs as, and what survives the translation? |
+| [0030 — Agent-scoped hooks (proposed)](0030-agent-scoped-hooks.md) | How does a hook run only inside one agent, and on which harnesses can it tell? |
 
 Each record is immutable once accepted; a change of course gets a new record that
 supersedes the old one rather than a silent edit.

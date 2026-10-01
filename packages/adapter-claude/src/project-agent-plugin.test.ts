@@ -8,13 +8,19 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
+  type AgentDefinition,
   type AgentPluginFile,
   type AgentPluginPackage,
+  parseMarkdownFrontmatter,
 } from "@hooknostic/agent-plugin";
 import { diagnosticsFromAgentPluginIssues, resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { claudeAdapter } from "./index.js";
-import { claudeAgentPluginProjector, projectAgentPluginToClaude } from "./project-agent-plugin.js";
+import {
+  claudeAgentPluginProjector,
+  PLUGIN_AGENT_FIELD_IGNORED,
+  projectAgentPluginToClaude,
+} from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
 const file = (path: string, contents: string | Uint8Array, mode = 0o644): AgentPluginFile => ({
@@ -1067,5 +1073,110 @@ describe("Agent Plugin to Claude projection", () => {
         message: expect.stringContaining("collides with a materialized package tree"),
       }),
     );
+  });
+});
+
+describe("agent definitions in a Claude package projection", () => {
+  const agent = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
+    name,
+    mode,
+    description: `${name} description`,
+    instructions: `${name} instructions\n`,
+    native,
+    source: `/project/agents/${name}.md`,
+  });
+  const project = (portable: AgentPluginPackage, agents: AgentDefinition[], matrix: typeof support = support) =>
+    projectAgentPluginToClaude(portable, {
+      target,
+      support: matrix,
+      onUnsupported: "error",
+      hookArtifacts: [],
+      agents,
+    });
+  const frontmatter = (plan: Awaited<ReturnType<typeof project>>, path: string) => {
+    const artifact = plan.files.find((candidate) => candidate.path === path);
+    expect(artifact, path).toBeDefined();
+    const text =
+      typeof artifact!.contents === "string" ? artifact!.contents : new TextDecoder().decode(artifact!.contents);
+    const { data, body } = parseMarkdownFrontmatter(text, path);
+    return { data: data as Record<string, unknown>, body };
+  };
+
+  it("writes each definition to the plugin's agents directory under its authored name", async () => {
+    const plan = await project(source(), [agent("reviewer", { claude: { model: "sonnet", tools: ["Read"] } })]);
+    expect(plan.issues).toEqual([]);
+    // Claude qualifies a plugin agent itself (`portable-tools:reviewer`), so the
+    // authored name is kept, and native fields ride in the frontmatter.
+    expect(frontmatter(plan, "agents/reviewer.md")).toEqual({
+      data: { name: "reviewer", description: "reviewer description", model: "sonnet", tools: ["Read"] },
+      body: "reviewer instructions\n",
+    });
+    expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    // Generated, not copied: the definition is not package content.
+    expect(plan.summary.copiedPaths).not.toContain("agents/reviewer.md");
+    expect(await claudeAdapter().validateArtifacts!(plan.files, target)).toEqual([]);
+  });
+
+  it("writes one file whatever the mode, and reports a primary-only agent Claude still offers for delegation", async () => {
+    const plan = await project(source(), [agent("planner", {}, "primary"), agent("writer", {}, "all")]);
+    expect(plan.issues).toEqual([]);
+    // Claude has no mode field; the same file runs as a session or a subagent.
+    expect(frontmatter(plan, "agents/planner.md").data).toEqual({
+      name: "planner",
+      description: "planner description",
+    });
+    expect(plan.summary.components["agents.primary"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
+    expect(plan.summary.deviations).toEqual([
+      expect.objectContaining({ id: "primary-agent-delegable", component: "agents.primary", name: "planner" }),
+    ]);
+  });
+
+  it.each([
+    // The two spellings are one file on a case-insensitive filesystem.
+    ["a package file, case-folded", "Agents/Reviewer.md", "Agents/Reviewer.md"],
+    // A Claude client-extension overlay is hoisted to the plugin root first.
+    ["an overlay hoisted there", "com.anthropic.claude-code/agents/reviewer.md", "agents/reviewer.md"],
+  ])("refuses %s already at an agent definition's path", async (_label, shipped, occupied) => {
+    // Emitting over it would replace an authored file without a word.
+    const plan = await project(source([file(shipped, "authored")]), [agent("reviewer")]);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", component: "agents.definition", path: occupied }),
+    );
+    // The authored file is kept as shipped; the translation is not emitted.
+    const kept = plan.files.find((candidate) => candidate.path.toLowerCase() === "agents/reviewer.md")!.contents;
+    expect(typeof kept === "string" ? kept : new TextDecoder().decode(kept)).toBe("authored");
+  });
+
+  it("reports a native field Claude ignores in a plugin's agent, and still writes it", async () => {
+    const plan = await project(source(), [
+      agent("planner", { claude: { permissionMode: "plan" } }),
+      agent("reviewer", { claude: { model: "sonnet" } }),
+    ]);
+    expect(plan.summary.degradations).toEqual([
+      expect.objectContaining({
+        id: PLUGIN_AGENT_FIELD_IGNORED,
+        component: "agents.native",
+        name: "planner",
+        path: "/project/agents/planner.md",
+      }),
+    ]);
+    // The author's field stays in the file: a later Claude may honour it, and
+    // the report says it does not today.
+    expect(frontmatter(plan, "agents/planner.md").data["permissionMode"]).toBe("plan");
+  });
+
+  it("reports nothing once the matrix stops declaring the ignored field", async () => {
+    // The declaration is the switch (ADR-0019): a profile for a Claude that
+    // honours the field drops it, and with it the report.
+    const plan = await project(source(), [agent("planner", { claude: { permissionMode: "plan" } })], {
+      ...support,
+      "agents.native": { level: "exact" },
+    });
+    expect(plan.summary.degradations).toBeUndefined();
   });
 });

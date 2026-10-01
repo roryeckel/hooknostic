@@ -1,11 +1,12 @@
+import { type AgentDefinition, servesAsPrimary } from "./agent-definitions.js";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
-  type AgentPluginComponentId,
   type AgentPluginPackage,
   type AgentPluginProjectionPlan,
+  type ComponentId,
 } from "./types.js";
 
-export interface ComponentSummaryOptions {
+export interface ComponentDiscoveryOptions {
   /**
    * The reverse-DNS client-extension namespace this projector supports, if any.
    *
@@ -18,26 +19,33 @@ export interface ComponentSummaryOptions {
    */
   namespace?: string;
   hasRuntimePackage?: boolean;
+  /** Agent definitions configured beside the package (ADR-0029). */
+  agents?: readonly AgentDefinition[];
+  /** The harness key whose `native` blocks `agents.native` counts. */
+  harness?: string;
+  /** `components.defaultAgent`, counted as `agents.default` (ADR-0029). */
+  defaultAgent?: string;
+}
+
+export interface ComponentSummaryOptions extends ComponentDiscoveryOptions {
   /** How many of `discovered` this projector will not hand the harness. */
-  skipped?: (component: AgentPluginComponentId, discovered: number) => number;
+  skipped?: (component: ComponentId, discovered: number) => number;
 }
 
 /**
- * What a projector found in the package, and how much of it the harness gets.
+ * Every component a package build carries, with how many items each has.
  *
- * Discovery mirrors core's own (`discoveredComponents`), which is the point of
- * sharing it: the build report replaces the analyzed counts with the
- * projector's, so a projector counting for itself is a standing chance for a
- * component the analysis phase saw to vanish from the report. Only presence is
- * decided here; the emitted/skipped split is per-harness and comes from
- * `skipped`.
+ * The one discovery the analysis phase, the analyzed report and every projector
+ * share: the build report replaces the analyzed counts with the projector's, so
+ * two discoveries that disagree are a standing chance for a component the
+ * analysis phase saw to vanish from the report.
  */
-export function componentSummary(
+export function discoverComponents(
   source: AgentPluginPackage,
-  options: ComponentSummaryOptions = {},
-): AgentPluginProjectionPlan["summary"]["components"] {
+  options: ComponentDiscoveryOptions = {},
+): Map<ComponentId, number> {
   const namespace = options.namespace ?? "";
-  const discovered = new Map<AgentPluginComponentId, number>([["agent-plugin.manifest", 1]]);
+  const discovered = new Map<ComponentId, number>([["agent-plugin.manifest", 1]]);
 
   if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
 
@@ -58,8 +66,29 @@ export function componentSummary(
 
   if (options.hasRuntimePackage === true) discovered.set("agent-plugin.runtime-package", 1);
 
+  const agents = options.agents ?? [];
+  if (agents.length > 0) discovered.set("agents.definition", agents.length);
+  const primary = agents.filter((agent) => servesAsPrimary(agent.mode)).length;
+  if (primary > 0) discovered.set("agents.primary", primary);
+  const harness = options.harness;
+  const native = harness === undefined ? 0 : agents.filter((agent) => Object.hasOwn(agent.native, harness)).length;
+  if (native > 0) discovered.set("agents.native", native);
+  if (options.defaultAgent !== undefined) discovered.set("agents.default", 1);
+
+  return discovered;
+}
+
+/**
+ * What a projector found in the package, and how much of it the harness gets.
+ * Only presence is decided here; the emitted/skipped split is per-harness and
+ * comes from `skipped`.
+ */
+export function componentSummary(
+  source: AgentPluginPackage,
+  options: ComponentSummaryOptions = {},
+): AgentPluginProjectionPlan["summary"]["components"] {
   const components: AgentPluginProjectionPlan["summary"]["components"] = {};
-  for (const [component, count] of discovered) {
+  for (const [component, count] of discoverComponents(source, options)) {
     const skipped = Math.min(options.skipped?.(component, count) ?? 0, count);
     components[component] = { discovered: count, emitted: count - skipped, skipped };
   }

@@ -18,6 +18,16 @@
       "mode": 420
     },
     {
+      "path": ".claude/agents/.gitattributes",
+      "hash": "06c1e78531bb7fb522924845d20f4296ad1949ac2495d1499c869c342ef99502",
+      "mode": 420
+    },
+    {
+      "path": ".claude/agents/reviewer.md",
+      "hash": "03a72e4967bd9b805f7be4a55bbab450abb123efb13dcd339c1f15b849f16051",
+      "mode": 420
+    },
+    {
       "path": ".claude/settings.json",
       "key": [
         "hooks",
@@ -40,6 +50,16 @@
     {
       "path": ".claude/skills/sample/references/overview.md",
       "hash": "858ea25fa37fa04877901bc8b3cd9e49680189838e1f98a4fb633e5b33f42e42",
+      "mode": 420
+    },
+    {
+      "path": ".codex/agents/.gitattributes",
+      "hash": "aa67040d6b55f2e950b439f979a5a5554884afe9ebe2b43aac9b7654885ca50c",
+      "mode": 420
+    },
+    {
+      "path": ".codex/agents/reviewer.toml",
+      "hash": "8a0d1b0e507ebef2255a560edf762aebe20d90be82db4ef41e74831ff369e9d6",
       "mode": 420
     },
     {
@@ -94,12 +114,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "cf951c2829d5e71e5c4d85e4e786b55ffe70a37184c3b428798869a1071d2938",
+      "hash": "997ec015960968b928161c7794278dd3c825116f48774177ab46bbd13979dd0e",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "cc81b6d59c5776426796995a8ec142b1ee9068f556041ef5b1bf53b403ce492f",
+      "hash": "51300e27e44bc19563e9601fbb376c324e75787528f3861051cb16dfcb1d1ad1",
       "mode": 420
     },
     {
@@ -129,7 +149,7 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "0bafa47ced2ee5292380414620f4773cba81ad43571315de7d095c010491a2bd",
+      "hash": "5265452f6709d4377d7dad613cd599356b89fa1db57924404c6e3d239039492f",
       "mode": 420
     },
     {
@@ -150,6 +170,16 @@
       ],
       "kind": "property",
       "hash": "312a022c478ac049e3b6a5d9dcb4fa8437b34a5e4d120202b81bb5948ab49d7b"
+    },
+    {
+      "path": ".opencode/agents/.gitattributes",
+      "hash": "06c1e78531bb7fb522924845d20f4296ad1949ac2495d1499c869c342ef99502",
+      "mode": 420
+    },
+    {
+      "path": ".opencode/agents/reviewer.md",
+      "hash": "f1765c76aa9e8191ede26d779d98d2d55987586ef5e41a59c0d5a17346bcd0d2",
+      "mode": 420
     },
     {
       "path": ".opencode/plugins/.gitattributes",

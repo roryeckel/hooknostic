@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   AGENT_PLUGIN_MCP_SCHEMA,
+  type AgentDefinition,
   type AgentPluginFile,
   type AgentPluginMcpServer,
   type AgentPluginPackage,
@@ -16,7 +17,7 @@ import {
 import type { McpLauncherDocument, TargetSpec } from "@hooknostic/core";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
-import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
+import { AGENT_NAME_UNQUALIFIED, opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 import { opencodeV2Harness } from "./v2/harness.js";
 import { opencodeV2Projector } from "./v2/project.js";
 
@@ -885,5 +886,115 @@ describe("Agent Plugin to OpenCode projection", () => {
     const issue = plan.issues.find((candidate) => candidate.path === "package/generated/shared/data.bin");
     expect(issue?.severity).toBe("error");
     expect(issue?.message).toContain("collides with a materialized package tree");
+  });
+});
+
+describe("agent definitions in an OpenCode v1 package projection", () => {
+  const agent = (
+    name: string,
+    native: AgentDefinition["native"] = {},
+    mode: AgentDefinition["mode"] = "subagent",
+  ): AgentDefinition => ({
+    name,
+    mode,
+    description: `${name} description`,
+    instructions: `${name} instructions\n`,
+    native,
+    source: `/project/agents/${name}.md`,
+  });
+  const projectWith = (agents: AgentDefinition[], matrix: typeof support = support) =>
+    opencodeAgentPluginProjector.project(source(), {
+      target,
+      hookArtifacts: [],
+      support: matrix,
+      onUnsupported: "error",
+      agents,
+    });
+  // The fixture skill has no frontmatter to rename, so it reports a skill
+  // degradation of its own; these tests are about agent definitions.
+  const agentDegradations = (plan: AgentPluginProjectionPlan) =>
+    (plan.summary.degradations ?? []).filter((item) => item.component.startsWith("agents."));
+  /** Runs the generated module's config hook, as OpenCode would, on `config`. */
+  async function configured(plan: AgentPluginProjectionPlan, config: { agent?: Record<string, unknown> } = {}) {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-opencode-agents-"));
+    try {
+      const modulePath = join(dir, "hooknostic-agent-plugin.mjs");
+      await writeFile(modulePath, injector(plan));
+      const plugin = await (await import(pathToFileURL(modulePath).href)).default();
+      plugin.config(config);
+      return config;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("registers each agent definition through the config hook under its plugin-qualified name", async () => {
+    const plan = await projectWith([agent("reviewer", { opencode: { model: "provider/model", temperature: 0.1 } })]);
+    expect(plan.issues).toEqual([]);
+    const config = await configured(plan, { agent: { build: { model: "kept" } } });
+    expect(config.agent).toEqual({
+      // An agent the project configured survives the injection.
+      build: { model: "kept" },
+      // Native fields first, then the portable core, as opencode.json spells it.
+      "portable-tools-reviewer": {
+        model: "provider/model",
+        temperature: 0.1,
+        description: "reviewer description",
+        mode: "subagent",
+        prompt: "reviewer instructions\n",
+      },
+    });
+    expect(plan.summary.components["agents.definition"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    expect(plan.summary.components["agents.native"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
+    expect(agentDegradations(plan)).toEqual([]);
+  });
+
+  it("registers each agent in its own mode", async () => {
+    const plan = await projectWith([agent("planner", {}, "primary"), agent("writer", {}, "all"), agent("reviewer")]);
+    expect(plan.issues).toEqual([]);
+    const registered = (await configured(plan)).agent as Record<string, { mode: string }>;
+    expect(Object.fromEntries(Object.entries(registered).map(([name, entry]) => [name, entry.mode]))).toEqual({
+      "portable-tools-planner": "primary",
+      "portable-tools-writer": "all",
+      "portable-tools-reviewer": "subagent",
+    });
+    expect(plan.summary.components["agents.primary"]).toEqual({ discovered: 2, emitted: 2, skipped: 0 });
+  });
+
+  it("keeps a name already qualified by its plugin, and reports a name it cannot qualify", async () => {
+    const long = `a${"b".repeat(55)}`;
+    const plan = await projectWith([
+      agent("portable-tools-helper"),
+      agent(long),
+      // Qualifying `status` would collide with the definition already named for it.
+      agent("status"),
+      agent("portable-tools-status"),
+    ]);
+    expect(Object.keys((await configured(plan)).agent!)).toEqual([
+      "portable-tools-helper",
+      long,
+      "status",
+      "portable-tools-status",
+    ]);
+    expect(agentDegradations(plan)).toEqual([
+      expect.objectContaining({ id: AGENT_NAME_UNQUALIFIED, component: "agents.definition", name: long }),
+      expect.objectContaining({ id: AGENT_NAME_UNQUALIFIED, component: "agents.definition", name: "status" }),
+    ]);
+  });
+
+  it("qualifies nothing and reports nothing once the matrix stops declaring the degradation", async () => {
+    // The declaration is the switch (ADR-0019), as it is for skills.
+    const plan = await projectWith([agent("reviewer")], {
+      ...support,
+      "agents.definition": { level: "emulated" },
+    });
+    expect(Object.keys((await configured(plan)).agent!)).toEqual(["reviewer"]);
+    expect(agentDegradations(plan)).toEqual([]);
+  });
+
+  it("leaves the module unchanged for a package with no agent definitions", async () => {
+    const plan = await projectWith([]);
+    expect(injector(plan)).not.toContain("config.agent");
+    expect(plan.summary.components["agents.definition"]).toBeUndefined();
   });
 });

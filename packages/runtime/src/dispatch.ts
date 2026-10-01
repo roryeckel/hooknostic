@@ -19,6 +19,7 @@ import {
   capabilityForEffect,
   DEFAULT_RUNTIME,
   effectSchema,
+  hookAppliesToAgent,
   hookAppliesToTarget,
   isTerminalEffect,
   matchesTool,
@@ -154,6 +155,7 @@ export async function dispatch(
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;
     if (!hookAppliesToTarget(hook, options.targetId)) return false;
+    if (!hookAppliesToAgent(hook, event)) return false;
     const tool = toolOf(event);
     if (hook.match && tool && !matchesTool(hook.match, tool)) return false;
     return true;

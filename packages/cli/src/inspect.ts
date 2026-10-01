@@ -1,4 +1,4 @@
-import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
+import { COMPONENT_IDS, type ComponentId } from "@hooknostic/agent-plugin";
 import type { AdapterRegistry } from "@hooknostic/core";
 import { resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
 import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
@@ -44,13 +44,8 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     );
     return failure();
   }
-  if (
-    options.component !== undefined &&
-    !AGENT_PLUGIN_COMPONENT_IDS.includes(options.component as AgentPluginComponentId)
-  ) {
-    errors.push(
-      `unknown component "${options.component}"; valid Agent Plugin component IDs: ${AGENT_PLUGIN_COMPONENT_IDS.join(", ")}.`,
-    );
+  if (options.component !== undefined && !COMPONENT_IDS.includes(options.component as ComponentId)) {
+    errors.push(`unknown component "${options.component}"; valid component IDs: ${COMPONENT_IDS.join(", ")}.`);
     return failure();
   }
   if (options.field !== undefined && !isEventFieldId(options.field)) {
@@ -142,12 +137,12 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     }
     return failure();
   }
-  const componentIds: AgentPluginComponentId[] =
+  const componentIds: ComponentId[] =
     options.component === undefined
       ? single === undefined
-        ? [...AGENT_PLUGIN_COMPONENT_IDS]
+        ? [...COMPONENT_IDS]
         : []
-      : [options.component as AgentPluginComponentId];
+      : [options.component as ComponentId];
   const componentRows = componentIds.map((id) => {
     const entry = projection?.matrix?.[id];
     return {

@@ -1,4 +1,6 @@
 import {
+  type AgentDefinition,
+  type AgentPluginDegradation,
   type AgentPluginDeviation,
   type AgentPluginIssue,
   type AgentPluginMcpServer,
@@ -9,6 +11,7 @@ import {
   assertPackageDelivery,
   classifyStdioCwd,
   componentSummary,
+  DEFAULT_AGENT_NOT_PACKAGED,
   hasUnportableCommandPath,
   isJsonObject as object,
   isRejectedSkillPath,
@@ -28,12 +31,22 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
+import { PRIMARY_AGENT_DELEGABLE, primaryDelegableDeviations, renderClaudeAgent } from "./project.js";
 import { CLAUDE_PLUGIN_SKILL_TEXT } from "./skill-text.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
 const MANIFEST_PATH = ".claude-plugin/plugin.json";
 const MCP_PATH = ".mcp.json";
 const HOOKS_PATH = "hooks/hooks.json";
+/** Claude discovers a plugin's agents here and names each `<plugin>:<name>`. */
+const AGENTS_DIRECTORY = "agents";
+/**
+ * Native agent fields Claude reads from a project agent and ignores in a
+ * plugin's: a plugin agent with `permissionMode: plan` kept no ExitPlanMode
+ * where the same project agent did (`.capture/agents`).
+ */
+export const PLUGIN_AGENT_FIELD_IGNORED = "plugin-agent-field-ignored";
+const PLUGIN_AGENT_IGNORED_FIELDS = ["permissionMode"];
 
 // Claude treats a `package.json`/`package-lock.json` pair at the plugin root as
 // install input for its locked, script-free `npm ci` (ADR-0012), so only the
@@ -222,13 +235,20 @@ function componentCounts(
   source: AgentPluginPackage,
   runtimePackage: "absent" | "emitted" | "skipped",
   omittedStdio = 0,
+  agents: readonly AgentDefinition[] = [],
+  defaultAgent?: string,
 ) {
   const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
   return componentSummary(source, {
     namespace: CLAUDE_AGENT_PLUGIN_NAMESPACE,
     hasRuntimePackage: runtimePackage !== "absent",
-    skipped: (component) => {
+    agents,
+    harness: "claude",
+    ...(defaultAgent === undefined ? {} : { defaultAgent }),
+    skipped: (component, discovered) => {
       if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
+      // A package never sets the default agent (ADR-0029, decision 10).
+      if (component === "agents.default") return discovered;
       // A refused stdio server is discovered but not emitted; without this the
       // report contradicts summary.omissions and .mcp.json alike.
       if (component === "agent-plugin.mcp.stdio") return omittedStdio;
@@ -250,6 +270,7 @@ export async function projectAgentPluginToClaude(
   const issues: AgentPluginIssue[] = [];
   const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
   const deviations: AgentPluginDeviation[] = [];
+  const degradations: AgentPluginDegradation[] = [];
   const files = new Map<string, AgentPluginProjectionFile>();
   const copiedPaths = new Set<string>();
   const insideRejectedSkill = isRejectedSkillPath(source);
@@ -269,7 +290,7 @@ export async function projectAgentPluginToClaude(
         },
       ],
       summary: {
-        components: componentCounts(source, "skipped"),
+        components: componentCounts(source, "skipped", 0, context.agents, context.defaultAgent),
         omissions: [],
         copiedPaths: [],
       },
@@ -347,6 +368,7 @@ export async function projectAgentPluginToClaude(
     "Claude Code",
   );
   for (const [path, contents] of skillTexts.rewritten) files.set(path, { ...files.get(path)!, contents });
+  degradations.push(...skillTexts.degradations);
 
   const materialized = materializedPackageFiles(context.materializedTrees, { claimed: copiedPaths });
   issues.push(...materialized.issues);
@@ -528,6 +550,43 @@ export async function projectAgentPluginToClaude(
       }
       files.set(hookFile.path, hookFile);
     }
+
+    // Agent definitions configured beside the package (ADR-0029). Claude qualifies
+    // each by the plugin, so the authored name is kept. A package already
+    // shipping a file at the same path would otherwise be replaced silently,
+    // so that is fatal, case-folded like every other generated-path check.
+    for (const agent of context.agents ?? []) {
+      const rendered = renderClaudeAgent(agent);
+      const path = `${AGENTS_DIRECTORY}/${rendered.file}`;
+      const claimed = [...files.keys()].find((existing) => existing.toLowerCase() === path.toLowerCase());
+      if (claimed !== undefined) {
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          component: "agents.definition",
+          path: claimed,
+          message: `agent ${JSON.stringify(agent.name)} is emitted at ${JSON.stringify(path)}, which the package already provides as ${JSON.stringify(claimed)}; rename the agent or remove the file.`,
+        });
+        continue;
+      }
+      files.set(path, { path, contents: rendered.contents });
+      deviations.push(...primaryDelegableDeviations([agent], context.support["agents.primary"]));
+      const ignored = Object.keys(agent.native["claude"] ?? {}).filter((key) =>
+        PLUGIN_AGENT_IGNORED_FIELDS.includes(key),
+      );
+      if (
+        ignored.length > 0 &&
+        context.support["agents.native"]?.degradations?.some((item) => item.id === PLUGIN_AGENT_FIELD_IGNORED)
+      ) {
+        degradations.push({
+          id: PLUGIN_AGENT_FIELD_IGNORED,
+          component: "agents.native",
+          name: agent.name,
+          path: agent.source,
+          reason: `agent ${JSON.stringify(agent.name)} sets ${ignored.map((key) => `native.claude.${key}`).join(", ")}, which Claude ignores in a plugin's agent file.`,
+        });
+      }
+    }
   } catch (error) {
     issues.push({
       severity: "error",
@@ -547,10 +606,17 @@ export async function projectAgentPluginToClaude(
         // Derived from what was reported, so the count and summary.omissions
         // cannot disagree.
         omissions.filter((item) => item.component === "agent-plugin.mcp.stdio").length,
+        context.agents,
+        context.defaultAgent,
       ),
-      omissions,
+      omissions: [
+        ...omissions,
+        ...(context.defaultAgent === undefined
+          ? []
+          : [{ component: "agents.default" as const, name: context.defaultAgent, reason: DEFAULT_AGENT_NOT_PACKAGED }]),
+      ],
       deviations,
-      ...(skillTexts.degradations.length === 0 ? {} : { degradations: skillTexts.degradations }),
+      ...(degradations.length === 0 ? {} : { degradations }),
       copiedPaths: [...copiedPaths]
         .filter((path) => files.has(path) && !skillTexts.rewritten.has(path))
         .sort((a, b) => a.localeCompare(b)),
@@ -619,6 +685,42 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         },
         "agent-plugin.client-extension.files": { level: "exact" },
         "agent-plugin.runtime-package": { level: "exact" },
+        "agents.definition": {
+          level: "exact",
+          rationale:
+            "Written to the plugin's agents/<name>.md, one file whatever the mode. Claude offers it to the parent as <plugin>:<name> with its description, and the instructions become its system prompt, as for a project agent.",
+        },
+        "agents.default": {
+          level: "unsupported",
+          rationale:
+            "A plugin's root settings.json can set agent, and Claude then starts every session as it (.capture/agents), but Hooknostic does not write it: the plugin would start every session of every user who enables it as that agent. Deliver the default to a project target.",
+        },
+        "agents.primary": {
+          level: "exact",
+          rationale:
+            "A plugin's agent runs as a session through claude --agent <plugin>:<name>, or its bare name where no other agent shares it, on its instructions, native tools and model; the session's events name it <plugin>:<name>.",
+          deviations: [
+            {
+              id: PRIMARY_AGENT_DELEGABLE,
+              summary:
+                "Claude has no agent mode, so it also offers a primary-only plugin agent for delegation, and a plugin cannot set the permission rule that would withhold it.",
+              evidence: ".capture/agents",
+            },
+          ],
+        },
+        "agents.native": {
+          level: "exact",
+          rationale:
+            "native.claude fields are written verbatim into the plugin's agent frontmatter, where tools and model take effect as in a project agent. Claude ignores permissionMode in a plugin's agent file, which is reported per definition.",
+          degradations: [
+            {
+              id: PLUGIN_AGENT_FIELD_IGNORED,
+              summary:
+                "Claude ignores permissionMode in a plugin's agent file, so a native.claude value for it reaches the file but not the agent.",
+              evidence: ".capture/agents",
+            },
+          ],
+        },
       },
       source: {
         date: "2026-09-04",
@@ -636,6 +738,34 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
             method: "live-probe",
             artifact: ".capture/skill-directory",
             what: "A --plugin-dir plugin's skill, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes), ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA} and ${CLAUDE_SESSION_ID} expanded, and ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written, after a Base directory for this skill line.",
+          },
+          {
+            version: "2.1.283",
+            date: "2026-09-29",
+            method: "live-probe",
+            artifact: ".capture/agents",
+            what: "A --plugin-dir plugin's agents/ file was offered to the parent as <plugin>:<name> and delegated to with its instructions, tools and model; the same agent with permissionMode: plan kept no ExitPlanMode in its tools as a plugin agent, where the project agent did. A package built with a portable definition beside its root, loaded the same way, was offered and delegated to as <plugin>:<name>, and ran on its instructions and its native tools and model (packages/cli/test/agent-definition-playback.test.ts).",
+          },
+          {
+            version: "2.1.238",
+            date: "2026-09-29",
+            method: "live-probe",
+            artifact: ".capture/agents",
+            what: "At the reference build a --plugin-dir plugin's agents/ file, and a package built with a portable definition beside its root, were each offered as <plugin>:<name> and delegated to with their instructions, tools and model.",
+          },
+          {
+            version: "2.1.283",
+            date: "2026-09-29",
+            method: "live-probe",
+            artifact: ".capture/agents",
+            what: "A --plugin-dir plugin's agents/ file ran as the session through --agent <plugin>:<name> and through its bare name, on its instructions, tools and model, and every hook event of the session carried agent_type <plugin>:<name>. A plugin whose root settings.json set agent, bare or qualified, started the session as the agent. A package built with a mode: primary definition beside its root ran as the session through --agent <plugin>:<name>, on its instructions and native tools and model (packages/cli/test/agent-definition-playback.test.ts).",
+          },
+          {
+            version: "2.1.238",
+            date: "2026-09-29",
+            method: "live-probe",
+            artifact: ".capture/agents",
+            what: "At the reference build a plugin agent ran as the session through --agent, qualified or bare, and through the plugin's settings.json, as on 2.1.283, and so did a built package's mode: primary definition.",
           },
           {
             version: "2.1.260",

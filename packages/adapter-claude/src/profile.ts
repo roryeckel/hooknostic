@@ -68,6 +68,48 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: "fixtures/claude/2.1",
           what: "Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised",
         },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "Tool payloads inside a delegated project subagent (.capture/agents): they carry agent_id and agent_type, the parent's carry neither. SubagentStart and SubagentStop fired around a child that finished, but no SubagentStop was dispatched when the child's maxTurns ended it",
+        },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The scoped case: hooks built with agents: { include: [\"hn-probe\"] } blocked the delegated subagent's first Read and let its second through, never touched the parent's Agent call, and a guard scoped to another agent never ran; scoped tool.after, agent.start and agent.stop hooks saw the subagent's events and no others (packages/cli/test/harness-playback.test.ts, agent-scope).",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, the scoped case behaved the same: the subagent's guarded read was blocked, the parent's call was not, and the scoped traces saw only the subagent.",
+        },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/claude/2.1",
+          what: "A session started with --agent (.capture/agents primary-flag): every event carries agent_type, the agent's name, and none carries agent_id, which a subagent's events do (fixtures pre-tool-read-primary-agent, session-start-primary-agent).",
+        },
+        {
+          version: "2.1.283",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The scoped-primary case: hooks scoped to a mode: primary definition, with the session started as it, blocked the session's own guarded read and let its next through, a guard scoped to another agent never ran, and the scoped tool.after trace named the agent (packages/cli/test/agent-definition-playback.test.ts).",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-09-29",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "At the reference build, the scoped-primary case behaved the same: the session's guarded read was blocked and the trace named the agent.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and
@@ -86,9 +128,8 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
     },
     // Optional event fields (ADR-0027): exactly what the captured fixtures in
     // fixtures/claude/2.1 carry. prompt_id is on every payload except
-    // SessionStart; agent_id is claimed only where a fixture shows it (the
-    // subagent events), not on events fired inside a subagent, which no
-    // capture has recorded.
+    // SessionStart; agent_id is captured on subagent lifecycle events and
+    // the subagent's tool events (pre/post-tool-read-subagent, 2.1.283).
     fields: {
       "session.start.how": { level: "exact" },
       "session.end.reason": { level: "exact" },
@@ -96,8 +137,10 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "prompt.before.correlation.turnId": { level: "exact" },
       "tool.before.correlation.turnId": { level: "exact" },
       "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.before.correlation.agentId": { level: "exact" },
       "tool.after.correlation.turnId": { level: "exact" },
       "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.agentId": { level: "exact" },
       "tool.error.error.message": { level: "exact" },
       "tool.error.correlation.turnId": { level: "exact" },
       "tool.error.correlation.toolCallId": { level: "exact" },
@@ -139,6 +182,11 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.requestApproval": { level: "exact" },
       "tool.before.input.replace": { level: "exact" },
       "tool.before.context.add": { level: "exact" },
+      // Inside a subagent the payload carries agent_type, and so does every
+      // event of a session started as an agent; a plain session's carry none, so
+      // a named agent is never confused with it (ADR-0030, fixtures
+      // pre-tool-read-subagent, 2.1.238 and 2.1.283; .capture/agents primary-*).
+      "tool.before.agent.identity": { level: "exact" },
 
       "tool.after.observe": { level: "exact" },
       // No documented tool_response replacement channel on PostToolUse.
@@ -149,6 +197,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           "PostToolUse cannot block (the tool already ran, exit 2 is not honored); the reason is surfaced to the model via stderr, which usually but not deterministically stops continuation.",
       },
       "tool.after.context.add": { level: "exact" },
+      "tool.after.agent.identity": { level: "exact" },
 
       "tool.error.observe": { level: "exact" },
       "tool.error.context.add": { level: "exact" },
@@ -168,10 +217,12 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "context.compact.after.observe": { level: "exact" },
 
       "agent.start.observe": { level: "exact" },
+      "agent.start.agent.identity": { level: "exact" },
 
       "agent.stop.observe": { level: "exact" },
       "agent.stop.prevent": { level: "exact" },
       "agent.stop.notify": { level: "exact" },
+      "agent.stop.agent.identity": { level: "exact" },
 
       "turn.stop.observe": { level: "exact" },
       "turn.stop.prevent": { level: "exact" },

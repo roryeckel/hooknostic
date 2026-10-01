@@ -143,6 +143,20 @@ instructions a harness can invoke. Not something Hooknostic generates or modifie
 agents to external tools and data. Already portable, hence explicitly out of
 Hooknostic's scope.
 
+**Agent definition** — one Markdown file describing an agent a harness runs: as a
+subagent the main agent hands a task to (Claude Code's subagents, Codex's custom
+agents, OpenCode's agents with `mode: subagent`), as the agent a session runs as
+(`mode: primary`, which Codex does not support), or both (`mode: all`). No standard
+covers them, so Hooknostic defines a provisional
+[format](spec/agents/0.1.md) and compiles it into each harness's own
+([ADR-0029](decisions/0029-portable-agents.md), proposed). Not to be confused with
+the `agent.*` hook events, which report on whatever agent is running.
+
+**Agent scope** — a hook's `agents: { include, exclude }`, which runs it only for events
+the harness attributes to the named agents, by the name in `correlation.agentType`
+([ADR-0030](decisions/0030-agent-scoped-hooks.md), proposed). It needs the event's
+`agent.identity` capability, so a target that cannot tell fails the build.
+
 **Decision record** — a short document capturing one significant design choice with
 its context and consequences ([docs/decisions/](decisions/)). Known in the wider world
 as an *architecture decision record* (ADR) — the `ADR-000N` ids in code comments refer

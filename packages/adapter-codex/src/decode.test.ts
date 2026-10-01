@@ -26,6 +26,11 @@ const CASES = [
   "permission-request",
   "subagent-start",
   "subagent-stop",
+  "subagent-start-live",
+  "subagent-stop-live",
+  "pre-tool-bash-subagent",
+  "post-tool-bash-subagent",
+  "pre-tool-wait-agent",
   "pre-compact",
   "stop",
 ] as const;
@@ -103,6 +108,8 @@ describe("classifyCodexTool", () => {
     expect(classifyCodexTool("exec_command", {}).kind).toBe("shell");
     expect(classifyCodexTool("apply_patch", {}).kind).toBe("file.edit");
     expect(classifyCodexTool("spawn_agent", {}).kind).toBe("agent");
+    // Waiting on a subagent is not starting one (fixture pre-tool-wait-agent).
+    expect(classifyCodexTool("multi_agent_v1wait_agent", {}).kind).toBe("other");
     expect(classifyCodexTool("update_plan", {}).kind).toBe("other");
     expect(classifyCodexTool("web_search", {}).kind).toBe("web.search");
     expect(classifyCodexTool("mcp__filesystem__read_file", {}).mcp).toEqual({

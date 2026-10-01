@@ -242,6 +242,8 @@ export function resolveCapabilityMatrix(
  * Least-capable guaranteed intersection: an id's level is the lowest level
  * across all intersecting profiles; missing entries are unsupported. Shared by
  * capabilities and event fields, which resolve by the same rule (ADR-0027).
+ * Keep a declared cell at that level, including explicit unsupported cells,
+ * so its rationale survives for inspect. If no profile declares it, omit it.
  */
 function leastCapableMatrix<Id extends CapabilityId | EventFieldId>(
   ids: readonly Id[],
@@ -249,18 +251,13 @@ function leastCapableMatrix<Id extends CapabilityId | EventFieldId>(
 ): Partial<Record<Id, CapabilityEntry>> {
   const matrix: Partial<Record<Id, CapabilityEntry>> = {};
   for (const id of ids) {
-    let entry: CapabilityEntry | undefined;
-    for (const profileMatrix of matrices) {
-      const candidate = profileMatrix[id] ?? { level: "unsupported" as const };
-      if (entry === undefined) {
-        entry = candidate;
-      } else if (leastCapable(entry.level, candidate.level) === candidate.level) {
-        entry = candidate;
-      }
-    }
-    if (entry && entry.level !== "unsupported") {
-      matrix[id] = entry;
-    }
+    const cells = matrices.map((profileMatrix) => profileMatrix[id]);
+    const level = cells.reduce<CapabilityEntry["level"]>(
+      (least, cell) => leastCapable(least, cell?.level ?? "unsupported"),
+      "exact",
+    );
+    const entry = cells.find((cell): cell is CapabilityEntry => cell !== undefined && cell.level === level);
+    if (entry !== undefined) matrix[id] = entry;
   }
   return matrix;
 }

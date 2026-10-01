@@ -101,7 +101,27 @@ export interface TargetConfig {
    * quietly does nothing.
    */
   skillNames?: "qualified" | "authored";
+  /**
+   * Which of `components.agents`' definitions this target receives, by their
+   * authored `name` (ADR-0029, decision 11). Without it the target receives
+   * every definition. An agent a target does not select is not delivered
+   * there and is not a shortfall: it is neither counted nor reported as
+   * unsupported, and a deselected `components.defaultAgent` is not that
+   * target's default.
+   *
+   * A name that is not a loaded definition is an error, so a typo cannot
+   * silently select nothing.
+   */
+  agents?: AgentSelection;
   compatibility?: CompatibilityPolicy;
+}
+
+/** The definitions a target receives (ADR-0029, decision 11); the same shape as a hook's `targets`. */
+export interface AgentSelection {
+  /** Deliver only these definitions. */
+  include?: string[];
+  /** Deliver every definition but these. */
+  exclude?: string[];
 }
 
 export interface PackageMaterializerFile {
@@ -257,6 +277,16 @@ interface ComponentPolicy<TTarget extends string> {
    * silently accept nothing.
    */
   accept?: string[];
+  /**
+   * The agent every session of the project starts as: the name of a definition
+   * in `agents` whose `mode` is `primary` or `all` (ADR-0029). Project delivery
+   * writes each harness's own default -- Claude's `agent` setting, OpenCode's
+   * default agent -- and on Codex, which has no agent a session runs as, the
+   * agent's instructions into the project configuration. Package targets do
+   * not take it: a package would start every session of every user who enables
+   * it as that agent.
+   */
+  defaultAgent?: string;
 }
 
 type DirectComponentPolicy<TTarget extends string> = {
@@ -271,6 +301,9 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         skills?: never;
         mcp?: never;
         mcpOverrides?: never;
+        // Hooknostic input beside the package, like hook source: projectors
+        // translate them into each native package (ADR-0029).
+        agents?: AgentSources;
         /** Exact, case-sensitive POSIX package paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
         /**
@@ -295,6 +328,7 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         root?: never;
         skills: string[];
         mcp?: string;
+        agents?: AgentSources;
         /** Exact, case-sensitive `<skill>/<path>` POSIX paths to emit as 0755; others use 0644. */
         executableFiles?: string[];
         materialize?: never;
@@ -311,11 +345,33 @@ export type ComponentConfig<TTarget extends string = string> = ComponentPolicy<T
         root?: never;
         skills?: never;
         mcp: string;
+        agents?: AgentSources;
         executableFiles?: never;
         materialize?: never;
         mcpEnvironment?: never;
       } & DirectComponentPolicy<TTarget>)
+    // Agent definitions alone. Like MCP alone, it owns no tree to mark
+    // executable, and there is no MCP source for overrides to address.
+    | {
+        root?: never;
+        skills?: never;
+        mcp?: never;
+        mcpOverrides?: never;
+        agents: AgentSources;
+        executableFiles?: never;
+        materialize?: never;
+        mcpEnvironment?: never;
+      }
   );
+
+/**
+ * Directories of Hooknostic Agent Definition files: flat `<name>.md` files,
+ * YAML frontmatter plus the instructions as the body
+ * (`docs/spec/agents/0.1.md`, ADR-0029). Project delivery writes each
+ * harness's own agent file; beside `root`, package delivery carries them in the
+ * projected package where the harness supports it.
+ */
+type AgentSources = [string, ...string[]];
 
 export type TargetsConfig = Record<string, TargetConfig>;
 

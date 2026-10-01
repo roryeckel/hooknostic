@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addContext,
+  agentIdentityCapability,
   ALL_CAPABILITY_IDS,
   baseHookEventSchema,
   block,
@@ -13,6 +14,7 @@ import {
   hook,
   HOOK_EVENT_NAMES,
   hooknosticConfigSchema,
+  isAgentScopedEvent,
   isJsonValue,
   isTerminalEffect,
   leastCapable,
@@ -59,6 +61,7 @@ describe("capability registry", () => {
       "agent.stop.observe",
       "agent.stop.prevent",
       "agent.stop.notify",
+      "agent.stop.agent.identity",
     ]);
     expect(capabilitiesForEvent("tool.before")).toEqual([
       "tool.before.observe",
@@ -66,7 +69,16 @@ describe("capability registry", () => {
       "tool.before.requestApproval",
       "tool.before.input.replace",
       "tool.before.context.add",
+      "tool.before.agent.identity",
     ]);
+  });
+
+  it("gives exactly the agent-scoped events an agent.identity capability (ADR-0030)", () => {
+    for (const event of HOOK_EVENT_NAMES) {
+      expect(agentIdentityCapability(event), event).toBe(
+        isAgentScopedEvent(event) ? `${event}.agent.identity` : undefined,
+      );
+    }
   });
 });
 
@@ -314,6 +326,52 @@ describe("canonical schemas", () => {
           materialize: [{ provider: { id: "broken" }, inputs: {}, into: "generated" }],
         },
       }).success,
+    ).toBe(false);
+  });
+
+  it("accepts agent definition directories as a direct component source", () => {
+    const project = {
+      project: { root: "." },
+      targets: { local: { version: ">=1.0 <2", delivery: "project" as const, output: "./dist/local" } },
+    };
+    expect(hooknosticConfigSchema.safeParse({ ...project, components: { agents: ["./agents"] } }).success).toBe(true);
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], agents: ["./agents"] } })
+        .success,
+    ).toBe(true);
+    expect(hooknosticConfigSchema.safeParse({ ...project, components: { agents: [] } }).success).toBe(false);
+    // The default agent names one of those definitions, so it needs them.
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { agents: ["./agents"], defaultAgent: "planner" } })
+        .success,
+    ).toBe(true);
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], defaultAgent: "planner" } })
+        .success,
+    ).toBe(false);
+    // With a package root, for package delivery (ADR-0029): the definitions are
+    // translated into each native package rather than shipped as package files.
+    expect(
+      hooknosticConfigSchema.safeParse({ ...project, components: { root: ".", agents: ["./agents"] } }).success,
+    ).toBe(true);
+  });
+
+  it("accepts a target's agent selection only where the target receives definitions", () => {
+    const local = { version: ">=1.0 <2", delivery: "project" as const, output: "./dist/local" };
+    const selecting = { ...local, agents: { include: ["reviewer"], exclude: ["planner"] } };
+    const parse = (components: Record<string, unknown>, targets: Record<string, unknown>) =>
+      hooknosticConfigSchema.safeParse({ project: { root: "." }, entry: "./src/hooks.ts", components, targets });
+
+    expect(parse({ agents: ["./agents"] }, { local: selecting }).success).toBe(true);
+    expect(parse({ agents: ["./agents"] }, { local: { ...local, agents: { only: ["reviewer"] } } }).success).toBe(
+      false,
+    );
+    // Without definitions, or on a target that receives no components, a
+    // selection could select nothing.
+    expect(parse({ skills: ["./skills"] }, { local: selecting }).success).toBe(false);
+    expect(
+      parse({ agents: ["./agents"], targets: ["other"] }, { local: selecting, other: { ...local, output: "./o" } })
+        .success,
     ).toBe(false);
   });
 

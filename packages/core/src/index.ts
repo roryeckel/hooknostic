@@ -20,3 +20,4 @@ export * from "./project-files.js";
 export * from "./project.js";
 export * from "./project-components.js";
 export * from "./project-mcp-bootstrap.js";
+export { renderTomlDocument } from "./project-toml.js";

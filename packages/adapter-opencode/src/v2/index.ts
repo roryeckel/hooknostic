@@ -2,6 +2,7 @@ import type { HarnessAdapter, ShimEntryOptions } from "@hooknostic/core";
 import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
 
 import { generateOpenCodeArtifacts, opencodeHookRuntimePath } from "../generate.js";
+import { opencodeAgents } from "../project.js";
 import { planOpenCodeV2Application } from "./apply.js";
 import { decodeOpenCodeV2 } from "./decode.js";
 import { opencodeV2Harness } from "./harness.js";
@@ -42,10 +43,12 @@ export function opencodeV2Adapter(
     id: "opencode",
     adapterVersion: "0.4.0",
     harness: opencodeV2Harness,
-    projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
+    projectPaths: [".opencode/plugins", ".opencode/agents", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration: projectOpenCodeV2Integration,
     projectComponents: projectOpenCodeV2Components,
     projectComponentProfiles: opencodeV2ProjectProfiles,
+    // v2 reads the same .opencode/agents markdown as v1 (.capture/agents).
+    agents: opencodeAgents,
     agentPluginProjector: opencodeV2Projector,
     projectMcpOptions: { startupTimeoutMs: true },
     shimExecution: "module",

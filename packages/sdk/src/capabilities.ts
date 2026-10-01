@@ -27,18 +27,22 @@ export const ALL_CAPABILITY_IDS = [
   "tool.before.requestApproval",
   "tool.before.input.replace",
   "tool.before.context.add",
+  "tool.before.agent.identity",
 
   "tool.after.observe",
   "tool.after.output.replace",
   "tool.after.blockContinuation",
   "tool.after.context.add",
+  "tool.after.agent.identity",
 
   "tool.error.observe",
   "tool.error.context.add",
+  "tool.error.agent.identity",
 
   "permission.request.observe",
   "permission.request.block",
   "permission.request.context.add",
+  "permission.request.agent.identity",
 
   "context.compact.before.observe",
   "context.compact.before.block",
@@ -47,10 +51,12 @@ export const ALL_CAPABILITY_IDS = [
   "context.compact.after.observe",
 
   "agent.start.observe",
+  "agent.start.agent.identity",
 
   "agent.stop.observe",
   "agent.stop.prevent",
   "agent.stop.notify",
+  "agent.stop.agent.identity",
 
   "turn.stop.observe",
   "turn.stop.prevent",
@@ -124,6 +130,16 @@ export function observeCapability(event: HookEventName): CapabilityId {
     throw new Error(`missing observe capability for event "${event}"`);
   }
   return id;
+}
+
+/**
+ * The capability a hook's `agents` scope relies on at `event` (ADR-0030): that
+ * events inside a subagent are dispatched and name the agent. Undefined for an
+ * event no hook may scope to agents.
+ */
+export function agentIdentityCapability(event: HookEventName): CapabilityId | undefined {
+  const id = `${event}.agent.identity`;
+  return isCapabilityId(id) ? id : undefined;
 }
 
 /** All registered capability IDs scoped to an event, observe included. */
