@@ -5,7 +5,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -45,7 +45,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   enumerable: true
 }) : target, mod));
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/dialects-DoSzNhcb.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/dialects-DoSzNhcb.mjs
 var DRAFT_2020_12_URIS = /* @__PURE__ */ new Set(["https://json-schema.org/draft/2020-12/schema", "http://json-schema.org/draft/2020-12/schema"]);
 var DRAFT_2019_09_URIS = /* @__PURE__ */ new Set(["https://json-schema.org/draft/2019-09/schema", "http://json-schema.org/draft/2019-09/schema"]);
 var DRAFT_07_URIS = /* @__PURE__ */ new Set(["https://json-schema.org/draft-07/schema", "http://json-schema.org/draft-07/schema"]);
@@ -6864,7 +6864,7 @@ function date3(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+core@2.1.0/node_modules/@modelcontextprotocol/core/dist/auth-CGP0BDVq.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+core@2.2.0/node_modules/@modelcontextprotocol/core/dist/auth-BNDyLTqp.mjs
 var LATEST_PROTOCOL_VERSION = "2025-11-25";
 var SUPPORTED_PROTOCOL_VERSIONS = [
   LATEST_PROTOCOL_VERSION,
@@ -7753,7 +7753,8 @@ var OAuthTokensSchema = object({
   token_type: string2(),
   expires_in: coerce_exports.number().optional(),
   scope: string2().optional(),
-  refresh_token: string2().optional()
+  refresh_token: string2().optional(),
+  issuer: string2().optional().catch(void 0)
 }).strip();
 var IdJagTokenExchangeResponseSchema = object({
   issued_token_type: literal("urn:ietf:params:oauth:token-type:id-jag"),
@@ -7791,7 +7792,8 @@ var OAuthClientInformationSchema = object({
   client_id: string2(),
   client_secret: string2().optional(),
   client_id_issued_at: number2().optional(),
-  client_secret_expires_at: number2().optional()
+  client_secret_expires_at: number2().optional(),
+  issuer: string2().optional().catch(void 0)
 }).strip();
 var OAuthClientInformationFullSchema = OAuthClientMetadataSchema.merge(OAuthClientInformationSchema);
 var OAuthClientRegistrationErrorSchema = object({
@@ -7803,7 +7805,7 @@ var OAuthTokenRevocationRequestSchema = object({
   token_type_hint: string2().optional()
 }).strip();
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/src-D-y6h4N7.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/src-BHSMhZ_W.mjs
 var BRANDS = /* @__PURE__ */ Symbol.for("mcp.sdk.errorBrands");
 function stampErrorBrands(instance, ctor) {
   const brands = /* @__PURE__ */ new Set();
@@ -10474,6 +10476,8 @@ var rev2026Codec = {
       const rawInputRequests = raw["inputRequests"];
       const inputRequests = isPlainObject$4(rawInputRequests) ? rawInputRequests : {};
       const requestState = raw["requestState"];
+      const metaParse = raw["_meta"] === void 0 ? void 0 : buildSchemas2026().ResultMetaSchema.safeParse(raw["_meta"]);
+      const meta2 = metaParse?.success ? metaParse.data : void 0;
       if (Object.keys(inputRequests).length === 0 && typeof requestState !== "string") return {
         kind: "invalid",
         error: new SdkError(SdkErrorCode.InvalidResult, `Invalid result for ${method}: input_required carries neither inputRequests nor requestState (every input_required result must include at least one of the two)`, {
@@ -10484,7 +10488,8 @@ var rev2026Codec = {
       return {
         kind: "input_required",
         inputRequests,
-        ...typeof requestState === "string" && { requestState }
+        ...typeof requestState === "string" && { requestState },
+        ...meta2 !== void 0 && { _meta: meta2 }
       };
     }
     if (rawResultType !== "complete") return {
@@ -12138,7 +12143,7 @@ var Protocol = class {
   * Emits a notification, which is a one-way message that does not expect a response.
   */
   async notification(notification, options) {
-    return this._notificationViaCodec(this._resolveOutboundCodec(notification.method), notification, options);
+    return await this._notificationViaCodec(this._resolveOutboundCodec(notification.method), notification, options);
   }
   /**
   * The notification funnel proper, keyed by the resolved era codec —
@@ -12295,7 +12300,8 @@ function manualInputRequiredValue(decoded) {
   return {
     resultType: "input_required",
     inputRequests: decoded.inputRequests,
-    ...decoded.requestState !== void 0 && { requestState: decoded.requestState }
+    ...decoded.requestState !== void 0 && { requestState: decoded.requestState },
+    ...decoded._meta !== void 0 && { _meta: decoded._meta }
   };
 }
 /*!
@@ -12451,7 +12457,7 @@ function normalizeRawShapeSchema(schema) {
   return schema;
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CEoC__sr.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CEoC__sr.mjs
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -19461,10 +19467,10 @@ var AjvJsonSchemaValidator = class {
 };
 var Ajv = import_ajv.Ajv;
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
 import process from "node:process";
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/mcp-Dw2OlZ1f.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/mcp-DYuW2ZSs.mjs
 var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
@@ -21030,10 +21036,10 @@ function unwrapOptionalSchema(schema) {
   return schema.def?.innerType ?? schema;
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/index.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/index.mjs
 var DEFAULT_MAX_REQUEST_BODY_SIZE = 4 * 1024 * 1024;
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.2.0/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
 var swallowsErrorsAfterClose = /* @__PURE__ */ Symbol("swallowsErrorsAfterClose");
 var StdioServerTransport = class {
   _readBuffer;
