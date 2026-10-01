@@ -911,7 +911,8 @@ shortfall classes above: `agents.definition` for every definition,
 `agents.primary` for each one whose `mode` lets a session run as it (unsupported
 on Codex, which has no such agents), `agents.native` for the passthrough, and
 `agents.default` for `components.defaultAgent`, the agent every session of a project
-starts as, which no package target takes. A
+starts as, which no package target takes. A target's `agents: { include?, exclude? }`
+selects which definitions it receives; a deselected one is never counted there. A
 definitions directory inside the package root is excluded from its inventory.
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,

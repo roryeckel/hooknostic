@@ -165,7 +165,15 @@ A few differences are worth knowing:
   fails it unless you accept that id in `components.accept`.
 - **Codex cannot do it.** A `primary` agent is not written for Codex, and an `all` agent
   is written as a custom agent only. Both are reported as unsupported (HN205), which
-  fails the build unless `onUnsupported: "warn"`.
+  fails the build unless `onUnsupported: "warn"`. If the planner is not meant for
+  Codex at all, leave it off that target instead, which is not a shortfall:
+
+  ```ts
+  codex: { /* version, delivery, output */ agents: { exclude: ["planner"] } },
+  ```
+
+  A target's `agents` also takes `include`. Either one selects definitions for that
+  target only, by `name`.
 
 ### Making it the default
 

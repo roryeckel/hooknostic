@@ -22,7 +22,8 @@ description and instructions — reaches the child on all four harness families,
 and reaches a session run as the agent on Claude and both OpenCode families. Tool
 restrictions, turn caps and sandboxing do not port, so 0.1 leaves them out. A
 project can also name one definition its default agent, which every session
-starts as; Codex emulates that one through its project configuration.
+starts as; Codex emulates that one through its project configuration. Each target
+can select which definitions it receives.
 
 ## Context
 
@@ -298,6 +299,35 @@ The same drive ran a session as the agent:
       user who enables it as that agent. `agents.default` is `unsupported` on
       every package target, and reported like any unsupported component.
 
+11. **A target selects the definitions it receives: `agents: { include?, exclude? }`.**
+    Owner decision, 2026-10-01. Without it, every target receives every
+    definition, which a project whose agents are written for one harness cannot
+    live with. A project may keep model-pinned, permission-restricted agents on
+    one harness, or have a reviewer whose instructions name particular harnesses'
+    delegation tools. Delivered elsewhere, the first would run on the harness's
+    default model with no restriction, since `native` reaches only its own
+    harness, and the second could not do what its instructions say.
+    - **Shape.** It sits on the target, beside `skillNames`, and has the shape of
+      a hook's `targets` (ADR-0002). Names are the definitions' authored `name`,
+      compared exactly: a selection precedes translation, so package
+      qualification (`<plugin>:<name>`) plays no part.
+    - **Not a shortfall.** A deselected definition leaves the target before
+      anything is counted. It is not an omission under decision 8, because the
+      author withheld it rather than the harness failing it: no component counts
+      it, and a `primary` definition kept off Codex does not fail the build.
+    - **The default agent.** A deselected `components.defaultAgent` is not that
+      target's default; the target sets none. That keeps a default off Codex,
+      rather than having decision 10 emulate it there.
+    - **Typos fail.** A name that matches no loaded definition is refused
+      (HN503), so a misspelt exclusion cannot deliver an agent the author meant
+      to withhold. A selection on a target without `components.agents`, or
+      outside `components.targets`, is a configuration error.
+    - **Both routes.** Project and package delivery apply it alike, and the
+      reserved-native-key check runs on the selected definitions only.
+    - **Not in the format.** A selection is a property of a configuration, not of
+      a definition, so the spec gains no field for it. The same file can then be
+      delivered differently by two projects.
+
 ## Open questions for acceptance
 
 1. **Scope wording.** CONTRIBUTING.md "What Hooknostic is" gains portable agent
@@ -336,7 +366,11 @@ The same drive ran a session as the agent:
    relaxes every component, not just the agents. That is today's rule for any
    unsupported component, such as an SSE server on Codex. Agent definitions make
    the combination more common, and a `primary` definition makes it certain for a
-   Codex target, which may justify a narrower policy.
+   Codex target, which may justify a narrower policy. Decision 11 settles the
+   case where the author never meant the definition for Codex: excluding it from
+   that target is not a shortfall. What stays open is a definition the author
+   does want everywhere it can go, such as an `all` agent that Codex can carry
+   only as a subagent.
 8. **A default agent from a package.** Decision 10 refuses it on every package
    target, though each harness with main-session agents could deliver it. A later
    explicit opt-in could allow it for packages that are meant to take over a

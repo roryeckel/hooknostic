@@ -356,6 +356,25 @@ describe("canonical schemas", () => {
     ).toBe(true);
   });
 
+  it("accepts a target's agent selection only where the target receives definitions", () => {
+    const local = { version: ">=1.0 <2", delivery: "project" as const, output: "./dist/local" };
+    const selecting = { ...local, agents: { include: ["reviewer"], exclude: ["planner"] } };
+    const parse = (components: Record<string, unknown>, targets: Record<string, unknown>) =>
+      hooknosticConfigSchema.safeParse({ project: { root: "." }, entry: "./src/hooks.ts", components, targets });
+
+    expect(parse({ agents: ["./agents"] }, { local: selecting }).success).toBe(true);
+    expect(parse({ agents: ["./agents"] }, { local: { ...local, agents: { only: ["reviewer"] } } }).success).toBe(
+      false,
+    );
+    // Without definitions, or on a target that receives no components, a
+    // selection could select nothing.
+    expect(parse({ skills: ["./skills"] }, { local: selecting }).success).toBe(false);
+    expect(
+      parse({ agents: ["./agents"], targets: ["other"] }, { local: selecting, other: { ...local, output: "./o" } })
+        .success,
+    ).toBe(false);
+  });
+
   it("scopes component delivery invariants to selected targets", () => {
     const entry = "./src/hooks.ts";
     const packageTarget = { version: ">=2.1 <3", delivery: "package" as const, output: "./dist/package" };

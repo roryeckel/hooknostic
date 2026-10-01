@@ -152,7 +152,9 @@ serves both families and always states the definition's `mode`, because v2
 otherwise makes the agent primary. Claude has no mode, so every file is both a
 subagent and an agent a session can run as (`claude --agent <name>`). Codex has no
 agent a session runs as: a `primary` definition is not written for it, and an `all`
-definition becomes a custom agent only, each reported as unsupported. Each of these directories also gets a generated `.gitattributes`
+definition becomes a custom agent only, each reported as unsupported. A target's
+`agents: { include?, exclude? }` keeps definitions off that harness altogether, without
+a shortfall ([configuration](configuration.md)). Each of these directories also gets a generated `.gitattributes`
 that keeps the files' bytes as generated. A definitions directory inside one of
 them is refused (HN501), because that harness would read the portable file itself.
 `native` fields reach only their own harness, verbatim; a field the harness reserves

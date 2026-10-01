@@ -101,7 +101,27 @@ export interface TargetConfig {
    * quietly does nothing.
    */
   skillNames?: "qualified" | "authored";
+  /**
+   * Which of `components.agents`' definitions this target receives, by their
+   * authored `name` (ADR-0029, decision 11). Without it the target receives
+   * every definition. An agent a target does not select is not delivered
+   * there and is not a shortfall: it is neither counted nor reported as
+   * unsupported, and a deselected `components.defaultAgent` is not that
+   * target's default.
+   *
+   * A name that is not a loaded definition is an error, so a typo cannot
+   * silently select nothing.
+   */
+  agents?: AgentSelection;
   compatibility?: CompatibilityPolicy;
+}
+
+/** The definitions a target receives (ADR-0029, decision 11); the same shape as a hook's `targets`. */
+export interface AgentSelection {
+  /** Deliver only these definitions. */
+  include?: string[];
+  /** Deliver every definition but these. */
+  exclude?: string[];
 }
 
 export interface PackageMaterializerFile {

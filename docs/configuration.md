@@ -31,6 +31,24 @@ an agent the OpenCode module registers. A Codex plugin has no agents route, so a
 package target reports them as unsupported. `hooknostic inspect <target> --component
 agents.definition` shows a target's level and evidence.
 
+Every target receives every definition unless it selects some. A target's
+`agents: { include?, exclude? }` names definitions by their `name`, in the shape of a
+hook's `targets`:
+
+```ts
+targets: {
+  claude: { /* version, delivery, output */ agents: { include: ["reviewer"] } },
+  codex: { /* version, delivery, output */ agents: { exclude: ["planner"] } },
+},
+```
+
+A definition a target does not select is not delivered there, and it is not a
+shortfall: nothing is counted or reported as unsupported for it, so a `primary`
+definition kept off Codex does not fail the build. A deselected
+`components.defaultAgent` is not that target's default. A name that matches no
+loaded definition is refused (HN503), and a selection on a target that receives no
+definitions is a configuration error.
+
 Every target has a version range, `delivery`, and output directory. A target name
 defaults to its adapter id; set `adapter` explicitly for multiple named targets.
 

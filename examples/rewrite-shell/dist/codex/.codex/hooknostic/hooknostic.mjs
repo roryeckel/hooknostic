@@ -4665,7 +4665,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, agentSelectionSchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4765,6 +4765,10 @@ var init_schemas = __esm({
       contextCharLimit: external_exports.number().int().positive().optional(),
       notifyCharLimit: external_exports.number().int().positive().optional()
     }).strict();
+    agentSelectionSchema = external_exports.object({
+      include: external_exports.array(external_exports.string().min(1)).optional(),
+      exclude: external_exports.array(external_exports.string().min(1)).optional()
+    }).strict();
     targetConfigSchema = external_exports.object({
       adapter: external_exports.string().min(1).optional(),
       version: external_exports.string().min(1),
@@ -4772,6 +4776,7 @@ var init_schemas = __esm({
       output: external_exports.string().min(1),
       npmName: external_exports.string().min(1).optional(),
       skillNames: external_exports.enum(["qualified", "authored"]).optional(),
+      agents: agentSelectionSchema.optional(),
       compatibility: compatibilityPolicySchema.optional()
     }).strict();
     projectMcpServerOverrideSchema = external_exports.object({
@@ -4863,6 +4868,22 @@ var init_schemas = __esm({
         }
       }
       const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+      for (const [name, target] of Object.entries(config.targets)) {
+        if (target.agents === void 0)
+          continue;
+        if (config.components?.agents === void 0)
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "agents"],
+            message: "a target's agents selection requires components.agents"
+          });
+        else if (!componentTargets.has(name))
+          context.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            path: ["targets", name, "agents"],
+            message: `target ${JSON.stringify(name)} selects agents but is not in components.targets`
+          });
+      }
       if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
         context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "project component delivery requires project.root" });
       }

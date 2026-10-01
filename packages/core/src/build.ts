@@ -31,6 +31,7 @@ import {
   withoutPrimary,
 } from "@hooknostic/agent-plugin";
 import {
+  type AgentSelection,
   type HooknosticConfig,
   meetsMinimum,
   type PackageMaterializationConfig,
@@ -503,6 +504,25 @@ function reservedNativeFields(
   );
 }
 
+/**
+ * The definitions one target receives, and the default agent it can still
+ * take (ADR-0029, decision 11). A deselected agent leaves before anything is
+ * counted, so it is never a shortfall; a deselected default is no default
+ * there.
+ */
+function agentsForTarget(
+  source: Pick<ProjectComponents, "agents" | "defaultAgent"> | undefined,
+  selection: AgentSelection | undefined,
+): { agents: AgentDefinition[] | undefined; defaultAgent: string | undefined } {
+  const agents = source?.agents?.filter(
+    (agent) =>
+      (selection?.include === undefined || selection.include.includes(agent.name)) &&
+      !(selection?.exclude ?? []).includes(agent.name),
+  );
+  const defaultAgent = agents?.some((agent) => agent.name === source?.defaultAgent) ? source?.defaultAgent : undefined;
+  return { agents, defaultAgent };
+}
+
 function artifactDigest(artifacts: readonly GeneratedArtifact[], directories: readonly string[]): string {
   const hash = createHash("sha256");
   for (const artifact of [...artifacts].sort((a, b) => a.path.localeCompare(b.path))) {
@@ -837,6 +857,25 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       });
     } else componentSource.defaultAgent = defaultAgent;
   }
+  // A selection names authored definitions; one that names none loaded is a
+  // typo, which must not quietly deliver every agent or none.
+  if (componentSource !== undefined) {
+    const loaded = new Set((componentSource.agents ?? []).map((agent) => agent.name));
+    for (const [id, target] of Object.entries(config.targets)) {
+      for (const list of ["include", "exclude"] as const) {
+        for (const name of target.agents?.[list] ?? []) {
+          if (loaded.has(name)) continue;
+          diagnostics.push({
+            code: "HN503",
+            severity: "error",
+            target: id,
+            component: "agents.definition",
+            message: `targets.${id}.agents.${list} names ${JSON.stringify(name)}, which is not a loaded agent definition`,
+          });
+        }
+      }
+    }
+  }
   if (hasFatal(diagnostics)) return fail();
   if (componentSource !== undefined && (selectedPackageProjection || selectedProjectProjection))
     report.mcpServers = mcpServerCommands(componentSource.mcp?.config, componentSource.origin);
@@ -918,6 +957,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       (config.components!.targets ?? Object.keys(config.targets)).includes(id)
     ) {
       const spec = targetSpecFromConfig(id, config.targets[id]!);
+      const targetAgents = agentsForTarget(componentSource, config.targets[id]!.agents);
       const resolution = analyzeAgentPluginProjection(
         components,
         adapterFor(id)!,
@@ -925,11 +965,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
-        componentSource?.agents,
-        componentSource?.defaultAgent,
+        targetAgents.agents,
+        targetAgents.defaultAgent,
       );
       resolution.diagnostics.push(
-        ...reservedNativeFields(componentSource?.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
+        ...reservedNativeFields(targetAgents.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -937,9 +977,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         resolution,
         adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
-        componentSource?.agents,
+        targetAgents.agents,
         adapterFor(id)!.id,
-        componentSource?.defaultAgent,
+        targetAgents.defaultAgent,
       );
       if (hasFatal(resolution.diagnostics)) {
         diagnostics.push(...resolution.diagnostics);
@@ -1075,6 +1115,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         continue;
       }
       const spec = targetSpecFromConfig(id, config.targets[id]!);
+      const targetAgents = agentsForTarget(componentSource, config.targets[id]!.agents);
       const resolution = analyzeAgentPluginProjection(
         components,
         adapterFor(id)!,
@@ -1082,11 +1123,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
-        componentSource?.agents,
-        componentSource?.defaultAgent,
+        targetAgents.agents,
+        targetAgents.defaultAgent,
       );
       resolution.diagnostics.push(
-        ...reservedNativeFields(componentSource?.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
+        ...reservedNativeFields(targetAgents.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -1095,9 +1136,9 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         resolution,
         adapterFor(id)!.agentPluginProjector?.namespace,
         effectiveRuntimePackage(config.components!) !== undefined,
-        componentSource?.agents,
+        targetAgents.agents,
         adapterFor(id)!.id,
-        componentSource?.defaultAgent,
+        targetAgents.defaultAgent,
       );
       if (hasFatal(resolution.diagnostics)) report.targets[id]!.status = "failed";
     }
@@ -1209,6 +1250,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           if (projector === undefined)
             throw new Error(`adapter ${JSON.stringify(adapter.id)} has no Agent Plugin projector`);
           const runtimePackage = effectiveRuntimePackage(config.components!);
+          const targetAgents = agentsForTarget(componentSource, config.targets[id]!.agents);
           const plan = await projector.project(components, {
             target: spec,
             hookArtifacts,
@@ -1219,8 +1261,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(config.components!.mcpEnvironment === undefined
               ? {}
               : { mcpEnvironment: config.components!.mcpEnvironment }),
-            ...(componentSource?.agents === undefined ? {} : { agents: componentSource.agents }),
-            ...(componentSource?.defaultAgent === undefined ? {} : { defaultAgent: componentSource.defaultAgent }),
+            ...(targetAgents.agents === undefined ? {} : { agents: targetAgents.agents }),
+            ...(targetAgents.defaultAgent === undefined ? {} : { defaultAgent: targetAgents.defaultAgent }),
           });
           const projectedDiagnostics = [
             ...diagnosticsFromAgentPluginIssues(plan.issues, id),
@@ -1332,6 +1374,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               continue;
             }
             const selectedSource = selected.source;
+            const targetAgents = agentsForTarget(selectedSource, targetConfig.agents);
+            if (targetAgents.agents === undefined) delete selectedSource.agents;
+            else selectedSource.agents = targetAgents.agents;
+            if (targetAgents.defaultAgent === undefined) delete selectedSource.defaultAgent;
+            else selectedSource.defaultAgent = targetAgents.defaultAgent;
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [];
             const count = (component: ComponentId, discovered: number): boolean => {

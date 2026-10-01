@@ -62,7 +62,12 @@ const WRITER = ["---", "name: writer", "description: Writes docs.", "mode: all",
 /** A hookless project whose only component is the given agent definition directory. */
 async function fixture(
   definitions: Record<string, string>,
-  options: { v2?: boolean; agents?: string[]; components?: Record<string, unknown> } = {},
+  options: {
+    v2?: boolean;
+    agents?: string[];
+    components?: Record<string, unknown>;
+    targets?: Record<string, Record<string, unknown>>;
+  } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-agents-"));
   dirs.push(root);
@@ -79,6 +84,7 @@ async function fixture(
           name === "opencode" && options.v2 ? opencodeV2Harness.recommendedRange : adapter.harness.recommendedRange,
         delivery: "project",
         output: `.hooknostic/artifacts/${name}`,
+        ...options.targets?.[name],
       },
     ]),
   );
@@ -234,6 +240,80 @@ describe("agent definition project delivery", () => {
     expect(
       built.report.diagnostics.filter((diagnostic) => diagnostic.severity === "error" && diagnostic.target !== "codex"),
     ).toEqual([]);
+  }, 60_000);
+
+  it("delivers only the definitions a target selects, and counts nothing it leaves out", async () => {
+    const { root, options } = await fixture(
+      { "planner.md": PLANNER, "reviewer.md": REVIEWER },
+      { targets: { codex: { agents: { exclude: ["planner"] } }, claude: { agents: { include: ["reviewer"] } } } },
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+
+    await expect(readFile(join(root, ".claude/agents/reviewer.md"), "utf8")).resolves.toContain("reviewer");
+    await expect(readFile(join(root, ".claude/agents/planner.md"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(root, ".codex/agents/reviewer.toml"), "utf8")).resolves.toContain("reviewer");
+    for (const file of ["planner.md", "reviewer.md"]) {
+      await expect(readFile(join(root, ".opencode/agents", file), "utf8")).resolves.toContain("description");
+    }
+
+    // Deselecting the primary-only planner on Codex is not a shortfall, so
+    // the build that would refuse it there passes.
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(true);
+    const targets = built.report.targets;
+    for (const target of ["claude", "codex"]) {
+      expect(targets[target]?.project?.components?.["agents.definition"], target).toMatchObject({
+        discovered: 1,
+        emitted: 1,
+      });
+      expect(targets[target]?.project?.components?.["agents.primary"], target).toBeUndefined();
+    }
+    expect(targets["opencode"]?.project?.components).toMatchObject({
+      "agents.definition": { discovered: 2, emitted: 2 },
+      "agents.primary": { discovered: 1, emitted: 1 },
+    });
+  }, 60_000);
+
+  it("refuses a target selection naming no loaded definition", async () => {
+    const { options } = await fixture(
+      { "reviewer.md": REVIEWER },
+      { targets: { codex: { agents: { exclude: ["reveiwer"] } } } },
+    );
+
+    const built = await buildProject({ ...options, dryRun: true });
+
+    expect(built.ok).toBe(false);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        severity: "error",
+        target: "codex",
+        component: "agents.definition",
+        message: expect.stringContaining('"reveiwer"'),
+      }),
+    );
+  }, 60_000);
+
+  it("does not make a default agent the default of a target that deselects it", async () => {
+    const { root, options } = await fixture(
+      { "planner.md": PLANNER },
+      { components: { defaultAgent: "planner" }, targets: { codex: { agents: { exclude: ["planner"] } } } },
+    );
+
+    const synced = await runProject({ ...options, command: "sync" });
+    expect(synced.errors).toEqual([]);
+
+    expect(JSON.parse(await readFile(join(root, ".claude/settings.json"), "utf8"))).toMatchObject({
+      agent: "planner",
+    });
+    const codexConfig = await readFile(join(root, ".codex/config.toml"), "utf8").catch(() => "");
+    expect(codexConfig).not.toContain("You plan changes.");
+
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(true);
+    expect(built.report.targets["codex"]?.project?.components?.["agents.default"]).toBeUndefined();
   }, 60_000);
 
   it("reports a native model OpenCode v2 ignores for a session run as the agent, and only there", async () => {
@@ -435,7 +515,7 @@ describe("agent definition project delivery", () => {
 async function packageFixture(
   definitions: Record<string, string>,
   options: {
-    targets?: Record<string, { version: string }>;
+    targets?: Record<string, { version: string; agents?: { include?: string[]; exclude?: string[] } }>;
     delivery?: "project" | "package";
     agents?: string;
     components?: Record<string, unknown>;
@@ -558,6 +638,22 @@ describe("agent definition package delivery", () => {
     expect(warned.report.targets["codex"]?.projection?.components).toMatchObject({
       "agents.definition": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
     });
+  }, 60_000);
+
+  it("lets a Codex package leave out the definitions it has no route for", async () => {
+    const built = await buildProject({
+      ...(
+        await packageFixture(
+          { "reviewer.md": REVIEWER },
+          { targets: { codex: { version: CODEX_PLUGIN_MODE_RANGE, agents: { exclude: ["reviewer"] } } } },
+        )
+      ).options,
+      dryRun: true,
+    });
+
+    expect(built.ok).toBe(true);
+    expect(built.report.diagnostics.filter((diagnostic) => diagnostic.severity !== "info")).toEqual([]);
+    expect(built.report.targets["codex"]?.projection?.components?.["agents.definition"]).toBeUndefined();
   }, 60_000);
 
   it("refuses a native field the harness reserves, as project delivery does", async () => {

@@ -157,6 +157,14 @@ export const runtimePolicySchema = z
   })
   .strict();
 
+/** ADR-0029, decision 11: authored definition names, in the shape of a hook's `targets`. */
+export const agentSelectionSchema = z
+  .object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export const targetConfigSchema = z
   .object({
     adapter: z.string().min(1).optional(),
@@ -165,6 +173,7 @@ export const targetConfigSchema = z
     output: z.string().min(1),
     npmName: z.string().min(1).optional(),
     skillNames: z.enum(["qualified", "authored"]).optional(),
+    agents: agentSelectionSchema.optional(),
     compatibility: compatibilityPolicySchema.optional(),
   })
   .strict();
@@ -292,6 +301,23 @@ export const hooknosticConfigSchema = z
       }
     }
     const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+    // A selection on a target that receives no definitions could only read as
+    // a promise, like npmName on a project target.
+    for (const [name, target] of Object.entries(config.targets)) {
+      if (target.agents === undefined) continue;
+      if (config.components?.agents === undefined)
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targets", name, "agents"],
+          message: "a target's agents selection requires components.agents",
+        });
+      else if (!componentTargets.has(name))
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targets", name, "agents"],
+          message: `target ${JSON.stringify(name)} selects agents but is not in components.targets`,
+        });
+    }
     if (
       config.components &&
       !config.project &&

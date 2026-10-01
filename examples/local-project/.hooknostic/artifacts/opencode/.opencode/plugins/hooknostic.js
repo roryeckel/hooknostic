@@ -4609,6 +4609,10 @@ var runtimePolicySchema = external_exports.object({
   contextCharLimit: external_exports.number().int().positive().optional(),
   notifyCharLimit: external_exports.number().int().positive().optional()
 }).strict();
+var agentSelectionSchema = external_exports.object({
+  include: external_exports.array(external_exports.string().min(1)).optional(),
+  exclude: external_exports.array(external_exports.string().min(1)).optional()
+}).strict();
 var targetConfigSchema = external_exports.object({
   adapter: external_exports.string().min(1).optional(),
   version: external_exports.string().min(1),
@@ -4616,6 +4620,7 @@ var targetConfigSchema = external_exports.object({
   output: external_exports.string().min(1),
   npmName: external_exports.string().min(1).optional(),
   skillNames: external_exports.enum(["qualified", "authored"]).optional(),
+  agents: agentSelectionSchema.optional(),
   compatibility: compatibilityPolicySchema.optional()
 }).strict();
 var projectMcpServerOverrideSchema = external_exports.object({
@@ -4707,6 +4712,22 @@ var hooknosticConfigSchema = external_exports.object({
     }
   }
   const componentTargets = new Set(config.components?.targets ?? Object.keys(config.targets));
+  for (const [name, target] of Object.entries(config.targets)) {
+    if (target.agents === void 0)
+      continue;
+    if (config.components?.agents === void 0)
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["targets", name, "agents"],
+        message: "a target's agents selection requires components.agents"
+      });
+    else if (!componentTargets.has(name))
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: ["targets", name, "agents"],
+        message: `target ${JSON.stringify(name)} selects agents but is not in components.targets`
+      });
+  }
   if (config.components && !config.project && Object.entries(config.targets).some(([name, target]) => componentTargets.has(name) && target.delivery === "project")) {
     context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "project component delivery requires project.root" });
   }
