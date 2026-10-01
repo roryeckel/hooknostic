@@ -30,6 +30,55 @@ function analyze(id: string, version: string, v1 = false) {
 }
 
 describe("agent-scoped hooks across targets", () => {
+  it("checks plain exclusion scopes against target support", () => {
+    const { ir: plainIR, diagnostics } = buildPluginIR(
+      definePlugin({
+        name: "plain-exclusion",
+        hooks: [
+          {
+            id: "not-reviewer",
+            event: "tool.before",
+            agents: { exclude: ["reviewer"] },
+            capabilities: {},
+            async run() {},
+          },
+        ],
+      }),
+    );
+    expect(diagnostics).toEqual([]);
+    expect(plainIR).toBeDefined();
+    const registry = defaultAdapterRegistry();
+    registry.opencode = opencodeV1Adapter();
+    const config = {
+      targets: Object.fromEntries(
+        ["claude", "opencode"].map((id) => [
+          id,
+          {
+            version: registry[id]!.harness.recommendedRange,
+            delivery: "project",
+            output: `.hooknostic/artifacts/${id}`,
+          },
+        ]),
+      ),
+    } as unknown as HooknosticConfig;
+
+    const analysis = analyzeCapabilities(plainIR!, config, registry);
+
+    expect(analysis.targets["claude"]?.ok).toBe(true);
+    expect(analysis.targets["claude"]?.diagnostics).toEqual([]);
+    expect(analysis.targets["opencode"]?.ok).toBe(false);
+    expect(analysis.targets["opencode"]?.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "HN201",
+        severity: "error",
+        hookId: "not-reviewer",
+        capability: "tool.before.agent.identity",
+        requested: "required",
+        support: "unsupported",
+      }),
+    ]);
+  });
+
   it.each([
     ["claude", ">=2.1 <3"],
     ["codex", ">=0.156.1 <1"],

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { HookDefinition } from "@hooknostic/sdk";
 import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 
 import { buildPluginIR, hookAppliesToTarget } from "./ir.js";
@@ -210,6 +211,95 @@ describe("buildPluginIR", () => {
       agents: { include: ["reviewer"] },
       capabilities: { "tool.before.agent.identity": "required" },
     });
+  });
+
+  it.each(["include", "exclude"] as const)(
+    "requires agent identity for a plain %s scope without mutating its capabilities",
+    (scope) => {
+      const capabilities = Object.freeze({ "tool.before.block": "required" as const });
+      const definition: HookDefinition = {
+        event: "tool.before",
+        id: "plain-reviewer",
+        agents: { [scope]: ["reviewer"] },
+        capabilities,
+        async run() {},
+      };
+
+      const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "plain-scoped", hooks: [definition] }));
+
+      expect(diagnostics).toEqual([]);
+      expect(ir?.hooks[0]?.capabilities).toEqual({
+        "tool.before.block": "required",
+        "tool.before.agent.identity": "required",
+      });
+      expect(definition.capabilities).toBe(capabilities);
+      expect(definition.capabilities).toEqual({ "tool.before.block": "required" });
+    },
+  );
+
+  it("requires agent identity when a scope is added after hook() construction", () => {
+    const definition = hook("agent.stop", { id: "late-scope", async run() {} });
+    definition.agents = { exclude: ["reviewer"] };
+
+    const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "late-scoped", hooks: [definition] }));
+
+    expect(diagnostics).toEqual([]);
+    expect(ir?.hooks[0]?.capabilities).toEqual({ "agent.stop.agent.identity": "required" });
+    expect(definition.capabilities).toEqual({});
+  });
+
+  it("rejects optional agent identity in a plain scoped definition with HN501", () => {
+    const definition: HookDefinition = {
+      event: "tool.before",
+      id: "optional-scoped-identity",
+      agents: { exclude: ["reviewer"] },
+      capabilities: Object.freeze({ "tool.before.agent.identity": "optional" }),
+      async run() {},
+    };
+
+    const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "contradictory-scope", hooks: [definition] }));
+
+    expect(ir).toBeUndefined();
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: "HN501",
+        severity: "error",
+        hookId: definition.id,
+        event: "tool.before",
+        capability: "tool.before.agent.identity",
+      }),
+    ]);
+    expect(definition.capabilities).toEqual({ "tool.before.agent.identity": "optional" });
+  });
+
+  it("preserves explicit required scoped identity and optional unscoped identity", () => {
+    const definitions: HookDefinition[] = [
+      {
+        event: "tool.before",
+        id: "explicit-scoped-identity",
+        agents: { include: ["reviewer"] },
+        capabilities: Object.freeze({ "tool.before.agent.identity": "required" }),
+        async run() {},
+      },
+      {
+        event: "tool.before",
+        id: "unscoped-identity-probe",
+        capabilities: Object.freeze({ "tool.before.agent.identity": "optional" }),
+        async run() {},
+      },
+    ];
+
+    const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "explicit-identity", hooks: definitions }));
+
+    expect(diagnostics).toEqual([]);
+    expect(ir?.hooks.map((definition) => definition.capabilities)).toEqual([
+      { "tool.before.agent.identity": "required" },
+      { "tool.before.agent.identity": "optional" },
+    ]);
+    expect(definitions.map((definition) => definition.capabilities)).toEqual([
+      { "tool.before.agent.identity": "required" },
+      { "tool.before.agent.identity": "optional" },
+    ]);
   });
 
   it("rejects an agent scope on an event no harness attributes to an agent (bypassing the type layer)", () => {

@@ -8,7 +8,13 @@ import type {
   TargetScope,
   ToolMatch,
 } from "@hooknostic/sdk";
-import { fieldEvent, isAgentScopedEvent, isToolScopedEvent, pluginSpecSchema } from "@hooknostic/sdk";
+import {
+  agentIdentityCapability,
+  fieldEvent,
+  isAgentScopedEvent,
+  isToolScopedEvent,
+  pluginSpecSchema,
+} from "@hooknostic/sdk";
 
 import type { Diagnostic } from "./diagnostics.js";
 
@@ -25,13 +31,14 @@ export interface HookIR {
   id: string;
   match?: ToolMatch;
   targets?: TargetScope;
-  /** Agents the hook runs in or skips (ADR-0030); its identity capability is already declared. */
+  /** Agents the hook runs in or skips (ADR-0030); the IR requires its identity capability. */
   agents?: AgentScope;
   /** Per-hook dispatch budget; falls back to the runtime policy when absent. */
   timeoutMs?: number;
   /**
-   * Declared capabilities. The implicit `<event>.observe` requirement is
-   * added during capability analysis, not stored here.
+   * Declared capabilities plus the agent scope's implicit identity requirement.
+   * The implicit `<event>.observe` requirement is added during capability
+   * analysis, not stored here.
    */
   capabilities: Partial<Record<CapabilityId, RequirementLevel>>;
   /** Declared optional event fields, as full ids (ADR-0027). */
@@ -131,7 +138,27 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
       return;
     }
 
-    for (const capability of Object.keys(h.capabilities)) {
+    // Plain definitions and scopes added after hook() still need the same
+    // requirement; synthesize it in the IR without mutating authored objects.
+    const capabilities = { ...h.capabilities };
+    const identity = h.agents === undefined ? undefined : agentIdentityCapability(h.event);
+    if (identity !== undefined) {
+      if (capabilities[identity] === "optional") {
+        diagnostics.push({
+          code: "HN501",
+          severity: "error",
+          hookId: h.id,
+          event: h.event,
+          capability: identity,
+          message: `hook "${h.id}" is scoped to agents, which requires "${identity}"; it cannot also declare it optional.`,
+          remediation: "remove the optional identity declaration, declare it required, or remove agents.",
+        });
+        return;
+      }
+      capabilities[identity] = "required";
+    }
+
+    for (const capability of Object.keys(capabilities)) {
       if (!capability.startsWith(`${h.event}.`)) {
         diagnostics.push({
           code: "HN501",
@@ -163,7 +190,7 @@ export function buildPluginIR(spec: unknown): BuildIRResult {
       index,
       event: h.event,
       id: h.id,
-      capabilities: { ...h.capabilities },
+      capabilities,
     };
     if (h.match !== undefined) ir.match = h.match;
     if (h.targets !== undefined) ir.targets = h.targets;
