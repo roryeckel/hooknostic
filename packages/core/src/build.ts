@@ -777,6 +777,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
     if (config.components?.agents !== undefined) {
       const loaded = await loadAgentDefinitions({
         directories: config.components.agents.map((path) => resolve(configDir, path)),
+        ...(config.components.exclude === undefined ? {} : { exclude: config.components.exclude }),
       });
       diagnostics.push(
         ...diagnosticsFromAgentPluginIssues(loaded.issues, { onInvalid: config.components.onInvalid ?? "error" }),

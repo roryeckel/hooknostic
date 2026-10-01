@@ -431,11 +431,12 @@ describe("agent definition project delivery", () => {
   });
 });
 
-/** A hookless package build whose agent definitions are configured beside the package root. */
+/** A hookless build whose agent definitions are configured beside the package root. */
 async function packageFixture(
   definitions: Record<string, string>,
   options: {
     targets?: Record<string, { version: string }>;
+    delivery?: "project" | "package";
     agents?: string;
     components?: Record<string, unknown>;
   } = {},
@@ -451,12 +452,17 @@ async function packageFixture(
   );
   for (const [file, text] of Object.entries(definitions)) await writeFile(join(root, directory, file), text);
   const registry = defaultAdapterRegistry();
+  const delivery = options.delivery ?? "package";
   const targets = Object.fromEntries(
     Object.entries(options.targets ?? { claude: { version: registry.claude!.harness.recommendedRange } }).map(
-      ([name, target]) => [name, { ...target, delivery: "package", output: `dist/${name}` }],
+      ([name, target]) => [
+        name,
+        { ...target, delivery, output: delivery === "project" ? `.hooknostic/artifacts/${name}` : `dist/${name}` },
+      ],
     ),
   );
   const config = {
+    ...(delivery === "project" ? { project: { root: "." } } : {}),
     components: { root: "./pkg", agents: [`./${directory}`], ...options.components },
     targets,
   };
@@ -466,6 +472,38 @@ async function packageFixture(
 }
 
 describe("agent definition package delivery", () => {
+  it.each(["package", "project"] as const)(
+    "applies agent exclusions beside a package root for %s delivery",
+    async (delivery) => {
+      const { options } = await packageFixture(
+        {
+          "reviewer.md": REVIEWER,
+          "wip-reviewer.md": REVIEWER.replaceAll("reviewer", "wip-reviewer"),
+          "wip-broken.md": "not a definition",
+        },
+        { delivery, components: { exclude: ["WIP-*"] } },
+      );
+
+      const built = await buildProject({ ...options, dryRun: true });
+
+      expect(built.ok).toBe(true);
+      expect(built.report.diagnostics).toEqual([]);
+      const target = built.plan?.find((target) => target.target === "claude");
+      const files = delivery === "package" ? target?.artifacts : target?.integration?.files;
+      const directory = delivery === "package" ? "agents/" : ".claude/agents/";
+      expect(
+        files?.filter((file) => file.path.startsWith(directory) && file.path.endsWith(".md")).map((file) => file.path),
+      ).toEqual([`${directory}reviewer.md`]);
+      const report = built.report.targets["claude"];
+      const components = delivery === "package" ? report?.projection?.components : report?.project?.components;
+      expect(components).toMatchObject({
+        "agents.definition": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+        "agents.native": { support: "exact", discovered: 1, emitted: 1, skipped: 0 },
+      });
+    },
+    60_000,
+  );
+
   it("projects definitions configured beside a package into the Claude plugin", async () => {
     const { root, options } = await packageFixture({ "reviewer.md": REVIEWER });
 
