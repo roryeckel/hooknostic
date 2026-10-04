@@ -16,8 +16,8 @@ const { driveClaude, driveCodex, driveOpencode, prepareScratch, withoutCredentia
 const harness = process.argv[2];
 const protocols = { claude: "anthropic-messages", codex: "openai-responses", "opencode-v1": "openai-chat", "opencode-v2": "openai-chat" };
 if (!Object.hasOwn(protocols, harness)) throw new Error("Specify claude, codex, opencode-v1, or opencode-v2");
-if (process.platform !== "win32") throw new Error("This procedure is established only on Windows");
-const captureRoot = resolve(repo, ".capture/shell-dialects/captured");
+if (!["win32", "darwin"].includes(process.platform)) throw new Error("This procedure supports Windows and macOS only");
+const captureRoot = resolve(repo, ".capture/shell-dialects/captured", process.platform === "darwin" ? "darwin" : "");
 const out = resolve(captureRoot, harness);
 if (dirname(out) !== captureRoot) throw new Error("Capture path must be a direct child of the output root");
 rmSync(out, { recursive: true, force: true });
@@ -48,7 +48,7 @@ async function session(label, script) {
   process.env.XDG_STATE_HOME = join(root, "state");
   mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
   mkdirSync(process.env.CODEX_HOME, { recursive: true });
-  writeFileSync(join(process.env.CODEX_HOME, "config.toml"), '[windows]\nsandbox = "unelevated"\n');
+  if (process.platform === "win32") writeFileSync(join(process.env.CODEX_HOME, "config.toml"), '[windows]\nsandbox = "unelevated"\n');
   if (harness === "opencode-v1") {
     const version = process.env.HOOKNOSTIC_PLAYBACK_VERSION;
     if (!version) throw new Error("HOOKNOSTIC_PLAYBACK_VERSION is required for v1");
@@ -111,12 +111,17 @@ for (const name of names) {
   if (!tool) { console.log("not advertised: " + name); continue; }
   const key = ["command", "cmd"].find((candidate) => tool.properties.includes(candidate));
   if (!key) throw new Error(name + " has no discovered command key");
-  const args = { [key]: harness === "codex" ? "node interpreter.cjs" : command };
+  const args = { [key]: harness === "codex" && process.platform === "win32" ? "node interpreter.cjs" : command };
   if (tool.properties.includes("description")) args.description = "Record the real shell process ancestry";
   const cases = [[name.toLowerCase() + "-default", args]];
   if (harness === "codex" && tool.properties.includes("shell")) {
-    cases.push(["exec-command-powershell", { ...args, shell: "powershell.exe" }],
-      ["exec-command-cmd", { ...args, [key]: "node interpreter.cjs", shell: "cmd.exe" }]);
+    if (process.platform === "win32") {
+      cases.push(["exec-command-powershell", { ...args, shell: "powershell.exe" }],
+        ["exec-command-cmd", { ...args, shell: "cmd.exe" }]);
+    } else {
+      cases.push(["exec-command-bash", { ...args, shell: "/bin/bash" }],
+        ["exec-command-zsh", { ...args, shell: "/bin/zsh" }]);
+    }
   }
   for (const [label, arguments_] of cases) {
     const result = await session(label, [{ kind: "tool", toolName: name, arguments: arguments_ }, { kind: "text", text: "probe complete" }]);

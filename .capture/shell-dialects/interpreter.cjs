@@ -20,6 +20,18 @@ if (process.platform === "win32") {
     ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query],
     { encoding: "utf8", windowsHide: true, timeout: 20000 },
   ));
+} else if (process.platform === "darwin") {
+  ancestry = [];
+  let pid = process.pid;
+  for (let i = 0; i < 5 && pid > 0; i++) {
+    const output = execFileSync("/bin/ps", ["-p", String(pid), "-o", "pid=,ppid=,ucomm=,comm="],
+      { encoding: "utf8", timeout: 20000 });
+    const row = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+)\s*$/.exec(output);
+    if (!row || Number(row[1]) !== pid) throw new Error("Unexpected ps ancestry row: " + output);
+    const parentPid = Number(row[2]);
+    ancestry.push({ pid, parentPid, name: row[3], command: row[4].trim() });
+    pid = parentPid;
+  }
 } else if (process.platform === "linux") {
   ancestry = [];
   let pid = process.pid;

@@ -1,0 +1,83 @@
+name: Shell interpreter capture
+
+on:
+  workflow_dispatch:
+  # Bootstrap this workflow on the evidence branch; removed before merge.
+  push:
+    branches: [codex/shell-macos-evidence]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: macOS shell capture (${{ matrix.harness }})
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        harness: [claude, codex, opencode-v1, opencode-v2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/ci/.node-version
+          cache: pnpm
+      - name: Install repository dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bundle capture prerequisites
+        run: pnpm run bundle
+      - name: Resolve the recorded Windows comparison build
+        id: harness
+        env:
+          HKN_HARNESS: ${{ matrix.harness }}
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { harnessLanes } from "./scripts/harness-lanes.mjs";
+          const lane = harnessLanes[process.env.HKN_HARNESS];
+          const imported = await import(new URL(lane.module, new URL("./scripts/harness-lanes.mjs", import.meta.url)));
+          const record = imported[lane.profileExport].flatMap(profile => profile.source.validatedOn)
+            .findLast(record => record.artifact === ".capture/shell-dialects");
+          if (!record) throw new Error("No recorded shell comparison build");
+          appendFileSync(process.env.GITHUB_OUTPUT,
+            `package=${lane.pkg}\nversion=${record.version}\nbootstrap=${lane.bootstrap ?? ""}\n`);
+          NODE
+      - name: Install the recorded harness build
+        env:
+          HKN_PACKAGE: ${{ steps.harness.outputs.package }}
+          HKN_VERSION: ${{ steps.harness.outputs.version }}
+          HKN_BOOTSTRAP: ${{ steps.harness.outputs.bootstrap }}
+        run: |
+          npm install --global --ignore-scripts --no-fund --no-audit "$HKN_PACKAGE@$HKN_VERSION"
+          if [[ -n "$HKN_BOOTSTRAP" ]]; then
+            node "$(npm root --global)/$HKN_PACKAGE/$HKN_BOOTSTRAP"
+          fi
+      - name: Probe process ancestry on the runner
+        working-directory: ${{ runner.temp }}
+        run: node "$GITHUB_WORKSPACE/.capture/shell-dialects/interpreter.cjs"
+      - name: Capture native shell payloads and process ancestry
+        env:
+          HKN_HARNESS: ${{ matrix.harness }}
+          HOOKNOSTIC_PLAYBACK_VERSION: ${{ steps.harness.outputs.version }}
+        run: |
+          mkdir -p .capture/shell-dialects/captured/darwin
+          if [[ "$HKN_HARNESS" == "opencode-v2" ]]; then
+            export HKN_OPENCODE_BINARY="$(command -v opencode)"
+          fi
+          node --experimental-strip-types .capture/shell-dialects/drive.mjs "$HKN_HARNESS" \
+            > ".capture/shell-dialects/captured/darwin/capture-$HKN_HARNESS.log" 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shell-macos-${{ matrix.harness }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            .capture/shell-dialects/captured/darwin/${{ matrix.harness }}/
+            .capture/shell-dialects/captured/darwin/capture-${{ matrix.harness }}.log

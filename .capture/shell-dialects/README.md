@@ -30,8 +30,9 @@ model from `packages/cli/test/harness-playback.ts`.
    and shell-tool argument keys.
 
 Each harness rerun clears its ignored output directory before discovery, so
-retired cases cannot survive into a new capture. This driver is Windows-only;
-promotion rejects non-Windows metadata or process observations.
+retired cases cannot survive into a new capture. Windows and macOS use separate
+output directories; promotion requires metadata and process observations to match
+the explicitly selected platform.
 
 The hook envelopes are **captured**. Process ancestry is **live-probe** evidence.
 Model responses and argument values, including the requested shell selectors,
@@ -99,3 +100,27 @@ capture. How to represent PowerShell editions, whether an adapter may use host
 platform information, and whether rewrites consult a future dialect field
 remain design questions in #30. No SDK, schema, classifier, or rewrite behavior
 changes in this investigation.
+
+## macOS capture procedure
+
+The manual `Shell interpreter capture` workflow runs all four recorded comparison
+builds on fresh macOS runners, using the version in each adapter's shell-probe
+validation record. It uploads the raw output for review; it does not commit or
+promote results. No model credentials or repository write token are supplied.
+
+On macOS, `interpreter.cjs` reads `pid`, `ppid`, `ucomm`, and `comm` from `/bin/ps`.
+The accounting name is recorded separately from the command field; `comm` is not
+normalized to an executable path. The command includes a trailing `echo` to keep
+the interpreting shell alive while the Node child queries its ancestors. Codex
+runs default, explicit `/bin/bash`, and explicit `/bin/zsh` cases with identical
+command bytes, if its discovery exposes the shell selector.
+
+Download the four workflow artifacts into `captured/darwin/`. On the capturing
+host, run `node .capture/shell-dialects/promote.mjs darwin`. When promoting a
+foreign runner capture, set `HKN_CAPTURE_ACCOUNT` to the capturing account name
+(`runner` for these GitHub runners). Promotion writes `observations-macos.json`
+and the four `*-tools-macos.json` inventories. Review the raw payloads, process
+observations, redaction, and resulting claims before appending profile provenance.
+
+The macOS procedure is being prepared; interpreter observations are not yet
+asserted here.
