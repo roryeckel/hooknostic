@@ -29,6 +29,10 @@ model from `packages/cli/test/harness-playback.ts`.
    path segment to `user`. Tool discovery files contain the advertised names
    and shell-tool argument keys.
 
+Each harness rerun clears its ignored output directory before discovery, so
+retired cases cannot survive into a new capture. This driver is Windows-only;
+promotion rejects non-Windows metadata or process observations.
+
 The hook envelopes are **captured**. Process ancestry is **live-probe** evidence.
 Model responses and argument values, including the requested shell selectors,
 are constructed. No claim is made about what an unscripted model tends to send.

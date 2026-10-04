@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Evidence-only shell interpreter probe; model replies and argument values are scripted.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -15,8 +15,12 @@ const { driveClaude, driveCodex, driveOpencode, prepareScratch, withoutCredentia
 
 const harness = process.argv[2];
 const protocols = { claude: "anthropic-messages", codex: "openai-responses", "opencode-v1": "openai-chat", "opencode-v2": "openai-chat" };
-if (!(harness in protocols)) throw new Error("Specify claude, codex, opencode-v1, or opencode-v2");
-const out = join(repo, ".capture/shell-dialects/captured", harness);
+if (!Object.hasOwn(protocols, harness)) throw new Error("Specify claude, codex, opencode-v1, or opencode-v2");
+if (process.platform !== "win32") throw new Error("This procedure is established only on Windows");
+const captureRoot = resolve(repo, ".capture/shell-dialects/captured");
+const out = resolve(captureRoot, harness);
+if (dirname(out) !== captureRoot) throw new Error("Capture path must be a direct child of the output root");
+rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 const versionCommand = harness === "opencode-v2" ? process.env.HKN_OPENCODE_BINARY : harness.startsWith("opencode") ? "opencode" : harness;
 const versionResult = await runProcess(versionCommand, ["--version"], { cwd: repo, env: withoutCredentials(), timeoutMs: 30000 });

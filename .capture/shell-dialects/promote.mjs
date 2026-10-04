@@ -21,11 +21,13 @@ const cases = [];
 for (const harness of ["claude", "codex", "opencode-v1", "opencode-v2"]) {
   const directory = join(root, "captured", harness);
   const metadata = JSON.parse(readFileSync(join(directory, "metadata.json"), "utf8"));
+  if (metadata.platform !== "win32") throw new Error("Expected Windows capture metadata: " + harness);
   const tools = JSON.parse(readFileSync(join(directory, "discovery.json"), "utf8"));
   for (const name of readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory() && entry.name !== "discovery").map((entry) => entry.name).sort()) {
     const folder = join(directory, name);
     const drive = JSON.parse(readFileSync(join(folder, "drive.json"), "utf8"));
     if (drive.exit !== 0 || drive.errors.length || !drive.observation) throw new Error("Incomplete execution: " + name);
+    if (drive.observation.platform !== "win32") throw new Error("Expected Windows process observation: " + name);
     const file = harness === "opencode-v2" ? "events.jsonl" : harness === "opencode-v1" ? "tool.execute.before.jsonl" : "PreToolUse.jsonl";
     const rows = readFileSync(join(folder, file), "utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
     const before = harness === "opencode-v2" ? rows.filter((row) => row.hook === "execute.before" && row.event.tool === "shell") : rows;
