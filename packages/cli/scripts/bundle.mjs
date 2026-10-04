@@ -117,7 +117,11 @@ for (const id of Object.keys(SHIMS)) {
 // 4. Declarations.
 const tsc = spawnSync(
   process.execPath,
-  [require.resolve("typescript/bin/tsc"), "-p", join(packageDir, "tsconfig.types.json")],
+  [
+    join(dirname(require.resolve("@typescript/native/package.json")), "bin", "tsc"),
+    "-p",
+    join(packageDir, "tsconfig.types.json"),
+  ],
   { stdio: "inherit" },
 );
 if (tsc.status !== 0) fail("declaration emit failed");

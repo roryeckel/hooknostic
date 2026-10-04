@@ -34,6 +34,14 @@ resolves the two semver requirements to the same package. Renovate retains each
 named catalog's major line. Moving consumers between catalogs or changing those
 lines is a separate manual migration.
 
+Type checking and declaration emission use TypeScript 7 through the
+`@typescript/native` npm alias. Tools that consume the compiler API, including
+typescript-eslint, resolve `typescript` to Microsoft's `@typescript/typescript6`
+compatibility package. Its transitive `@typescript/old` alias is constrained by a
+workspace override to TypeScript 6.0, the supported linter API line; Renovate
+retains that line. Both catalog aliases and the override are compared against
+Renovate's extracted target package and version range.
+
 The standalone runtime pair formerly named `runtime.package.json` and
 `runtime.package-lock.json` now lives under `examples/agent-plugin/runtime/`
 using npm's standard filenames, so Renovate can update both requirements and
@@ -325,11 +333,11 @@ Renovate app and the configured shared PAT; credential values were not read.
 ### Compatibility trials: 2026-10-04
 
 The owner retained the declared `>=22.13.0` Node support range. These isolated
-Windows probes explain the upgrades held back during toolchain maintenance:
+Windows probes distinguish direct upgrades from compatibility work:
 
 | Candidate | Observed result | Decision |
 | --- | --- | --- |
-| TypeScript 7.0.2 with typescript-eslint 8.71.0 | Install succeeded with a peer warning; `pnpm lint` exited 2 because typescript-eslint rejects the missing TS 7 compiler API. `pnpm build` exited 1 because the CLI bundler resolves `typescript/bin/tsc`, which TS 7 no longer exports. | Keep the supported TypeScript 6.0 line. A future TS 7 migration needs compiler-entrypoint changes and an explicit plan for lint's TS 6 API dependency. |
+| TypeScript 7.0.2 with typescript-eslint 8.71.0 | Install succeeded with a peer warning; `pnpm lint` exited 2 because typescript-eslint rejects the missing TS 7 compiler API. `pnpm build` exited 1 because the CLI bundler resolves `typescript/bin/tsc`, which TS 7 no longer exports. | The direct bump was rejected. The subsequent side-by-side setup uses the native TS 7 compiler and the TS 6.0 API for linting, following Microsoft's migration guidance above. |
 | @types/node 26.6.4 with TypeScript 6.0.3 | The repository build and lint passed. A separate import of `convertProcessSignalToExitCode` from `node:util` compiled, but failed at runtime on Node 22.13.0 with a missing-export error. The same source correctly failed compilation with @types/node 22.20.5. | Retain Node 22 declarations so this newer API is rejected at compile time. Passing the current build alone does not establish compatibility for newly admitted APIs. |
 | npm-package-arg 14.0.0 | An isolated `npm install --engine-strict --ignore-scripts` under Node 22.13.0 exited 1 with `EBADENGINE`. | Retain 13.x while the current Node support range is promised. |
 | validate-npm-package-name 8.0.0 | The same isolated engine-strict installation under Node 22.13.0 exited 1 with `EBADENGINE`. | Retain 7.x while the current Node support range is promised. |
@@ -338,7 +346,7 @@ Both npm utility majors declare `^22.22.2 || ^24.15.0 || >=26.0.0` as their Node
 engine range. The runtime probe used the official Node 22.13.0 Windows archive
 verified against its published SHA-256 checksum. No unsupported package was
 installed by bypassing engine enforcement, and no public engine declaration was
-changed. The compiler and type probes used temporary worktrees, not product
+changed. The initial compiler and type probes used temporary worktrees, not product
 source changes.
 
 References: [TypeScript's side-by-side compiler guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0),

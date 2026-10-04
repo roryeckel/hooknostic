@@ -40,11 +40,27 @@ export function inventory(root = repoRoot) {
   const workspace = parse(read("pnpm-workspace.yaml"));
   const catalogs = { default: workspace.catalog, ...workspace.catalogs };
   const expected = [];
-  const add = (manager, packageFile, depName, currentValue, depType = "") =>
-    expected.push({ manager, packageFile, depName, currentValue, depType });
-  for (const [name, dependencies] of Object.entries(catalogs)) {
-    for (const [dep, range] of Object.entries(dependencies))
-      add("npm", "pnpm-workspace.yaml", dep, range, `pnpm.catalog.${name}`);
+  const add = (manager, packageFile, depName, currentValue, depType = "", aliasTarget) =>
+    expected.push({
+      manager,
+      packageFile,
+      depName,
+      currentValue,
+      depType,
+      ...(aliasTarget ? { npmPackageAlias: true, packageName: aliasTarget } : {}),
+    });
+  const declarations = [
+    ...Object.entries(catalogs).map(([name, dependencies]) => [`pnpm.catalog.${name}`, dependencies]),
+    ["pnpm-workspace.overrides", workspace.overrides ?? {}],
+  ];
+  for (const [depType, dependencies] of declarations) {
+    for (const [dep, range] of Object.entries(dependencies)) {
+      // Renovate extracts an npm alias as its local name, target package and
+      // version range, rather than leaving the npm: prefix in currentValue.
+      const alias = /^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/.exec(range);
+      if (range.startsWith("npm:") && !alias) throw new Error(`Unsupported npm alias: ${dep}`);
+      add("npm", "pnpm-workspace.yaml", dep, alias?.[2] ?? range, depType, alias?.[1]);
+    }
   }
   for (const [path, pkg] of Object.entries(manifests)) {
     for (const section of dependencySections) {
@@ -128,7 +144,15 @@ export function inventory(root = repoRoot) {
 }
 
 export function checkExtraction(expected, packageFiles) {
-  const key = (dep) => JSON.stringify([dep.manager, dep.packageFile, dep.depName, dep.currentValue, dep.depType ?? ""]);
+  const key = (dep) =>
+    JSON.stringify([
+      dep.manager,
+      dep.packageFile,
+      dep.depName,
+      dep.currentValue,
+      dep.depType ?? "",
+      dep.npmPackageAlias ? dep.packageName : "",
+    ]);
   const wanted = new Set(expected.map(key));
   const found = new Set();
   const allowedFiles = new Set([...expected.map((dep) => dep.packageFile)]);
