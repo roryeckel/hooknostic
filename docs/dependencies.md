@@ -194,7 +194,7 @@ Read each `package/package.json` inside those tarballs and verify no dependency
 section retains a `catalog:` or `workspace:` reference. See
 [packaging](publishing.md) for local consumer installation checks.
 
-Rollout is **pending** until these owner actions and hosted checks are complete:
+The hosted rollout requires these owner actions and checks; the dated records below track completion:
 
 1. Merge the migration and workflow configuration without dependency upgrades.
 2. Create `RENOVATE_ARTIFACTS_PAT`: a dedicated fine-grained PAT restricted to
@@ -221,7 +221,7 @@ Rollout is **pending** until these owner actions and hosted checks are complete:
 
 ### Hosted audit: 2026-10-03
 
-The hosted workflows are operational. The rollout remains **pending** on the
+At this audit, the hosted workflows were operational. Rollout remained **pending** on the
 owner settings below; successful runs do not establish that those settings are
 enforced.
 
@@ -258,7 +258,7 @@ Verified against the dashboard, PR history, and individual job logs:
   `RENOVATE_ARTIFACTS_PAT` repository secret exists. The generated commit's author
   email matches `gitIgnoredAuthors`.
 
-Remaining owner checks:
+Remaining owner checks at that audit:
 
 1. Protect `master` with required checks, including **Renovate artifact
    readiness** alongside the existing matrix. At audit time, the branch
@@ -272,3 +272,26 @@ Remaining owner checks:
 3. Confirm that the hosted app's installation is restricted to the intended
    repository. Dashboard and PR activity prove activation here, but do not prove
    the installation's access to other repositories.
+
+### Hosted rollout completion: 2026-10-04
+
+Rollout is **complete with an owner-approved no-expiry exception**.
+
+- `master` now requires all 13 checks from the CI workflow, including
+  **Renovate artifact readiness**, with GitHub Actions as their required source.
+  Protection applies to administrators, requires the branch to be current, and
+  disallows force pushes and deletion. PRs require no additional approving
+  reviewer, so the single-maintainer review flow remains usable.
+- The Renovate installation settings show **Only select repositories**, with
+  this repository as the sole selection.
+- The owner confirmed that `HARNESS_WATCH_PAT` and `RENOVATE_ARTIFACTS_PAT`
+  contain the same fine-grained credential. Its settings grant only this
+  repository, metadata read access, and Contents/Pull requests read/write;
+  there are no user, Actions-write, or workflow-write permissions.
+- The credential has no expiration. The owner explicitly accepted that
+  exception on this date and owns rotation. Any future rotation must replace
+  both repository secrets together before either automation runs again.
+
+The preceding audit remains the historical record of the missing settings.
+Repository protection and token settings can change independently of these
+files; recheck them during later operational audits.

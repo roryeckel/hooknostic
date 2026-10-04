@@ -81,6 +81,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
         },
         // scheduled-playback:end
+        {
+          version: "2.1.286",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: native Bash payload and executed Node process ancestry establish Git for Windows bash.exe for this configuration; PowerShell was not advertised by the discovery turn.",
+        },
       ],
       notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
     },

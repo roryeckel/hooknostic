@@ -1,0 +1,38 @@
+{
+  "names": [
+    "Agent",
+    "Bash",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "Edit",
+    "EnterWorktree",
+    "ExitWorktree",
+    "Glob",
+    "Grep",
+    "ListAgents",
+    "NotebookEdit",
+    "Read",
+    "ReportFindings",
+    "ScheduleWakeup",
+    "SendMessage",
+    "Skill",
+    "TaskStop",
+    "WebFetch",
+    "WebSearch",
+    "Workflow",
+    "Write"
+  ],
+  "shellTools": [
+    {
+      "name": "Bash",
+      "properties": [
+        "command",
+        "timeout",
+        "description",
+        "run_in_background",
+        "dangerouslyDisableSandbox"
+      ]
+    }
+  ]
+}

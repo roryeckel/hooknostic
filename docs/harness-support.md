@@ -34,6 +34,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.283 | 2026-09-27 | live-probe | `.capture/claude-permission-mode` | Interactive sessions start in auto mode: the scripted Bash call reaches PreToolUse with permission_mode auto and PermissionRequest never fires; --permission-mode manual restores the prompting mode and PermissionRequest, and the pty playback scenarios pass with it |
 | 2.1.283 | 2026-09-27 | captured | `fixtures/claude/2.1` | Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised |
 | 2.1.289 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 2.1.286 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: native Bash payload and executed Node process ancestry establish Git for Windows bash.exe for this configuration; PowerShell was not advertised by the discovery turn. |
 
 #### Optional event fields
 
@@ -170,6 +171,7 @@ Projection validation records:
 | 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-worktree-hooks` | In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at all when that has none. A Codex artifact generated into a linked worktree is inert there. |
 | 0.156.1 | 2026-09-27 | captured | `fixtures/codex/0.148` | apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path |
 | 0.160.0 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 0.156.1 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: identical commands ran through bundled pwsh.exe and cmd.exe, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector. |
 
 #### Optional event fields
 
@@ -325,6 +327,7 @@ Projection validation records:
 | 1.18.33 | 2026-09-29 | captured | `fixtures/opencode/1.18` | chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated |
 | 1.18.33 | 2026-09-30 | live-probe | `.capture/opencode-dispose` | one-shot opencode run over the loopback model, isolated state: the event handler is not awaited, and without dispose the process exited 41 ms after session.idle with a 3 s idle task unfinished. A plugin's dispose is called about 45 ms after idle and awaited: the task finished and the process exited 3.07 s after idle; a dispose that took 25 s more held it 28 s, so the host does not bound dispose. With the generated shim, a 3 s turn.stop hook declaring lastMessage finished before exit; with its dispose removed it never did. Whether earlier supported builds call and await dispose was not established. |
 | 1.18.34 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 1.18.34 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: tool.execute.before bash payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
 
 #### Optional event fields
 
@@ -426,6 +429,7 @@ Projection validation records:
 | 2.0.18 | 2026-09-28 | captured | `fixtures/opencode/2.0` | Turn fields over the loopback model (observe drive, isolated state): the plugin's event subscription receives session.execution.started, session.step.*, session.text.started/delta/ended ({ sessionID, assistantMessageID, ordinal, text }) and then session.execution.succeeded ({ sessionID } only). Each model step has its own assistantMessageID; the prompt hook's messageID matches session.inbox.enqueued's inboxID (turn-fields/events.jsonl, execution-succeeded-with-turn). |
 | 2.0.18 | 2026-09-30 | live-probe | `.capture/opencode-dispose` | One-shot run over the loopback model, isolated state, Windows: plugins run in a server process, not the run process. With --standalone the private server was terminated when run exited 0.7 s after session.execution.succeeded; the plugin's cleanup was never called and a 3 s task started at succeeded never finished. Through the background service (its own port) run exited 41 ms after succeeded and the task finished in the service 3 s later. |
 | 2.0.22 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: execute.before shell payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
 
 #### Optional event fields
 

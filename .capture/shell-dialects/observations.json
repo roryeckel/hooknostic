@@ -1,0 +1,351 @@
+{
+  "platform": "Windows",
+  "model": "scripted loopback playback",
+  "cases": [
+    {
+      "harness": "claude",
+      "version": "2.1.286",
+      "capturedAt": "2026-10-04T05:14:48.616Z",
+      "case": "bash-default",
+      "requestedShell": "default",
+      "before": {
+        "session_id": "a063fee6-ac0a-4667-992e-c08cedd0d8f0",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-R9Usb9\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-R9Usb9-project\\a063fee6-ac0a-4667-992e-c08cedd0d8f0.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-R9Usb9\\project",
+        "prompt_id": "01bc921e-fe13-4d64-bec3-7ec5ee77c305",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 79740,
+            "parentPid": 34520,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 34520,
+            "parentPid": 81292,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 81292,
+            "parentPid": 74796,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 74796,
+            "parentPid": 86904,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 86904,
+            "parentPid": 95620,
+            "name": "claude.exe",
+            "path": "c:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-04T05:14:50.173Z",
+      "case": "exec-command-cmd",
+      "requestedShell": "cmd.exe",
+      "before": {
+        "session_id": "01a10556-69ca-7142-9f44-46b9ad59eb92",
+        "turn_id": "01a10556-6a36-73b2-bd45-287f7fa27e50",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-mTYYPy\\codex-home\\sessions\\2026\\10\\04\\rollout-2026-10-04T00-15-11-01a10556-69ca-7142-9f44-46b9ad59eb92.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-mTYYPy\\project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 91128,
+            "parentPid": 69640,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 69640,
+            "parentPid": 52200,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 52200,
+            "parentPid": 75056,
+            "name": "codex.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe"
+          },
+          {
+            "pid": 75056,
+            "parentPid": 26308,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 26308,
+            "parentPid": 29584,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-04T05:14:50.173Z",
+      "case": "exec-command-powershell",
+      "requestedShell": "powershell.exe",
+      "before": {
+        "session_id": "01a10556-4935-7750-bf17-f1794a4f9cbf",
+        "turn_id": "01a10556-499d-7063-a69d-4394b2ef413c",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-4g58A6\\codex-home\\sessions\\2026\\10\\04\\rollout-2026-10-04T00-15-03-01a10556-4935-7750-bf17-f1794a4f9cbf.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-4g58A6\\project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 14536,
+            "parentPid": 96044,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 96044,
+            "parentPid": 80864,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+          },
+          {
+            "pid": 80864,
+            "parentPid": 32752,
+            "name": "codex.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe"
+          },
+          {
+            "pid": 32752,
+            "parentPid": 93820,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 93820,
+            "parentPid": 29584,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-04T05:14:50.173Z",
+      "case": "exec_command-default",
+      "requestedShell": "default",
+      "before": {
+        "session_id": "01a10556-2600-74e2-844e-88f17d402969",
+        "turn_id": "01a10556-2758-7183-8e74-2c127b17f747",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-OvmpFO\\codex-home\\sessions\\2026\\10\\04\\rollout-2026-10-04T00-14-54-01a10556-2600-74e2-844e-88f17d402969.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-OvmpFO\\project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 87676,
+            "parentPid": 85996,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 85996,
+            "parentPid": 82348,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+          },
+          {
+            "pid": 82348,
+            "parentPid": 91496,
+            "name": "codex.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe"
+          },
+          {
+            "pid": 91496,
+            "parentPid": 91128,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 91128,
+            "parentPid": 29584,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v1",
+      "version": "1.18.34",
+      "capturedAt": "2026-10-04T05:20:47.177Z",
+      "case": "bash-default",
+      "requestedShell": "default",
+      "before": {
+        "hook": "tool.execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-4Fq1QO\\project",
+        "input": {
+          "tool": "bash",
+          "sessionID": "ses_efaa42d64ffev5KHj1Or9yQ3jQ",
+          "callID": "call_playback"
+        },
+        "output": {
+          "args": {
+            "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+          }
+        }
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 93768,
+            "parentPid": 87156,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 87156,
+            "parentPid": 60148,
+            "name": "powershell.exe",
+            "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 60148,
+            "parentPid": 93752,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-shell-opencode-v1\\node_modules\\opencode-ai\\bin\\opencode.exe"
+          },
+          {
+            "pid": 93752,
+            "parentPid": 88840,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 88840,
+            "parentPid": 56220,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v2",
+      "version": "2.0.20",
+      "capturedAt": "2026-10-04T05:13:28.824Z",
+      "case": "shell-default",
+      "requestedShell": "default",
+      "before": {
+        "hook": "execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-eYgkto\\project",
+        "event": {
+          "tool": "shell",
+          "sessionID": "ses_efaab1fffffe63OCrI5GH72Dnh",
+          "agent": "build",
+          "messageID": "msg_10554e11a001yUtSTPXizkI2JD",
+          "id": "call_playback",
+          "input": {
+            "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+          }
+        }
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 58788,
+            "parentPid": 68276,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 68276,
+            "parentPid": 97028,
+            "name": "powershell.exe",
+            "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 97028,
+            "parentPid": 54144,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 54144,
+            "parentPid": 92952,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 92952,
+            "parentPid": 36100,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    }
+  ]
+}
