@@ -270,3 +270,48 @@ it("an already published version never reaches publication", () => {
   expect(result.stdout).toContain("already on the registry; skipping");
   expect(result.stdout).not.toContain("UNEXPECTED_PUBLICATION");
 });
+
+// download-artifact can extract files before failing its digest check. File
+// presence alone must never authorize a record, report, or reconciliation.
+it.each([
+  ["Gate on pass", "skip=true", "skip=false"],
+  ["Resolve verify outcome", "failed=false", "failed=true"],
+  ["Gate on drift relevance", "run=false", "run=true"],
+  ["Resolve verdict", "publish=false", "publish=true"],
+  ["Reconcile failure issues after a passing run", "", ""],
+])("%s ignores files left by a failed download and accepts successful downloads", (step, declined, accepted) => {
+  for (const outcome of ["failure", "skipped", "", "success"]) {
+    const result = runWatchStep(
+      step,
+      {
+        "steps.artifact.outcome": outcome,
+        "steps.outcome.outcome": outcome,
+        "steps.verdict.outcome": outcome,
+        "matrix.harness": "codex",
+        "matrix.latest": "0.0.0-readiness-probe",
+        "matrix.jump": "patch",
+        "inputs.force_llm": "false",
+        "inputs.dry_run": "false",
+        "github.server_url": "https://github.com",
+        "github.repository": "owner/project",
+        "github.run_id": "123",
+      },
+      `printf '{"outcome":"pass"}' > watch-outcome-codex.json
+      printf '{"verdict":"drift"}' > drift-verdict-codex.json
+      jq() {
+        echo ARTIFACT_READ >&2
+        if [[ "$1" == "-r" ]]; then echo install-failure; fi
+      }
+      gh() { echo EXTERNAL_CALL >&2; }
+      trap 'if [[ -f "$GITHUB_OUTPUT" ]]; then cat "$GITHUB_OUTPUT"; fi' EXIT`,
+    );
+    if (outcome !== "success") {
+      expect(result.stderr).not.toContain("ARTIFACT_READ");
+      expect(result.stderr).not.toContain("EXTERNAL_CALL");
+      if (declined) expect(result.stdout).toContain(declined);
+    } else {
+      expect(result.stderr).toContain("ARTIFACT_READ");
+      if (accepted) expect(result.stdout).toContain(accepted);
+    }
+  }
+});

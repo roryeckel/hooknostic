@@ -261,7 +261,7 @@ jobs:
       - name: Download the verify outcome artifact
         id: artifact
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: watch-outcome-${{ matrix.harness }}
 
@@ -269,8 +269,8 @@ jobs:
         id: gate
         shell: bash
         run: |
-          if [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
-            echo "no outcome artifact — verify leg did not complete; skipping record"
+          if [ "${{ steps.artifact.outcome }}" != "success" ] || [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            echo "no verified outcome artifact — skipping record"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           elif jq -e '.outcome == "pass"' watch-outcome-${{ matrix.harness }}.json > /dev/null; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -469,7 +469,7 @@ jobs:
       - name: Download the verify outcome artifact
         id: artifact
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: watch-outcome-${{ matrix.harness }}
 
@@ -479,8 +479,8 @@ jobs:
         run: |
           # Legs without an artifact (e.g. a matrix leg skipped by the gate)
           # must not report failure.
-          if [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
-            echo "no outcome artifact — skipping"; echo "failed=false" >> "$GITHUB_OUTPUT"; exit 0
+          if [ "${{ steps.artifact.outcome }}" != "success" ] || [ ! -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            echo "no verified outcome artifact — skipping"; echo "failed=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
           if [ "$OUTCOME" = "pass" ]; then echo "failed=false" >> "$GITHUB_OUTPUT"; else echo "failed=true" >> "$GITHUB_OUTPUT"; fi
@@ -537,7 +537,7 @@ jobs:
       - name: Download the verify outcome artifact
         id: artifact
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: watch-outcome-${{ matrix.harness }}
 
@@ -547,15 +547,19 @@ jobs:
         run: |
           # No outcome artifact → verify leg never completed; drift would be
           # noise. Explicit rehearsals and force_llm always run the lane.
+          # A failed digest check can leave extracted files behind.
+          OUTCOME=none
+          if [ "${{ steps.artifact.outcome }}" = "success" ] && [ -f "watch-outcome-${{ matrix.harness }}.json" ]; then
+            OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
+          fi
           RUN=false
           if [ "${{ inputs.force_llm }}" = "true" ] || [ "${{ inputs.dry_run }}" = "true" ]; then
             RUN=true
-          elif [ -f "watch-outcome-${{ matrix.harness }}.json" ]; then
-            OUTCOME="$(jq -r .outcome watch-outcome-${{ matrix.harness }}.json)"
+          elif [ "$OUTCOME" != "none" ]; then
             if [ "$OUTCOME" != "pass" ] || [ "${{ matrix.jump }}" != "patch" ]; then RUN=true; fi
           fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
-          echo "drift gate: run=$RUN (outcome=$( [ -f watch-outcome-${{ matrix.harness }}.json ] && jq -r .outcome watch-outcome-${{ matrix.harness }}.json || echo none), jump=${{ matrix.jump }}, force_llm=${{ inputs.force_llm }})"
+          echo "drift gate: run=$RUN (outcome=$OUTCOME, jump=${{ matrix.jump }}, force_llm=${{ inputs.force_llm }})"
 
       - uses: actions/checkout@v7
         if: steps.gate.outputs.run == 'true'
@@ -757,14 +761,14 @@ jobs:
       - name: Download the verify outcome artifact
         id: outcome
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: watch-outcome-${{ matrix.harness }}
 
       - name: Download the drift verdict artifact
         id: verdict
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: drift-verdict-${{ matrix.harness }}
 
@@ -772,7 +776,7 @@ jobs:
         id: resolve
         shell: bash
         run: |
-          if [ ! -f "drift-verdict-${{ matrix.harness }}.json" ]; then
+          if [ "${{ steps.verdict.outcome }}" != "success" ] || [ ! -f "drift-verdict-${{ matrix.harness }}.json" ]; then
             # The drift leg gated itself off (patch jump + pass + no force_llm)
             # or never ran; nothing to publish for this harness.
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -871,7 +875,7 @@ jobs:
           # path deliberately gates drift off, but still must close a stale
           # failure issue once its verification and PR both succeed.
           OUTCOME_FILE="watch-outcome-${{ matrix.harness }}.json"
-          if [ ! -f "$OUTCOME_FILE" ] || ! jq -e '.outcome == "pass"' "$OUTCOME_FILE" > /dev/null; then
+          if [ "${{ steps.outcome.outcome }}" != "success" ] || [ ! -f "$OUTCOME_FILE" ] || ! jq -e '.outcome == "pass"' "$OUTCOME_FILE" > /dev/null; then
             exit 0
           fi
           TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} failed model-free playback"
