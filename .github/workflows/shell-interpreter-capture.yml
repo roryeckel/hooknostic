@@ -68,7 +68,7 @@ jobs:
           fi
           node --experimental-strip-types .capture/shell-dialects/drive.mjs "$HKN_HARNESS" \
             > ".capture/shell-dialects/captured/darwin/capture-$HKN_HARNESS.log" 2>&1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: shell-macos-${{ matrix.harness }}

@@ -38,7 +38,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/renovate-artifacts.mjs "$RUNNER_TEMP/manifest.json" "$PR_HEAD_SHA" "$PR_NUMBER"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: renovate-example-artifacts
           path: ${{ runner.temp }}/manifest.json
