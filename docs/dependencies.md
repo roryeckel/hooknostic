@@ -172,7 +172,7 @@ job, and the credentialed artifact writer remains unchanged.
 
 ## Verification and rollout
 
-Run `pnpm lint`, `pnpm build`, and `pnpm test`, recording each exit code
+Run `pnpm lint`, `pnpm format:check`, `pnpm build`, and `pnpm test`, recording each exit code
 separately. Run all three `HOOKNOSTIC_PLAYBACK=<harness>` lanes as described in
 [testing.md](testing.md), regenerate the harness-support page, check version
 literals, and run `pnpm build:examples`. No paid smoke tests or local publishing
@@ -218,3 +218,57 @@ Rollout is **pending** until these owner actions and hosted checks are complete:
    normal checks, passes the drift gate, and is followed by a no-op refresh.
    Exercise a rebase and verify stale results are skipped. Only then mark the
    hosted rollout complete.
+
+### Hosted audit: 2026-10-03
+
+The hosted workflows are operational. The rollout remains **pending** on the
+owner settings below; successful runs do not establish that those settings are
+enforced.
+
+Verified against the dashboard, PR history, and individual job logs:
+
+- [Dependency Dashboard #18](https://github.com/roryeckel/hooknostic/issues/18)
+  lists the workspace catalogs, standalone runtime, pnpm, all three Node files,
+  Actions and the validator container, and LiteLLM. Majors await approval, and
+  the Zod and semver catalog entries remain distinct. The grouped
+  [npm PR #27](https://github.com/roryeckel/hooknostic/pull/27),
+  [CI/tooling PR #46](https://github.com/roryeckel/hooknostic/pull/46), and
+  [monthly maintenance PR #57](https://github.com/roryeckel/hooknostic/pull/57)
+  have been reviewed and merged.
+- For #57, the [writer run](https://github.com/roryeckel/hooknostic/actions/runs/36890629447)
+  logged `committed example artifacts`. The resulting commit triggered
+  [CI](https://github.com/roryeckel/hooknostic/actions/runs/36890668345): readiness,
+  the full matrix, dependency extraction, and the example drift gates all passed.
+  The [follow-up writer](https://github.com/roryeckel/hooknostic/actions/runs/36890784737)
+  logged `no changes`.
+- [Maintenance PR #19](https://github.com/roryeckel/hooknostic/pull/19) records a
+  Renovate force-push at 2026-09-24 03:13:41 UTC, replacing the artifact-refresh
+  head `393c1b9` with rebased bot commit `a069714`. The
+  [new writer](https://github.com/roryeckel/hooknostic/actions/runs/35950644695)
+  committed refreshed artifacts, and its
+  [follow-up](https://github.com/roryeckel/hooknostic/actions/runs/35950735936)
+  logged `no changes`. This verifies that the configured ignored author permits
+  Renovate to rebase after a refresh.
+- An earlier [queued writer](https://github.com/roryeckel/hooknostic/actions/runs/35943844404)
+  logged `stale head or closed PR` at 2026-09-24 01:49:11 UTC. The
+  lock-maintenance branch had advanced and #19 remained open until 03:53:17 UTC.
+  The hosted skip path has therefore been observed; the existing regression
+  tests cover the additional stale-attempt and atomic-write race cases.
+- The dependency graph is available, vulnerability alerts are enabled, and the
+  `RENOVATE_ARTIFACTS_PAT` repository secret exists. The generated commit's author
+  email matches `gitIgnoredAuthors`.
+
+Remaining owner checks:
+
+1. Protect `master` with required checks, including **Renovate artifact
+   readiness** alongside the existing matrix. At audit time, the branch
+   protection API reported `Branch not protected`, and the applicable branch
+   rules API returned no rules. Human merging remains the configured policy,
+   but required-check enforcement is not yet installed.
+2. Confirm that the dedicated PAT has only the repository and permissions
+   specified above, with a recorded expiry and rotation owner. Secret metadata
+   and successful writer runs cannot establish its full permission scope or
+   lifecycle.
+3. Confirm that the hosted app's installation is restricted to the intended
+   repository. Dashboard and PR activity prove activation here, but do not prove
+   the installation's access to other repositories.
