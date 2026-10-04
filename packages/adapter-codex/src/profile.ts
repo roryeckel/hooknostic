@@ -159,6 +159,13 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
         },
         // scheduled-playback:end
+        {
+          version: "0.156.1",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: identical commands ran through bundled pwsh.exe and cmd.exe, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector.",
+        },
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
     },

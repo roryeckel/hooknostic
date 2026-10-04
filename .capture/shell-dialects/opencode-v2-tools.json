@@ -1,0 +1,28 @@
+{
+  "names": [
+    "edit",
+    "glob",
+    "grep",
+    "question",
+    "read",
+    "shell",
+    "skill",
+    "subagent",
+    "webfetch",
+    "websearch",
+    "write",
+    "execute"
+  ],
+  "shellTools": [
+    {
+      "name": "shell",
+      "type": "function",
+      "properties": [
+        "command",
+        "workdir",
+        "timeout",
+        "background"
+      ]
+    }
+  ]
+}

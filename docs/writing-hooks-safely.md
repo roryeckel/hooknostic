@@ -142,6 +142,20 @@ a shell call, not a file call, so `tool.file` never sees it — and on Codex eve
 goes through the shell. A file guard that matters also needs a shell guard. And paths
 are reported as the harness sent them, relative or absolute, never resolved.
 
+## A shell tool name does not identify its grammar
+
+`tool.shell` normalizes command and working-directory keys; it does not identify
+the interpreter. `nativeName` is harness vocabulary. In the
+[Windows interpreter captures](../.capture/shell-dialects/README.md), Claude's
+`Bash` ran Git Bash, OpenCode's `bash` ran Windows PowerShell, and Codex's
+`Bash` covered both PowerShell and cmd while receiving identical command bytes.
+
+Do not select a POSIX parser from a tool name or the Windows host alone. If a
+guard depends on a command grammar it cannot establish, treat that as an
+unsupported input and make the guard's decision explicit. Skip grammar-sensitive
+rewrites when the interpreter is unknown. A portable dialect field remains
+proposed in [issue #30](https://github.com/roryeckel/hooknostic/issues/30).
+
 ## Returning more than one effect
 
 A hook returns one effect, or an ordered list of them — `[notify(message),
