@@ -74,7 +74,7 @@ scheduled run.
 - `schedule: cron "23 5 * * 1"` — weekly, Monday 05:23 UTC, off-minute.
 - `workflow_dispatch` with inputs `harness` (filter), `version` (pin a build
   under test, overriding the dist-tag), `force_llm` (enables the paid drift
-  transport).
+  transport), and `dry_run` (skips record, issue, PR, and comment writers).
 
 Scheduled workflows are disabled by GitHub after 60 days of repository
 inactivity; the dispatch backstop is the documented recovery (`Actions →

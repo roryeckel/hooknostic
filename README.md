@@ -186,7 +186,9 @@ tutorials built on the [examples](examples/).
 
 ## Repository
 
-Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
+Node.js 22.13+ / pnpm 12 + TypeScript monorepo. Use the pnpm version pinned in
+`package.json`; compiler versions and compatibility constraints are documented in
+[Dependencies](docs/dependencies.md):
 
 | Package | Purpose |
 | --- | --- |

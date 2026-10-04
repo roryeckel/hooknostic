@@ -159,7 +159,7 @@ next generation run should be a no-op, ending the refresh cycle.
 
 CI first runs a five-minute-bounded artifact readiness job for these same-repository
 Renovate PRs. It rebuilds the examples on the PR merge checkout before starting
-the seven full-validation jobs. Changed, deleted, or new generated files fail
+the full validation matrix. Changed, deleted, or new generated files fail
 readiness, so the intermediate commit never starts the full matrix. The existing
 artifact writer pushes a refresh; that successor goes through readiness and the
 full matrix. An already reproducible update proceeds without waiting for the
