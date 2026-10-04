@@ -106,6 +106,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "macOS loopback shell interpreter probe: captured execute.before shell payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration.",
         },
+        {
+          version: "2.0.22",
+          date: "2026-10-04",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/context-max-tokens.input.json",
+          what: "Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
