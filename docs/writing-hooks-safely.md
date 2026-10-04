@@ -145,10 +145,12 @@ are reported as the harness sent them, relative or absolute, never resolved.
 ## A shell tool name does not identify its grammar
 
 `tool.shell` normalizes command and working-directory keys; it does not identify
-the interpreter. `nativeName` is harness vocabulary. In the
-[Windows interpreter captures](../.capture/shell-dialects/README.md), Claude's
+the interpreter. `nativeName` is harness vocabulary. On Windows in the
+[interpreter captures](../.capture/shell-dialects/README.md), Claude's
 `Bash` ran Git Bash, OpenCode's `bash` ran Windows PowerShell, and Codex's
 `Bash` covered both PowerShell and cmd while receiving identical command bytes.
+On the macOS runners, Codex exposed identical `Bash` hook inputs for commands
+executed through bash and zsh.
 
 Do not select a POSIX parser from a tool name or the Windows host alone. If a
 guard depends on a command grammar it cannot establish, treat that as an

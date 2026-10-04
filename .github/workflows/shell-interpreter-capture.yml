@@ -2,9 +2,6 @@ name: Shell interpreter capture
 
 on:
   workflow_dispatch:
-  # Bootstrap this workflow on the evidence branch; removed before merge.
-  push:
-    branches: [codex/shell-macos-evidence]
 
 permissions:
   contents: read
