@@ -76,6 +76,13 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
       date: "2026-09-26",
       validatedOn: [
         {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and returned permission.rejected for a forced skill-tool call that succeeded without the rule. Claude frontmatter and Codex policy alone did not hide the controls. Explicit UI invocation and plugin-supplied v2 rules were not tested.",
+        },
+        {
           version: "2.0.18",
           date: "2026-09-30",
           method: "live-probe",
