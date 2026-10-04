@@ -10,7 +10,7 @@ const { parse } = createRequire(new URL("../packages/agent-plugin/package.json",
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 export const dependencySections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 export const nodeFiles = Object.fromEntries(
-  ["ci", "playback", "publishing"].map((role) => [role, `.github/node/${role}/.node-version`]),
+  ["ci", "playback", "publishing", "compatibility"].map((role) => [role, `.github/node/${role}/.node-version`]),
 );
 
 export function checkEngines(manifests) {
@@ -88,9 +88,11 @@ export function inventory(root = repoRoot) {
       const role =
         name === "release-publish.yml"
           ? "publishing"
-          : ["harness-playback", "code-mode", "verify", "drift"].includes(jobName)
-            ? "playback"
-            : "ci";
+          : jobName === "node-compatibility"
+            ? "compatibility"
+            : ["harness-playback", "code-mode", "verify", "drift"].includes(jobName)
+              ? "playback"
+              : "ci";
       for (const step of job.steps ?? []) {
         if (!step.uses || step.uses.startsWith("./")) continue;
         const [dep, value] = step.uses.split("@");
