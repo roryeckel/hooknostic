@@ -437,6 +437,7 @@ Projection validation records:
 | 2.0.22 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 | 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: execute.before shell payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
 | 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured execute.before shell payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration. |
+| 2.0.22 | 2026-10-04 | captured | `fixtures/opencode/2.0/context-max-tokens.input.json` | Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed. |
 
 #### Optional event fields
 

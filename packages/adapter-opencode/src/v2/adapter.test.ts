@@ -208,6 +208,7 @@ describe("v2 captured boundary", () => {
       const enrichment = existsSync(fixtures + file.replace(".input.", ".enrichment."))
         ? JSON.parse(readFileSync(fixtures + file.replace(".input.", ".enrichment."), "utf8"))
         : {};
+      const original = structuredClone(raw);
       const decoded = decodeOpenCodeV2(
         raw,
         { targetId: target.id, harnessVersion: opencodeV2Harness.referenceVersion },
@@ -215,6 +216,7 @@ describe("v2 captured boundary", () => {
       );
       expect(decoded).toEqual({ ...canonical, raw });
       expect(decoded.raw).toBe(raw);
+      expect(decoded.raw).toEqual(original);
     });
   }
   describe("turn.stop posting", () => {
