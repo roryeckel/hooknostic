@@ -55,14 +55,10 @@ plugin's manifest, for instance).
 hook("tool.before", {
   id: "no-force-push",
   match: { kind: "shell" },
-  capabilities: {
-    "tool.before.block": "required",
-  },
-  async run(event) {
-    // Normalized read with a raw fallback: where the shape is uncaptured
-    // (`shell` undefined), a guard must not fail open on an empty string.
-    const raw = (event.tool.input as { command?: unknown }).command;
-    const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+  capabilities: { block: "required" },
+  run({ tool }) {
+    const command = tool.shell?.command;
+    if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
     if (/git\s+push\s+.*--force(?!-with-lease)/.test(command)) {
       return block("Use --force-with-lease instead of --force.");
     }
@@ -81,12 +77,17 @@ Reading it top to bottom:
   classification (Claude's `Bash`, Codex's exec tools, etc. all count as `shell`). The
   hook simply never runs for file edits or web fetches.
 - **`capabilities`** — the contract. This hook is pointless if it can't block, so
-  `tool.before.block` is `required`: any target that can't block a pending tool call
-  would fail the build with a clear diagnostic, rather than shipping a guard that
-  silently doesn't guard.
-- **`run`** — the logic. `event.tool.input` is the tool's input as the harness reported
-  it (for shell tools, an object with a `command`). Returning `block(reason)` stops the
-  call and shows the reason; returning nothing (the fall-through) lets it proceed.
+  `block` is `required`: any target that can't block a pending tool call would fail
+  the build with a clear diagnostic, rather than shipping a guard that silently doesn't
+  guard. Keys are relative to the hook's event — `block` here is the capability
+  `tool.before.block`, which is the name the build report and diagnostics use.
+- **`run`** — the logic. `tool.shell.command` is the command, normalized: the harnesses
+  disagree about the argument key (`command` on Claude, `cmd` on Codex's
+  `exec_command`), and the adapter reads the right one. It is undefined only for a
+  shell tool whose argument shape has never been captured; a guard that can't read a
+  command refuses it (fails closed) rather than letting it through unchecked. The raw
+  `tool.input` is always there too. Returning `block(reason)` stops the call and shows
+  the reason; returning nothing (the fall-through) lets it proceed.
 
 ### Hook 2: observing
 

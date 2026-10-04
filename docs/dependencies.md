@@ -13,6 +13,7 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 | Supported Node floor | Root `package.json#engines.node` | Manual compatibility decision; all package declarations must agree | `pnpm check:dependencies`; normal gates and playback |
 | General CI Node | `.github/node/ci/.node-version` | Renovate nodenv manager | CI matrix; `pnpm check:dependencies` checks workflow references |
 | Playback Node | `.github/node/playback/.node-version` | Renovate nodenv manager; also supplies `node:<version>-bookworm` in harness-watch | All three model-free playback lanes; workflow tests |
+| Node 22 compatibility | `.github/node/compatibility/.node-version` | Manual mirror of the root engine minimum, checked by `pnpm check:dependencies` | Dedicated CI build, tests and package-consumer checks exercise the declared minimum while general CI/playback use Node 24 |
 | Publishing Node | `.github/node/publishing/.node-version` | Renovate nodenv manager | Release workflow tests and packing; see [release gates](releases.md) |
 | GitHub Actions | `uses:` references in `.github/workflows/*.yml` | Renovate github-actions manager | Workflow tests and CI; extraction comparison |
 | Renovate validation runtime | `dependency-policy.container.image` in `.github/workflows/ci.yml` | Renovate github-actions manager (container image) | Strict config validation and extraction comparison in that job |
@@ -32,6 +33,14 @@ minimum. Their names encode intentional differences, even when a lockfile
 resolves the two semver requirements to the same package. Renovate retains each
 named catalog's major line. Moving consumers between catalogs or changing those
 lines is a separate manual migration.
+
+Type checking and declaration emission use TypeScript 7 through the
+`@typescript/native` npm alias. Tools that consume the compiler API, including
+typescript-eslint, resolve `typescript` to Microsoft's `@typescript/typescript6`
+compatibility package. Its transitive `@typescript/old` alias is constrained by a
+workspace override to TypeScript 6.0, the supported linter API line; Renovate
+retains that line. Both catalog aliases and the override are compared against
+Renovate's extracted target package and version range.
 
 The standalone runtime pair formerly named `runtime.package.json` and
 `runtime.package-lock.json` now lives under `examples/agent-plugin/runtime/`
@@ -150,7 +159,7 @@ next generation run should be a no-op, ending the refresh cycle.
 
 CI first runs a five-minute-bounded artifact readiness job for these same-repository
 Renovate PRs. It rebuilds the examples on the PR merge checkout before starting
-the seven full-validation jobs. Changed, deleted, or new generated files fail
+the full validation matrix. Changed, deleted, or new generated files fail
 readiness, so the intermediate commit never starts the full matrix. The existing
 artifact writer pushes a refresh; that successor goes through readiness and the
 full matrix. An already reproducible update proceeds without waiting for the
@@ -172,7 +181,7 @@ job, and the credentialed artifact writer remains unchanged.
 
 ## Verification and rollout
 
-Run `pnpm lint`, `pnpm build`, and `pnpm test`, recording each exit code
+Run `pnpm lint`, `pnpm format:check`, `pnpm build`, and `pnpm test`, recording each exit code
 separately. Run all three `HOOKNOSTIC_PLAYBACK=<harness>` lanes as described in
 [testing.md](testing.md), regenerate the harness-support page, check version
 literals, and run `pnpm build:examples`. No paid smoke tests or local publishing
@@ -194,7 +203,7 @@ Read each `package/package.json` inside those tarballs and verify no dependency
 section retains a `catalog:` or `workspace:` reference. See
 [packaging](publishing.md) for local consumer installation checks.
 
-Rollout is **pending** until these owner actions and hosted checks are complete:
+The hosted rollout requires these owner actions and checks; the dated records below track completion:
 
 1. Merge the migration and workflow configuration without dependency upgrades.
 2. Create `RENOVATE_ARTIFACTS_PAT`: a dedicated fine-grained PAT restricted to
@@ -218,3 +227,129 @@ Rollout is **pending** until these owner actions and hosted checks are complete:
    normal checks, passes the drift gate, and is followed by a no-op refresh.
    Exercise a rebase and verify stale results are skipped. Only then mark the
    hosted rollout complete.
+
+### Hosted audit: 2026-10-03
+
+At this audit, the hosted workflows were operational. Rollout remained **pending** on the
+owner settings below; successful runs do not establish that those settings are
+enforced.
+
+Verified against the dashboard, PR history, and individual job logs:
+
+- [Dependency Dashboard #18](https://github.com/roryeckel/hooknostic/issues/18)
+  lists the workspace catalogs, standalone runtime, pnpm, all three Node files,
+  Actions and the validator container, and LiteLLM. Majors await approval, and
+  the Zod and semver catalog entries remain distinct. The grouped
+  [npm PR #27](https://github.com/roryeckel/hooknostic/pull/27),
+  [CI/tooling PR #46](https://github.com/roryeckel/hooknostic/pull/46), and
+  [monthly maintenance PR #57](https://github.com/roryeckel/hooknostic/pull/57)
+  have been reviewed and merged.
+- For #57, the [writer run](https://github.com/roryeckel/hooknostic/actions/runs/36890629447)
+  logged `committed example artifacts`. The resulting commit triggered
+  [CI](https://github.com/roryeckel/hooknostic/actions/runs/36890668345): readiness,
+  the full matrix, dependency extraction, and the example drift gates all passed.
+  The [follow-up writer](https://github.com/roryeckel/hooknostic/actions/runs/36890784737)
+  logged `no changes`.
+- [Maintenance PR #19](https://github.com/roryeckel/hooknostic/pull/19) records a
+  Renovate force-push at 2026-09-24 03:13:41 UTC, replacing the artifact-refresh
+  head `393c1b9` with rebased bot commit `a069714`. The
+  [new writer](https://github.com/roryeckel/hooknostic/actions/runs/35950644695)
+  committed refreshed artifacts, and its
+  [follow-up](https://github.com/roryeckel/hooknostic/actions/runs/35950735936)
+  logged `no changes`. This verifies that the configured ignored author permits
+  Renovate to rebase after a refresh.
+- An earlier [queued writer](https://github.com/roryeckel/hooknostic/actions/runs/35943844404)
+  logged `stale head or closed PR` at 2026-09-24 01:49:11 UTC. The
+  lock-maintenance branch had advanced and #19 remained open until 03:53:17 UTC.
+  The hosted skip path has therefore been observed; the existing regression
+  tests cover the additional stale-attempt and atomic-write race cases.
+- The dependency graph is available, vulnerability alerts are enabled, and the
+  `RENOVATE_ARTIFACTS_PAT` repository secret exists. The generated commit's author
+  email matches `gitIgnoredAuthors`.
+
+Remaining owner checks at that audit:
+
+1. Protect `master` with required checks, including **Renovate artifact
+   readiness** alongside the existing matrix. At audit time, the branch
+   protection API reported `Branch not protected`, and the applicable branch
+   rules API returned no rules. Human merging remains the configured policy,
+   but required-check enforcement is not yet installed.
+2. Confirm that the dedicated PAT has only the repository and permissions
+   specified above, with a recorded expiry and rotation owner. Secret metadata
+   and successful writer runs cannot establish its full permission scope or
+   lifecycle.
+3. Confirm that the hosted app's installation is restricted to the intended
+   repository. Dashboard and PR activity prove activation here, but do not prove
+   the installation's access to other repositories.
+
+### Hosted rollout completion: 2026-10-04
+
+Rollout is **complete with an owner-approved no-expiry exception**.
+
+- `master` now requires all 13 checks from the CI workflow, including
+  **Renovate artifact readiness**, with GitHub Actions as their required source.
+  Protection applies to administrators, requires the branch to be current, and
+  disallows force pushes and deletion. PRs require no additional approving
+  reviewer, so the single-maintainer review flow remains usable.
+- The Renovate installation settings show **Only select repositories**, with
+  this repository as the sole selection.
+- The owner confirmed that `HARNESS_WATCH_PAT` and `RENOVATE_ARTIFACTS_PAT`
+  contain the same fine-grained credential. Its settings grant only this
+  repository, metadata read access, and Contents/Pull requests read/write;
+  there are no user, Actions-write, or workflow-write permissions.
+- The credential has no expiration. The owner explicitly accepted that
+  exception on this date and owns rotation. Any future rotation must replace
+  both repository secrets together before either automation runs again.
+
+The preceding audit remains the historical record of the missing settings.
+Repository protection and token settings can change independently of these
+files; recheck them during later operational audits.
+
+### Routine update validation: 2026-10-04
+
+The first routine updates after protection was enabled exercised both artifact
+paths against the required CI matrix:
+
+- [CI/tooling PR #64](https://github.com/roryeckel/hooknostic/pull/64) passed
+  generation and readiness without changing generated bytes. The successful
+  [writer run](https://github.com/roryeckel/hooknostic/actions/runs/37181129143)
+  returned `no changes`; all 13 required checks passed before merge.
+- [npm PR #65](https://github.com/roryeckel/hooknostic/pull/65) changed the MCP
+  example dependency. Its initial readiness run rejected stale generated files
+  and skipped the remaining validation jobs. The
+  [writer run](https://github.com/roryeckel/hooknostic/actions/runs/37181471351)
+  committed regenerated examples in `22fe70a`; the successor head passed
+  readiness and the full required matrix. The
+  [next writer run](https://github.com/roryeckel/hooknostic/actions/runs/37181529998)
+  returned `no changes`, confirming that regeneration stopped after one commit.
+
+- [Lockfile-maintenance PR #67](https://github.com/roryeckel/hooknostic/pull/67)
+  refreshed three transitive tooling dependencies without changing requirements
+  or generated examples. All 13 required checks passed before merge.
+
+All three PRs were merged at their validated heads. These runs used the hosted
+Renovate app and the configured shared PAT; credential values were not read.
+
+### Compatibility trials: 2026-10-04
+
+The owner retained the declared `>=22.13.0` Node support range. These isolated
+Windows probes distinguish direct upgrades from compatibility work:
+
+| Candidate | Observed result | Decision |
+| --- | --- | --- |
+| TypeScript 7.0.2 with typescript-eslint 8.71.0 | Install succeeded with a peer warning; `pnpm lint` exited 2 because typescript-eslint rejects the missing TS 7 compiler API. `pnpm build` exited 1 because the CLI bundler resolves `typescript/bin/tsc`, which TS 7 no longer exports. | The direct bump was rejected. The subsequent side-by-side setup uses the native TS 7 compiler and the TS 6.0 API for linting, following Microsoft's migration guidance above. |
+| @types/node 26.6.4 with TypeScript 6.0.3 | The repository build and lint passed. A separate import of `convertProcessSignalToExitCode` from `node:util` compiled, but failed at runtime on Node 22.13.0 with a missing-export error. The same source correctly failed compilation with @types/node 22.20.5. | Retain Node 22 declarations so this newer API is rejected at compile time. Passing the current build alone does not establish compatibility for newly admitted APIs. |
+| npm-package-arg 14.0.0 | An isolated `npm install --engine-strict --ignore-scripts` under Node 22.13.0 exited 1 with `EBADENGINE`. | Retain 13.x while the current Node support range is promised. |
+| validate-npm-package-name 8.0.0 | The same isolated engine-strict installation under Node 22.13.0 exited 1 with `EBADENGINE`. | Retain 7.x while the current Node support range is promised. |
+
+Both npm utility majors declare `^22.22.2 || ^24.15.0 || >=26.0.0` as their Node
+engine range. The runtime probe used the official Node 22.13.0 Windows archive
+verified against its published SHA-256 checksum. No unsupported package was
+installed by bypassing engine enforcement, and no public engine declaration was
+changed. The initial compiler and type probes used temporary worktrees, not product
+source changes.
+
+References: [TypeScript's side-by-side compiler guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0),
+[typescript-eslint's supported versions](https://typescript-eslint.io/users/dependency-versions/),
+[npm-package-arg 14 release](https://github.com/npm/npm-package-arg/releases/tag/v14.0.0),
+[validate-npm-package-name 8 release](https://github.com/npm/validate-npm-package-name/releases/tag/v8.0.0).

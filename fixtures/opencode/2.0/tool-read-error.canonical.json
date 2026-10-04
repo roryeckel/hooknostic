@@ -18,7 +18,13 @@
     "input": {
       "path": "definitely-missing-hooknostic.txt"
     },
-    "kind": "file.read"
+    "kind": "file.read",
+    "file": {
+      "paths": [
+        "definitely-missing-hooknostic.txt"
+      ],
+      "pathKey": "path"
+    }
   },
   "error": {
     "message": "File not found: definitely-missing-hooknostic.txt"

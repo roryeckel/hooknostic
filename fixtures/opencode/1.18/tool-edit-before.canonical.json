@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "tool.execute.before"
+  },
+  "session": {
+    "id": "ses_f19ff5c04ffeNb4FZ4N0evldzp",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7hrVx0\\opencode"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "edit",
+    "input": {
+      "filePath": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7hrVx0\\opencode\\seed.txt",
+      "oldString": "alpha",
+      "newString": "beta"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-7hrVx0\\opencode\\seed.txt"
+      ],
+      "pathKey": "filePath"
+    }
+  }
+}

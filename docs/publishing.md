@@ -1,10 +1,11 @@
 # Publishing & packaging
 
-Current status: **npm publication is intentionally deferred.** Nothing is on the
-npm registry; the GitHub repo is private, and `packages/{agent-plugin,sdk,cli}` carry
-`"private": true` as an executable never-publish guard. The release protocol --
-the three-stage pipeline, its gates, and every recovery path -- lives in
-[releases.md](./releases.md); this page keeps the packaging story.
+Current status: the repository is public, and v0.2.0 is the first public release.
+Its release PR removed the `"private": true` never-publish guard from
+`packages/{agent-plugin,sdk,cli}`; the owner publishes that first version from
+CI-built tarballs, and later versions publish through trusted publishing. The
+release protocol -- the three-stage pipeline, its gates, and every recovery path --
+lives in [releases.md](./releases.md); this page keeps the packaging story.
 
 ## Testing without publishing (the everyday flow)
 

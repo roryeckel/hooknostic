@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-export async function driveLifecycle({ executable, root, project, env, model }) {
+export async function driveLifecycle({ executable, root, project, env, model, remote }) {
   const server = spawn(executable, ["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"], {
     cwd: project,
     env: { ...env, OPENCODE_SERVER_PASSWORD: "hooknostic-local", HOOKNOSTIC_PLAYBACK_EFFECTS: env.HKN_PROBE_EFFECT === "sessions-deny" ? "permission-deny" : env.HKN_PROBE_EFFECT === "stop" ? "prevent-stop-once,notify" : "context-add" },
@@ -57,7 +57,7 @@ export async function driveLifecycle({ executable, root, project, env, model }) 
       return;
     }
     if (env.HKN_PROBE_EFFECT.endsWith("-oauth")) {
-      await (await import("./oauth-audit.mjs")).auditOAuth({ api, wait, records, model, project, root });
+      await (await import("./oauth-audit.mjs")).auditOAuth({ api, wait, records, model, remote, project, root });
       return;
     }
     const sessions = [];

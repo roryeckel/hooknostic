@@ -13,7 +13,7 @@ import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
 import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HookEventName } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 const RUNTIME_POLICY = {
@@ -33,6 +33,7 @@ export interface PlaybackBuild {
   runtimePath: string;
   tracePath: string;
   events: HookEventName[];
+  fields: readonly EventFieldId[];
 }
 
 export type ModelProtocol = "anthropic-messages" | "openai-responses" | "openai-chat";
@@ -67,6 +68,12 @@ export interface PlaybackTargetOverride {
   version?: string;
   /** Written into every trace line, to tell apart copies sharing one trace file. */
   label?: string;
+  /**
+   * Give the tool.before hook `match: { kind: "shell" }`, so the generated
+   * native matcher (where the adapter emits one) is part of what the drive
+   * exercises. The default hook matches every tool and emits no matcher.
+   */
+  shellMatch?: boolean;
 }
 
 function targetFor(adapter: HarnessAdapter, output: string, override: PlaybackTargetOverride = {}) {
@@ -137,7 +144,9 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
 function playbackPluginSource(
   events: readonly HookEventName[],
   contextAdd: ReadonlySet<HookEventName>,
+  fields: readonly EventFieldId[],
   label?: string,
+  shellMatch = false,
 ): string {
   const definitions = events.map((event) => {
     const capabilities = [
@@ -167,6 +176,10 @@ function playbackPluginSource(
       // declared-but-unresolved cell would produce unasserted dispatch noise.
       contextAdd.has(event) ? `"${event}.context.add": "optional"` : undefined,
     ].filter(Boolean);
+    // ADR-0027: declare only fields this target rates. Pi observes these
+    // events without claiming their optional turn id or last-message fields.
+    const eventFields = fields.filter((field) => field.startsWith(`${event}.`));
+    const turnFields = eventFields.length > 0 ? `fields: ${JSON.stringify(eventFields)},\n      ` : "";
     const capabilityBlock =
       capabilities.length > 0
         ? `capabilities: {
@@ -229,15 +242,17 @@ function playbackPluginSource(
 
     return `
     hook(${JSON.stringify(event)}, {
-      id: ${JSON.stringify(`playback-${event}`)},
-      ${capabilityBlock}
+      id: ${JSON.stringify(`playback-${event}`)},${shellMatch && event === "tool.before" ? `\n      match: { kind: "shell" },` : ""}
+      ${turnFields}${capabilityBlock}
       async run(event) {
         appendFileSync(tracePath, JSON.stringify({
           event: event.event,
           nativeEvent: event.harness.nativeEvent,
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
-          toolNativeName: event.tool?.nativeName,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
+          toolNativeName: event.tool?.nativeName,
+          lastMessage: event.lastMessage,
+          turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
       },
     })`;
@@ -284,10 +299,22 @@ export async function buildPlaybackArtifact(
 
   const events = observedEvents(adapter);
   const contextAdd = contextAddEvents(adapter);
+  const target = targetFor(adapter, artifactDir, override);
+  const resolution = adapter.capabilities(target);
+  const fields = (
+    ["prompt.before.correlation.turnId", "turn.stop.lastMessage", "turn.stop.correlation.turnId"] as const
+  ).filter((field) => {
+    const level = resolution.fields?.[field]?.level;
+    return level !== undefined && level !== "unsupported";
+  });
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label), "utf8");
+  await writeFile(
+    entryPath,
+    playbackPluginSource(events, contextAdd, fields, override.label, override.shellMatch),
+    "utf8",
+  );
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared
@@ -296,41 +323,47 @@ export async function buildPlaybackArtifact(
   // resolution.
   const contextCapabilityFor = (event: HookEventName): string | undefined =>
     contextAdd.has(event) ? `${event}.context.add` : undefined;
-  const hooks = events.map((event) =>
-    hook(event, {
+  // `event` spans the whole union here, so no single typed capability map fits
+  // `hook()`; the full-id declarations go straight onto the erased definition,
+  // which is the form hook() itself produces.
+  const hooks = events.map((event) => {
+    const definition = hook(event, {
       id: `playback-${event}`,
-      ...((): { capabilities: Record<CapabilityId, "optional"> } | Record<string, never> => {
-        const declared: Partial<Record<CapabilityId, "optional">> = {};
-        if (event === "tool.before") {
-          declared["tool.before.block"] = "optional" as const;
-          declared["tool.before.input.replace"] = "optional" as const;
-          declared["tool.before.requestApproval"] = "optional" as const;
-        }
-        if (event === "tool.after") {
-          declared["tool.after.blockContinuation"] = "optional" as const;
-          declared["tool.after.output.replace"] = "optional" as const;
-        }
-        if (event === "permission.request") {
-          declared["permission.request.block"] = "optional" as const;
-        }
-        if (event === "prompt.before") {
-          declared["prompt.before.block"] = "optional" as const;
-        }
-        if (event === "agent.stop") {
-          declared["agent.stop.prevent"] = "optional" as const;
-          declared["agent.stop.notify"] = "optional" as const;
-        }
-        if (event === "turn.stop") {
-          declared["turn.stop.prevent"] = "optional" as const;
-          declared["turn.stop.notify"] = "optional" as const;
-        }
-        const context = contextCapabilityFor(event);
-        if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
-        return Object.keys(declared).length > 0 ? { capabilities: declared as Record<CapabilityId, "optional"> } : {};
-      })(),
+      ...(override.shellMatch && event === "tool.before" ? { match: { kind: "shell" as const } } : {}),
       async run() {},
-    }),
-  );
+    });
+    definition.fields = fields.filter((field) => field.startsWith(`${event}.`));
+    definition.capabilities = ((): Partial<Record<CapabilityId, "optional">> => {
+      const declared: Partial<Record<CapabilityId, "optional">> = {};
+      if (event === "tool.before") {
+        declared["tool.before.block"] = "optional" as const;
+        declared["tool.before.input.replace"] = "optional" as const;
+        declared["tool.before.requestApproval"] = "optional" as const;
+      }
+      if (event === "tool.after") {
+        declared["tool.after.blockContinuation"] = "optional" as const;
+        declared["tool.after.output.replace"] = "optional" as const;
+      }
+      if (event === "permission.request") {
+        declared["permission.request.block"] = "optional" as const;
+      }
+      if (event === "prompt.before") {
+        declared["prompt.before.block"] = "optional" as const;
+      }
+      if (event === "agent.stop") {
+        declared["agent.stop.prevent"] = "optional" as const;
+        declared["agent.stop.notify"] = "optional" as const;
+      }
+      if (event === "turn.stop") {
+        declared["turn.stop.prevent"] = "optional" as const;
+        declared["turn.stop.notify"] = "optional" as const;
+      }
+      const context = contextCapabilityFor(event);
+      if (context !== undefined) declared[context as CapabilityId] = "optional" as const;
+      return declared;
+    })();
+    return definition;
+  });
   const { ir, diagnostics } = buildPluginIR(definePlugin({ name: "harness-playback", version: "0.0.0", hooks }));
   if (ir === undefined) {
     throw new Error(
@@ -338,8 +371,6 @@ export async function buildPlaybackArtifact(
     );
   }
 
-  const target = targetFor(adapter, artifactDir, override);
-  const resolution = adapter.capabilities(target);
   const capabilities = Object.fromEntries(
     Object.entries(resolution.matrix ?? {}).map(([id, entry]) => [id, entry.level]),
   );
@@ -400,6 +431,7 @@ export async function buildPlaybackArtifact(
     runtimePath: join(artifactDir, prefix, runtime.path),
     tracePath,
     events,
+    fields,
     ...(override.project ? { project: true } : {}),
   };
 }
@@ -604,15 +636,71 @@ function requestTools(request: Record<string, unknown>): Record<string, unknown>
   return [];
 }
 
+/**
+ * The tools a model request advertised: name, wire type, and the argument keys
+ * its schema declares. Capture drives read this from a discovery turn to script
+ * calls against the harness's own live schemas instead of remembered ones.
+ */
+export function describeTools(
+  request: Record<string, unknown>,
+): { name: string; type?: string; namespace?: string; properties: string[] }[] {
+  return requestTools(request).flatMap((tool) => {
+    const name = toolName(tool);
+    if (name === undefined) return [];
+    const schema = jsonSchemaForTool(tool);
+    const properties =
+      schema["properties"] !== null && typeof schema["properties"] === "object"
+        ? Object.keys(schema["properties"] as object)
+        : [];
+    return [
+      {
+        name,
+        ...(typeof tool["type"] === "string" ? { type: tool["type"] } : {}),
+        ...(tool["namespace"] !== undefined ? { namespace: String(tool["namespace"]) } : {}),
+        properties,
+      },
+    ];
+  });
+}
+
+function scriptedNodeScript(scenario: PlaybackScenario, marker: string): string {
+  let script: string;
+  if (scenario === "rewrite") {
+    script = `require('node:fs').writeFileSync('${marker}','hooknostic-original')`;
+  } else if (scenario === "block") {
+    script = `require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')`;
+  } else if (scenario === "continuation") {
+    script = `process.stdout.write('hooknostic-block-continuation')`;
+  } else {
+    script = "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
+  }
+  if (process.env["HOOKNOSTIC_PLAYBACK_FILL"] !== undefined) {
+    // Compaction drive: the command emits a huge stdout payload on top of the
+    // marker write so each tool result fills the context window and forces the
+    // harness to compact. The fill marker in the output lets the test assert
+    // the growth reached the model side.
+    script += `;process.stdout.write(process.env['HOOKNOSTIC_PLAYBACK_FILL'])`;
+  }
+  return script;
+}
+
+function scriptedShellCommand(scenario: PlaybackScenario, marker: string): string {
+  return `node -e "${scriptedNodeScript(scenario, marker)}"`;
+}
+
 export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
   marker = "hooknostic-tool.txt",
   preferredTool?: string,
+  explicitArguments?: Record<string, unknown>,
 ): { name: string; namespace?: string; arguments: string } {
   const tools = requestTools(request);
+  // Exact name first: a bare suffix match would resolve `Edit` to whichever of
+  // `Edit`, `MultiEdit` or `NotebookEdit` the harness happened to list first.
   const tool = preferredTool
-    ? tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool))
+    ? (tools.find((candidate) => toolName(candidate) === preferredTool) ??
+      tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool)))
     : tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
   if (tool === undefined) {
     throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
@@ -636,6 +724,9 @@ export function scriptedTool(
           namespace: String(tool["namespace"]),
         }
       : { name };
+  // A capture script names the exact arguments; the harness's own validation
+  // then decides whether the call reaches its hooks at all.
+  if (explicitArguments !== undefined) return { ...namespaceEmission, arguments: JSON.stringify(explicitArguments) };
   const schema = jsonSchemaForTool(tool);
   const properties =
     schema["properties"] !== null && typeof schema["properties"] === "object"
@@ -670,25 +761,7 @@ export function scriptedTool(
     // fixture tool).
     return { ...namespaceEmission, arguments: JSON.stringify({}) };
   }
-  let script: string;
-  if (scenario === "rewrite") {
-    script = `require('node:fs').writeFileSync('${marker}','hooknostic-original')`;
-  } else if (scenario === "block") {
-    script = `require('node:fs').writeFileSync('hooknostic-blocked.txt','unexpected-execution')`;
-  } else if (scenario === "continuation") {
-    script = `process.stdout.write('hooknostic-block-continuation')`;
-  } else {
-    script = "process.stderr.write('hooknostic-intentional-failure');process.exit(17)";
-  }
-  if (process.env["HOOKNOSTIC_PLAYBACK_FILL"] !== undefined) {
-    // Compaction drive: the command emits a huge stdout payload on top of the
-    // marker write so each tool result fills the context window and forces the
-    // harness to compact. The fill marker in the output lets the test assert
-    // the growth reached the model side.
-    const fill = "hooknostic-fill ".repeat(6_000);
-    script += `;process.stdout.write(process.env['HOOKNOSTIC_PLAYBACK_FILL'])`;
-    void fill;
-  }
+  const script = scriptedNodeScript(scenario, marker);
   const command = `node -e "${script}"`;
   const value = properties[key]?.["type"] === "array" ? ["node", "-e", script] : command;
   // Emit `description` when the tool schema declares one (Claude's Bash does;
@@ -726,19 +799,47 @@ function urlPathToModels(urlPath: string): boolean {
 
 /**
  * What the scripted model does on one agent turn. `tool` emits one tool call
- * (the harness's shell tool by default, or `toolName` â€” e.g. the MCP fixture
- * tool â€” when set), `text` completes the conversation with plain text.
+ * (the harness's shell tool by default, or `toolName` — e.g. the MCP fixture
+ * tool — when set), `text` completes the conversation with plain text, and
+ * `code` emits one Codex Code Mode `exec` custom tool call whose JavaScript
+ * calls the nested `tools.exec_command` (OpenAI Responses only).
  */
 export interface TurnAction {
-  kind: "tool" | "text";
-  /** The disposition of the emitted tool call; only for `kind: "tool"`. */
+  kind: "tool" | "text" | "code";
+  /** The disposition of the emitted tool call; only for `kind: "tool"` / `"code"`. */
   disposition?: PlaybackScenario;
-  /** Marker filename the tool script writes; only for `kind: "tool"`. */
+  /** Marker filename the tool script writes; only for `kind: "tool"` / `"code"`. */
   marker?: string;
   /** Exact tool name to call (defaults to the first shell-like tool declared). */
   toolName?: string;
+  /** Exact JSON arguments for the call, replacing the shell-probe builder. */
+  arguments?: Record<string, unknown>;
+  /**
+   * Raw input for a freeform (grammar) tool such as Codex's `apply_patch`,
+   * emitted as a Responses `custom_tool_call`. `openai-responses` only.
+   */
+  freeformInput?: string;
   /** Text emitted for `kind: "text"`. */
   text?: string;
+  /** Extra nested `exec_command` arguments beside `cmd`; only for `kind: "code"`. */
+  codeArgs?: Record<string, unknown>;
+}
+
+/**
+ * The Code Mode `exec` source for one scripted nested shell call. The shape
+ * copies the live gpt-5.6-luna emission recorded in
+ * `.capture/codex-code-mode/README.md` (`await tools.exec_command({cmd, ...})`
+ * then `text(r.output)`); under `code_mode_only` the nested `exec_command` is
+ * not declared in the request's `tools`, so there is no schema to read the key
+ * from.
+ */
+export function scriptedCodeModeSource(
+  scenario: PlaybackScenario,
+  marker = "hooknostic-tool.txt",
+  codeArgs: Record<string, unknown> = {},
+): string {
+  const args = { cmd: scriptedShellCommand(scenario, marker), ...codeArgs };
+  return `const r = await tools.exec_command(${JSON.stringify(args)});\ntext(r.output);\n`;
 }
 
 function anthropicTurn(
@@ -759,7 +860,13 @@ function anthropicTurn(
   };
   const events: unknown[] = [{ type: "message_start", message }];
   if (action.kind === "tool") {
-    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
+    const tool = scriptedTool(
+      request,
+      action.disposition ?? "rewrite",
+      action.marker,
+      action.toolName,
+      action.arguments,
+    );
     events.push(
       {
         type: "content_block_start",
@@ -810,8 +917,63 @@ function responsesTurn(
 ): void {
   const id = `resp_playback_${turn}`;
   const events: unknown[] = [{ type: "response.created", response: { id } }];
-  if (action.kind === "tool") {
-    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
+  if (action.kind === "code") {
+    // Code Mode's `exec` is a Responses freeform (custom) tool, so the call is
+    // a `custom_tool_call` item carrying raw JavaScript in `input`, streamed
+    // through `response.custom_tool_call_input.delta` -- the item shape the
+    // live gpt-5.6-luna rollout recorded (.capture/codex-code-mode).
+    if (!requestTools(request).some((tool) => toolName(tool) === "exec" && tool["type"] === "custom")) {
+      throw new Error(`playback request advertised no Code Mode exec tool: ${JSON.stringify(requestTools(request))}`);
+    }
+    const input = scriptedCodeModeSource(action.disposition ?? "rewrite", action.marker, action.codeArgs);
+    const item = {
+      id: "ctc_playback",
+      call_id: "call_playback",
+      type: "custom_tool_call",
+      name: "exec",
+      input,
+      status: "completed",
+    };
+    events.push(
+      { type: "response.output_item.added", output_index: 0, item: { ...item, input: "", status: "in_progress" } },
+      {
+        type: "response.custom_tool_call_input.delta",
+        item_id: item.id,
+        call_id: item.call_id,
+        output_index: 0,
+        delta: input,
+      },
+      { type: "response.output_item.done", output_index: 0, item },
+    );
+  } else if (action.kind === "tool" && action.freeformInput !== undefined) {
+    // A grammar tool takes raw text, not JSON arguments: the Responses wire
+    // carries it as a custom_tool_call whose `input` is the text itself.
+    const name = action.toolName ?? "apply_patch";
+    if (!requestTools(request).some((candidate) => toolName(candidate) === name)) {
+      throw new Error(`playback request exposed no freeform tool named ${name}`);
+    }
+    const item = {
+      id: `ctc_playback_${turn}`,
+      call_id: `call_playback_${turn}`,
+      type: "custom_tool_call",
+      name,
+      input: action.freeformInput,
+      status: "completed",
+    };
+    events.push(
+      { type: "response.output_item.added", output_index: 0, item: { ...item, input: "" } },
+      { type: "response.custom_tool_call_input.delta", item_id: item.id, output_index: 0, delta: item.input },
+      { type: "response.custom_tool_call_input.done", item_id: item.id, output_index: 0, input: item.input },
+      { type: "response.output_item.done", output_index: 0, item },
+    );
+  } else if (action.kind === "tool") {
+    const tool = scriptedTool(
+      request,
+      action.disposition ?? "rewrite",
+      action.marker,
+      action.toolName,
+      action.arguments,
+    );
     const item = {
       id: "fc_playback",
       call_id: "call_playback",
@@ -885,7 +1047,13 @@ function chatTurn(response: ServerResponse, request: Record<string, unknown>, tu
   };
   const events: unknown[] = [];
   if (action.kind === "tool") {
-    const tool = scriptedTool(request, action.disposition ?? "rewrite", action.marker, action.toolName);
+    const tool = scriptedTool(
+      request,
+      action.disposition ?? "rewrite",
+      action.marker,
+      action.toolName,
+      action.arguments,
+    );
     events.push(
       {
         ...base,
@@ -944,6 +1112,58 @@ function chatTurn(response: ServerResponse, request: Record<string, unknown>, tu
  */
 export type ScenarioScript = readonly TurnAction[];
 
+/**
+ * The playback model's ModelInfo struct, with `overrides` merged over it.
+ *
+ * The default advertises no Code Mode: `tool_mode: "unified"` is not a Codex
+ * ToolMode, which codex-rs deserializes as omitted (Direct unless a feature
+ * flag says otherwise). Codex never refreshes `/models` for this
+ * unauthenticated custom provider, so an override reaches it only through a
+ * static `model_catalog_json` built from this struct -- a Code Mode drive
+ * passes `tool_mode: "code_mode_only"`, the value the real gpt-5.6-luna catalog
+ * entry carries (.capture/codex-code-mode).
+ */
+export function playbackModelInfo(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    slug: "hooknostic-playback",
+    display_name: "Hooknostic Playback",
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [
+      { effort: "minimal", description: "fastest" },
+      { effort: "low", description: "low" },
+      { effort: "medium", description: "default" },
+      { effort: "high", description: "deepest" },
+    ],
+    shell_type: "default",
+    visibility: "list",
+    supported_in_api: true,
+    priority: 1,
+    supports_reasoning_summary_parameter: false,
+    default_reasoning_summary: "none",
+    support_verbosity: false,
+    default_verbosity: "medium",
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text",
+    truncation_policy: { mode: "tokens", limit: 30_000 },
+    supports_image_detail_original: false,
+    max_context_window_tokens: 32_768,
+    auto_compact_token_limit: 24_576,
+    effective_context_window_percent: 100,
+    input_modalities: ["text"],
+    experimental_supported_tools: [],
+    base_instructions: "You are a playback model for hooknostic tests.",
+    supports_search_tool: false,
+    use_responses_lite: false,
+    tool_mode: "unified",
+    multi_agent_reasoning_effort: "medium",
+    context_window: 32_768,
+    max_output_tokens: 4_096,
+    supports_parallel_tool_calls: false,
+    supports_reasoning_summaries: false,
+    ...overrides,
+  };
+}
+
 export async function startModelPlayback(
   protocol: ModelProtocol,
   scenario: PlaybackScenario = "rewrite",
@@ -972,43 +1192,7 @@ export async function startModelPlayback(
       const urlPath = request.url?.split("?")[0] ?? "";
       if (urlPathToModels(urlPath)) {
         response.writeHead(200, { "content-type": "application/json" });
-        const modelInfo = {
-          slug: "hooknostic-playback",
-          display_name: "Hooknostic Playback",
-          default_reasoning_level: "medium",
-          supported_reasoning_levels: [
-            { effort: "minimal", description: "fastest" },
-            { effort: "low", description: "low" },
-            { effort: "medium", description: "default" },
-            { effort: "high", description: "deepest" },
-          ],
-          shell_type: "default",
-          visibility: "list",
-          supported_in_api: true,
-          priority: 1,
-          supports_reasoning_summary_parameter: false,
-          default_reasoning_summary: "none",
-          support_verbosity: false,
-          default_verbosity: "medium",
-          apply_patch_tool_type: "freeform",
-          web_search_tool_type: "text",
-          truncation_policy: { mode: "tokens", limit: 30_000 },
-          supports_image_detail_original: false,
-          max_context_window_tokens: 32_768,
-          auto_compact_token_limit: 24_576,
-          effective_context_window_percent: 100,
-          input_modalities: ["text"],
-          experimental_supported_tools: [],
-          base_instructions: "You are a playback model for hooknostic tests.",
-          supports_search_tool: false,
-          use_responses_lite: false,
-          tool_mode: "unified",
-          multi_agent_reasoning_effort: "medium",
-          context_window: 32_768,
-          max_output_tokens: 4_096,
-          supports_parallel_tool_calls: false,
-          supports_reasoning_summaries: false,
-        };
+        const modelInfo = playbackModelInfo();
         response.end(
           JSON.stringify({
             object: "list",
@@ -1036,6 +1220,9 @@ export async function startModelPlayback(
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
         const action = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
+        if (action.kind === "code" && protocol !== "openai-responses") {
+          throw new Error(`Code Mode turns are only scripted for openai-responses, not ${protocol}`);
+        }
         if (protocol === "anthropic-messages") {
           anthropicTurn(response, parsed, turn, action);
         } else if (protocol === "openai-responses") {

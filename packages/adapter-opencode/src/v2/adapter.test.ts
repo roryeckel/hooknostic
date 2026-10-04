@@ -1,10 +1,10 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR, resolveTargetAdapter } from "@hooknostic/core";
-import { definePlugin, hook, notify, preventStop, replaceInput } from "@hooknostic/sdk";
+import { block, definePlugin, hook, notify, preventStop, replaceInput } from "@hooknostic/sdk";
 import { describeAdapterContract } from "@hooknostic/testkit";
 
 import { opencodeHarness } from "../harness.js";
@@ -63,6 +63,43 @@ describe("OpenCode family selection", () => {
     );
     expect(result.targets.modern?.ok).toBe(true);
     expect(result.targets.legacy?.ok).toBe(false);
+  });
+});
+
+describe("field acceptance across families (ADR-0027)", () => {
+  // tool.error.error.message is exact on v2 and never produced on v1, so an
+  // acceptance of it names a real shortfall of the opencode adapter -- in
+  // either scope, whichever family the target selects.
+  const plugin = buildPluginIR(definePlugin({ name: "p", hooks: [hook("prompt.before", { id: "p", run() {} })] })).ir!;
+  const verdict = (accepted: string, scope: "global" | "target") => {
+    const accept = [accepted] as `${string}:tool.error.error.message`[];
+    const result = analyzeCapabilities(
+      plugin,
+      {
+        entry: "hooks.ts",
+        ...(scope === "global" ? { compatibility: { accept } } : {}),
+        targets: {
+          modern: {
+            adapter: "opencode",
+            version: opencodeV2Harness.recommendedRange,
+            delivery: "project",
+            output: "v2",
+            ...(scope === "target" ? { compatibility: { accept } } : {}),
+          },
+        },
+      },
+      { opencode: facade },
+    );
+    return result.diagnostics.filter((d) => d.code === "HN501").length === 0;
+  };
+  it.each([
+    ["opencode:tool.error.error.message", true],
+    ["opencode:turn.stop.correlation.parentAgentId", true],
+    ["opencode:tool.before.correlation.toolCallId", false],
+    ["claude:turn.stop.lastMessage", false],
+  ])("gives %s the same verdict globally and on the target", (accepted, valid) => {
+    expect(verdict(accepted, "global")).toBe(valid);
+    expect(verdict(accepted, "target")).toBe(valid);
   });
 });
 
@@ -167,12 +204,19 @@ describe("v2 captured boundary", () => {
     it(file, () => {
       const raw = JSON.parse(readFileSync(fixtures + file, "utf8"));
       const canonical = JSON.parse(readFileSync(fixtures + file.replace(".input.", ".canonical."), "utf8"));
-      const decoded = decodeOpenCodeV2(raw, {
-        targetId: target.id,
-        harnessVersion: opencodeV2Harness.referenceVersion,
-      });
+      // What the shim learned beside the callback, if the case needs any (ADR-0027).
+      const enrichment = existsSync(fixtures + file.replace(".input.", ".enrichment."))
+        ? JSON.parse(readFileSync(fixtures + file.replace(".input.", ".enrichment."), "utf8"))
+        : {};
+      const original = structuredClone(raw);
+      const decoded = decodeOpenCodeV2(
+        raw,
+        { targetId: target.id, harnessVersion: opencodeV2Harness.referenceVersion },
+        enrichment,
+      );
       expect(decoded).toEqual({ ...canonical, raw });
       expect(decoded.raw).toBe(raw);
+      expect(decoded.raw).toEqual(original);
     });
   }
   describe("turn.stop posting", () => {
@@ -390,5 +434,175 @@ describe("v2 captured boundary", () => {
     expect(registered).toEqual(["prompt"]);
     await cleanup();
     expect(disposed).toEqual(["prompt"]);
+  });
+});
+
+describe("v2 turn.stop fields (ADR-0027)", () => {
+  // One captured 2.0.18 session in capture order (.capture/opencode-v2 observe):
+  // the prompt hook, then the subscription's execution, step and text events.
+  const sequence = readFileSync(fixtures + "turn-fields/events.jsonl", "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { hook: string; directory: string; event: Record<string, unknown> });
+  const prompt = sequence.find((row) => row.hook === "prompt")!.event;
+
+  async function replay(
+    rows: typeof sequence,
+    fields?: ("lastMessage" | "correlation.turnId")[],
+    options: { blockPrompt?: boolean } = {},
+  ) {
+    const seen: { lastMessage?: string; turnId?: string }[] = [];
+    const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+    const plugin = definePlugin({
+      name: "fields",
+      hooks: [
+        hook("turn.stop", {
+          id: "summarize",
+          ...(fields ? { fields } : {}),
+          run(event) {
+            seen.push({
+              ...(event.lastMessage !== undefined ? { lastMessage: event.lastMessage } : {}),
+              ...(event.correlation.turnId !== undefined ? { turnId: event.correlation.turnId } : {}),
+            });
+          },
+        }),
+        ...(options.blockPrompt
+          ? [
+              hook("prompt.before", {
+                id: "deny",
+                capabilities: { block: "required" },
+                run: () => block("no"),
+              }),
+            ]
+          : []),
+      ],
+    });
+    const cleanup = await setupOpenCodeV2(
+      plugin,
+      {
+        capabilities: {
+          "turn.stop.observe": "approximate",
+          "prompt.before.observe": "exact",
+          "prompt.before.block": "exact",
+        },
+      },
+      {
+        location: { directory: sequence[0]!.directory },
+        session: {
+          hook: async (name, callback) => {
+            callbacks[name] = callback;
+            return { dispose: async () => {} };
+          },
+        },
+        tool: { hook: vi.fn() },
+        event: {
+          async *subscribe() {
+            for (const row of rows) {
+              if (row.hook === "prompt") await callbacks["prompt"]!(structuredClone(row.event)).catch(() => undefined);
+              else yield structuredClone(row.event);
+            }
+          },
+        },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await cleanup();
+    return seen;
+  }
+
+  it("reports the execution's last message and the prompt that started it", async () => {
+    expect(await replay(sequence, ["lastMessage", "correlation.turnId"])).toEqual([
+      { lastMessage: "playback complete", turnId: prompt["messageID"] as string },
+    ]);
+  });
+
+  it("keeps the buffered execution out of event.raw", async () => {
+    const raws: unknown[] = [];
+    const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+    const directory = sequence[0]!.directory;
+    const cleanup = await setupOpenCodeV2(
+      definePlugin({
+        name: "raw",
+        hooks: [
+          hook("turn.stop", {
+            id: "declares",
+            fields: ["lastMessage", "correlation.turnId"],
+            run: (e) => void raws.push(e.raw),
+          }),
+          hook("turn.stop", { id: "silent", run: (e) => void raws.push(e.raw) }),
+        ],
+      }),
+      { capabilities: { "turn.stop.observe": "approximate" } },
+      {
+        location: { directory },
+        session: { hook: async (name, callback) => ((callbacks[name] = callback), { dispose: async () => {} }) },
+        tool: { hook: vi.fn() },
+        event: {
+          async *subscribe() {
+            for (const row of sequence) {
+              if (row.hook === "prompt") await callbacks["prompt"]!(structuredClone(row.event));
+              else yield structuredClone(row.event);
+            }
+          },
+        },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await cleanup();
+    const completion = sequence.find((row) => row.event["type"] === "session.execution.succeeded")!;
+    const received = { hook: "event", directory, event: completion.event };
+    expect(raws).toEqual([received, received]);
+    expect(JSON.stringify(raws)).not.toContain("playback complete");
+  });
+
+  it("never hands a prompt admitted during an execution to a later one", async () => {
+    // A prompt steered into (or queued behind) a running execution, then a
+    // synthetic continuation, which runs no prompt hook: the continuation must
+    // not report the steered prompt's id.
+    const started = sequence.find((row) => row.event["type"] === "session.execution.started")!;
+    const succeeded = sequence.find((row) => row.event["type"] === "session.execution.succeeded")!;
+    const steered = {
+      ...sequence.find((row) => row.hook === "prompt")!,
+      event: { ...prompt, messageID: "msg_steered" },
+    };
+    const rows = [...sequence.slice(0, sequence.indexOf(succeeded)), steered, succeeded, started, succeeded];
+    expect(await replay(rows, ["correlation.turnId"])).toEqual([{ turnId: prompt["messageID"] as string }, {}]);
+  });
+
+  it("buffers nothing no hook declared", async () => {
+    expect(await replay(sequence)).toEqual([{}]);
+    expect(await replay(sequence, ["correlation.turnId"])).toEqual([{ turnId: prompt["messageID"] as string }]);
+  });
+
+  it("never hands a blocked prompt's id to a later execution", async () => {
+    // A blocked prompt starts no execution, so whatever execution follows (here
+    // the captured one, replayed regardless) was started by something else.
+    expect(await replay(sequence, ["lastMessage", "correlation.turnId"], { blockPrompt: true })).toEqual([
+      { lastMessage: "playback complete" },
+    ]);
+  });
+
+  it("decodes only the last assistant message's segments, however the envelope was filled", () => {
+    const input = JSON.parse(readFileSync(fixtures + "execution-succeeded-with-turn.input.json", "utf8"));
+    const { execution } = JSON.parse(readFileSync(fixtures + "execution-succeeded-with-turn.enrichment.json", "utf8"));
+    execution.text.unshift({ assistantMessageID: "msg_earlier", ordinal: 0, text: "an earlier step" });
+    expect(decodeOpenCodeV2(input, { targetId: target.id }, { execution })).toMatchObject({
+      lastMessage: "playback complete",
+    });
+    execution.text = [];
+    expect(decodeOpenCodeV2(input, { targetId: target.id }, { execution })).not.toHaveProperty("lastMessage");
+  });
+
+  it("reports only the last assistant message's text, in ordinal order", async () => {
+    const texts = sequence.filter((row) => row.event["type"] === "session.text.ended");
+    const at = (row: (typeof sequence)[number], data: Record<string, unknown>) => ({
+      ...row,
+      event: { ...row.event, data: { ...(row.event["data"] as object), ...data } },
+    });
+    const earlier = at(texts[0]!, { assistantMessageID: "msg_earlier", text: "thinking out loud" });
+    const second = at(texts[0]!, { ordinal: 1, text: "second part" });
+    const index = sequence.indexOf(texts[0]!);
+    const rows = [...sequence.slice(0, index), earlier, second, ...sequence.slice(index)];
+    expect(await replay(rows, ["lastMessage"])).toEqual([{ lastMessage: "playback complete\nsecond part" }]);
   });
 });

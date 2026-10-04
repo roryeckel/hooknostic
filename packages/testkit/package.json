@@ -1,6 +1,6 @@
 {
   "name": "@hooknostic/testkit",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Hooknostic fixture loaders, fake adapters, and adapter contract-test helpers",
   "type": "module",

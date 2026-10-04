@@ -1,55 +1,51 @@
-# First public release
+# Skills name their own directory, and one-shot OpenCode runs keep their hooks
 
-Hooknostic compiles portable hooks, skills, and MCP servers into native coding-agent
-integrations. Agent Plugins 1.0 packages can be projected for Claude Code and Codex
-marketplaces and OpenCode package delivery. Repository maintainers can use direct sources
-with `init --local`, `sync`, and `verify`.
+0.4.0 adds a portable way for a skill to name the scripts it ships, and fixes a
+`turn.stop` hook being cut off when a one-shot `opencode run` exited.
 
-- Author portable TypeScript hooks and inspect exact, emulated, approximate, or unsupported behavior.
-- Keep the standard package source unchanged while adapters translate manifests, skills, MCP, and hooks.
-- Build combined or hookless packages; the combined example bundles its MCP server for installation without workspace dependencies.
-- Inspect component policies and accepted exceptions in diagnostics and build reports.
-- Test hook decisions with portable-event `dispatch`, and verify marketplace installation locally without model spend.
+- Write `${SKILL_DIR}` in a SKILL.md body to name the skill's own directory:
+  `node "${SKILL_DIR}/scripts/status.mjs"`. Claude Code's projection writes
+  `${CLAUDE_SKILL_DIR}`, which Claude expands to the absolute directory; Codex
+  and OpenCode get `.`, a path their skill instructions resolve against the
+  skill's directory. Package and project delivery alike, body only
+  ([ADR-0028](decisions/0028-skill-directory-token.md)).
+- A skill whose text keeps a reference its target shows the model as written,
+  such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}` anywhere, fails
+  the build as the `<adapter>:skill-reference-unexpanded` degradation (**HN101**).
+  Shell parameters such as `${HOME}` are left alone.
+- The OpenCode 1.x plugin now returns `dispose`, which the build measured in
+  [.capture/opencode-dispose](../.capture/opencode-dispose/README.md) awaits before a
+  one-shot `opencode run` exits. Earlier supported builds have not been verified
+  to call or await it, so they may still cut off in-flight hooks. When called,
+  it waits for the hooks still running, for up to
+  their timeouts plus one 10 s host round trip and never more than 15 s, so a
+  `turn.stop` hook dispatched at `session.idle` finishes instead of being killed.
 
-Start with the [README](../README.md), [marketplace walkthrough](tutorials/04-packaging-with-agent-plugins.md),
-or [repository integration](project-integration.md). Supported versions and evidence are
-listed in the generated table. macOS has unit/fixture coverage but no real-harness validation.
+## Migrating
 
-The initial owner bootstrap uses verified CI-built tarballs and has no npm provenance
-attestation. Subsequent trusted-publishing releases carry provenance; see [releases](releases.md).
+- A package with Claude-only text in a skill, such as `${CLAUDE_PLUGIN_ROOT}`,
+  now fails its Codex and OpenCode targets. Replace a skill-relative path with
+  `${SKILL_DIR}`, or accept the id you have handled:
+  `components.accept: ["codex:skill-reference-unexpanded"]`.
+- Project delivery reports degradations too: `target.project.degradations` in
+  the build report, under the same `components.onDegraded` and `accept`.
+- `projectSkillFiles` in `@hooknostic/core` takes the target's skill-text rules
+  as a fourth argument; adapter authors pass their own.
+- A one-shot `opencode run` on OpenCode 1.x can now take up to 15 s longer to
+  return while its hooks finish.
 
-## OpenCode v2 support
+## Limits
 
-The public adapter remains `opencode`. Your configured version range selects
-v1 or v2; the installed CLI does not override that choice. New configurations
-recommend v2, while explicit v1 targets retain their own implementation and
-validation. To build both, use two named targets with separate output directories.
-A range spanning both families is rejected with HN203.
+- On Codex and OpenCode the model still resolves `./...` against the skill's
+  directory. A command that must run from the project should be given the
+  project explicitly. Codex's guidance comes from its bundled models'
+  instructions; a model behind a custom provider may not have it.
+- A project skill that already sits at its destination is discovered in place
+  and cannot be rewritten; a `${SKILL_DIR}` in it is reported.
+- OpenCode 2.x: `run --standalone` terminates its private server without calling
+  plugin cleanup, so a hook still running when the run ends is lost. Through the
+  background service it completes there. Measured on Windows only.
 
-V2 supports portable hooks, skills, and stdio/Streamable HTTP MCP through
-project and package delivery. Coverage includes model context on ordinary,
-title, generation, and compaction requests over the captured HTTP provider
-paths, plus default MCP OAuth against a local test issuer.
-
-Support has explicit limits:
-
-- Session-start observation, typed tool-error observation, permission handling,
-  model context, and output conversion have approximate coverage. Plain custom
-  tool exceptions can bypass observation; permissions cover pending ask decisions.
-- Stop prevention and notification are approximate. Both post a synthetic
-  user-role message after a succeeded top-level execution; interrupts, model
-  failures and subagent children post nothing. A notice surfaces only when the
-  session next runs: there is no user-only notification channel. Legacy MCP SSE
-  remains unsupported.
-- A checkout nested inside another (a linked worktree in the main checkout)
-  runs its own generated hooks and MCP servers, and each session dispatches only
-  its own location's hooks.
-- MCP calls remain `kind: "other"`; `kind: "mcp"` guards do not cover them.
-  A captured native name can be guarded explicitly.
-- WebSocket and other provider paths, provider/custom OAuth, executed websearch,
-  and background or deeply nested subagents remain unverified. macOS has unit
-  and fixture coverage, but no real-harness playback evidence.
-
-See [OpenCode families](opencode-families.md) for migration instructions,
-evidence, and the supported alternatives. The support table below records each
-family's reference build separately; v1 evidence does not establish v2 support.
+Start with the [README](../README.md); [configuration](configuration.md) covers
+skills that run their own scripts, and [OpenCode families](opencode-families.md)
+covers one-shot runs.

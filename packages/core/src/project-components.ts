@@ -1,17 +1,56 @@
 import { realpath } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
-import type { ProjectComponents } from "@hooknostic/agent-plugin";
+import {
+  type AgentPluginDegradation,
+  type ProjectComponents,
+  projectSkillText,
+  SKILL_REFERENCE_UNEXPANDED,
+  type SkillTextTarget,
+  unexpandedSkillReferenceReason,
+} from "@hooknostic/agent-plugin";
 
 import { bundleMcpLauncher, type McpLauncherServer } from "./mcp-launcher.js";
 import type { ProjectIntegration } from "./project-files.js";
-export function projectSkillFiles(source: ProjectComponents, root: string, destination: string): ProjectIntegration {
+/**
+ * Copy each skill into the project's `destination` tree, writing the target's
+ * form of `${SKILL_DIR}` into its SKILL.md body (ADR-0028). A skill that
+ * already sits at its destination is discovered in place and left alone; its
+ * references are only reported. Each skill whose text still holds a reference
+ * the target shows as written is a `skill-reference-unexpanded` degradation.
+ * An undefined text policy preserves bytes when expansion is not yet captured.
+ */
+export function projectSkillFiles(
+  source: ProjectComponents,
+  root: string,
+  destination: string,
+  text: { target: SkillTextTarget; harness: string } | undefined,
+): ProjectIntegration {
   const relinquishFiles: string[] = [];
   const relinquishPrefixes: string[] = [];
   const unappliedModes: { skill: string; path: string }[] = [];
+  const degradations: AgentPluginDegradation[] = [];
   const files = source.skills.flatMap((skill) => {
     const path = `${destination}/${skill.name}`;
-    if (resolve(root, path) === resolve(skill.source)) {
+    const inPlace = resolve(root, path) === resolve(skill.source);
+    const manifest = skill.files.find((file) => file.path === "SKILL.md");
+    const projected =
+      manifest === undefined || text === undefined
+        ? undefined
+        : projectSkillText(manifest.contents, text.target, { rewrite: !inPlace });
+    if (text !== undefined && projected !== undefined && projected.unexpanded.length > 0) {
+      degradations.push({
+        id: SKILL_REFERENCE_UNEXPANDED,
+        component: "agent-plugin.skills",
+        name: skill.name,
+        path: `${path}/SKILL.md`,
+        reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, text.harness, {
+          inPlace,
+          ...(projected.inFrontmatter ? { inFrontmatter: true } : {}),
+        }),
+      });
+    }
+    if (inPlace) {
       relinquishPrefixes.push(path);
       // Derived rather than passed in: on both component routes 0755 is only
       // ever reached by declaration (ADR-0013 ignores the host bit), so a
@@ -23,7 +62,11 @@ export function projectSkillFiles(source: ProjectComponents, root: string, desti
       }
       return [];
     }
-    return skill.files.map((file) => ({ ...file, path: `${path}/${file.path}` }));
+    return skill.files.map((file) => ({
+      ...file,
+      path: `${path}/${file.path}`,
+      ...(file === manifest && projected?.contents !== undefined ? { contents: projected.contents } : {}),
+    }));
   });
   if (files.length)
     files.push({
@@ -37,6 +80,7 @@ export function projectSkillFiles(source: ProjectComponents, root: string, desti
     entries: [],
     guidance: [],
     ...(unappliedModes.length ? { unappliedModes } : {}),
+    ...(degradations.length ? { degradations } : {}),
     ...(relinquishFiles.length ? { relinquishFiles } : {}),
     ...(relinquishPrefixes.length ? { relinquishPrefixes } : {}),
   };

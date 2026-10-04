@@ -58,6 +58,22 @@ Tool events additionally classify the tool being invoked into a portable `kind`
 `mcp`, `other`) so a hook can say "match every shell command" without knowing that
 Claude calls it `Bash`. The native name stays available as `nativeName`.
 
+The *arguments* are not portable, so where a tool's shape has been captured the event
+also carries a normalized view of them: `tool.shell` (the command, whatever key the
+harness uses) and `tool.file` (every path a file tool targets, including the files a
+Codex patch touches). A view is absent when the shape is uncaptured; the raw
+`tool.input` is always there, and the hook decides whether to fail open or closed.
+([Decision 0007](decisions/0007-portable-shell-write-back.md),
+[Decision 0026](decisions/0026-normalized-file-view.md))
+
+Optional fields such as `turn.stop`'s `lastMessage` or `correlation.turnId` are rated
+per target like capabilities, because not every harness sends them: OpenCode's stop
+signal carries only a session id, so the adapter derives both. A hook lists the ones it
+reads, `fields: ["lastMessage", "correlation.turnId"]`, and a target that never produces
+one fails the build with HN108 unless you accept it. On an in-process target the
+declaration is also what asks the adapter to do that work.
+([Decision 0027](decisions/0027-event-field-fidelity.md))
+
 Deliberately, the vocabulary is small. A harness-specific event (worktree lifecycle,
 notifications, file watchers, …) only gets a normalized name once at least two
 harnesses share its meaning; until then it stays reachable through the raw payload.
@@ -81,7 +97,10 @@ do something:
 
 Returning nothing means "continue unchanged" — there is deliberately no `allow()`
 helper, because "explicitly allow" means subtly different (and sometimes
-permission-bypassing) things across harnesses.
+permission-bypassing) things across harnesses. A hook can also return a list —
+`[notify("lint failed"), preventStop("fix it")]` — which applies in order, exactly as
+if consecutive hooks had returned each effect; an effect that ends the dispatch must
+come last. ([Decision 0025](decisions/0025-effect-lists.md))
 
 ## 4. Capabilities: the honest map between the two
 
@@ -114,12 +133,14 @@ Your hook declares which capabilities it relies on, and how much:
 
 ```ts
 capabilities: {
-  "tool.before.block": "required",          // no block support → this target fails the build
-  "tool.before.input.replace": "optional",  // nice to have → feature-detect at runtime
+  block: "required",          // tool.before.block: no block support → this target fails the build
+  "input.replace": "optional", // tool.before.input.replace: nice to have → feature-detect at runtime
 }
 ```
 
-At runtime, `ctx.capabilities.has(...)` tells you whether an optional capability is
+Keys are relative to the hook's event; the full ids (`tool.before.block`) are accepted
+too, and they are what reports and diagnostics print. At runtime,
+`ctx.capabilities.has("input.replace")` tells you whether an optional capability is
 live on the executing target. (Returning an effect you didn't declare — or that the
 target can't support — is a runtime contract violation, HN401, not a silent no-op.)
 
@@ -186,10 +207,12 @@ context. ([Decision 0002](decisions/0002-invocation-stateless-contract.md))
 hook per lifecycle point and dispatches your handlers itself: sequentially, in the
 order you declared them; input/output replacements take effect immediately so later
 handlers see them; context additions and notifications accumulate; `block`,
-`requestApproval`, `preventStop`, and `blockContinuation` end the dispatch. Same
-rules on every harness.
+`requestApproval`, `preventStop`, and `blockContinuation` end the dispatch. A list
+returned by one hook applies in order under the same rules. Same rules on every
+harness.
 ([Decision 0003](decisions/0003-one-dispatcher-composition.md),
-[Decision 0005](decisions/0005-terminal-effects.md))
+[Decision 0005](decisions/0005-terminal-effects.md),
+[Decision 0025](decisions/0025-effect-lists.md))
 
 ## What Hooknostic is *not*
 

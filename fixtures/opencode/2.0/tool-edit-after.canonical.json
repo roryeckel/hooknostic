@@ -20,7 +20,13 @@
       "oldString": "hooknostic-before-edit",
       "newString": "hooknostic-after-edit"
     },
-    "kind": "file.edit"
+    "kind": "file.edit",
+    "file": {
+      "paths": [
+        "probe.txt"
+      ],
+      "pathKey": "path"
+    }
   },
   "output": [
     {

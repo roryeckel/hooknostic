@@ -12,8 +12,8 @@ and they need no stand-in for OpenCode's client. The reasoning is recorded in
 Using [`examples/basic`](../examples/basic/), whose hook blocks `git push --force`:
 
 ```jsonl
-{"event":"tool.before","session":{"id":"s1"},"tool":{"kind":"shell","nativeName":"Bash","input":{"command":"git push --force origin main"}}}
-{"event":"tool.before","session":{"id":"s1"},"tool":{"kind":"shell","nativeName":"Bash","input":{"command":"git status"}}}
+{"event":"tool.before","session":{"id":"s1"},"tool":{"nativeName":"Bash","input":{"command":"git push --force origin main"}}}
+{"event":"tool.before","session":{"id":"s1"},"tool":{"nativeName":"Bash","input":{"command":"git status"}}}
 ```
 
 ```sh
@@ -45,7 +45,10 @@ filled in for you:
 Each event's own fields are checked against its type in the SDK. A required one
 must be there: `prompt.before` needs a string `prompt`, `tool.error` an `error`
 object, and `agent.start` and `agent.stop` an `agent` object. An optional one,
-such as `lastMessage`, must have the declared type when present. A field the
+such as `lastMessage`, must have the declared type when present, and an optional
+field the target's decoder never produces is refused: a `turn.stop` with
+`correlation.parentAgentId`, say, which no adapter sets (ADR-0027). A field the
+target derives rather than receives, such as OpenCode's `lastMessage`, is accepted. A field the
 event does not declare is rejected, so a misspelling fails instead of being
 ignored.
 

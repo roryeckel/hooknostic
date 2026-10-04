@@ -1,7 +1,7 @@
-import type { CapabilityId, HooknosticConfig, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
-import { isCapabilityId, meetsMinimum, observeCapability } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HooknosticConfig, RequirementLevel, SupportLevel } from "@hooknostic/sdk";
+import { ALL_EVENT_FIELD_IDS, isCapabilityId, meetsMinimum, observeCapability } from "@hooknostic/sdk";
 
-import type { AdapterRegistry, CapabilityMatrix } from "./adapter.js";
+import type { AdapterRegistry, CapabilityMatrix, FieldMatrix, HarnessAdapter } from "./adapter.js";
 import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { hasFatal } from "./diagnostics.js";
@@ -18,6 +18,21 @@ export interface CapabilityResolution {
   rationale?: string;
 }
 
+/**
+ * A declared event field a target produces below exact (ADR-0027). Recorded
+ * whatever its severity, so the build report shows every accepted shortfall
+ * as well as every fatal one.
+ */
+export interface FieldShortfall {
+  /** Qualified as `<adapter>:<field id>`, the spelling `compatibility.accept` takes. */
+  id: string;
+  hookId: string;
+  field: EventFieldId;
+  support: SupportLevel;
+  accepted: boolean;
+  rationale?: string;
+}
+
 export interface TargetAnalysis {
   target: string;
   /** No fatal diagnostics for this target. */
@@ -26,6 +41,8 @@ export interface TargetAnalysis {
   requestedVersion: string;
   resolutions: CapabilityResolution[];
   counts: Record<SupportLevel, number>;
+  /** Declared fields below exact, in hook order (ADR-0027). */
+  fields: FieldShortfall[];
   diagnostics: Diagnostic[];
 }
 
@@ -78,6 +95,62 @@ function remediationBelowMinimum(observed: SupportLevel, targetId: string): stri
     '`onBelowMinimum: "warn"`, declare the capability optional and branch on ' +
     "`ctx.capabilities.has()`, or exclude this target from the hook."
   );
+}
+
+/**
+ * Every field id some profile of `adapter` rates below exact, across all of
+ * its version ranges and families: an acceptance may belong to a range the
+ * build does not cover yet (ADR-0022), so the whole adapter counts.
+ */
+function fieldsBelowExact(adapter: HarnessAdapter): Set<string> {
+  const below = new Set<string>();
+  for (const version of adapter.supportedHarnessVersions()) {
+    const resolved = adapter.capabilities({ id: adapter.id, version, delivery: "project", output: "." });
+    for (const profile of resolved.profilesUsed) {
+      for (const id of ALL_EVENT_FIELD_IDS) {
+        if (profile.fields?.[id]?.level !== "exact") below.add(id);
+      }
+    }
+  }
+  return below;
+}
+
+/**
+ * HN108 for one declared field on one target. Severity follows ADR-0027: a
+ * field the target never produces fails, a lower-fidelity one follows the
+ * capability floor, and an accepted one is information either way.
+ */
+function fieldDiagnostic(
+  shortfall: FieldShortfall,
+  event: Diagnostic["event"],
+  targetId: string,
+  policy: ReturnType<typeof effectiveCompatibility>,
+): Diagnostic {
+  const { support, field, accepted } = shortfall;
+  const meets = support !== "unsupported" && meetsMinimum(support, policy.minimum);
+  const severity = accepted || meets ? "info" : support === "unsupported" ? "error" : policy.onBelowMinimum;
+  const state =
+    support === "unsupported"
+      ? `is never produced on "${targetId}"`
+      : `is ${support} on "${targetId}"${meets ? "" : `, below the configured minimum fidelity "${policy.minimum}"`}`;
+  return {
+    code: "HN108",
+    severity,
+    hookId: shortfall.hookId,
+    ...(event !== undefined ? { event } : {}),
+    field,
+    target: targetId,
+    support,
+    ...(shortfall.rationale !== undefined ? { rationale: shortfall.rationale } : {}),
+    message: `hook "${shortfall.hookId}" reads "${field}", which ${state}${accepted ? `; accepted as ${shortfall.id}` : ""}.`,
+    ...(severity === "info"
+      ? {}
+      : {
+          remediation:
+            `handle its absence and accept it with \`compatibility.accept: [${JSON.stringify(shortfall.id)}]\`, ` +
+            "exclude this target from the hook, or stop reading the field.",
+        }),
+  };
 }
 
 /**
@@ -183,6 +256,9 @@ export function analyzeCapabilities(
       unsupported: 0,
     };
 
+    // The registered adapter, before a version family is selected: acceptances
+    // are validated against every family's profiles, as the global list is.
+    const registered = adapter;
     const policy = effectiveCompatibility(config, targetId);
     const spec = targetSpecFromConfig(targetId, targetConfig);
     const selected = resolveTargetAdapter(adapter, spec);
@@ -233,10 +309,32 @@ export function analyzeCapabilities(
     }
     const resolved = selected.adapter
       ? adapter.capabilities(spec)
-      : { matrix: undefined, profilesUsed: [], diagnostics: [] };
+      : { matrix: undefined, fields: undefined, profilesUsed: [], diagnostics: [] };
     targetDiagnostics.push(...resolved.diagnostics);
 
     const matrix: CapabilityMatrix = resolved.matrix ?? {};
+    const fieldMatrix: FieldMatrix = resolved.fields ?? {};
+    const fields: FieldShortfall[] = [];
+
+    // An acceptance must name this target's adapter and a field some profile of
+    // it rates below exact; anything else accepts nothing, silently. Any
+    // profile of any family counts, exactly as for the global list (ADR-0022):
+    // an accepted id may belong to a range this target does not cover yet.
+    const targetAccept = targetConfig.compatibility?.accept ?? [];
+    if (targetAccept.length > 0) {
+      const below = fieldsBelowExact(registered);
+      for (const accepted of targetAccept) {
+        const colon = accepted.indexOf(":");
+        if (accepted.slice(0, colon) === adapter.id && below.has(accepted.slice(colon + 1))) continue;
+        targetDiagnostics.push({
+          code: "HN501",
+          severity: "error",
+          target: targetId,
+          message: `targets.${targetId}.compatibility.accept names ${JSON.stringify(accepted)}, which adapter "${adapter.id}" does not rate below exact.`,
+          remediation: "use a qualified id as an HN108 diagnostic or the build report prints it, or remove the entry.",
+        });
+      }
+    }
 
     if (resolved.matrix) {
       for (const hook of ir.hooks) {
@@ -304,7 +402,28 @@ export function analyzeCapabilities(
           });
         }
 
-        // 2. Declared capabilities.
+        // 2. Declared event fields (ADR-0027), only where the event is observable:
+        // HN202 already fails the hook there, and a field report would be noise.
+        if (observed.support !== "unsupported") {
+          for (const field of hook.fields ?? []) {
+            const entry = fieldMatrix[field];
+            const support: SupportLevel = entry?.level ?? "unsupported";
+            if (support === "exact") continue;
+            const id = `${adapter.id}:${field}`;
+            const shortfall: FieldShortfall = {
+              id,
+              hookId: hook.id,
+              field,
+              support,
+              accepted: (policy.accept as readonly string[]).includes(id),
+              ...(entry?.rationale !== undefined ? { rationale: entry.rationale } : {}),
+            };
+            fields.push(shortfall);
+            targetDiagnostics.push(fieldDiagnostic(shortfall, hook.event, targetId, policy));
+          }
+        }
+
+        // 3. Declared capabilities.
         for (const [capabilityKey, requested] of Object.entries(hook.capabilities) as [string, RequirementLevel][]) {
           if (!isCapabilityId(capabilityKey)) continue; // IR validation already rejected these
           const capability = capabilityKey;
@@ -383,9 +502,37 @@ export function analyzeCapabilities(
       requestedVersion: targetConfig.version,
       resolutions,
       counts,
+      fields,
       diagnostics: targetDiagnostics,
     };
     diagnostics.push(...targetDiagnostics);
+  }
+
+  // A global acceptance must name some configured target's adapter and a field
+  // that adapter rates below exact somewhere.
+  const globalAccept = config.compatibility?.accept ?? [];
+  if (globalAccept.length > 0) {
+    const configuredAdapters = new Map<string, HarnessAdapter>();
+    for (const [id, target] of Object.entries(config.targets)) {
+      const adapterId = target.adapter ?? id;
+      const adapter = Object.hasOwn(adapters, adapterId) ? adapters[adapterId] : undefined;
+      if (adapter !== undefined) configuredAdapters.set(adapter.id, adapter);
+    }
+    const below = new Map<string, Set<string>>();
+    for (const accepted of globalAccept) {
+      const colon = accepted.indexOf(":");
+      const adapter = configuredAdapters.get(accepted.slice(0, colon));
+      if (adapter !== undefined) {
+        if (!below.has(adapter.id)) below.set(adapter.id, fieldsBelowExact(adapter));
+        if (below.get(adapter.id)!.has(accepted.slice(colon + 1))) continue;
+      }
+      diagnostics.push({
+        code: "HN501",
+        severity: "error",
+        message: `compatibility.accept names ${JSON.stringify(accepted)}, which no configured target's adapter rates below exact.`,
+        remediation: "use a qualified id as an HN108 diagnostic or the build report prints it, or remove the entry.",
+      });
+    }
   }
 
   return { targets, diagnostics, ok: !hasFatal(diagnostics) };

@@ -53,7 +53,9 @@ export async function projectComponents(
   _config: string,
   _options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
-  const result = projectSkillFiles(source, root, ".pi/skills");
+  // Pi's captures establish discovery, not skill-text expansion. Preserve the
+  // existing byte-for-byte projection until that behavior has evidence.
+  const result = projectSkillFiles(source, root, ".pi/skills", undefined);
   return result;
 }
 

@@ -71,7 +71,7 @@ describe("createHooknosticExtension", () => {
           id: "g",
           capabilities: { "tool.before.block": "required" },
           async run() {
-            return { kind: "block", reason: "no destructive commands" };
+            return { kind: "block" as const, reason: "no destructive commands" };
           },
         }),
       ]),
@@ -95,7 +95,7 @@ describe("createHooknosticExtension", () => {
           id: "r",
           capabilities: { "tool.before.input.replace": "required" },
           async run() {
-            return { kind: "replaceInput", input: { command: "pnpm test" } };
+            return { kind: "replaceInput" as const, input: { command: "pnpm test" } };
           },
         }),
       ]),
@@ -128,7 +128,7 @@ describe("createHooknosticExtension", () => {
               id: "invalid",
               capabilities: { "tool.before.input.replace": "required" },
               async run() {
-                return { kind: "replaceInput", input: replacement };
+                return { kind: "replaceInput" as const, input: replacement };
               },
             }),
             hook("tool.before", {
@@ -164,7 +164,7 @@ describe("createHooknosticExtension", () => {
             id: "invalid",
             capabilities: { "tool.before.input.replace": "required" },
             async run() {
-              return { kind: "replaceInput", input: null };
+              return { kind: "replaceInput" as const, input: null };
             },
           }),
         ]),
@@ -189,7 +189,7 @@ describe("createHooknosticExtension", () => {
           id: "rewrite",
           capabilities: { "tool.before.input.replace": "required" },
           async run() {
-            return { kind: "updateShell", command: "pnpm test" };
+            return { kind: "updateShell" as const, command: "pnpm test" };
           },
         }),
       ]),
@@ -215,8 +215,8 @@ describe("createHooknosticExtension", () => {
               capabilities: { "tool.before.input.replace": "required" },
               async run() {
                 return kind === "replaceInput"
-                  ? { kind: "replaceInput", input: { command: "new" } }
-                  : { kind: "updateShell", command: "new" };
+                  ? { kind: "replaceInput" as const, input: { command: "new" } }
+                  : { kind: "updateShell" as const, command: "new" };
               },
             }),
           ]),
@@ -279,7 +279,7 @@ describe("createHooknosticExtension", () => {
           id: "r",
           capabilities: { "tool.after.output.replace": "required" },
           async run() {
-            return { kind: "replaceOutput", output: "[redacted]" };
+            return { kind: "replaceOutput" as const, output: "[redacted]" };
           },
         }),
       ]),
@@ -343,7 +343,7 @@ describe("createHooknosticExtension", () => {
           id: "c",
           capabilities: { "prompt.before.context.add": "required" },
           async run() {
-            return { kind: "addContext", context: "mind the layout" };
+            return { kind: "addContext" as const, context: "mind the layout" };
           },
         }),
       ]),
@@ -368,7 +368,7 @@ describe("createHooknosticExtension", () => {
           id: "c",
           capabilities: { "model.request.before.context.add": "required" },
           async run() {
-            return { kind: "addContext", context: "arch: hexagonal" };
+            return { kind: "addContext" as const, context: "arch: hexagonal" };
           },
         }),
       ]),
@@ -433,7 +433,7 @@ describe("createHooknosticExtension", () => {
           id: "g",
           capabilities: { "context.compact.before.block": "required" },
           async run() {
-            return { kind: "block", reason: "state would be lost" };
+            return { kind: "block" as const, reason: "state would be lost" };
           },
         }),
       ]),
@@ -456,14 +456,14 @@ describe("createHooknosticExtension", () => {
           id: "n",
           capabilities: { "turn.stop.notify": "optional" },
           async run() {
-            return { kind: "notify", message: "checkpoint saved" };
+            return { kind: "notify" as const, message: "checkpoint saved" };
           },
         }),
         hook("turn.stop", {
           id: "p",
           capabilities: { "turn.stop.prevent": "required" },
           async run() {
-            return { kind: "preventStop", reason: "run the tests" };
+            return { kind: "preventStop" as const, reason: "run the tests" };
           },
         }),
       ]),
@@ -488,7 +488,7 @@ describe("createHooknosticExtension", () => {
             id: "n",
             capabilities: { "turn.stop.notify": "optional" },
             async run() {
-              return { kind: "notify", message: "user-only notice" };
+              return { kind: "notify" as const, message: "user-only notice" };
             },
           }),
         ]),
@@ -511,7 +511,7 @@ describe("createHooknosticExtension", () => {
           id: "g",
           capabilities: { "tool.before.block": "required" },
           async run() {
-            return { kind: "block", reason: "deliberate" };
+            return { kind: "block" as const, reason: "deliberate" };
           },
         }),
       ]),

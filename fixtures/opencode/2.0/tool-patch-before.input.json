@@ -1,0 +1,14 @@
+{
+  "hook": "execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project",
+  "event": {
+    "tool": "patch",
+    "sessionID": "ses_f19fd1ef9ffeuEpWao6b0yl5Ii",
+    "agent": "build",
+    "messageID": "msg_0e602e2be001eVedMbe5PnP4GK",
+    "id": "call_probe_1",
+    "input": {
+      "patchText": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch"
+    }
+  }
+}

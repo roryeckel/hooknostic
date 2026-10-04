@@ -31,13 +31,53 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.250 | 2026-08-30 | captured | `fixtures/claude/2.1` | PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key |
 | 2.1.250 | 2026-09-01 | live-probe | `packages/cli/test/harness-playback.test.ts` | PermissionRequest deny honored end to end in an interactive pty session only when encoded as hookSpecificOutput.decision.behavior; the permissionDecision spelling is silently ignored there (matches upstream anthropics/claude-code#19298) |
 | 2.1.263 | 2026-09-07 | live-probe | `.capture/harness-playback` | Windows PTY approval probe: PreToolUse permissionDecision ask overrides preallowed Bash and requires confirmation; escalate is rejected as invalid |
+| 2.1.238 | 2026-09-27 | live-probe | `.capture/claude-permission-mode` | Interactive sessions start in the prompting mode (hook permission_mode default, PermissionRequest fires), and --permission-mode manual keeps it; an inherited CLAUDE_CODE_CHILD_SESSION turns transcript saving off |
+| 2.1.283 | 2026-09-27 | live-probe | `.capture/claude-permission-mode` | Interactive sessions start in auto mode: the scripted Bash call reaches PreToolUse with permission_mode auto and PermissionRequest never fires; --permission-mode manual restores the prompting mode and PermissionRequest, and the pty playback scenarios pass with it |
+| 2.1.283 | 2026-09-27 | captured | `fixtures/claude/2.1` | Write, Edit and NotebookEdit PreToolUse payloads over the loopback model (.capture/file-tools): Write/Edit name the path file_path, NotebookEdit notebook_path; MultiEdit is no longer advertised |
+| 2.1.289 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 2.1.286 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: native Bash payload and executed Node process ancestry establish Git for Windows bash.exe for this configuration; PowerShell was not advertised by the discovery turn. |
+| 2.1.286 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured native Bash payload and executed Node process ancestry establish /bin/bash for this GitHub runner configuration; PowerShell was not advertised by discovery. |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `session.end.correlation.turnId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.turnId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `tool.error.correlation.turnId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.turnId` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `context.compact.before.correlation.turnId` | exact | — |
+| `context.compact.after.correlation.turnId` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.turnId` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.turnId` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `turn.stop.lastMessage` | exact | — |
+| `turn.stop.correlation.turnId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment by Claude's own rules, except that an unset one with no default stops the server. Dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -51,10 +91,18 @@ Known deviations from Agent Plugins 1.0, reported as `HN106`:
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.286 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, a project skill with disable-model-invocation: true was absent from the ordinary listing but its body reached the model after /gate-claude. The ungated control and a skill carrying only the Codex policy remained listed. No portable invocation policy is implemented. |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A project skill under .claude/skills, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes) and ${CLAUDE_SESSION_ID} expanded, and ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written. |
 | 2.1.278 | 2026-09-22 | live-probe | `.capture/claude-project-mcp-environment` | Direct source: in its own declaration Claude resolved ${NAME:-default} to a defined variable's value, even an empty one, and otherwise to the default; a direct stdio server received the same values through the launcher, and one with an unset ${NAME} and no default did not start. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Project stdio: a synchronized package server received its ${NAME} and ${NAME:-default} args and env values literally through the generated launcher, while Claude expanded the same text in a native declaration; Claude did not expand ${CLAUDE_PROJECT_DIR} in .mcp.json, though it set that variable for the child. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
@@ -68,7 +116,7 @@ Project support is independent of package projection.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028). |
 | `agent-plugin.mcp.stdio` | exact | — |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -83,10 +131,18 @@ Known deviations from Agent Plugins 1.0, reported as `HN106`:
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
 | `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only. | `.capture/skill-directory` |
+
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | Asked, without loading it, to quote a --plugin-dir skill's description holding ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_SESSION_ID}, ${PLUGIN_ROOT} and ${SKILL_DIR}, Sonnet returned every reference as written, on 2.1.285 and again on 2.1.286 through the capture driver: Claude does not expand them in the frontmatter the skill listing shows. The quote is the model's, not the prompt itself. |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A --plugin-dir plugin's skill, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes), ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA} and ${CLAUDE_SESSION_ID} expanded, and ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written, after a Base directory for this skill line. |
 | 2.1.260 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 2.1.283 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | A stdio reference to a name the server's own env block also declares resolved to Claude's ambient value, not the declared one, and a name only the block declares stayed literal, in env and args alike; the child still received each declared value. |
@@ -112,24 +168,68 @@ Projection validation records:
 | 0.151.0 | 2026-09-02 | live-probe | `.capture/codex-tools` | PostToolUse updatedMCPToolOutput is REJECTED by the hook engine (fails open with "PostToolUse hook returned unsupported updatedMCPToolOutput", run status Failed; matches upstream codex-rs hooks/src/events/post_tool_use.rs unsupported_updated_mcp_tool_output_fails_open). tool.after.output.replace is therefore unsupported on the hook channel; the output parser also shows the MCP connector path (not hooks) is the only output-replacement surface. |
 | 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-hook-matcher` | Project PreToolUse matcher is honoured for a shell call on Windows and compared against the hook-boundary tool name (Bash, not exec_command); exact word lists and anchored regexes match, a bare prefix does not. Non-shell tools, other tool events, MCP names, and POSIX are uncaptured. |
 | 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-hook-matcher` | The same PreToolUse matcher probe on Linux x64 (WSL2) produced an identical dispatch table: matched against the hook-boundary name Bash, word lists and anchored regexes match, a bare prefix does not. macOS is uncaptured. |
-| 0.156.1 | 2026-09-24 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 0.156.1 | 2026-09-27 | captured | `.capture/codex-code-mode` | Code Mode hook payloads on Windows (loopback model; tool_mode code_mode_only -- the gpt-5.6-luna catalog value -- and code_mode): a nested tools.exec_command reaches PreToolUse and PostToolUse as Bash/{command} with tool_use_id exec-<uuid> -- the direct call's payload shape, also with the live call's workdir/shell/yield arguments. |
+| 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-code-mode` | Code Mode dispatch on Windows, the same drives: the model's outer exec custom tool call reached neither a catch-all PreToolUse/PostToolUse group nor one matching exec -- an observed absence, which codex-rs source agrees with (freeform payloads carry no hook payload) -- while the generated Bash|exec_command|shell matcher selected each nested call. |
+| 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-code-mode` | Hook EFFECTS inside Code Mode, through the offline playback lane with a code_mode_only catalog (the model was offered exec and no direct exec_command): a generated match: { kind: "shell" } guard, native matcher included, denied a nested tools.exec_command so its marker never appeared, and its input rewrite reached the spawned command. |
+| 0.156.1 | 2026-09-27 | live-probe | `.capture/codex-worktree-hooks` | In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at all when that has none. A Codex artifact generated into a linked worktree is inert there. |
+| 0.156.1 | 2026-09-27 | captured | `fixtures/codex/0.148` | apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path |
+| 0.160.0 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 0.156.1 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: identical commands ran through bundled pwsh.exe and cmd.exe, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector. |
+| 0.156.1 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: identical commands ran through /bin/bash and /bin/zsh, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector. |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `prompt.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.turnId` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.turnId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.turnId` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `context.compact.before.correlation.turnId` | exact | — |
+| `context.compact.after.correlation.turnId` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.turnId` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.turnId` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `turn.stop.lastMessage` | exact | — |
+| `turn.stop.correlation.turnId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | An owned repository-locating Node bootstrap launches the portable server from its declared source root. Node must be on PATH; project trust remains a human prerequisite. |
 | `agent-plugin.mcp.streamable-http` | exact | Native project TOML url and http_headers preserve remote declarations. |
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | Project integration writes .codex/config.toml and a skills tree. A plugin's extensions."com.openai" object and its namespace files are read from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
 | `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies even for an installed plugin -- measured on package delivery, where a copied package.json and package-lock.json left no node_modules in the installed root and the dependency failed to resolve. Project delivery installs nothing at all, so the pair would sit unread beside the projected files. Bundle a Node component's dependencies instead. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.156.1 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, a project skill with policy.allow_implicit_invocation: false was absent from the ordinary listing but its full file reached the model after $gate-codex. The ungated control and a skill carrying only Claude frontmatter remained listed. No portable invocation policy is implemented. |
+| 0.154.0 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none. |
 | 0.154.0 | 2026-09-22 | live-probe | `.capture/project-integration` | A direct stdio server started although its generated env_vars named a variable absent from Codex's environment, and the launcher resolved ${NAME:-default} for both the set and the unset name. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/codex-project-mcp` | Production project reconciliation and launcher playback with stdio and loopback Streamable HTTP; trust, cwd, config layering and diagnostic network behavior recorded. |
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
@@ -170,17 +270,24 @@ Projection validation records:
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A model without those instructions, such as one behind a custom provider, is not told. |
 | `agent-plugin.mcp.stdio` | emulated | The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so the projection emits a Node launcher that resolves the plugin root from its own location, creates and binds a Hooknostic-managed PLUGIN_DATA directory outside the version-scoped install root, and expands args, env values and cwd before spawning the server. The directory is chosen by Hooknostic rather than by Codex, and the server runs one process below the harness, so the contract is emulated rather than native. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
 | `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
 | `agent-plugin.client-extension.files` | exact | OpenAI documents extensions."com.openai" in a root plugin.json as the preferred source of OpenAI settings, but 0.154.0 did not run a UserPromptSubmit hook declared there while an equivalent native-manifest control did. This projection bridges that implementation gap: the inline object replaces the compatibility overlay, portable identity/skills/MCP remain canonical, authored hooks are combined with generated hooks, and namespace files are hoisted to the package root. Exact because the documented settings arrive intact at the native surface the harness consumes. |
 | `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included. | `.capture/skill-directory` |
+
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 0.154.0 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none. |
 | 0.154.0 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | Against the actual projected package, a synthetic ambient variable was absent without components.mcpEnvironment and reached the stdio child when the declaration generated env_vars. |
 | 0.153.2 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | The installed-plugin path at the lower validated edge behaved the same: a synthetic ambient variable was filtered without components.mcpEnvironment and reached the projected stdio child through generated env_vars. |
 | 0.154.0 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables. |
@@ -220,23 +327,51 @@ Projection validation records:
 | 1.14.17 | 2026-09-15 | type-derived | `.capture/opencode-context-channel` | experimental.chat.system.transform is declared with an identical signature (input { sessionID?, model }, output { system: string[] }) in the published @opencode-ai/plugin typings at 1.14.17, 1.16.0 and 1.18.18. opencode-ai publishes no 1.10.x-1.13.x release, so 1.14.17 is this profile range's floor in practice and the callback is declared across all of it. Only the 1.18.30 delivery behaviour is live-probed; the intervening versions rest on the type declaration, which is why observe/context.add cite both records. |
 | 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-context-channel` | OpenAI-OAuth path: the same output.system push reaches the model even though prepare() sends no system messages on it, joining the array into the provider-options instructions field instead. Captured effect-level rather than on the wire, because the OAuth path ignores a baseURL override and reaches OpenAI directly: with no plugin the model answered the prompt normally, and with an injected directive it returned the directive's token instead. So the channel is provider-path independent, but its delivered shape is not. |
 | 1.18.31 | 2026-09-15 | live-probe | `.capture/harness-playback` | model.request.before delivery still holds on a build past the one it was established on, through the repeatable offline lane rather than a one-off probe: driven against a loopback model server, a string pushed into output.system arrived as a role:"system" message in EVERY recorded request of the session, which is the per-request cadence cell itself and not merely presence somewhere among them. Deliberately SCOPED -- openai-compatible provider path, wire-level, one capability family. It re-confirms neither the OpenAI-OAuth delivery shape nor the chat.params negative, both of which rest on the 1.18.30 records above; and being a scoped record it does not raise the scheduled-playback baseline, so harness-watch still owes this build a full lane sweep (ADR-0009). |
+| 1.18.31 | 2026-09-27 | captured | `fixtures/opencode/1.18` | read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch |
+| 1.18.32 | 2026-09-28 | captured | `.capture/opencode-turn-fields` | turn fields over the loopback model: at session.idle, client.session.messages answers { data, request, response } with data a list of { info, parts }; one assistant message per model step, each with parentID = the user message id, and the final text part holds the last reply. chat.message input carried no messageID; output.message.id is the user message id (fixtures/opencode/1.18 session-idle-with-messages, chat-message-without-message-id). |
+| 1.18.33 | 2026-09-29 | captured | `fixtures/opencode/1.18` | chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/opencode-dispose` | one-shot opencode run over the loopback model, isolated state: the event handler is not awaited, and without dispose the process exited 41 ms after session.idle with a 3 s idle task unfinished. A plugin's dispose is called about 45 ms after idle and awaited: the task finished and the process exited 3.07 s after idle; a dispose that took 25 s more held it 28 s, so the host does not bound dispose. With the generated shim, a 3 s turn.stop hook declaring lastMessage finished before exit; with its dispose removed it never did. Whether earlier supported builds call and await dispose was not established. |
+| 1.18.34 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 1.18.34 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: tool.execute.before bash payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
+| 1.18.34 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured tool.execute.before bash payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration. |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | the id of the user message chat.message creates (output.message.id), which every assistant message of the turn names as its parentID. Not input.messageID: that is the caller-supplied id, absent in the 1.18.32 capture. |
+| `turn.stop.lastMessage` | emulated | session.idle carries only the session id, so the shim reads the session back with client.session.messages and joins the text parts of the latest assistant message of the turn that has any (synthetic and ignored parts skipped). One assistant message per model step, as on Claude. Absent when the host supplies no client, the read fails or exceeds its 10 s bound, or the turn produced no text. Read only when a turn.stop hook declares this field or correlation.turnId. On an aborted turn the text is whatever was stored at the first of its two idles. |
+| `turn.stop.correlation.turnId` | emulated | the parentID of the turn's last assistant message, from the same session read as lastMessage: the id prompt.before reports for the prompt that started the turn. Absent under the same conditions as lastMessage, or when no assistant message followed the last user message. |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
 | `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace, at project scope or any other. |
 | `agent-plugin.runtime-package` | unsupported | Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.34 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and rejected a forced skill-tool call that succeeded without the rule. A v1 plugin config callback supplied the same effective rule. Claude frontmatter and Codex policy alone did not hide the controls. This is deny behavior, not established user-invoked-only equivalence. |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 1.18.29 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
 
@@ -247,7 +382,7 @@ Project support is independent of package projection.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | — |
-| `agent-plugin.skills` | emulated | OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. |
+| `agent-plugin.skills` | emulated | OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
 | `agent-plugin.mcp.stdio` | emulated | A project plugin has no declarative config, so the servers are contributed by a generated module that resolves the install directory at load time and launches each one through a generated Node launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and expands args, env values and cwd. cwd is emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. The declared environment is applied by the launcher rather than through OpenCode's environment key, whose merge-or-replace behaviour is uncaptured, and the data directory is chosen by Hooknostic rather than by OpenCode, so the contract is emulated. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
@@ -259,11 +394,13 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-name-unqualified` | `agent-plugin.skills` | A skill that cannot be named `<plugin>-<skill>` -- the name would pass 64 characters or break the Agent Skills name rules, duplicate another skill in the package, or sit on no rewritable frontmatter line -- keeps its bare name in OpenCode's flat skill namespace, where another plugin's skill of that name would hide it. | `.capture/opencode-skill-namespace` |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 1.18.31 | 2026-09-23 | live-probe | `.capture/opencode-skill-namespace` | Two installed plugins each shipping skills/status/SKILL.md named status: `opencode debug skill` listed one status, the same plugin's in both plugin orders, so the other was unreachable. With only the frontmatter names changed to alpha-status and beta-status and the directories untouched, both were listed at their original locations, nothing was logged about the name differing from its directory, and a model call loaded alpha-status through the skill tool. |
 | 1.18.32 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that OpenCode needs no target-specific forwarding declaration. |
 | 1.18.31 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT to the nested package and supplied PLUGIN_DATA; bare runner commands remained resolvable. |
@@ -295,23 +432,53 @@ Projection validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Typed missing-file failures dispatch tool.error; plain custom exceptions bypass execute.after. Text and serialized object replacements reach the model while raw structured output survives. Anthropic Messages and OpenAI Responses HTTP separately exercise ordinary/title/generation/compaction context. A foreground subagent returns its result to the parent. Native companion TUI RPC renders a toast and disposes on exit; a generated user-only notification remains unsupported. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Persistent serve sessions (stop drive; fixtures/opencode/2.0/stop-audit): after a succeeded execution, synthetic with resume starts exactly one more execution whose request carries the stop reason as a user-role message; resume:false starts none, is not rendered by the real TUI meanwhile, and reaches the model with the next user prompt. A user interrupt, a model failure and a subagent child (session.created parentID) post nothing. synthetic does not run the prompt hook. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks. |
+| 2.0.17 | 2026-09-27 | captured | `fixtures/opencode/2.0` | A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch) |
+| 2.0.18 | 2026-09-28 | captured | `fixtures/opencode/2.0` | Turn fields over the loopback model (observe drive, isolated state): the plugin's event subscription receives session.execution.started, session.step.*, session.text.started/delta/ended ({ sessionID, assistantMessageID, ordinal, text }) and then session.execution.succeeded ({ sessionID } only). Each model step has its own assistantMessageID; the prompt hook's messageID matches session.inbox.enqueued's inboxID (turn-fields/events.jsonl, execution-succeeded-with-turn). |
+| 2.0.18 | 2026-09-30 | live-probe | `.capture/opencode-dispose` | One-shot run over the loopback model, isolated state, Windows: plugins run in a server process, not the run process. With --standalone the private server was terminated when run exited 0.7 s after session.execution.succeeded; the plugin's cleanup was never called and a 3 s task started at succeeded never finished. Through the background service (its own port) run exited 41 ms after succeeded and the task finished in the service 3 s later. |
+| 2.0.22 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
+| 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: execute.before shell payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
+| 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured execute.before shell payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration. |
+| 2.0.22 | 2026-10-04 | captured | `fixtures/opencode/2.0/context-max-tokens.input.json` | Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed. |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `permission.request.correlation.toolCallId` | exact | — |
+| `prompt.before.correlation.turnId` | exact | the prompt hook's messageID, the id of the user message it admits. |
+| `turn.stop.lastMessage` | emulated | execution completion carries only the session id. The shim buffers the session.text.ended events of each execution from the event subscription and joins, in ordinal order, the text of the last assistant message that produced any (one message per model step, as on Claude). Only sessions the plugin tracks, only while subscribed, and only when a turn.stop hook declares this field. A failed or interrupted execution reports whatever text had ended. |
+| `turn.stop.correlation.turnId` | emulated | the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none. |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
-| `agent-plugin.skills` | exact | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
 | `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
 | `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
 | `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
 | `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.20 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and returned permission.rejected for a forced skill-tool call that succeeded without the rule. Claude frontmatter and Codex policy alone did not hide the controls. Explicit UI invocation and plugin-supplied v2 rules were not tested. |
+| 2.0.18 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool (argument id) loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Generated project integration and separately installed pnpm tarballs expose skills and connect stdio MCP. Server startup records verify environment expansion, cwd and relocated paths; hooks-only, components-only and combined packages load. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
@@ -325,17 +492,25 @@ Project support is independent of package projection.
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | — |
-| `agent-plugin.skills` | emulated | Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. |
+| `agent-plugin.skills` | emulated | Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
 | `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
 | `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
 | `agent-plugin.client-extension.files` | unsupported | No portable client-extension namespace is implemented for v2. |
 | `agent-plugin.runtime-package` | unsupported | Generated integrations do not install dependency closures. Bundle or explicitly materialize dependencies. |
 
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.20 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and returned permission.rejected for a forced skill-tool call that succeeded without the rule. Claude frontmatter and Codex policy alone did not hide the controls. Explicit UI invocation and plugin-supplied v2 rules were not tested. |
+| 2.0.18 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool (argument id) loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-audit` | Generated project and packed relocated package reach needs_auth, discover a loopback OAuth issuer, dynamically register, complete validated S256 PKCE, refresh after an expired-token rejection and execute an MCP tool with the refreshed bearer. No real credentials or browser were used; custom OAuth configuration and provider login remain unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Generated project integration and separately installed pnpm tarballs expose skills and connect stdio MCP. Server startup records verify environment expansion, cwd and relocated paths; hooks-only, components-only and combined packages load. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
@@ -353,6 +528,19 @@ Projection validation records:
 | 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | isolated single-prompt loopback runs: one full-text input event per print-mode prompt; {action:handled} on that event suppressed before_agent_start, agent_start, and all model requests in both input probes; other modes remain unverified |
 | 0.84.4 | 2026-09-27 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 0.84.4 type definitions and loader/compaction source: event surface, tool input shapes, extension discovery rules |
 | 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | Halogen Qwen 3.8 Flash Next drove a real bash exchange in an isolated Pi session; both streaming requests succeeded, the command marker was observed in tool_result, and captured lifecycle/tool shapes matched the committed fixtures. This direct provider probe does not validate the scheduled llm transport or unexercised effects. |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `tool.before.correlation.toolCallId` | exact | — |
+| `tool.after.correlation.toolCallId` | exact | — |
+| `tool.error.correlation.toolCallId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 

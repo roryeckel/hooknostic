@@ -46,6 +46,9 @@ var CAPABILITY_SET = new Set(ALL_CAPABILITY_IDS);
 function isCapabilityId(value) {
   return CAPABILITY_SET.has(value);
 }
+function canonicalCapability(event, key) {
+  return isCapabilityId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/config.js
 var DEFAULT_RUNTIME = {
@@ -106,6 +109,49 @@ var HOOK_EVENT_NAMES = [
   "agent.stop",
   "turn.stop"
 ];
+var TOOL_SCOPED_EVENTS = [
+  "tool.before",
+  "tool.after",
+  "tool.error",
+  "permission.request"
+];
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
+
+// ../../packages/sdk/dist/fields.js
+var OPTIONAL_EVENT_FIELDS = {
+  "session.start": ["how"],
+  "session.end": ["reason"],
+  "prompt.before": [],
+  "model.request.before": [],
+  "tool.before": [],
+  "tool.after": [],
+  "tool.error": ["error.message"],
+  "permission.request": [],
+  "context.compact.before": ["trigger"],
+  "context.compact.after": [],
+  "agent.start": ["agent.id", "agent.type"],
+  "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+  "turn.stop": ["lastMessage"]
+};
+var CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+var TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+var ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+var FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/hook.js
 function hookAppliesToTarget(hook2, targetId) {
@@ -115,11 +161,37 @@ function hookAppliesToTarget(hook2, targetId) {
     return false;
   return true;
 }
+function canonicalCapabilities(event, hookId, declared) {
+  const canonical = {};
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const [key, level] of Object.entries(declared ?? {})) {
+    const id = canonicalCapability(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares capability "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+    canonical[id] = level;
+  }
+  return canonical;
+}
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const def = {
     event,
     id: spec.id,
-    capabilities: spec.capabilities ?? {},
+    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
     run: spec.run
   };
   if (spec.match !== void 0)
@@ -128,6 +200,8 @@ function hook(event, spec) {
     def.targets = spec.targets;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 
@@ -4332,19 +4406,78 @@ function shellCodec(shapes, options) {
     }
   };
 }
+var PATCH_BEGIN = "*** Begin Patch";
+var PATCH_END = "*** End Patch";
+var PATCH_ENVIRONMENT = "*** Environment ID:";
+var PATCH_END_OF_FILE = "*** End of File";
+var PATCH_UPDATE = "*** Update File: ";
+var PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE];
+var PATCH_MOVE = "*** Move to: ";
+function parsePatchPaths(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2 || lines[0].trim() !== PATCH_BEGIN || lines[lines.length - 1].trim() !== PATCH_END) {
+    return void 0;
+  }
+  const body = lines.slice(1, -1);
+  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
+    body.shift();
+  const paths = [];
+  let inUpdateHunk = false;
+  let afterUpdateHeader = false;
+  for (const line of body) {
+    const candidate = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header = PATCH_FILE_HEADERS.find((prefix) => candidate.startsWith(prefix));
+    if (header !== void 0) {
+      const path = candidate.slice(header.length);
+      if (path === "")
+        return void 0;
+      paths.push(path);
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
+      continue;
+    }
+    const untrailed = line.trimEnd();
+    if (untrailed.startsWith(PATCH_MOVE)) {
+      const path = untrailed.slice(PATCH_MOVE.length);
+      if (!afterUpdateHeader || path === "")
+        return void 0;
+      paths.push(path);
+      afterUpdateHeader = false;
+      continue;
+    }
+    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE)
+      return void 0;
+    afterUpdateHeader = false;
+  }
+  return [...new Set(paths)];
+}
+function fileCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      if ("pathKey" in shape) {
+        const path = input[shape.pathKey];
+        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : void 0;
+      }
+      const patch = input[shape.patchKey];
+      const paths = typeof patch === "string" ? parsePatchPaths(patch) : void 0;
+      return paths === void 0 ? void 0 : { paths, patchKey: shape.patchKey };
+    }
+  };
+}
+function listOf(value) {
+  return Array.isArray(value) ? value : [value];
+}
 function matchesTool(match, tool) {
   if (!match)
     return true;
-  if (match.kind !== void 0) {
-    const kinds = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds.includes(tool.kind))
-      return false;
-  }
-  if (match.nativeName !== void 0) {
-    const names = Array.isArray(match.nativeName) ? match.nativeName : [match.nativeName];
-    if (!names.includes(tool.nativeName))
-      return false;
-  }
+  if (match.kind !== void 0 && !listOf(match.kind).includes(tool.kind))
+    return false;
+  if (match.nativeName !== void 0 && !listOf(match.nativeName).includes(tool.nativeName))
+    return false;
   return true;
 }
 
@@ -4354,6 +4487,11 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+var fieldAcceptanceSchema = external_exports.string().refine((value) => {
+  const colon = value.indexOf(":");
+  return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+}, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
 var MAX_TIMER_DELAY_MS = 2147483647;
 var packageMaterializerSchema = external_exports.custom((value) => {
   if (typeof value !== "object" || value === null)
@@ -4371,6 +4509,11 @@ var toolInvocationSchema = external_exports.object({
     cwd: external_exports.string().optional(),
     commandKey: external_exports.string(),
     cwdKey: external_exports.string().optional()
+  }).strict().optional(),
+  file: external_exports.object({
+    paths: external_exports.array(external_exports.string()),
+    pathKey: external_exports.string().optional(),
+    patchKey: external_exports.string().optional()
   }).strict().optional()
 }).strict();
 var baseHookEventSchema = external_exports.object({
@@ -4418,7 +4561,8 @@ var effectSchema = external_exports.discriminatedUnion("kind", [
 var compatibilityPolicySchema = external_exports.object({
   minimum: supportLevelSchema.optional(),
   onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+  accept: external_exports.array(fieldAcceptanceSchema).optional()
 }).strict();
 var runtimePolicySchema = external_exports.object({
   onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4646,6 +4790,7 @@ var hookDefinitionSchema = external_exports.object({
   // and would time the hook out permanently.
   timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+  fields: external_exports.array(eventFieldIdSchema).optional(),
   run: external_exports.custom((v) => typeof v === "function", {
     message: "run must be a function"
   })
@@ -4685,9 +4830,9 @@ var hooks_default = definePlugin({
     hook("tool.before", {
       id: "sample-guard",
       match: { kind: "shell" },
-      capabilities: { "tool.before.block": "required" },
-      async run(event) {
-        if (event.tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
+      capabilities: { block: "required" },
+      run({ tool }) {
+        if (tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
       }
     })
   ]
@@ -4695,24 +4840,23 @@ var hooks_default = definePlugin({
 
 // ../../packages/cli/dist/shims/opencode.mjs
 function createCapabilitySet(levels) {
+  const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
-    has(id) {
-      const level = levels[id];
-      return level !== void 0 && level !== "unsupported";
-    },
-    level(id) {
-      return levels[id] ?? "unsupported";
-    }
+    has: (id) => levelOf(id) !== "unsupported",
+    level: levelOf
   };
 }
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, codec) {
+function setToolInput(tool, input, options) {
   tool.input = input;
-  const shell = codec?.classify(tool.nativeName, input);
+  const shell = options.shellCodec?.classify(tool.nativeName, input);
   if (shell !== void 0) tool.shell = shell;
   else delete tool.shell;
+  const file = options.fileCodec?.classify(tool.nativeName, input);
+  if (file !== void 0) tool.file = file;
+  else delete tool.file;
 }
 function truncateNotification(message, limit) {
   if (message.length <= limit) return message;
@@ -4766,96 +4910,37 @@ async function dispatch(hooks, event, options) {
     }
     return false;
   };
-  for (const hook2 of matching) {
-    const capabilities = {
-      has(id) {
-        return this.level(id) !== "unsupported";
-      },
-      level(id) {
-        const level = targetCapabilities.level(id);
-        const minimum = options.minimumCapabilityLevel;
-        if (minimum !== void 0 && hook2.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
-          return "unsupported";
+  const parseReturned = (hookId, value) => {
+    let parsed;
+    try {
+      parsed = effectSchema.safeParse(value);
+    } catch (error) {
+      return {
+        error: {
+          hookId,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hookId}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
         }
-        return level;
-      }
-    };
-    const controller = new AbortController();
-    const ctx = {
-      capabilities,
-      harness: { ...options.harness },
-      signal: controller.signal,
-      // A copy per hook, like `harness`: a handler that mutates it must not
-      // move the root under the hooks after it.
-      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
-    };
-    let outcome;
-    let timedOut = false;
-    let timer;
-    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
-    try {
-      outcome = await Promise.race([
-        Promise.resolve(hook2.run(event, ctx)),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-            reject(new Error(`timed out after ${budgetMs}ms`));
-          }, budgetMs);
-        })
-      ]);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: timedOut ? "timeout" : "error",
-          message: errorMessage(error)
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    } finally {
-      if (timer !== void 0) clearTimeout(timer);
+      };
     }
-    if (outcome === void 0) continue;
-    let parsedEffect;
-    try {
-      parsedEffect = effectSchema.safeParse(outcome);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
+    if (!parsed.success) {
+      const detail = parsed.error.issues[0]?.message;
+      return {
+        error: {
+          hookId,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
+          message: `hook "${hookId}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
+        }
+      };
     }
-    if (!parsedEffect.success) {
-      const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: "unsupported-effect",
-          code: "HN401",
-          message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    }
-    const effect = parsedEffect.data;
+    return { effect: parsed.data };
+  };
+  const applyEffect = (hook2, capabilities, effect) => {
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -4865,11 +4950,9 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (hook2.capabilities[capability] === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -4879,11 +4962,9 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -4893,15 +4974,13 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     let loweredShellInput;
     if (effect.kind === "updateShell") {
       const tool = toolOf(event);
       loweredShellInput = tool !== void 0 ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
       if (loweredShellInput === void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -4911,8 +4990,6 @@ async function dispatch(hooks, event, options) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     if (options.validateEffect !== void 0) {
@@ -4924,7 +5001,7 @@ async function dispatch(hooks, event, options) {
         rejection = `target validation failed: ${errorMessage(error)}`;
       }
       if (rejection !== void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -4934,21 +5011,19 @@ async function dispatch(hooks, event, options) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options.shellCodec);
+        setToolInput(tool, loweredShellInput, options);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5016,8 +5091,105 @@ async function dispatch(hooks, event, options) {
     }
     if (isTerminalEffect(effect)) {
       result.terminatedBy = hook2.id;
-      break;
+      return true;
     }
+    return false;
+  };
+  for (const hook2 of matching) {
+    const levelOf = (id) => {
+      const capability = canonicalCapability(event.event, id);
+      const level = targetCapabilities.level(capability);
+      const minimum = options.minimumCapabilityLevel;
+      if (minimum !== void 0 && hook2.capabilities[capability] !== "required" && !meetsMinimum(level, minimum)) {
+        return "unsupported";
+      }
+      return level;
+    };
+    const capabilities = {
+      has: (id) => levelOf(id) !== "unsupported",
+      level: levelOf
+    };
+    const controller = new AbortController();
+    const ctx = {
+      capabilities,
+      harness: { ...options.harness },
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
+    };
+    let outcome;
+    let timedOut = false;
+    let timer;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    try {
+      outcome = await Promise.race([
+        Promise.resolve(hook2.run(event, ctx)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
+        })
+      ]);
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error)
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+    if (outcome === void 0) continue;
+    let returned;
+    try {
+      returned = Array.isArray(outcome) ? Array.from(outcome) : [outcome];
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    const parsed = returned.filter((value) => value !== void 0).map((value) => parseReturned(hook2.id, value));
+    const terminalAt = parsed.findIndex((entry) => "effect" in entry && isTerminalEffect(entry.effect));
+    if (terminalAt !== -1 && terminalAt < parsed.length - 1) {
+      const early = parsed[terminalAt];
+      const trailing = parsed.length - 1 - terminalAt;
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned "${early.effect.kind}" followed by ${trailing} more effect${trailing === 1 ? "" : "s"}; a terminal effect ends the dispatch, so it must be last in the list.`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    let ended = false;
+    for (const entry of parsed) {
+      ended = "error" in entry ? failDispatch(hook2.id, entry.error, capabilities) : applyEffect(hook2, capabilities, entry.effect);
+      if (ended) break;
+    }
+    if (ended) break;
   }
   return result;
 }
@@ -5100,6 +5272,10 @@ var EXACT = {
   write: "file.write",
   edit: "file.edit",
   patch: "file.edit",
+  // Offered instead of edit/write when the model id looks like a GPT model;
+  // without this entry the `<server>_<tool>` MCP split below claimed it as
+  // server "apply". Captured 1.18.31: fixtures/opencode/1.18/tool-apply-patch-before.
+  apply_patch: "file.edit",
   multiedit: "file.edit",
   webfetch: "web.fetch",
   websearch: "web.search",
@@ -5114,13 +5290,29 @@ var OPENCODE_SHELL_SHAPES = {
 var opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
   normalizeName: (name) => name.toLowerCase()
 });
+var OPENCODE_FILE_SHAPES = {
+  read: { pathKey: "filePath" },
+  write: { pathKey: "filePath" },
+  edit: { pathKey: "filePath" },
+  apply_patch: { patchKey: "patchText" }
+};
+var opencodeFileCodec = fileCodec(OPENCODE_FILE_SHAPES, {
+  normalizeName: (name) => name.toLowerCase()
+});
 function classifyOpenCodeTool(nativeName, input) {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
   const lowered = nativeName.toLowerCase();
   const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : void 0;
   if (known !== void 0) {
     const shell = opencodeShellCodec.classify(nativeName, input);
-    return { kind: known, nativeName, input, ...shell !== void 0 ? { shell } : {} };
+    const file = opencodeFileCodec.classify(nativeName, input);
+    return {
+      kind: known,
+      nativeName,
+      input,
+      ...shell !== void 0 ? { shell } : {},
+      ...file !== void 0 ? { file } : {}
+    };
   }
   if (mcpMatch) {
     return {
@@ -5141,7 +5333,29 @@ function snapshotOpenCodeArgs(args) {
     throw new OpenCodeDecodeError("tool.execute.before arguments cannot be cloned");
   }
 }
-function decodeOpenCode(nativeEvent, invocation) {
+var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function turnFields(messages) {
+  if (!Array.isArray(messages)) return {};
+  let lastMessage;
+  let turnId;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = record(messages[index]);
+    const info = record(entry["info"]);
+    if (info["role"] !== "assistant") break;
+    if (turnId === void 0 && typeof info["parentID"] === "string") turnId = info["parentID"];
+    if (lastMessage === void 0) {
+      const parts = Array.isArray(entry["parts"]) ? entry["parts"] : [];
+      const text = parts.map(record).filter((part) => part["type"] === "text" && part["synthetic"] !== true && part["ignored"] !== true).map((part) => part["text"]).filter((value) => typeof value === "string" && value !== "").join("\n");
+      if (text !== "") lastMessage = text;
+    }
+    if (turnId !== void 0 && lastMessage !== void 0) break;
+  }
+  return {
+    ...lastMessage !== void 0 ? { lastMessage } : {},
+    ...turnId !== void 0 ? { turnId } : {}
+  };
+}
+function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new OpenCodeDecodeError("native event is not an object");
   }
@@ -5207,7 +5421,13 @@ function decodeOpenCode(nativeEvent, invocation) {
     case "chat.message": {
       const parts = Array.isArray(output["parts"]) ? output["parts"] : [];
       const prompt = parts.map((p) => typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
-      return { ...base, event: "prompt.before", prompt };
+      const messageId = record(output["message"])["id"];
+      return {
+        ...base,
+        ...typeof messageId === "string" ? { correlation: { ...base.correlation, turnId: messageId } } : {},
+        event: "prompt.before",
+        prompt
+      };
     }
     case "experimental.chat.system.transform":
       return { ...base, event: "model.request.before" };
@@ -5229,8 +5449,16 @@ function decodeOpenCode(nativeEvent, invocation) {
           return { ...withSession(infoSessionId), event: "session.start" };
         case "session.deleted":
           return { ...withSession(infoSessionId), event: "session.end" };
-        case "session.idle":
-          return { ...withSession(propertySessionId), event: "turn.stop" };
+        case "session.idle": {
+          const { lastMessage, turnId } = turnFields(enrichment.messages);
+          const session = withSession(propertySessionId);
+          return {
+            ...session,
+            ...turnId !== void 0 ? { correlation: { ...session.correlation, turnId } } : {},
+            event: "turn.stop",
+            ...lastMessage !== void 0 ? { lastMessage } : {}
+          };
+        }
         case "session.compacted":
           return { ...withSession(propertySessionId), event: "context.compact.after" };
         case "permission.asked": {
@@ -5257,6 +5485,14 @@ function decodeOpenCode(nativeEvent, invocation) {
 }
 var OPENCODE_V2_SHELL_SHAPES = { shell: { commandKey: "command", cwdKey: "workdir" } };
 var opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
+var OPENCODE_V2_FILE_SHAPES = {
+  read: { pathKey: "path" },
+  write: { pathKey: "path" },
+  edit: { pathKey: "path" },
+  patch: { patchKey: "patchText" }
+};
+var opencodeV2FileCodec = fileCodec(OPENCODE_V2_FILE_SHAPES);
+var DISPOSE_CAP_MS = 15e3;
 function createHooknosticHooks(plugin, options, pluginInput) {
   const targetId = options.targetId ?? "opencode";
   const invocation = {
@@ -5266,12 +5502,34 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   const events = new Set(
     plugin.hooks.filter((hook2) => hookAppliesToTarget(hook2, invocation.targetId)).map((hook2) => hook2.event)
   );
+  const readsTurn = plugin.hooks.some(
+    (hook2) => hook2.event === "turn.stop" && hookAppliesToTarget(hook2, invocation.targetId) && (hook2.fields ?? []).some(
+      (field) => field === "turn.stop.lastMessage" || field === "turn.stop.correlation.turnId"
+    )
+  );
+  const enrich = async (native) => {
+    if (!readsTurn || native.hook !== "event") return {};
+    const busEvent = native.input?.event;
+    const id = busEvent?.properties?.sessionID;
+    const session = pluginInput.client?.session;
+    if (busEvent?.type !== "session.idle" || typeof id !== "string" || typeof session?.messages !== "function") {
+      return {};
+    }
+    try {
+      const response = await withTimeout(Promise.resolve(session.messages({ path: { id } })));
+      const data = response !== null && typeof response === "object" && "data" in response ? response.data : void 0;
+      return Array.isArray(data) ? { messages: data } : {};
+    } catch {
+      return {};
+    }
+  };
   class HooknosticBlock extends Error {
   }
   const run = async (native) => {
+    const enrichment = await enrich(native);
     let event;
     try {
-      event = decodeOpenCode(native, invocation);
+      event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
       if (error instanceof OpenCodeDecodeError) return;
       throw error;
@@ -5283,6 +5541,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
       shellCodec: opencodeShellCodec,
+      fileCodec: opencodeFileCodec,
       ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     const application = planOpenCodeApplication(result);
@@ -5374,15 +5633,50 @@ function createHooknosticHooks(plugin, options, pluginInput) {
     } catch {
     }
   };
+  const inflight = /* @__PURE__ */ new Set();
+  const disposeBudgetMs = (() => {
+    const policyMs = options.policy?.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    const perEvent = /* @__PURE__ */ new Map();
+    for (const hook2 of plugin.hooks) {
+      if (!hookAppliesToTarget(hook2, invocation.targetId)) continue;
+      perEvent.set(hook2.event, (perEvent.get(hook2.event) ?? 0) + (hook2.timeoutMs ?? policyMs));
+    }
+    return Math.min(DISPOSE_CAP_MS, Math.max(0, ...perEvent.values()) + POST_TIMEOUT_MS);
+  })();
+  const dispose = async () => {
+    const deadline = Date.now() + disposeBudgetMs;
+    let timer;
+    try {
+      while (inflight.size > 0) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return;
+        const expired = await Promise.race([
+          Promise.allSettled([...inflight]).then(() => false),
+          new Promise((resolvePromise) => {
+            timer = setTimeout(() => resolvePromise(true), remaining);
+          })
+        ]);
+        clearTimeout(timer);
+        if (expired) return;
+      }
+    } catch {
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+  };
   const hooks = {};
   const callback = (hook2) => async (input, output) => {
-    await runFailingOpen({
+    const pending = runFailingOpen({
       hook: hook2,
       directory: pluginInput.directory,
       ...pluginInput.worktree !== void 0 ? { worktree: pluginInput.worktree } : {},
       input,
       output
     });
+    inflight.add(pending);
+    const settle = () => void inflight.delete(pending);
+    void pending.then(settle, settle);
+    await pending;
   };
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
   if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
@@ -5397,6 +5691,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   if (events.has("session.start") || events.has("session.end") || events.has("turn.stop") || events.has("context.compact.after")) {
     hooks["event"] = callback("event");
   }
+  if (Object.keys(hooks).length > 0) hooks.dispose = dispose;
   return hooks;
 }
 
@@ -5415,8 +5710,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.1.0
-@hooknostic/runtime@0.1.0
+@hooknostic/adapter-opencode@0.4.0
+@hooknostic/runtime@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5624,8 +5919,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.1.0
-hooknostic@0.1.0
+@hooknostic/sdk@0.4.0
+hooknostic@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

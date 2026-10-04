@@ -13,7 +13,8 @@
   "tool": {
     "kind": "file.read",
     "nativeName": "Read",
-    "input": { "file_path": "C:\\definitely-nonexistent-hooknostic-file.txt" }
+    "input": { "file_path": "C:\\definitely-nonexistent-hooknostic-file.txt" },
+    "file": { "paths": ["C:\\definitely-nonexistent-hooknostic-file.txt"], "pathKey": "file_path" }
   },
   "error": {
     "message": "File does not exist. Note: your current working directory is C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\claude."

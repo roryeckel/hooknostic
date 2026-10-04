@@ -3,6 +3,7 @@ import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
 import { projectComponents, projectIntegrationWith } from "../project.js";
 import { createOpenCodeAgentPluginProjector, RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT } from "../project-agent-plugin.js";
+import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "../skill-text.js";
 import { opencodeV2Harness } from "./harness.js";
 
 // v2 loads .opencode/plugins from every ancestor of the session directory and
@@ -41,7 +42,11 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
   {
     range: opencodeV2Harness.recommendedRange,
     components: {
-      "agent-plugin.skills": { level: "exact" },
+      "agent-plugin.skills": {
+        level: "exact",
+        rationale: `Copied into .agents/skills as authored, except that ${OPENCODE_SKILL_TEXT_RATIONALE} A skill already at its destination is discovered in place and not rewritten.`,
+        degradations: [OPENCODE_SKILL_REFERENCE_DEGRADATION],
+      },
       "agent-plugin.mcp.stdio": {
         level: "emulated",
         rationale:
@@ -70,6 +75,20 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
     source: {
       date: "2026-09-26",
       validatedOn: [
+        {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and returned permission.rejected for a forced skill-tool call that succeeded without the rule. Claude frontmatter and Codex policy alone did not hide the controls. Explicit UI invocation and plugin-supplied v2 rules were not tested.",
+        },
+        {
+          version: "2.0.18",
+          date: "2026-09-30",
+          method: "live-probe",
+          artifact: ".capture/skill-directory",
+          what: 'Over the loopback model with isolated state, the skill tool (argument id) loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory."',
+        },
         {
           version: opencodeV2Harness.referenceVersion,
           date: "2026-09-26",
@@ -182,8 +201,8 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
       "agent-plugin.manifest": { level: "exact" },
       "agent-plugin.skills": {
         level: "emulated",
-        rationale:
-          "Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain.",
+        rationale: `Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. ${OPENCODE_SKILL_TEXT_RATIONALE}`,
+        degradations: [OPENCODE_SKILL_REFERENCE_DEGRADATION],
       },
     },
   })),

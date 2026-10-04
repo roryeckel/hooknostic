@@ -8,6 +8,9 @@ import type {
 import type {
   CapabilityId,
   Effect,
+  EventFieldId,
+  FileCodec,
+  FileShapes,
   HookEvent,
   HookResult,
   RuntimePolicy,
@@ -75,6 +78,14 @@ export interface CapabilityEntry {
 export type CapabilityMatrix = Partial<Record<CapabilityId, CapabilityEntry>>;
 
 /**
+ * How faithfully a target's decoder produces each optional event field
+ * (ADR-0027): `exact` when the native event carries it, a lower level with a
+ * rationale when the adapter derives it. A field absent from the matrix is
+ * never produced. Contract-audited against the adapter's fixtures.
+ */
+export type FieldMatrix = Partial<Record<EventFieldId, CapabilityEntry>>;
+
+/**
  * Per-harness version metadata: the single source the rest of the repository
  * derives its version literals from. Profiles record what was *validated*;
  * this records what is *recommended* and what the tests exercise.
@@ -130,6 +141,8 @@ export interface CapabilityProfile {
   /** Semver range of native harness versions this matrix was validated for. */
   range: string;
   matrix: CapabilityMatrix;
+  /** Optional event field ratings; absent means no field is produced (ADR-0027). */
+  fields?: FieldMatrix;
   /** Provenance: structured validation events, not prose. */
   source: {
     date: string;
@@ -141,6 +154,8 @@ export interface CapabilityProfile {
 
 export interface CapabilityResolutionResult {
   matrix?: CapabilityMatrix;
+  /** Field ratings resolved like `matrix`; present whenever `matrix` is. */
+  fields?: FieldMatrix;
   /** Profiles that intersected the requested range, in declaration order. */
   profilesUsed: CapabilityProfile[];
   diagnostics: Diagnostic[];
@@ -240,6 +255,13 @@ export interface HarnessAdapter {
   readonly harnessFamilies?: readonly HarnessMetadata[];
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
   projectPaths?: readonly string[];
+  /**
+   * Native project paths the harness reads from the root checkout, never from
+   * the linked git worktree a session runs in. Project integration that
+   * writes one of them into a linked worktree warns HN107. Declared only from
+   * captured evidence: absence means "not captured", not "read in place".
+   */
+  rootCheckoutProjectPaths?: readonly string[];
   projectComponents?(
     source: ProjectComponents,
     root: string,
@@ -331,6 +353,16 @@ export interface HarnessAdapter {
    * shell-bearing fixture, or a new entry ships silently untested.
    */
   readonly shellShapes?: ShellShapes;
+
+  /**
+   * The read-only file codec this adapter's shim passes to `dispatch()`, built
+   * with `fileCodec()` from a per-tool shape table (ADR-0026). The contract
+   * suite holds it to every fixture carrying a `tool.file` view.
+   */
+  readonly fileCodec?: FileCodec;
+
+  /** The table the file codec was built from, for table-side coverage. */
+  readonly fileShapes?: FileShapes;
 
   /**
    * The decoder's own classification of a native tool call: kind, MCP

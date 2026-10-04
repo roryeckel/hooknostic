@@ -24,6 +24,7 @@ import {
   replaceInput,
   replaceOutput,
   requestApproval,
+  toolInvocationSchema,
   updateShell,
 } from "./index.js";
 
@@ -124,6 +125,17 @@ describe("canonical schemas", () => {
     correlation: { toolCallId: "toolu_1" },
     raw: { anything: true, extra_vendor_field: [1, 2, 3] },
   };
+
+  it("validates both normalized tool views and rejects fields outside them", () => {
+    const tool = {
+      kind: "file.edit",
+      nativeName: "apply_patch",
+      input: { command: "*** Begin Patch\n*** Delete File: a.txt\n*** End Patch" },
+      file: { paths: ["a.txt"], patchKey: "command" },
+    };
+    expect(toolInvocationSchema.parse(tool)).toEqual(tool);
+    expect(() => toolInvocationSchema.parse({ ...tool, file: { ...tool.file, resolved: "/abs/a.txt" } })).toThrow();
+  });
 
   it("validates a canonical event envelope and passes through event payload fields", () => {
     const parsed = baseHookEventSchema.parse({

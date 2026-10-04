@@ -21,7 +21,13 @@ import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
-import { classifyClaudeTool, CLAUDE_SHELL_SHAPES, claudeShellCodec } from "./toolmap.js";
+import {
+  classifyClaudeTool,
+  CLAUDE_FILE_SHAPES,
+  CLAUDE_SHELL_SHAPES,
+  claudeFileCodec,
+  claudeShellCodec,
+} from "./toolmap.js";
 export { claudeHarness } from "./harness.js";
 
 export { applyClaude } from "./apply.js";
@@ -31,7 +37,13 @@ export { claudeCapabilityProfiles } from "./profile.js";
 export { claudeAgentPluginProjector, projectAgentPluginToClaude } from "./project-agent-plugin.js";
 export { runClaudeCommandShim } from "./shim.js";
 export type { ClaudeShimOptions } from "./shim.js";
-export { classifyClaudeTool, claudeShellCodec, CLAUDE_SHELL_SHAPES } from "./toolmap.js";
+export {
+  classifyClaudeTool,
+  claudeFileCodec,
+  claudeShellCodec,
+  CLAUDE_FILE_SHAPES,
+  CLAUDE_SHELL_SHAPES,
+} from "./toolmap.js";
 
 function resolveShimPath(): string {
   try {
@@ -82,7 +94,7 @@ export function claudeShimEntrySource(options: {
 export function claudeAdapter(): HarnessAdapter {
   return {
     id: "claude",
-    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
     harness: claudeHarness,
     projectPaths: [".claude/settings.json", ".claude/skills", ".mcp.json"],
     projectIntegration,
@@ -98,6 +110,8 @@ export function claudeAdapter(): HarnessAdapter {
 
     shellCodec: claudeShellCodec,
     shellShapes: CLAUDE_SHELL_SHAPES,
+    fileCodec: claudeFileCodec,
+    fileShapes: CLAUDE_FILE_SHAPES,
     classifyTool: classifyClaudeTool,
 
     supportedHarnessVersions() {

@@ -1,0 +1,14 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-YI1EKw\\opencode",
+  "input": {
+    "tool": "apply_patch",
+    "sessionID": "ses_f19fe8938ffeNY6Ne7OCUJJljI",
+    "callID": "call_playback"
+  },
+  "output": {
+    "args": {
+      "patchText": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: seed.txt\n@@\n-alpha\n+beta\n*** End Patch"
+    }
+  }
+}

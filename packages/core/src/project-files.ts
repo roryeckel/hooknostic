@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { applyEdits, modify, type Node as JsonNode, type ParseError, parseTree } from "jsonc-parser/lib/esm/main.js";
 
-import type { AgentPluginComponentId, AgentPluginDeviation } from "@hooknostic/agent-plugin";
+import type { AgentPluginComponentId, AgentPluginDegradation, AgentPluginDeviation } from "@hooknostic/agent-plugin";
 
 import { editProjectToml, readProjectToml } from "./project-toml.js";
 
@@ -37,6 +37,13 @@ export interface ProjectIntegration {
    * `ProjectComponentOptions.support` (ADR-0019).
    */
   deviations?: AgentPluginDeviation[];
+  /**
+   * Emitted items the target cannot deliver at their component's level, such
+   * as a skill reference it shows as written. Core applies
+   * `components.onDegraded`; each id must be declared in
+   * `ProjectComponentOptions.support` (ADR-0022).
+   */
+  degradations?: AgentPluginDegradation[];
   /**
    * Declared-executable files inside a tree this target discovers in place.
    *

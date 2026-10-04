@@ -58,7 +58,7 @@ const DRIVE_PROMPT = "Use the shell tool exactly once to print the word drift-pr
 const DRIVE_TIMEOUT_MS = 120_000;
 
 /** Credential-scrubbed environment: the drive must never see model tokens. */
-function withoutCredentials() {
+export function withoutCredentials() {
   const env = { ...process.env };
   for (const name of [
     "ANTHROPIC_API_KEY",
@@ -100,7 +100,7 @@ const FIXTURE_DIRS = {
   opencode: "1.18",
 };
 
-function prepareScratch(repo, harness, scratchOverride) {
+export function prepareScratch(repo, harness, scratchOverride) {
   const scratch = resolve(scratchOverride ?? join(mkdtempSync(join(tmpdir(), "hkn-drift-")), harness));
   if (harness === "pi") {
     // Copy only the passive tee, never ignored captures or user settings.
@@ -236,14 +236,16 @@ async function probeLlmPath(harness, config) {
 // (the capture-skill traps: codex trust + responses wire, opencode PWD).
 // ---------------------------------------------------------------------------
 
-async function driveClaude(scratch, model) {
+export async function driveClaude(scratch, model, prompt = DRIVE_PROMPT) {
   return runProcess(
     "claude",
     [
       "-p",
-      DRIVE_PROMPT,
+      prompt,
       "--model",
-      "hooknostic-drift",
+      // The loopback accepts any name; the LiteLLM sidecar only serves the
+      // configured upstream model, so the llm transport must send that name.
+      model.name ?? "hooknostic-drift",
       "--settings",
       join(scratch, ".claude", "settings.json"),
       "--dangerously-skip-permissions",
@@ -305,7 +307,7 @@ async function drivePi(scratch, model, toolName) {
   );
 }
 
-async function driveCodex(scratch, model) {
+export async function driveCodex(scratch, model, prompt = DRIVE_PROMPT) {
   const q = tomlLiteral;
   // Codex refuses to run outside a git repo ("Not inside a trusted directory")
   // — git init in the scratch dir is a capture-skill trap, same as the
@@ -348,7 +350,7 @@ async function driveCodex(scratch, model) {
     ],
     {
       cwd: scratch,
-      input: DRIVE_PROMPT,
+      input: prompt,
       timeoutMs: DRIVE_TIMEOUT_MS,
       env: {
         ...withoutCredentials(),
@@ -358,13 +360,13 @@ async function driveCodex(scratch, model) {
   );
 }
 
-async function driveOpencode(scratch, modelLabel) {
+export async function driveOpencode(scratch, modelLabel, prompt = DRIVE_PROMPT) {
   // The PWD-precedence trap: OpenCode trusts inherited PWD over the spawn cwd,
   // so plugins/config resolve against the scratch dir only if PWD says so.
   await runProcess("git", ["init"], { cwd: scratch, env: process.env, timeoutMs: 30_000 });
   return runProcess(
     "opencode",
-    ["run", DRIVE_PROMPT, "--model", `drift/${modelLabel}`, "--print-logs", "--log-level", "DEBUG"],
+    ["run", prompt, "--model", `drift/${modelLabel}`, "--print-logs", "--log-level", "DEBUG"],
     {
       cwd: scratch,
       timeoutMs: DRIVE_TIMEOUT_MS,
@@ -377,7 +379,7 @@ async function driveOpencode(scratch, modelLabel) {
   );
 }
 
-function writeOpencodeConfig(scratch, baseUrl, apiKey, modelLabel) {
+export function writeOpencodeConfig(scratch, baseUrl, apiKey, modelLabel) {
   writeFileSync(
     join(scratch, "opencode.json"),
     JSON.stringify(
@@ -548,6 +550,7 @@ async function main() {
           : {
               url: modelSide.config.proxyUrl,
               key: modelSide.config.proxyKey,
+              name: modelSide.config.model,
             };
       result = await driveClaude(scratch, url);
     } else if (opts.harness === "codex") {

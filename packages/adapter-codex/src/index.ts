@@ -21,7 +21,13 @@ import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
-import { classifyCodexTool, CODEX_SHELL_SHAPES, codexShellCodec } from "./toolmap.js";
+import {
+  classifyCodexTool,
+  CODEX_FILE_SHAPES,
+  CODEX_SHELL_SHAPES,
+  codexFileCodec,
+  codexShellCodec,
+} from "./toolmap.js";
 export { codexHarness } from "./harness.js";
 
 export { applyCodex } from "./apply.js";
@@ -38,7 +44,13 @@ export { codexCapabilityProfiles } from "./profile.js";
 export { codexAgentPluginProjector } from "./project-agent-plugin.js";
 export { runCodexCommandShim } from "./shim.js";
 export type { CodexShimOptions } from "./shim.js";
-export { classifyCodexTool, codexShellCodec, CODEX_SHELL_SHAPES } from "./toolmap.js";
+export {
+  classifyCodexTool,
+  codexFileCodec,
+  codexShellCodec,
+  CODEX_FILE_SHAPES,
+  CODEX_SHELL_SHAPES,
+} from "./toolmap.js";
 
 function resolveShimPath(): string {
   try {
@@ -82,9 +94,12 @@ export function codexShimEntrySource(options: {
 export function codexAdapter(): HarnessAdapter {
   return {
     id: "codex",
-    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
     projectPaths: [".codex/hooks.json", ".codex/config.toml", ".agents/skills"],
+    // Live-probed on 0.156.1 (.capture/codex-worktree-hooks). config.toml's
+    // other keys stay per-worktree in source, so only hooks are declared.
+    rootCheckoutProjectPaths: [".codex/hooks.json"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
@@ -99,6 +114,8 @@ export function codexAdapter(): HarnessAdapter {
 
     shellCodec: codexShellCodec,
     shellShapes: CODEX_SHELL_SHAPES,
+    fileCodec: codexFileCodec,
+    fileShapes: CODEX_FILE_SHAPES,
     classifyTool: classifyCodexTool,
 
     supportedHarnessVersions() {

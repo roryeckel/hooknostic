@@ -78,6 +78,33 @@ it("rejects extracted evidence, generated manifests, release data and skipped ma
   ).toThrow("Skipped dependency");
 });
 
+it("tolerates the versionless setup-node placeholder but not a literal Node pin", () => {
+  const dep = {
+    manager: "npm",
+    packageFile: "package.json",
+    depName: "pnpm",
+    currentValue: "99.0.0",
+    depType: "packageManager",
+  };
+  const placeholder = {
+    depName: "node",
+    depType: "uses-with",
+    skipReason: "unspecified-version",
+    datasource: "github-releases",
+  };
+  const extract = (node) => ({
+    npm: [{ packageFile: "package.json", deps: [dep] }],
+    "github-actions": [{ packageFile: "package.json", deps: [node] }],
+  });
+  expect(() => checkExtraction([dep], extract(placeholder))).not.toThrow();
+  expect(() => checkExtraction([dep], extract({ ...placeholder, currentValue: "22" }))).toThrow(
+    "Unexpected extracted dependency",
+  );
+  expect(() => checkExtraction([dep], extract({ ...placeholder, skipReason: undefined }))).toThrow(
+    "Unexpected extracted dependency",
+  );
+});
+
 it("keeps intentional catalog lines and the manual Node floor outside automatic major migrations", () => {
   const config = JSON.parse(readFileSync(new URL("../renovate.json", import.meta.url), "utf8"));
   const ruleFor = (type) => config.packageRules.find((rule) => rule.matchDepTypes?.includes(type));
@@ -95,4 +122,55 @@ it("keeps intentional catalog lines and the manual Node floor outside automatic 
   expect(major.groupName).toBeNull();
   expect(config.automerge).toBe(false);
   expect(config.vulnerabilityAlerts.automerge).toBe(false);
+});
+
+it("keeps the compatibility runtime at the declared minimum instead of a newer patch", () => {
+  const manifests = { "package.json": { engines: { node: ">=99.1.0" } } };
+  expect(() => checkEngines(manifests, "99.1.0")).not.toThrow();
+  for (const version of ["99.0.0", "99.1.1", "100.0.0"]) {
+    expect(() => checkEngines(manifests, version)).toThrow("Compatibility Node must match the declared minimum");
+  }
+});
+it("compares npm alias targets as well as alias names and version ranges", () => {
+  const expected = {
+    manager: "npm",
+    packageFile: "pnpm-workspace.yaml",
+    depName: "compiler",
+    depType: "pnpm.catalog.default",
+    currentValue: "~7.0.2",
+    npmPackageAlias: true,
+    packageName: "typescript",
+  };
+  const extract = (dep) => ({ npm: [{ packageFile: expected.packageFile, deps: [dep] }] });
+  expect(() => checkExtraction([expected], extract(expected))).not.toThrow();
+  for (const changed of [
+    { ...expected, packageName: "another-package" },
+    { ...expected, packageName: undefined },
+    { ...expected, npmPackageAlias: false },
+  ]) {
+    expect(() => checkExtraction([expected], extract(changed))).toThrow("Unexpected extracted dependency");
+  }
+});
+
+it("inventories catalog aliases using Renovate's range and target fields", () => {
+  const dependencies = inventory();
+  expect(dependencies.find((dep) => dep.depName === "@typescript/native")).toMatchObject({
+    currentValue: expect.stringMatching(/^~\d+\.\d+\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "typescript",
+  });
+  expect(dependencies.find((dep) => dep.depName === "typescript")).toMatchObject({
+    currentValue: expect.stringMatching(/^~\d+\.\d+\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "@typescript/typescript6",
+  });
+});
+
+it("inventories the compiler API override on the linter-supported minor line", () => {
+  expect(inventory().find((dep) => dep.depName === "@typescript/typescript6>@typescript/old")).toMatchObject({
+    depType: "pnpm-workspace.overrides",
+    currentValue: expect.stringMatching(/^~6\.0\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "typescript",
+  });
 });

@@ -5,6 +5,7 @@ export * from "./capabilities.js";
 export * from "./config.js";
 export * from "./effects.js";
 export * from "./events.js";
+export * from "./fields.js";
 export * from "./hook.js";
 export * from "./json.js";
 export * from "./plugin.js";

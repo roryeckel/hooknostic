@@ -1,27 +1,27 @@
 {
   "schemaVersion": 1,
-  "event": "tool.after",
   "harness": {
     "id": "opencode",
     "nativeEvent": "tool.execute.after"
   },
   "session": {
-    "id": "ses_8f2a1c",
-    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
+    "id": "ses_f15623a05ffex44pC5Gqv3MgBx",
+    "cwd": "/drift/opencode-v1"
   },
   "correlation": {
-    "toolCallId": "call_01hn"
+    "toolCallId": "call_playback"
   },
+  "event": "tool.after",
   "tool": {
     "kind": "shell",
     "nativeName": "bash",
     "input": {
-      "command": "echo hooknostic-fixture"
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\""
     },
     "shell": {
-      "command": "echo hooknostic-fixture",
+      "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\"",
       "commandKey": "command"
     }
   },
-  "output": "hooknostic-fixture\n"
+  "output": "(no output)"
 }

@@ -1,0 +1,71 @@
+{
+  "hook": "execute.after",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project",
+  "event": {
+    "tool": "patch",
+    "sessionID": "ses_f19fd1ef9ffeuEpWao6b0yl5Ii",
+    "agent": "build",
+    "messageID": "msg_0e602e2be001eVedMbe5PnP4GK",
+    "id": "call_probe_1",
+    "input": {
+      "patchText": "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch"
+    },
+    "status": "completed",
+    "result": {
+      "output": {
+        "applied": [
+          {
+            "type": "add",
+            "resource": "added.txt",
+            "target": "C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt"
+          },
+          {
+            "type": "update",
+            "resource": "probe.txt",
+            "target": "C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt"
+          }
+        ],
+        "files": [
+          {
+            "file": "added.txt",
+            "patch": "Index: C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt\n===================================================================\n--- C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt\n+++ C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt\n@@ -0,0 +1,1 @@\n+hooknostic probe\n",
+            "additions": 1,
+            "deletions": 0,
+            "status": "added"
+          },
+          {
+            "file": "probe.txt",
+            "patch": "Index: C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt\n===================================================================\n--- C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt\n+++ C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt\n@@ -1,1 +1,1 @@\n-hooknostic-before-edit\n+hooknostic-after-edit\n",
+            "additions": 1,
+            "deletions": 1,
+            "status": "modified"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Success. Updated the following files:\nA added.txt\nM probe.txt"
+        }
+      ],
+      "metadata": {
+        "files": [
+          {
+            "file": "added.txt",
+            "patch": "Index: C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt\n===================================================================\n--- C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt\n+++ C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\added.txt\n@@ -0,0 +1,1 @@\n+hooknostic probe\n",
+            "status": "added",
+            "additions": 1,
+            "deletions": 0
+          },
+          {
+            "file": "probe.txt",
+            "patch": "Index: C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt\n===================================================================\n--- C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt\n+++ C:\\Users\\user\\AppData\\Local\\Temp\\tmp.Ug84NfF0Hn\\project\\probe.txt\n@@ -1,1 +1,1 @@\n-hooknostic-before-edit\n+hooknostic-after-edit\n",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 1
+          }
+        ]
+      }
+    }
+  }
+}

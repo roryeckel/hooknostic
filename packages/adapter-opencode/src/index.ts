@@ -28,7 +28,13 @@ import { opencodeHarness } from "./harness.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
-import { classifyOpenCodeTool, OPENCODE_SHELL_SHAPES, opencodeShellCodec } from "./toolmap.js";
+import {
+  classifyOpenCodeTool,
+  OPENCODE_FILE_SHAPES,
+  OPENCODE_SHELL_SHAPES,
+  opencodeFileCodec,
+  opencodeShellCodec,
+} from "./toolmap.js";
 import { opencodeV2Harness } from "./v2/harness.js";
 import { opencodeV2Adapter } from "./v2/index.js";
 export { opencodeV2Harness } from "./v2/harness.js";
@@ -43,8 +49,14 @@ export { generateOpenCodeArtifacts } from "./generate.js";
 export { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
 export { createHooknosticHooks } from "./shim.js";
-export type { OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
-export { classifyOpenCodeTool, opencodeShellCodec, OPENCODE_SHELL_SHAPES } from "./toolmap.js";
+export type { OpenCodeHooks, OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
+export {
+  classifyOpenCodeTool,
+  opencodeFileCodec,
+  opencodeShellCodec,
+  OPENCODE_FILE_SHAPES,
+  OPENCODE_SHELL_SHAPES,
+} from "./toolmap.js";
 
 function resolveShimPath(): string {
   try {
@@ -93,7 +105,7 @@ export function opencodeShimEntrySource(options: {
 export function opencodeV1Adapter(): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.1.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
     harness: opencodeHarness,
     projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration,
@@ -110,6 +122,8 @@ export function opencodeV1Adapter(): HarnessAdapter {
 
     shellCodec: opencodeShellCodec,
     shellShapes: OPENCODE_SHELL_SHAPES,
+    fileCodec: opencodeFileCodec,
+    fileShapes: OPENCODE_FILE_SHAPES,
     classifyTool: classifyOpenCodeTool,
 
     supportedHarnessVersions() {

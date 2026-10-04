@@ -1,6 +1,6 @@
 ---
 name: harness-capture
-description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, toolmap), whether a wire channel (updatedInput, systemMessage) is honoured — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/, or verifying an adapter claim live.
+description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
 ---
 
 # Harness capture
@@ -48,7 +48,16 @@ Each `.capture/<harness>/README.md` is authoritative; the short version:
   environment (`.capture/codex-tools/README.md`).
 - **OpenCode** — in-process: a capture plugin receives live objects
   (`.capture/opencode*`). Behavioral facts (in-place args mutation, event
-  timing) must be observed on live objects, not inferred from types.
+  timing) must be observed on live objects, not inferred from types. The
+  advertised tool set depends on the model id (a GPT-like id swaps
+  `edit`/`write` for a patch tool), so discover under more than one id.
+
+**Tool-argument captures need no model spend.** `.capture/file-tools/drive.mjs`
+runs the real binary against the loopback playback model, discovers the
+advertised tools and their live argument keys, and scripts one call per case
+(`TurnAction.arguments`, or `freeformInput` for a grammar tool like Codex's
+`apply_patch`). The hook payload is **captured**; say in the provenance row
+that the argument *values* were scripted. Its README is the worked example.
 
 ## The router/hook-boundary distinction (Codex)
 
@@ -78,10 +87,10 @@ writes a marker file, or read the spawned command line from the debug log.
    must move together. The README's redaction note already covers it; say so
    again only if you redact something new.
 2. Wire the case into the adapter's `decode.test.ts` list; the testkit
-   contract suite picks up shell-bearing fixtures automatically (codec
-   round-trip obligation).
-3. Shape claims go in the adapter's `toolmap.ts` `ShellShapes` table with a
-   comment naming the fixture. **A tool whose shape you have no evidence for
+   contract suite picks up shell- and file-bearing fixtures automatically
+   (codec obligations, and every table entry needs such a fixture).
+3. Shape claims go in the adapter's `toolmap.ts` `ShellShapes` or
+   `FileShapes` table (ADR-0007, ADR-0026) with a comment naming the fixture. **A tool whose shape you have no evidence for
    stays absent from the table** — absence is the documented fall-back
    signal. One carved exception: router-log provenance (a shape observed one
    level below the hook boundary, never in a hook payload) is admissible as

@@ -62,9 +62,81 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/opencode-v2",
           what: "Nested drive: one server hosts a session in an outer checkout and one in a checkout nested inside it, each with generated project wiring. The subscription of the plugin instance for the nested location received the outer session's session.created and execution events; hook callbacks were location-scoped. With location filtering each session dispatched only its own copy's hooks.",
         },
+        {
+          version: "2.0.17",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0",
+          what: "A GPT-like model id swaps edit/write for patch, whose patchText carries a Codex-grammar patch that applied (tool-patch-before/after, .capture/opencode-v2 tools-patch)",
+        },
+        {
+          version: "2.0.18",
+          date: "2026-09-28",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0",
+          what: "Turn fields over the loopback model (observe drive, isolated state): the plugin's event subscription receives session.execution.started, session.step.*, session.text.started/delta/ended ({ sessionID, assistantMessageID, ordinal, text }) and then session.execution.succeeded ({ sessionID } only). Each model step has its own assistantMessageID; the prompt hook's messageID matches session.inbox.enqueued's inboxID (turn-fields/events.jsonl, execution-succeeded-with-turn).",
+        },
+        {
+          version: "2.0.18",
+          date: "2026-09-30",
+          method: "live-probe",
+          artifact: ".capture/opencode-dispose",
+          what: "One-shot run over the loopback model, isolated state, Windows: plugins run in a server process, not the run process. With --standalone the private server was terminated when run exited 0.7 s after session.execution.succeeded; the plugin's cleanup was never called and a 3 s task started at succeeded never finished. Through the background service (its own port) run exited 41 ms after succeeded and the task finished in the service 3 s later.",
+        },
         // scheduled-playback:begin
+        {
+          version: "2.0.22",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
+        },
         // scheduled-playback:end
+        {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: execute.before shell payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration.",
+        },
+        {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: captured execute.before shell payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration.",
+        },
+        {
+          version: "2.0.22",
+          date: "2026-10-04",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/context-max-tokens.input.json",
+          what: "Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed.",
+        },
       ],
+    },
+    // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
+    // capture in .capture/opencode-v2 (observe drive, event subscription).
+    fields: {
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+      "tool.error.error.message": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+      "prompt.before.correlation.turnId": {
+        level: "exact",
+        rationale: "the prompt hook's messageID, the id of the user message it admits.",
+      },
+      "turn.stop.lastMessage": {
+        level: "emulated",
+        rationale:
+          "execution completion carries only the session id. The shim buffers the session.text.ended events of each execution from the event subscription and joins, in ordinal order, the text of the last assistant message that produced any (one message per model step, as on Claude). Only sessions the plugin tracks, only while subscribed, and only when a turn.stop hook declares this field. A failed or interrupted execution reports whatever text had ended.",
+      },
+      "turn.stop.correlation.turnId": {
+        level: "emulated",
+        rationale:
+          "the messageID of the prompt that started the execution, remembered from the prompt hook: the id prompt.before reports. Absent for an execution no prompt hook started, such as a stop-prevention continuation (session.synthetic), and when the plugin did not see the prompt. A prompt admitted while an execution runs changes nothing and is handed to no later execution, which then reports none.",
+      },
     },
     matrix: {
       "session.start.observe": {
@@ -110,7 +182,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt.",
+          "Via execution succeeded, failed and interrupted events. These report execution completion, including manual compaction; they are asynchronous observations and cannot prevent completion. The subscription delivers every location's sessions, so only sessions created in or prompted through the plugin's location dispatch; a session first seen after a plugin reload is attributed at its next prompt. The completion carries only the session id; lastMessage and correlation.turnId are assembled from earlier events, see the field ratings. Hooks run in the server process: through the background service a hook still running when `opencode run` exits completes there, but `run --standalone` terminates its private server without calling plugin cleanup, so such a hook is cut off.",
       },
       "turn.stop.prevent": {
         level: "approximate",

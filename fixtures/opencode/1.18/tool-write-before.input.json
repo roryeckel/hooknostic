@@ -1,0 +1,15 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-4yZfy4\\opencode",
+  "input": {
+    "tool": "write",
+    "sessionID": "ses_f19ff83caffeFo0Y31fT5DBZCK",
+    "callID": "call_playback"
+  },
+  "output": {
+    "args": {
+      "filePath": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-4yZfy4\\opencode\\probe-write.txt",
+      "content": "hooknostic probe\n"
+    }
+  }
+}

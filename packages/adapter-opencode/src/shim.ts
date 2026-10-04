@@ -3,13 +3,13 @@ import { dispatch, formatHandlerErrors } from "@hooknostic/runtime";
 import type { HookEvent, HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 // Value imports must stay on the SDK/runtime: pulling `@hooknostic/core` into
 // the shim bundles esbuild into every generated artifact (see docs/design.md).
-import { hookAppliesToTarget } from "@hooknostic/sdk";
+import { DEFAULT_RUNTIME, hookAppliesToTarget } from "@hooknostic/sdk";
 
 import { planOpenCodeApplication } from "./apply.js";
-import { withTimeout } from "./bounded-post.js";
-import type { OpenCodeNativeEvent } from "./decode.js";
+import { POST_TIMEOUT_MS, withTimeout } from "./bounded-post.js";
+import type { OpenCodeEnrichment, OpenCodeNativeEvent } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
-import { opencodeShellCodec } from "./toolmap.js";
+import { opencodeFileCodec, opencodeShellCodec } from "./toolmap.js";
 
 export { setupOpenCodeV2 } from "./v2/shim.js";
 
@@ -42,6 +42,12 @@ export interface OpenCodeClient {
       path: { id: string };
       body: { parts: { type: "text"; text: string }[]; noReply?: boolean };
     }) => unknown;
+    /**
+     * Reads a session's messages; answers `{ data, request, response }` with
+     * `data` an array of `{ info, parts }` (captured on 1.18.32,
+     * .capture/opencode-turn-fields). Prototype method, same `this` caveat.
+     */
+    messages?: (options: { path: { id: string } }) => unknown;
   };
   /**
    * Answers a pending permission request ("Respond to a permission request",
@@ -72,6 +78,31 @@ export interface OpenCodePluginInput {
 type Callback = (input: unknown, output: unknown) => Promise<void>;
 
 /**
+ * The native Hooks object the shim returns: one callback per OpenCode hook it
+ * registers, and `dispose`.
+ *
+ * `dispose` is a documented extension of `@opencode-ai/plugin`'s `Hooks` type,
+ * which (through 1.4.10) does not declare it. The measured OpenCode build calls
+ * it when it disposes the instance and awaits it (captured on 1.18.33,
+ * .capture/opencode-dispose): the instance finalizer runs
+ * `Promise.resolve(hooks.dispose?.())` for each plugin, and a rejection is only
+ * logged. Earlier supported builds have not been verified to call or await
+ * it. It is present whenever the shim registers a callback.
+ */
+export interface OpenCodeHooks {
+  [hook: string]: Callback | undefined;
+  dispose?: () => Promise<void>;
+}
+
+/**
+ * The longest `dispose` waits for in-flight hooks. OpenCode does not bound a
+ * plugin's dispose itself (a dispose that took 25 s held `opencode run` open for
+ * 25 s, .capture/opencode-dispose), so this is the only bound on how long a
+ * one-shot run outlives its turn.
+ */
+export const DISPOSE_CAP_MS = 15_000;
+
+/**
  * Build the native OpenCode Hooks object for a portable plugin. Persistent
  * module lifetime is deliberately not surfaced: every callback invocation
  * decodes and dispatches independently (ADR-0002).
@@ -80,7 +111,7 @@ export function createHooknosticHooks(
   plugin: PluginSpec,
   options: OpenCodeShimOptions,
   pluginInput: OpenCodePluginInput,
-): Record<string, Callback> {
+): OpenCodeHooks {
   const targetId = options.targetId ?? "opencode";
   const invocation = {
     targetId,
@@ -91,13 +122,55 @@ export function createHooknosticHooks(
     plugin.hooks.filter((hook) => hookAppliesToTarget(hook, invocation.targetId)).map((hook) => hook.event),
   );
 
+  // session.idle carries only the session id, so the turn's last message and
+  // prompt id cost a session read. Only a hook that declares one pays for it
+  // (ADR-0027): a read on every idle would be wasted on every other plugin.
+  const readsTurn = plugin.hooks.some(
+    (hook) =>
+      hook.event === "turn.stop" &&
+      hookAppliesToTarget(hook, invocation.targetId) &&
+      (hook.fields ?? []).some(
+        (field) => field === "turn.stop.lastMessage" || field === "turn.stop.correlation.turnId",
+      ),
+  );
+
+  /**
+   * Read the session's messages for a `session.idle`, so the pure decoder can
+   * report the finished turn. Handed to it beside the envelope, never inside
+   * it: `event.raw` stays what the callback received, and a hook that never
+   * declared a turn field does not get the session's history in it. Read
+   * rather than buffered from message.* bus events: in a captured aborted turn
+   * a message.updated arrived after session.idle (.capture/opencode-client).
+   * Best-effort and bounded: a missing client or a failed or slow read leaves
+   * the fields absent.
+   */
+  const enrich = async (native: OpenCodeNativeEvent): Promise<OpenCodeEnrichment> => {
+    if (!readsTurn || native.hook !== "event") return {};
+    const busEvent = (native.input as { event?: { type?: unknown; properties?: { sessionID?: unknown } } } | undefined)
+      ?.event;
+    const id = busEvent?.properties?.sessionID;
+    // Called as `session.messages(...)`, never detached: see postPrompts.
+    const session = pluginInput.client?.session;
+    if (busEvent?.type !== "session.idle" || typeof id !== "string" || typeof session?.messages !== "function") {
+      return {};
+    }
+    try {
+      const response = await withTimeout(Promise.resolve(session.messages({ path: { id } })));
+      const data = response !== null && typeof response === "object" && "data" in response ? response.data : undefined;
+      return Array.isArray(data) ? { messages: data } : {};
+    } catch {
+      return {}; // Fail open: the turn still stops, without its fields.
+    }
+  };
+
   /** A block the plugin meant to deliver, as opposed to a bug escaping. */
   class HooknosticBlock extends Error {}
 
   const run = async (native: OpenCodeNativeEvent): Promise<void> => {
+    const enrichment = await enrich(native);
     let event;
     try {
-      event = decodeOpenCode(native, invocation);
+      event = decodeOpenCode(native, invocation, enrichment);
     } catch (error) {
       if (error instanceof OpenCodeDecodeError) return; // fail-open
       throw error;
@@ -111,6 +184,7 @@ export function createHooknosticHooks(
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: opencodeShellCodec,
+      fileCodec: opencodeFileCodec,
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });
     const application = planOpenCodeApplication(result);
@@ -279,17 +353,77 @@ export function createHooknosticHooks(
     }
   };
 
-  const hooks: Record<string, Callback> = {};
+  /**
+   * Every dispatch still running, whichever callback started it. OpenCode 1.x
+   * starts `event` handlers without awaiting them, and `opencode run` exits
+   * once the session is idle, so a turn.stop dispatched at session.idle was
+   * killed mid-flight: its session read and its handlers never finished
+   * (.capture/opencode-dispose). The host awaits `dispose` before it exits,
+   * which is where these are drained.
+   */
+  const inflight = new Set<Promise<void>>();
+
+  /**
+   * How long `dispose` may wait. Handlers matching one native event run in
+   * turn, each under its own budget (RuntimePolicy.timeoutMs), so the longest
+   * dispatch is the busiest event's sum. One host round trip is added for the
+   * bounded session read before dispatch or post after it. Clamped to
+   * DISPOSE_CAP_MS.
+   */
+  const disposeBudgetMs = (() => {
+    const policyMs = options.policy?.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    const perEvent = new Map<HookEventName, number>();
+    for (const hook of plugin.hooks) {
+      if (!hookAppliesToTarget(hook, invocation.targetId)) continue;
+      perEvent.set(hook.event, (perEvent.get(hook.event) ?? 0) + (hook.timeoutMs ?? policyMs));
+    }
+    return Math.min(DISPOSE_CAP_MS, Math.max(0, ...perEvent.values()) + POST_TIMEOUT_MS);
+  })();
+
+  /**
+   * Wait, bounded, for the dispatches in flight. A dispatch that starts while
+   * this waits is waited for too: the host removes its bus listener only after
+   * dispose. Never rejects, since the host would only log it, and clears its
+   * timer so it cannot hold a process open on its own.
+   */
+  const dispose = async (): Promise<void> => {
+    const deadline = Date.now() + disposeBudgetMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      while (inflight.size > 0) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return;
+        const expired = await Promise.race([
+          Promise.allSettled([...inflight]).then(() => false),
+          new Promise<boolean>((resolvePromise) => {
+            timer = setTimeout(() => resolvePromise(true), remaining);
+          }),
+        ]);
+        clearTimeout(timer);
+        if (expired) return;
+      }
+    } catch {
+      // Fail open: a dispose that throws is logged by the host and changes nothing.
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+
+  const hooks: OpenCodeHooks = {};
   const callback =
     (hook: string): Callback =>
     async (input, output) => {
-      await runFailingOpen({
+      const pending = runFailingOpen({
         hook,
         directory: pluginInput.directory,
         ...(pluginInput.worktree !== undefined ? { worktree: pluginInput.worktree } : {}),
         input,
         output,
       } as OpenCodeNativeEvent);
+      inflight.add(pending);
+      const settle = () => void inflight.delete(pending);
+      void pending.then(settle, settle);
+      await pending;
     };
 
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
@@ -314,6 +448,7 @@ export function createHooknosticHooks(
   ) {
     hooks["event"] = callback("event");
   }
+  if (Object.keys(hooks).length > 0) hooks.dispose = dispose;
   return hooks;
 }
 

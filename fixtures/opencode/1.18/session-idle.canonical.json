@@ -1,10 +1,13 @@
 {
   "schemaVersion": 1,
-  "event": "turn.stop",
-  "harness": { "id": "opencode", "nativeEvent": "event" },
-  "session": {
-    "id": "ses_8f2a1c",
-    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "event"
   },
-  "correlation": {}
+  "session": {
+    "id": "ses_f15623a05ffex44pC5Gqv3MgBx",
+    "cwd": "/drift/opencode-v1"
+  },
+  "correlation": {},
+  "event": "turn.stop"
 }

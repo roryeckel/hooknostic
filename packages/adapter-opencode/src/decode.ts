@@ -21,6 +21,20 @@ export interface OpenCodeNativeEvent {
   output?: unknown;
 }
 
+/**
+ * What the shim learned from the host beside the callback, handed to the
+ * decoder separately so `event.raw` stays the callback's own envelope
+ * (ADR-0027).
+ */
+export interface OpenCodeEnrichment {
+  /**
+   * The session's messages, as `client.session.messages` returned them (its
+   * `data`), read at a `session.idle` when a hook declares a turn field. The
+   * bus event itself carries only the session id.
+   */
+  messages?: unknown;
+}
+
 interface ToolCallbackInput {
   tool?: string;
   sessionID?: string;
@@ -42,7 +56,51 @@ function snapshotOpenCodeArgs(args: unknown): unknown {
   }
 }
 
-export function decodeOpenCode(nativeEvent: unknown, invocation: InvocationContext): HookEvent {
+const record = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+/**
+ * The finished turn's fields from a session read at `session.idle`, newest
+ * message first, stopping at the user message that started the turn so an
+ * earlier turn's reply is never reported. OpenCode stores one assistant
+ * message per model step, each naming the user message as its `parentID`
+ * (captured on 1.18.32, .capture/opencode-turn-fields): the last message is
+ * the turn's, and the latest one with text is what the model said last.
+ */
+function turnFields(messages: unknown): { lastMessage?: string; turnId?: string } {
+  if (!Array.isArray(messages)) return {};
+  let lastMessage: string | undefined;
+  let turnId: string | undefined;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = record(messages[index]);
+    const info = record(entry["info"]);
+    if (info["role"] !== "assistant") break;
+    if (turnId === undefined && typeof info["parentID"] === "string") turnId = info["parentID"];
+    if (lastMessage === undefined) {
+      const parts = Array.isArray(entry["parts"]) ? (entry["parts"] as unknown[]) : [];
+      const text = parts
+        .map(record)
+        // Reasoning, tool, step and patch parts are not what the model said;
+        // synthetic and ignored text parts are the harness's, not the model's.
+        .filter((part) => part["type"] === "text" && part["synthetic"] !== true && part["ignored"] !== true)
+        .map((part) => part["text"])
+        .filter((value): value is string => typeof value === "string" && value !== "")
+        .join("\n");
+      if (text !== "") lastMessage = text;
+    }
+    if (turnId !== undefined && lastMessage !== undefined) break;
+  }
+  return {
+    ...(lastMessage !== undefined ? { lastMessage } : {}),
+    ...(turnId !== undefined ? { turnId } : {}),
+  };
+}
+
+export function decodeOpenCode(
+  nativeEvent: unknown,
+  invocation: InvocationContext,
+  enrichment: OpenCodeEnrichment = {},
+): HookEvent {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new OpenCodeDecodeError("native event is not an object");
   }
@@ -115,7 +173,16 @@ export function decodeOpenCode(nativeEvent: unknown, invocation: InvocationConte
         .map((p) => (typeof (p as { text?: string }).text === "string" ? (p as { text: string }).text : ""))
         .filter(Boolean)
         .join("\n");
-      return { ...base, event: "prompt.before", prompt };
+      // The user message chat.message creates; its assistant replies name it as
+      // parentID. input.messageID is only the caller's optional id, absent in
+      // the 1.18.32 capture.
+      const messageId = record(output["message"])["id"];
+      return {
+        ...base,
+        ...(typeof messageId === "string" ? { correlation: { ...base.correlation, turnId: messageId } } : {}),
+        event: "prompt.before",
+        prompt,
+      };
     }
     case "experimental.chat.system.transform":
       // input is { sessionID, model }; base already lifts sessionID.
@@ -145,8 +212,16 @@ export function decodeOpenCode(nativeEvent: unknown, invocation: InvocationConte
           return { ...withSession(infoSessionId), event: "session.start" };
         case "session.deleted":
           return { ...withSession(infoSessionId), event: "session.end" };
-        case "session.idle":
-          return { ...withSession(propertySessionId), event: "turn.stop" };
+        case "session.idle": {
+          const { lastMessage, turnId } = turnFields(enrichment.messages);
+          const session = withSession(propertySessionId);
+          return {
+            ...session,
+            ...(turnId !== undefined ? { correlation: { ...session.correlation, turnId } } : {}),
+            event: "turn.stop",
+            ...(lastMessage !== undefined ? { lastMessage } : {}),
+          };
+        }
         case "session.compacted":
           return { ...withSession(propertySessionId), event: "context.compact.after" };
         case "permission.asked": {

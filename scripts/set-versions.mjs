@@ -66,6 +66,7 @@ const sourceCarriers = [
   ["packages/adapter-codex/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-opencode/src/index.ts", /(adapterVersion: ")[^"]+(")/],
   ["packages/adapter-opencode/src/v2/index.ts", /(adapterVersion: ")[^"]+(")/],
+  ["packages/adapter-pi/src/index.ts", /(adapterVersion: ")[^"]+(")/],
 ];
 for (const [rel, pattern] of sourceCarriers) {
   const path = resolve(ROOT, rel);

@@ -18,7 +18,8 @@ adapters map to native event names (`PreToolUse`, `session.created`, …).
 
 **Effect** — the action a hook returns to request something of the harness: `block`,
 `replaceInput`, `addContext`, and friends. Returning nothing means "continue
-unchanged."
+unchanged"; returning a list applies each effect in order, with any terminal effect
+last. ([Decision 0025](decisions/0025-effect-lists.md))
 
 **Capability** — a named, event-scoped permission slot such as `tool.before.block`:
 "at this event, on this harness, can hook code do this?" The core currency of
@@ -122,6 +123,18 @@ and it fails the build under `components.onDeviation: "error"` (ADR-0019).
 items it still emits, such as an OpenCode skill it cannot name for its plugin. Declared on
 the adapter's profile under a qualified id such as `opencode:skill-name-unqualified`,
 reported as HN101, and fatal by default under `components.onDegraded` (ADR-0022).
+
+**Event field** — an optional part of a normalized event, such as `turn.stop`'s
+`lastMessage` or `correlation.turnId`, named by an event-scoped id like
+`turn.stop.lastMessage`. Each adapter rates each field per version range, like a
+capability; a hook lists the fields it reads in `fields`, and one a target cannot
+produce exactly is reported as HN108. Accepted by a qualified id such as
+`opencode:turn.stop.correlation.turnId` in `compatibility.accept` (ADR-0027).
+
+**Root checkout** — the main working tree of a git repository, as opposed to a linked
+worktree made by `git worktree add`. Codex reads project hooks from the root checkout
+even for a session in a linked worktree, so project wiring synchronized into a
+worktree is reported as HN107 (ADR-0015).
 
 **Skill** — an Agent Plugins portable component (`skills/<name>/SKILL.md`): reusable
 instructions a harness can invoke. Not something Hooknostic generates or modifies.

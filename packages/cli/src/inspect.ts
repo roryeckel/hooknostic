@@ -1,8 +1,8 @@
 import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
 import type { AdapterRegistry } from "@hooknostic/core";
 import { resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
-import type { CapabilityId } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, isCapabilityId } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
+import { ALL_CAPABILITY_IDS, ALL_EVENT_FIELD_IDS, isCapabilityId, isEventFieldId } from "@hooknostic/sdk";
 
 import type { CommandIO } from "./check.js";
 
@@ -11,6 +11,8 @@ export interface InspectCommandOptions {
   delivery?: "project" | "package";
   capability?: string;
   component?: string;
+  /** An optional event field id (ADR-0027). */
+  field?: string;
   /** Harness version range to resolve; defaults to the adapter's first validated range. */
   version?: string;
   json?: boolean;
@@ -51,8 +53,14 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     );
     return failure();
   }
-  if (options.capability !== undefined && options.component !== undefined) {
-    errors.push("--capability and --component are mutually exclusive.");
+  if (options.field !== undefined && !isEventFieldId(options.field)) {
+    errors.push(
+      `unknown field "${options.field}"; fields are named <event>.<path>, such as turn.stop.lastMessage or tool.before.correlation.toolCallId.`,
+    );
+    return failure();
+  }
+  if ([options.capability, options.component, options.field].filter((value) => value !== undefined).length > 1) {
+    errors.push("--capability, --component and --field are mutually exclusive.");
     return failure();
   }
 
@@ -84,12 +92,23 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     return failure();
   }
 
+  const single = options.capability ?? options.component ?? options.field;
   const ids: CapabilityId[] =
-    options.capability !== undefined
-      ? [options.capability]
-      : options.component !== undefined
+    options.capability !== undefined ? [options.capability] : single !== undefined ? [] : [...ALL_CAPABILITY_IDS];
+  const fieldIds: EventFieldId[] =
+    options.field !== undefined
+      ? [options.field as EventFieldId]
+      : single !== undefined
         ? []
-        : [...ALL_CAPABILITY_IDS];
+        : [...ALL_EVENT_FIELD_IDS];
+  const fieldRows = fieldIds.map((id) => {
+    const entry = resolved.fields?.[id];
+    return {
+      field: id,
+      level: entry?.level ?? "unsupported",
+      ...(entry?.rationale !== undefined ? { rationale: entry.rationale } : {}),
+    };
+  });
 
   const rows = ids.map((id) => {
     const entry = resolved.matrix![id];
@@ -106,7 +125,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
         : undefined
       : adapter.agentPluginProjector;
   const projection =
-    options.capability === undefined && projector
+    options.capability === undefined && options.field === undefined && projector
       ? resolveAgentPluginProjection(
           {
             id: adapter.id,
@@ -125,7 +144,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   }
   const componentIds: AgentPluginComponentId[] =
     options.component === undefined
-      ? options.capability === undefined
+      ? single === undefined
         ? [...AGENT_PLUGIN_COMPONENT_IDS]
         : []
       : [options.component as AgentPluginComponentId];
@@ -165,6 +184,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
             source: p.source,
           })),
           capabilities: rows,
+          fields: fieldRows,
           components: componentRows,
           projectionProfiles: projection?.profilesUsed ?? [],
         },
@@ -184,6 +204,18 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     options.io.stdout(
       `${row.level.padEnd(12)} ${row.capability}${row.rationale ? `\n             ${row.rationale}` : ""}`,
     );
+  }
+  // Fields the decoder never sets are the majority, so a full listing names only
+  // what is produced; asking for one field answers for it either way.
+  const shownFields = options.field !== undefined ? fieldRows : fieldRows.filter((row) => row.level !== "unsupported");
+  if (fieldIds.length > 0) {
+    options.io.stdout("");
+    for (const row of shownFields) {
+      options.io.stdout(
+        `${row.level.padEnd(12)} ${row.field}${row.rationale ? `\n             ${row.rationale}` : ""}`,
+      );
+    }
+    if (options.field === undefined) options.io.stdout("Other optional event fields are never produced (ADR-0027).");
   }
   if (componentRows.length > 0) {
     options.io.stdout("");

@@ -1,0 +1,15 @@
+{
+  "session_id": "01a0e655-74c0-7721-be8f-96d8b2dcaed3",
+  "turn_id": "01a0e655-7547-7160-b801-037282acc662",
+  "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeModeOnly-MsOHBV\\home\\sessions\\2026\\09\\27\\rollout-2026-09-27T23-45-55-01a0e655-74c0-7721-be8f-96d8b2dcaed3.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-codex-code-mode-codeModeOnly-MsOHBV\\project",
+  "hook_event_name": "PostToolUse",
+  "model": "hooknostic-playback",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "node -e \"require('node:fs').writeFileSync('hooknostic-code-mode.txt','hooknostic-original')\""
+  },
+  "tool_response": "",
+  "tool_use_id": "exec-50266f82-5801-4e7d-8f10-9c902810474f"
+}

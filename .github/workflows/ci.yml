@@ -16,7 +16,7 @@ jobs:
   renovate-ready:
     name: Renovate artifact readiness
     # A dependency update can require a PAT-authored artifact refresh. Do not
-    # start seven runners on the intermediate commit: its successor will
+    # start the full validation matrix on the intermediate commit: its successor will
     # trigger this workflow again. A no-op refresh proceeds immediately.
     if: >-
       github.event_name == 'pull_request' &&
@@ -59,7 +59,7 @@ jobs:
     # The hosted app maintains its runtime. This image supplies the matching
     # validator CLI without adding Renovate's Node floor to workspace engines.
     container:
-      image: ghcr.io/renovatebot/renovate:44.69.6
+      image: ghcr.io/renovatebot/renovate:44.133.0
       options: --user 0
     steps:
       - uses: actions/checkout@v7
@@ -165,6 +165,29 @@ jobs:
             exit 1
           fi
 
+  node-compatibility:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
+    name: Node 22 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/compatibility/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+        env:
+          HOOKNOSTIC_PLAYBACK: ""
+          HOOKNOSTIC_SMOKE: ""
+          HOOKNOSTIC_PACK: "1"
+
   harness-playback:
     needs: renovate-ready
     if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
@@ -226,6 +249,41 @@ jobs:
           ANTHROPIC_AUTH_TOKEN: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
+
+  # The ordinary codex playback lane installs referenceVersion, which predates
+  # the Code Mode capture, so its Code Mode drives skip there. This lane
+  # installs the captured Code Mode build -- derived from the profile, never a
+  # literal here -- and fails rather than skips below it. Windows because that
+  # is the only platform Code Mode dispatch is captured on
+  # (.capture/codex-code-mode).
+  code-mode:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
+    name: Codex Code Mode playback
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/playback/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run bundle
+      - name: Resolve Code Mode baseline from capture metadata
+        id: baseline
+        shell: bash
+        run: |
+          version="$(node scripts/verify-code-mode.mjs --print-version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install Code Mode baseline
+        shell: bash
+        run: npm install --global "@openai/codex@${{ steps.baseline.outputs.version }}"
+      - name: Verify Code Mode guard dispatch with loopback model
+        run: node scripts/verify-code-mode.mjs
 
   marketplace:
     needs: renovate-ready

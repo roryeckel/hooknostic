@@ -12,7 +12,13 @@ import {
   projectOpenCodeV2Components,
   projectOpenCodeV2Integration,
 } from "./project.js";
-import { classifyOpenCodeV2Tool, OPENCODE_V2_SHELL_SHAPES, opencodeV2ShellCodec } from "./toolmap.js";
+import {
+  classifyOpenCodeV2Tool,
+  OPENCODE_V2_FILE_SHAPES,
+  OPENCODE_V2_SHELL_SHAPES,
+  opencodeV2FileCodec,
+  opencodeV2ShellCodec,
+} from "./toolmap.js";
 
 export function opencodeV2ShimEntrySource(options: ShimEntryOptions): string {
   return [
@@ -34,7 +40,7 @@ export function opencodeV2Adapter(
 ): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.1.0",
+    adapterVersion: "0.4.0",
     harness: opencodeV2Harness,
     projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration: projectOpenCodeV2Integration,
@@ -50,6 +56,8 @@ export function opencodeV2Adapter(
     validateArtifacts,
     shellCodec: opencodeV2ShellCodec,
     shellShapes: OPENCODE_V2_SHELL_SHAPES,
+    fileCodec: opencodeV2FileCodec,
+    fileShapes: OPENCODE_V2_FILE_SHAPES,
     classifyTool: classifyOpenCodeV2Tool,
     supportedHarnessVersions: () => opencodeV2CapabilityProfiles.map((p) => p.range),
     supportedDeliveries: () => ["project", "package"],

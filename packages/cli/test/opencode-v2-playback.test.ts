@@ -490,6 +490,24 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
     expect(events.filter((event) => event === "turn.stop")).toHaveLength(8);
     // session.synthetic does not run the prompt hook: six real prompts, including the child's.
     expect(events.filter((event) => event === "prompt.before")).toHaveLength(6);
+    // ADR-0027: each prompt's execution reports that prompt's id; the two
+    // synthetic continuations run no prompt hook and report none. The
+    // interrupt and the failure end before any text, so six stops carry text.
+    const trace = (await readFile(join(root, "trace.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+    const stops = trace.filter((entry) => entry.event === "turn.stop");
+    const prompts = trace.filter((entry) => entry.event === "prompt.before").map((entry) => entry.turnId);
+    expect(prompts.every((id) => typeof id === "string")).toBe(true);
+    expect(stops.flatMap((entry) => (entry.turnId === undefined ? [] : [entry.turnId])).sort()).toEqual(
+      [...prompts].sort(),
+    );
+    expect(stops.filter((entry) => entry.turnId === undefined)).toEqual([
+      expect.objectContaining({ lastMessage: expect.any(String) }),
+      expect.objectContaining({ lastMessage: expect.any(String) }),
+    ]);
+    expect(stops.filter((entry) => entry.lastMessage !== undefined)).toHaveLength(6);
   }, 150000);
   it.each(["project-remote", "package-remote"])(
     "%s executes Streamable HTTP with the declared headers",

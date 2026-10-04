@@ -86,7 +86,7 @@ import { addContext, hook, runProcess } from "@hooknostic/sdk";
 
 hook("session.start", {
   id: "status",
-  capabilities: { "session.start.context.add": "required" },
+  capabilities: { "context.add": "required" },
   timeoutMs: 5_000,
   async run(event, ctx) {
     if (!ctx.plugin) return;
@@ -113,6 +113,60 @@ hook("session.start", {
 
 `ctx.plugin.root` is the package's root on every target (ADR-0020), and is present
 only when the build projects a `components.root` package.
+
+## Decide what happens when a tool view is absent
+
+`tool.shell` and `tool.file` are normalized from each harness's captured argument
+shapes, and they are absent exactly when that normalization cannot be trusted: a tool
+whose shape has never been captured, an input that does not match it, a patch that is
+not valid patch grammar, or a search tool that targets no file. The raw `tool.input` is
+always present, but reading one harness's key from it is how guards used to compile
+everywhere and silently allow everything on the other harnesses.
+
+So make the absent case a decision, not a default:
+
+- **A guard fails closed.** If it cannot read the command or the paths, it refuses:
+
+  ```ts
+  const command = tool.shell?.command;
+  if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
+  ```
+
+- **Advice fails open.** A reminder or a rewrite that cannot read its input simply
+  says nothing: `if (tool.shell?.command.startsWith("cd ")) …`.
+- **Never default to `""`.** `tool.shell?.command ?? ""` looks harmless and makes
+  every unreadable command pass every check.
+
+Two limits no view removes. A file read or written *by a shell command* (`cat .env`) is
+a shell call, not a file call, so `tool.file` never sees it — and on Codex every read
+goes through the shell. A file guard that matters also needs a shell guard. And paths
+are reported as the harness sent them, relative or absolute, never resolved.
+
+## A shell tool name does not identify its grammar
+
+`tool.shell` normalizes command and working-directory keys; it does not identify
+the interpreter. `nativeName` is harness vocabulary. On Windows in the
+[interpreter captures](../.capture/shell-dialects/README.md), Claude's
+`Bash` ran Git Bash, OpenCode's `bash` ran Windows PowerShell, and Codex's
+`Bash` covered both PowerShell and cmd while receiving identical command bytes.
+On the macOS runners, Codex exposed identical `Bash` hook inputs for commands
+executed through bash and zsh.
+
+Do not select a POSIX parser from a tool name or the Windows host alone. If a
+guard depends on a command grammar it cannot establish, treat that as an
+unsupported input and make the guard's decision explicit. Skip grammar-sensitive
+rewrites when the interpreter is unknown. A portable dialect field remains
+proposed in [issue #30](https://github.com/roryeckel/hooknostic/issues/30).
+
+## Returning more than one effect
+
+A hook returns one effect, or an ordered list of them — `[notify(message),
+preventStop(reason)]` — which applies exactly as if consecutive hooks had returned
+each. An effect that ends the dispatch (`block`, `requestApproval`, `preventStop`,
+`blockContinuation`) must be last; a list with one earlier is rejected whole, with
+HN401, before anything in it applies. `undefined` entries are skipped, so
+`[shouldNotify ? notify(message) : undefined, preventStop(reason)]` works.
+([Decision 0025](decisions/0025-effect-lists.md))
 
 ## A stop hook that prevents must know when to stop
 

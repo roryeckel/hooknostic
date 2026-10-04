@@ -99,21 +99,110 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
             "The same PreToolUse matcher probe on Linux x64 (WSL2) produced an identical dispatch table: " +
             "matched against the hook-boundary name Bash, word lists and anchored regexes match, a bare prefix does not. macOS is uncaptured.",
         },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Code Mode hook payloads on Windows (loopback model; tool_mode code_mode_only -- the gpt-5.6-luna catalog value -- and " +
+            "code_mode): a nested tools.exec_command reaches PreToolUse and PostToolUse as Bash/{command} with tool_use_id " +
+            "exec-<uuid> -- the direct call's payload shape, also with the live call's workdir/shell/yield arguments.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Code Mode dispatch on Windows, the same drives: the model's outer exec custom tool call reached neither a catch-all " +
+            "PreToolUse/PostToolUse group nor one matching exec -- an observed absence, which codex-rs source agrees with " +
+            "(freeform payloads carry no hook payload) -- while the generated Bash|exec_command|shell matcher selected each nested call.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-code-mode",
+          what:
+            "Hook EFFECTS inside Code Mode, through the offline playback lane with a code_mode_only catalog (the model was offered exec " +
+            'and no direct exec_command): a generated match: { kind: "shell" } guard, native matcher included, denied a nested ' +
+            "tools.exec_command so its marker never appeared, and its input rewrite reached the spawned command.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/codex-worktree-hooks",
+          what:
+            "In a linked git worktree Codex never loads the worktree's own .codex/hooks.json -- not with the worktree explicitly " +
+            "trusted, not nested inside the root checkout -- and runs the root checkout's .codex/hooks.json instead, or no hooks at " +
+            "all when that has none. A Codex artifact generated into a linked worktree is inert there.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/codex/0.148",
+          what: "apply_patch (add, update with move, delete, multi-file) and view_image PreToolUse payloads over the loopback model (.capture/file-tools): apply_patch reaches hooks as tool_input.command holding the raw patch text, view_image as tool_input.path",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "0.156.1",
-          date: "2026-09-24",
+          version: "0.160.0",
+          date: "2026-10-04",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
         },
         // scheduled-playback:end
+        {
+          version: "0.156.1",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: identical commands ran through bundled pwsh.exe and cmd.exe, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: identical commands ran through /bin/bash and /bin/zsh, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector.",
+        },
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
+    },
+    // Optional event fields (ADR-0027): exactly what the fixtures in
+    // fixtures/codex/0.148 carry, captured or schema-derived as its README
+    // records per fixture. turn_id is absent from SessionStart and SessionEnd,
+    // and the PermissionRequest schema has no tool_use_id.
+    fields: {
+      "session.start.how": { level: "exact" },
+      "session.end.reason": { level: "exact" },
+      "prompt.before.correlation.turnId": { level: "exact" },
+      "tool.before.correlation.turnId": { level: "exact" },
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.turnId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "permission.request.correlation.turnId": { level: "exact" },
+      "context.compact.before.trigger": { level: "exact" },
+      "context.compact.before.correlation.turnId": { level: "exact" },
+      "context.compact.after.correlation.turnId": { level: "exact" },
+      "agent.start.agent.id": { level: "exact" },
+      "agent.start.agent.type": { level: "exact" },
+      "agent.start.correlation.turnId": { level: "exact" },
+      "agent.start.correlation.agentId": { level: "exact" },
+      "agent.stop.agent.id": { level: "exact" },
+      "agent.stop.agent.type": { level: "exact" },
+      "agent.stop.lastMessage": { level: "exact" },
+      "agent.stop.correlation.turnId": { level: "exact" },
+      "agent.stop.correlation.agentId": { level: "exact" },
+      "turn.stop.lastMessage": { level: "exact" },
+      "turn.stop.correlation.turnId": { level: "exact" },
     },
     matrix: {
       "session.start.observe": { level: "exact" },
@@ -134,9 +223,18 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.observe": {
         level: "exact",
         rationale:
-          "tool-path coverage, not a security boundary: hosted tools (e.g. web_search) bypass hooks and write_stdin does not re-trigger PreToolUse.",
+          "tool-path coverage, not a security boundary: hosted tools (e.g. web_search) bypass hooks and write_stdin does not re-trigger PreToolUse. " +
+          "Under Code Mode (tool_mode code_mode_only, which the gpt-5.6 catalog models carry) the model's exec script never reaches a hook; " +
+          "each tool call the script makes does, one by one (observed on 0.156.1, .capture/codex-code-mode).",
       },
-      "tool.before.block": { level: "exact" },
+      "tool.before.block": {
+        level: "exact",
+        rationale:
+          "Code Mode does not route around it: a nested tools.exec_command reaches PreToolUse as Bash/{command}, is selected by the " +
+          "generated shell matcher, and a deny stops it (payload captured, dispatch and deny verified live on 0.156.1, " +
+          ".capture/codex-code-mode). The exec " +
+          "script has no filesystem, process, or network API of its own (codex-rs source), so its side effects all pass through such calls.",
+      },
       "tool.before.requestApproval": {
         level: "exact",
         rationale: 'permissionDecision "ask" surfaces a native approval prompt.',

@@ -1,6 +1,7 @@
 {
   "litellm_settings": {
-    "use_chat_completions_url_for_anthropic_messages": true
+    "use_chat_completions_url_for_anthropic_messages": true,
+    "callbacks": "litellm_callbacks.handler"
   },
   "model_list": [
     {
@@ -10,7 +11,8 @@
         "custom_llm_provider": "openai",
         "api_base": "os.environ/HARNESS_LLM_BASE_URL",
         "api_key": "os.environ/OPENAI_API_KEY",
-        "use_chat_completions_api": true
+        "use_chat_completions_api": true,
+        "additional_drop_params": ["reasoning_effort"]
       }
     }
   ]

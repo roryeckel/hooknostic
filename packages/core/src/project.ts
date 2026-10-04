@@ -1,8 +1,9 @@
-import { dirname, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 import { resolveTargetAdapter, targetSpecFromConfig } from "./adapter.js";
 import { type BuildOptions, buildProject, type McpServerCommand } from "./build.js";
 import type { Diagnostic } from "./diagnostics.js";
+import { linkedWorktree } from "./git-worktree.js";
 import { loadConfig } from "./load.js";
 import { applyProject, type ProjectIntegration, reconcileProject, recoverProject } from "./project-files.js";
 
@@ -69,6 +70,7 @@ export async function runProject(
       entries: [],
       guidance: [],
     };
+    const rootCheckoutWrites: { target: string; harness: string; path: string }[] = [];
     for (const target of built?.plan ?? []) {
       const configured = config.targets[target.target]!;
       if (configured.delivery !== "project") continue;
@@ -91,6 +93,32 @@ export async function runProject(
       integration.files.push(...native.files);
       integration.entries.push(...native.entries);
       integration.guidance.push(...native.guidance);
+      const written = new Set([...native.files, ...native.entries].map((item) => item.path));
+      for (const path of adapter.rootCheckoutProjectPaths ?? [])
+        if (written.has(path))
+          rootCheckoutWrites.push({ target: target.target, harness: adapter.harness.displayName, path });
+    }
+    const linked = rootCheckoutWrites.length === 0 ? undefined : await linkedWorktree(root);
+    if (linked !== undefined) {
+      const inWorktree = relative(linked.checkout, root);
+      result.diagnostics = [
+        ...result.diagnostics,
+        ...rootCheckoutWrites.map(({ target, harness, path }): Diagnostic => {
+          const read = join(linked.rootCheckout, inWorktree, path);
+          return {
+            code: "HN107",
+            severity: "warn",
+            target,
+            message:
+              `${harness} never loads ${join(root, path)}: ${linked.checkout} is a linked git worktree of the root ` +
+              `checkout ${linked.rootCheckout}, and ${harness} runs the root checkout's ${read} for sessions in this worktree.`,
+            remediation:
+              `The generated wiring takes effect once it is present, and trusted, in ${read}; synchronize from the root ` +
+              `checkout ${linked.rootCheckout} before relying on it here. Hook lines the harness prints in this worktree ` +
+              `belong to the root checkout's hooks, so verify by effect.`,
+          };
+        }),
+      ];
     }
     const plan = await reconcileProject(root, owner, integration);
     result.changes = plan.changes.map((c) => c.path);

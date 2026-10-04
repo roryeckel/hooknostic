@@ -73,6 +73,16 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
         "https://pi.dev/ (fetched 2026-09-27); installed package dist type definitions are the schema-derived source",
       ],
     },
+    // These fields are already decoded verbatim in the captured session-start,
+    // session-shutdown, session-before-compact, and tool-* fixtures (ADR-0027).
+    fields: {
+      "session.start.how": { level: "exact" },
+      "session.end.reason": { level: "exact" },
+      "context.compact.before.trigger": { level: "exact" },
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+    },
     matrix: {
       "session.start.observe": {
         level: "exact",

@@ -13,6 +13,8 @@ export default tseslint.config(
       ".capture/**",
       // generated Agent Plugins extension outputs
       "examples/*/com.*/**",
+      // app-created git worktrees: separate checkouts, linted on their own
+      ".claude/worktrees/**",
     ],
   },
   eslint.configs.recommended,
@@ -53,6 +55,12 @@ export default tseslint.config(
   },
   {
     rules: {
+      // Preserve the ESLint 9 policy during the toolchain upgrade; adopting
+      // ESLint 10's stricter recommended rules is a separate lint-policy change.
+      "no-unassigned-vars": "off",
+      "no-useless-assignment": "off",
+      "preserve-caught-error": "off",
+      "no-shadow-restricted-names": ["error", { reportGlobalThis: false }],
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-imports": "error",
       // `unknown` payloads from vendor decode paths require controlled assertions.

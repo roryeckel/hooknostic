@@ -42,9 +42,11 @@ For one harness at a time, CI:
 6. Uses marker files, the recorded model requests, and the generated hook trace
    to discriminate rewrite, block, failure, context-injection, stop-prevention,
    notify, and lifecycle outcomes.
-7. For the pty-approval driver, runs the interactive TUI under `node-pty`,
-   walks the first-run dialogs by polling for their screen markers, and lets
-   the generated hook answer the native approval prompt.
+7. For the pty-approval driver, runs the interactive TUI under `node-pty` in
+   the prompting permission mode (`--permission-mode manual`), with no
+   enclosing Claude session's variables in its environment. It walks the
+   first-run dialogs by polling for their screen markers, and lets the
+   generated hook answer the native approval prompt.
 8. For Claude Agent Plugin projection, builds a portable skill plus stdio,
    Streamable HTTP, and SSE MCP
    package, projects it together with the production hook artifact, validates
@@ -128,6 +130,13 @@ A successful run is a **live-probe** for only the installed version and harness:
 - a stop-time notification reaches the harness's user-facing channel where
   claimed (Claude stream-json system notice), and stays inert where
   explicitly unsupported (Codex).
+- on a Codex build at or above the `.capture/codex-code-mode` capture, a
+  `match: { kind: "shell" }` guard, with its generated native matcher, denies
+  and rewrites a nested `tools.exec_command` inside a Code Mode `exec`. The
+  catalog is `code_mode_only` and the model is offered no direct shell tool.
+  Below that build the two drives skip with that reason. CI's `code-mode` job
+  runs them on the captured build, where skipping is a failure
+  (`scripts/verify-code-mode.mjs`).
 - on Claude 2.1.260, a projected skill is discovered; projected stdio,
   Streamable HTTP, and SSE MCP servers initialize; the stdio process receives
   Claude's plugin-root/plugin-data values translated into the Agent Plugin
@@ -200,3 +209,31 @@ the installed binary, then verified by this session reaching the generated
 hook and native approval prompt. This seed is **constructed test bootstrap**,
 not captured user configuration; personal credentials and preferences are
 not copied into it.
+
+## Auto-mode default correction (2026-09-27)
+
+Claude Code 2.1.283 failed the permission-request scenario: interactive
+sessions now start in auto mode. The scripted Bash call reached `PreToolUse`
+and was settled without a prompt, so `PermissionRequest` never fired. Auto mode
+also rendered a classifier billing notice for the loopback base URL, which the
+walk did not know. The run had been started from inside a Claude session, and
+the child inherited that session's markers: it reported transcript saving off
+because of an inherited `CLAUDE_CODE_CHILD_SESSION`.
+
+`.capture/claude-permission-mode` holds the probe and its observations on
+2.1.238 and 2.1.283. The drive changed in three ways:
+
+- It forces the prompting mode with `--permission-mode manual`. Both builds
+  accept it and report `permission_mode: "default"` to hooks. The lane does not
+  rely on either build's default.
+- It walks the classifier billing notice by its screen marker, pressing Enter to
+  continue. The probe saw the notice only in auto mode, at the first tool call,
+  so the forced mode keeps it from rendering. The walk handles it in case a
+  build renders it before the main prompt.
+- It drops every inherited `CLAUDECODE` and `CLAUDE_*` variable except
+  `CLAUDE_CODE_GIT_BASH_PATH`, plus `AI_AGENT` and `TRACEPARENT`. On CI these
+  are absent, so the drop changes nothing there.
+
+With these changes, both pty scenarios passed on 2.1.238, installed from npm
+into an isolated directory, and on 2.1.283, run from inside a Claude session.
+Without the forced mode, 2.1.283 failed again as first reported.

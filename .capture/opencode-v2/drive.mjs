@@ -9,6 +9,9 @@ register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url));
 const { startModelPlayback, buildPlaybackArtifact, runProcess } =
   await import("../../packages/cli/test/harness-playback.ts");
 const effect = process.argv[2] ?? "observe";
+// The native tool set can depend on the model id (a GPT-like id swaps edit/write
+// for apply_patch on v1), so a capture may ask for a different one.
+const modelId = process.env.HKN_MODEL_ID ?? "hooknostic-playback";
 const root = process.env.HKN_CAPTURE_ROOT ?? (await mkdtemp(join(await realpath(tmpdir()), "hooknostic-v2-")));
 const project = join(root, "project");
 const remote = effect.endsWith("-oauth") ? await (await import("./oauth-mcp.mjs")).startOAuthMcp() : effect.includes("remote") ? await (await import("./remote-mcp.mjs")).startRemoteMcp() : undefined;
@@ -160,6 +163,8 @@ if (
     }
   }
 }
+// The patch probe updates a file that must already exist.
+if (effect === "tools-patch") await writeFile(join(project, "probe.txt"), "hooknostic-before-edit\n");
 if (effect === "components" || effect === "tools" || effect.startsWith("mcp-")) {
   await mkdir(join(project, "working directory"), { recursive: true });
   for (const dir of [".agents/skills/native", "injected"]) {
@@ -180,8 +185,8 @@ if (effect === "components" || effect === "tools" || effect.startsWith("mcp-")) 
       .replace('case "tools/call":', 'case "tools/call":\n      appendFileSync(process.env.HKN_MCP_CALLS, JSON.stringify(request) + "\\n");'));
   }
 }
-const model = effect.startsWith("sessions") || effect === "stop" || effect === "nested" ? await (await import("./session-model.mjs")).startSessionModel() : effect === "tools" || effect.startsWith("mcp-") || remote || effect.startsWith("results") || effect === "subagent"
-  ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect === "subagent" ? "subagent" : effect.startsWith("results"))
+const model = effect.startsWith("sessions") || effect === "stop" || effect === "nested" ? await (await import("./session-model.mjs")).startSessionModel() : effect === "tools" || effect === "tools-patch" || effect.startsWith("mcp-") || remote || effect.startsWith("results") || effect === "subagent"
+  ? await (await import("./tool-model.mjs")).startToolModel(project, effect.startsWith("mcp-"), remote ? effect : false, effect === "subagent" ? "subagent" : effect === "tools-patch" ? "patch" : effect.startsWith("results"))
   : await startModelPlayback(effect === "provider-anthropic" ? "anthropic-messages" : effect === "provider-responses" ? "openai-responses" : "openai-chat", effect === "fail" ? "fail" : "rewrite", effect === "lifecycle" || effect.startsWith("provider-") ? [
       { kind: "tool", disposition: "rewrite" },
       { kind: "text", text: "## Objective\n- Exercise offline hooks.\n## Requirements\n- Use the loopback model.\n## Decisions\n- Keep the probe isolated.\n## Work State\n### Completed\n- Ran the shell probe.\n### Active\n- None.\n### Blocked\n- None.\n## Next Move\n1. Finish the probe.\n## Relevant Files\n- hooknostic-tool.txt\n## Important Context\n- hooknostic-valid-compaction-summary" },
@@ -190,14 +195,14 @@ await writeFile(
   join(project, "opencode.json"),
   JSON.stringify({
     ...(packagePath ? { plugins: [packagePath] } : {}),
-    model: "playback/hooknostic-playback",
+    model: `playback/${modelId}`,
     providers: {
       playback: {
         name: "Playback",
         env: ["HKN_PLAYBACK_KEY"],
         package: effect === "provider-anthropic" ? "@opencode/ai/providers/anthropic" : effect === "provider-responses" ? "@opencode/ai/providers/openai" : "@opencode/ai/providers/openai-compatible",
         settings: { baseURL: model.baseUrl + "/v1", ...(effect === "provider-responses" ? { transport: "http" } : {}) },
-        models: { "hooknostic-playback": { name: "Playback", limit: { context: 128000, output: 4096 } } },
+        models: { [modelId]: { name: "Playback", limit: { context: 128000, output: 4096 } } },
       },
     },
   }),
@@ -259,7 +264,7 @@ if (effect === "notifications") {
 if (effect === "lifecycle" || effect.startsWith("sessions") || effect === "stop" || effect.startsWith("provider-") || effect.endsWith("-oauth")) {
   const { driveLifecycle } = await import("./lifecycle.mjs");
   try {
-    await driveLifecycle({ executable, root, project, env, model });
+    await driveLifecycle({ executable, root, project, env, model, remote });
   } finally {
     await model.close();
     if (remote) await writeFile(join(root, "remote.json"), JSON.stringify({ requests: remote.requests, errors: remote.errors }, null, 2));

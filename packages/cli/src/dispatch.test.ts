@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -332,6 +332,87 @@ export default definePlugin({ name: "pi-validation", hooks: [
     expect(broken.err()).toMatch(/^line 2: not JSON .*\nline 3: not JSON /);
   });
 
+  it("refuses a field the target's decoder never produces, and admits one it derives", async () => {
+    // ADR-0027: the consumer case -- a turn.stop test carried a lastMessage to a
+    // target whose decoder could not produce one, and passed.
+    const dir = await project(HOOKS);
+    const refused = async (target: string, events: unknown[]) => {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events,
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      return outcome.ok ? [] : outcome.errors;
+    };
+    expect(await refused("claude", [{ event: "turn.stop", correlation: { parentAgentId: "a" } }])).toEqual([
+      "event 1: turn.stop.correlation.parentAgentId is never produced by the claude decoder for this target's version range; omit it (see `hooknostic inspect claude`)",
+    ]);
+    expect(await refused("claude", [{ event: "turn.stop", correlation: { toolCallId: "t" } }])).toEqual([
+      'event 1: turn.stop has no field "correlation.toolCallId"',
+    ]);
+    expect(await refused("codex", [{ event: "session.start", correlation: { turnId: "t" } }])).toEqual([
+      "event 1: session.start.correlation.turnId is never produced by the codex decoder for this target's version range; omit it (see `hooknostic inspect codex`)",
+    ]);
+    const turn = { event: "turn.stop", lastMessage: "done", correlation: { turnId: "msg_1" } };
+    expect(await refused("claude", [turn])).toEqual([]);
+    expect(await refused("opencode", [turn])).toEqual([]);
+  });
+
+  it("refuses a field rated unsupported explicitly, as it refuses one left unrated", async () => {
+    // The built-in profiles leave a field out rather than rate it unsupported;
+    // an adapter that says so outright must not open the door the absence shuts.
+    const dir = await project(HOOKS);
+    const registry = defaultAdapterRegistry();
+    const claude = registry["claude"]!;
+    const withRating = (level: "unsupported" | undefined) => ({
+      ...registry,
+      claude: {
+        ...claude,
+        capabilities: (spec: Parameters<typeof claude.capabilities>[0]) => {
+          const resolved = claude.capabilities(spec);
+          const fields = { ...resolved.fields };
+          if (level === undefined) delete fields["turn.stop.lastMessage"];
+          else fields["turn.stop.lastMessage"] = { level };
+          return { ...resolved, fields };
+        },
+      },
+    });
+    const refused = async (level: "unsupported" | undefined) => {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target: "claude",
+        events: [{ event: "turn.stop", lastMessage: "done" }],
+        registry: withRating(level),
+        evaluate: EVALUATE,
+      });
+      return outcome.ok ? [] : outcome.errors;
+    };
+    const expected = [
+      "event 1: turn.stop.lastMessage is never produced by the claude decoder for this target's version range; omit it (see `hooknostic inspect claude`)",
+    ];
+    expect(await refused(undefined)).toEqual(expected);
+    expect(await refused("unsupported")).toEqual(expected);
+  });
+
+  it("refuses what build refuses, including a global problem outside the target", async () => {
+    // Accepting a field Claude produces exactly is an HN501 the build reports
+    // globally, not against the target; dispatch must not run hooks past it.
+    const dir = await project(HOOKS, TARGETS, 'compatibility: { accept: ["claude:turn.stop.lastMessage"] },');
+    const outcome = await dispatchEvents({
+      config: join(dir, "hooknostic.config.ts"),
+      target: "claude",
+      events: [{ event: "turn.stop" }],
+      registry: defaultAdapterRegistry(),
+      evaluate: EVALUATE,
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? "" : outcome.errors.join(" ")).toContain(
+      'compatibility.accept names "claude:turn.stop.lastMessage"',
+    );
+  });
+
   it("refuses a target the hooks could not be built for", async () => {
     const dir = await project(`
       import { definePlugin, hook, notify } from "@hooknostic/sdk";
@@ -425,5 +506,27 @@ export default definePlugin({ name: "pi-validation", hooks: [
     expect(lines.map((line) => (JSON.parse(line) as DispatchResult).event)).toEqual(["prompt.before"]);
     expect(child.stderr).toContain("noise from console.log");
     expect(child.stderr).toContain("noise from process.stdout");
+  });
+
+  it("answers the testing guide's first run exactly as documented", async () => {
+    // docs/testing-your-hooks.md is the first thing a new user copies; its
+    // input block must dispatch cleanly and produce its output block verbatim.
+    const guide = await readFile(resolve(HERE, "../../../docs/testing-your-hooks.md"), "utf8");
+    const section = guide.slice(guide.indexOf("## A first run"));
+    const [input, output] = [...section.matchAll(/```jsonl\r?\n([\s\S]*?)```/g)].map((m) =>
+      m[1]!
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => JSON.parse(line) as unknown),
+    );
+    const outcome = await dispatchEvents({
+      config: resolve(HERE, "../../../examples/basic/hooknostic.config.ts"),
+      target: "claude",
+      events: input!,
+      registry: defaultAdapterRegistry(),
+      evaluate: EVALUATE,
+    });
+    expect(outcome.ok ? [] : outcome.errors).toEqual([]);
+    expect(outcome.ok && outcome.results).toEqual(output);
   });
 });

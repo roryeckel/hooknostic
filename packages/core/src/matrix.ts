@@ -1,9 +1,9 @@
 import semver from "semver";
 
-import type { CapabilityId } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, leastCapable } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
+import { ALL_CAPABILITY_IDS, ALL_EVENT_FIELD_IDS, leastCapable } from "@hooknostic/sdk";
 
-import type { CapabilityEntry, CapabilityMatrix, CapabilityProfile, CapabilityResolutionResult } from "./adapter.js";
+import type { CapabilityEntry, CapabilityProfile, CapabilityResolutionResult, FieldMatrix } from "./adapter.js";
 import type { Diagnostic } from "./diagnostics.js";
 
 interface StableInterval {
@@ -221,16 +221,37 @@ export function resolveCapabilityMatrix(
   }
 
   if (used.length === 1) {
-    return { matrix: used[0]!.matrix, profilesUsed: [...used], diagnostics };
+    return { matrix: used[0]!.matrix, fields: used[0]!.fields ?? {}, profilesUsed: [...used], diagnostics };
   }
 
-  // Least-capable guaranteed intersection: a capability's level is the lowest
-  // level across all intersecting profiles; missing entries are unsupported.
-  const matrix: CapabilityMatrix = {};
-  for (const id of ALL_CAPABILITY_IDS) {
+  return {
+    matrix: leastCapableMatrix(
+      ALL_CAPABILITY_IDS,
+      used.map((profile) => profile.matrix),
+    ),
+    fields: leastCapableMatrix(
+      ALL_EVENT_FIELD_IDS,
+      used.map((profile) => profile.fields ?? {}),
+    ) as FieldMatrix,
+    profilesUsed: [...used],
+    diagnostics,
+  };
+}
+
+/**
+ * Least-capable guaranteed intersection: an id's level is the lowest level
+ * across all intersecting profiles; missing entries are unsupported. Shared by
+ * capabilities and event fields, which resolve by the same rule (ADR-0027).
+ */
+function leastCapableMatrix<Id extends CapabilityId | EventFieldId>(
+  ids: readonly Id[],
+  matrices: readonly Partial<Record<Id, CapabilityEntry>>[],
+): Partial<Record<Id, CapabilityEntry>> {
+  const matrix: Partial<Record<Id, CapabilityEntry>> = {};
+  for (const id of ids) {
     let entry: CapabilityEntry | undefined;
-    for (const profile of used) {
-      const candidate = profile.matrix[id] ?? { level: "unsupported" as const };
+    for (const profileMatrix of matrices) {
+      const candidate = profileMatrix[id] ?? { level: "unsupported" as const };
       if (entry === undefined) {
         entry = candidate;
       } else if (leastCapable(entry.level, candidate.level) === candidate.level) {
@@ -238,8 +259,8 @@ export function resolveCapabilityMatrix(
       }
     }
     if (entry && entry.level !== "unsupported") {
-      matrix[id as CapabilityId] = entry;
+      matrix[id] = entry;
     }
   }
-  return { matrix, profilesUsed: [...used], diagnostics };
+  return matrix;
 }

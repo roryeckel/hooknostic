@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   addContext,
@@ -11,9 +11,10 @@ import {
   replaceOutput,
   updateShell,
 } from "@hooknostic/sdk";
+import { loadFixture } from "@hooknostic/testkit";
 
 import { opencodeCapabilityProfiles } from "./profile.js";
-import { createHooknosticHooks } from "./shim.js";
+import { createHooknosticHooks, DISPOSE_CAP_MS } from "./shim.js";
 
 const LEVELS = Object.fromEntries(
   Object.entries(opencodeCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]),
@@ -120,6 +121,7 @@ describe("createHooknosticHooks", () => {
   });
   it("registers only the callbacks the plugin needs", () => {
     expect(Object.keys(hooks()).sort()).toEqual([
+      "dispose",
       "event",
       "experimental.chat.system.transform",
       "experimental.session.compacting",
@@ -244,7 +246,7 @@ describe("createHooknosticHooks", () => {
       },
     };
     const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, { ...PLUGIN_INPUT, client });
-    expect(Object.keys(h)).toEqual(["event"]);
+    expect(Object.keys(h)).toEqual(["event", "dispose"]);
     const native = {
       hook: "event",
       directory: PLUGIN_INPUT.directory,
@@ -535,5 +537,283 @@ describe("createHooknosticHooks turn.stop posting", () => {
     expect(calls).toHaveLength(6);
     expect(calls.slice(0, 2)).toEqual(calls.slice(2, 4));
     expect(calls.slice(0, 2)).toEqual(calls.slice(4, 6));
+  });
+});
+
+describe("createHooknosticHooks turn.stop fields (ADR-0027)", () => {
+  // The session read captured on 1.18.32 (.capture/opencode-turn-fields), as
+  // client.session.messages answered it.
+  const envelope = loadFixture<{ hook: string; directory: string; input: unknown }>(
+    "opencode",
+    "1.18",
+    "session-idle-with-messages.input.json",
+  );
+  const captured = loadFixture<{ messages: unknown[] }>(
+    "opencode",
+    "1.18",
+    "session-idle-with-messages.enrichment.json",
+  );
+  const idle = envelope.input as { event: { properties: { sessionID: string } } };
+
+  function fieldHooks(client: unknown, fields?: ("lastMessage" | "correlation.turnId")[]) {
+    const seen: { lastMessage?: string; turnId?: string }[] = [];
+    const hooks = createHooknosticHooks(
+      definePlugin({
+        name: "fields",
+        hooks: [
+          hook("turn.stop", {
+            id: "summarize",
+            ...(fields ? { fields } : {}),
+            run(event) {
+              seen.push({
+                ...(event.lastMessage !== undefined ? { lastMessage: event.lastMessage } : {}),
+                ...(event.correlation.turnId !== undefined ? { turnId: event.correlation.turnId } : {}),
+              });
+            },
+          }),
+        ],
+      }),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, client } as never,
+    );
+    return { hooks, seen };
+  }
+
+  function sessionReader(answer: () => unknown) {
+    const reads: unknown[] = [];
+    // A class, so a detached call (no receiver) throws as the real client does.
+    class Session {
+      private readonly tag = "bound";
+      messages(options: unknown): unknown {
+        if (this?.tag !== "bound") throw new TypeError("messages called without a receiver");
+        reads.push(options);
+        return answer();
+      }
+    }
+    return { reads, client: { session: new Session() } };
+  }
+
+  it("reports the turn's last message and prompt id from one session read", async () => {
+    const { reads, client } = sessionReader(() =>
+      Promise.resolve({ data: captured.messages, request: {}, response: {} }),
+    );
+    const { hooks, seen } = fieldHooks(client, ["lastMessage", "correlation.turnId"]);
+    await hooks["event"]!(idle, {});
+    expect(reads).toEqual([{ path: { id: idle.event.properties.sessionID } }]);
+    expect(seen).toEqual([{ lastMessage: "hooknostic-final-answer", turnId: "msg_0e9be5601001jU9sKIkSP3X0wQ" }]);
+  });
+
+  it("keeps the session read out of event.raw, for every turn.stop hook", async () => {
+    // The history is handed to the decoder beside the envelope: raw stays what
+    // the callback received, so a hook that never declared a turn field is not
+    // handed the whole session in it (AGENTS.md: raw is untouched).
+    const { client } = sessionReader(() => Promise.resolve({ data: captured.messages }));
+    const raws: unknown[] = [];
+    const hooks = createHooknosticHooks(
+      definePlugin({
+        name: "raw",
+        hooks: [
+          hook("turn.stop", { id: "declares", fields: ["lastMessage"], run: (event) => void raws.push(event.raw) }),
+          hook("turn.stop", { id: "silent", run: (event) => void raws.push(event.raw) }),
+        ],
+      }),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, client } as never,
+    );
+    const output = {};
+    await hooks["event"]!(idle, output);
+    const received = {
+      hook: "event",
+      directory: PLUGIN_INPUT.directory,
+      worktree: PLUGIN_INPUT.worktree,
+      input: idle,
+      output,
+    };
+    expect(raws).toEqual([received, received]);
+    expect(JSON.stringify(raws)).not.toContain("hooknostic-final-answer");
+  });
+
+  it("does not read the session when no hook declares a turn field", async () => {
+    const { reads, client } = sessionReader(() => Promise.resolve({ data: captured.messages }));
+    const { hooks, seen } = fieldHooks(client);
+    await hooks["event"]!(idle, {});
+    expect(reads).toEqual([]);
+    expect(seen).toEqual([{}]);
+  });
+
+  it("leaves the fields absent when the read fails, stalls, or there is no client", async () => {
+    for (const answer of [() => Promise.reject(new Error("gone")), () => ({ error: "nope" })]) {
+      const { client } = sessionReader(answer);
+      const { hooks, seen } = fieldHooks(client, ["lastMessage"]);
+      await expect(hooks["event"]!(idle, {})).resolves.toBeUndefined();
+      expect(seen).toEqual([{}]);
+    }
+    const { hooks, seen } = fieldHooks(undefined, ["lastMessage"]);
+    await hooks["event"]!(idle, {});
+    expect(seen).toEqual([{}]);
+  });
+
+  it("gives up on a read that never settles", async () => {
+    const { client } = sessionReader(() => new Promise(() => {}));
+    const { hooks, seen } = fieldHooks(client, ["lastMessage"]);
+    await hooks["event"]!(idle, {});
+    expect(seen).toEqual([{}]);
+  }, 40_000);
+
+  it("never reports an earlier turn's reply for a turn that produced none", async () => {
+    const messages = [
+      ...captured.messages,
+      { info: { id: "msg_next", role: "user" }, parts: [{ type: "text", text: "and now?" }] },
+    ];
+    const { client } = sessionReader(() => Promise.resolve({ data: messages }));
+    const { hooks, seen } = fieldHooks(client, ["lastMessage", "correlation.turnId"]);
+    await hooks["event"]!(idle, {});
+    expect(seen).toEqual([{}]);
+  });
+});
+
+describe("createHooknosticHooks dispose", () => {
+  // OpenCode 1.x starts event handlers without awaiting them and `opencode run`
+  // exits once the session is idle, awaiting each plugin's dispose on the way
+  // out (.capture/opencode-dispose). dispose is where in-flight hooks finish.
+  const idle = { event: { type: "session.idle", properties: { sessionID: "ses_1" } } };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function stopHooks(run: () => Promise<void> | void, timeoutMs?: number) {
+    return createHooknosticHooks(
+      definePlugin({
+        name: "dispose",
+        hooks: [hook("turn.stop", { id: "slow", ...(timeoutMs !== undefined ? { timeoutMs } : {}), run })],
+      }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+  }
+
+  it("waits for an idle dispatch the host did not await", async () => {
+    let done = false;
+    const h = stopHooks(async () => {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 30));
+      done = true;
+    });
+    void h["event"]!(idle, {}); // fire and forget, as the host does
+    expect(done).toBe(false);
+    await h.dispose!();
+    expect(done).toBe(true);
+  });
+
+  it("also waits for a dispatch that starts while it waits", async () => {
+    const finished: string[] = [];
+    let turn = 0;
+    const h = stopHooks(async () => {
+      const id = ++turn;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, id === 1 ? 30 : 60));
+      finished.push(`turn ${id}`);
+    });
+    void h["event"]!(idle, {});
+    const disposed = h.dispose!();
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    void h["event"]!(idle, {});
+    await disposed;
+    expect(finished).toEqual(["turn 1", "turn 2"]);
+  });
+
+  it("gives up at the cap on a hook that outlasts it", async () => {
+    vi.useFakeTimers();
+    const h = stopHooks(() => new Promise<void>(() => {}), 60_000);
+    void h["event"]!(idle, {});
+    let settled = false;
+    void h.dispose!().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(DISPOSE_CAP_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it("waits for the hooks' budget and one host round trip, below the cap", async () => {
+    vi.useFakeTimers();
+    // Two posts that never settle hold the dispatch for 2 x 10 s. The budget is
+    // the hook's 1 s plus one 10 s round trip, so dispose returns at 11 s.
+    const h = createHooknosticHooks(
+      definePlugin({
+        name: "dispose-budget",
+        hooks: [
+          hook("turn.stop", {
+            id: "posts",
+            timeoutMs: 1_000,
+            capabilities: { "turn.stop.notify": "required", "turn.stop.prevent": "required" },
+            run: () => [notify("first"), preventStop("second")],
+          }),
+        ],
+      }),
+      { capabilities: LEVELS, minimumCapabilityLevel: "approximate" },
+      { ...PLUGIN_INPUT, client: { session: { promptAsync: () => new Promise(() => {}) } } },
+    );
+    void h["event"]!(idle, {});
+    let settled = false;
+    void h.dispose!().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(11_000 - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it("resolves at once when nothing is in flight", async () => {
+    vi.useFakeTimers();
+    const h = stopHooks(() => undefined);
+    await h["event"]!(idle, {});
+    let settled = false;
+    void h.dispose!().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("never rejects, whether a handler failed or a block was delivered", async () => {
+    const h = createHooknosticHooks(
+      definePlugin({
+        name: "dispose-errors",
+        hooks: [
+          hook("turn.stop", {
+            id: "throws",
+            run() {
+              throw new Error("handler bug");
+            },
+          }),
+          hook("tool.before", {
+            id: "blocks",
+            capabilities: { "tool.before.block": "required" },
+            run: () => block("no"),
+          }),
+        ],
+      }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+    const stop = h["event"]!(idle, {});
+    const blocked = h["tool.execute.before"]!(
+      { tool: "bash", sessionID: "s", callID: "c" },
+      { args: { command: "ls" } },
+    );
+    const disposed = h.dispose!();
+    // The block still reaches the host through the callback it awaits.
+    await expect(blocked).rejects.toThrow("no");
+    await expect(disposed).resolves.toBeUndefined();
+    await expect(stop).resolves.toBeUndefined();
+  });
+
+  it("is not registered when the plugin registers no callback", () => {
+    const h = createHooknosticHooks(
+      definePlugin({
+        name: "none",
+        hooks: [hook("turn.stop", { id: "elsewhere", targets: { include: ["claude"] }, run() {} })],
+      }),
+      { capabilities: LEVELS },
+      PLUGIN_INPUT,
+    );
+    expect(h.dispose).toBeUndefined();
   });
 });

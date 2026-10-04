@@ -5,8 +5,17 @@ import { describe, expect, it } from "vitest";
 
 import type { HarnessAdapter } from "@hooknostic/core";
 import { buildPluginIR, rangeCoversVersion } from "@hooknostic/core";
-import type { HookEventName, ToolInvocation } from "@hooknostic/sdk";
-import { ALL_CAPABILITY_IDS, DEFAULT_RUNTIME, definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+import type { EventFieldId, HookEventName, ToolInvocation } from "@hooknostic/sdk";
+import {
+  ALL_CAPABILITY_IDS,
+  DEFAULT_RUNTIME,
+  definePlugin,
+  fieldsForEvent,
+  hook,
+  HOOK_EVENT_NAMES,
+  isEventFieldId,
+  readEventField,
+} from "@hooknostic/sdk";
 
 import { loadFixtureFrom } from "./fixtures.js";
 
@@ -63,6 +72,9 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       if (!adapter.supportedDeliveries().includes("project")) return;
       expect(adapter.projectIntegration).toBeTypeOf("function");
       expect(adapter.projectPaths?.length).toBeGreaterThan(0);
+      // HN107 matches these against what integration writes, so a path the
+      // adapter never writes would silently never warn.
+      for (const path of adapter.rootCheckoutProjectPaths ?? []) expect(adapter.projectPaths).toContain(path);
       expect(adapter.projectComponents).toBeTypeOf("function");
       expect(adapter.projectComponentProfiles?.length).toBeGreaterThan(0);
       for (const profile of adapter.projectComponentProfiles ?? []) {
@@ -147,6 +159,41 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       }
     });
 
+    // ADR-0027: a field rating is a claim about the decoder, so the fixtures
+    // are held to it from both sides -- a decoder that produces a field its
+    // profile calls absent would let dispatch refuse a real event, and a rating
+    // no fixture carries is a claim nothing checks.
+    const fieldMatrix = resolved.fields ?? {};
+    const carried = new Map<EventFieldId, string>();
+    for (const name of fixtureNames) {
+      const fixture = loadFixtureFrom<{ event: HookEventName }>(join(options.fixturesDir, name));
+      for (const path of fieldsForEvent(fixture.event)) {
+        if (readEventField(fixture, path) !== undefined) carried.set(`${fixture.event}.${path}` as EventFieldId, name);
+      }
+    }
+
+    it("rates only registered event fields, with a rationale below exact", () => {
+      for (const profile of resolved.profilesUsed) {
+        const unknown = Object.keys(profile.fields ?? {}).filter((id) => !isEventFieldId(id));
+        expect(unknown, `profile ${profile.range}: unregistered field ids: ${unknown.join(", ")}`).toEqual([]);
+      }
+      for (const [id, entry] of Object.entries(fieldMatrix)) {
+        if (entry.level !== "exact") expect(entry.rationale, `field ${id} needs a rationale`).toBeTruthy();
+      }
+    });
+
+    it("rates every event field a fixture carries", () => {
+      const unrated = [...carried]
+        .filter(([id]) => fieldMatrix[id] === undefined)
+        .map(([id, name]) => `${id} (${name})`);
+      expect(unrated, `fields fixtures carry but the profile calls absent: ${unrated.join(", ")}`).toEqual([]);
+    });
+
+    it("backs every rated event field with a fixture", () => {
+      const uncovered = Object.keys(fieldMatrix).filter((id) => !carried.has(id as EventFieldId));
+      expect(uncovered, `rated fields no fixture carries: ${uncovered.join(", ")}`).toEqual([]);
+    });
+
     it("round-trips the shell view of every fixture through its codec", () => {
       // Two-way consistency as an adapter obligation, not a first-party
       // habit: wherever a canonical fixture advertises a normalized shell
@@ -205,6 +252,39 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       );
       const uncovered = Object.keys(shapes).filter((key) => !shellFixtureNames.has(key.toLowerCase()));
       expect(uncovered, `shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
+    });
+
+    it("re-derives the file view of every fixture through its codec", () => {
+      // ADR-0026: wherever a canonical fixture advertises tool.file, the
+      // adapter's file codec must exist and reproduce it from the fixture's own
+      // input -- the same obligation the shell view carries, read side only.
+      for (const name of fixtureNames) {
+        const tool = loadFixtureFrom<{ tool?: { nativeName: string; input: unknown; file?: unknown } }>(
+          join(options.fixturesDir, name),
+        ).tool;
+        if (tool?.file === undefined) continue;
+        expect(adapter.fileCodec, `${name} has tool.file but adapter has no file codec`).toBeDefined();
+        expect(
+          adapter.fileCodec!.classify(tool.nativeName, tool.input),
+          `${name}: codec does not classify its own fixture`,
+        ).toEqual(tool.file);
+      }
+    });
+
+    it("backs every file shape table entry with a fixture", () => {
+      // Table-side coverage, as for shell shapes: an entry with no fixture
+      // carrying the view is a claim nothing checks.
+      const covered = new Set(
+        fixtureNames
+          .map(
+            (name) =>
+              loadFixtureFrom<{ tool?: { nativeName?: string; file?: unknown } }>(join(options.fixturesDir, name)).tool,
+          )
+          .filter((tool) => tool?.file !== undefined)
+          .map((tool) => tool!.nativeName!.toLowerCase()),
+      );
+      const uncovered = Object.keys(adapter.fileShapes ?? {}).filter((key) => !covered.has(key.toLowerCase()));
+      expect(uncovered, `file shape entries with no fixture: ${uncovered.join(", ")}`).toEqual([]);
     });
 
     it("keeps its harness metadata consistent with its profiles and fixtures", () => {

@@ -115,6 +115,11 @@ interactive TUI under `node-pty`, walks the first-run dialogs by polling for
 their screen markers, sends a prompt whose scripted tool call trips the native
 approval prompt, and lets the generated hook deny it — asserted from the hook
 trace (the request fired) and the filesystem (denied command never executed).
+The drive forces the prompting permission mode: newer builds start interactive
+sessions in auto mode, where no prompt fires. It also drops the `CLAUDECODE`
+and `CLAUDE_*` variables it would inherit (all but `CLAUDE_CODE_GIT_BASH_PATH`),
+so a run from inside a Claude session starts a fresh top-level session as CI
+does (`.capture/claude-permission-mode`).
 Scenario-to-lane mapping lives in the registry's `driverByHarness` overrides,
 and `docs/harness-watch.md` documents which lane runs on which schedule.
 
@@ -183,6 +188,27 @@ The older project playback baseline stays unchanged.
 These gates use loopback model playback and isolated configuration. They are local commands;
 no Actions workflow or paid smoke session is launched. Normal `pnpm test` also relocates
 all example outputs and calls the bundled MCP server without source dependencies.
+
+## Codex Code Mode gate
+
+Current Codex models run shell commands through Code Mode, where one `exec` tool
+calls `tools.exec_command` from JavaScript. That dispatch is captured on a build
+newer than `referenceVersion`, so the ordinary Codex playback lane skips its two
+Code Mode drives. After `pnpm run bundle`, print the captured build from the
+profile:
+
+```sh
+node scripts/verify-code-mode.mjs --print-version
+```
+
+Install that exact Codex version, then run `node scripts/verify-code-mode.mjs`.
+It checks the installed version and drives a shell guard's deny and rewrite
+through a nested `exec_command`. Below the baseline the drives fail instead of
+skipping. The gate also fails unless the version check and both drives ran and
+passed, by exact title, so a renamed drive cannot shrink it to nothing. CI runs
+the same gate as its `code-mode` job on Windows, the platform the capture
+covers, with the pinned playback Node version
+([evidence](../.capture/codex-code-mode/README.md)).
 
 ## Actual npm package installation
 

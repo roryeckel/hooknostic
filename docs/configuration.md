@@ -30,7 +30,17 @@ defaults to its adapter id; set `adapter` explicitly for multiple named targets.
 Support levels are `exact`, `emulated`, `approximate`, and `unsupported`.
 `compatibility.minimum` defaults to `emulated`; `onBelowMinimum` defaults to `error`.
 Set these globally or on a target. Optional hook capabilities must be checked at
-runtime with `ctx.capabilities.has(...)`.
+runtime with `ctx.capabilities.has(...)`, which accepts the key as declared
+(`"input.replace"`) or its full id (`"tool.before.input.replace"`).
+
+A hook that reads an optional event field lists it in `fields`
+(`fields: ["lastMessage", "correlation.turnId"]`). A declared field a target never
+produces fails the build with HN108; a derived one (`emulated`, `approximate`) follows
+`minimum` and `onBelowMinimum`. `compatibility.accept` lists the field shortfalls you
+have handled, as `<adapter>:<field id>` (`"opencode:turn.stop.correlation.turnId"`);
+an accepted one is still reported, as information. Global and per-target lists add
+up, and an id nothing rates below exact is an error. `hooknostic inspect <target>
+--field <id>` shows a rating and its rationale (ADR-0027).
 
 | Component option | Default | Meaning |
 | --- | --- | --- |
@@ -45,6 +55,24 @@ Unknown ids fail validation. Acceptance does not make unsupported components wor
 For strict translation, set `compatibility.minimum: "exact"` and
 `components.onDeviation: "error"`. For a known exception, accept its specific id
 instead of reducing every diagnostic to a warning.
+
+## Skills that run their own scripts
+
+A skill that runs a script it ships names it with `${SKILL_DIR}` in the SKILL.md body:
+
+```markdown
+Run `node "${SKILL_DIR}/scripts/status.mjs" --project "<the user's project directory>"`.
+```
+
+Projection writes each target's form: `${CLAUDE_SKILL_DIR}` on Claude Code, which it
+expands to the skill's absolute directory, and `.` on Codex and OpenCode, whose skill
+instructions resolve relative paths against the skill's directory. Only the body is
+rewritten, on package and project delivery alike. A skill-text reference a target shows
+the model as written, such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}`
+anywhere, fails the build as the `<adapter>:skill-reference-unexpanded` degradation
+(HN101); a shell parameter like `${HOME}` is left to the shell. The model may still run
+the command from the skill's directory, so pass the project to the script rather than
+relying on the working directory ([ADR-0028](decisions/0028-skill-directory-token.md)).
 
 ## Dependencies and included files
 

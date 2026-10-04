@@ -1,4 +1,8 @@
+import type { EventFieldId } from "./fields.js";
 import type { SupportLevel } from "./support.js";
+
+/** A field shortfall named for acceptance: `<adapter>:<field id>` (ADR-0027). */
+export type FieldAcceptance = `${string}:${EventFieldId}`;
 
 /**
  * Compatibility policy: the minimum acceptable fidelity for required
@@ -12,12 +16,22 @@ export interface CompatibilityPolicy {
   onBelowMinimum?: "error" | "warn";
   /** How an unavailable optional capability is reported. */
   optionalUnavailable?: "info" | "warn" | "silent";
+  /**
+   * Event-field shortfalls to ship whatever the policy says, each named
+   * `<adapter>:<field id>`, such as `"opencode:turn.stop.correlation.turnId"`
+   * (ADR-0027). An accepted HN108 is still reported, as information, and
+   * still recorded in the build report. The global and per-target lists add
+   * up. An id that no configured target's adapter rates below exact is an
+   * error, so a typo cannot silently accept nothing.
+   */
+  accept?: FieldAcceptance[];
 }
 
 export const DEFAULT_COMPATIBILITY: Required<CompatibilityPolicy> = {
   minimum: "emulated",
   onBelowMinimum: "error",
   optionalUnavailable: "info",
+  accept: [],
 };
 
 export interface RuntimePolicy {

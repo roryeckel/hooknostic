@@ -1,7 +1,6 @@
 {
   "name": "hooknostic",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.4.0",
   "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
@@ -10,6 +9,10 @@
     "type": "git",
     "url": "git+https://github.com/roryeckel/hooknostic.git",
     "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "bugs": "https://github.com/roryeckel/hooknostic/issues",
   "keywords": [

@@ -86,7 +86,7 @@ scheduled run.
 - `schedule: cron "23 5 * * 1"` — weekly, Monday 05:23 UTC, off-minute.
 - `workflow_dispatch` with inputs `harness` (filter), `version` (pin a build
   under test, overriding the dist-tag), `force_llm` (enables the paid drift
-  transport).
+  transport), and `dry_run` (skips record, issue, PR, and comment writers).
 
 Scheduled workflows are disabled by GitHub after 60 days of repository
 inactivity; the dispatch backstop is the documented recovery (`Actions →
@@ -198,10 +198,12 @@ job's steps:
 **Advisory only.** The drift lane never writes fixtures and never upgrades
 provenance — a "clean" verdict is a confidence note, not captured evidence;
 drift routes humans to the harness-capture skill. The procedure and its
-provenance boundary are recorded in `.capture/harness-drift/README.md`. Known
-honest limitation: OpenCode's committed 1.18 fixtures are type-derived
-envelopes, so live captures legitimately verdict `drift` until capture-shaped
-fixtures land (documented in `.capture/opencode-capture/README.md`).
+provenance boundary are recorded in `.capture/harness-drift/README.md`. The
+OpenCode 1.18 fixtures the drift session exercises (`chat-message`,
+`session-created`, `session-idle`, `tool-before`, `tool-after`) are captured
+on 1.18.33, promoted from a reviewed drift artifact
+(`.capture/harness-drift/promote-opencode-v1.mjs`); other 1.18 variants the
+session does not exercise keep their recorded provenance.
 
 ## The publish leg, in detail
 
@@ -240,6 +242,13 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
 The paid sidecar reads `.github/litellm.json`. Its two explicit bridge settings
 keep both Messages and Responses requests on the upstream chat-completions API;
 provider defaults alone can select a native Responses endpoint instead.
+Two model-side shims cover upstream strictness the real harnesses trip over:
+`additional_drop_params` removes `reasoning_effort` (Codex's Responses
+`reasoning` object is forwarded as a non-string value that the upstream
+rejects), and `.github/litellm_callbacks.py` merges system messages into one
+leading message (Claude Code's requests carry a system block after the first
+user turn, which strict chat templates reject). Both only reshape the
+model-side request; harness hook payloads are untouched.
 Configuration references environment variables, so no upstream key is written
 to the config file. Before upgrading the pinned proxy, exercise its real
 streaming and non-streaming translations against a loopback-only stub:
@@ -257,7 +266,7 @@ owner's upstream credentials.
 | `HARNESS_WATCH_PAT` | secret | Fine-grained PAT: this repo, Contents RW + Pull requests RW. Rotate like `RELEASE_PAT` (docs/releases.md). |
 | `HARNESS_WATCH_AUTOMERGE` | repo variable | Opt-in auto-merge of record PRs; absent/false = human merge. |
 | `HARNESS_LLM_BASE_URL` | repo variable | Upstream OpenAI-compatible endpoint for the paid llm drift transport. |
-| `HARNESS_LLM_MODEL` | repo variable | Model name the llm transport drives (`glm-5.3-flash`). |
+| `HARNESS_LLM_MODEL` | repo variable | Model name the llm transport drives. |
 | `HARNESS_LLM_API_KEY` | secret | Spend-capped upstream key; supplied only to the host-side LiteLLM process, outside the harness container. |
 | `harness-watch` | label | Created by the first run if missing. |
 

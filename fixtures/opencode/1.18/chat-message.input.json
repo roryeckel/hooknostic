@@ -1,15 +1,35 @@
 {
   "hook": "chat.message",
-  "directory": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke",
+  "directory": "/drift/opencode-v1",
   "input": {
-    "sessionID": "ses_8f2a1c",
-    "agent": "build",
-    "messageID": "msg_44a"
+    "sessionID": "ses_f15623a05ffex44pC5Gqv3MgBx",
+    "model": {
+      "providerID": "drift",
+      "modelID": "hooknostic-playback"
+    }
   },
   "output": {
-    "message": { "id": "msg_44a", "role": "user" },
+    "message": {
+      "id": "msg_0ea9dc62a001TWymgII5bO1qB2",
+      "role": "user",
+      "sessionID": "ses_f15623a05ffex44pC5Gqv3MgBx",
+      "time": {
+        "created": 1790642603562
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "drift",
+        "modelID": "hooknostic-playback"
+      }
+    },
     "parts": [
-      { "id": "prt_1", "type": "text", "text": "Run the tests and summarize failures." }
+      {
+        "type": "text",
+        "text": "\"Use the shell tool exactly once to print the word drift-probe, then stop.\"",
+        "messageID": "msg_0ea9dc62a001TWymgII5bO1qB2",
+        "sessionID": "ses_f15623a05ffex44pC5Gqv3MgBx",
+        "id": "prt_0ea9dc632001QDIwjDI0GlSPAa"
+      }
     ]
   }
 }

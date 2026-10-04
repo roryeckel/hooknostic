@@ -363,7 +363,7 @@ describe("pi output replacement fidelity", () => {
             id: "replace",
             capabilities: { "tool.after.output.replace": "required" },
             async run() {
-              return { kind: "replaceOutput", output: { redacted: true } };
+              return { kind: "replaceOutput" as const, output: { redacted: true } };
             },
           }),
         ],

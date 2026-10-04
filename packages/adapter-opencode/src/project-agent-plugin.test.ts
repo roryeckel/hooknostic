@@ -17,6 +17,8 @@ import type { McpLauncherDocument, TargetSpec } from "@hooknostic/core";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
+import { opencodeV2Harness } from "./v2/harness.js";
+import { opencodeV2Projector } from "./v2/project.js";
 
 const encoder = new TextEncoder();
 const file = (path: string): AgentPluginFile => ({
@@ -230,6 +232,40 @@ describe("Agent Plugin to OpenCode projection", () => {
       ),
     });
 
+    // The body is projected after the name (ADR-0028), on both families.
+    it("writes `.` for ${SKILL_DIR} in the body of a renamed skill, and on v2", async () => {
+      const body = '---\nname: review\ndescription: Review code\n---\nRun `node "${SKILL_DIR}/scripts/review.mjs"`.\n';
+      const plan = await project(withManifest(source(), "skills/review/SKILL.md", body));
+      expect(text(plan, "package/skills/review/SKILL.md")).toBe(
+        '---\nname: portable-tools-review\ndescription: Review code\n---\nRun `node "./scripts/review.mjs"`.\n',
+      );
+      expect(plan.summary.degradations).toBeUndefined();
+      const v2Target = { ...target, version: opencodeV2Harness.recommendedRange };
+      const v2 = await opencodeV2Projector.project(withManifest(source(), "skills/review/SKILL.md", body), {
+        target: v2Target,
+        hookArtifacts: [],
+        support: resolveAgentPluginProjection(v2Target, opencodeV2Projector).matrix!,
+        onUnsupported: "error",
+      });
+      expect(text(v2, "package/skills/review/SKILL.md")).toBe(
+        '---\nname: review\ndescription: Review code\n---\nRun `node "./scripts/review.mjs"`.\n',
+      );
+    });
+
+    it("reports a reference OpenCode shows as written, beside a kept name", async () => {
+      const plan = await project(
+        withManifest(source(), "skills/review/SKILL.md", '---\nname: review\ndescription: x\n---\n"${PLUGIN_DATA}"\n'),
+      );
+      expect(plan.summary.degradations).toEqual([
+        {
+          id: "skill-reference-unexpanded",
+          component: "agent-plugin.skills",
+          name: "review",
+          path: "skills/review/SKILL.md",
+          reason: 'skill "review" contains "${PLUGIN_DATA}", which OpenCode shows the model as written.',
+        },
+      ]);
+    });
     it("qualifies each skill by its plugin, in place", async () => {
       const plan = await project(withManifest(source(), "skills/review/SKILL.md", manifest));
       expect(text(plan, "package/skills/review/SKILL.md")).toBe(
@@ -260,7 +296,10 @@ describe("Agent Plugin to OpenCode projection", () => {
         },
       ]);
       // And the profile declares it, so core will not treat it as a defect.
-      expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual(["skill-name-unqualified"]);
+      expect(support["agent-plugin.skills"]?.degradations?.map((item) => item.id)).toEqual([
+        "skill-name-unqualified",
+        "skill-reference-unexpanded",
+      ]);
     });
 
     // What a profile for an OpenCode that qualifies plugin skills itself would
@@ -287,7 +326,12 @@ describe("Agent Plugin to OpenCode projection", () => {
         { ...target, skillNames: "authored" },
         opencodeAgentPluginProjector,
       );
-      expect(authored.matrix?.["agent-plugin.skills"]).toEqual({ level: "exact" });
+      // The skill-text degradation (ADR-0028) is not about names, so it stays.
+      expect(authored.matrix?.["agent-plugin.skills"]).toEqual({
+        level: "exact",
+        rationale: expect.stringContaining("keeps its authored name") as unknown,
+        degradations: [expect.objectContaining({ id: "skill-reference-unexpanded" })],
+      });
       // Everything else is the harness's, untouched by the option.
       expect(authored.matrix?.["agent-plugin.mcp.stdio"]).toEqual(support["agent-plugin.mcp.stdio"]);
       for (const skillNames of [undefined, "qualified"] as const) {
@@ -298,7 +342,10 @@ describe("Agent Plugin to OpenCode projection", () => {
         expect(qualified.matrix?.["agent-plugin.skills"]).toEqual(
           expect.objectContaining({
             level: "emulated",
-            degradations: [expect.objectContaining({ id: "skill-name-unqualified" })],
+            degradations: [
+              expect.objectContaining({ id: "skill-name-unqualified" }),
+              expect.objectContaining({ id: "skill-reference-unexpanded" }),
+            ],
           }),
         );
       }
@@ -786,6 +833,23 @@ describe("Agent Plugin to OpenCode projection", () => {
         { provider: "fixture", into, files: [{ path, contents: encoder.encode(path), mode: 0o644 }] },
       ],
     });
+
+  it("refuses a materialized tree that lands on a skill whose SKILL.md it rewrites", async () => {
+    // Generated rather than copied (ADR-0028 and the rename), but still the
+    // package's file at that path.
+    const pkg: AgentPluginPackage = {
+      ...source(),
+      files: source().files.map((candidate) =>
+        candidate.path === "skills/review/SKILL.md"
+          ? { ...candidate, contents: encoder.encode("---\nname: review\ndescription: x\n---\nRun ${SKILL_DIR}/x.\n") }
+          : candidate,
+      ),
+    };
+    const plan = await projectWithMaterializedTree(pkg, "skills/review", "SKILL.md");
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({ severity: "error", path: "package/skills/review/SKILL.md" }),
+    );
+  });
 
   it("places a materialized package tree inside the nested package, not beside it", async () => {
     const plan = await projectWithMaterializedTree(source(), "generated/dependencies", "library/data.bin");

@@ -117,14 +117,97 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
             "scheduled-playback baseline, so harness-watch still owes this build a full " +
             "lane sweep (ADR-0009).",
         },
+        {
+          version: "1.18.31",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/opencode/1.18",
+          what: "read, write, edit and apply_patch tool.execute.before payloads over the loopback model (.capture/file-tools): read/write/edit name the path filePath; a GPT-like model id swaps edit/write for apply_patch, whose patchText carries a Codex-grammar patch",
+        },
+        {
+          version: "1.18.32",
+          date: "2026-09-28",
+          method: "captured",
+          artifact: ".capture/opencode-turn-fields",
+          what:
+            "turn fields over the loopback model: at session.idle, client.session.messages answers { data, request, response } " +
+            "with data a list of { info, parts }; one assistant message per model step, each with parentID = the user " +
+            "message id, and the final text part holds the last reply. chat.message input carried no messageID; " +
+            "output.message.id is the user message id (fixtures/opencode/1.18 session-idle-with-messages, " +
+            "chat-message-without-message-id).",
+        },
+        {
+          version: "1.18.33",
+          date: "2026-09-29",
+          method: "captured",
+          artifact: "fixtures/opencode/1.18",
+          what: "chat.message, session.created, session.idle and bash tool.execute.before/after envelopes from a harness-watch drift session over the loopback model (.capture/harness-drift), replacing type-derived shapes: chat.message input carries model instead of agent/messageID, bus events carry event.id, the bash tool offers no description arg, and tool.execute.after metadata carries output/exit/truncated",
+        },
+        {
+          version: "1.18.33",
+          date: "2026-09-30",
+          method: "live-probe",
+          artifact: ".capture/opencode-dispose",
+          what:
+            "one-shot opencode run over the loopback model, isolated state: the event handler is not awaited, and without " +
+            "dispose the process exited 41 ms after session.idle with a 3 s idle task unfinished. A plugin's dispose is " +
+            "called about 45 ms after idle and awaited: the task finished and the process exited 3.07 s after idle; a " +
+            "dispose that took 25 s more held it 28 s, so the host does not bound dispose. With the generated shim, a " +
+            "3 s turn.stop hook declaring lastMessage finished before exit; with its dispose removed it never did. " +
+            "Whether earlier supported builds call and await dispose was not established.",
+        },
         // scheduled-playback: at most one rolling live-probe record, rewritten
         // in place by scripts/record-playback-validation.mjs (harness-watch
         // workflow). Git history is the audit trail; see ADR-0009 and
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
+        {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
+        },
         // scheduled-playback:end
+        {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: tool.execute.before bash payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration.",
+        },
+        {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: captured tool.execute.before bash payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration.",
+        },
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
+    },
+    // Optional event fields (ADR-0027). Tool callbacks carry callID; the
+    // permission.asked bus event carries tool.callID. The turn fields rest on
+    // .capture/opencode-turn-fields (1.18.32).
+    fields: {
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "permission.request.correlation.toolCallId": { level: "exact" },
+      "prompt.before.correlation.turnId": {
+        level: "exact",
+        rationale:
+          "the id of the user message chat.message creates (output.message.id), which every assistant message of the turn names as its parentID. Not input.messageID: that is the caller-supplied id, absent in the 1.18.32 capture.",
+      },
+      "turn.stop.lastMessage": {
+        level: "emulated",
+        rationale:
+          "session.idle carries only the session id, so the shim reads the session back with client.session.messages and joins the text parts of the latest assistant message of the turn that has any (synthetic and ignored parts skipped). One assistant message per model step, as on Claude. Absent when the host supplies no client, the read fails or exceeds its 10 s bound, or the turn produced no text. Read only when a turn.stop hook declares this field or correlation.turnId. On an aborted turn the text is whatever was stored at the first of its two idles.",
+      },
+      "turn.stop.correlation.turnId": {
+        level: "emulated",
+        rationale:
+          "the parentID of the turn's last assistant message, from the same session read as lastMessage: the id prompt.before reports for the prompt that started the turn. Absent under the same conditions as lastMessage, or when no assistant message followed the last user message.",
+      },
     },
     matrix: {
       "session.start.observe": {
@@ -234,7 +317,7 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "turn.stop.observe": {
         level: "approximate",
         rationale:
-          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once.",
+          "session.idle on the event bus approximates turn completion: it is one per turn when a turn ends normally, but an aborted turn fires it twice, so one turn ending can dispatch turn.stop more than once. The bus event carries only the session id; lastMessage and correlation.turnId come from a session read, see the field ratings. In the build measured by .capture/opencode-dispose (see its validatedOn record), OpenCode does not await event handlers, and a one-shot `opencode run` exits at idle after awaiting the plugin's dispose. Whether earlier supported builds call and await dispose is unverified: in-flight hooks may still be cut off at idle on those targets. If the host calls dispose, the shim waits for in-flight hooks for up to their budgets plus one 10 s host round trip, 15 s at most. A hook still running then is cut off.",
       },
 
       "turn.stop.prevent": {

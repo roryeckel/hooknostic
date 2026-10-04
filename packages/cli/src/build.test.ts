@@ -3379,6 +3379,40 @@ describe("hooknostic inspect", () => {
     expect(err.level).toBe("unsupported");
   });
 
+  it("answers which harness produces an optional event field (ADR-0027)", async () => {
+    const registry = defaultAdapterRegistry();
+    const field = async (target: string, id: string, version?: string) => {
+      const capture = captureIO();
+      expect(
+        await runInspect({ target, field: id, json: true, registry, io: capture.io, ...(version ? { version } : {}) }),
+        capture.err(),
+      ).toBe(0);
+      const report = JSON.parse(capture.out());
+      expect(report.capabilities).toEqual([]);
+      expect(report.components).toEqual([]);
+      return report.fields;
+    };
+    expect(await field("claude", "turn.stop.lastMessage")).toEqual([
+      { field: "turn.stop.lastMessage", level: "exact" },
+    ]);
+    expect(await field("opencode", "turn.stop.lastMessage", opencodeHarness.recommendedRange)).toEqual([
+      expect.objectContaining({ level: "emulated", rationale: expect.stringContaining("client.session.messages") }),
+    ]);
+    expect(await field("opencode", "turn.stop.lastMessage", opencodeV2Harness.recommendedRange)).toEqual([
+      expect.objectContaining({ level: "emulated", rationale: expect.stringContaining("session.text.ended") }),
+    ]);
+    expect(await field("codex", "session.start.correlation.turnId")).toEqual([
+      { field: "session.start.correlation.turnId", level: "unsupported" },
+    ]);
+    const text = captureIO();
+    expect(await runInspect({ target: "opencode", registry, io: text.io })).toBe(0);
+    expect(text.out()).toContain("emulated     turn.stop.correlation.turnId");
+    expect(text.out()).not.toContain("turn.stop.correlation.parentAgentId");
+    const typo = captureIO();
+    expect(await runInspect({ target: "claude", field: "turn.stop.lastMesage", registry, io: typo.io })).toBe(2);
+    expect(typo.err()).toContain('unknown field "turn.stop.lastMesage"');
+  });
+
   it("supports single-capability queries and unknown targets", async () => {
     const single = captureIO();
     expect(

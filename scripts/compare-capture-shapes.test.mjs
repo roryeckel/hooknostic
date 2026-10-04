@@ -103,8 +103,15 @@ describe("variantOf", () => {
   });
 
   it("discriminates opencode tool callbacks by hook + tool", () => {
-    const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before");
+    // Selected by tool, not by position: file-tool fixtures sort ahead of bash.
+    const toolBefore = OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before" && f.input.tool === "bash");
     expect(variantOf("opencode", toolBefore)).toBe("tool.execute.before+bash");
+    expect(
+      variantOf(
+        "opencode",
+        OPENCODE_FIXTURES.find((f) => f.hook === "tool.execute.before" && f.input.tool === "apply_patch"),
+      ),
+    ).toBe("tool.execute.before+apply_patch");
     expect(
       variantOf(
         "opencode",
@@ -462,6 +469,22 @@ describe("Pi drift", () => {
 });
 
 describe("OpenCode v2 drift", () => {
+  it("accepts both captured context options shapes while rejecting unseen options and types", () => {
+    const fixtures = readFixtureInputs("opencode/2.0");
+    const legacy = JSON.parse(readFileSync(join(ROOT, "fixtures/opencode/2.0/context.input.json"), "utf8"));
+    // Construct only the observed difference from the reviewed 2.0.22 capture.
+    const current = JSON.parse(JSON.stringify(legacy));
+    current.event.options.maxTokens = 4096;
+    const compare = (captured) => compareCaptures({ harness: "opencode-v2", fixtures, captured }).verdict;
+    expect(compare([legacy, current])).toBe("clean");
+    const wrongType = JSON.parse(JSON.stringify(current));
+    wrongType.event.options.maxTokens = "4096";
+    expect(compare([wrongType])).toBe("drift");
+    const unseenOption = JSON.parse(JSON.stringify(current));
+    unseenOption.event.options.unseenOption = true;
+    expect(compare([unseenOption])).toBe("drift");
+  });
+
   it("reports an unobserved first session start without declaring drift", () => {
     const fixtures = readFixtureInputs("opencode/2.0");
     const captured = fixtures.filter((row) => row.event.type !== "session.created");

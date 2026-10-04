@@ -1,11 +1,16 @@
 {
   "schemaVersion": 1,
-  "event": "prompt.before",
-  "harness": { "id": "opencode", "nativeEvent": "chat.message" },
-  "session": {
-    "id": "ses_8f2a1c",
-    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic\\.capture\\opencode-smoke"
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "chat.message"
   },
-  "correlation": {},
-  "prompt": "Run the tests and summarize failures."
+  "session": {
+    "id": "ses_f15623a05ffex44pC5Gqv3MgBx",
+    "cwd": "/drift/opencode-v1"
+  },
+  "correlation": {
+    "turnId": "msg_0ea9dc62a001TWymgII5bO1qB2"
+  },
+  "event": "prompt.before",
+  "prompt": "\"Use the shell tool exactly once to print the word drift-probe, then stop.\""
 }

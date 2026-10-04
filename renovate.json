@@ -14,6 +14,19 @@
   },
   "packageRules": [
     {
+      "description": "The compatibility compiler API stays within typescript-eslint's supported minor line",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["pnpm-workspace.overrides"],
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": ">=6 <6.1"
+    },
+    {
+      "description": "The compatibility runtime follows the manually declared Node minimum",
+      "matchManagers": ["nodenv"],
+      "matchFileNames": [".github/node/compatibility/.node-version"],
+      "enabled": false
+    },
+    {
       "description": "Wait for the same 24-hour npm cooldown enforced by pnpm installs",
       "matchDatasources": ["npm"],
       "minimumReleaseAge": "1 day",

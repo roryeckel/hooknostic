@@ -78,6 +78,90 @@ describe("compile-time hook contracts", () => {
     expect(noCapabilities.id).toBe("observe-only");
   });
 
+  it("accepts event-relative capability keys and types has() to the declaration", () => {
+    const relative = hook("tool.before", {
+      id: "relative-keys",
+      capabilities: { block: "required", "input.replace": "optional" },
+      async run(event, ctx) {
+        if (ctx.capabilities.has("input.replace") && event.tool.shell !== undefined) {
+          return updateShell({ command: "pnpm install" });
+        }
+        // Either spelling probes the same declaration.
+        if (ctx.capabilities.has("tool.before.input.replace")) return replaceInput({ command: "x" });
+        return block("no");
+      },
+    });
+
+    const mixed = hook("turn.stop", {
+      id: "mixed-spellings",
+      capabilities: { prevent: "required", "turn.stop.notify": "optional" },
+      async run(_event, ctx) {
+        if (ctx.capabilities.has("notify")) return notify("idle check skipped");
+        return preventStop("keep going");
+      },
+    });
+
+    const undeclaredRelative = hook("tool.before", {
+      id: "undeclared-relative",
+      capabilities: { block: "required" },
+      // @ts-expect-error "block" does not license replaceInput
+      async run() {
+        return replaceInput({ command: "x" });
+      },
+    });
+
+    const foreignSuffix = hook("tool.before", {
+      id: "foreign-suffix",
+      capabilities: {
+        // @ts-expect-error "prevent" is not a tool.before capability
+        prevent: "required",
+      },
+      async run() {},
+    });
+
+    const undeclaredProbe = hook("tool.before", {
+      id: "undeclared-probe",
+      capabilities: { block: "required" },
+      async run(_event, ctx) {
+        // @ts-expect-error input.replace was not declared, so no effect it licenses could be returned
+        ctx.capabilities.has("input.replace");
+        // @ts-expect-error another event's capability can never answer for this hook
+        ctx.capabilities.has("turn.stop.prevent");
+        return block("no");
+      },
+    });
+
+    expect([relative, mixed, undeclaredRelative, foreignSuffix, undeclaredProbe].map((h) => h.id)).toEqual([
+      "relative-keys",
+      "mixed-spellings",
+      "undeclared-relative",
+      "foreign-suffix",
+      "undeclared-probe",
+    ]);
+    expect(relative.capabilities).toEqual({ "tool.before.block": "required", "tool.before.input.replace": "optional" });
+  });
+
+  it("accepts effect lists when every element is licensed", () => {
+    const ok = hook("turn.stop", {
+      id: "list",
+      capabilities: { prevent: "required", notify: "optional" },
+      async run(_event, ctx) {
+        return [ctx.capabilities.has("notify") ? notify("lint failed") : undefined, preventStop("fix it")];
+      },
+    });
+
+    const undeclared = hook("turn.stop", {
+      id: "list-undeclared",
+      capabilities: { prevent: "required" },
+      // @ts-expect-error notify is undeclared, inside a list as anywhere else
+      async run() {
+        return [notify("lint failed"), preventStop("fix it")];
+      },
+    });
+
+    expect([ok.id, undeclared.id]).toEqual(["list", "list-undeclared"]);
+  });
+
   it("rejects capabilities scoped to a different event", () => {
     const wrongScope = hook("tool.after", {
       id: "wrong-scope",
@@ -140,6 +224,56 @@ describe("compile-time hook contracts", () => {
 
     expect(ok.match).toEqual({ kind: "shell" });
     expect(bad.id).toBe("no-match-here");
+  });
+
+  it("narrows tool.kind to what the matcher admits", () => {
+    const single = hook("tool.before", {
+      id: "narrow-single",
+      match: { kind: "shell" },
+      capabilities: { block: "required" },
+      async run(event) {
+        const kind: "shell" = event.tool.kind;
+        return block(kind);
+      },
+    });
+
+    const listed = hook("tool.after", {
+      id: "narrow-list",
+      match: { kind: ["file.read", "file.edit"] },
+      async run(event) {
+        const kind: "file.read" | "file.edit" = event.tool.kind;
+        // @ts-expect-error "shell" is outside the matched kinds
+        const outside: "shell" = event.tool.kind;
+        void [kind, outside];
+      },
+    });
+
+    const byName = hook("tool.before", {
+      id: "narrow-by-name",
+      match: { nativeName: "Bash" },
+      async run(event) {
+        // A native-name matcher says nothing about the normalized category.
+        // @ts-expect-error kind stays the whole ToolKind union
+        const kind: "shell" = event.tool.kind;
+        void kind;
+      },
+    });
+
+    const unmatched = hook("tool.before", {
+      id: "unmatched",
+      async run(event) {
+        // @ts-expect-error without a matcher every kind reaches the handler
+        const kind: "shell" = event.tool.kind;
+        void kind;
+      },
+    });
+
+    expect([single, listed, byName, unmatched].map((h) => h.match)).toEqual([
+      { kind: "shell" },
+      { kind: ["file.read", "file.edit"] },
+      { nativeName: "Bash" },
+      undefined,
+    ]);
   });
 
   it("scopes notify to the stop events", () => {
@@ -271,6 +405,48 @@ describe("compile-time config contracts", () => {
       // @ts-expect-error a direct MCP source owns no tree to mark executable
       components: { mcp: "./mcp.json", executableFiles: ["bin/tool"] },
       targets: { codex },
+    });
+  });
+});
+
+describe("compile-time field declarations (ADR-0027)", () => {
+  it("admits only the event's own optional fields, in either spelling", () => {
+    const ok = hook("turn.stop", {
+      id: "summarize",
+      fields: ["lastMessage", "turn.stop.correlation.turnId"],
+      run(event) {
+        void event.lastMessage;
+      },
+    });
+    const tool = hook("tool.before", { id: "call", fields: ["correlation.toolCallId"], run() {} });
+    // @ts-expect-error session.start has no lastMessage
+    const foreign = hook("session.start", { id: "s", fields: ["lastMessage"], run() {} });
+    // @ts-expect-error toolCallId exists only on tool-scoped events
+    const untooled = hook("turn.stop", { id: "t", fields: ["correlation.toolCallId"], run() {} });
+    // @ts-expect-error a field of another event, spelled in full
+    const scoped = hook("turn.stop", { id: "u", fields: ["agent.stop.lastMessage"], run() {} });
+    // @ts-expect-error required fields are not declarable
+    const required = hook("prompt.before", { id: "p", fields: ["prompt"], run() {} });
+    expect([ok, tool, foreign, untooled, scoped, required]).toHaveLength(6);
+  });
+
+  it("types an acceptance as an adapter-qualified field id", () => {
+    defineConfig({
+      entry: "h.ts",
+      compatibility: { accept: ["opencode:turn.stop.lastMessage"] },
+      targets: {
+        opencode: {
+          version: ">=1 <2",
+          delivery: "project",
+          output: "o",
+          compatibility: {
+            accept: [
+              // @ts-expect-error an acceptance names a registered field
+              "opencode:lastMessage",
+            ],
+          },
+        },
+      },
     });
   });
 });

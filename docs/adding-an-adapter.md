@@ -52,6 +52,13 @@ Omit tools whose shape you have not captured — both directions then decline,
 guess a key: a wrong entry silently rewrites the wrong field of a live tool
 call.
 
+File tools get the same treatment, read side only (ADR-0026): a `FileShapes`
+table maps each captured file tool to `{ pathKey }` (an argument naming one
+file) or `{ patchKey }` (an argument holding a Codex-grammar patch), and
+`fileCodec()` builds `event.tool.file` from it. Expose it as `adapter.fileCodec`
+and `adapter.fileShapes`, and pass `fileCodec` into `dispatch()` from your shim.
+Search tools (glob/grep) take a pattern, not a file, and stay out of the table.
+
 Expose the function your decoder classifies tools with as `adapter.classifyTool`
 (`(nativeName, input) => ToolInvocation`). `hooknostic dispatch` builds a test
 event's tool from it (ADR-0023), and the contract suite requires it to reproduce
@@ -76,7 +83,9 @@ lacks source/date metadata, if the matrix rates an unregistered capability id
 rates nothing), or if the adapter does not declare how its artifact executes, or if a fixture carries a
 normalized `tool.shell` view that the adapter's shell codec does not round-trip
 (classify the fixture's own input back to that view, and encode a command patch
-that re-classifies to the patched command).
+that re-classifies to the patched command), or a `tool.file` view its file codec
+does not reproduce, or if a shell or file shape table entry has no fixture
+carrying that view.
 
 An adapter shipped from this repository also has to be added to `SUBJECTS` in
 `packages/cli/src/coverage.test.ts`, which asserts it matches the default
@@ -94,6 +103,11 @@ profile for a broad range.
 
 - **Tolerant reader**: validate only what the canonical event needs; keep the
   whole native payload in `raw`; never invent correlation IDs.
+- **Rate every optional field you set** in the profile's `fields` matrix
+  (ADR-0027): `exact` when the native payload carries it, a lower level with a
+  rationale when the adapter derives it. The contract suite requires every
+  field a canonical fixture carries to be rated and every rating to be carried
+  by a fixture; an unrated field is one `hooknostic dispatch` refuses.
 - **Strict writer**: emit only documented native fields; preserve
   event-specific blocking distinctions (e.g. never exit-2 where the harness
   doesn't honor it).

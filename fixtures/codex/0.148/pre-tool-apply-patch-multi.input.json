@@ -1,0 +1,14 @@
+{
+  "session_id": "01a0e5ff-5706-7851-ba17-2e004e6527da",
+  "turn_id": "01a0e5ff-57ad-7650-903f-d578bfc4c643",
+  "transcript_path": "C:\\Users\\user\\.codex\\sessions\\2026\\09\\27\\rollout-2026-09-27T22-11-51-01a0e5ff-5706-7851-ba17-2e004e6527da.jsonl",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-file-tools-ePtwRo\\codex",
+  "hook_event_name": "PreToolUse",
+  "model": "hooknostic-playback",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Add File: one.txt\n+one\n*** Update File: seed.txt\n@@\n-alpha\n+delta\n*** End Patch\n"
+  },
+  "tool_use_id": "call_playback_1"
+}

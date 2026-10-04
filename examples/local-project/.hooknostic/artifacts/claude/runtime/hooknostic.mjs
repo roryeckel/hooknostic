@@ -19,6 +19,9 @@ var __export = (target, all) => {
 function isCapabilityId(value) {
   return CAPABILITY_SET.has(value);
 }
+function canonicalCapability(event, key) {
+  return isCapabilityId(key) ? key : `${event}.${key}`;
+}
 var ALL_CAPABILITY_IDS, CAPABILITY_SET;
 var init_capabilities = __esm({
   "../../packages/sdk/dist/capabilities.js"() {
@@ -119,7 +122,10 @@ var init_effects = __esm({
 });
 
 // ../../packages/sdk/dist/events.js
-var HOOK_EVENT_NAMES;
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
+var HOOK_EVENT_NAMES, TOOL_SCOPED_EVENTS;
 var init_events = __esm({
   "../../packages/sdk/dist/events.js"() {
     "use strict";
@@ -138,6 +144,53 @@ var init_events = __esm({
       "agent.stop",
       "turn.stop"
     ];
+    TOOL_SCOPED_EVENTS = [
+      "tool.before",
+      "tool.after",
+      "tool.error",
+      "permission.request"
+    ];
+  }
+});
+
+// ../../packages/sdk/dist/fields.js
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
+var OPTIONAL_EVENT_FIELDS, CORRELATION_FIELDS, TOOL_CORRELATION_FIELD, ALL_EVENT_FIELD_IDS, FIELD_SET;
+var init_fields = __esm({
+  "../../packages/sdk/dist/fields.js"() {
+    "use strict";
+    init_events();
+    OPTIONAL_EVENT_FIELDS = {
+      "session.start": ["how"],
+      "session.end": ["reason"],
+      "prompt.before": [],
+      "model.request.before": [],
+      "tool.before": [],
+      "tool.after": [],
+      "tool.error": ["error.message"],
+      "permission.request": [],
+      "context.compact.before": ["trigger"],
+      "context.compact.after": [],
+      "agent.start": ["agent.id", "agent.type"],
+      "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+      "turn.stop": ["lastMessage"]
+    };
+    CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+    TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+    ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+    FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
   }
 });
 
@@ -149,11 +202,37 @@ function hookAppliesToTarget(hook2, targetId) {
     return false;
   return true;
 }
+function canonicalCapabilities(event, hookId, declared) {
+  const canonical = {};
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const [key, level] of Object.entries(declared ?? {})) {
+    const id = canonicalCapability(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares capability "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+    canonical[id] = level;
+  }
+  return canonical;
+}
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const def = {
     event,
     id: spec.id,
-    capabilities: spec.capabilities ?? {},
+    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
     run: spec.run
   };
   if (spec.match !== void 0)
@@ -162,11 +241,15 @@ function hook(event, spec) {
     def.targets = spec.targets;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 var init_hook = __esm({
   "../../packages/sdk/dist/hook.js"() {
     "use strict";
+    init_capabilities();
+    init_fields();
   }
 });
 
@@ -4448,22 +4531,74 @@ function shellCodec(shapes, options) {
     }
   };
 }
+function parsePatchPaths(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2 || lines[0].trim() !== PATCH_BEGIN || lines[lines.length - 1].trim() !== PATCH_END) {
+    return void 0;
+  }
+  const body = lines.slice(1, -1);
+  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
+    body.shift();
+  const paths = [];
+  let inUpdateHunk = false;
+  let afterUpdateHeader = false;
+  for (const line of body) {
+    const candidate = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header = PATCH_FILE_HEADERS.find((prefix) => candidate.startsWith(prefix));
+    if (header !== void 0) {
+      const path = candidate.slice(header.length);
+      if (path === "")
+        return void 0;
+      paths.push(path);
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
+      continue;
+    }
+    const untrailed = line.trimEnd();
+    if (untrailed.startsWith(PATCH_MOVE)) {
+      const path = untrailed.slice(PATCH_MOVE.length);
+      if (!afterUpdateHeader || path === "")
+        return void 0;
+      paths.push(path);
+      afterUpdateHeader = false;
+      continue;
+    }
+    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE)
+      return void 0;
+    afterUpdateHeader = false;
+  }
+  return [...new Set(paths)];
+}
+function fileCodec(shapes, options) {
+  const normalize = options?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      if ("pathKey" in shape) {
+        const path = input[shape.pathKey];
+        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : void 0;
+      }
+      const patch = input[shape.patchKey];
+      const paths = typeof patch === "string" ? parsePatchPaths(patch) : void 0;
+      return paths === void 0 ? void 0 : { paths, patchKey: shape.patchKey };
+    }
+  };
+}
+function listOf(value) {
+  return Array.isArray(value) ? value : [value];
+}
 function matchesTool(match, tool) {
   if (!match)
     return true;
-  if (match.kind !== void 0) {
-    const kinds = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds.includes(tool.kind))
-      return false;
-  }
-  if (match.nativeName !== void 0) {
-    const names = Array.isArray(match.nativeName) ? match.nativeName : [match.nativeName];
-    if (!names.includes(tool.nativeName))
-      return false;
-  }
+  if (match.kind !== void 0 && !listOf(match.kind).includes(tool.kind))
+    return false;
+  if (match.nativeName !== void 0 && !listOf(match.nativeName).includes(tool.nativeName))
+    return false;
   return true;
 }
-var TOOL_KINDS;
+var TOOL_KINDS, PATCH_BEGIN, PATCH_END, PATCH_ENVIRONMENT, PATCH_END_OF_FILE, PATCH_UPDATE, PATCH_FILE_HEADERS, PATCH_MOVE;
 var init_tools = __esm({
   "../../packages/sdk/dist/tools.js"() {
     "use strict";
@@ -4478,17 +4613,25 @@ var init_tools = __esm({
       "mcp",
       "other"
     ];
+    PATCH_BEGIN = "*** Begin Patch";
+    PATCH_END = "*** End Patch";
+    PATCH_ENVIRONMENT = "*** Environment ID:";
+    PATCH_END_OF_FILE = "*** End of File";
+    PATCH_UPDATE = "*** Update File: ";
+    PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE];
+    PATCH_MOVE = "*** Move to: ";
   }
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
     init_zod();
     init_capabilities();
     init_events();
+    init_fields();
     init_json();
     init_support();
     init_tools();
@@ -4497,6 +4640,11 @@ var init_schemas = __esm({
     supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
     requirementLevelSchema = external_exports.enum(["required", "optional"]);
     toolKindSchema = external_exports.enum(TOOL_KINDS);
+    eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+    fieldAcceptanceSchema = external_exports.string().refine((value) => {
+      const colon = value.indexOf(":");
+      return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+    }, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
     MAX_TIMER_DELAY_MS = 2147483647;
     packageMaterializerSchema = external_exports.custom((value) => {
       if (typeof value !== "object" || value === null)
@@ -4514,6 +4662,11 @@ var init_schemas = __esm({
         cwd: external_exports.string().optional(),
         commandKey: external_exports.string(),
         cwdKey: external_exports.string().optional()
+      }).strict().optional(),
+      file: external_exports.object({
+        paths: external_exports.array(external_exports.string()),
+        pathKey: external_exports.string().optional(),
+        patchKey: external_exports.string().optional()
       }).strict().optional()
     }).strict();
     baseHookEventSchema = external_exports.object({
@@ -4561,7 +4714,8 @@ var init_schemas = __esm({
     compatibilityPolicySchema = external_exports.object({
       minimum: supportLevelSchema.optional(),
       onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-      optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+      optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+      accept: external_exports.array(fieldAcceptanceSchema).optional()
     }).strict();
     runtimePolicySchema = external_exports.object({
       onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4789,6 +4943,7 @@ var init_schemas = __esm({
       // and would time the hook out permanently.
       timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
       capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+      fields: external_exports.array(eventFieldIdSchema).optional(),
       run: external_exports.custom((v) => typeof v === "function", {
         message: "run must be a function"
       })
@@ -4841,6 +4996,7 @@ var init_dist = __esm({
     init_config();
     init_effects();
     init_events();
+    init_fields();
     init_hook();
     init_json();
     init_plugin();
@@ -4868,9 +5024,9 @@ var init_hooks = __esm({
         hook("tool.before", {
           id: "sample-guard",
           match: { kind: "shell" },
-          capabilities: { "tool.before.block": "required" },
-          async run(event) {
-            if (event.tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
+          capabilities: { block: "required" },
+          run({ tool }) {
+            if (tool.shell?.command.includes("sample-forbidden-command")) return block("Synthetic example guard.");
           }
         })
       ]
@@ -4885,24 +5041,23 @@ import { syncBuiltinESMExports } from "node:module";
 import { Writable } from "node:stream";
 init_dist();
 function createCapabilitySet(levels) {
+  const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
-    has(id) {
-      const level = levels[id];
-      return level !== void 0 && level !== "unsupported";
-    },
-    level(id) {
-      return levels[id] ?? "unsupported";
-    }
+    has: (id) => levelOf(id) !== "unsupported",
+    level: levelOf
   };
 }
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, codec) {
+function setToolInput(tool, input, options) {
   tool.input = input;
-  const shell = codec?.classify(tool.nativeName, input);
+  const shell = options.shellCodec?.classify(tool.nativeName, input);
   if (shell !== void 0) tool.shell = shell;
   else delete tool.shell;
+  const file = options.fileCodec?.classify(tool.nativeName, input);
+  if (file !== void 0) tool.file = file;
+  else delete tool.file;
 }
 function truncateNotification(message, limit) {
   if (message.length <= limit) return message;
@@ -4956,96 +5111,37 @@ async function dispatch(hooks, event, options) {
     }
     return false;
   };
-  for (const hook2 of matching) {
-    const capabilities = {
-      has(id) {
-        return this.level(id) !== "unsupported";
-      },
-      level(id) {
-        const level = targetCapabilities.level(id);
-        const minimum = options.minimumCapabilityLevel;
-        if (minimum !== void 0 && hook2.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
-          return "unsupported";
+  const parseReturned = (hookId, value) => {
+    let parsed;
+    try {
+      parsed = effectSchema.safeParse(value);
+    } catch (error) {
+      return {
+        error: {
+          hookId,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hookId}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
         }
-        return level;
-      }
-    };
-    const controller = new AbortController();
-    const ctx = {
-      capabilities,
-      harness: { ...options.harness },
-      signal: controller.signal,
-      // A copy per hook, like `harness`: a handler that mutates it must not
-      // move the root under the hooks after it.
-      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
-    };
-    let outcome;
-    let timedOut = false;
-    let timer;
-    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
-    try {
-      outcome = await Promise.race([
-        Promise.resolve(hook2.run(event, ctx)),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-            reject(new Error(`timed out after ${budgetMs}ms`));
-          }, budgetMs);
-        })
-      ]);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: timedOut ? "timeout" : "error",
-          message: errorMessage(error)
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    } finally {
-      if (timer !== void 0) clearTimeout(timer);
+      };
     }
-    if (outcome === void 0) continue;
-    let parsedEffect;
-    try {
-      parsedEffect = effectSchema.safeParse(outcome);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
+    if (!parsed.success) {
+      const detail = parsed.error.issues[0]?.message;
+      return {
+        error: {
+          hookId,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
+          message: `hook "${hookId}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
+        }
+      };
     }
-    if (!parsedEffect.success) {
-      const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: "unsupported-effect",
-          code: "HN401",
-          message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    }
-    const effect = parsedEffect.data;
+    return { effect: parsed.data };
+  };
+  const applyEffect = (hook2, capabilities, effect) => {
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -5055,11 +5151,9 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (hook2.capabilities[capability] === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -5069,11 +5163,9 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -5083,15 +5175,13 @@ async function dispatch(hooks, event, options) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     let loweredShellInput;
     if (effect.kind === "updateShell") {
       const tool = toolOf(event);
       loweredShellInput = tool !== void 0 ? options.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
       if (loweredShellInput === void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -5101,8 +5191,6 @@ async function dispatch(hooks, event, options) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     if (options.validateEffect !== void 0) {
@@ -5114,7 +5202,7 @@ async function dispatch(hooks, event, options) {
         rejection = `target validation failed: ${errorMessage(error)}`;
       }
       if (rejection !== void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -5124,21 +5212,19 @@ async function dispatch(hooks, event, options) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options.shellCodec);
+        setToolInput(tool, loweredShellInput, options);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5206,8 +5292,105 @@ async function dispatch(hooks, event, options) {
     }
     if (isTerminalEffect(effect)) {
       result.terminatedBy = hook2.id;
-      break;
+      return true;
     }
+    return false;
+  };
+  for (const hook2 of matching) {
+    const levelOf = (id) => {
+      const capability = canonicalCapability(event.event, id);
+      const level = targetCapabilities.level(capability);
+      const minimum = options.minimumCapabilityLevel;
+      if (minimum !== void 0 && hook2.capabilities[capability] !== "required" && !meetsMinimum(level, minimum)) {
+        return "unsupported";
+      }
+      return level;
+    };
+    const capabilities = {
+      has: (id) => levelOf(id) !== "unsupported",
+      level: levelOf
+    };
+    const controller = new AbortController();
+    const ctx = {
+      capabilities,
+      harness: { ...options.harness },
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options.plugin === void 0 ? {} : { plugin: { ...options.plugin } }
+    };
+    let outcome;
+    let timedOut = false;
+    let timer;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    try {
+      outcome = await Promise.race([
+        Promise.resolve(hook2.run(event, ctx)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
+        })
+      ]);
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error)
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+    if (outcome === void 0) continue;
+    let returned;
+    try {
+      returned = Array.isArray(outcome) ? Array.from(outcome) : [outcome];
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    const parsed = returned.filter((value) => value !== void 0).map((value) => parseReturned(hook2.id, value));
+    const terminalAt = parsed.findIndex((entry) => "effect" in entry && isTerminalEffect(entry.effect));
+    if (terminalAt !== -1 && terminalAt < parsed.length - 1) {
+      const early = parsed[terminalAt];
+      const trailing = parsed.length - 1 - terminalAt;
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned "${early.effect.kind}" followed by ${trailing} more effect${trailing === 1 ? "" : "s"}; a terminal effect ends the dispatch, so it must be last in the list.`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    let ended = false;
+    for (const entry of parsed) {
+      ended = "error" in entry ? failDispatch(hook2.id, entry.error, capabilities) : applyEffect(hook2, capabilities, entry.effect);
+      if (ended) break;
+    }
+    if (ended) break;
   }
   return result;
 }
@@ -5387,6 +5570,13 @@ var CLAUDE_SHELL_SHAPES = {
   PowerShell: { commandKey: "command" }
 };
 var claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);
+var CLAUDE_FILE_SHAPES = {
+  Read: { pathKey: "file_path" },
+  Write: { pathKey: "file_path" },
+  Edit: { pathKey: "file_path" },
+  NotebookEdit: { pathKey: "notebook_path" }
+};
+var claudeFileCodec = fileCodec(CLAUDE_FILE_SHAPES);
 var CLAUDE_MCP_TOOL = /^mcp__(.+)__([^_].*)$/;
 function classifyClaudeTool(nativeName, input) {
   const mcpMatch = CLAUDE_MCP_TOOL.exec(nativeName);
@@ -5399,11 +5589,13 @@ function classifyClaudeTool(nativeName, input) {
     };
   }
   const shell = claudeShellCodec.classify(nativeName, input);
+  const file = claudeFileCodec.classify(nativeName, input);
   return {
     kind: (Object.hasOwn(CLAUDE_TOOL_KINDS, nativeName) ? CLAUDE_TOOL_KINDS[nativeName] : void 0) ?? "other",
     nativeName,
     input,
-    ...shell !== void 0 ? { shell } : {}
+    ...shell !== void 0 ? { shell } : {},
+    ...file !== void 0 ? { file } : {}
   };
 }
 var ClaudeDecodeError = class extends Error {
@@ -5548,6 +5740,7 @@ async function runClaudeCommandShim(source, options) {
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
       shellCodec: claudeShellCodec,
+      fileCodec: claudeFileCodec,
       ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
     trace?.(describeHookResult(result));
@@ -5583,8 +5776,8 @@ await runClaudeCommandShim(() => Promise.resolve().then(() => (init_hooks(), hoo
 /*!
 Bundled package notices
 
-@hooknostic/adapter-claude@0.1.0
-@hooknostic/runtime@0.1.0
+@hooknostic/adapter-claude@0.4.0
+@hooknostic/runtime@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5792,8 +5985,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.1.0
-hooknostic@0.1.0
+@hooknostic/sdk@0.4.0
+hooknostic@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

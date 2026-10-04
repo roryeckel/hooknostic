@@ -46,6 +46,9 @@ var CAPABILITY_SET = new Set(ALL_CAPABILITY_IDS);
 function isCapabilityId(value) {
   return CAPABILITY_SET.has(value);
 }
+function canonicalCapability(event, key) {
+  return isCapabilityId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/config.js
 var DEFAULT_RUNTIME = {
@@ -106,6 +109,49 @@ var HOOK_EVENT_NAMES = [
   "agent.stop",
   "turn.stop"
 ];
+var TOOL_SCOPED_EVENTS = [
+  "tool.before",
+  "tool.after",
+  "tool.error",
+  "permission.request"
+];
+function isToolScopedEvent(event) {
+  return TOOL_SCOPED_EVENTS.includes(event);
+}
+
+// ../../packages/sdk/dist/fields.js
+var OPTIONAL_EVENT_FIELDS = {
+  "session.start": ["how"],
+  "session.end": ["reason"],
+  "prompt.before": [],
+  "model.request.before": [],
+  "tool.before": [],
+  "tool.after": [],
+  "tool.error": ["error.message"],
+  "permission.request": [],
+  "context.compact.before": ["trigger"],
+  "context.compact.after": [],
+  "agent.start": ["agent.id", "agent.type"],
+  "agent.stop": ["agent.id", "agent.type", "lastMessage"],
+  "turn.stop": ["lastMessage"]
+};
+var CORRELATION_FIELDS = ["correlation.turnId", "correlation.agentId", "correlation.parentAgentId"];
+var TOOL_CORRELATION_FIELD = "correlation.toolCallId";
+function fieldsForEvent(event) {
+  return [
+    ...OPTIONAL_EVENT_FIELDS[event],
+    ...CORRELATION_FIELDS,
+    ...isToolScopedEvent(event) ? [TOOL_CORRELATION_FIELD] : []
+  ];
+}
+var ALL_EVENT_FIELD_IDS = HOOK_EVENT_NAMES.flatMap((event) => fieldsForEvent(event).map((path) => `${event}.${path}`));
+var FIELD_SET = new Set(ALL_EVENT_FIELD_IDS);
+function isEventFieldId(value) {
+  return FIELD_SET.has(value);
+}
+function canonicalField(event, key) {
+  return isEventFieldId(key) ? key : `${event}.${key}`;
+}
 
 // ../../packages/sdk/dist/hook.js
 function hookAppliesToTarget(hook2, targetId) {
@@ -115,11 +161,37 @@ function hookAppliesToTarget(hook2, targetId) {
     return false;
   return true;
 }
+function canonicalCapabilities(event, hookId, declared) {
+  const canonical = {};
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const [key, level] of Object.entries(declared ?? {})) {
+    const id = canonicalCapability(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares capability "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+    canonical[id] = level;
+  }
+  return canonical;
+}
+function canonicalFields(event, hookId, declared) {
+  const spelledAs = /* @__PURE__ */ new Map();
+  for (const key of declared) {
+    const id = canonicalField(event, key);
+    const earlier = spelledAs.get(id);
+    if (earlier !== void 0) {
+      throw new Error(`hook "${hookId}" declares field "${id}" twice (as "${earlier}" and "${key}").`);
+    }
+    spelledAs.set(id, key);
+  }
+  return [...spelledAs.keys()];
+}
 function hook(event, spec) {
   const def = {
     event,
     id: spec.id,
-    capabilities: spec.capabilities ?? {},
+    capabilities: canonicalCapabilities(event, spec.id, spec.capabilities),
     run: spec.run
   };
   if (spec.match !== void 0)
@@ -128,6 +200,8 @@ function hook(event, spec) {
     def.targets = spec.targets;
   if (spec.timeoutMs !== void 0)
     def.timeoutMs = spec.timeoutMs;
+  if (spec.fields !== void 0)
+    def.fields = canonicalFields(event, spec.id, spec.fields);
   return def;
 }
 
@@ -4332,19 +4406,78 @@ function shellCodec(shapes, options2) {
     }
   };
 }
+var PATCH_BEGIN = "*** Begin Patch";
+var PATCH_END = "*** End Patch";
+var PATCH_ENVIRONMENT = "*** Environment ID:";
+var PATCH_END_OF_FILE = "*** End of File";
+var PATCH_UPDATE = "*** Update File: ";
+var PATCH_FILE_HEADERS = ["*** Add File: ", "*** Delete File: ", PATCH_UPDATE];
+var PATCH_MOVE = "*** Move to: ";
+function parsePatchPaths(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2 || lines[0].trim() !== PATCH_BEGIN || lines[lines.length - 1].trim() !== PATCH_END) {
+    return void 0;
+  }
+  const body = lines.slice(1, -1);
+  if (body[0]?.trim().startsWith(PATCH_ENVIRONMENT))
+    body.shift();
+  const paths = [];
+  let inUpdateHunk = false;
+  let afterUpdateHeader = false;
+  for (const line of body) {
+    const candidate = inUpdateHunk ? line.trimEnd() : line.trim();
+    const header = PATCH_FILE_HEADERS.find((prefix) => candidate.startsWith(prefix));
+    if (header !== void 0) {
+      const path = candidate.slice(header.length);
+      if (path === "")
+        return void 0;
+      paths.push(path);
+      inUpdateHunk = header === PATCH_UPDATE;
+      afterUpdateHeader = inUpdateHunk;
+      continue;
+    }
+    const untrailed = line.trimEnd();
+    if (untrailed.startsWith(PATCH_MOVE)) {
+      const path = untrailed.slice(PATCH_MOVE.length);
+      if (!afterUpdateHeader || path === "")
+        return void 0;
+      paths.push(path);
+      afterUpdateHeader = false;
+      continue;
+    }
+    if (line.startsWith("***") && untrailed !== PATCH_END_OF_FILE)
+      return void 0;
+    afterUpdateHeader = false;
+  }
+  return [...new Set(paths)];
+}
+function fileCodec(shapes, options2) {
+  const normalize = options2?.normalizeName ?? ((name) => name);
+  return {
+    classify(nativeName, input) {
+      const shape = shapeOf(shapes, normalize(nativeName));
+      if (shape === void 0 || !isPlainObject2(input))
+        return void 0;
+      if ("pathKey" in shape) {
+        const path = input[shape.pathKey];
+        return typeof path === "string" ? { paths: [path], pathKey: shape.pathKey } : void 0;
+      }
+      const patch = input[shape.patchKey];
+      const paths = typeof patch === "string" ? parsePatchPaths(patch) : void 0;
+      return paths === void 0 ? void 0 : { paths, patchKey: shape.patchKey };
+    }
+  };
+}
+function listOf(value) {
+  return Array.isArray(value) ? value : [value];
+}
 function matchesTool(match, tool) {
   if (!match)
     return true;
-  if (match.kind !== void 0) {
-    const kinds2 = Array.isArray(match.kind) ? match.kind : [match.kind];
-    if (!kinds2.includes(tool.kind))
-      return false;
-  }
-  if (match.nativeName !== void 0) {
-    const names = Array.isArray(match.nativeName) ? match.nativeName : [match.nativeName];
-    if (!names.includes(tool.nativeName))
-      return false;
-  }
+  if (match.kind !== void 0 && !listOf(match.kind).includes(tool.kind))
+    return false;
+  if (match.nativeName !== void 0 && !listOf(match.nativeName).includes(tool.nativeName))
+    return false;
   return true;
 }
 
@@ -4354,6 +4487,11 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
+var fieldAcceptanceSchema = external_exports.string().refine((value) => {
+  const colon = value.indexOf(":");
+  return colon > 0 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.slice(0, colon)) && isEventFieldId(value.slice(colon + 1));
+}, { message: "must be <adapter>:<field id>, such as opencode:turn.stop.lastMessage" });
 var MAX_TIMER_DELAY_MS = 2147483647;
 var packageMaterializerSchema = external_exports.custom((value) => {
   if (typeof value !== "object" || value === null)
@@ -4371,6 +4509,11 @@ var toolInvocationSchema = external_exports.object({
     cwd: external_exports.string().optional(),
     commandKey: external_exports.string(),
     cwdKey: external_exports.string().optional()
+  }).strict().optional(),
+  file: external_exports.object({
+    paths: external_exports.array(external_exports.string()),
+    pathKey: external_exports.string().optional(),
+    patchKey: external_exports.string().optional()
   }).strict().optional()
 }).strict();
 var baseHookEventSchema = external_exports.object({
@@ -4418,7 +4561,8 @@ var effectSchema = external_exports.discriminatedUnion("kind", [
 var compatibilityPolicySchema = external_exports.object({
   minimum: supportLevelSchema.optional(),
   onBelowMinimum: external_exports.enum(["error", "warn"]).optional(),
-  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional()
+  optionalUnavailable: external_exports.enum(["info", "warn", "silent"]).optional(),
+  accept: external_exports.array(fieldAcceptanceSchema).optional()
 }).strict();
 var runtimePolicySchema = external_exports.object({
   onHookError: external_exports.enum(["continue", "block"]).optional(),
@@ -4646,6 +4790,7 @@ var hookDefinitionSchema = external_exports.object({
   // and would time the hook out permanently.
   timeoutMs: external_exports.number().int().positive().max(MAX_TIMER_DELAY_MS).optional(),
   capabilities: external_exports.record(capabilityIdSchema, requirementLevelSchema),
+  fields: external_exports.array(eventFieldIdSchema).optional(),
   run: external_exports.custom((v) => typeof v === "function", {
     message: "run must be a function"
   })
@@ -4679,6 +4824,7 @@ var hookResultSchema = external_exports.object({
 }).strict();
 
 // src/hooks.ts
+var isEnvFile = (path) => /(^|[\\/])\.env(\.|$)/.test(path);
 var hooks_default = definePlugin({
   // name is required here; version/description are inherited from the Agent
   // Plugins manifest when omitted.
@@ -4687,21 +4833,25 @@ var hooks_default = definePlugin({
     hook("tool.before", {
       id: "marketplace-probe",
       match: { kind: "shell" },
-      capabilities: { "tool.before.block": "required" },
-      run(event) {
-        if (event.tool.shell?.command.includes("HOOKNOSTIC_BLOCK_PROBE")) {
+      capabilities: { block: "required" },
+      run({ tool }) {
+        if (tool.shell?.command.includes("HOOKNOSTIC_BLOCK_PROBE")) {
           return block("Hooknostic marketplace probe blocked.");
         }
       }
     }),
     hook("tool.before", {
       id: "protect-env-files",
-      match: { kind: "file.read" },
-      capabilities: { "tool.before.block": "required" },
-      async run(event) {
-        const { file_path: filePath = "" } = event.tool.input;
-        if (/\.env(\.|$)/.test(filePath)) {
-          return block("Reading .env files is not allowed by this plugin.");
+      // Reads, and edits too: on Codex and on GPT-like models under OpenCode a
+      // file is changed through a patch, which tool.file reads paths out of.
+      match: { kind: ["file.read", "file.write", "file.edit"] },
+      capabilities: { block: "required" },
+      run({ tool }) {
+        if (tool.file === void 0) {
+          return tool.kind === "file.read" ? void 0 : block(`Cannot verify which files ${tool.nativeName} targets.`);
+        }
+        if (tool.file.paths.some(isEnvFile)) {
+          return block(".env files are off limits to this plugin.");
         }
       }
     })
@@ -4712,24 +4862,23 @@ var hooks_default = definePlugin({
 import { dirname as pathDirname, resolve as pathResolve } from "node:path";
 import { fileURLToPath as urlToPath } from "node:url";
 function createCapabilitySet(levels) {
+  const levelOf = (id) => (Object.hasOwn(levels, id) ? levels[id] : void 0) ?? "unsupported";
   return {
-    has(id) {
-      const level = levels[id];
-      return level !== void 0 && level !== "unsupported";
-    },
-    level(id) {
-      return levels[id] ?? "unsupported";
-    }
+    has: (id) => levelOf(id) !== "unsupported",
+    level: levelOf
   };
 }
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, codec) {
+function setToolInput(tool, input, options2) {
   tool.input = input;
-  const shell = codec?.classify(tool.nativeName, input);
+  const shell = options2.shellCodec?.classify(tool.nativeName, input);
   if (shell !== void 0) tool.shell = shell;
   else delete tool.shell;
+  const file = options2.fileCodec?.classify(tool.nativeName, input);
+  if (file !== void 0) tool.file = file;
+  else delete tool.file;
 }
 function truncateNotification(message, limit) {
   if (message.length <= limit) return message;
@@ -4783,96 +4932,37 @@ async function dispatch(hooks, event, options2) {
     }
     return false;
   };
-  for (const hook2 of matching) {
-    const capabilities = {
-      has(id) {
-        return this.level(id) !== "unsupported";
-      },
-      level(id) {
-        const level = targetCapabilities.level(id);
-        const minimum = options2.minimumCapabilityLevel;
-        if (minimum !== void 0 && hook2.capabilities[id] !== "required" && !meetsMinimum(level, minimum)) {
-          return "unsupported";
+  const parseReturned = (hookId, value) => {
+    let parsed;
+    try {
+      parsed = effectSchema.safeParse(value);
+    } catch (error) {
+      return {
+        error: {
+          hookId,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hookId}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
         }
-        return level;
-      }
-    };
-    const controller = new AbortController();
-    const ctx = {
-      capabilities,
-      harness: { ...options2.harness },
-      signal: controller.signal,
-      // A copy per hook, like `harness`: a handler that mutates it must not
-      // move the root under the hooks after it.
-      ...options2.plugin === void 0 ? {} : { plugin: { ...options2.plugin } }
-    };
-    let outcome;
-    let timedOut = false;
-    let timer;
-    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
-    try {
-      outcome = await Promise.race([
-        Promise.resolve(hook2.run(event, ctx)),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-            reject(new Error(`timed out after ${budgetMs}ms`));
-          }, budgetMs);
-        })
-      ]);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: timedOut ? "timeout" : "error",
-          message: errorMessage(error)
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    } finally {
-      if (timer !== void 0) clearTimeout(timer);
+      };
     }
-    if (outcome === void 0) continue;
-    let parsedEffect;
-    try {
-      parsedEffect = effectSchema.safeParse(outcome);
-    } catch (error) {
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
+    if (!parsed.success) {
+      const detail = parsed.error.issues[0]?.message;
+      return {
+        error: {
+          hookId,
           kind: "unsupported-effect",
           code: "HN401",
-          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
+          message: `hook "${hookId}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
+        }
+      };
     }
-    if (!parsedEffect.success) {
-      const detail = parsedEffect.error.issues[0]?.message;
-      const terminal = failDispatch(
-        hook2.id,
-        {
-          hookId: hook2.id,
-          kind: "unsupported-effect",
-          code: "HN401",
-          message: `hook "${hook2.id}" returned a value that is not a valid effect${detail !== void 0 ? `: ${detail}` : "."}`
-        },
-        capabilities
-      );
-      if (terminal) break;
-      continue;
-    }
-    const effect = parsedEffect.data;
+    return { effect: parsed.data };
+  };
+  const applyEffect = (hook2, capabilities, effect) => {
     const capability = capabilityForEffect(event.event, effect.kind);
     if (capability === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -4882,11 +4972,9 @@ async function dispatch(hooks, event, options2) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (hook2.capabilities[capability] === void 0) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -4896,11 +4984,9 @@ async function dispatch(hooks, event, options2) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     if (!capabilities.has(capability)) {
-      const terminal = failDispatch(
+      return failDispatch(
         hook2.id,
         {
           hookId: hook2.id,
@@ -4910,15 +4996,13 @@ async function dispatch(hooks, event, options2) {
         },
         capabilities
       );
-      if (terminal) break;
-      continue;
     }
     let loweredShellInput;
     if (effect.kind === "updateShell") {
       const tool = toolOf(event);
       loweredShellInput = tool !== void 0 ? options2.shellCodec?.encode(tool.nativeName, tool.input, { command: effect.command }) : void 0;
       if (loweredShellInput === void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -4928,8 +5012,6 @@ async function dispatch(hooks, event, options2) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     if (options2.validateEffect !== void 0) {
@@ -4941,7 +5023,7 @@ async function dispatch(hooks, event, options2) {
         rejection = `target validation failed: ${errorMessage(error)}`;
       }
       if (rejection !== void 0) {
-        const terminal = failDispatch(
+        return failDispatch(
           hook2.id,
           {
             hookId: hook2.id,
@@ -4951,21 +5033,19 @@ async function dispatch(hooks, event, options2) {
           },
           capabilities
         );
-        if (terminal) break;
-        continue;
       }
     }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options2.shellCodec);
+        if (tool) setToolInput(tool, effect.input, options2);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options2.shellCodec);
+        setToolInput(tool, loweredShellInput, options2);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5033,8 +5113,105 @@ async function dispatch(hooks, event, options2) {
     }
     if (isTerminalEffect(effect)) {
       result.terminatedBy = hook2.id;
-      break;
+      return true;
     }
+    return false;
+  };
+  for (const hook2 of matching) {
+    const levelOf = (id) => {
+      const capability = canonicalCapability(event.event, id);
+      const level = targetCapabilities.level(capability);
+      const minimum = options2.minimumCapabilityLevel;
+      if (minimum !== void 0 && hook2.capabilities[capability] !== "required" && !meetsMinimum(level, minimum)) {
+        return "unsupported";
+      }
+      return level;
+    };
+    const capabilities = {
+      has: (id) => levelOf(id) !== "unsupported",
+      level: levelOf
+    };
+    const controller = new AbortController();
+    const ctx = {
+      capabilities,
+      harness: { ...options2.harness },
+      signal: controller.signal,
+      // A copy per hook, like `harness`: a handler that mutates it must not
+      // move the root under the hooks after it.
+      ...options2.plugin === void 0 ? {} : { plugin: { ...options2.plugin } }
+    };
+    let outcome;
+    let timedOut = false;
+    let timer;
+    const budgetMs = hook2.timeoutMs ?? policy.timeoutMs ?? DEFAULT_RUNTIME.timeoutMs;
+    try {
+      outcome = await Promise.race([
+        Promise.resolve(hook2.run(event, ctx)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error(`timed out after ${budgetMs}ms`));
+          }, budgetMs);
+        })
+      ]);
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: timedOut ? "timeout" : "error",
+          message: errorMessage(error)
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+    }
+    if (outcome === void 0) continue;
+    let returned;
+    try {
+      returned = Array.isArray(outcome) ? Array.from(outcome) : [outcome];
+    } catch (error) {
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned a value that could not be validated as an effect: ${errorMessage(error)}`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    const parsed = returned.filter((value) => value !== void 0).map((value) => parseReturned(hook2.id, value));
+    const terminalAt = parsed.findIndex((entry) => "effect" in entry && isTerminalEffect(entry.effect));
+    if (terminalAt !== -1 && terminalAt < parsed.length - 1) {
+      const early = parsed[terminalAt];
+      const trailing = parsed.length - 1 - terminalAt;
+      const terminal = failDispatch(
+        hook2.id,
+        {
+          hookId: hook2.id,
+          kind: "unsupported-effect",
+          code: "HN401",
+          message: `hook "${hook2.id}" returned "${early.effect.kind}" followed by ${trailing} more effect${trailing === 1 ? "" : "s"}; a terminal effect ends the dispatch, so it must be last in the list.`
+        },
+        capabilities
+      );
+      if (terminal) break;
+      continue;
+    }
+    let ended = false;
+    for (const entry of parsed) {
+      ended = "error" in entry ? failDispatch(hook2.id, entry.error, capabilities) : applyEffect(hook2, capabilities, entry.effect);
+      if (ended) break;
+    }
+    if (ended) break;
   }
   return result;
 }
@@ -5056,6 +5233,15 @@ var OPENCODE_SHELL_SHAPES = {
   bash: { commandKey: "command" }
 };
 var opencodeShellCodec = shellCodec(OPENCODE_SHELL_SHAPES, {
+  normalizeName: (name) => name.toLowerCase()
+});
+var OPENCODE_FILE_SHAPES = {
+  read: { pathKey: "filePath" },
+  write: { pathKey: "filePath" },
+  edit: { pathKey: "filePath" },
+  apply_patch: { patchKey: "patchText" }
+};
+var opencodeFileCodec = fileCodec(OPENCODE_FILE_SHAPES, {
   normalizeName: (name) => name.toLowerCase()
 });
 function planOpenCodeV2Application(result) {
@@ -5080,6 +5266,13 @@ function planOpenCodeV2Application(result) {
 }
 var OPENCODE_V2_SHELL_SHAPES = { shell: { commandKey: "command", cwdKey: "workdir" } };
 var opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
+var OPENCODE_V2_FILE_SHAPES = {
+  read: { pathKey: "path" },
+  write: { pathKey: "path" },
+  edit: { pathKey: "path" },
+  patch: { patchKey: "patchText" }
+};
+var opencodeV2FileCodec = fileCodec(OPENCODE_V2_FILE_SHAPES);
 var kinds = {
   shell: "shell",
   read: "file.read",
@@ -5087,26 +5280,39 @@ var kinds = {
   grep: "file.read",
   write: "file.write",
   edit: "file.edit",
+  // Replaces edit/write when the model id looks like a GPT model (tool-patch-before).
+  patch: "file.edit",
   webfetch: "web.fetch",
   websearch: "web.search",
   subagent: "agent"
 };
 function classifyOpenCodeV2Tool(nativeName, input) {
   const shell = opencodeV2ShellCodec.classify(nativeName, input);
+  const file = opencodeV2FileCodec.classify(nativeName, input);
   const kind = Object.hasOwn(kinds, nativeName) ? kinds[nativeName] : "other";
-  return { nativeName, input, kind, ...shell ? { shell } : {} };
+  return { nativeName, input, kind, ...shell ? { shell } : {}, ...file ? { file } : {} };
 }
 var OpenCodeV2DecodeError = class extends Error {
 };
-var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
-function decodeOpenCodeV2(raw, invocation) {
-  const native = record(raw);
+var record2 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+function turnFields2(execution) {
+  const messageID = record2(execution?.prompt)["messageID"];
+  const segments = (execution?.text ?? []).map(record2);
+  const last = segments.at(-1)?.["assistantMessageID"];
+  const lastMessage = segments.filter((segment) => segment["assistantMessageID"] === last).sort((a, b) => Number(a["ordinal"] ?? 0) - Number(b["ordinal"] ?? 0)).map((segment) => segment["text"]).filter((text) => typeof text === "string" && text !== "").join("\n");
+  return {
+    ...lastMessage !== "" ? { lastMessage } : {},
+    ...typeof messageID === "string" ? { turnId: messageID } : {}
+  };
+}
+function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
+  const native = record2(raw);
   if (typeof native.hook !== "string" || typeof native.directory !== "string" || !native.event)
     throw new OpenCodeV2DecodeError("v2 invocation requires hook, directory and event");
-  const event = record(native.event);
-  const data = native.hook === "event" ? record(event.data) : event;
+  const event = record2(native.event);
+  const data = native.hook === "event" ? record2(event.data) : event;
   const sessionID = data.sessionID;
-  const location = record(event.location);
+  const location = record2(event.location);
   const base = {
     schemaVersion: 1,
     harness: {
@@ -5126,14 +5332,19 @@ function decodeOpenCodeV2(raw, invocation) {
     const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
     if (native.hook === "execute.before") return { ...base, event: "tool.before", tool };
     if (event.status === "error") {
-      const message = record(event.error).message;
+      const message = record2(event.error).message;
       return { ...base, event: "tool.error", tool, error: typeof message === "string" ? { message } : {} };
     }
     if (event.status !== "completed") throw new OpenCodeV2DecodeError("unknown v2 tool status");
-    return { ...base, event: "tool.after", tool, output: structuredClone(record(event.result).content) };
+    return { ...base, event: "tool.after", tool, output: structuredClone(record2(event.result).content) };
   }
   if (native.hook === "prompt")
-    return { ...base, event: "prompt.before", prompt: String(record(event.prompt).text ?? "") };
+    return {
+      ...base,
+      ...typeof event.messageID === "string" ? { correlation: { ...base.correlation, turnId: event.messageID } } : {},
+      event: "prompt.before",
+      prompt: String(record2(event.prompt).text ?? "")
+    };
   if (["context", "title", "generate"].includes(native.hook)) return { ...base, event: "model.request.before" };
   if (native.hook === "compaction") return { ...base, event: "context.compact.before" };
   if (native.hook === "evaluate" && event.effect === "ask")
@@ -5141,7 +5352,7 @@ function decodeOpenCodeV2(raw, invocation) {
       ...base,
       event: "permission.request",
       correlation: {
-        ...typeof record(event.source).id === "string" ? { toolCallId: record(event.source).id } : {}
+        ...typeof record2(event.source).id === "string" ? { toolCallId: record2(event.source).id } : {}
       },
       // A permission action/resource is not a tool name/input. Keep it in raw.
       tool: { kind: "other", nativeName: "unknown", input: void 0 }
@@ -5150,8 +5361,15 @@ function decodeOpenCodeV2(raw, invocation) {
     if (event.type === "session.created") return { ...base, event: "session.start" };
     if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(
       String(event.type)
-    ))
-      return { ...base, event: "turn.stop" };
+    )) {
+      const { lastMessage, turnId } = turnFields2(enrichment.execution);
+      return {
+        ...base,
+        ...turnId !== void 0 ? { correlation: { ...base.correlation, turnId } } : {},
+        event: "turn.stop",
+        ...lastMessage !== void 0 ? { lastMessage } : {}
+      };
+    }
     if (event.type === "session.compaction.ended") return { ...base, event: "context.compact.after" };
   }
   throw new OpenCodeV2DecodeError(`unmapped v2 callback ${native.hook}`);
@@ -5170,6 +5388,18 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     return process.platform === "win32" ? trimmed.toLowerCase() : trimmed;
   };
   const here = comparable(ctx.location.directory);
+  const declares = (field) => plugin.hooks.some(
+    (h) => h.event === "turn.stop" && hookAppliesToTarget(h, targetId) && (h.fields ?? []).includes(field)
+  );
+  const readsText = declares("turn.stop.lastMessage");
+  const readsPrompt = declares("turn.stop.correlation.turnId");
+  const pendingPrompts = /* @__PURE__ */ new Map();
+  const executions = /* @__PURE__ */ new Map();
+  const completions = /* @__PURE__ */ new Set([
+    "session.execution.succeeded",
+    "session.execution.failed",
+    "session.execution.interrupted"
+  ]);
   const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
   const post = async (native, event, messages) => {
     const sessionID = event.session.id;
@@ -5189,12 +5419,13 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       if (queues.get(key) === next) queues.delete(key);
     });
   };
-  const run = async (hook2, native, modelRequest = false) => {
+  const run = async (hook2, native, modelRequest = false, execution) => {
     let event;
     try {
       event = decodeOpenCodeV2(
         { hook: hook2, directory: ctx.location.directory, event: native },
-        { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} }
+        { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} },
+        execution ? { execution } : {}
       );
     } catch (error) {
       if (error instanceof OpenCodeV2DecodeError) return;
@@ -5207,6 +5438,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       harness: event.harness,
       capabilities: options2.capabilities,
       shellCodec: opencodeV2ShellCodec,
+      fileCodec: opencodeV2FileCodec,
       ...options2.policy ? { policy: options2.policy } : {},
       ...options2.minimumCapabilityLevel ? { minimumCapabilityLevel: options2.minimumCapabilityLevel } : {},
       ...options2.pluginRoot ? { plugin: { root: options2.pluginRoot } } : {}
@@ -5240,8 +5472,18 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     if (events.has("prompt.before") || subscribes)
       registrations.push(
         await ctx.session.hook("prompt", async (e) => {
-          if (typeof e.sessionID === "string") local.add(e.sessionID);
-          if (events.has("prompt.before")) await run("prompt", e);
+          const sessionID = typeof e.sessionID === "string" ? e.sessionID : void 0;
+          if (sessionID !== void 0) local.add(sessionID);
+          if (readsPrompt && sessionID !== void 0) {
+            if (executions.has(sessionID)) pendingPrompts.delete(sessionID);
+            else pendingPrompts.set(sessionID, { sessionID, messageID: e.messageID });
+          }
+          try {
+            if (events.has("prompt.before")) await run("prompt", e);
+          } catch (error) {
+            if (sessionID !== void 0) pendingPrompts.delete(sessionID);
+            throw error;
+          }
         })
       );
     if (events.has("tool.before"))
@@ -5274,7 +5516,29 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
               local.add(sessionID);
               if (typeof data.parentID === "string") children.add(sessionID);
             } else if (!local.has(sessionID)) continue;
-            enqueue(sessionID, () => run("event", event));
+            let execution;
+            if (readsText || readsPrompt) {
+              if (event.type === "session.execution.started") {
+                const prompt = pendingPrompts.get(sessionID);
+                pendingPrompts.delete(sessionID);
+                executions.set(sessionID, { ...prompt ? { prompt } : {}, text: [] });
+              } else if (event.type === "session.text.ended" && readsText) {
+                const running = executions.get(sessionID);
+                if (running !== void 0) {
+                  if (running.text.at(-1)?.["assistantMessageID"] !== data.assistantMessageID) running.text = [];
+                  running.text.push({
+                    assistantMessageID: data.assistantMessageID,
+                    ordinal: data.ordinal,
+                    text: data.text
+                  });
+                }
+              } else if (completions.has(String(event.type))) {
+                const finished = executions.get(sessionID);
+                executions.delete(sessionID);
+                if (finished !== void 0) execution = finished;
+              }
+            }
+            enqueue(sessionID, () => run("event", event, false, execution));
           }
         } catch {
         }
@@ -5299,8 +5563,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.1.0
-@hooknostic/runtime@0.1.0
+@hooknostic/adapter-opencode@0.4.0
+@hooknostic/runtime@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5508,8 +5772,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.1.0
-hooknostic@0.1.0
+@hooknostic/sdk@0.4.0
+hooknostic@0.4.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

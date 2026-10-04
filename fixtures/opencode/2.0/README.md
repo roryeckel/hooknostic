@@ -11,6 +11,7 @@ fresh scratch state, and the repository's loopback scripted model.
 | context, title | captured | Distinct ordinary-agent and title request callbacks |
 | session-created, execution-succeeded | captured | Public event subscription envelopes |
 | tool-write/read/edit/glob/grep-before/after | captured | Successful file operations from the `tools` drive |
+| tool-patch-before/after | captured | A GPT-like model id (`HKN_MODEL_ID=gpt-5-playback`, `tools-patch` drive, 2026-09-27) replaces edit/write with `patch`; its `patchText` holds a Codex-grammar patch that applied |
 | tool-shell-workdir-before/after | captured | Explicit working directory containing a space; command output confirms cwd |
 | tool-webfetch-before/after | captured | Fetch from the loopback fixture endpoint |
 | tool-websearch/subagent-before | captured | Admission boundary only; capture hook deliberately blocks execution |
@@ -73,3 +74,44 @@ Same version/date and Windows platform; procedure: `.capture/opencode-v2-audit`.
 OAuth tokens and authorization material are synthetic fixture values, not account
 credentials. Provider/request summaries are not standalone hook payloads. Their
 complete source recordings remain in the scratch roots printed by the driver.
+
+**Turn fields (2.0.18, Windows, 2026-09-28).** `drive.mjs observe` against
+`@opencode/cli` 2.0.18, with every state directory isolated as the driver
+always does. The plugin's event subscription received
+`session.text.ended { sessionID, assistantMessageID, ordinal, text }` before
+`session.execution.succeeded { sessionID }`, and each model step had its own
+`assistantMessageID` (ADR-0027).
+
+| Fixture | Provenance | Observed boundary |
+| --- | --- | --- |
+| turn-fields/events.jsonl | captured | One session in capture order: the prompt hook, then its inbox, execution, step and text events from the subscription. Deltas and unrelated events omitted |
+| execution-succeeded-with-turn | captured events, constructed enrichment | The captured completion envelope; `.enrichment.json` holds the `execution` the shim hands the decoder beside it (never in `raw`): the prompt hook's `sessionID`/`messageID` and the captured `session.text.ended` data. Canonical `harness.version` is the test's reference build |
+
+## Additional context option (Linux, 2.0.22, 2026-10-04)
+
+| Fixture | Provenance | Observed boundary |
+| --- | --- | --- |
+| context-max-tokens | captured | The `context` callback contains numeric `event.options.maxTokens`, observed as `4096` in both context callbacks of the session |
+
+Promoted during the owner-requested review in [issue #82](https://github.com/roryeckel/hooknostic/issues/82)
+from [harness-watch run 37241402964](https://github.com/roryeckel/hooknostic/actions/runs/37241402964),
+artifact `drift-verdict-opencode-v2`, `captured-opencode-v2/events.jsonl`.
+The Linux runner drove `@opencode/cli` 2.0.22 inside `node:24.21.0-bookworm`,
+with isolated state and the scripted loopback model (`dry_run=true`,
+`force_llm=false`). The model replies and shell argument values were scripted;
+the callback envelope is native harness output.
+
+The input is the first complete `context` JSON snapshot, selected without
+projecting or deleting fields. Its container paths contain no capturing account,
+so no redaction was needed. The original JSONL file's SHA-256 is
+`33fe769a9861e588c1d432ca5f8c6d0acf06f2339a737a1264b3c7add6d83f4e`.
+The canonical file comes from `decodeOpenCodeV2` minus `raw`; as in the existing
+fixture replay suite, its injected `harness.version` is the adapter's reference
+build, not the capture version above.
+
+The older `context` fixture remains intact. Both observed shapes are accepted;
+wrong types and unseen options still report drift. The complete saved session
+changed from advisory drift to clean after adding this variant. This establishes
+the field's presence in this configuration, not when it was introduced or its
+behavior under mutation. No capability, range, reference version, or rolling
+playback record changes.

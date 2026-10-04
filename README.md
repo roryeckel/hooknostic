@@ -1,7 +1,16 @@
-# Hooknostic
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hooknostic-mark-dark.svg">
+    <img src="docs/assets/hooknostic-mark-light.svg" alt="Hooknostic logo" width="112">
+  </picture>
+</p>
 
-**Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
-Claude Code and Codex marketplaces, or maintain integrations directly in your repository.**
+<h1 align="center">Hooknostic</h1>
+
+<p align="center">
+  <strong>Portable hooks, skills, and MCP servers for coding agents. Build native plugins for
+  Claude Code and Codex marketplaces, or maintain integrations directly in your repository.</strong>
+</p>
 
 Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
 Codex CLI**, **OpenCode**, and **Pi**. Adapters handle native packaging, component configuration,
@@ -35,8 +44,6 @@ Requires **Node.js 22.13+**. Install the CLI and configuration/hook authoring SD
 ```sh
 npm install --save-dev hooknostic @hooknostic/sdk
 ```
-
-Before the first npm release, use the [local tarball installation](docs/publishing.md#testing-without-publishing-the-everyday-flow).
 
 | Your goal | Workflow | Start here |
 | --- | --- | --- |
@@ -94,23 +101,15 @@ export default definePlugin({
     hook("tool.before", {
       id: "protect-shell",
       match: { kind: "shell" },
-      capabilities: {
-        "tool.before.block": "required",
-        "tool.before.input.replace": "optional",
-      },
-      async run(event, ctx) {
-        // Normalized read with a raw fallback: where the shape is uncaptured
-        // (`shell` undefined), a guard must not fail open on an empty string.
-        const raw = (event.tool.input as { command?: unknown }).command;
-        const command = event.tool.shell?.command ?? (typeof raw === "string" ? raw : "");
+      capabilities: { block: "required", "input.replace": "optional" },
+      run({ tool }, ctx) {
+        // Normalized across harnesses; undefined only where the tool's shape is
+        // uncaptured -- and a guard refuses what it cannot read.
+        const command = tool.shell?.command;
+        if (command === undefined) return block(`Unrecognized ${tool.nativeName} input`);
         if (command.includes("rm -rf /")) return block("Refusing destructive root deletion");
-        if (
-          ctx.capabilities.has("tool.before.input.replace") &&
-          event.tool.shell !== undefined &&
-          command.startsWith("npm ")
-        ) {
-          // Portable write-back: lands under whichever key this harness uses
-          // (according to the captured tool shape), siblings preserved.
+        if (ctx.capabilities.has("input.replace") && command.startsWith("npm ")) {
+          // Lands under whichever key this harness uses, siblings preserved.
           return updateShell({ command: command.replace(/^npm /, "pnpm ") });
         }
       },
@@ -121,7 +120,11 @@ export default definePlugin({
 
 That one file blocks a destructive command on all four harnesses, and rewrites
 `npm` to `pnpm` on the ones that support input rewriting — falling back gracefully
-(and visibly) where they don't.
+(and visibly) where they don't. Capability keys are relative to the hook's event
+(`block` means `tool.before.block`), and a hook can return several effects at once
+(`[notify(message), preventStop(reason)]`). File tools get the same treatment as shell
+tools: `tool.file?.paths` lists every file a call targets, whatever each harness names
+the argument.
 
 ## Commands at a glance
 
@@ -136,6 +139,11 @@ hooknostic doctor               # diagnose installed versions and activation
 hooknostic inspect codex --delivery package --component agent-plugin.mcp.stdio --config hooknostic.config.ts
 hooknostic dispatch --target claude --events events.jsonl
 ```
+
+`build` and `sync` are alternatives, not consecutive steps. In a repository integration,
+`sync` writes the same artifacts as `build` and also records their ownership, so use `sync`
+there. It refuses files that an earlier `build` left without an ownership record; move
+them aside first ([project integration](docs/project-integration.md)).
 
 See the [command reference](docs/configuration.md). Trusted materializers may run during
 compilation, including `check`; review their network/cache behavior like other build code.
@@ -179,7 +187,9 @@ tutorials built on the [examples](examples/).
 
 ## Repository
 
-Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
+Node.js 22.13+ / pnpm 12 + TypeScript monorepo. Use the pnpm version pinned in
+`package.json`; compiler versions and compatibility constraints are documented in
+[Dependencies](docs/dependencies.md):
 
 | Package | Purpose |
 | --- | --- |

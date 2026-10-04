@@ -8,6 +8,7 @@ import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { IPty, spawn as ptySpawn } from "node-pty";
+import semver from "semver";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
@@ -21,11 +22,14 @@ import { adapterFixturesDir, SCENARIOS } from "@hooknostic/testkit";
 // @ts-expect-error The shared read-only npm registry fixture is plain JavaScript.
 import { startRegistry } from "../../../.capture/opencode-v2/registry.mjs";
 // @ts-expect-error Repository release tooling is plain JavaScript.
+import { codeModeReferenceVersion } from "../../../scripts/verify-code-mode.mjs";
+// @ts-expect-error Repository release tooling is plain JavaScript.
 import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs";
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
   openCodePlaybackConfigHome,
+  playbackModelInfo,
   type PlaybackScenario,
   prepareOpenCodePluginDependency,
   replayCommandFixtures,
@@ -191,6 +195,20 @@ describe("scriptedTool schema fidelity", () => {
       command: expect.any(String),
       description: "Playback probe command",
     });
+  });
+
+  it("prefers the exact tool name and passes scripted arguments through verbatim", () => {
+    // MultiEdit listed first: a suffix match alone would pick it for "Edit".
+    const request = {
+      tools: [
+        { name: "MultiEdit", input_schema: { properties: { file_path: {}, edits: {} } } },
+        { name: "Edit", input_schema: { properties: { file_path: {}, old_string: {}, new_string: {} } } },
+      ],
+    };
+    const args = { file_path: "/tmp/seed.txt", old_string: "alpha", new_string: "beta" };
+    const tool = scriptedTool(request, "rewrite", undefined, "Edit", args);
+    expect(tool.name).toBe("Edit");
+    expect(JSON.parse(tool.arguments)).toEqual(args);
   });
 });
 
@@ -380,6 +398,12 @@ interface DriveOptions {
    */
   mcpServerPath?: string;
   /**
+   * Codex only: a static `model_catalog_json` for the playback model. The only
+   * route by which a model-info field such as `tool_mode` reaches Codex from
+   * an unauthenticated custom provider (see `playbackModelInfo`).
+   */
+  modelCatalog?: string;
+  /**
    * opencode-serve lane only: a hook event the drive must observe in the trace
    * BEFORE it tears the server down.
    *
@@ -561,6 +585,7 @@ async function runCodexPlayback(
         "model_providers.hooknostic_playback.stream_max_retries=0",
         "-c",
         `projects={${tomlLiteral(build.artifactDir)}={trust_level=${tomlLiteral("trusted")}}}`,
+        ...(options.modelCatalog ? ["-c", `model_catalog_json=${tomlLiteral(options.modelCatalog)}`] : []),
         ...(options.mcpServerPath
           ? [
               // MCP tool calls trip an approval gate under approval_policy
@@ -1152,9 +1177,10 @@ function requestsWithoutMarker(
 // --- pty-approval lane ----------------------------------------------------
 // Interactive-only cells (Claude permission.request.*, tool.before
 // requestApproval) need a real pseudo-terminal: headless `-p` sessions decide
-// without prompting. The drive starts the interactive TUI under node-pty,
-// walks the first-run dialogs, sends a prompt whose scripted tool call trips
-// the approval prompt, and lets the hook answer it â€” proven by the trace.
+// without prompting. The drive starts the interactive TUI under node-pty in
+// the prompting permission mode, walks the first-run dialogs, sends a prompt
+// whose scripted tool call trips the approval prompt, and lets the hook answer
+// it — proven by the trace.
 let ptyModule: { spawn: (...args: readonly unknown[]) => IPty } | undefined;
 const nodePty = (): { spawn: (...args: readonly unknown[]) => IPty } =>
   createRequire(import.meta.url)("node-pty") as { spawn: (...args: readonly unknown[]) => IPty };
@@ -1190,14 +1216,68 @@ function claudeBinaryPath(): string {
   throw new Error("claude binary not found: set HOOKNOSTIC_CLAUDE_BIN or add claude to PATH");
 }
 
+// The pty drives need the prompting permission mode, and they no longer get it
+// by default: 2.1.283 starts interactive sessions in auto mode, which settles
+// the scripted Bash call without a prompt, so PermissionRequest never fires.
+// `--permission-mode manual` selects the prompting mode on 2.1.238 and 2.1.283
+// alike (hook payloads carry permission_mode "default" and PermissionRequest
+// fires). See .capture/claude-permission-mode.
+const CLAUDE_PTY_PERMISSION_ARGS = ["--permission-mode", "manual"] as const;
+
 function spawnClaudePty(args: string[], options: Parameters<typeof ptySpawn>[2]): IPty {
   const binary = claudeBinaryPath();
+  const argv = [...CLAUDE_PTY_PERMISSION_ARGS, ...args];
   // A Windows npm shim is a batch file, which ConPTY cannot execute directly.
   // Let cmd interpret the shim; native executables still run directly.
   return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(binary)
-    ? ptyModule!.spawn(process.env["ComSpec"] ?? "cmd.exe", ["/d", "/c", binary, ...args], options)
-    : ptyModule!.spawn(binary, args, options);
+    ? ptyModule!.spawn(process.env["ComSpec"] ?? "cmd.exe", ["/d", "/c", binary, ...argv], options)
+    : ptyModule!.spawn(binary, argv, options);
 }
+
+/**
+ * The inherited environment for a pty drive: no credentials, and none of an
+ * enclosing Claude session's variables, so the drive starts a fresh top-level
+ * session as CI does. Run from inside Claude, the child otherwise inherits the
+ * parent's markers: the harness sets CLAUDECODE, CLAUDE_CODE_CHILD_SESSION,
+ * CLAUDE_CODE_SESSION_ID and CLAUDE_PID on its child processes (2.1.283 adds
+ * CLAUDE_CODE_SESSION_ATTENDED, so the set grows), and an inherited
+ * CLAUDE_CODE_CHILD_SESSION turns transcript saving off. An inherited
+ * CLAUDE_CODE_ENTRYPOINT replaces the "cli" the harness would compute, and an
+ * inherited CLAUDE_CODE_MESSAGING_SOCKET is registered as the child's own. So
+ * every CLAUDECODE and CLAUDE_* variable goes, plus
+ * AI_AGENT and TRACEPARENT from the same child-environment builder; the drive
+ * sets what it needs. CLAUDE_CODE_GIT_BASH_PATH stays: it locates the Windows
+ * shell the harness needs, not a session.
+ */
+function withoutClaudeSession(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(env)) {
+    const inherited =
+      name === "CLAUDECODE" || name === "AI_AGENT" || name === "TRACEPARENT" || name.startsWith("CLAUDE_");
+    if (!inherited || name === "CLAUDE_CODE_GIT_BASH_PATH") result[name] = value;
+  }
+  return result;
+}
+
+describe("Claude PTY environment", () => {
+  it("drops an enclosing Claude session's variables and keeps the rest", () => {
+    expect(
+      withoutClaudeSession({
+        PATH: "/bin",
+        CLAUDECODE: "1",
+        CLAUDE_CODE_CHILD_SESSION: "1",
+        CLAUDE_CODE_SESSION_ID: "outer",
+        CLAUDE_CODE_SESSION_ATTENDED: "1",
+        CLAUDE_PID: "1234",
+        CLAUDE_CODE_ENTRYPOINT: "claude-desktop",
+        CLAUDE_CODE_MESSAGING_SOCKET: "outer.sock",
+        AI_AGENT: "agent",
+        TRACEPARENT: "00-outer",
+        CLAUDE_CODE_GIT_BASH_PATH: "C:\\Git\\bin\\bash.exe",
+      }),
+    ).toEqual({ PATH: "/bin", CLAUDE_CODE_GIT_BASH_PATH: "C:\\Git\\bin\\bash.exe" });
+  });
+});
 
 // Constructed playback-only state. See .capture/harness-playback/README.md.
 async function prepareClaudePtyConfig(dir: string): Promise<string> {
@@ -1328,6 +1408,18 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
       // The preselected trust entry moved between versions (2.1.238 fresh
       // defaults to "Yes"; the walk must not assume it).
       await confirmDialogSelection(pty, screen, "Yes,Itrustthisfolder");
+    } else if (
+      !handled.has("classifier-billing") &&
+      current.includes("changingautomodetonolongerchargeforclassifierrequests")
+    ) {
+      handled.add("classifier-billing");
+      // 2.1.283 in auto mode renders this notice because its requests go
+      // through the loopback address, which the notice names. Captured only
+      // after the first tool call's PreToolUse, and never in the forced
+      // prompting mode; walked here by marker so a build that renders it
+      // earlier cannot stall the walk. Enter continues ("Nothing breaks").
+      pty.write("\r");
+      await new Promise((r) => setTimeout(r, DIALOG_SETTLE_MS));
     } else if (mainPromptVisible(plainScreen)) {
       // Onboarding is done when the main TUI input line renders. Check this
       // only after known dialogs so stale frames cannot hide a later dialog.
@@ -1337,6 +1429,30 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
     }
   }
 }
+
+describe("Claude PTY first-run walk", () => {
+  it("continues past the auto-mode classifier billing notice", async () => {
+    // Whitespace-stripped frame as 2.1.283 rendered it in
+    // .capture/claude-permission-mode (the port is the loopback's).
+    let frame =
+      "We'rechangingautomodetonolongerchargeforclassifierrequestsinClaudeCode." +
+      "However,thissessionisn'teligiblebecauseyourrequestsgothrough127.0.0.1:52840," +
+      "whichisn'tcompatiblewiththisupdate.Nothingbreaks:automodekeepsworking," +
+      "anditsclassifierrequestsarebilledasbefore.Tofixitandaccessthenewversionofautomode," +
+      "askyourgatewaytoimplement:https://code.claude.com/docs/en/auto-mode-classifier-billing" +
+      "Entertocontinue·Esctocancel";
+    const writes: string[] = [];
+    const pty = {
+      write: (data: string) => {
+        writes.push(data);
+        if (data === "\r") frame += "❯ ? for shortcuts";
+      },
+      kill: () => {},
+    } as unknown as IPty;
+    await walkFirstRunDialogs(pty, () => frame, 5_000);
+    expect(writes).toEqual(["\r"]);
+  });
+});
 
 describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || "disabled"}`, () => {
   it("uses exactly the captured reference harness version", async () => {
@@ -2360,6 +2476,80 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
     );
   }
 
+  // Code Mode. gpt-5.6-luna and most current catalog models advertise
+  // tool_mode "code_mode_only": the model's only shell path is one `exec`
+  // custom tool whose JavaScript calls `tools.exec_command`. The outer `exec`
+  // never reaches a hook; each nested call does, as `Bash`/`command`
+  // (.capture/codex-code-mode). This drives a `match: { kind: "shell" }` guard
+  // -- generated native matcher included -- through that path and checks the
+  // effect, not the invocation. The minimum version is the captured record's,
+  // which `referenceVersion` predates: the ordinary lane skips these, and the
+  // dedicated gate (scripts/verify-code-mode.mjs) installs that build and sets
+  // HOOKNOSTIC_REQUIRE_CODE_MODE so a skip there is a failure instead.
+  it.skipIf(adapter?.id !== "codex").for([
+    ["denies", "block"],
+    ["rewrites", "rewrite"],
+  ] as const)(
+    "%s a nested exec_command inside a Code Mode exec",
+    { timeout: 240_000 },
+    async ([, scenario], context) => {
+      const baseline = codeModeReferenceVersion(adapter!) as string;
+      const reported = await runProcess("codex", ["--version"], { cwd: tmpdir(), env: process.env, timeoutMs: 30_000 });
+      const installedVersion = /(\d+\.\d+\.\d+)/.exec(reported.stdout)?.[1];
+      expect(installedVersion, reported.stdout + reported.stderr).toBeTypeOf("string");
+      if (semver.lt(installedVersion!, baseline)) {
+        const reason = `Code Mode hook dispatch is captured from ${baseline}; installed ${installedVersion}`;
+        if (process.env["HOOKNOSTIC_REQUIRE_CODE_MODE"] === "1") throw new Error(reason);
+        context.skip(reason);
+      }
+
+      const dir = await mkdtemp(join(tmpdir(), `hooknostic-codex-code-mode-${scenario}-`));
+      tempDirs.push(dir);
+      // Targeted at the binary under test so the generator emits its native
+      // PreToolUse matcher, which is what a shell guard on this build ships.
+      const build = await buildPlaybackArtifact(adapter!, dir, { version: installedVersion!, shellMatch: true });
+      const hooksJson = JSON.parse(await readFile(join(dir, ".codex/hooks.json"), "utf8")) as {
+        hooks: { PreToolUse: { matcher?: string }[] };
+      };
+      expect(hooksJson.hooks.PreToolUse[0]?.matcher, "the drive must exercise a generated matcher").toBeTypeOf(
+        "string",
+      );
+      const catalog = join(dir, "model-catalog.json");
+      await writeFile(catalog, JSON.stringify({ models: [playbackModelInfo({ tool_mode: "code_mode_only" })] }));
+
+      let requests: readonly unknown[] = [];
+      await runInstalledHarness(build, scenario, {
+        modelCatalog: catalog,
+        script: [{ kind: "code", disposition: scenario }, { kind: "text" }],
+        verify: async ({ server }) => {
+          requests = server.requests;
+        },
+      });
+
+      // Code Mode was actually in force: the model was offered `exec` and no
+      // direct exec_command, so no direct call can have satisfied the drive.
+      const offered = (
+        requests.find((request) => Array.isArray((request as { tools?: unknown }).tools)) as {
+          tools: { type?: string; name?: string }[];
+        }
+      ).tools.map((tool) => `${tool.type}:${tool.name}`);
+      expect(offered).toContain("custom:exec");
+      expect(offered).not.toContain("function:exec_command");
+
+      if (scenario === "block") {
+        await expect(access(join(dir, "hooknostic-blocked.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        expect(await readFile(join(dir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+      }
+      const toolBefore = (await readFile(build.tracePath, "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { event: string; toolKind?: string; toolNativeName?: string })
+        .filter((entry) => entry.event === "tool.before");
+      expect(toolBefore).toEqual([expect.objectContaining({ toolKind: "shell", toolNativeName: "Bash" })]);
+    },
+  );
+
   // pi has no native MCP channel (profile cells unsupported by design), so
   // there is no fixture MCP tool to drive on it.
   it.skipIf(adapter?.id === "pi")("drives the fixture MCP tool through the generated production artifact", async () => {
@@ -2418,6 +2608,23 @@ scenarioDrive("lifecycle-observe", async () => {
   expect(events).toContain("tool.after");
   expect(events).toContain("turn.stop");
   if (adapter!.shimExecution === "command") expect(events).toContain("session.end");
+
+  // ADR-0027: assert every field the adapter claims. Pi's captured lifecycle
+  // has neither turn ids nor final-message text, so it declares neither.
+  const trace = (await readFile(build.tracePath, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+  const prompt = trace.find((entry) => entry.event === "prompt.before");
+  const stop = trace.filter((entry) => entry.event === "turn.stop").at(-1);
+  if (build.fields.includes("prompt.before.correlation.turnId")) expect(prompt?.turnId).toEqual(expect.any(String));
+  else expect(prompt?.turnId).toBeUndefined();
+  if (build.fields.includes("turn.stop.lastMessage")) expect(stop?.lastMessage).toBe("playback complete");
+  else expect(stop?.lastMessage).toBeUndefined();
+  if (build.fields.includes("turn.stop.correlation.turnId")) {
+    expect(stop?.turnId).toEqual(expect.any(String));
+    if (build.fields.includes("prompt.before.correlation.turnId")) expect(stop?.turnId).toBe(prompt?.turnId);
+  } else expect(stop?.turnId).toBeUndefined();
 });
 
 scenarioDrive("tool-before-block", async () => {
@@ -2964,7 +3171,7 @@ scenarioDrive(
         rows: 34,
         cwd: dir,
         env: {
-          ...withoutCredentials(),
+          ...withoutClaudeSession(withoutCredentials()),
           CLAUDE_CONFIG_DIR: configDir,
           ANTHROPIC_API_KEY: "hooknostic-playback",
           ANTHROPIC_BASE_URL: server.baseUrl,
@@ -3104,7 +3311,7 @@ scenarioDrive(
         rows: 34,
         cwd: dir,
         env: {
-          ...withoutCredentials(),
+          ...withoutClaudeSession(withoutCredentials()),
           CLAUDE_CONFIG_DIR: configDir,
           ANTHROPIC_API_KEY: "hooknostic-playback",
           ANTHROPIC_BASE_URL: server.baseUrl,

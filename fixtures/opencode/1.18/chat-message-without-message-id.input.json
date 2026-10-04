@@ -1,0 +1,35 @@
+{
+  "hook": "chat.message",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-turn-fields-kYKwTN\\project",
+  "input": {
+    "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+    "model": {
+      "providerID": "drift",
+      "modelID": "hooknostic-playback"
+    }
+  },
+  "output": {
+    "message": {
+      "id": "msg_0e9be5601001jU9sKIkSP3X0wQ",
+      "role": "user",
+      "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+      "time": {
+        "created": 1790627960321
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "drift",
+        "modelID": "hooknostic-playback"
+      }
+    },
+    "parts": [
+      {
+        "type": "text",
+        "text": "\"Use the shell once, then answer.\"",
+        "messageID": "msg_0e9be5601001jU9sKIkSP3X0wQ",
+        "sessionID": "ses_f1641aa33ffe81OJ5MzNu6VeQV",
+        "id": "prt_0e9be5609001PA0x2Z8SG6qDP8"
+      }
+    ]
+  }
+}

@@ -6,28 +6,33 @@ allowBuilds:
   esbuild: true
   node-pty: true
 
+# The compatibility package otherwise permits any TypeScript 6.x API.
+overrides:
+  "@typescript/typescript6>@typescript/old": "npm:typescript@~6.0.3"
+
 # Shared external requirements. Intentional differences have named catalogs.
 catalog:
   "toml-eslint-parser": "^1.0.3"
   "jsonc-parser": "^3.3.1"
-  "@eslint/js": "^9.39.5"
-  "@modelcontextprotocol/server": "^2.1.0"
-  "@types/node": "^22.20.4"
+  "@eslint/js": "^10.0.1"
+  "@modelcontextprotocol/server": "^2.3.0"
+  "@types/node": "^22.20.5"
   "@types/npm-package-arg": "^6.1.4"
   "@types/semver": "^7.8.0"
   "@types/validate-npm-package-name": "^4.0.2"
   "cross-spawn": "^7.0.6"
   "esbuild": "^0.28.2"
-  "eslint": "^9.39.5"
+  "eslint": "^10.12.0"
   "eslint-plugin-simple-import-sort": "^14.0.0"
   "minimatch": "^10.2.6"
   "node-pty": "^1.1.0"
   "npm-package-arg": "^13.0.2"
   "prettier": "^3.9.9"
-  "typescript": "^5.9.3"
-  "typescript-eslint": "^8.70.1"
+  "typescript": "npm:@typescript/typescript6@~6.0.2"
+  "@typescript/native": "npm:typescript@~7.0.2"
+  "typescript-eslint": "^8.71.0"
   "validate-npm-package-name": "^7.0.2"
-  "vitest": "^4.1.11"
+  "vitest": "^5.0.3"
   "yaml": "^2.9.1"
 catalogs:
   semver-runtime:
