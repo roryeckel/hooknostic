@@ -88,6 +88,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "Windows loopback shell interpreter probe: native Bash payload and executed Node process ancestry establish Git for Windows bash.exe for this configuration; PowerShell was not advertised by the discovery turn.",
         },
+        {
+          version: "2.1.286",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: captured native Bash payload and executed Node process ancestry establish /bin/bash for this GitHub runner configuration; PowerShell was not advertised by discovery.",
+        },
       ],
       notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
     },
