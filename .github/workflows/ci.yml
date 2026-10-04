@@ -16,7 +16,7 @@ jobs:
   renovate-ready:
     name: Renovate artifact readiness
     # A dependency update can require a PAT-authored artifact refresh. Do not
-    # start seven runners on the intermediate commit: its successor will
+    # start the full validation matrix on the intermediate commit: its successor will
     # trigger this workflow again. A no-op refresh proceeds immediately.
     if: >-
       github.event_name == 'pull_request' &&
