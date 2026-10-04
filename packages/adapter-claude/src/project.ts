@@ -153,6 +153,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       date: "2026-09-12",
       validatedOn: [
         {
+          version: "2.1.286",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, a project skill with disable-model-invocation: true was absent from the ordinary listing but its body reached the model after /gate-claude. The ungated control and a skill carrying only the Codex policy remained listed. No portable invocation policy is implemented.",
+        },
+        {
           version: "2.1.285",
           date: "2026-09-30",
           method: "live-probe",

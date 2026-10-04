@@ -152,6 +152,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       date: "2026-09-11",
       validatedOn: [
         {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and rejected a forced skill-tool call that succeeded without the rule. A v1 plugin config callback supplied the same effective rule. Claude frontmatter and Codex policy alone did not hide the controls. This is deny behavior, not established user-invoked-only equivalence.",
+        },
+        {
           version: "1.18.33",
           date: "2026-09-30",
           method: "live-probe",

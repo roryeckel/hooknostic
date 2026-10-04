@@ -188,6 +188,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       date: "2026-09-11",
       validatedOn: [
         {
+          version: "0.156.1",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, a project skill with policy.allow_implicit_invocation: false was absent from the ordinary listing but its full file reached the model after $gate-codex. The ungated control and a skill carrying only Claude frontmatter remained listed. No portable invocation policy is implemented.",
+        },
+        {
           version: "0.154.0",
           date: "2026-09-30",
           method: "live-probe",
