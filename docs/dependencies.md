@@ -13,7 +13,7 @@ belong in subsequent reviewed PRs. Contribution scope remains in
 | Supported Node floor | Root `package.json#engines.node` | Manual compatibility decision; all package declarations must agree | `pnpm check:dependencies`; normal gates and playback |
 | General CI Node | `.github/node/ci/.node-version` | Renovate nodenv manager | CI matrix; `pnpm check:dependencies` checks workflow references |
 | Playback Node | `.github/node/playback/.node-version` | Renovate nodenv manager; also supplies `node:<version>-bookworm` in harness-watch | All three model-free playback lanes; workflow tests |
-| Node 22 compatibility | `.github/node/compatibility/.node-version` | Renovate nodenv manager within Node 22 | Dedicated CI build, tests and package-consumer checks preserve Node 22 coverage while general CI/playback use Node 24 |
+| Node 22 compatibility | `.github/node/compatibility/.node-version` | Manual mirror of the root engine minimum, checked by `pnpm check:dependencies` | Dedicated CI build, tests and package-consumer checks exercise the declared minimum while general CI/playback use Node 24 |
 | Publishing Node | `.github/node/publishing/.node-version` | Renovate nodenv manager | Release workflow tests and packing; see [release gates](releases.md) |
 | GitHub Actions | `uses:` references in `.github/workflows/*.yml` | Renovate github-actions manager | Workflow tests and CI; extraction comparison |
 | Renovate validation runtime | `dependency-policy.container.image` in `.github/workflows/ci.yml` | Renovate github-actions manager (container image) | Strict config validation and extraction comparison in that job |

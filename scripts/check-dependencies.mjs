@@ -6,16 +6,20 @@ import { fileURLToPath } from "node:url";
 import { isMainModule } from "./is-main-module.mjs";
 
 // Reuse the workspace's existing YAML parser; this script runs after install.
-const { parse } = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url))("yaml");
+const workspaceRequire = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url));
+const { parse } = workspaceRequire("yaml");
+const { minVersion } = workspaceRequire("semver");
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 export const dependencySections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 export const nodeFiles = Object.fromEntries(
   ["ci", "playback", "publishing", "compatibility"].map((role) => [role, `.github/node/${role}/.node-version`]),
 );
 
-export function checkEngines(manifests) {
+export function checkEngines(manifests, compatibilityVersion) {
   const requirement = manifests["package.json"]?.engines?.node;
   if (!requirement) throw new Error("Root Node engine requirement is missing");
+  if (compatibilityVersion !== undefined && compatibilityVersion !== minVersion(requirement)?.version)
+    throw new Error("Compatibility Node must match the declared minimum");
   for (const [path, pkg] of Object.entries(manifests)) {
     if (pkg.engines?.node !== requirement) throw new Error(`${path}: Node engine must agree with root ${requirement}`);
   }
@@ -32,7 +36,7 @@ export function inventory(root = repoRoot) {
     ),
   ];
   const manifests = Object.fromEntries(paths.map((path) => [path, JSON.parse(read(path))]));
-  checkEngines(manifests);
+  checkEngines(manifests, read(nodeFiles.compatibility).trim());
   const workspace = parse(read("pnpm-workspace.yaml"));
   const catalogs = { default: workspace.catalog, ...workspace.catalogs };
   const expected = [];
