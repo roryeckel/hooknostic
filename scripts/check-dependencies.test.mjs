@@ -123,3 +123,11 @@ it("keeps intentional catalog lines and the manual Node floor outside automatic 
   expect(config.automerge).toBe(false);
   expect(config.vulnerabilityAlerts.automerge).toBe(false);
 });
+
+it("keeps the compatibility runtime at the declared minimum instead of a newer patch", () => {
+  const manifests = { "package.json": { engines: { node: ">=99.1.0" } } };
+  expect(() => checkEngines(manifests, "99.1.0")).not.toThrow();
+  for (const version of ["99.0.0", "99.1.1", "100.0.0"]) {
+    expect(() => checkEngines(manifests, version)).toThrow("Compatibility Node must match the declared minimum");
+  }
+});

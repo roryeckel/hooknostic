@@ -45,7 +45,7 @@ it("routes bot updates through readiness while humans, forks, and master pushes 
     mutate(context);
     expect(evaluate(context)).toBe(false);
   }
-  for (const job of ["dependency-policy", "test", "harness-playback", "code-mode"]) {
+  for (const job of ["dependency-policy", "test", "node-compatibility", "harness-playback", "code-mode"]) {
     const body = ci.split(`  ${job}:`)[1].split(/\r?\n {2}\S/)[0];
     // GitHub permits hyphens in property names; JavaScript needs brackets.
     const condition = body
@@ -66,7 +66,7 @@ it("routes bot updates through readiness while humans, forks, and master pushes 
 
 it("makes every full CI lane wait for Renovate artifact readiness", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  for (const job of ["dependency-policy", "test", "harness-playback", "code-mode"]) {
+  for (const job of ["dependency-policy", "test", "node-compatibility", "harness-playback", "code-mode"]) {
     const body = ci.split(`  ${job}:`)[1].split(/\r?\n {2}\S/)[0];
     expect(body).toContain("needs: renovate-ready");
     expect(body).toContain("!cancelled()");
