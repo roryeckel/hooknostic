@@ -29,6 +29,7 @@
     "prettier": "catalog:",
     "semver": "catalog:semver-tooling",
     "typescript": "catalog:",
+    "@typescript/native": "catalog:",
     "typescript-eslint": "catalog:",
     "vitest": "catalog:"
   }

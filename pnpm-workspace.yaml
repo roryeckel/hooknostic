@@ -6,6 +6,10 @@ allowBuilds:
   esbuild: true
   node-pty: true
 
+# The compatibility package otherwise permits any TypeScript 6.x API.
+overrides:
+  "@typescript/typescript6>@typescript/old": "npm:typescript@~6.0.3"
+
 # Shared external requirements. Intentional differences have named catalogs.
 catalog:
   "toml-eslint-parser": "^1.0.3"
@@ -24,7 +28,8 @@ catalog:
   "node-pty": "^1.1.0"
   "npm-package-arg": "^13.0.2"
   "prettier": "^3.9.9"
-  "typescript": "~6.0.3"
+  "typescript": "npm:@typescript/typescript6@~6.0.2"
+  "@typescript/native": "npm:typescript@~7.0.2"
   "typescript-eslint": "^8.71.0"
   "validate-npm-package-name": "^7.0.2"
   "vitest": "^5.0.3"

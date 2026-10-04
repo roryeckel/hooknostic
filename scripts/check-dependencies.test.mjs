@@ -131,3 +131,46 @@ it("keeps the compatibility runtime at the declared minimum instead of a newer p
     expect(() => checkEngines(manifests, version)).toThrow("Compatibility Node must match the declared minimum");
   }
 });
+it("compares npm alias targets as well as alias names and version ranges", () => {
+  const expected = {
+    manager: "npm",
+    packageFile: "pnpm-workspace.yaml",
+    depName: "compiler",
+    depType: "pnpm.catalog.default",
+    currentValue: "~7.0.2",
+    npmPackageAlias: true,
+    packageName: "typescript",
+  };
+  const extract = (dep) => ({ npm: [{ packageFile: expected.packageFile, deps: [dep] }] });
+  expect(() => checkExtraction([expected], extract(expected))).not.toThrow();
+  for (const changed of [
+    { ...expected, packageName: "another-package" },
+    { ...expected, packageName: undefined },
+    { ...expected, npmPackageAlias: false },
+  ]) {
+    expect(() => checkExtraction([expected], extract(changed))).toThrow("Unexpected extracted dependency");
+  }
+});
+
+it("inventories catalog aliases using Renovate's range and target fields", () => {
+  const dependencies = inventory();
+  expect(dependencies.find((dep) => dep.depName === "@typescript/native")).toMatchObject({
+    currentValue: expect.stringMatching(/^~\d+\.\d+\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "typescript",
+  });
+  expect(dependencies.find((dep) => dep.depName === "typescript")).toMatchObject({
+    currentValue: expect.stringMatching(/^~\d+\.\d+\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "@typescript/typescript6",
+  });
+});
+
+it("inventories the compiler API override on the linter-supported minor line", () => {
+  expect(inventory().find((dep) => dep.depName === "@typescript/typescript6>@typescript/old")).toMatchObject({
+    depType: "pnpm-workspace.overrides",
+    currentValue: expect.stringMatching(/^~6\.0\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "typescript",
+  });
+});
