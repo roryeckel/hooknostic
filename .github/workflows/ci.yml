@@ -24,7 +24,7 @@ jobs:
       github.event.pull_request.user.type == 'Bot' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       startsWith(github.event.pull_request.head.ref, 'renovate/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -52,7 +52,7 @@ jobs:
     needs: renovate-ready
     if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
     name: dependency policy and Renovate extraction
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
 
@@ -118,7 +118,7 @@ jobs:
         env:
           HOOKNOSTIC_PLAYBACK: ""
           HOOKNOSTIC_SMOKE: ""
-          HOOKNOSTIC_PACK: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+          HOOKNOSTIC_PACK: ${{ matrix.os == 'ubuntu-26.04' && '1' || '' }}
 
       # The reproducibility gate. rewrite-shell commits its build output, so a
       # rebuild that changes bytes is either an undeclared input to the bundle or
@@ -176,13 +176,13 @@ jobs:
       matrix:
         include:
           - harness: claude
-            os: ubuntu-latest
+            os: ubuntu-26.04
           - harness: codex
-            os: ubuntu-latest
+            os: ubuntu-26.04
           - harness: opencode-v1
-            os: ubuntu-latest
+            os: ubuntu-26.04
           - harness: opencode-v2
-            os: ubuntu-latest
+            os: ubuntu-26.04
           - harness: opencode-v2
             os: windows-latest
     steps:
@@ -262,7 +262,7 @@ jobs:
     needs: renovate-ready
     if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
     name: marketplace installation (${{ matrix.harness }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
