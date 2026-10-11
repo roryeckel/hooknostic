@@ -130,6 +130,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "macOS runner shell interpreter recapture: with SHELL naming bash, Bash was the only shell tool advertised and ran bash, as it did on 2.1.286.",
         },
+        {
+          version: "2.1.296",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "A -p run's first model request preceded a plugin stdio MCP server's connection: it listed WaitForMcpServers and the plugin's HTTP and SSE tools, and not the stdio tool. After a WaitForMcpServers call with no arguments the next request listed it, and the server had started with the projected root, working directory and data directory. The Claude playback lane passes on this build once its model makes that call.",
+        },
       ],
       notes: [
         "https://code.claude.com/docs/en/hooks (fetched 2026-08-20)",

@@ -255,6 +255,107 @@ describe("model playback auxiliary requests", () => {
   });
 });
 
+describe("model playback pending MCP servers", () => {
+  const BUILT_IN = [
+    { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" } } } },
+    {
+      name: "WaitForMcpServers",
+      input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
+    },
+  ];
+  const ECHO = { name: "mcp__plugin_probe_projection__projection_echo", input_schema: { type: "object" } };
+  const SCRIPT = [
+    { kind: "tool", toolName: "projection_echo" },
+    { kind: "text", text: "projection complete" },
+  ] as const;
+  const post = (server: { baseUrl: string }, tools: unknown[]) =>
+    fetch(`${server.baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tools }),
+    }).then(async (response) => ({ status: response.status, text: await response.text() }));
+  const toolUse = (text: string) => /"type":"tool_use","id":"([^"]+)","name":"([^"]+)"/.exec(text)?.slice(1, 3);
+
+  it("waits for a connecting server without spending the step that names its tool", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      // The stdio server has not connected: its tool is absent, the wait tool is offered.
+      const early = await post(server, BUILT_IN);
+      expect(early.status).toBe(200);
+      const wait = toolUse(early.text);
+      expect(wait?.[1]).toBe("WaitForMcpServers");
+      expect(early.text).toContain('"partial_json":"{}"');
+      expect(server.turnCount).toBe(0);
+
+      const ready = await post(server, [...BUILT_IN, ECHO]);
+      const call = toolUse(ready.text);
+      expect(call?.[1]).toBe(ECHO.name);
+      // The harness pairs each result with its call by id.
+      expect(call?.[0]).not.toBe(wait?.[0]);
+      expect(server.turnCount).toBe(1);
+
+      expect((await post(server, [...BUILT_IN, ECHO])).text).toContain("projection complete");
+      expect(server.turnCount).toBe(2);
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports the tool missing once the waits for one step are spent", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(server.errors).toEqual([]);
+      const spent = await post(server, BUILT_IN);
+      expect(spent.status).toBe(500);
+      expect(server.errors).toHaveLength(1);
+      expect(server.errors[0]).toContain("playback request exposed no usable tool");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports the tool missing at once where the harness offers no way to wait", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      const response = await post(server, BUILT_IN.slice(0, 1));
+      expect(response.status).toBe(500);
+      expect(server.errors[0]).toContain("playback request exposed no usable tool");
+      // The step was spent on the failure, not held back for a wait.
+      expect(server.turnCount).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("gives each step its own waits", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [
+      { kind: "tool", toolName: "projection_echo" },
+      { kind: "tool", toolName: "late_echo" },
+      { kind: "text" },
+    ]);
+    const LATE = { name: "mcp__plugin_probe_late__late_echo", input_schema: { type: "object" } };
+    try {
+      // Two waits, then the first step; the second step can still wait twice.
+      const calls: (string[] | undefined)[] = [];
+      for (const tools of [BUILT_IN, BUILT_IN, [...BUILT_IN, ECHO], [...BUILT_IN, ECHO], [...BUILT_IN, ECHO]]) {
+        calls.push(toolUse((await post(server, tools)).text));
+      }
+      calls.push(toolUse((await post(server, [...BUILT_IN, ECHO, LATE])).text));
+      const WAIT = "WaitForMcpServers";
+      expect(calls.map((call) => call?.[1])).toEqual([WAIT, WAIT, ECHO.name, WAIT, WAIT, LATE.name]);
+      // The harness pairs each result with its call by id, so none may repeat.
+      expect(new Set(calls.map((call) => call?.[0])).size).toBe(calls.length);
+      expect(server.turnCount).toBe(2);
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe("runProcess argument passing", () => {
   const ARGS = ["plain", "has space", 'has "quote"', "100%", "%PATH%", "a&b|c", String.raw`C:\dir with space\file`];
   const echoArgv = "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n";
@@ -1659,8 +1760,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             "--plugin-dir",
             pluginDir,
             "--dangerously-skip-permissions",
+            // Room for a wait: the first request can precede the stdio server's
+            // connection, and the playback then spends a turn waiting for it.
             "--max-turns",
-            "3",
+            "4",
           ],
           {
             cwd: projectDir,
