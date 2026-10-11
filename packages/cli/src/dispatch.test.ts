@@ -359,10 +359,13 @@ export default definePlugin({
       { kind: "replaceInput", input: { command: "ls" } },
       { kind: "block", reason: "cmd" },
     ]);
+    // OpenCode 1.x classifies `shell` as a shell tool and has no shape for it,
+    // so no rewrite can ever give it a view: its dialect has nowhere to wait.
     for (const [target, nativeName] of [
       ["claude", "Bash"],
       ["codex", "Bash"],
       ["opencode", "read"],
+      ["opencode", "shell"],
     ] as const) {
       const outcome = await dispatchEvents({
         config: join(dir, "hooknostic.config.ts"),

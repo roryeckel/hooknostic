@@ -1290,23 +1290,23 @@ export async function traceEvents(path: string): Promise<HookEventName[]> {
  * The dialect an OpenCode shell call should carry on this host, or why the lane
  * cannot say (ADR-0029). OpenCode runs whatever the host points it at, so the
  * expectation comes from the host and only where a capture says what follows
- * (`.capture/shell-dialects`): a `SHELL` naming a shell the adapter maps is the
- * shell stated, with no `SHELL` Windows ran a PowerShell and Linux bash, and
- * Linux ran and stated bash where `SHELL` named fish. Anywhere else -- a
- * `SHELL` the adapter leaves unmapped, such as sh or tcsh -- a call without a
- * dialect is correct, and asserting one would blame the harness's wording for
- * the host's shell.
+ * (`.capture/shell-dialects`), which is Windows and Linux: a `SHELL` naming a
+ * shell the adapter maps is the shell stated, with no `SHELL` Windows ran a
+ * PowerShell and Linux bash, and Linux ran and stated bash where `SHELL` named
+ * fish. Anywhere else a call without a dialect is correct, and asserting one
+ * would blame the harness's wording for the host: a `SHELL` the adapter leaves
+ * unmapped, such as sh or tcsh, and any other platform. No macOS session
+ * recorded what OpenCode states, so nothing predicts its wording there.
  */
 export function openCodeShellDialectExpectation(
   env: Readonly<Record<string, string | undefined>> = process.env,
   platform: string = process.platform,
 ): { dialect: ShellDialect } | { skip: string } {
-  const shell = env["SHELL"];
-  if (shell === undefined || shell === "") {
-    if (platform === "win32") return { dialect: "powershell" };
-    if (platform === "linux") return { dialect: "posix" };
-    return { skip: `no capture says what OpenCode runs on ${platform} with SHELL unset` };
+  if (platform !== "win32" && platform !== "linux") {
+    return { skip: `no capture says what OpenCode states about its shell on ${platform}` };
   }
+  const shell = env["SHELL"];
+  if (shell === undefined || shell === "") return { dialect: platform === "win32" ? "powershell" : "posix" };
   const name = shell
     .split(/[\\/]/)
     .at(-1)!

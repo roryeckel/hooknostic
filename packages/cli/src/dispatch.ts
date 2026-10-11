@@ -227,9 +227,17 @@ function completeEvent(
     dialect === undefined ? undefined : { shellDialect: dialect },
   );
   // A shell call whose input has no view can still follow a statement: on a
-  // target that hears one, the dialect waits for a rewrite to make a view.
+  // target that hears one, the dialect waits for a rewrite to make a view. That
+  // holds only for a tool the target's codec has a shape for. A shell-kind tool
+  // without one never gets a view, so a dialect stated for it has nowhere to go.
+  const viewable = Object.values(adapter.shellShapes ?? {}).some(
+    (shape) => adapter.shellCodec?.classify(nativeName, { [shape.commandKey]: "" }) !== undefined,
+  );
   const awaitsView =
-    classified.shell === undefined && classified.kind === "shell" && adapter.shellDialect?.source === "statement";
+    classified.shell === undefined &&
+    classified.kind === "shell" &&
+    viewable &&
+    adapter.shellDialect?.source === "statement";
   // The classifier decides whether a stated dialect applies, so one the target
   // would not report for this call is refused rather than silently dropped.
   if (dialect !== undefined && !awaitsView && classified.shell?.dialect !== dialect) {

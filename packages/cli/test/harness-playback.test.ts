@@ -3239,7 +3239,6 @@ it("expects an OpenCode dialect only where a capture says which one", () => {
   const on = (platform: string, shell?: string) =>
     openCodeShellDialectExpectation(shell === undefined ? {} : { SHELL: shell }, platform);
   expect(on("linux", "/bin/bash")).toEqual({ dialect: "posix" });
-  expect(on("darwin", "/bin/zsh")).toEqual({ dialect: "posix" });
   expect(on("win32", "C:\\Program Files\\Git\\bin\\bash.exe")).toEqual({ dialect: "posix" });
   expect(on("win32", "C:\\Program Files\\PowerShell\\7\\PWSH.EXE")).toEqual({ dialect: "powershell" });
   expect(on("win32")).toEqual({ dialect: "powershell" });
@@ -3250,8 +3249,12 @@ it("expects an OpenCode dialect only where a capture says which one", () => {
   for (const [platform, shell] of [
     ["linux", "/bin/sh"],
     ["linux", "/usr/bin/tcsh"],
-    ["darwin", "/opt/homebrew/bin/fish"],
     ["win32", "C:\\tools\\fish.exe"],
+    // No macOS session recorded what OpenCode states (ADR-0029), so not even a
+    // shell the adapter maps is expected there.
+    ["darwin", "/bin/zsh"],
+    ["darwin", "/bin/bash"],
+    ["darwin", "/opt/homebrew/bin/fish"],
     ["darwin", undefined],
   ] as const) {
     expect(on(platform, shell), `${platform} ${String(shell)}`).toEqual({ skip: expect.any(String) });

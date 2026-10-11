@@ -105,9 +105,11 @@ ran both under identical input. OpenCode's statement names the exact shell.
    classifier decides whether it applies, so the event is refused if the target
    would give that call a different dialect or none (ADR-0023: a test cannot
    hand a hook an event its harness never would). On a target that hears a
-   statement, a shell call whose input has no view yet keeps the stated dialect
-   for a rewrite to use. Without it an OpenCode event carries no dialect, as
-   when the harness has stated nothing.
+   statement, a call whose input has no view yet keeps the stated dialect for a
+   rewrite to use, provided the tool is one the adapter has a shell shape for.
+   A shell-kind tool without a shape can never be given a view, so a dialect
+   stated for it is refused. Without it an OpenCode event carries no dialect,
+   as when the harness has stated nothing.
 10. **No capability and no field rating; the adapter declares its source.**
     Whether a dialect is present depends on the individual call and host, like
     the views themselves (ADR-0007 decision 4, ADR-0026 decision 7), so no
