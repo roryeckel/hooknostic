@@ -76,9 +76,13 @@ const CASES = [
 for (const [directory, suffix, stem] of CASES) {
   const folder = join(CAPTURED, directory, "opencode-v1", `bash-${suffix}`);
   const [before] = rows(join(folder, "tool.execute.before.jsonl"));
-  const definition = rows(join(folder, "tool.definition.jsonl")).find((row) => row.input.toolID === "bash");
+  // The statement in force for the call: the last bash definition before it, which
+  // the arrival-order file counts (the tee writes one file per hook).
+  const order = rows(join(folder, "shell-report-order.jsonl")).map((row) => row.hook);
+  const preceding = order.slice(0, Math.max(0, order.indexOf("tool.execute.before"))).filter((hook) => hook === "tool.definition").length;
+  const definition = rows(join(folder, "tool.definition.jsonl")).filter((row) => row.input.toolID === "bash")[preceding - 1];
   const shell = statedShellV1(definition?.output.description);
-  if (shell === undefined) throw new Error(`${stem}: no shell statement in the captured bash definition`);
+  if (shell === undefined) throw new Error(`${stem}: no shell statement before the captured call`);
   const input = JSON.parse(redact(JSON.stringify(before), `opencode/1.18/${stem}`));
   json("opencode/1.18", `${stem}.input.json`, input);
   json("opencode/1.18", `${stem}.enrichment.json`, { shell });

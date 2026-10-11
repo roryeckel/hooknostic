@@ -91,21 +91,35 @@ for the Codex cases PowerShell 7.6.6 from Microsoft's Debian 12 package feed.
 | --- | --- | --- | --- |
 | Windows | `Bash` | default | Git for Windows `bash.exe` |
 | Windows | `Bash` | `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` | Git for Windows `bash.exe` |
+| Windows | `Bash` | `CLAUDE_CODE_GIT_BASH_PATH` names a missing file | Git for Windows `bash.exe` |
+| Windows | `Bash` | `CLAUDE_CODE_GIT_BASH_PATH` names `cmd.exe` | Git for Windows `bash.exe` |
+| Windows | `Bash` | `CLAUDE_CODE_GIT_BASH_PATH` names `powershell.exe` | Git for Windows `bash.exe` |
+| Windows | `Bash` | Git for Windows removed from `PATH` | Git for Windows `bash.exe` |
 | Windows | `PowerShell` | `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` | Windows `powershell.exe` |
 | Windows | `PowerShell` | the same, `pwsh.exe` first on `PATH` | `pwsh.exe` |
 | macOS | `Bash` | default | `/bin/bash` |
 | Linux | `Bash` | default (`SHELL` names bash) | `/usr/bin/bash` |
+| Linux | `Bash` | `SHELL` unset | `/usr/bin/zsh` |
 | Linux | `Bash` | `SHELL` names zsh | `/usr/bin/zsh` |
 | Linux | `Bash` | `SHELL` names fish | `/usr/bin/zsh` |
 | Linux | `Bash` | `SHELL` names tcsh | `/usr/bin/zsh` |
 | Linux | `Bash` | `CLAUDE_CODE_SHELL` names zsh | `/usr/bin/zsh` |
 | Linux | `Bash` | `CLAUDE_CODE_SHELL` names fish | `/usr/bin/bash` |
+| Linux | `Bash` | `CLAUDE_CODE_SHELL` names tcsh | `/usr/bin/bash` |
+| Linux | `Bash` | `CLAUDE_CODE_SHELL` names pwsh | `/usr/bin/bash` |
 
 `PowerShell` was advertised with the opt-in variable set and by no default
 discovery on any platform. Its two cases have identical hook input and ran two
-PowerShell editions. `Bash` ran bash or zsh in all nine cases, including the
-three that named fish or tcsh. The reference build's Windows default case ran
-Git for Windows `bash.exe` as well.
+PowerShell editions. `Bash` ran bash or zsh in all sixteen cases. Nine of them
+pointed it elsewhere: at fish, tcsh or PowerShell through `SHELL` or
+`CLAUDE_CODE_SHELL` on Linux, and on Windows at a missing file, `cmd.exe` or
+`powershell.exe` through its Git Bash path variable, or with Git taken off
+`PATH`. The reference build's Windows default case ran Git for Windows
+`bash.exe` as well.
+
+Every Windows case ran on a host with Git for Windows installed, where Claude
+Code found `bash.exe` at its install location whatever the variables said. What
+`Bash` does on a Windows host without Git for Windows is not captured.
 
 ## Codex
 
@@ -126,13 +140,13 @@ byte-identical within a platform.
 | Linux | `shell: "/usr/bin/fish"` | `/usr/bin/dash` |
 | Linux | `shell: "/usr/bin/tcsh"` | `/usr/bin/dash` |
 | Linux | `shell: "/usr/bin/pwsh"` | `/opt/microsoft/powershell/7/pwsh` |
-| Linux | default, `SHELL` names zsh, fish or tcsh | `/usr/bin/bash` |
+| Linux | default, `SHELL` unset or naming zsh, fish or tcsh | `/usr/bin/bash` |
 
 The model can therefore select PowerShell on Linux and cmd on Windows without
 the hook input changing. The fish and tcsh selectors ran dash instead, and the
 default did not follow `SHELL`.
 
-In all twelve Windows and Linux cases the transcript file existed when
+In all thirteen Windows and Linux cases the transcript file existed when
 PreToolUse ran and already held the pending call as a `function_call` named
 `exec_command` with the model's own arguments, selector included, under the
 payload's `tool_use_id`. It also held the default the harness stated to the
@@ -155,6 +169,7 @@ every configuration:
 | Windows | `pwsh.exe` first on `PATH` | `pwsh.exe` | `Shell: pwsh` | `using pwsh.` |
 | macOS | default | `/bin/bash` | not probed | not probed |
 | Linux | default (`SHELL` names bash) | `/usr/bin/bash` | `Shell: bash` | `using bash.` |
+| Linux | `SHELL` unset | `/usr/bin/bash` | `Shell: bash` | `using bash.` |
 | Linux | `SHELL` names zsh | `/usr/bin/zsh` | `Shell: zsh` | `using zsh.` |
 | Linux | `SHELL` names fish | `/usr/bin/bash` | `Shell: bash` | `using bash.` |
 | Linux | `SHELL` names tcsh | `/usr/bin/tcsh` | `Shell: tcsh` | `using tcsh.` |
@@ -171,8 +186,8 @@ of 2026-10-10:
   case. The `shell.created` bus event followed `execute.before`, preceded
   `execute.after`, and carried a path to the interpreter.
 
-The stated name matched the interpreter that ran in all eighteen cases of
-2026-10-10, nine per generation: the eight Windows and Linux rows above, and
+The stated name matched the interpreter that ran in all twenty cases of
+2026-10-10, ten per generation: the nine Windows and Linux rows above, and
 the Windows default comparison, which repeats the first row. It also matched on
 the three other OpenCode builds, whose Windows default case stated and ran
 PowerShell. The macOS session predates these probes.

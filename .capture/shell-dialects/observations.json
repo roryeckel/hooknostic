@@ -5,7 +5,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-10T22:58:50.882Z",
+      "capturedAt": "2026-10-11T01:04:14.258Z",
       "case": "bash-default",
       "requestedShell": "default",
       "host": {
@@ -13,10 +13,10 @@
         "pwshOnPath": false
       },
       "before": {
-        "session_id": "22c13ced-0e99-4829-a8a6-e1ab5ba0ac7c",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-ICrsb7\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-ICrsb7-project\\22c13ced-0e99-4829-a8a6-e1ab5ba0ac7c.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-ICrsb7\\project",
-        "prompt_id": "78f54545-f3df-4582-b566-43f9193b8863",
+        "session_id": "8537b8b0-9569-47cc-aad4-8d562b6c2e8a",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-VzTAXn\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-VzTAXn-project\\8537b8b0-9569-47cc-aad4-8d562b6c2e8a.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-VzTAXn\\project",
+        "prompt_id": "b640b4dd-6d31-40fc-a7d9-8203a1f801b4",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -34,32 +34,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 37644,
-            "parentPid": 62008,
+            "pid": 69136,
+            "parentPid": 58436,
             "name": "node.exe",
             "path": "C:\\Program Files\\nodejs\\node.exe"
           },
           {
-            "pid": 62008,
-            "parentPid": 57552,
+            "pid": 58436,
+            "parentPid": 12216,
             "name": "bash.exe",
             "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
           },
           {
-            "pid": 57552,
-            "parentPid": 29192,
+            "pid": 12216,
+            "parentPid": 59680,
             "name": "bash.exe",
             "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
           },
           {
-            "pid": 29192,
-            "parentPid": 53668,
+            "pid": 59680,
+            "parentPid": 62432,
             "name": "bash.exe",
             "path": "C:\\Program Files\\Git\\bin\\bash.exe"
           },
           {
-            "pid": 53668,
-            "parentPid": 63180,
+            "pid": 62432,
+            "parentPid": 59668,
             "name": "claude.exe",
             "path": "C:\\users\\user\\.local\\bin\\claude.exe"
           }

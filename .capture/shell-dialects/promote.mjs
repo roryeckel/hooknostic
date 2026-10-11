@@ -38,9 +38,13 @@ const requestedShells = { "exec-command-powershell": "powershell.exe", "exec-com
 // arrived before the call it applies to. Only the stating sentence is kept.
 function reported(harness, folder, rows) {
   if (harness === "opencode-v2") {
-    const stated = rows.findIndex((row) => row.hook === "context" && typeof row.event.tools?.shell?.description === "string");
-    if (stated === -1) return undefined;
+    // The statement in force for the call is the last one before it, as in promote-fixtures.mjs.
     const call = rows.findIndex((row) => row.hook === "execute.before" && row.event.tool === "shell");
+    const states = (row) => row.hook === "context" && typeof row.event.tools?.shell?.description === "string";
+    const before = rows.findLastIndex((row, index) => index < call && states(row));
+    // A session that only stated its shell after the call is still recorded, as not before it.
+    const stated = before !== -1 ? before : rows.findIndex(states);
+    if (stated === -1) return undefined;
     const created = rows.find((row) => row.hook === "event" && row.event.type === "shell.created");
     return { hook: "context", field: "tools.shell.description",
       statement: /Commands run[^.]*\./.exec(rows[stated].event.tools.shell.description)?.[0] ?? null,
@@ -49,7 +53,11 @@ function reported(harness, folder, rows) {
   if (harness !== "opencode-v1" || !existsSync(join(folder, "shell-report-order.jsonl"))) return undefined;
   const read = (file) => readFileSync(join(folder, file), "utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
   const order = read("shell-report-order.jsonl").map((row) => row.hook);
-  const definition = read("tool.definition.jsonl").find((row) => row.input.toolID === "bash");
+  // The statement in force for the call is the last one before it, as in promote-fixtures.mjs:
+  // the order file counts the bash definitions that preceded the call.
+  const preceding = order.slice(0, Math.max(0, order.indexOf("tool.execute.before"))).filter((hook) => hook === "tool.definition").length;
+  const definitions = read("tool.definition.jsonl").filter((row) => row.input.toolID === "bash");
+  const definition = definitions[Math.max(0, preceding - 1)];
   // The callback's shape: its input verbatim and the keys of its output, a live object.
   return { hook: "tool.definition", input: definition?.input ?? null, outputKeys: Object.keys(definition?.output ?? {}), field: "description",
     statement: /Be aware:[^\n]*/.exec(definition?.output.description ?? "")?.[0] ?? null,

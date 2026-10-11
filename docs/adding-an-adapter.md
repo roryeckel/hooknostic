@@ -59,8 +59,13 @@ interpreter by its effect, across the host configurations that could change it,
 and finding one family every time. If the host or the model picks the
 interpreter, leave it out. If the harness states its shell somewhere your shim
 can hear before the call, hand that to your decoder as enrichment and map only
-the names a capture saw stated and run. Otherwise the dialect stays absent, which
-is a supported answer. `.capture/shell-dialects` is the worked procedure.
+the names a capture saw stated and run, and pass the same dialect to
+`dispatch()` as `shellDialect` so a rewrite keeps it. Otherwise the dialect
+stays absent, which is a supported answer. Whichever it is, say so in
+`adapter.shellDialect` (`tool`, `statement` or `none`, with a rationale):
+`inspect` and the generated support page print it, and the contract suite
+checks your table and classifier against it. `.capture/shell-dialects` is the
+worked procedure.
 
 File tools get the same treatment, read side only (ADR-0026): a `FileShapes`
 table maps each captured file tool to `{ pathKey }` (an argument naming one

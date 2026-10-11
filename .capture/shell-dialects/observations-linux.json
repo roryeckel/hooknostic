@@ -5,18 +5,18 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-10T22:34:24.784Z",
+      "capturedAt": "2026-10-11T01:05:36.407Z",
       "case": "bash-default",
       "requestedShell": "default",
       "host": {
         "SHELL": "/bin/bash",
-        "pwshOnPath": false
+        "pwshOnPath": true
       },
       "before": {
-        "session_id": "07bd5b7c-c90c-4446-8357-59eda402ca5e",
-        "transcript_path": "/tmp/hkn-shell-dialect-WvH0sl/claude-home/projects/-tmp-hkn-shell-dialect-WvH0sl-project/07bd5b7c-c90c-4446-8357-59eda402ca5e.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-WvH0sl/project",
-        "prompt_id": "a7570923-957e-4490-83a7-2954d90a93ba",
+        "session_id": "b33c0e6f-8b8d-460c-b8ee-f746a1caea56",
+        "transcript_path": "/tmp/hkn-shell-dialect-qDjXvW/claude-home/projects/-tmp-hkn-shell-dialect-qDjXvW-project/b33c0e6f-8b8d-460c-b8ee-f746a1caea56.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-qDjXvW/project",
+        "prompt_id": "97124856-d304-4824-8568-c1f4592ae661",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -34,28 +34,28 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 1462,
-            "parentPid": 1461,
+            "pid": 6552,
+            "parentPid": 6551,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 1461,
-            "parentPid": 1375,
+            "pid": 6551,
+            "parentPid": 6465,
             "path": "/usr/bin/bash"
           },
           {
-            "pid": 1375,
-            "parentPid": 1285,
+            "pid": 6465,
+            "parentPid": 6376,
             "path": "/home/user/h-claude/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
           },
           {
-            "pid": 1285,
-            "parentPid": 529,
+            "pid": 6376,
+            "parentPid": 5607,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 529,
-            "parentPid": 528,
+            "pid": 5607,
+            "parentPid": 5606,
             "path": "/usr/bin/bash"
           }
         ]
@@ -64,7 +64,7 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-10T22:57:37.840Z",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
       "case": "exec-command-bash",
       "requestedShell": "/bin/bash",
       "host": {
@@ -72,10 +72,10 @@
         "pwshOnPath": true
       },
       "before": {
-        "session_id": "01a12809-4b59-7de2-a4d9-412df1550acc",
-        "turn_id": "01a12809-4b67-7b01-9954-79f7c27ffb4a",
-        "transcript_path": "/tmp/hkn-shell-dialect-MSHpKL/codex-home/sessions/2026/10/10/rollout-2026-10-10T22-57-40-01a12809-4b59-7de2-a4d9-412df1550acc.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-MSHpKL/project",
+        "session_id": "01a1287e-7a27-74e2-8b65-2d46f810db35",
+        "turn_id": "01a1287e-7a38-7dc0-bddd-493841268847",
+        "transcript_path": "/tmp/hkn-shell-dialect-J1wC2W/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-39-01a1287e-7a27-74e2-8b65-2d46f810db35.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-J1wC2W/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -109,27 +109,27 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 6884,
-            "parentPid": 6883,
+            "pid": 7200,
+            "parentPid": 7199,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6883,
-            "parentPid": 6733,
+            "pid": 7199,
+            "parentPid": 7051,
             "path": "/usr/bin/bash"
           },
           {
-            "pid": 6733,
-            "parentPid": 6722,
+            "pid": 7051,
+            "parentPid": 7040,
             "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
           },
           {
-            "pid": 6722,
-            "parentPid": 6274,
+            "pid": 7040,
+            "parentPid": 6592,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6274,
+            "pid": 6592,
             "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
@@ -139,7 +139,7 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-10T22:57:37.840Z",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
       "case": "exec-command-fish",
       "requestedShell": "/usr/bin/fish",
       "host": {
@@ -147,10 +147,10 @@
         "pwshOnPath": true
       },
       "before": {
-        "session_id": "01a12809-548e-7153-8813-7429bb94ab64",
-        "turn_id": "01a12809-549e-7ab3-b796-a88976e62a3a",
-        "transcript_path": "/tmp/hkn-shell-dialect-51N1Cb/codex-home/sessions/2026/10/10/rollout-2026-10-10T22-57-42-01a12809-548e-7153-8813-7429bb94ab64.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-51N1Cb/project",
+        "session_id": "01a1287e-8198-72a0-94dc-b67ab4e89be5",
+        "turn_id": "01a1287e-81a6-7430-8ac1-dc2e0926f49d",
+        "transcript_path": "/tmp/hkn-shell-dialect-G4UGcU/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-41-01a1287e-8198-72a0-94dc-b67ab4e89be5.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-G4UGcU/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -184,27 +184,27 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 7312,
-            "parentPid": 7311,
+            "pid": 7634,
+            "parentPid": 7633,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 7311,
-            "parentPid": 7162,
+            "pid": 7633,
+            "parentPid": 7478,
             "path": "/usr/bin/dash"
           },
           {
-            "pid": 7162,
-            "parentPid": 7151,
+            "pid": 7478,
+            "parentPid": 7467,
             "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
           },
           {
-            "pid": 7151,
-            "parentPid": 6274,
+            "pid": 7467,
+            "parentPid": 6592,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6274,
+            "pid": 6592,
             "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
@@ -214,7 +214,7 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-10T22:57:37.840Z",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
       "case": "exec-command-pwsh",
       "requestedShell": "/usr/bin/pwsh",
       "host": {
@@ -222,10 +222,10 @@
         "pwshOnPath": true
       },
       "before": {
-        "session_id": "01a12809-5d12-7023-8e17-cb9a529eaa10",
-        "turn_id": "01a12809-5d24-77e2-9c67-e88310199b4e",
-        "transcript_path": "/tmp/hkn-shell-dialect-82LNJe/codex-home/sessions/2026/10/10/rollout-2026-10-10T22-57-44-01a12809-5d12-7023-8e17-cb9a529eaa10.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-82LNJe/project",
+        "session_id": "01a1287e-8948-7ac1-95db-2d8909a1c2bb",
+        "turn_id": "01a1287e-8958-7b71-b6ab-135e44502f89",
+        "transcript_path": "/tmp/hkn-shell-dialect-N17kcc/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-43-01a1287e-8948-7ac1-95db-2d8909a1c2bb.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-N17kcc/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -259,27 +259,27 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 7825,
-            "parentPid": 7801,
+            "pid": 8125,
+            "parentPid": 8101,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 7801,
-            "parentPid": 7612,
+            "pid": 8101,
+            "parentPid": 7951,
             "path": "/opt/microsoft/powershell/7/pwsh"
           },
           {
-            "pid": 7612,
-            "parentPid": 7601,
+            "pid": 7951,
+            "parentPid": 7940,
             "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
           },
           {
-            "pid": 7601,
-            "parentPid": 6274,
+            "pid": 7940,
+            "parentPid": 6592,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6274,
+            "pid": 6592,
             "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
@@ -289,7 +289,7 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-10T22:57:37.840Z",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
       "case": "exec-command-tcsh",
       "requestedShell": "/usr/bin/tcsh",
       "host": {
@@ -297,10 +297,10 @@
         "pwshOnPath": true
       },
       "before": {
-        "session_id": "01a12809-58cf-77f2-9bb5-cc30f4145ca7",
-        "turn_id": "01a12809-58e5-7011-a862-27412a651d6d",
-        "transcript_path": "/tmp/hkn-shell-dialect-KKXg7O/codex-home/sessions/2026/10/10/rollout-2026-10-10T22-57-43-01a12809-58cf-77f2-9bb5-cc30f4145ca7.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-KKXg7O/project",
+        "session_id": "01a1287e-8599-7c51-9e89-f638e92c25bb",
+        "turn_id": "01a1287e-85ac-7842-be9b-e7e0f9e591f9",
+        "transcript_path": "/tmp/hkn-shell-dialect-2WPo0D/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-42-01a1287e-8599-7c51-9e89-f638e92c25bb.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-2WPo0D/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -334,27 +334,27 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 7548,
-            "parentPid": 7547,
+            "pid": 7851,
+            "parentPid": 7850,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 7547,
-            "parentPid": 7376,
+            "pid": 7850,
+            "parentPid": 7698,
             "path": "/usr/bin/dash"
           },
           {
-            "pid": 7376,
-            "parentPid": 7365,
+            "pid": 7698,
+            "parentPid": 7687,
             "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
           },
           {
-            "pid": 7365,
-            "parentPid": 6274,
+            "pid": 7687,
+            "parentPid": 6592,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6274,
+            "pid": 6592,
             "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
@@ -364,7 +364,7 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-10T22:57:37.840Z",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
       "case": "exec-command-zsh",
       "requestedShell": "/bin/zsh",
       "host": {
@@ -372,10 +372,10 @@
         "pwshOnPath": true
       },
       "before": {
-        "session_id": "01a12809-508e-75e1-8d18-28a7a8cb8cb0",
-        "turn_id": "01a12809-50a6-7270-a4fd-cadc3eaeb42b",
-        "transcript_path": "/tmp/hkn-shell-dialect-Bojlu7/codex-home/sessions/2026/10/10/rollout-2026-10-10T22-57-41-01a12809-508e-75e1-8d18-28a7a8cb8cb0.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-Bojlu7/project",
+        "session_id": "01a1287e-7de6-7dc3-ad9a-09c698dc4a42",
+        "turn_id": "01a1287e-7df5-72e1-bace-22253d9edbef",
+        "transcript_path": "/tmp/hkn-shell-dialect-fwzCej/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-40-01a1287e-7de6-7dc3-ad9a-09c698dc4a42.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-fwzCej/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -409,27 +409,27 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 7098,
-            "parentPid": 7097,
+            "pid": 7414,
+            "parentPid": 7413,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 7097,
-            "parentPid": 6950,
+            "pid": 7413,
+            "parentPid": 7264,
             "path": "/usr/bin/zsh"
           },
           {
-            "pid": 6950,
-            "parentPid": 6939,
+            "pid": 7264,
+            "parentPid": 7253,
             "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
           },
           {
-            "pid": 6939,
-            "parentPid": 6274,
+            "pid": 7253,
+            "parentPid": 6592,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6274,
+            "pid": 6592,
             "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
@@ -439,7 +439,7 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-10T22:57:37.840Z",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
       "case": "exec_command-default",
       "requestedShell": "default",
       "host": {
@@ -447,10 +447,10 @@
         "pwshOnPath": true
       },
       "before": {
-        "session_id": "01a12809-4668-7c21-9113-f0af0719ccf4",
-        "turn_id": "01a12809-4677-7c90-88ca-7553938ed382",
-        "transcript_path": "/tmp/hkn-shell-dialect-oYHtz7/codex-home/sessions/2026/10/10/rollout-2026-10-10T22-57-38-01a12809-4668-7c21-9113-f0af0719ccf4.jsonl",
-        "cwd": "/tmp/hkn-shell-dialect-oYHtz7/project",
+        "session_id": "01a1287e-7679-7440-b3dc-72430397ced3",
+        "turn_id": "01a1287e-768b-73d3-bac8-2a5b9d4775a4",
+        "transcript_path": "/tmp/hkn-shell-dialect-ipJ2WT/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-38-01a1287e-7679-7440-b3dc-72430397ced3.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-ipJ2WT/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -484,27 +484,27 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 6667,
-            "parentPid": 6666,
+            "pid": 6987,
+            "parentPid": 6986,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6666,
-            "parentPid": 6516,
+            "pid": 6986,
+            "parentPid": 6832,
             "path": "/usr/bin/bash"
           },
           {
-            "pid": 6516,
-            "parentPid": 6505,
+            "pid": 6832,
+            "parentPid": 6821,
             "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
           },
           {
-            "pid": 6505,
-            "parentPid": 6274,
+            "pid": 6821,
+            "parentPid": 6592,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 6274,
+            "pid": 6592,
             "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
@@ -514,19 +514,19 @@
     {
       "harness": "opencode-v1",
       "version": "1.18.34",
-      "capturedAt": "2026-10-10T23:23:54.743Z",
+      "capturedAt": "2026-10-11T01:05:45.620Z",
       "case": "bash-default",
       "requestedShell": "default",
       "host": {
         "SHELL": "/bin/bash",
-        "pwshOnPath": false
+        "pwshOnPath": true
       },
       "before": {
         "hook": "tool.execute.before",
-        "directory": "/tmp/hkn-shell-dialect-QPhE99/project",
+        "directory": "/tmp/hkn-shell-dialect-1ZfKwt/project",
         "input": {
           "tool": "bash",
-          "sessionID": "ses_ed7de8025ffeMhYbb7ktNmoqTd",
+          "sessionID": "ses_ed7813daaffezFAzB2EonHKMCC",
           "callID": "call_playback"
         },
         "output": {
@@ -554,28 +554,28 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 1522,
-            "parentPid": 1521,
+            "pid": 8570,
+            "parentPid": 8569,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 1521,
-            "parentPid": 1396,
+            "pid": 8569,
+            "parentPid": 8444,
             "path": "/usr/bin/bash"
           },
           {
-            "pid": 1396,
-            "parentPid": 1222,
+            "pid": 8444,
+            "parentPid": 8196,
             "path": "/home/user/h-oc1/node_modules/opencode-ai/bin/opencode.exe"
           },
           {
-            "pid": 1222,
-            "parentPid": 528,
+            "pid": 8196,
+            "parentPid": 5607,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 528,
-            "parentPid": 527,
+            "pid": 5607,
+            "parentPid": 5606,
             "path": "/usr/bin/bash"
           }
         ]
@@ -584,21 +584,21 @@
     {
       "harness": "opencode-v2",
       "version": "2.0.20",
-      "capturedAt": "2026-10-10T22:34:42.911Z",
+      "capturedAt": "2026-10-11T01:05:59.881Z",
       "case": "shell-default",
       "requestedShell": "default",
       "host": {
         "SHELL": "/bin/bash",
-        "pwshOnPath": false
+        "pwshOnPath": true
       },
       "before": {
         "hook": "execute.before",
-        "directory": "/tmp/hkn-shell-dialect-BspJ13/project",
+        "directory": "/tmp/hkn-shell-dialect-N1MWIH/project",
         "event": {
           "tool": "shell",
-          "sessionID": "ses_ed80bb464ffeyXMyLgHm14hs1M",
+          "sessionID": "ses_ed781339cffeVrja97sZ2QlVh3",
           "agent": "build",
-          "messageID": "msg_127f44c6b0011kVVxqkMOCCIly",
+          "messageID": "msg_1287ecd31001eZgLRQbXHtT550",
           "id": "call_playback",
           "input": {
             "command": "node interpreter.cjs; echo hooknostic-shell-finished"
@@ -617,28 +617,28 @@
         "node": "v22.13.1",
         "ancestry": [
           {
-            "pid": 2872,
-            "parentPid": 2871,
+            "pid": 8723,
+            "parentPid": 8722,
             "path": "/usr/local/bin/node"
           },
           {
-            "pid": 2871,
-            "parentPid": 2818,
+            "pid": 8722,
+            "parentPid": 8669,
             "path": "/usr/bin/bash"
           },
           {
-            "pid": 2818,
-            "parentPid": 2808,
+            "pid": 8669,
+            "parentPid": 8659,
             "path": "/home/user/h-oc2/node_modules/@opencode/cli/bin/opencode.exe"
           },
           {
-            "pid": 2808,
-            "parentPid": 2756,
+            "pid": 8659,
+            "parentPid": 8606,
             "path": "/home/user/h-oc2/node_modules/@opencode/cli/bin/opencode.exe"
           },
           {
-            "pid": 2756,
-            "parentPid": 529,
+            "pid": 8606,
+            "parentPid": 5607,
             "path": "/usr/local/bin/node"
           }
         ]

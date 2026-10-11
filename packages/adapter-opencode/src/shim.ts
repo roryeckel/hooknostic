@@ -9,7 +9,7 @@ import { planOpenCodeApplication } from "./apply.js";
 import { POST_TIMEOUT_MS, withTimeout } from "./bounded-post.js";
 import type { OpenCodeEnrichment, OpenCodeNativeEvent } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
-import { statedShellV1 } from "./shell-statement.js";
+import { dialectOfStatedShell, statedShellV1 } from "./shell-statement.js";
 import { opencodeFileCodec, opencodeShellCodec } from "./toolmap.js";
 
 export { setupOpenCodeV2 } from "./v2/shim.js";
@@ -188,6 +188,9 @@ export function createHooknosticHooks(
       ...(await enrich(native)),
       ...(statedShell !== undefined ? { shell: statedShell } : {}),
     };
+    // Also given to dispatch, which re-derives the view after a rewrite and
+    // could not otherwise know a dialect the first input had no view to carry.
+    const shellDialect = dialectOfStatedShell(enrichment.shell);
     let event;
     try {
       event = decodeOpenCode(native, invocation, enrichment);
@@ -204,6 +207,7 @@ export function createHooknosticHooks(
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: opencodeShellCodec,
+      ...(shellDialect !== undefined ? { shellDialect } : {}),
       fileCodec: opencodeFileCodec,
       ...(options.pluginRoot !== undefined ? { plugin: { root: options.pluginRoot } } : {}),
     });

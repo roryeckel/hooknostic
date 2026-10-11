@@ -1255,6 +1255,37 @@ describe("shell view coherence across rewrites", () => {
     expect(seen).toEqual(["powershell", "powershell"]);
   });
 
+  it("gives a view a rewrite creates the dialect the adapter established for the event", async () => {
+    // The harness can state its shell before a call whose input has no view
+    // yet. The first view then appears mid-dispatch, and only the dispatch
+    // options still know the dialect. It also returns after a rewrite that
+    // briefly had no view.
+    const seen: unknown[] = [];
+    const rewriteTo = (id: string, input: unknown) =>
+      hook("tool.before", {
+        id,
+        capabilities: { "tool.before.input.replace": "required" },
+        async run(event) {
+          seen.push(event.tool.shell?.dialect);
+          return replaceInput(input);
+        },
+      });
+    const hooks = [
+      rewriteTo("one", { command: "ls" }),
+      rewriteTo("two", { notACommand: true }),
+      rewriteTo("three", { command: "ls" }),
+    ];
+    const viewless = toolBefore({ notACommand: true });
+    await dispatch(hooks, viewless, { ...OPTIONS, shellCodec: codec, shellDialect: "cmd" });
+    expect(viewless.tool.shell).toEqual({ command: "ls", commandKey: "command", dialect: "cmd" });
+    // Without the option, the dialect the view arrived with is remembered instead.
+    const arrived = shellEvent();
+    arrived.tool.shell = { ...arrived.tool.shell!, dialect: "powershell" };
+    await dispatch(hooks, arrived, { ...OPTIONS, shellCodec: codec });
+    expect(arrived.tool.shell?.dialect).toBe("powershell");
+    expect(seen).toEqual([undefined, "cmd", undefined, "powershell", "powershell", undefined]);
+  });
+
   it("takes the codec's dialect over the previous one, and drops it with the view", async () => {
     // A table that pins the dialect is the authority after a rewrite, and an
     // input that no longer classifies leaves no view to hang a dialect on.

@@ -49,6 +49,25 @@ export interface ReportedToolFacts {
   shellDialect?: ShellDialect;
 }
 
+/**
+ * How an adapter establishes `tool.shell.dialect`, or why it cannot (ADR-0029).
+ * Whether a call carries one depends on the call and its host, which no
+ * capability matrix can hold, so this is the adapter's standing answer:
+ * `inspect` prints it, the generated support page lists it, and the contract
+ * suite holds the adapter's tables and classifier to the source it names.
+ */
+export interface ShellDialectSupport {
+  /**
+   * `tool`: a shape table entry pins it. `statement`: the adapter hears the
+   * harness state its shell and maps the name. `none`: never set.
+   */
+  readonly source: "tool" | "statement" | "none";
+  /** When a hook gets a dialect on this target, when it does not, and why. */
+  readonly rationale: string;
+  /** Repo-relative evidence path. */
+  readonly evidence: string;
+}
+
 /** A configured build target: config entry keyed by adapter/target id. */
 export interface TargetSpec {
   id: string;
@@ -377,6 +396,12 @@ export interface HarnessAdapter {
    * pins the dialect by tool, or cannot establish one, ignores it (ADR-0029).
    */
   classifyTool?(nativeName: string, input: unknown, reported?: ReportedToolFacts): ToolInvocation;
+
+  /**
+   * Where this adapter's `tool.shell.dialect` comes from. Required in practice
+   * for any adapter with a shell shape table: the contract suite asks for it.
+   */
+  readonly shellDialect?: ShellDialectSupport;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

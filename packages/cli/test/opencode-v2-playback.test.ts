@@ -12,6 +12,7 @@ import { resolveTargetAdapter } from "@hooknostic/core";
 import {
   buildPlaybackArtifact,
   expectOpenCodeShellDialect,
+  openCodeShellDialectExpectation,
   runProcess,
   startModelPlayback,
   traceEvents,
@@ -27,6 +28,8 @@ const adapter = resolveTargetAdapter(opencodeAdapter(), {
 }).adapter!;
 
 describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
+  /** The shell calls' dialects from the tools drive's trace, once it has run. */
+  let toolsShellDialects: unknown[] | undefined;
   it("renders a native companion TUI notification from server RPC and cleans up", async () => {
     const result = await runProcess(
       process.execPath,
@@ -298,18 +301,23 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       hooknostic_hooknostic_echo: "other",
     }))
       expect(trace).toContainEqual(expect.objectContaining({ event: "tool.before", toolNativeName, toolKind }));
-    // The shell call carries the dialect of the shell this build said it runs.
-    expectOpenCodeShellDialect(
-      trace
-        .filter((row) => row.event === "tool.before" && row.toolNativeName === "shell")
-        .map((row) => row.shellDialect),
-    );
+    // Kept for the dialect test below rather than asserted here, so a reworded
+    // statement fails a test of its own (ADR-0029).
+    toolsShellDialects = trace
+      .filter((row) => row.event === "tool.before" && row.toolNativeName === "shell")
+      .map((row) => row.shellDialect);
     // Both envelopes are visible. Neither carries an authoritative MCP identity.
     expect(trace.some((row) => row.toolKind === "mcp")).toBe(false);
     const inner = completed.find((row) => row.event.tool === "hooknostic_hooknostic_echo");
     expect(inner.event.input).toEqual({});
     expect(inner.event.result.content).toEqual([{ type: "text", text: "hooknostic-mcp-tool-output" }]);
   }, 70000);
+  it("gives a captured shell call the dialect of the shell this build said it runs", (context) => {
+    if (toolsShellDialects === undefined) return context.skip("the tools drive did not run");
+    const expectation = openCodeShellDialectExpectation();
+    if ("skip" in expectation) return context.skip(expectation.skip);
+    expectOpenCodeShellDialect(toolsShellDialects, expectation.dialect);
+  });
   it("loads a scoped npm coordinate from a read-only registry", async () => {
     const driver = fileURLToPath(new URL("../../../.capture/opencode-v2/drive.mjs", import.meta.url));
     const result = await runProcess(process.execPath, ["--experimental-strip-types", driver, "package-registry"], {

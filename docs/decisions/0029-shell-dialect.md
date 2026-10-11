@@ -22,17 +22,20 @@ Captures on Windows, macOS and Linux (`.capture/shell-dialects`) established
 what each harness does and what it tells a hook:
 
 - **Claude Code** has one tool per family. `Bash` ran bash or zsh on all three
-  platforms, including on hosts whose `SHELL` or `CLAUDE_CODE_SHELL` named fish
-  or tcsh, where it fell back to one of the two. `PowerShell` ran Windows
-  PowerShell or PowerShell 7 depending on what `PATH` resolved. The tool name is
-  in the hook payload.
+  platforms. That held on Linux where `SHELL` named fish or tcsh or was unset,
+  and where `CLAUDE_CODE_SHELL` named fish, tcsh or PowerShell; and on Windows
+  with Git taken off `PATH` and with its Git Bash path variable naming a missing
+  file, `cmd.exe` or `powershell.exe`. `PowerShell` ran Windows PowerShell or
+  PowerShell 7 depending on what `PATH` resolved. The tool name is in the hook
+  payload.
 - **OpenCode** picks the interpreter from the host: its `shell` configuration
   key, then `SHELL`, then what `PATH` resolves. One tool name ran PowerShell,
   Git Bash, cmd and tcsh, and its tool hooks carried nothing about the choice.
   But both generations state the shell's name to the model in the tool's
   description, and a plugin receives that text before the call: on 1.x through
   the `tool.definition` hook, on 2.x through the `context` hook. The stated name
-  was the interpreter that ran in every captured case.
+  was the interpreter that ran in every case that captured it, all on Windows
+  and Linux; the macOS session predates the statement probes.
 - **Codex** lets the model select the interpreter per call and does not pass
   the selector to the hook. Identical payloads ran PowerShell and cmd on
   Windows, and bash, zsh, dash and PowerShell on Linux.
@@ -77,14 +80,17 @@ ran both under identical input. OpenCode's statement names the exact shell.
    wording exactly, as a line or sentence of its own, and anything else yields
    no name; so does a description that names two different shells. Each new
    statement replaces the last, so a description that stops naming a shell
-   clears it. The
-   playback lanes assert that a shell call carries a dialect on the real
-   binary, which is what notices a reworded build.
+   clears it. The playback lanes assert, in a test of their own, that a shell
+   call carries a dialect on the real binary, which is what notices a reworded
+   build. They assert it only on a host whose shell the adapter maps: on any
+   other, a call without a dialect is correct.
 7. **A rewrite keeps the dialect.** `updateShell` and `replaceInput` re-derive
    the view from the new input (ADR-0007 decision 6). Where the codec states a
-   dialect, that is the new one. Where it does not, the dialect the adapter
-   established is carried over: it describes the tool and its host, not the
-   input. An input that no longer classifies drops the whole view.
+   dialect, that is the new one. Where it does not, the view gets the dialect
+   the adapter established for the event: the one its shim hands dispatch
+   (`shellDialect`), or failing that the one the view arrived with. It describes
+   the tool and its host, not the input, so it also reaches a view that only a
+   rewrite creates. An input that no longer classifies drops the whole view.
 8. **`updateShell` stays dialect-blind.** It lowers the command under the
    tool's native key and does not quote or translate. The hook writes a command
    in the dialect it read.
@@ -92,14 +98,29 @@ ran both under identical input. OpenCode's statement names the exact shell.
    carry `shell: { "dialect": … }` and nothing else of the view. The target's
    classifier decides whether it applies, so the event is refused if the target
    would give that call a different dialect or none (ADR-0023: a test cannot
-   hand a hook an event its harness never would). Without it an OpenCode event
-   carries no dialect, as when the harness has stated nothing.
-10. **No capability and no field rating.** Whether a dialect is present depends
-    on the individual call and host, like the views themselves (ADR-0007
-    decision 4, ADR-0026 decision 7).
+   hand a hook an event its harness never would). On a target that hears a
+   statement, a shell call whose input has no view yet keeps the stated dialect
+   for a rewrite to use. Without it an OpenCode event carries no dialect, as
+   when the harness has stated nothing.
+10. **No capability and no field rating; the adapter declares its source.**
+    Whether a dialect is present depends on the individual call and host, like
+    the views themselves (ADR-0007 decision 4, ADR-0026 decision 7), so no
+    matrix can rate it. Each adapter instead declares `shellDialect`: `tool`,
+    `statement` or `none`, with a rationale and evidence. `hooknostic inspect`
+    prints it, the generated support page lists it, and the contract suite
+    holds the adapter's shape table and classifier to it, so "why is there no
+    dialect here" has an answer a user can quote.
 
 ## What stays unknown
 
+- **Claude Code's `Bash` on a Windows host without Git for Windows.** Every
+  Windows capture had it installed, and Claude Code found it at its install
+  location whatever the host's variables said. If a host without it still
+  offers `Bash` and runs it through another shell, `posix` would be wrong
+  there, not absent.
+- **What OpenCode states on macOS.** No macOS session recorded the statement.
+  A build that words it differently there reports no dialect, which is the
+  safe direction, but nothing here predicts it.
 - **Every Codex shell call.** No captured hook input names the interpreter. The
   session transcript held the pending call's selector, under the hook's
   `tool_use_id`, when PreToolUse ran in every direct-mode capture. It is not a

@@ -33,10 +33,11 @@ export const CLAUDE_TOOL_KINDS: Record<string, ToolKind> = {
  * key.
  *
  * Each tool pins a grammar family (ADR-0029, `.capture/shell-dialects`): `Bash`
- * ran bash or zsh on Windows, macOS and Linux, including where the host named
- * fish or tcsh as its shell; `PowerShell` ran Windows PowerShell or PowerShell 7
- * depending on what `PATH` resolved, under identical hook input. So the dialect
- * is a family, and the tool name is what establishes it.
+ * ran bash or zsh on Windows, macOS and Linux, including where the host pointed
+ * it at fish, tcsh, PowerShell or cmd; `PowerShell` ran Windows PowerShell or
+ * PowerShell 7 depending on what `PATH` resolved, under identical hook input.
+ * So the dialect is a family, and the tool name is what establishes it. One
+ * host has no capture: Windows without Git for Windows installed.
  */
 export const CLAUDE_SHELL_SHAPES: ShellShapes = {
   Bash: { commandKey: "command", dialect: "posix" },

@@ -46,8 +46,15 @@ describe("the shell OpenCode states", () => {
     // The parsers are held to the evidence they exist for: a pattern that
     // stops reading a statement these builds made is a regression, and one
     // that reads a different name than the interpreter is a wrong dialect.
-    // Both generations, or the loop below would pass by checking nothing.
-    expect([...new Set(OBSERVED.map(({ entry }) => entry.harness))].sort()).toEqual(["opencode-v1", "opencode-v2"]);
+    // Each generation must still be seen stating and running every shell the
+    // adapter maps, and the one it deliberately does not: a re-promotion that
+    // lost cases would otherwise leave the loop below checking less, in silence.
+    for (const harness of ["opencode-v1", "opencode-v2"]) {
+      const ran = new Set(
+        OBSERVED.filter(({ entry }) => entry.harness === harness).map(({ entry }) => interpreterName(entry)),
+      );
+      expect([...ran].sort(), harness).toEqual(["bash", "cmd", "powershell", "pwsh", "tcsh", "zsh"]);
+    }
     for (const { file, entry } of OBSERVED) {
       const read = entry.harness === "opencode-v1" ? statedShellV1 : statedShellV2;
       expect(read(entry.reported!.statement), `${file} ${entry.harness} ${entry.case}`).toBe(interpreterName(entry));

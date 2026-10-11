@@ -255,11 +255,20 @@ describe("hooknostic dispatch", () => {
   });
 
   const DIALECT_HOOKS = `
-import { block, definePlugin, hook } from "@hooknostic/sdk";
+import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
 
 export default definePlugin({
   name: "dialect-fixture",
   hooks: [
+    // Gives a call whose input has no shell view one, as a normalizing hook might.
+    hook("tool.before", {
+      id: "fill",
+      match: { kind: "shell" },
+      capabilities: { "tool.before.input.replace": "required" },
+      run(event) {
+        if (event.tool.shell === undefined) return replaceInput({ command: "ls" });
+      },
+    }),
     hook("tool.before", {
       id: "dialect",
       match: { kind: "shell" },
@@ -334,6 +343,38 @@ export default definePlugin({
     );
     expect(await refusal("opencode", stating("bash", {}))).toBe(derived);
     expect(await refusal("opencode", stating("bash", "cmd"))).toBe(derived);
+  });
+
+  it("keeps a stated dialect for a shell call whose view only a rewrite creates", async () => {
+    // OpenCode states its shell before the call, whatever the call's arguments
+    // turn out to be. Where the tool pins the dialect or nothing establishes
+    // one, a call with no view has none to state.
+    const dir = await project(DIALECT_HOOKS);
+    const viewless = (nativeName: string, dialect: string) => ({
+      event: "tool.before",
+      tool: { nativeName, input: { script: "ls" }, shell: { dialect } },
+    });
+    const [result] = await dispatched(dir, "opencode", [viewless("bash", "cmd")]);
+    expect(result!.effects.map((entry) => entry.effect)).toEqual([
+      { kind: "replaceInput", input: { command: "ls" } },
+      { kind: "block", reason: "cmd" },
+    ]);
+    for (const [target, nativeName] of [
+      ["claude", "Bash"],
+      ["codex", "Bash"],
+      ["opencode", "read"],
+    ] as const) {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events: [viewless(nativeName, "posix")],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      expect(outcome.ok ? "accepted" : outcome.errors.join("; "), target).toBe(
+        `event 1: tool.shell.dialect "posix" is not what the ${target} target would give ${nativeName}: it has no shell view; omit it`,
+      );
+    }
   });
 
   it("refuses a field the target's decoder never produces, and admits one it derives", async () => {

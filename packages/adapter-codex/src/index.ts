@@ -117,6 +117,14 @@ export function codexAdapter(): HarnessAdapter {
     fileCodec: codexFileCodec,
     fileShapes: CODEX_FILE_SHAPES,
     classifyTool: classifyCodexTool,
+    shellDialect: {
+      source: "none",
+      rationale:
+        "The model selects the interpreter per call and no hook input carries the selector: identical " +
+        "Bash payloads ran PowerShell and cmd on Windows, and bash, zsh, dash and PowerShell on Linux. A hook " +
+        "meets the unknown case on every shell call (upstream openai/codex#44836).",
+      evidence: ".capture/shell-dialects",
+    },
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);

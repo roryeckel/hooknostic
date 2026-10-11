@@ -139,7 +139,7 @@ function completeEvent(
   value: unknown,
   adapter: HarnessAdapter,
   fieldMatrix: FieldMatrix,
-): { event: HookEvent } | { problem: string } {
+): { event: HookEvent; shellDialect?: ShellDialect } | { problem: string } {
   if (!isRecord(value)) return { problem: "an event must be a JSON object" };
   for (const key of ["harness", "session", "correlation", "tool"]) {
     if (value[key] !== undefined && !isRecord(value[key])) return { problem: `${key} must be an object` };
@@ -226,9 +226,13 @@ function completeEvent(
     tool["input"],
     dialect === undefined ? undefined : { shellDialect: dialect },
   );
+  // A shell call whose input has no view can still follow a statement: on a
+  // target that hears one, the dialect waits for a rewrite to make a view.
+  const awaitsView =
+    classified.shell === undefined && classified.kind === "shell" && adapter.shellDialect?.source === "statement";
   // The classifier decides whether a stated dialect applies, so one the target
   // would not report for this call is refused rather than silently dropped.
-  if (dialect !== undefined && classified.shell?.dialect !== dialect) {
+  if (dialect !== undefined && !awaitsView && classified.shell?.dialect !== dialect) {
     const actual =
       classified.shell === undefined
         ? "it has no shell view"
@@ -240,7 +244,7 @@ function completeEvent(
     };
   }
   event["tool"] = classified;
-  return { event: event as unknown as HookEvent };
+  return { event: event as unknown as HookEvent, ...(dialect === undefined ? {} : { shellDialect: dialect }) };
 }
 
 /**
@@ -274,11 +278,11 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     return { ok: false, errors: ["the configuration declares no entry, so there are no hooks to dispatch."] };
   }
 
-  const events: HookEvent[] = [];
+  const events: { event: HookEvent; shellDialect?: ShellDialect }[] = [];
   const problems: string[] = [];
   options.events.forEach((value, index) => {
     const completed = completeEvent(value, adapter, resolved.fields ?? {});
-    if ("event" in completed) events.push(completed.event);
+    if ("event" in completed) events.push(completed);
     else problems.push(`event ${index + 1}: ${completed.problem}`);
   });
   if (problems.length > 0) return { ok: false, errors: problems };
@@ -317,12 +321,17 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
       ...(pluginRoot === undefined ? {} : { plugin: { root: pluginRoot } }),
     };
     const results: DispatchResult[] = [];
-    for (const [index, event] of events.entries()) {
+    for (const [index, { event, shellDialect }] of events.entries()) {
       // A command harness starts a fresh process for every dispatch, so no
       // module state may carry between events there; an in-process one keeps a
       // single instance for its lifetime.
       const plugin = (index === 0 || adapter.shimExecution === "module" ? first : await load()) as PluginSpec;
-      const result = await dispatch(plugin.hooks, event, { ...common, harness: event.harness });
+      const result = await dispatch(plugin.hooks, event, {
+        ...common,
+        harness: event.harness,
+        // What a shim that heard the harness state its shell hands dispatch (ADR-0029).
+        ...(shellDialect === undefined ? {} : { shellDialect }),
+      });
       const native = await adapter.runtime.apply(result, event.raw, {
         targetId: adapter.id,
         ...(event.harness.version === undefined ? {} : { harnessVersion: event.harness.version }),

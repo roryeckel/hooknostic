@@ -153,9 +153,13 @@ function configuredCases(name) {
   if (process.platform === "linux") {
     const shells = ["zsh", "fish", "tcsh"];
     for (const shell of shells) if (!existsSync("/usr/bin/" + shell)) throw new Error("Install /usr/bin/" + shell);
+    // Claude's own override takes the same shells, and PowerShell where it is installed.
+    const overrides = [...shells, ...(existsSync("/usr/bin/pwsh") ? ["pwsh"] : [])];
     return [
+      // No SHELL at all is what a container gives a harness by default.
+      [tool + "-env-unset", { env: { SHELL: null }, set: "SHELL unset" }],
       ...shells.map((shell) => [tool + "-env-" + shell, { env: { SHELL: "/usr/bin/" + shell }, set: "SHELL names " + shell }]),
-      ...(harness === "claude" ? ["zsh", "fish"].map((shell) => [tool + "-claude-code-shell-" + shell,
+      ...(harness === "claude" ? overrides.map((shell) => [tool + "-claude-code-shell-" + shell,
         { env: { SHELL: "/bin/bash", CLAUDE_CODE_SHELL: "/usr/bin/" + shell }, set: "SHELL names bash, CLAUDE_CODE_SHELL names " + shell }]) : []),
     ];
   }
@@ -167,10 +171,24 @@ function configuredCases(name) {
   if (harness === "claude") {
     const enabled = { SHELL: null, CLAUDE_CODE_USE_POWERSHELL_TOOL: "1" };
     const set = "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=1";
+    // Whether Bash can be pointed away from Git Bash: its path variable naming
+    // something that is not a POSIX shell, or nothing, and Git taken off PATH.
+    const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+    const withoutGit = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry && !/[\\/]Git([\\/]|$)|mingw64/i.test(entry)).join(delimiter);
+    const elsewhere = [
+      ["missing", join(system, "hooknostic-missing", "bash.exe"), "a missing file"],
+      ["cmd", join(system, "cmd.exe"), "cmd.exe"],
+      ["powershell", join(system, "WindowsPowerShell", "v1.0", "powershell.exe"), "powershell.exe"],
+    ];
     return [
       [tool + "-opted-in", { env: enabled, set }],
       ...(name === "PowerShell" && withPwsh
         ? [[tool + "-opted-in-pwsh-on-path", { env: { ...enabled, PATH: withPwsh }, set: set + ", pwsh.exe first on PATH" }]] : []),
+      ...(name === "Bash" ? [
+        ...elsewhere.map(([label, path, described]) => [tool + "-git-bash-path-" + label,
+          { env: { SHELL: null, CLAUDE_CODE_GIT_BASH_PATH: path }, set: "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names " + described }]),
+        [tool + "-git-off-path", { env: { SHELL: null, PATH: withoutGit }, set: "SHELL unset, Git for Windows removed from PATH" }],
+      ] : []),
     ];
   }
   return [

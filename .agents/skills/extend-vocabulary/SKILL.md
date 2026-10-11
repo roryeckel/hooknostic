@@ -89,6 +89,12 @@ host configurations that could change it (`.capture/shell-dialects`).
   a dialect: it is what notices reworded prose.
 - **Neither**: leave it absent. Never derive it from the platform or an
   environment variable.
+- **Always**: declare which of the three it is in the adapter's
+  `shellDialect` (`tool`, `statement`, `none`, with a rationale). `inspect`
+  and the generated support page print it and the contract suite holds the
+  table and classifier to it. A shim that hears a statement also passes the
+  dialect to `dispatch()` as `shellDialect`, or a view that a rewrite creates
+  has none.
 - **A new family**: `SHELL_DIALECTS` in `tools.ts` (the schema twin derives
   from it), the name map, and the three places docs list the values
   (`design.md` §6.3, `concepts.md`, `writing-hooks-safely.md`).

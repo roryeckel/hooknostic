@@ -4875,12 +4875,11 @@ function createCapabilitySet(levels) {
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, options2) {
-  const dialect = tool.shell?.dialect;
+function setToolInput(tool, input, options2, established) {
   tool.input = input;
   const shell = options2.shellCodec?.classify(tool.nativeName, input);
   if (shell !== void 0)
-    tool.shell = shell.dialect === void 0 && dialect !== void 0 ? { ...shell, dialect } : shell;
+    tool.shell = shell.dialect === void 0 && established !== void 0 ? { ...shell, dialect: established } : shell;
   else delete tool.shell;
   const file = options2.fileCodec?.classify(tool.nativeName, input);
   if (file !== void 0) tool.file = file;
@@ -4916,6 +4915,7 @@ async function dispatch(hooks, event, options2) {
   };
   let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
   let notifyBudget = typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0 ? policy.notifyCharLimit : DEFAULT_RUNTIME.notifyCharLimit;
+  const establishedDialect = options2.shellDialect ?? toolOf(event)?.shell?.dialect;
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options2.targetId)) return false;
@@ -5023,14 +5023,14 @@ async function dispatch(hooks, event, options2) {
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options2);
+        if (tool) setToolInput(tool, effect.input, options2, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options2);
+        setToolInput(tool, loweredShellInput, options2, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5452,6 +5452,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
   const run = async (hook2, native, modelRequest = false, execution) => {
     let event;
     const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : void 0;
+    const shellDialect = dialectOfStatedShell(shell);
     try {
       event = decodeOpenCodeV2(
         { hook: hook2, directory: ctx.location.directory, event: native },
@@ -5469,6 +5470,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       harness: event.harness,
       capabilities: options2.capabilities,
       shellCodec: opencodeV2ShellCodec,
+      ...shellDialect !== void 0 ? { shellDialect } : {},
       fileCodec: opencodeV2FileCodec,
       ...options2.policy ? { policy: options2.policy } : {},
       ...options2.minimumCapabilityLevel ? { minimumCapabilityLevel: options2.minimumCapabilityLevel } : {},

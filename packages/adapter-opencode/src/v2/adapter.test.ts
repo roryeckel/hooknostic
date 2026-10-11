@@ -275,6 +275,50 @@ describe("v2 captured boundary", () => {
       expect(seen).toEqual(["powershell", undefined, undefined, undefined]);
     });
 
+    it("reaches a view that a rewrite creates", async () => {
+      // The call arrives with an input that has no shell view, so the decoder
+      // has nothing to attach the dialect to; dispatch must still know it when
+      // a hook's rewrite produces the first view.
+      const seen: unknown[] = [];
+      const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+      const register = async (name: string, fn: (event: Record<string, unknown>) => Promise<void>) => {
+        callbacks[name] = fn;
+        return { dispose: async () => {} };
+      };
+      const cleanup = await setupOpenCodeV2(
+        definePlugin({
+          name: "late-view",
+          hooks: [
+            hook("tool.before", {
+              id: "fill",
+              capabilities: { "tool.before.input.replace": "required" },
+              run(event) {
+                seen.push(event.tool.shell?.dialect);
+                return replaceInput({ command: "ls" });
+              },
+            }),
+            hook("tool.before", {
+              id: "read",
+              run(event) {
+                seen.push(event.tool.shell?.dialect);
+              },
+            }),
+          ],
+        }),
+        { capabilities: { "tool.before.observe": "exact", "tool.before.input.replace": "exact" } },
+        {
+          location: { directory: "." },
+          session: { hook: register },
+          tool: { hook: register },
+          event: { async *subscribe() {} },
+        },
+      );
+      await callbacks["context"]!(context("one", "zsh"));
+      await callbacks["execute.before"]!({ tool: "shell", sessionID: "one", id: "call", input: { script: "ls" } });
+      await cleanup();
+      expect(seen).toEqual([undefined, "posix"]);
+    });
+
     it("fails open, and to unknown, when the request's tools cannot be read", async () => {
       // The listener sits in the host's model-request path: throwing there would
       // fail the request over a dialect, and keeping the old one would be stale.

@@ -125,7 +125,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           date: "2026-10-10",
           method: "live-probe",
           artifact: ".capture/shell-dialects",
-          what: "Linux container shell interpreter probe: the shell tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish; the context hook stated each by name before the call, and shell.created carried its path after.",
+          what: "Linux container shell interpreter probe: the shell tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the context hook stated each by name before the call, and shell.created carried its path after.",
         },
         {
           version: "2.0.20",

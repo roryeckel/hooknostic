@@ -210,6 +210,36 @@ All commands run in the cwd.`,
       expect(seen).toEqual(["posix", "posix", "posix", "posix", "posix", undefined]);
     });
 
+    it("reaches a view that a rewrite creates", async () => {
+      // The call arrives with arguments that have no shell view, so the decoder
+      // has nothing to attach the dialect to; dispatch must still know it when
+      // a hook's rewrite produces the first view.
+      const seen: unknown[] = [];
+      const plugin = definePlugin({
+        name: "late-view",
+        hooks: [
+          hook("tool.before", {
+            id: "fill",
+            capabilities: { "tool.before.input.replace": "required" },
+            async run(event) {
+              seen.push(event.tool.shell?.dialect);
+              return replaceInput({ command: "ls" });
+            },
+          }),
+          hook("tool.before", {
+            id: "read",
+            async run(event) {
+              seen.push(event.tool.shell?.dialect);
+            },
+          }),
+        ],
+      });
+      const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT);
+      await h["tool.definition"]!({ toolID: "bash" }, definition("pwsh"));
+      await h["tool.execute.before"]!({ tool: "bash", sessionID: "s", callID: "c" }, { args: { script: "ls" } });
+      expect(seen).toEqual([undefined, "powershell"]);
+    });
+
     it("fails open, and to unknown, when the definition cannot be read", async () => {
       // The listener sits in the host's tool-listing path: throwing there would
       // break the session over a dialect, and keeping the old one would be stale.

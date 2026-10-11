@@ -178,7 +178,7 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-10-10",
           method: "live-probe",
           artifact: ".capture/shell-dialects",
-          what: "Linux container shell interpreter probe: identical Bash/command payloads ran bash, zsh, dash and PowerShell 7 by per-call selector, and the default did not follow SHELL, so no shell dialect is established (ADR-0029). The transcript file held the pending call's selector when PreToolUse ran; that is not a hook payload.",
+          what: "Linux container shell interpreter probe: identical Bash/command payloads ran bash, zsh, dash and PowerShell 7 by per-call selector, and the default did not follow SHELL (unset, or naming zsh, fish or tcsh), so no shell dialect is established (ADR-0029). The transcript file held the pending call's selector when PreToolUse ran; that is not a hook payload.",
         },
         {
           version: "0.156.1",

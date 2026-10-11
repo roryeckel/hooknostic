@@ -53,11 +53,12 @@ event does not declare is rejected, so a misspelling fails instead of being
 ignored.
 
 **Tool events** (`tool.before`, `tool.after`, `tool.error`, `permission.request`)
-need a `tool` holding only `nativeName` and `input`. Other events refuse one.
+need a `tool` holding `nativeName` and `input`. Other events refuse one.
 These are the harness's own tool name and arguments: Claude's `Bash` takes
 `command`, while Codex's `exec_command` takes `cmd`. Dispatch classifies the
 call the way that target's decoder does and fills in `kind`, `mcp` and `shell`
-itself. An event that supplies any of the three is rejected. So Claude's
+itself. An event that supplies any of the three is rejected, with the one
+exception described next. So Claude's
 `Write` is a file write however its input looks, and an input the classifier
 does not recognize leaves `tool.shell` absent, exactly as in a real session.
 
@@ -74,7 +75,8 @@ harness would have stated:
 whether it applies, and an event is refused if the target would give that call a
 different dialect or none: Claude's `Bash` is always `posix`, and Codex never
 establishes one, so a hook's unknown-dialect branch is what a Codex event
-exercises.
+exercises. `hooknostic inspect <target>` says where each target's dialect comes
+from.
 
 ## Results
 

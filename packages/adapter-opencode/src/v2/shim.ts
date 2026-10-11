@@ -3,7 +3,7 @@ import type { HookEvent, PluginSpec } from "@hooknostic/sdk";
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 
 import { withTimeout } from "../bounded-post.js";
-import { statedShellV2 } from "../shell-statement.js";
+import { dialectOfStatedShell, statedShellV2 } from "../shell-statement.js";
 import type { OpenCodeShimOptions } from "../shim.js";
 import type { OpenCodeV2Application } from "./apply.js";
 import { planOpenCodeV2Application } from "./apply.js";
@@ -131,6 +131,9 @@ export async function setupOpenCodeV2(
   ) => {
     let event: HookEvent;
     const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : undefined;
+    // Also given to dispatch, which re-derives the view after a rewrite and
+    // could not otherwise know a dialect the first input had no view to carry.
+    const shellDialect = dialectOfStatedShell(shell);
     try {
       event = decodeOpenCodeV2(
         { hook, directory: ctx.location.directory, event: native },
@@ -148,6 +151,7 @@ export async function setupOpenCodeV2(
       harness: event.harness,
       capabilities: options.capabilities,
       shellCodec: opencodeV2ShellCodec,
+      ...(shellDialect !== undefined ? { shellDialect } : {}),
       fileCodec: opencodeV2FileCodec,
       ...(options.policy ? { policy: options.policy } : {}),
       ...(options.minimumCapabilityLevel ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {}),

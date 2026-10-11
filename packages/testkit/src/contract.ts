@@ -256,6 +256,30 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       }
     });
 
+    it("holds its tables and classifier to the shell dialect source it declares", () => {
+      // ADR-0029: `inspect` and the generated support page print this
+      // declaration, so it has to be true of the code. Each shell-bearing
+      // fixture is re-classified with a dialect it does not record, to see
+      // whether the adapter takes one from what the harness reports.
+      const shellTools = fixtureNames
+        .map((name) => loadFixtureFrom<{ tool?: ToolInvocation }>(join(options.fixturesDir, name)).tool)
+        .filter((tool): tool is ToolInvocation => tool?.shell !== undefined);
+      if (shellTools.length === 0 && adapter.shellShapes === undefined) return;
+      const declared = adapter.shellDialect;
+      expect(declared, "an adapter with shell tools declares where their dialect comes from").toBeDefined();
+      expect(declared!.rationale, "shellDialect needs a rationale").toBeTruthy();
+      expect(declared!.evidence, "shellDialect needs evidence").toBeTruthy();
+      const pins = Object.values(adapter.shellShapes ?? {}).some((shape) => shape.dialect !== undefined);
+      const hears = shellTools.some((tool) => {
+        const other = SHELL_DIALECTS.find((dialect) => dialect !== tool.shell!.dialect)!;
+        return adapter.classifyTool?.(tool.nativeName, tool.input, { shellDialect: other }).shell?.dialect === other;
+      });
+      expect({ pins, hears }, `declared source "${declared!.source}"`).toEqual({
+        pins: declared!.source === "tool",
+        hears: declared!.source === "statement",
+      });
+    });
+
     it("backs every shell shape table entry with a fixture", () => {
       // Coverage from the TABLE side. The round-trip obligation above iterates
       // fixtures, so a new ShellShapes entry shipped without a shell-bearing

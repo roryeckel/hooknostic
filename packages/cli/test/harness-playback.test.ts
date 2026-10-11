@@ -28,6 +28,7 @@ import {
   buildPlaybackArtifact,
   expectOpenCodeShellDialect,
   openCodePlaybackConfigHome,
+  openCodeShellDialectExpectation,
   playbackModelInfo,
   type PlaybackScenario,
   prepareOpenCodePluginDependency,
@@ -47,6 +48,8 @@ const adapter =
       ? undefined
       : defaultAdapterRegistry()[selected];
 const tempDirs: string[] = [];
+/** The shell calls' dialects from the lifecycle scenario's trace, once it has run. */
+let lifecycleShellDialects: unknown[] | undefined;
 
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
 const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", import.meta.url));
@@ -2328,15 +2331,11 @@ scenarioDrive("lifecycle-observe", async () => {
     turnId: prompt?.turnId,
   });
 
-  // ADR-0029: the grammar of the shell call, as far as each harness lets an
-  // adapter establish it before the call runs.
-  const dialects = trace
+  // Kept for the dialect test below rather than asserted here: this scenario
+  // stands for every observable event, and the dialect is none of them.
+  lifecycleShellDialects = trace
     .filter((entry) => entry.event === "tool.before" && entry.toolKind === "shell")
     .map((entry) => entry.shellDialect);
-  if (adapter!.id === "opencode") expectOpenCodeShellDialect(dialects);
-  // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
-  else expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
-  expect(dialects.length).toBeGreaterThan(0);
 });
 
 scenarioDrive("tool-before-block", async () => {
@@ -3215,5 +3214,43 @@ describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${se
     if (entry === undefined) continue;
     const skipReason = scenarioSkipReason(scenario, entry);
     it(scenario.title, { timeout: 240_000, skip: skipReason !== undefined }, entry.drive);
+  }
+
+  // ADR-0029, and a test of its own: the dialect is not a capability, so a
+  // build that rewords what it states should fail here, attributably, and not
+  // take the lifecycle scenario and every observe cell with it.
+  it("gives the lifecycle shell call the dialect this harness lets the adapter establish", (context) => {
+    if (lifecycleShellDialects === undefined) return context.skip("the lifecycle scenario did not run");
+    const dialects = lifecycleShellDialects;
+    expect(dialects.length, "no shell tool.before reached the trace").toBeGreaterThan(0);
+    if (adapter!.id === "opencode") {
+      const expectation = openCodeShellDialectExpectation();
+      if ("skip" in expectation) return context.skip(expectation.skip);
+      return expectOpenCodeShellDialect(dialects, expectation.dialect);
+    }
+    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
+    expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
+  });
+});
+
+it("expects an OpenCode dialect only where a capture says which one", () => {
+  // The lane's own judgement, pinned: asserting a dialect on a host whose shell
+  // the adapter leaves unmapped would blame the harness for the host.
+  const on = (platform: string, shell?: string) =>
+    openCodeShellDialectExpectation(shell === undefined ? {} : { SHELL: shell }, platform);
+  expect(on("linux", "/bin/bash")).toEqual({ dialect: "posix" });
+  expect(on("darwin", "/bin/zsh")).toEqual({ dialect: "posix" });
+  expect(on("win32", "C:\\Program Files\\Git\\bin\\bash.exe")).toEqual({ dialect: "posix" });
+  expect(on("win32", "C:\\Program Files\\PowerShell\\7\\PWSH.EXE")).toEqual({ dialect: "powershell" });
+  expect(on("win32")).toEqual({ dialect: "powershell" });
+  expect(on("linux")).toEqual({ dialect: "posix" });
+  expect(on("linux", "")).toEqual({ dialect: "posix" });
+  for (const [platform, shell] of [
+    ["linux", "/bin/sh"],
+    ["linux", "/usr/bin/tcsh"],
+    ["linux", "/usr/bin/fish"],
+    ["darwin", undefined],
+  ] as const) {
+    expect(on(platform, shell), `${platform} ${String(shell)}`).toEqual({ skip: expect.any(String) });
   }
 });

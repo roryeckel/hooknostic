@@ -161,6 +161,9 @@ edition, so a hook cannot assume a PowerShell 7 operator such as `&&`.
 | OpenCode | Set once the harness has stated a shell this adapter maps: bash, zsh, powershell, pwsh or cmd. Absent before that, and for any other shell |
 | Codex | Never set: the model picks the interpreter per call, and no hook input says which |
 
+`hooknostic inspect <target>` prints the same answer for one target, with the
+adapter's reason and its evidence.
+
 **Absent means unknown, not POSIX.** Make that case a decision, as with an absent
 view:
 

@@ -48,6 +48,7 @@ export type { OpenCodeNativeEvent } from "./decode.js";
 export { generateOpenCodeArtifacts } from "./generate.js";
 export { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
+export { dialectOfStatedShell } from "./shell-statement.js";
 export { createHooknosticHooks } from "./shim.js";
 export type { OpenCodeHooks, OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
 export {
@@ -125,6 +126,15 @@ export function opencodeV1Adapter(): HarnessAdapter {
     fileCodec: opencodeFileCodec,
     fileShapes: OPENCODE_FILE_SHAPES,
     classifyTool: classifyOpenCodeTool,
+    shellDialect: {
+      source: "statement",
+      rationale:
+        "From the shell the harness states in its bash tool description before a call (tool.definition hook): " +
+        "posix for bash and zsh, powershell for powershell and pwsh, cmd for cmd. Absent until a statement is " +
+        "heard, for any other shell (the host's shell setting, SHELL and PATH choose it), and on a build that " +
+        "words the statement differently.",
+      evidence: ".capture/shell-dialects",
+    },
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);

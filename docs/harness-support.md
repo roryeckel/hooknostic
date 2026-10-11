@@ -36,6 +36,9 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.289 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 | 2.1.286 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: native Bash payload and executed Node process ancestry establish Git for Windows bash.exe for this configuration; PowerShell was not advertised by the discovery turn. |
 | 2.1.286 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured native Bash payload and executed Node process ancestry establish /bin/bash for this GitHub runner configuration; PowerShell was not advertised by discovery. |
+| 2.1.238 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the reference build: the Bash tool ran Git for Windows bash.exe. |
+| 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: Bash ran bash or zsh in nine host configurations: SHELL unset or naming bash, zsh, fish or tcsh, and CLAUDE_CODE_SHELL naming zsh, fish, tcsh or pwsh. Where the shell named was neither bash nor zsh it ran one of those two. |
+| 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); a Windows host without Git for Windows installed has no capture. |
 
 #### Optional event fields
 
@@ -110,6 +113,11 @@ Project delivery validation records:
 
 Project support is independent of package projection.
 
+#### Shell dialect
+
+`tool.shell.dialect` is established from **the tool name**. Set on every shell view: Bash is posix and PowerShell is powershell. Each tool ran only shells of its family in every captured host configuration, so the tool name establishes it; the family, not the interpreter (Bash ran bash and zsh, PowerShell both editions). A Windows host without Git for Windows has no capture.
+Evidence: `.capture/shell-dialects`.
+
 #### Agent Plugin projection
 
 | Component | Support | Rationale |
@@ -175,6 +183,8 @@ Projection validation records:
 | 0.160.0 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 | 0.156.1 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: identical commands ran through bundled pwsh.exe and cmd.exe, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector. |
 | 0.156.1 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: identical commands ran through /bin/bash and /bin/zsh, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector. |
+| 0.156.1 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: identical Bash/command payloads ran bash, zsh, dash and PowerShell 7 by per-call selector, and the default did not follow SHELL (unset, or naming zsh, fish or tcsh), so no shell dialect is established (ADR-0029). The transcript file held the pending call's selector when PreToolUse ran; that is not a hook payload. |
+| 0.156.1 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter recapture: the default and the powershell.exe selector ran Windows powershell.exe and the cmd.exe selector ran cmd.exe, under identical PreToolUse input. |
 
 #### Optional event fields
 
@@ -236,6 +246,11 @@ Project delivery validation records:
 | 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-project-mcp` | A variable set in Codex's environment but not listed in env_vars does not reach a project stdio server (undeclaredEnvVar), so the projector lists every variable the launcher expands. |
 
 Project support is independent of package projection.
+
+#### Shell dialect
+
+`tool.shell.dialect` is **not established** on this harness. The model selects the interpreter per call and no hook input carries the selector: identical Bash payloads ran PowerShell and cmd on Windows, and bash, zsh, dash and PowerShell on Linux. A hook meets the unknown case on every shell call (upstream openai/codex#44836).
+Evidence: `.capture/shell-dialects`.
 
 #### Agent Plugin projection
 
@@ -333,6 +348,11 @@ Projection validation records:
 | 1.18.34 | 2026-10-04 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 | 1.18.34 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: tool.execute.before bash payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
 | 1.18.34 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured tool.execute.before bash payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration. |
+| 1.18.34 | 2026-10-10 | captured | `fixtures/opencode/1.18` | tool-before-shell-cmd and tool-before-shell-tcsh: tool.execute.before payloads from sessions whose tool.definition hook stated the bash tool's shell, cmd on Windows and tcsh on Linux. Pins the stated shell as the source of tool.shell.dialect, and tcsh as a shell with none (ADR-0029). |
+| 1.18.0 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the floor of the recommended range: the bash tool.definition description stated Shell: powershell before the call, and powershell.exe ran. |
+| 1.18.18 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the reference build: the bash tool.definition description stated Shell: powershell before the call, and powershell.exe ran. |
+| 1.18.34 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: the bash tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the tool.definition hook stated each by name before the call. |
+| 1.18.34 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: one bash tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical tool.execute.before input, and the tool.definition hook stated each shell by name before the call. |
 
 #### Optional event fields
 
@@ -375,6 +395,11 @@ Project delivery validation records:
 | 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
 
 Project support is independent of package projection.
+
+#### Shell dialect
+
+`tool.shell.dialect` is established from **what the harness states**. From the shell the harness states in its bash tool description before a call (tool.definition hook): posix for bash and zsh, powershell for powershell and pwsh, cmd for cmd. Absent until a statement is heard, for any other shell (the host's shell setting, SHELL and PATH choose it), and on a build that words the statement differently.
+Evidence: `.capture/shell-dialects`.
 
 #### Agent Plugin projection
 
@@ -437,6 +462,10 @@ Projection validation records:
 | 2.0.23 | 2026-10-05 | live-probe | `.capture/harness-playback` | scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified |
 | 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: execute.before shell payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration. |
 | 2.0.20 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured execute.before shell payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration. |
+| 2.0.20 | 2026-10-10 | captured | `fixtures/opencode/2.0` | tool-before-shell-cmd and tool-before-shell-tcsh: execute.before payloads from sessions whose context hook stated the shell tool's shell, cmd on Windows and tcsh on Linux. Pins the stated shell as the source of tool.shell.dialect, and tcsh as a shell with none (ADR-0029). |
+| 2.0.17 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the reference build: the context hook's shell tool description stated powershell before the call, and powershell.exe ran. |
+| 2.0.20 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: the shell tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the context hook stated each by name before the call, and shell.created carried its path after. |
+| 2.0.20 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: one shell tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical execute.before input, and the context hook stated each shell by name before the call. |
 | 2.0.22 | 2026-10-04 | captured | `fixtures/opencode/2.0/context-max-tokens.input.json` | Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed. |
 
 #### Optional event fields
@@ -485,6 +514,11 @@ Project delivery validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session. |
 
 Project support is independent of package projection.
+
+#### Shell dialect
+
+`tool.shell.dialect` is established from **what the harness states**. From the shell the harness states in its shell tool description before a call (context hook): posix for bash and zsh, powershell for powershell and pwsh, cmd for cmd. Absent until a statement is heard for the session, for any other shell (the host's shell setting, SHELL and PATH choose it), and on a build that words the statement differently.
+Evidence: `.capture/shell-dialects`.
 
 #### Agent Plugin projection
 
