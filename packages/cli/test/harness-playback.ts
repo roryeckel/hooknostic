@@ -47,7 +47,10 @@ export interface ModelPlayback {
   requests: unknown[];
   errors: string[];
   urls: string[];
-  /** How many agent turns (model requests carrying tools) have been served. */
+  /**
+   * How many agent turns (model requests carrying tools) have been served. A
+   * request answered by waiting for a connecting MCP server is not one.
+   */
   readonly turnCount: number;
   close(): Promise<void>;
 }
@@ -680,6 +683,42 @@ function scriptedShellCommand(scenario: PlaybackScenario, marker: string): strin
   return `node -e "${scriptedNodeScript(scenario, marker)}"`;
 }
 
+/** The advertised tool a script step names: its exact name, or a name ending in it. */
+function namedTool(tools: Record<string, unknown>[], name: string): Record<string, unknown> | undefined {
+  // Exact name first: a bare suffix match would resolve `Edit` to whichever of
+  // `Edit`, `MultiEdit` or `NotebookEdit` the harness happened to list first.
+  return (
+    tools.find((candidate) => toolName(candidate) === name) ??
+    tools.find((candidate) => toolName(candidate)?.endsWith(name))
+  );
+}
+
+/**
+ * Claude Code's tool for waiting on MCP servers that are still connecting. On
+ * 2.1.295 and 2.1.296 a `-p` run sent its first request before a plugin's
+ * stdio server had connected: the request listed this tool and the tools of
+ * the servers that had connected, and not the stdio server's. Called with no
+ * arguments it waits for every pending server, and the next request lists
+ * their tools (.capture/harness-playback).
+ */
+const PENDING_SERVERS_TOOL = "WaitForMcpServers";
+/** Waits one script step gets before its missing tool is reported as missing. */
+const PENDING_SERVER_WAITS = 2;
+
+/**
+ * True when a step names a tool the request does not list yet, and the request
+ * offers the harness's own way to wait for it. A model would wait, so the
+ * playback does: failing here would report a slow server as a missing tool.
+ */
+function awaitsPendingServers(request: Record<string, unknown>, action: TurnAction): boolean {
+  if (action.kind !== "tool" || action.toolName === undefined) return false;
+  const tools = requestTools(request);
+  return (
+    namedTool(tools, action.toolName) === undefined &&
+    tools.some((candidate) => toolName(candidate) === PENDING_SERVERS_TOOL)
+  );
+}
+
 export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
@@ -688,11 +727,8 @@ export function scriptedTool(
   explicitArguments?: Record<string, unknown>,
 ): { name: string; namespace?: string; arguments: string } {
   const tools = requestTools(request);
-  // Exact name first: a bare suffix match would resolve `Edit` to whichever of
-  // `Edit`, `MultiEdit` or `NotebookEdit` the harness happened to list first.
   const tool = preferredTool
-    ? (tools.find((candidate) => toolName(candidate) === preferredTool) ??
-      tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool)))
+    ? namedTool(tools, preferredTool)
     : tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
   if (tool === undefined) {
     throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
@@ -1171,6 +1207,8 @@ export async function startModelPlayback(
   const errors: string[] = [];
   const urls: string[] = [];
   let turn = 0;
+  let waits = 0;
+  let stepWaits = 0;
   const sockets = new Set<Socket>();
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -1211,16 +1249,30 @@ export async function startModelPlayback(
         // Past the script's last turn the model keeps completing with text:
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
-        const action = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
+        const scripted = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
+        // A step whose tool belongs to a server still connecting waits for it
+        // and stays the next step: the wait is a turn to the harness, not to
+        // the script. Bounded, so a server that never connects is reported.
+        const waiting = isAgentTurn && stepWaits < PENDING_SERVER_WAITS && awaitsPendingServers(parsed, scripted);
+        if (waiting) {
+          turn -= 1;
+          stepWaits += 1;
+          waits += 1;
+        } else if (isAgentTurn) {
+          stepWaits = 0;
+        }
+        const action: TurnAction = waiting ? { kind: "tool", toolName: PENDING_SERVERS_TOOL, arguments: {} } : scripted;
         if (action.kind === "code" && protocol !== "openai-responses") {
           throw new Error(`Code Mode turns are only scripted for openai-responses, not ${protocol}`);
         }
+        // Counts the waits too, so no two calls of a session share an id.
+        const ordinal = turn + waits;
         if (protocol === "anthropic-messages") {
-          anthropicTurn(response, parsed, turn, action);
+          anthropicTurn(response, parsed, ordinal, action);
         } else if (protocol === "openai-responses") {
-          responsesTurn(response, parsed, turn, action);
+          responsesTurn(response, parsed, ordinal, action);
         } else {
-          chatTurn(response, parsed, turn, action);
+          chatTurn(response, parsed, ordinal, action);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

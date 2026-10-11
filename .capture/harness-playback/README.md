@@ -237,3 +237,42 @@ because of an inherited `CLAUDE_CODE_CHILD_SESSION`.
 With these changes, both pty scenarios passed on 2.1.238, installed from npm
 into an isolated directory, and on 2.1.283, run from inside a Claude session.
 Without the forced mode, 2.1.283 failed again as first reported.
+
+## MCP servers still connecting at the first request (2026-10-11)
+
+Claude Code 2.1.296 failed the projected-plugin scenario in the scheduled lane.
+The plugin declares a stdio, a Streamable HTTP and an SSE MCP server, and the
+script's first step calls the stdio server's tool. The first model request
+listed the two remote servers' tools and `WaitForMcpServers`, and not the stdio
+server's tool, so the playback had no tool to call and reported that the
+request exposed no usable one. It failed that way on each of three runs: on the
+Linux runner and on Windows on 2.1.296, and on Windows on 2.1.295. 2.1.289
+passed the scenario in the scheduled lane on 2026-10-04, and the reference
+build passes it.
+
+The request describes `WaitForMcpServers` as waiting for servers that are still
+connecting. Its one argument, `servers`, is optional, and a call without it
+waits for all of them. With that call made first, on 2.1.296 on Windows:
+
+| Request | Tools listed                                | Playback's call        | Result                                              |
+| ------- | ------------------------------------------- | ---------------------- | --------------------------------------------------- |
+| 1       | `WaitForMcpServers`, the HTTP and SSE tools | `WaitForMcpServers {}` | `ready: true`, naming the stdio server as connected |
+| 2       | the same, and the stdio server's tool       | the stdio tool         | the fixture's marker                                |
+
+The stdio process had received the plugin root, working directory and data
+directory, as on earlier builds. So this build still starts the server the
+projection declares; what changed is that the first request no longer waits
+for it.
+
+The drive changed in two ways:
+
+- The playback model answers a step whose named tool is not listed, in a
+  request that lists `WaitForMcpServers`, with that call and no arguments, and
+  the step stays next. A step gets two waits, after which its tool is reported
+  missing as before. A request that offers no way to wait is reported at once.
+- The scenario's `--max-turns` rose from 3 to 4, for the turn a wait takes.
+
+With these changes the Claude lane passed on 2.1.238 and on 2.1.296, each
+installed from npm into an isolated directory on Windows. Not established:
+whether an interactive session holds its first request for a connecting server,
+and what the tool returns for a server that fails to connect.
