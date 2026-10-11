@@ -18,7 +18,10 @@ describe("example configs", () => {
   it("target every adapter at its recommended range", async () => {
     const registry = defaultAdapterRegistry();
     const dirs = readdirSync(EXAMPLES, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
+      // A dot-directory is not an example: examples/.buildtest-* are the scratch
+      // copies build.test.ts and the marketplace test make and remove while this
+      // file runs in another worker, and one has no config until its copy lands.
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => entry.name);
     expect(dirs.length).toBeGreaterThan(0);
     for (const dir of dirs) {
