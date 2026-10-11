@@ -4,15 +4,19 @@
   "cases": [
     {
       "harness": "claude",
-      "version": "2.1.286",
-      "capturedAt": "2026-10-04T05:59:17.705Z",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T07:37:07.368Z",
       "case": "bash-default",
       "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
       "before": {
-        "session_id": "0ee77c45-3bf0-4b6c-ae6b-61f6e772706d",
-        "transcript_path": "/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-movSf9/claude-home/projects/-private-var-folders-36-tjdph2t965j8snz9-vkdnw0r0000gn-T-hkn-shell-dialect-movSf9-project/0ee77c45-3bf0-4b6c-ae6b-61f6e772706d.jsonl",
-        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-movSf9/project",
-        "prompt_id": "7dd1da07-d8fc-4712-bb43-76db378642f3",
+        "session_id": "174870b2-8d19-4a69-957c-13f0f37c9ff8",
+        "transcript_path": "/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-b6ITIZ/claude-home/projects/-private-var-folders-36-tjdph2t965j8snz9-vkdnw0r0000gn-T-hkn-shell-dialect-b6ITIZ-project/174870b2-8d19-4a69-957c-13f0f37c9ff8.jsonl",
+        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-b6ITIZ/project",
+        "prompt_id": "c4ffdafe-e224-4971-87c6-b58155931880",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -27,35 +31,35 @@
       },
       "execution": {
         "platform": "darwin",
-        "node": "v22.23.3",
+        "node": "v24.21.0",
         "ancestry": [
           {
-            "pid": 11885,
-            "parentPid": 11883,
+            "pid": 14210,
+            "parentPid": 14209,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 11883,
-            "parentPid": 11826,
+            "pid": 14209,
+            "parentPid": 14151,
             "name": "bash",
             "command": "/bin/bash"
           },
           {
-            "pid": 11826,
-            "parentPid": 11806,
+            "pid": 14151,
+            "parentPid": 14003,
             "name": "claude.exe",
             "command": "claude"
           },
           {
-            "pid": 11806,
-            "parentPid": 11804,
+            "pid": 14003,
+            "parentPid": 13991,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 11804,
-            "parentPid": 10492,
+            "pid": 13991,
+            "parentPid": 12781,
             "name": "bash",
             "command": "/bin/bash"
           }
@@ -65,14 +69,18 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-04T05:59:06.419Z",
+      "capturedAt": "2026-10-11T07:37:02.664Z",
       "case": "exec-command-bash",
       "requestedShell": "/bin/bash",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
       "before": {
-        "session_id": "01a1057e-a4d4-7ff2-8564-5915e8bc53b5",
-        "turn_id": "01a1057e-a4f7-7183-96b4-d1e86656dda8",
-        "transcript_path": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-k5AGR0/codex-home/sessions/2026/10/04/rollout-2026-10-04T05-59-08-01a1057e-a4d4-7ff2-8564-5915e8bc53b5.jsonl",
-        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-k5AGR0/project",
+        "session_id": "01a129e4-d268-7703-b85b-68dab6c25991",
+        "turn_id": "01a129e4-d284-7513-bb86-c54a56e740b2",
+        "transcript_path": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-vKxDoB/codex-home/sessions/2026/10/11/rollout-2026-10-11T07-37-04-01a129e4-d268-7703-b85b-68dab6c25991.jsonl",
+        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-vKxDoB/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -82,37 +90,56 @@
         },
         "tool_use_id": "call_playback"
       },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/bin/bash\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
       "execution": {
         "platform": "darwin",
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 3168,
-            "parentPid": 3167,
+            "pid": 2353,
+            "parentPid": 2352,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 3167,
-            "parentPid": 3010,
+            "pid": 2352,
+            "parentPid": 2193,
             "name": "bash",
             "command": "/bin/bash"
           },
           {
-            "pid": 3010,
-            "parentPid": 3009,
+            "pid": 2193,
+            "parentPid": 2192,
             "name": "codex",
-            "command": "/Users/user/hostedtoolcache/node/22.23.3/arm64/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
+            "command": "/Users/user/hostedtoolcache/node/24.21.0/arm64/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
           },
           {
-            "pid": 3009,
-            "parentPid": 2569,
+            "pid": 2192,
+            "parentPid": 1762,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 2569,
-            "parentPid": 2567,
+            "pid": 1762,
+            "parentPid": 1760,
             "name": "node",
             "command": "node"
           }
@@ -122,14 +149,18 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-04T05:59:06.419Z",
+      "capturedAt": "2026-10-11T07:37:02.664Z",
       "case": "exec-command-zsh",
       "requestedShell": "/bin/zsh",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
       "before": {
-        "session_id": "01a1057e-a743-7481-aaf7-3a1712e0e9ee",
-        "turn_id": "01a1057e-a773-7ae0-93dc-9fdd929548eb",
-        "transcript_path": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-zH3I8g/codex-home/sessions/2026/10/04/rollout-2026-10-04T05-59-08-01a1057e-a743-7481-aaf7-3a1712e0e9ee.jsonl",
-        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-zH3I8g/project",
+        "session_id": "01a129e4-d4c3-7201-aab1-c1d71901e4d7",
+        "turn_id": "01a129e4-d4e5-7022-89ed-0b65f0197cb4",
+        "transcript_path": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-qFnnpT/codex-home/sessions/2026/10/11/rollout-2026-10-11T07-37-04-01a129e4-d4c3-7201-aab1-c1d71901e4d7.jsonl",
+        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-qFnnpT/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -139,37 +170,56 @@
         },
         "tool_use_id": "call_playback"
       },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/bin/zsh\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
       "execution": {
         "platform": "darwin",
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 3382,
-            "parentPid": 3381,
+            "pid": 2567,
+            "parentPid": 2566,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 3381,
-            "parentPid": 3222,
+            "pid": 2566,
+            "parentPid": 2408,
             "name": "zsh",
             "command": "/bin/zsh"
           },
           {
-            "pid": 3222,
-            "parentPid": 3221,
+            "pid": 2408,
+            "parentPid": 2407,
             "name": "codex",
-            "command": "/Users/user/hostedtoolcache/node/22.23.3/arm64/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
+            "command": "/Users/user/hostedtoolcache/node/24.21.0/arm64/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
           },
           {
-            "pid": 3221,
-            "parentPid": 2569,
+            "pid": 2407,
+            "parentPid": 1762,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 2569,
-            "parentPid": 2567,
+            "pid": 1762,
+            "parentPid": 1760,
             "name": "node",
             "command": "node"
           }
@@ -179,14 +229,18 @@
     {
       "harness": "codex",
       "version": "0.156.1",
-      "capturedAt": "2026-10-04T05:59:06.419Z",
+      "capturedAt": "2026-10-11T07:37:02.664Z",
       "case": "exec_command-default",
       "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
       "before": {
-        "session_id": "01a1057e-a194-75b0-901f-541c75f1c183",
-        "turn_id": "01a1057e-a1b6-7230-a8eb-51604bf01b7c",
-        "transcript_path": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-uHipul/codex-home/sessions/2026/10/04/rollout-2026-10-04T05-59-07-01a1057e-a194-75b0-901f-541c75f1c183.jsonl",
-        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-uHipul/project",
+        "session_id": "01a129e4-cf22-7a23-866d-25799d9f2575",
+        "turn_id": "01a129e4-cf40-76c1-a68f-155ce6d34364",
+        "transcript_path": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-spoZwT/codex-home/sessions/2026/10/11/rollout-2026-10-11T07-37-03-01a129e4-cf22-7a23-866d-25799d9f2575.jsonl",
+        "cwd": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-spoZwT/project",
         "hook_event_name": "PreToolUse",
         "model": "hooknostic-playback",
         "permission_mode": "bypassPermissions",
@@ -196,37 +250,56 @@
         },
         "tool_use_id": "call_playback"
       },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
       "execution": {
         "platform": "darwin",
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 2951,
-            "parentPid": 2950,
+            "pid": 2136,
+            "parentPid": 2135,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 2950,
-            "parentPid": 2793,
+            "pid": 2135,
+            "parentPid": 1976,
             "name": "bash",
             "command": "/bin/bash"
           },
           {
-            "pid": 2793,
-            "parentPid": 2792,
+            "pid": 1976,
+            "parentPid": 1975,
             "name": "codex",
-            "command": "/Users/user/hostedtoolcache/node/22.23.3/arm64/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
+            "command": "/Users/user/hostedtoolcache/node/24.21.0/arm64/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
           },
           {
-            "pid": 2792,
-            "parentPid": 2569,
+            "pid": 1975,
+            "parentPid": 1762,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 2569,
-            "parentPid": 2567,
+            "pid": 1762,
+            "parentPid": 1760,
             "name": "node",
             "command": "node"
           }
@@ -236,15 +309,19 @@
     {
       "harness": "opencode-v1",
       "version": "1.18.34",
-      "capturedAt": "2026-10-04T05:59:39.783Z",
+      "capturedAt": "2026-10-11T07:37:13.702Z",
       "case": "bash-default",
       "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
       "before": {
         "hook": "tool.execute.before",
-        "directory": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-jrW4sI/project",
+        "directory": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-GZUDyq/project",
         "input": {
           "tool": "bash",
-          "sessionID": "ses_efa8080ceffeJdsPoUySoA42E0",
+          "sessionID": "ses_ed61ac3b3ffesJV3PUrxBDaNvE",
           "callID": "call_playback"
         },
         "output": {
@@ -253,37 +330,51 @@
           }
         }
       },
+      "reported": {
+        "hook": "tool.definition",
+        "input": {
+          "toolID": "bash"
+        },
+        "outputKeys": [
+          "description",
+          "parameters"
+        ],
+        "field": "description",
+        "statement": "Be aware: OS: darwin, Shell: bash",
+        "beforeCall": true,
+        "configShell": null
+      },
       "execution": {
         "platform": "darwin",
-        "node": "v22.23.3",
+        "node": "v24.21.0",
         "ancestry": [
           {
-            "pid": 2465,
-            "parentPid": 2464,
+            "pid": 19231,
+            "parentPid": 19230,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 2464,
-            "parentPid": 2308,
+            "pid": 19230,
+            "parentPid": 19183,
             "name": "bash",
             "command": "/bin/bash"
           },
           {
-            "pid": 2308,
-            "parentPid": 2078,
+            "pid": 19183,
+            "parentPid": 18829,
             "name": "opencode.exe",
             "command": "opencode"
           },
           {
-            "pid": 2078,
-            "parentPid": 2076,
+            "pid": 18829,
+            "parentPid": 18827,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 2076,
-            "parentPid": 1052,
+            "pid": 18827,
+            "parentPid": 17438,
             "name": "bash",
             "command": "/bin/bash"
           }
@@ -293,54 +384,65 @@
     {
       "harness": "opencode-v2",
       "version": "2.0.20",
-      "capturedAt": "2026-10-04T05:59:11.999Z",
+      "capturedAt": "2026-10-11T07:37:04.028Z",
       "case": "shell-default",
       "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
       "before": {
         "hook": "execute.before",
-        "directory": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-mC8IWM/project",
+        "directory": "/private/var/folders/36/tjdph2t965j8snz9_vkdnw0r0000gn/T/hkn-shell-dialect-SfT0b7/project",
         "event": {
           "tool": "shell",
-          "sessionID": "ses_efa814704ffeB3oGvis6dfRqGE",
+          "sessionID": "ses_ed61b29a3ffeaQIH7wCNaWL0q1",
           "agent": "build",
-          "messageID": "msg_1057ebb73001ys5G4yc7xKw5j6",
+          "messageID": "msg_129e4d7f30019xCSHUxjlp4sEi",
           "id": "call_playback",
           "input": {
             "command": "node interpreter.cjs; echo hooknostic-shell-finished"
           }
         }
       },
+      "reported": {
+        "hook": "context",
+        "field": "tools.shell.description",
+        "statement": "Commands run on macOS using bash.",
+        "beforeCall": true,
+        "shellCreated": "/bin/bash"
+      },
       "execution": {
         "platform": "darwin",
-        "node": "v22.23.3",
+        "node": "v24.21.0",
         "ancestry": [
           {
-            "pid": 5072,
-            "parentPid": 5071,
+            "pid": 10633,
+            "parentPid": 10632,
             "name": "node",
             "command": "node"
           },
           {
-            "pid": 5071,
-            "parentPid": 5067,
+            "pid": 10632,
+            "parentPid": 10630,
             "name": "bash",
             "command": "/bin/bash"
           },
           {
-            "pid": 5067,
-            "parentPid": 5066,
+            "pid": 10630,
+            "parentPid": 10629,
             "name": "opencode.exe",
-            "command": "/Users/user/hostedtoolcache/node/22.23.3/arm64/lib/node_modules/@opencode/cli/bin/opencode.exe"
+            "command": "/Users/user/hostedtoolcache/node/24.21.0/arm64/lib/node_modules/@opencode/cli/bin/opencode.exe"
           },
           {
-            "pid": 5066,
-            "parentPid": 4868,
+            "pid": 10629,
+            "parentPid": 10624,
             "name": "opencode.exe",
-            "command": "/Users/user/hostedtoolcache/node/22.23.3/arm64/bin/opencode"
+            "command": "/Users/user/hostedtoolcache/node/24.21.0/arm64/bin/opencode"
           },
           {
-            "pid": 4868,
-            "parentPid": 4865,
+            "pid": 10624,
+            "parentPid": 10621,
             "name": "node",
             "command": "node"
           }

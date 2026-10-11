@@ -135,6 +135,13 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           what: "Windows loopback shell interpreter probe: one shell tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical execute.before input, and the context hook stated each shell by name before the call.",
         },
         {
+          version: "2.0.20",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: with SHELL naming bash, the shell tool ran bash and the context hook stated bash before the call, naming the platform macOS; shell.created carried /bin/bash. No other macOS configuration was captured.",
+        },
+        {
           version: "2.0.22",
           date: "2026-10-04",
           method: "captured",

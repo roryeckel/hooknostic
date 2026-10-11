@@ -3246,16 +3246,18 @@ it("expects an OpenCode dialect only where a capture says which one", () => {
   expect(on("linux", "")).toEqual({ dialect: "posix" });
   // Captured on Linux only: OpenCode refused fish, ran bash and stated bash.
   expect(on("linux", "/usr/bin/fish")).toEqual({ dialect: "posix" });
+  // macOS was captured in one configuration: SHELL named bash, stated and run.
+  expect(on("darwin", "/bin/bash")).toEqual({ dialect: "posix" });
   for (const [platform, shell] of [
     ["linux", "/bin/sh"],
     ["linux", "/usr/bin/tcsh"],
     ["win32", "C:\\tools\\fish.exe"],
-    // No macOS session recorded what OpenCode states (ADR-0029), so not even a
-    // shell the adapter maps is expected there.
+    // Nothing else was captured on macOS (ADR-0029), so not even zsh, which
+    // the adapter maps and Linux saw stated, is expected there.
     ["darwin", "/bin/zsh"],
-    ["darwin", "/bin/bash"],
     ["darwin", "/opt/homebrew/bin/fish"],
     ["darwin", undefined],
+    ["freebsd", "/bin/bash"],
   ] as const) {
     expect(on(platform, shell), `${platform} ${String(shell)}`).toEqual({ skip: expect.any(String) });
   }

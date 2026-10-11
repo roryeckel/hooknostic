@@ -38,8 +38,8 @@ what each harness does and what it tells a hook:
   But both generations state the shell's name to the model in the tool's
   description, and a plugin receives that text before the call: on 1.x through
   the `tool.definition` hook, on 2.x through the `context` hook. The stated name
-  was the interpreter that ran in every case that captured it, all on Windows
-  and Linux; the macOS session predates the statement probes.
+  was the interpreter that ran in every case that captured it, on Windows,
+  Linux and macOS.
 - **Codex** lets the model select the interpreter per call and does not pass
   the selector to the hook. Identical payloads ran PowerShell and cmd on
   Windows, and bash, zsh, dash and PowerShell on Linux.
@@ -133,9 +133,11 @@ ran both under identical input. OpenCode's statement names the exact shell.
   through `PowerShell`. A build that did offer `Bash` there and ran it through
   another shell would make `posix` wrong on that host, not absent, and no
   scheduled lane runs on one to notice.
-- **What OpenCode states on macOS.** No macOS session recorded the statement.
-  A build that words it differently there reports no dialect, which is the
-  safe direction, but nothing here predicts it.
+- **What OpenCode states on macOS in any configuration but one.** The macOS
+  capture ran where `SHELL` named bash, and both generations stated and ran
+  bash. zsh, which is what a Mac gives its users by default, an unset `SHELL`
+  and a shell OpenCode refuses were captured on Linux only. A build that words
+  the statement differently reports no dialect, which is the safe direction.
 - **Every Codex shell call.** No captured hook input names the interpreter. The
   session transcript held the pending call's selector, under the hook's
   `tool_use_id`, when PreToolUse ran in every direct-mode capture. It is not a

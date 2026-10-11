@@ -187,6 +187,13 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "Windows loopback shell interpreter recapture: the default and the powershell.exe selector ran Windows powershell.exe and the cmd.exe selector ran cmd.exe, under identical PreToolUse input.",
         },
+        {
+          version: "0.156.1",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: the default and the /bin/bash selector ran bash and the /bin/zsh selector ran zsh, under identical PreToolUse input. When PreToolUse ran, the transcript file held the pending call's selector and a stated default of bash.",
+        },
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],
     },

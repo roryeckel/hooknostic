@@ -40,6 +40,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: Bash ran bash or zsh in nine host configurations: SHELL unset or naming bash, zsh, fish or tcsh, and CLAUDE_CODE_SHELL naming zsh, fish, tcsh or pwsh. Where the shell named was neither bash nor zsh it ran one of those two. |
 | 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH, with ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA redirected to an empty directory as well, and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); no environment on this host stood in for one without Git for Windows, which the next record covers. |
 | 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows Sandbox shell interpreter probe on a host with no Git for Windows: of eight host configurations, six started, and in each PowerShell was the only shell tool advertised, without the opt-in, and ran Windows powershell.exe. That includes CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe, and CLAUDE_CODE_SHELL or SHELL naming powershell.exe. The two that set CLAUDE_CODE_USE_POWERSHELL_TOOL=0 exited before any model request, reporting that Git Bash was not found. So no Bash call reaches a hook there for the posix pin to be wrong about (ADR-0029). |
+| 2.1.295 | 2026-10-11 | live-probe | `.capture/shell-dialects` | macOS runner shell interpreter recapture: with SHELL naming bash, Bash was the only shell tool advertised and ran bash, as it did on 2.1.286. |
 
 #### Optional event fields
 
@@ -186,6 +187,7 @@ Projection validation records:
 | 0.156.1 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: identical commands ran through /bin/bash and /bin/zsh, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector. |
 | 0.156.1 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: identical Bash/command payloads ran bash, zsh, dash and PowerShell 7 by per-call selector, and the default did not follow SHELL (unset, or naming zsh, fish or tcsh), so no shell dialect is established (ADR-0029). The transcript file held the pending call's selector when PreToolUse ran; that is not a hook payload. |
 | 0.156.1 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter recapture: the default and the powershell.exe selector ran Windows powershell.exe and the cmd.exe selector ran cmd.exe, under identical PreToolUse input. |
+| 0.156.1 | 2026-10-11 | live-probe | `.capture/shell-dialects` | macOS runner shell interpreter recapture: the default and the /bin/bash selector ran bash and the /bin/zsh selector ran zsh, under identical PreToolUse input. When PreToolUse ran, the transcript file held the pending call's selector and a stated default of bash. |
 
 #### Optional event fields
 
@@ -354,6 +356,7 @@ Projection validation records:
 | 1.18.18 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the reference build: the bash tool.definition description stated Shell: powershell before the call, and powershell.exe ran. |
 | 1.18.34 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: the bash tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the tool.definition hook stated each by name before the call. |
 | 1.18.34 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: one bash tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical tool.execute.before input, and the tool.definition hook stated each shell by name before the call. |
+| 1.18.34 | 2026-10-11 | live-probe | `.capture/shell-dialects` | macOS runner shell interpreter recapture: with SHELL naming bash, the bash tool ran bash and the tool.definition hook stated bash before the call, naming the platform darwin. No other macOS configuration was captured. |
 
 #### Optional event fields
 
@@ -467,6 +470,7 @@ Projection validation records:
 | 2.0.17 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the reference build: the context hook's shell tool description stated powershell before the call, and powershell.exe ran. |
 | 2.0.20 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: the shell tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the context hook stated each by name before the call, and shell.created carried its path after. |
 | 2.0.20 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: one shell tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical execute.before input, and the context hook stated each shell by name before the call. |
+| 2.0.20 | 2026-10-11 | live-probe | `.capture/shell-dialects` | macOS runner shell interpreter recapture: with SHELL naming bash, the shell tool ran bash and the context hook stated bash before the call, naming the platform macOS; shell.created carried /bin/bash. No other macOS configuration was captured. |
 | 2.0.22 | 2026-10-04 | captured | `fixtures/opencode/2.0/context-max-tokens.input.json` | Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed. |
 
 #### Optional event fields

@@ -4,7 +4,8 @@ Investigation for [issue #30](https://github.com/roryeckel/hooknostic/issues/30)
 This procedure records which process interprets a shell call, what reaches the
 hook, and what else a hook or plugin can read about the interpreter. Sessions:
 native Windows and GitHub macOS runners on 2026-10-04; native Windows, a
-Debian 12 container and Windows Sandbox on 2026-10-10.
+Debian 12 container and Windows Sandbox on 2026-10-10; GitHub macOS runners
+again on 2026-10-11.
 [ADR-0029](../../docs/decisions/0029-shell-dialect.md) is the decision this
 evidence supports.
 
@@ -75,7 +76,7 @@ the hook boundary; it is not a hook payload.
 
 | Session | Claude Code | Codex | OpenCode 1.x | OpenCode 2.x |
 | --- | --- | --- | --- | --- |
-| macOS, 2026-10-04 | 2.1.286 | 0.156.1 | 1.18.34 | 2.0.20 |
+| macOS, 2026-10-11 | 2.1.295 | 0.156.1 | 1.18.34 | 2.0.20 |
 | Windows and Linux, 2026-10-10 | 2.1.295 | 0.156.1 | 1.18.34 | 2.0.20 |
 | Windows, builds, 2026-10-10 | 2.1.238 | not run | 1.18.0, 1.18.18 | 2.0.17 |
 | Windows Sandbox, no Git for Windows, 2026-10-10 | 2.1.295 | not run | not run | not run |
@@ -89,6 +90,12 @@ The earlier one recorded Codex's default and its `powershell.exe` selector
 running a bundled `pwsh.exe` where the later one recorded Windows
 `powershell.exe`, on the same Codex build and host. The cause is not
 established.
+
+The macOS comparison was first captured on 2026-10-04 with Claude Code 2.1.286,
+before the probes of what a harness states existed, and recaptured on
+2026-10-11 with them; `observations-macos.json` holds the later run. Both
+recorded the same interpreters. The runner's `SHELL` named bash, and no other
+macOS configuration was captured.
 
 The Linux container was `node:22.13.1-bookworm` with an unprivileged account
 whose login shell was bash: bash 5.2.15, zsh 5.9, fish 3.6.0, tcsh 6.24.07, and
@@ -107,7 +114,7 @@ for the Codex cases PowerShell 7.6.6 from Microsoft's Debian 12 package feed.
 | Windows | `Bash` | the same, and `ProgramFiles`, `ProgramFiles(x86)`, `ProgramW6432` and `LOCALAPPDATA` name an empty directory | Git for Windows `bash.exe` |
 | Windows | `PowerShell` | `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` | Windows `powershell.exe` |
 | Windows | `PowerShell` | the same, `pwsh.exe` first on `PATH` | `pwsh.exe` |
-| macOS | `Bash` | default | `/bin/bash` |
+| macOS | `Bash` | default (`SHELL` names bash) | `/bin/bash` |
 | Linux | `Bash` | default (`SHELL` names bash) | `/usr/bin/bash` |
 | Linux | `Bash` | `SHELL` unset | `/usr/bin/zsh` |
 | Linux | `Bash` | `SHELL` names zsh | `/usr/bin/zsh` |
@@ -136,10 +143,10 @@ A session that does not set one of Claude Code's own interpreter variables
 (`CLAUDE_CODE_SHELL`, `CLAUDE_CODE_GIT_BASH_PATH`,
 `CLAUDE_CODE_USE_POWERSHELL_TOOL`) runs with it unset, whatever the driving
 process inherited. Claude Code's Windows host-configuration cases were
-recaptured on 2026-10-10 after the driver began enforcing that. The other
-comparisons predate it: the Windows host has none of the three set, the Linux
-container was a stock image given only this capture's own variables, and the
-macOS sessions ran on GitHub's runners.
+recaptured on 2026-10-10 after the driver began enforcing that, and the macOS
+comparison on 2026-10-11. The other comparisons predate it: the Windows host
+has none of the three set, and the Linux container was a stock image given only
+this capture's own variables.
 
 The Windows `Bash` rows ran on a host with Git for Windows installed, where
 Claude Code found `bash.exe` at its install location whatever the variables
@@ -204,14 +211,13 @@ The model can therefore select PowerShell on Linux and cmd on Windows without
 the hook input changing. The fish and tcsh selectors ran dash instead, and the
 default did not follow `SHELL`.
 
-In all thirteen Windows and Linux cases the transcript file existed when
+In all sixteen cases, on all three platforms, the transcript file existed when
 PreToolUse ran and already held the pending call as a `function_call` named
 `exec_command` with the model's own arguments, selector included, under the
 payload's `tool_use_id`. It also held the default the harness stated to the
 model: `<shell>powershell</shell>` on Windows and `<shell>bash</shell>` on
-Linux, and the same value on one line at
-`payload.state.environments.environments.local.shell`. The macOS session
-predates this probe.
+Linux and macOS, and the same value on one line at
+`payload.state.environments.environments.local.shell`.
 
 ## OpenCode
 
@@ -225,7 +231,7 @@ every configuration:
 | Windows | `SHELL` names Git Bash | Git for Windows `bash.exe` | `Shell: bash` | `using bash.` |
 | Windows | `opencode.json` `shell: "cmd"` | Windows `cmd.exe` | `Shell: cmd` | `using cmd.` |
 | Windows | `pwsh.exe` first on `PATH` | `pwsh.exe` | `Shell: pwsh` | `using pwsh.` |
-| macOS | default | `/bin/bash` | not probed | not probed |
+| macOS | default (`SHELL` names bash) | `/bin/bash` | `Shell: bash` | `using bash.` |
 | Linux | default (`SHELL` names bash) | `/usr/bin/bash` | `Shell: bash` | `using bash.` |
 | Linux | `SHELL` unset | `/usr/bin/bash` | `Shell: bash` | `using bash.` |
 | Linux | `SHELL` names zsh | `/usr/bin/zsh` | `Shell: zsh` | `using zsh.` |
@@ -233,7 +239,7 @@ every configuration:
 | Linux | `SHELL` names tcsh | `/usr/bin/tcsh` | `Shell: tcsh` | `using tcsh.` |
 
 The last two columns are what the harness stated before the call, in the cases
-of 2026-10-10:
+of 2026-10-10 and 2026-10-11:
 
 - **1.x**: the `tool.definition` hook for tool `bash` received a description
   containing `Be aware: OS: <platform>, Shell: <name>`. It arrived before
@@ -244,11 +250,12 @@ of 2026-10-10:
   case. The `shell.created` bus event followed `execute.before`, preceded
   `execute.after`, and carried a path to the interpreter.
 
-The stated name matched the interpreter that ran in all twenty cases of
-2026-10-10, ten per generation: the nine Windows and Linux rows above, and
-the Windows default comparison, which repeats the first row. It also matched on
-the three other OpenCode builds, whose Windows default case stated and ran
-PowerShell. The macOS session predates these probes.
+The stated name matched the interpreter that ran in all twenty-two cases,
+eleven per generation: the ten rows above, and the Windows default comparison,
+which repeats the first row. It also matched on the three other OpenCode
+builds, whose Windows default case stated and ran PowerShell. On macOS the
+statement names the platform `darwin` on 1.x and `macOS` on 2.x, and only the
+runner's own configuration was captured there, with `SHELL` naming bash.
 
 ## Reproduce
 
@@ -358,9 +365,11 @@ The manual `Shell interpreter capture` workflow runs all four recorded compariso
 builds on fresh macOS runners, using the version in each adapter's shell-probe
 validation record. It uploads raw output for review; it does not commit or
 promote results. No model credentials or repository write token are supplied.
-Download its four artifacts into `captured/darwin/`. When promoting a capture
-made under another account, set `HKN_CAPTURE_ACCOUNT` to that account's name
-(`runner` for these GitHub runners), then run the promotion command.
+Download its four artifacts into `captured/darwin/`, each harness's folder
+directly beneath it, then run the promotion command. A capture made by the
+current driver records its account, so promotion redacts it unasked; for one
+made before, set `HKN_CAPTURE_ACCOUNT` to that account's name (`runner` for
+these GitHub runners).
 
 Raw output is retained under the ignored `captured/` directory. Review newly
 promoted observations before committing them. Only the account segment of a

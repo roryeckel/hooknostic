@@ -17,6 +17,7 @@ interface ObservedCase {
 /** Every promoted case in which OpenCode stated its shell, with the interpreter that then ran. */
 const OBSERVED = [
   "observations",
+  "observations-macos",
   "observations-configured",
   "observations-linux",
   "observations-configured-linux",

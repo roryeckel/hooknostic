@@ -218,6 +218,13 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/shell-dialects",
           what: "Windows loopback shell interpreter probe: one bash tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical tool.execute.before input, and the tool.definition hook stated each shell by name before the call.",
         },
+        {
+          version: "1.18.34",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: with SHELL naming bash, the bash tool ran bash and the tool.definition hook stated bash before the call, naming the platform darwin. No other macOS configuration was captured.",
+        },
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
