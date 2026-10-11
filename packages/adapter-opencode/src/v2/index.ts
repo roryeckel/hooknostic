@@ -40,7 +40,7 @@ export function opencodeV2Adapter(
 ): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.4.0",
+    adapterVersion: "0.5.0",
     harness: opencodeV2Harness,
     projectPaths: [".opencode/plugins", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration: projectOpenCodeV2Integration,
