@@ -1,3 +1,4 @@
+import type { ReportedToolFacts } from "@hooknostic/core";
 import type { FileShapes, ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
 import { fileCodec, shellCodec } from "@hooknostic/sdk";
 
@@ -30,6 +31,12 @@ const EXACT: Record<string, ToolKind> = {
  * `fixtures/opencode/1.18/tool-before.input.json`. `shell` appears in the
  * classification map but has no capture, so it is absent from the table and
  * both codec directions decline rather than assume it matches.
+ *
+ * The entry declares no dialect: the host's configuration picks the
+ * interpreter, not the tool (ADR-0029). The dialect comes from what the harness
+ * states at run time instead -- see `shell-statement.ts`. That statement is the
+ * `bash` tool's own, and `bash` is the only tool with a view to carry it: a
+ * second entry here needs its own evidence before it shares the stated dialect.
  */
 export const OPENCODE_SHELL_SHAPES: ShellShapes = {
   bash: { commandKey: "command" },
@@ -56,13 +63,15 @@ export const opencodeFileCodec = fileCodec(OPENCODE_FILE_SHAPES, {
   normalizeName: (name) => name.toLowerCase(),
 });
 
-export function classifyOpenCodeTool(nativeName: string, input: unknown): ToolInvocation {
+export function classifyOpenCodeTool(nativeName: string, input: unknown, reported?: ReportedToolFacts): ToolInvocation {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
   const lowered = nativeName.toLowerCase();
   // Own-property guard: a tool named "constructor" must not resolve a prototype member.
   const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : undefined;
   if (known !== undefined) {
-    const shell = opencodeShellCodec.classify(nativeName, input);
+    const view = opencodeShellCodec.classify(nativeName, input);
+    const dialect = reported?.shellDialect;
+    const shell = view !== undefined && dialect !== undefined ? { ...view, dialect } : view;
     const file = opencodeFileCodec.classify(nativeName, input);
     return {
       kind: known,

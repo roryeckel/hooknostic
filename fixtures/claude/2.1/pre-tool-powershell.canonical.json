@@ -22,7 +22,8 @@
     },
     "shell": {
       "command": "echo hooknostic-ps-capture",
-      "commandKey": "command"
+      "commandKey": "command",
+      "dialect": "powershell"
     }
   }
 }

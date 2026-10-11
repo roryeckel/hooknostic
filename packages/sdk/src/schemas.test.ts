@@ -137,6 +137,21 @@ describe("canonical schemas", () => {
     expect(() => toolInvocationSchema.parse({ ...tool, file: { ...tool.file, resolved: "/abs/a.txt" } })).toThrow();
   });
 
+  it("validates a shell view's dialect against the registered families", () => {
+    // The schema is strict: a dialect the type declares but this twin omitted
+    // would reject every event an adapter decodes with one.
+    const tool = {
+      kind: "shell",
+      nativeName: "PowerShell",
+      input: { command: "ls" },
+      shell: { command: "ls", commandKey: "command", dialect: "powershell" },
+    };
+    expect(toolInvocationSchema.parse(tool)).toEqual(tool);
+    for (const dialect of ["bash", "pwsh", ""]) {
+      expect(() => toolInvocationSchema.parse({ ...tool, shell: { ...tool.shell, dialect } })).toThrow();
+    }
+  });
+
   it("validates a canonical event envelope and passes through event payload fields", () => {
     const parsed = baseHookEventSchema.parse({
       ...envelope,

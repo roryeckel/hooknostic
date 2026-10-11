@@ -97,6 +97,22 @@ for (const adapter of adapters) {
     );
     lines.push("Project support is independent of package projection.", "");
   }
+  // Not a capability: whether a call carries a dialect depends on the call and
+  // its host, so the adapter states where it comes from instead (ADR-0029).
+  if (adapter.shellDialect) {
+    const sources = {
+      tool: "is established from **the tool name**",
+      statement: "is established from **what the harness states**",
+      none: "is **not established** on this harness",
+    };
+    lines.push(
+      "#### Shell dialect",
+      "",
+      "`tool.shell.dialect` " + sources[adapter.shellDialect.source] + ". " + adapter.shellDialect.rationale,
+      "Evidence: `" + adapter.shellDialect.evidence + "`.",
+      "",
+    );
+  }
   if (adapter.agentPluginProjector) {
     lines.push("#### Agent Plugin projection", "");
     componentTables(

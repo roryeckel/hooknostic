@@ -1,0 +1,528 @@
+{
+  "platform": "Windows",
+  "model": "scripted loopback playback",
+  "comparison": "no Git for Windows",
+  "host": {
+    "windows": "10.0.26100",
+    "gitForWindows": [],
+    "bashOnPath": []
+  },
+  "configurations": [
+    {
+      "configuration": "claude-code-shell-powershell",
+      "set": "SHELL unset, CLAUDE_CODE_SHELL names powershell.exe",
+      "started": true,
+      "advertised": [
+        {
+          "name": "PowerShell",
+          "properties": [
+            "command",
+            "timeout",
+            "description",
+            "run_in_background",
+            "dangerouslyDisableSandbox"
+          ]
+        }
+      ]
+    },
+    {
+      "configuration": "default",
+      "set": "SHELL unset, nothing else set",
+      "started": true,
+      "advertised": [
+        {
+          "name": "PowerShell",
+          "properties": [
+            "command",
+            "timeout",
+            "description",
+            "run_in_background",
+            "dangerouslyDisableSandbox"
+          ]
+        }
+      ]
+    },
+    {
+      "configuration": "git-bash-path-cmd",
+      "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names cmd.exe",
+      "started": true,
+      "advertised": [
+        {
+          "name": "PowerShell",
+          "properties": [
+            "command",
+            "timeout",
+            "description",
+            "run_in_background",
+            "dangerouslyDisableSandbox"
+          ]
+        }
+      ]
+    },
+    {
+      "configuration": "git-bash-path-cmd-powershell-tool-off",
+      "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names cmd.exe, CLAUDE_CODE_USE_POWERSHELL_TOOL=0",
+      "started": false,
+      "exit": 1,
+      "requests": 0,
+      "output": "Claude Code on Windows requires a shell tool. Git Bash was not found and the PowerShell tool is disabled (CLAUDE_CODE_USE_POWERSHELL_TOOL=0).\n  - Install Git for Windows: https://git-scm.com/downloads/win, or\n  - Remove CLAUDE_CODE_USE_POWERSHELL_TOOL from your environment or settings.\n"
+    },
+    {
+      "configuration": "git-bash-path-missing",
+      "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names a missing file",
+      "started": true,
+      "advertised": [
+        {
+          "name": "PowerShell",
+          "properties": [
+            "command",
+            "timeout",
+            "description",
+            "run_in_background",
+            "dangerouslyDisableSandbox"
+          ]
+        }
+      ]
+    },
+    {
+      "configuration": "git-bash-path-powershell",
+      "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names powershell.exe",
+      "started": true,
+      "advertised": [
+        {
+          "name": "PowerShell",
+          "properties": [
+            "command",
+            "timeout",
+            "description",
+            "run_in_background",
+            "dangerouslyDisableSandbox"
+          ]
+        }
+      ]
+    },
+    {
+      "configuration": "powershell-tool-off",
+      "set": "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=0",
+      "started": false,
+      "exit": 1,
+      "requests": 0,
+      "output": "Claude Code on Windows requires a shell tool. Git Bash was not found and the PowerShell tool is disabled (CLAUDE_CODE_USE_POWERSHELL_TOOL=0).\n  - Install Git for Windows: https://git-scm.com/downloads/win, or\n  - Remove CLAUDE_CODE_USE_POWERSHELL_TOOL from your environment or settings.\n"
+    },
+    {
+      "configuration": "shell-powershell",
+      "set": "SHELL names powershell.exe",
+      "started": true,
+      "advertised": [
+        {
+          "name": "PowerShell",
+          "properties": [
+            "command",
+            "timeout",
+            "description",
+            "run_in_background",
+            "dangerouslyDisableSandbox"
+          ]
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
+      "case": "powershell-claude-code-shell-powershell",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_SHELL names powershell.exe",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "75554396-6ed3-4f53-80b6-33de883010b9",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-QvWGxD\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-QvWGxD-project\\75554396-6ed3-4f53-80b6-33de883010b9.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-QvWGxD\\project",
+        "prompt_id": "67eda3ec-303f-4466-b781-6732e0540d2b",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 3804,
+            "parentPid": 1732,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          },
+          {
+            "pid": 1732,
+            "parentPid": 7740,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 7740,
+            "parentPid": 5752,
+            "name": "cmd.exe",
+            "path": "C:\\Windows\\System32\\cmd.exe"
+          },
+          {
+            "pid": 5752,
+            "parentPid": 9836,
+            "name": "claude.exe",
+            "path": "C:\\hkn\\tools\\claude.exe"
+          },
+          {
+            "pid": 9836,
+            "parentPid": 7440,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
+      "case": "powershell-default",
+      "configuration": {
+        "set": "SHELL unset, nothing else set",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "44439b17-02fe-43fd-8794-78da20aebeeb",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-StDnOX\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-StDnOX-project\\44439b17-02fe-43fd-8794-78da20aebeeb.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-StDnOX\\project",
+        "prompt_id": "2bd5a920-f629-4f26-9564-57a01e403ed1",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 6096,
+            "parentPid": 3048,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          },
+          {
+            "pid": 3048,
+            "parentPid": 7376,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 7376,
+            "parentPid": 8524,
+            "name": "cmd.exe",
+            "path": "C:\\Windows\\System32\\cmd.exe"
+          },
+          {
+            "pid": 8524,
+            "parentPid": 9836,
+            "name": "claude.exe",
+            "path": "C:\\hkn\\tools\\claude.exe"
+          },
+          {
+            "pid": 9836,
+            "parentPid": 7440,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
+      "case": "powershell-git-bash-path-cmd",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names cmd.exe",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "8e644b34-860a-4686-8e11-318905fb9b3f",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-U1Fqma\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-U1Fqma-project\\8e644b34-860a-4686-8e11-318905fb9b3f.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-U1Fqma\\project",
+        "prompt_id": "7ec57683-739e-4cf5-9c2d-59d31637cf81",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 4896,
+            "parentPid": 5396,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          },
+          {
+            "pid": 5396,
+            "parentPid": 10080,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 10080,
+            "parentPid": 9380,
+            "name": "cmd.exe",
+            "path": "C:\\Windows\\System32\\cmd.exe"
+          },
+          {
+            "pid": 9380,
+            "parentPid": 9836,
+            "name": "claude.exe",
+            "path": "C:\\hkn\\tools\\claude.exe"
+          },
+          {
+            "pid": 9836,
+            "parentPid": 7440,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
+      "case": "powershell-git-bash-path-missing",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names a missing file",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "20978d8f-c7be-4124-82c8-7a6a261d06ba",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Lv9iJH\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-Lv9iJH-project\\20978d8f-c7be-4124-82c8-7a6a261d06ba.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Lv9iJH\\project",
+        "prompt_id": "d6a38f7a-b806-4a30-9fc3-6944a0d344c8",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 5432,
+            "parentPid": 3276,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          },
+          {
+            "pid": 3276,
+            "parentPid": 7628,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 7628,
+            "parentPid": 10056,
+            "name": "cmd.exe",
+            "path": "C:\\Windows\\System32\\cmd.exe"
+          },
+          {
+            "pid": 10056,
+            "parentPid": 9836,
+            "name": "claude.exe",
+            "path": "C:\\hkn\\tools\\claude.exe"
+          },
+          {
+            "pid": 9836,
+            "parentPid": 7440,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
+      "case": "powershell-git-bash-path-powershell",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names powershell.exe",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "f917da36-b0d4-4971-8591-cc5ee565e38a",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Xi3YYz\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-Xi3YYz-project\\f917da36-b0d4-4971-8591-cc5ee565e38a.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Xi3YYz\\project",
+        "prompt_id": "594a2d6e-951a-4133-bce8-a7df767dc8c0",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 1612,
+            "parentPid": 7908,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          },
+          {
+            "pid": 7908,
+            "parentPid": 8884,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 8884,
+            "parentPid": 9324,
+            "name": "cmd.exe",
+            "path": "C:\\Windows\\System32\\cmd.exe"
+          },
+          {
+            "pid": 9324,
+            "parentPid": 9836,
+            "name": "claude.exe",
+            "path": "C:\\hkn\\tools\\claude.exe"
+          },
+          {
+            "pid": 9836,
+            "parentPid": 7440,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
+      "case": "powershell-shell-powershell",
+      "configuration": {
+        "set": "SHELL names powershell.exe",
+        "host": {
+          "SHELL": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "cac81671-5380-4c22-8689-fbd537ac525d",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-jCK0oi\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-jCK0oi-project\\cac81671-5380-4c22-8689-fbd537ac525d.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-jCK0oi\\project",
+        "prompt_id": "2711573b-9b36-487c-8e2b-df9e3f821e47",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 632,
+            "parentPid": 7316,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          },
+          {
+            "pid": 7316,
+            "parentPid": 8044,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 8044,
+            "parentPid": 6120,
+            "name": "cmd.exe",
+            "path": "C:\\Windows\\System32\\cmd.exe"
+          },
+          {
+            "pid": 6120,
+            "parentPid": 9836,
+            "name": "claude.exe",
+            "path": "C:\\hkn\\tools\\claude.exe"
+          },
+          {
+            "pid": 9836,
+            "parentPid": 7440,
+            "name": "node.exe",
+            "path": "C:\\hkn\\node\\node.exe"
+          }
+        ]
+      }
+    }
+  ]
+}

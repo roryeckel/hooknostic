@@ -52,6 +52,21 @@ Omit tools whose shape you have not captured — both directions then decline,
 guess a key: a wrong entry silently rewrites the wrong field of a live tool
 call.
 
+A shape entry may also declare a `dialect`, the grammar family the tool's
+commands run in (ADR-0029). That claim needs different evidence from a key: a
+payload cannot show which interpreter ran. Declare it only after observing the
+interpreter by its effect, across the host configurations that could change it,
+and finding one family every time. If the host or the model picks the
+interpreter, leave it out. If the harness states its shell somewhere your shim
+can hear before the call, hand that to your decoder as enrichment and map only
+the names a capture saw stated and run, and pass the same dialect to
+`dispatch()` as `shellDialect` so a rewrite keeps it. Otherwise the dialect
+stays absent, which is a supported answer. Whichever it is, say so in
+`adapter.shellDialect` (`tool`, `statement` or `none`, with a rationale):
+`inspect` and the generated support page print it, and the contract suite
+checks your table and classifier against it. `.capture/shell-dialects` is the
+worked procedure.
+
 File tools get the same treatment, read side only (ADR-0026): a `FileShapes`
 table maps each captured file tool to `{ pathKey }` (an argument naming one
 file) or `{ patchKey }` (an argument holding a Codex-grammar patch), and
@@ -60,9 +75,13 @@ and `adapter.fileShapes`, and pass `fileCodec` into `dispatch()` from your shim.
 Search tools (glob/grep) take a pattern, not a file, and stay out of the table.
 
 Expose the function your decoder classifies tools with as `adapter.classifyTool`
-(`(nativeName, input) => ToolInvocation`). `hooknostic dispatch` builds a test
-event's tool from it (ADR-0023), and the contract suite requires it to reproduce
-the `tool` of every fixture exactly.
+(`(nativeName, input, reported?) => ToolInvocation`). `hooknostic dispatch` builds
+a test event's tool from it (ADR-0023), and the contract suite requires it to
+reproduce the `tool` of every fixture exactly. `reported` carries what the
+harness stated beside the call, today a `shellDialect`. If your adapter takes
+its dialect from such a statement, apply it there, or a test that states one is
+refused and a fixture that records one fails the contract. If your adapter pins
+the dialect by tool, or establishes none, take two parameters and ignore it.
 
 Run the contract suite from your own package — it is the definition of done for
 an adapter, and it is the same one the three shipped adapters run:

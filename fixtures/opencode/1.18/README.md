@@ -111,3 +111,18 @@ turn field (ADR-0027). It never enters `event.raw`. The capture showed `chat.mes
 prompt's turn id is `output.message.id`, the id every assistant message of the
 turn names as `parentID`. The 1.18.33 `chat-message` capture above agrees (its input carries no
 `messageID`), and its canonical carries `turnId` from `output.message.id`.
+
+**The stated shell is captured (1.18.34).** `tool-before-shell-cmd` and
+`tool-before-shell-tcsh` come from real **opencode 1.18.34** sessions over the
+loopback model (2026-10-10, `.capture/shell-dialects`): Windows with
+`opencode.json` `shell: "cmd"`, and a Linux container with `SHELL` naming tcsh. The
+`input` files are the `tool.execute.before` envelopes, argument values scripted.
+Each `enrichment.json` holds what the shim hands the decoder beside the envelope
+(ADR-0029): the shell name this adapter's parser read out of the `bash` tool's
+description, as the `tool.definition` hook delivered it earlier in the same
+session. That callback's input was `{ "toolID": "bash" }` and its output had the
+keys `description` and `parameters`; the description is not kept here, and its
+stating line is recorded per case in `.capture/shell-dialects/observations*.json`.
+The name never enters `event.raw`. The interpreter that ran matched it in both
+sessions (live-probe, same record). `cmd` is a shell this adapter maps to a
+dialect; `tcsh` is one it does not, so that canonical carries none.

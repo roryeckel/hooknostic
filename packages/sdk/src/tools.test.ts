@@ -94,6 +94,28 @@ describe("shellCodec", () => {
     expect(CODEC.classify("Bash", bare)?.command).toBe("echo x");
   });
 
+  it("states the dialect of a shape that pins one, and none otherwise", () => {
+    // Absence is the signal: a tool whose interpreter the host or the model
+    // chooses has no dialect in its shape, and the view must not gain one.
+    const pinned = shellCodec({
+      Bash: { commandKey: "command", dialect: "posix" },
+      exec_command: { commandKey: "cmd", cwdKey: "workdir" },
+    });
+    expect(pinned.classify("Bash", { command: "x" })).toEqual({
+      command: "x",
+      commandKey: "command",
+      dialect: "posix",
+    });
+    expect(pinned.classify("exec_command", { cmd: "x" })).toEqual({
+      command: "x",
+      commandKey: "cmd",
+      cwdKey: "workdir",
+    });
+    // A rewrite goes back through classify, so the pinned dialect survives it.
+    const encoded = pinned.encode("Bash", { command: "x" }, { command: "y" });
+    expect(pinned.classify("Bash", encoded)?.dialect).toBe("posix");
+  });
+
   it("applies normalizeName to the lookup", () => {
     const lower = shellCodec(
       { bash: { commandKey: "command" } },

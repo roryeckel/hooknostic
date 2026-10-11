@@ -3376,6 +3376,39 @@ describe("hooknostic inspect", () => {
     expect(typo.err()).toContain('unknown field "turn.stop.lastMesage"');
   });
 
+  it("says where each target's shell dialect comes from, and why it can be absent (ADR-0029)", async () => {
+    // Not a capability, so nothing else here would answer "why is dialect
+    // undefined on Codex" with something a user can quote upstream.
+    const registry = defaultAdapterRegistry();
+    const source = async (target: string, version?: string) => {
+      const capture = captureIO();
+      expect(
+        await runInspect({ target, json: true, registry, io: capture.io, ...(version ? { version } : {}) }),
+        capture.err(),
+      ).toBe(0);
+      return (JSON.parse(capture.out()) as { shellDialect: { source: string; rationale: string } }).shellDialect;
+    };
+    expect(await source("claude")).toMatchObject({ source: "tool" });
+    expect(await source("codex")).toMatchObject({ source: "none", rationale: expect.stringContaining("selector") });
+    expect(await source("opencode", opencodeHarness.recommendedRange)).toMatchObject({
+      source: "statement",
+      rationale: expect.stringContaining("tool.definition"),
+    });
+    expect(await source("opencode", opencodeV2Harness.recommendedRange)).toMatchObject({
+      source: "statement",
+      rationale: expect.stringContaining("context hook"),
+    });
+    const text = captureIO();
+    expect(await runInspect({ target: "codex", registry, io: text.io })).toBe(0);
+    expect(text.out()).toMatch(
+      /^none {9}tool\.shell\.dialect source\n {13}The model selects the interpreter per call/m,
+    );
+    // A single-capability answer stays that one answer.
+    const single = captureIO();
+    expect(await runInspect({ target: "codex", capability: "tool.before.block", registry, io: single.io })).toBe(0);
+    expect(single.out()).not.toContain("tool.shell.dialect");
+  });
+
   it("supports single-capability queries and unknown targets", async () => {
     const single = captureIO();
     expect(

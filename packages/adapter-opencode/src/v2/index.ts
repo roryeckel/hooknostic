@@ -59,6 +59,15 @@ export function opencodeV2Adapter(
     fileCodec: opencodeV2FileCodec,
     fileShapes: OPENCODE_V2_FILE_SHAPES,
     classifyTool: classifyOpenCodeV2Tool,
+    shellDialect: {
+      source: "statement",
+      rationale:
+        "From the shell the harness states in its shell tool description before a call (context hook): posix for " +
+        "bash and zsh, powershell for powershell and pwsh, cmd for cmd. Absent until a statement is heard for the " +
+        "session, for any other shell (the host's shell setting, SHELL and PATH choose it), and on a build that " +
+        "words the statement differently.",
+      evidence: ".capture/shell-dialects",
+    },
     supportedHarnessVersions: () => opencodeV2CapabilityProfiles.map((p) => p.range),
     supportedDeliveries: () => ["project", "package"],
     capabilities: (target) => resolveCapabilityMatrix("opencode", opencodeV2CapabilityProfiles, target.version),
