@@ -3,9 +3,10 @@
 Investigation for [issue #30](https://github.com/roryeckel/hooknostic/issues/30).
 This procedure records which process interprets a shell call, what reaches the
 hook, and what else a hook or plugin can read about the interpreter. Sessions:
-native Windows and GitHub macOS runners on 2026-10-04; native Windows and a
-Debian 12 container on 2026-10-10. [ADR-0029](../../docs/decisions/0029-shell-dialect.md)
-is the decision this evidence supports.
+native Windows and GitHub macOS runners on 2026-10-04; native Windows, a
+Debian 12 container and Windows Sandbox on 2026-10-10.
+[ADR-0029](../../docs/decisions/0029-shell-dialect.md) is the decision this
+evidence supports.
 
 ## Method
 
@@ -37,7 +38,11 @@ model from `packages/cli/test/harness-playback.ts`.
    the session therefore saw (`SHELL`, whether `pwsh` resolved on `PATH`).
    A third mode, **builds**, runs the default cases into a directory per
    version, so builds other than a comparison's own are recorded beside each
-   other.
+   other. A fourth, **without-git**, is for a Windows host with no Git for
+   Windows. Which shell tools exist is its question, so each of its host
+   configurations has a discovery of its own, followed by a call to every
+   shell tool that discovery advertised. A configuration Claude Code will not
+   start under is recorded with what it printed.
 6. Three probes record what the harness itself says about its shell:
    - OpenCode 2.x: the tee plugin already receives the `context` hook, whose
      `tools.shell.description` carries a sentence naming the shell, and the
@@ -70,6 +75,7 @@ the hook boundary; it is not a hook payload.
 | macOS, 2026-10-04 | 2.1.286 | 0.156.1 | 1.18.34 | 2.0.20 |
 | Windows and Linux, 2026-10-10 | 2.1.295 | 0.156.1 | 1.18.34 | 2.0.20 |
 | Windows, builds, 2026-10-10 | 2.1.238 | not run | 1.18.0, 1.18.18 | 2.0.17 |
+| Windows Sandbox, no Git for Windows, 2026-10-10 | 2.1.295 | not run | not run | not run |
 
 The builds row is each adapter's reference build, and for OpenCode 1.x also the
 floor of its recommended range.
@@ -108,10 +114,15 @@ for the Codex cases PowerShell 7.6.6 from Microsoft's Debian 12 package feed.
 | Linux | `Bash` | `CLAUDE_CODE_SHELL` names fish | `/usr/bin/bash` |
 | Linux | `Bash` | `CLAUDE_CODE_SHELL` names tcsh | `/usr/bin/bash` |
 | Linux | `Bash` | `CLAUDE_CODE_SHELL` names pwsh | `/usr/bin/bash` |
+| Windows, no Git for Windows | `PowerShell` | default | Windows `powershell.exe` |
+| Windows, no Git for Windows | `PowerShell` | `CLAUDE_CODE_GIT_BASH_PATH` names a missing file, `cmd.exe` or `powershell.exe` | Windows `powershell.exe` |
+| Windows, no Git for Windows | `PowerShell` | `CLAUDE_CODE_SHELL` or `SHELL` names `powershell.exe` | Windows `powershell.exe` |
+| Windows, no Git for Windows | none | `CLAUDE_CODE_USE_POWERSHELL_TOOL=0`, alone or with `CLAUDE_CODE_GIT_BASH_PATH` naming `cmd.exe` | Claude Code did not start |
 
-`PowerShell` was advertised with the opt-in variable set and by no default
-discovery on any platform. Its two cases have identical hook input and ran two
-PowerShell editions. `Bash` ran bash or zsh in all seventeen cases. Ten of
+Where Git for Windows was installed, and on macOS and Linux, `PowerShell` was
+advertised only with the opt-in variable set. Its two cases there have
+identical hook input and ran two PowerShell editions. `Bash` ran bash or zsh in
+all seventeen cases. Ten of
 them pointed it elsewhere: at fish, tcsh or PowerShell through `SHELL` or
 `CLAUDE_CODE_SHELL` on Linux, and on Windows at a missing file, `cmd.exe` or
 `powershell.exe` through its Git Bash path variable, with Git taken off
@@ -127,23 +138,36 @@ comparisons predate it: the Windows host has none of the three set, the Linux
 container was a stock image given only this capture's own variables, and the
 macOS sessions ran on GitHub's runners.
 
-Every Windows case ran on a host with Git for Windows installed, where Claude
-Code found `bash.exe` at its install location whatever the variables said. The
-last `Bash` row is the nearest this host comes to lacking it, and it changed
-nothing, so the environment cannot stand in for an uninstalled Git. What `Bash`
-does on a Windows host without Git for Windows is **not captured**.
+The Windows `Bash` rows ran on a host with Git for Windows installed, where
+Claude Code found `bash.exe` at its install location whatever the variables
+said. The last of them is the nearest that host comes to lacking it, and it
+changed nothing: the environment cannot stand in for an uninstalled Git.
 
-It is **documented**, which is weaker. Anthropic's setup page and tools
-reference, as read on 2026-10-10, say that Git Bash is what the `Bash` tool
-needs, that `Bash` stays available where Git Bash is installed, and that
-without Git for Windows Claude Code runs shell commands through the
-`PowerShell` tool, which is then enabled without the opt-in
+The last four rows are a host that never had it: Windows Sandbox, a disposable
+Windows (10.0.26100) with no Git for Windows and no `bash.exe` on `PATH`,
+running the same Claude Code build. `Bash` was not advertised in any of its
+eight configurations. In the six that started, `PowerShell` was the only shell
+tool and was advertised without the opt-in. Each call reached the hook as
+`PowerShell`, with the same input as the opted-in cases above, and ran Windows
+`powershell.exe`. Pointing the Git Bash path variable at a missing file,
+`cmd.exe` or `powershell.exe` did not bring `Bash` back, and neither did naming
+`powershell.exe` through `CLAUDE_CODE_SHELL` or `SHELL`. With the PowerShell
+tool turned off, alone or with the Git Bash path variable naming `cmd.exe`,
+Claude Code exited before any request: it printed that it requires a shell
+tool, that Git Bash was not found and that the PowerShell tool is disabled. So
+this host sent a hook no `Bash` call for the `posix` pin to be wrong about.
+
+Anthropic's setup page and tools reference, as read on 2026-10-10, say the
+same: Git Bash is what the `Bash` tool needs, and without Git for Windows
+Claude Code runs shell commands through the `PowerShell` tool
 (<https://code.claude.com/docs/en/setup>,
-<https://code.claude.com/docs/en/tools-reference>). If that holds, such a host
-sends a hook no `Bash` call for the `posix` pin to be wrong about, and its
-shell calls arrive as `PowerShell`. The same pages say `PowerShell` is on by
-default beside `Bash` for some account types; in these loopback sessions it was
-advertised only with the opt-in set.
+<https://code.claude.com/docs/en/tools-reference>). They also say `PowerShell`
+is on by default beside `Bash` for some account types; in the loopback
+sessions on the host with Git it was advertised only with the opt-in set.
+
+This is one build on one such host. A build that offered `Bash` there through
+another shell would make `posix` wrong on that host, and nothing scheduled runs
+on one to notice.
 
 ## Codex
 
@@ -255,9 +279,24 @@ instead to record another build's default cases under
 directory with an explicit `npm install --prefix`, and put its shim first on
 `PATH`.
 
+For a Windows host with no Git for Windows, append `without-git`, Claude Code
+only. The driver refuses to run where it finds an install, so this comparison
+needs a host that never had one. `node .capture/shell-dialects/windows-sandbox.mjs`
+provides it with Windows Sandbox (the `Containers-DisposableClientVM` optional
+feature): it maps this checkout, the Node install and a copy of the native
+`claude.exe` on `PATH` into the sandbox read-only, and one output folder
+writable. Inside, a script copies the sources off the mount, installs and
+bundles them as the Linux session did, runs the driver, and shuts the sandbox
+down. The launcher then copies the raw output to `captured/without-git/` and
+removes its temporary folders once the sandbox has released them. The
+sandbox needs the network for the dependency install only; the model is the
+same loopback. `--keep` leaves the sandbox open, and `--prepare-only` writes
+its configuration without starting it. Promote that capture with
+`HKN_CAPTURE_ACCOUNT=WDAGUtilityAccount`, the sandbox's account.
+
 Promote with `node .capture/shell-dialects/promote.mjs <comparison>`, where the
 comparison is `win32` (the default), `darwin`, `linux`, `configured`,
-`configured-linux` or `builds`.
+`configured-linux`, `builds` or `without-git`.
 
 `node --experimental-strip-types .capture/shell-dialects/promote-fixtures.mjs`
 then writes the fixtures that rest on these captures: for each OpenCode
@@ -289,9 +328,13 @@ path is redacted; process names and temporary path shapes remain as observed.
 | `observations-configured.json` | Windows, host configuration |
 | `observations-configured-linux.json` | Linux, host configuration |
 | `observations-builds.json` | Windows, default cases on other builds |
+| `observations-without-git.json` | Windows with no Git for Windows, Claude Code, host configuration |
 | `*-tools.json`, `*-tools-macos.json`, `*-tools-linux.json` | advertised tools of each default comparison |
+| `claude-tools-without-git.json` | advertised tools with no Git for Windows and nothing set |
 
-A configured record embeds the shell tools its discovery advertised. A case
+A configured record embeds the shell tools its discovery advertised. The
+without-git record has a discovery per configuration and lists each one's shell
+tools, and keeps a call that ran nothing with what the harness reported. A case
 carries `reported` where OpenCode stated its shell and `transcript` where the
 Codex transcript probe ran.
 

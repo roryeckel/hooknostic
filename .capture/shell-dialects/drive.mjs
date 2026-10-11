@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Evidence-only shell interpreter probe; model replies and argument values are scripted.
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,10 +18,32 @@ const harness = process.argv[2];
 // `configured` holds the model's arguments fixed and varies the host configuration instead.
 // `builds` runs the default cases into a directory per version, so builds other than a
 // comparison's own can be recorded beside each other.
+// `without-git` is for a Windows host with no Git for Windows: under each host
+// configuration it records what Claude Code advertises and what each advertised
+// shell tool runs. It refuses to run where it finds an install.
 const mode = process.argv[3];
-if (mode !== undefined && mode !== "configured" && mode !== "builds") throw new Error("The modes are configured and builds");
+const modes = ["configured", "builds", "without-git"];
+if (mode !== undefined && !modes.includes(mode)) throw new Error("The modes are " + modes.join(", "));
 if (mode === "builds" && process.platform !== "win32") throw new Error("The builds comparison is established on Windows only");
 const configured = mode === "configured";
+const withoutGitMode = mode === "without-git";
+// Where a Git for Windows install shows: git.exe on PATH, bash.exe at an install
+// location, or its registry key. The locations are also spelled out, because
+// Claude Code found one there with these variables redirected.
+function gitForWindows() {
+  const onPath = (process.env.PATH ?? "").split(delimiter).filter(Boolean).map((directory) => join(directory, "git.exe"));
+  const roots = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.ProgramW6432,
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Programs"), "C:\\Program Files", "C:\\Program Files (x86)"];
+  const installed = roots.filter(Boolean).map((root) => join(root, "Git", "bin", "bash.exe"));
+  const keys = ["HKLM", "HKCU"].map((hive) => hive + "\\SOFTWARE\\GitForWindows")
+    .filter((key) => spawnSync("reg", ["query", key], { stdio: "ignore" }).status === 0);
+  return [...new Set([...onPath, ...installed].filter((file) => existsSync(file))), ...keys];
+}
+if (withoutGitMode) {
+  if (process.platform !== "win32" || harness !== "claude") throw new Error("The without-git comparison is established for Claude Code on Windows only");
+  const found = gitForWindows();
+  if (found.length) throw new Error("Git for Windows is on this host: " + found.join(", "));
+}
 const protocols = { claude: "anthropic-messages", codex: "openai-responses", "opencode-v1": "openai-chat", "opencode-v2": "openai-chat" };
 if (!Object.hasOwn(protocols, harness)) throw new Error("Specify claude, codex, opencode-v1, or opencode-v2");
 if (!["win32", "darwin", "linux"].includes(process.platform)) throw new Error("This procedure supports Windows, macOS, and Linux only");
@@ -31,12 +54,17 @@ const versionResult = await runProcess(versionCommand, ["--version"], { cwd: rep
 if (versionResult.code !== 0) throw new Error("Version detection failed");
 const version = versionResult.stdout.match(/\d+\.\d+\.\d+/)?.[0];
 if (!version) throw new Error("No version in binary output");
-const captureRoot = resolve(repo, ".capture/shell-dialects/captured", (mode ? [mode] : []).concat(process.platform === "win32" ? [] : process.platform).join("-"));
+// A host that mounts this checkout read-only names another directory for the raw output.
+const captureBase = process.env.HKN_CAPTURE_ROOT ? resolve(process.env.HKN_CAPTURE_ROOT) : resolve(repo, ".capture/shell-dialects/captured");
+const captureRoot = resolve(captureBase, (mode ? [mode] : []).concat(process.platform === "win32" ? [] : process.platform).join("-"));
 const out = resolve(captureRoot, mode === "builds" ? harness + "-" + version : harness);
 if (dirname(out) !== captureRoot) throw new Error("Capture path must be a direct child of the output root");
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, "metadata.json"), JSON.stringify({ harness, version, platform: process.platform, capturedAt: new Date().toISOString() }, null, 2) + "\n");
+// Every directory on PATH holding a bash.exe, whoever installed it: Windows ships a WSL launcher by that name.
+const bashOnPath = () => [...new Set((process.env.PATH ?? "").split(delimiter).filter(Boolean).map((directory) => join(directory, "bash.exe").toLowerCase()))].filter((file) => existsSync(file));
+writeFileSync(join(out, "metadata.json"), JSON.stringify({ harness, version, platform: process.platform, capturedAt: new Date().toISOString(),
+  ...(withoutGitMode ? { windows: release(), gitForWindows: gitForWindows(), bashOnPath: bashOnPath() } : {}) }, null, 2) + "\n");
 const prompt = "Execute the requested shell probe once, then stop.";
 const command = "node interpreter.cjs; echo hooknostic-shell-finished";
 
@@ -143,6 +171,7 @@ async function session(label, script, configuration = {}) {
   const summary = { label, exit: result.code, errors: server.errors, tools, observation,
     // What the session saw, and in a configured case what it set; PATH is described, not copied.
     host, ...(configured ? { set: configuration.set, opencodeShell: configuration.opencodeShell ?? null } : {}),
+    ...(withoutGitMode ? { set: configuration.set } : {}),
     tail: (result.stdout + result.stderr).slice(-2500) };
   writeFileSync(join(destination, "drive.json"), JSON.stringify(summary, null, 2) + "\n");
   console.log(JSON.stringify({ label, exit: summary.exit, errors: summary.errors,
@@ -211,45 +240,101 @@ function configuredCases(name) {
   ];
 }
 
-// Claude advertises PowerShell only when opted in; the other discoveries pin SHELL like their cases.
-const discoveryConfiguration = !configured ? {}
-  : process.platform === "linux" ? { env: { SHELL: "/bin/bash" }, set: "SHELL names bash" }
-  : harness === "claude" ? { env: { SHELL: null, CLAUDE_CODE_USE_POWERSHELL_TOOL: "1" }, set: "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=1" }
-    : { env: { SHELL: null }, set: "SHELL unset" };
-const discovery = await session("discovery", [{ kind: "text", text: "discovery complete" }], discoveryConfiguration);
-if (discovery.exit !== 0 || discovery.errors.length) throw new Error("Discovery failed");
-writeFileSync(join(out, "discovery.json"), JSON.stringify(discovery.tools, null, 2) + "\n");
-const names = harness === "claude" ? ["Bash", "PowerShell"] : harness === "codex" ? ["exec_command"] : harness === "opencode-v2" ? ["shell"] : ["bash"];
-let completed = 0;
-for (const name of names) {
-  const tool = discovery.tools.find((entry) => entry.name === name);
-  if (!tool) { console.log("not advertised: " + name); continue; }
-  const key = ["command", "cmd"].find((candidate) => tool.properties.includes(candidate));
-  if (!key) throw new Error(name + " has no discovered command key");
-  // cmd.exe does not separate commands with `;`, so Windows comparisons that reach it run the bare probe.
-  const args = { [key]: (configured || harness === "codex") && process.platform === "win32" ? "node interpreter.cjs" : command };
-  if (tool.properties.includes("description")) args.description = "Record the real shell process ancestry";
-  const cases = configured ? configuredCases(name).map(([label, configuration]) => [label, args, configuration])
-    : [[name.toLowerCase() + "-default", args]];
-  if (!configured && harness === "codex" && tool.properties.includes("shell")) {
-    if (process.platform === "win32") {
-      cases.push(["exec-command-powershell", { ...args, shell: "powershell.exe" }],
-        ["exec-command-cmd", { ...args, shell: "cmd.exe" }]);
-    } else {
-      cases.push(["exec-command-bash", { ...args, shell: "/bin/bash" }],
-        ["exec-command-zsh", { ...args, shell: "/bin/zsh" }]);
-      // Linux also requests interpreters outside the bash/zsh pair, where they are installed.
-      for (const shell of process.platform === "linux" ? ["fish", "tcsh", "pwsh"] : []) {
-        if (existsSync("/usr/bin/" + shell)) cases.push(["exec-command-" + shell, { ...args, shell: "/usr/bin/" + shell }]);
-        else console.log("not installed: " + shell);
+// A Windows host with no Git for Windows. Each host configuration gets its own
+// discovery, because which shell tools exist is the question here, and then a
+// call to every shell tool it advertised. A configuration the harness will not
+// start under, or a call that runs nothing, is an observation too: it is
+// recorded, and only a run that exercises no shell tool at all fails.
+async function withoutGit() {
+  const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+  const powershell = join(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+  const cmd = join(system, "cmd.exe");
+  const configurations = [
+    ["default", {}, "nothing else set"],
+    ["powershell-tool-off", { CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" }, "CLAUDE_CODE_USE_POWERSHELL_TOOL=0"],
+    ["git-bash-path-missing", { CLAUDE_CODE_GIT_BASH_PATH: join(system, "hooknostic-missing", "bash.exe") }, "CLAUDE_CODE_GIT_BASH_PATH names a missing file"],
+    ["git-bash-path-cmd", { CLAUDE_CODE_GIT_BASH_PATH: cmd }, "CLAUDE_CODE_GIT_BASH_PATH names cmd.exe"],
+    ["git-bash-path-powershell", { CLAUDE_CODE_GIT_BASH_PATH: powershell }, "CLAUDE_CODE_GIT_BASH_PATH names powershell.exe"],
+    ["git-bash-path-cmd-powershell-tool-off", { CLAUDE_CODE_GIT_BASH_PATH: cmd, CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" },
+      "CLAUDE_CODE_GIT_BASH_PATH names cmd.exe, CLAUDE_CODE_USE_POWERSHELL_TOOL=0"],
+    ["claude-code-shell-powershell", { CLAUDE_CODE_SHELL: powershell }, "CLAUDE_CODE_SHELL names powershell.exe"],
+    ["shell-powershell", { SHELL: powershell }, "SHELL names powershell.exe"],
+    // The WSL launcher Windows ships is the one bash.exe such a host has.
+    ...bashOnPath().slice(0, 1).map((file) => ["git-bash-path-bash-on-path", { CLAUDE_CODE_GIT_BASH_PATH: file }, "CLAUDE_CODE_GIT_BASH_PATH names the bash.exe on PATH"]),
+  ];
+  let exercised = 0;
+  for (const [label, env, set] of configurations) {
+    const configuration = { env: { SHELL: null, ...env }, set: (Object.hasOwn(env, "SHELL") ? "" : "SHELL unset, ") + set };
+    const attempt = async (name, script) => {
+      try {
+        return await session(name, script, configuration);
+      } catch (error) {
+        // A session that never returned still leaves its record.
+        const summary = { label: name, exit: null, errors: [String(error)], tools: [], observation: null, set: configuration.set, tail: "" };
+        mkdirSync(join(out, name), { recursive: true });
+        writeFileSync(join(out, name, "drive.json"), JSON.stringify(summary, null, 2) + "\n");
+        console.log(JSON.stringify({ label: name, exit: null, errors: summary.errors }));
+        return summary;
       }
+    };
+    const discovery = await attempt("discovery-" + label, [{ kind: "text", text: "discovery complete" }]);
+    for (const name of ["Bash", "PowerShell"]) {
+      const tool = discovery.tools.find((entry) => entry.name === name);
+      if (!tool) { console.log("not advertised under " + label + ": " + name); continue; }
+      // The bare probe, as in the Windows host-configuration cases: cmd.exe may be what runs it.
+      const args = { command: "node interpreter.cjs", ...(tool.properties.includes("description") ? { description: "Record the real shell process ancestry" } : {}) };
+      const result = await attempt(name.toLowerCase() + "-" + label, [{ kind: "tool", toolName: name, arguments: args }, { kind: "text", text: "probe complete" }]);
+      if (result.observation) exercised++;
     }
   }
-  for (const [label, arguments_, configuration] of cases) {
-    const result = await session(label, [{ kind: "tool", toolName: name, arguments: arguments_ }, { kind: "text", text: "probe complete" }], configuration);
-    if (result.exit !== 0 || result.errors.length || !result.observation) throw new Error("Probe did not establish execution: " + label);
-    completed++;
-  }
+  if (exercised === 0) throw new Error("No advertised shell tool ran the probe");
 }
 
-if (completed === 0) throw new Error("No discovered shell tool was exercised");
+// The default, configured and builds comparisons: one discovery, then every case of each advertised shell tool.
+async function comparison() {
+  // Claude advertises PowerShell only when opted in; the other discoveries pin SHELL like their cases.
+  const discoveryConfiguration = !configured ? {}
+    : process.platform === "linux" ? { env: { SHELL: "/bin/bash" }, set: "SHELL names bash" }
+    : harness === "claude" ? { env: { SHELL: null, CLAUDE_CODE_USE_POWERSHELL_TOOL: "1" }, set: "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=1" }
+      : { env: { SHELL: null }, set: "SHELL unset" };
+  const discovery = await session("discovery", [{ kind: "text", text: "discovery complete" }], discoveryConfiguration);
+  if (discovery.exit !== 0 || discovery.errors.length) throw new Error("Discovery failed");
+  writeFileSync(join(out, "discovery.json"), JSON.stringify(discovery.tools, null, 2) + "\n");
+  const names = harness === "claude" ? ["Bash", "PowerShell"] : harness === "codex" ? ["exec_command"] : harness === "opencode-v2" ? ["shell"] : ["bash"];
+  let completed = 0;
+  for (const name of names) {
+    const tool = discovery.tools.find((entry) => entry.name === name);
+    if (!tool) { console.log("not advertised: " + name); continue; }
+    const key = ["command", "cmd"].find((candidate) => tool.properties.includes(candidate));
+    if (!key) throw new Error(name + " has no discovered command key");
+    // cmd.exe does not separate commands with `;`, so Windows comparisons that reach it run the bare probe.
+    const args = { [key]: (configured || harness === "codex") && process.platform === "win32" ? "node interpreter.cjs" : command };
+    if (tool.properties.includes("description")) args.description = "Record the real shell process ancestry";
+    const cases = configured ? configuredCases(name).map(([label, configuration]) => [label, args, configuration])
+      : [[name.toLowerCase() + "-default", args]];
+    if (!configured && harness === "codex" && tool.properties.includes("shell")) {
+      if (process.platform === "win32") {
+        cases.push(["exec-command-powershell", { ...args, shell: "powershell.exe" }],
+          ["exec-command-cmd", { ...args, shell: "cmd.exe" }]);
+      } else {
+        cases.push(["exec-command-bash", { ...args, shell: "/bin/bash" }],
+          ["exec-command-zsh", { ...args, shell: "/bin/zsh" }]);
+        // Linux also requests interpreters outside the bash/zsh pair, where they are installed.
+        for (const shell of process.platform === "linux" ? ["fish", "tcsh", "pwsh"] : []) {
+          if (existsSync("/usr/bin/" + shell)) cases.push(["exec-command-" + shell, { ...args, shell: "/usr/bin/" + shell }]);
+          else console.log("not installed: " + shell);
+        }
+      }
+    }
+    for (const [label, arguments_, configuration] of cases) {
+      const result = await session(label, [{ kind: "tool", toolName: name, arguments: arguments_ }, { kind: "text", text: "probe complete" }], configuration);
+      if (result.exit !== 0 || result.errors.length || !result.observation) throw new Error("Probe did not establish execution: " + label);
+      completed++;
+    }
+  }
+
+  if (completed === 0) throw new Error("No discovered shell tool was exercised");
+}
+
+if (mode === "without-git") await withoutGit();
+else await comparison();

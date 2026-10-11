@@ -119,7 +119,7 @@ export function claudeAdapter(): HarnessAdapter {
         "Set on every shell view: Bash is posix and PowerShell is powershell. Each tool ran only shells of its " +
         "family in every captured host configuration, so the tool name establishes it; the family, not the " +
         "interpreter (Bash ran bash and zsh, PowerShell both editions). A Windows host without Git for Windows " +
-        "has no capture; Anthropic documents that Bash needs Git Bash and that such a host uses PowerShell.",
+        "advertised no Bash at all: PowerShell was its only shell tool.",
       evidence: ".capture/shell-dialects",
     },
 

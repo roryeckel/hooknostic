@@ -114,12 +114,19 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-10-10",
           method: "live-probe",
           artifact: ".capture/shell-dialects",
-          what: "Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH, with ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA redirected to an empty directory as well, and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); a Windows host without Git for Windows installed has no capture, and no environment on this host stood in for one.",
+          what: "Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH, with ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA redirected to an empty directory as well, and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); no environment on this host stood in for one without Git for Windows, which the next record covers.",
+        },
+        {
+          version: "2.1.295",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows Sandbox shell interpreter probe on a host with no Git for Windows: Bash was not advertised under any of eight host configurations. In six, PowerShell was the only shell tool, advertised without the opt-in, and ran Windows powershell.exe, including with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe and with CLAUDE_CODE_SHELL or SHELL naming powershell.exe. In the two that set CLAUDE_CODE_USE_POWERSHELL_TOOL=0, Claude Code did not start. So no Bash call reaches a hook there for the posix pin to be wrong about (ADR-0029).",
         },
       ],
       notes: [
         "https://code.claude.com/docs/en/hooks (fetched 2026-08-20)",
-        // Weaker provenance for the one host ADR-0029 has no capture of.
+        // What Anthropic documents for a Windows host without Git for Windows; the sandbox capture agrees.
         "https://code.claude.com/docs/en/setup and https://code.claude.com/docs/en/tools-reference (fetched 2026-10-10): the Bash tool needs Git Bash, and a Windows host without Git for Windows runs shell commands through the PowerShell tool",
       ],
     },

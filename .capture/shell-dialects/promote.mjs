@@ -15,8 +15,10 @@ const comparisons = {
   "configured-linux": { platform: "linux", label: "Linux", directory: "configured-linux", observations: "observations-configured-linux.json", configured: true },
   // The default cases on builds other than a comparison's own, one directory per harness and version.
   builds: { platform: "win32", label: "Windows", directory: "builds", observations: "observations-builds.json", builds: true },
+  // A Windows host with no Git for Windows: what Claude Code advertises under each host configuration, and what those tools run.
+  "without-git": { platform: "win32", label: "Windows", directory: "without-git", observations: "observations-without-git.json", withoutGit: true },
 };
-if (!Object.hasOwn(comparisons, selected)) throw new Error("Specify win32, darwin, linux, configured, configured-linux, or builds");
+if (!Object.hasOwn(comparisons, selected)) throw new Error("Specify win32, darwin, linux, configured, configured-linux, builds, or without-git");
 const target = comparisons[selected];
 const account = process.env.HKN_CAPTURE_ACCOUNT ?? process.env.USERNAME ?? process.env.USER;
 if (!account) throw new Error("HKN_CAPTURE_ACCOUNT, USERNAME, or USER is required for account-path redaction");
@@ -76,7 +78,42 @@ function transcriptAtHook(folder) {
 }
 const cases = [];
 const advertised = {};
-const captures = target.builds ? readdirSync(join(root, "captured", target.directory)).sort()
+// The without-git comparison is read on its own terms. Which shell tools exist is
+// its question, so every configuration has a discovery of its own, and one that
+// advertises none, will not start, or calls a tool that runs nothing is kept.
+function withoutGit() {
+  const directory = join(root, "captured", target.directory, "claude");
+  const metadata = JSON.parse(readFileSync(join(directory, "metadata.json"), "utf8"));
+  if (metadata.harness !== "claude" || metadata.platform !== target.platform) throw new Error("Expected a Windows Claude Code capture");
+  if (!Array.isArray(metadata.gitForWindows) || metadata.gitForWindows.length) throw new Error("The capture host had Git for Windows");
+  const folders = readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  const drive = (name) => JSON.parse(readFileSync(join(directory, name, "drive.json"), "utf8"));
+  const rows = (name, file) => !existsSync(join(directory, name, file)) ? []
+    : readFileSync(join(directory, name, file), "utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
+  const configurations = folders.filter((name) => name.startsWith("discovery-")).map((name) => {
+    const session = drive(name);
+    const started = session.exit === 0 && session.errors.length === 0;
+    if (started && name === "discovery-default") writeFileSync(join(root, "claude-tools-without-git.json"), JSON.stringify({
+      names: session.tools.map((tool) => tool.name), shellTools: session.tools.filter((tool) => shellToolNames.includes(tool.name)) }, null, 2) + "\n");
+    return { configuration: name.slice("discovery-".length), set: session.set, started,
+      ...(started ? { advertised: session.tools.filter((tool) => shellToolNames.includes(tool.name)) }
+        : { exit: session.exit, errors: session.errors, output: session.tail }) };
+  });
+  if (!configurations.some((entry) => entry.configuration === "default" && entry.started)) throw new Error("The default configuration did not start");
+  for (const name of folders.filter((entry) => !entry.startsWith("discovery-"))) {
+    const session = drive(name);
+    const before = rows(name, "PreToolUse.jsonl");
+    if (before.length > 1) throw new Error("Expected at most one native before payload: " + name);
+    if (session.observation && (session.observation.platform !== target.platform || before.length !== 1)) throw new Error("Expected a Windows process observation behind one before payload: " + name);
+    cases.push({ harness: "claude", version: metadata.version, capturedAt: metadata.capturedAt, case: name,
+      configuration: { set: session.set, host: session.host ?? null }, before: before[0] ?? null, execution: session.observation ?? null,
+      // A call that ran nothing: what the harness reported for it instead.
+      ...(session.observation ? {} : { failure: rows(name, "PostToolUseFailure.jsonl")[0] ?? null, exit: session.exit, errors: session.errors, output: session.tail }) });
+  }
+  return { host: { windows: metadata.windows ?? null, gitForWindows: metadata.gitForWindows, bashOnPath: metadata.bashOnPath ?? [] }, configurations };
+}
+const bare = target.withoutGit ? withoutGit() : undefined;
+const captures = target.withoutGit ? [] : target.builds ? readdirSync(join(root, "captured", target.directory)).sort()
   : target.configured && target.platform === "win32" ? ["claude", "opencode-v1", "opencode-v2"] : ["claude", "codex", "opencode-v1", "opencode-v2"];
 for (const capture of captures) {
   const directory = join(root, "captured", target.directory, capture);
@@ -122,12 +159,13 @@ if (target.configured) {
     if (inputs.has(key) && inputs.get(key) !== JSON.stringify(input)) throw new Error("Configured cases must have identical hook-visible input: " + key);
     inputs.set(key, JSON.stringify(input));
   }
-} else {
+} else if (!target.withoutGit) {
   const codex = cases.filter((entry) => entry.harness === "codex");
   if ((codex.length > 0 || !target.builds) && new Set(codex.map((entry) => JSON.stringify(entry.before.tool_input))).size !== 1)
     throw new Error("Codex cases must have identical hook-visible command bytes");
 }
 writeFileSync(join(root, target.observations), JSON.stringify(redact({ platform: target.label, model: "scripted loopback playback",
-  ...(target.configured ? { comparison: "host configuration", advertised } : target.builds ? { comparison: "builds" } : {}), cases }), null, 2) + "\n");
+  ...(target.configured ? { comparison: "host configuration", advertised } : target.builds ? { comparison: "builds" }
+    : bare ? { comparison: "no Git for Windows", ...bare } : {}), cases }), null, 2) + "\n");
 console.log(JSON.stringify(cases.map((entry) => ({ harness: entry.harness, version: entry.version, case: entry.case,
-  interpreter: entry.execution.ancestry[1].name ?? entry.execution.ancestry[1].path }))));
+  interpreter: !entry.execution ? null : entry.execution.ancestry[1].name ?? entry.execution.ancestry[1].path }))));

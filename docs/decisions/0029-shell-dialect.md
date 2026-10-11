@@ -26,9 +26,11 @@ what each harness does and what it tells a hook:
   and where `CLAUDE_CODE_SHELL` named fish, tcsh or PowerShell; and on Windows
   with Git taken off `PATH`, with the install-location variables redirected as
   well, and with its Git Bash path variable naming a missing file, `cmd.exe` or
-  `powershell.exe`. `PowerShell` ran Windows PowerShell or
-  PowerShell 7 depending on what `PATH` resolved. The tool name is in the hook
-  payload.
+  `powershell.exe`. A Windows host with no Git for Windows offered no `Bash`
+  at all, under any configuration tried: `PowerShell` was its only shell tool,
+  and with that turned off Claude Code would not start. `PowerShell` ran Windows
+  PowerShell or PowerShell 7 depending on what `PATH` resolved. The tool name
+  is in the hook payload.
 - **OpenCode** picks the interpreter from the host: its `shell` configuration
   key, then `SHELL`, then what `PATH` resolves. One tool name ran PowerShell,
   Git Bash, cmd and tcsh, and its tool hooks carried nothing about the choice.
@@ -116,17 +118,16 @@ ran both under identical input. OpenCode's statement names the exact shell.
 
 ## What stays unknown
 
-- **Claude Code's `Bash` on a Windows host without Git for Windows.** Every
-  Windows capture had it installed, and Claude Code found it at its install
-  location whatever the host's variables said, so no environment on that host
-  could stand in for its absence. The `posix` pin therefore rests on weaker
-  provenance for this one host: Anthropic's setup page and tools reference, as
-  read on 2026-10-10, say the `Bash` tool needs Git Bash and that without Git
-  for Windows shell commands run through the `PowerShell` tool. If so, such a
-  host sends no `Bash` call to be wrong about. That is documented, not
-  captured. If a host without it did offer `Bash` and ran it through another
-  shell, `posix` would be wrong there, not absent; a capture on such a host
-  settles it.
+- **Claude Code's `Bash` on a Windows host without Git for Windows, on another
+  build.** One build was captured on such a host, in Windows Sandbox. It
+  advertised no `Bash` under any of eight host configurations, including those
+  that pointed its Git Bash path variable at `cmd.exe` and `powershell.exe`, so
+  no `Bash` call reached a hook for the `posix` pin to be wrong about.
+  Anthropic's setup page and tools reference, as read on 2026-10-10, describe
+  the same thing: `Bash` needs Git Bash, and without it shell commands run
+  through `PowerShell`. A build that did offer `Bash` there and ran it through
+  another shell would make `posix` wrong on that host, not absent, and no
+  scheduled lane runs on one to notice.
 - **What OpenCode states on macOS.** No macOS session recorded the statement.
   A build that words it differently there reports no dialect, which is the
   safe direction, but nothing here predicts it.
