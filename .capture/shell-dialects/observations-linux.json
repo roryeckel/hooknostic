@@ -1,0 +1,648 @@
+{
+  "platform": "Linux",
+  "model": "scripted loopback playback",
+  "cases": [
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:05:36.407Z",
+      "case": "bash-default",
+      "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "b33c0e6f-8b8d-460c-b8ee-f746a1caea56",
+        "transcript_path": "/tmp/hkn-shell-dialect-qDjXvW/claude-home/projects/-tmp-hkn-shell-dialect-qDjXvW-project/b33c0e6f-8b8d-460c-b8ee-f746a1caea56.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-qDjXvW/project",
+        "prompt_id": "97124856-d304-4824-8568-c1f4592ae661",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 6552,
+            "parentPid": 6551,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6551,
+            "parentPid": 6465,
+            "path": "/usr/bin/bash"
+          },
+          {
+            "pid": 6465,
+            "parentPid": 6376,
+            "path": "/home/user/h-claude/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+          },
+          {
+            "pid": 6376,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 5607,
+            "parentPid": 5606,
+            "path": "/usr/bin/bash"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
+      "case": "exec-command-bash",
+      "requestedShell": "/bin/bash",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "01a1287e-7a27-74e2-8b65-2d46f810db35",
+        "turn_id": "01a1287e-7a38-7dc0-bddd-493841268847",
+        "transcript_path": "/tmp/hkn-shell-dialect-J1wC2W/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-39-01a1287e-7a27-74e2-8b65-2d46f810db35.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-J1wC2W/project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/bin/bash\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 7200,
+            "parentPid": 7199,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 7199,
+            "parentPid": 7051,
+            "path": "/usr/bin/bash"
+          },
+          {
+            "pid": 7051,
+            "parentPid": 7040,
+            "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          },
+          {
+            "pid": 7040,
+            "parentPid": 6592,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
+      "case": "exec-command-fish",
+      "requestedShell": "/usr/bin/fish",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "01a1287e-8198-72a0-94dc-b67ab4e89be5",
+        "turn_id": "01a1287e-81a6-7430-8ac1-dc2e0926f49d",
+        "transcript_path": "/tmp/hkn-shell-dialect-G4UGcU/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-41-01a1287e-8198-72a0-94dc-b67ab4e89be5.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-G4UGcU/project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/usr/bin/fish\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 7634,
+            "parentPid": 7633,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 7633,
+            "parentPid": 7478,
+            "path": "/usr/bin/dash"
+          },
+          {
+            "pid": 7478,
+            "parentPid": 7467,
+            "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          },
+          {
+            "pid": 7467,
+            "parentPid": 6592,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
+      "case": "exec-command-pwsh",
+      "requestedShell": "/usr/bin/pwsh",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "01a1287e-8948-7ac1-95db-2d8909a1c2bb",
+        "turn_id": "01a1287e-8958-7b71-b6ab-135e44502f89",
+        "transcript_path": "/tmp/hkn-shell-dialect-N17kcc/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-43-01a1287e-8948-7ac1-95db-2d8909a1c2bb.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-N17kcc/project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/usr/bin/pwsh\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 8125,
+            "parentPid": 8101,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 8101,
+            "parentPid": 7951,
+            "path": "/opt/microsoft/powershell/7/pwsh"
+          },
+          {
+            "pid": 7951,
+            "parentPid": 7940,
+            "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          },
+          {
+            "pid": 7940,
+            "parentPid": 6592,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
+      "case": "exec-command-tcsh",
+      "requestedShell": "/usr/bin/tcsh",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "01a1287e-8599-7c51-9e89-f638e92c25bb",
+        "turn_id": "01a1287e-85ac-7842-be9b-e7e0f9e591f9",
+        "transcript_path": "/tmp/hkn-shell-dialect-2WPo0D/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-42-01a1287e-8599-7c51-9e89-f638e92c25bb.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-2WPo0D/project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/usr/bin/tcsh\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 7851,
+            "parentPid": 7850,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 7850,
+            "parentPid": 7698,
+            "path": "/usr/bin/dash"
+          },
+          {
+            "pid": 7698,
+            "parentPid": 7687,
+            "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          },
+          {
+            "pid": 7687,
+            "parentPid": 6592,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
+      "case": "exec-command-zsh",
+      "requestedShell": "/bin/zsh",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "01a1287e-7de6-7dc3-ad9a-09c698dc4a42",
+        "turn_id": "01a1287e-7df5-72e1-bace-22253d9edbef",
+        "transcript_path": "/tmp/hkn-shell-dialect-fwzCej/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-40-01a1287e-7de6-7dc3-ad9a-09c698dc4a42.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-fwzCej/project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\",\"shell\":\"/bin/zsh\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 7414,
+            "parentPid": 7413,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 7413,
+            "parentPid": 7264,
+            "path": "/usr/bin/zsh"
+          },
+          {
+            "pid": 7264,
+            "parentPid": 7253,
+            "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          },
+          {
+            "pid": 7253,
+            "parentPid": 6592,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "codex",
+      "version": "0.156.1",
+      "capturedAt": "2026-10-11T01:05:37.750Z",
+      "case": "exec_command-default",
+      "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "session_id": "01a1287e-7679-7440-b3dc-72430397ced3",
+        "turn_id": "01a1287e-768b-73d3-bac8-2a5b9d4775a4",
+        "transcript_path": "/tmp/hkn-shell-dialect-ipJ2WT/codex-home/sessions/2026/10/11/rollout-2026-10-11T01-05-38-01a1287e-7679-7440-b3dc-72430397ced3.jsonl",
+        "cwd": "/tmp/hkn-shell-dialect-ipJ2WT/project",
+        "hook_event_name": "PreToolUse",
+        "model": "hooknostic-playback",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+        },
+        "tool_use_id": "call_playback"
+      },
+      "transcript": {
+        "existed": true,
+        "statedShells": [
+          "bash"
+        ],
+        "pendingCalls": [
+          {
+            "type": "function_call",
+            "name": "exec_command",
+            "arguments": "{\"cmd\":\"node interpreter.cjs; echo hooknostic-shell-finished\"}"
+          }
+        ],
+        "shellKeys": [
+          {
+            "at": "payload.state.environments.environments.local.shell",
+            "value": "bash"
+          }
+        ]
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 6987,
+            "parentPid": 6986,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6986,
+            "parentPid": 6832,
+            "path": "/usr/bin/bash"
+          },
+          {
+            "pid": 6832,
+            "parentPid": 6821,
+            "path": "/home/user/h-codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+          },
+          {
+            "pid": 6821,
+            "parentPid": 6592,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v1",
+      "version": "1.18.34",
+      "capturedAt": "2026-10-11T01:05:45.620Z",
+      "case": "bash-default",
+      "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "hook": "tool.execute.before",
+        "directory": "/tmp/hkn-shell-dialect-1ZfKwt/project",
+        "input": {
+          "tool": "bash",
+          "sessionID": "ses_ed7813daaffezFAzB2EonHKMCC",
+          "callID": "call_playback"
+        },
+        "output": {
+          "args": {
+            "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+          }
+        }
+      },
+      "reported": {
+        "hook": "tool.definition",
+        "input": {
+          "toolID": "bash"
+        },
+        "outputKeys": [
+          "description",
+          "parameters"
+        ],
+        "field": "description",
+        "statement": "Be aware: OS: linux, Shell: bash",
+        "beforeCall": true,
+        "configShell": null
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 8570,
+            "parentPid": 8569,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 8569,
+            "parentPid": 8444,
+            "path": "/usr/bin/bash"
+          },
+          {
+            "pid": 8444,
+            "parentPid": 8196,
+            "path": "/home/user/h-oc1/node_modules/opencode-ai/bin/opencode.exe"
+          },
+          {
+            "pid": 8196,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 5607,
+            "parentPid": 5606,
+            "path": "/usr/bin/bash"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v2",
+      "version": "2.0.20",
+      "capturedAt": "2026-10-11T01:05:59.881Z",
+      "case": "shell-default",
+      "requestedShell": "default",
+      "host": {
+        "SHELL": "/bin/bash",
+        "pwshOnPath": true
+      },
+      "before": {
+        "hook": "execute.before",
+        "directory": "/tmp/hkn-shell-dialect-N1MWIH/project",
+        "event": {
+          "tool": "shell",
+          "sessionID": "ses_ed781339cffeVrja97sZ2QlVh3",
+          "agent": "build",
+          "messageID": "msg_1287ecd31001eZgLRQbXHtT550",
+          "id": "call_playback",
+          "input": {
+            "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+          }
+        }
+      },
+      "reported": {
+        "hook": "context",
+        "field": "tools.shell.description",
+        "statement": "Commands run on Linux using bash.",
+        "beforeCall": true,
+        "shellCreated": "/bin/bash"
+      },
+      "execution": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 8723,
+            "parentPid": 8722,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 8722,
+            "parentPid": 8669,
+            "path": "/usr/bin/bash"
+          },
+          {
+            "pid": 8669,
+            "parentPid": 8659,
+            "path": "/home/user/h-oc2/node_modules/@opencode/cli/bin/opencode.exe"
+          },
+          {
+            "pid": 8659,
+            "parentPid": 8606,
+            "path": "/home/user/h-oc2/node_modules/@opencode/cli/bin/opencode.exe"
+          },
+          {
+            "pid": 8606,
+            "parentPid": 5607,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      }
+    }
+  ]
+}

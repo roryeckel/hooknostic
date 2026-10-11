@@ -20,6 +20,8 @@ const INVOCATION = { targetId: "opencode", harnessVersion: opencodeHarness.refer
 describe("decodeOpenCode fixtures", () => {
   const CASES = [
     "tool-before",
+    "tool-before-shell-cmd",
+    "tool-before-shell-tcsh",
     "tool-after",
     "tool-read-before",
     "tool-write-before",
@@ -108,6 +110,40 @@ describe("classifyOpenCodeTool", () => {
     expect(classifyOpenCodeTool("task", {}).kind).toBe("agent");
     expect(classifyOpenCodeTool("myserver_dothing", {}).kind).toBe("mcp");
     expect(classifyOpenCodeTool("somethingnew", {}).kind).toBe("other");
+  });
+
+  it("gives the bash view the dialect the harness stated, and never makes a view to carry one", () => {
+    // The statement is about the bash tool's shell (ADR-0029). It decorates the
+    // view the arguments support; it cannot stand in for one, here or on a tool
+    // that has none.
+    const reported = { shellDialect: "powershell" } as const;
+    expect(classifyOpenCodeTool("bash", { command: "ls" }, reported).shell).toEqual({
+      command: "ls",
+      commandKey: "command",
+      dialect: "powershell",
+    });
+    expect(classifyOpenCodeTool("BASH", { command: "ls" }, reported).shell?.dialect).toBe("powershell");
+    expect(classifyOpenCodeTool("bash", { command: "ls" }).shell).toEqual({ command: "ls", commandKey: "command" });
+    expect(classifyOpenCodeTool("bash", { command: 42 }, reported).shell).toBeUndefined();
+    for (const name of ["shell", "read", "myserver_dothing", "somethingnew"]) {
+      expect(classifyOpenCodeTool(name, { command: "ls" }, reported), name).toEqual(
+        classifyOpenCodeTool(name, { command: "ls" }),
+      );
+    }
+  });
+
+  it("decodes the stated shell onto every event that names the bash tool", () => {
+    // Before, after, and both permission shapes classify the same tool, so a
+    // guard at any of them reads the same grammar.
+    const enrichment = { shell: "zsh" };
+    const dialects = ["tool-before", "tool-after", "permission-asked"].map((name) => {
+      const event = decodeOpenCode(loadFixture("opencode", "1.18", `${name}.input.json`), INVOCATION, enrichment);
+      return "tool" in event ? event.tool.shell?.dialect : "no tool";
+    });
+    expect(dialects).toEqual(["posix", "posix", "posix"]);
+    // A file tool's event is untouched by it.
+    const read = decodeOpenCode(loadFixture("opencode", "1.18", "tool-read-before.input.json"), INVOCATION, enrichment);
+    expect("tool" in read && read.tool.shell).toBeUndefined();
   });
 });
 

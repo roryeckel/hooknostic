@@ -1,0 +1,1186 @@
+{
+  "platform": "Windows",
+  "model": "scripted loopback playback",
+  "comparison": "host configuration",
+  "advertised": {
+    "claude": [
+      {
+        "name": "Bash",
+        "properties": [
+          "command",
+          "timeout",
+          "description",
+          "run_in_background",
+          "dangerouslyDisableSandbox"
+        ]
+      },
+      {
+        "name": "PowerShell",
+        "properties": [
+          "command",
+          "timeout",
+          "description",
+          "run_in_background",
+          "dangerouslyDisableSandbox"
+        ]
+      }
+    ],
+    "opencode-v1": [
+      {
+        "name": "bash",
+        "type": "function",
+        "properties": [
+          "command",
+          "timeout",
+          "workdir"
+        ]
+      }
+    ],
+    "opencode-v2": [
+      {
+        "name": "shell",
+        "type": "function",
+        "properties": [
+          "command",
+          "workdir",
+          "timeout",
+          "background"
+        ]
+      }
+    ]
+  },
+  "cases": [
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "bash-git-bash-path-cmd",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names cmd.exe",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "2059b87c-0c91-4fa9-9273-7dd477ab2e16",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Mz5J5Q\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-Mz5J5Q-project\\2059b87c-0c91-4fa9-9273-7dd477ab2e16.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Mz5J5Q\\project",
+        "prompt_id": "8b0fccba-2f99-491b-bb29-6fff7d2cc16d",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 45184,
+            "parentPid": 56724,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 56724,
+            "parentPid": 74548,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 74548,
+            "parentPid": 48500,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 48500,
+            "parentPid": 55128,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 55128,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "bash-git-bash-path-missing",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names a missing file",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "ef6a0933-0880-4c28-8486-d5985ca05f41",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-0pckYZ\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-0pckYZ-project\\ef6a0933-0880-4c28-8486-d5985ca05f41.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-0pckYZ\\project",
+        "prompt_id": "b69764c4-dcd7-4463-b3cd-7e752507c567",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 53184,
+            "parentPid": 69932,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 69932,
+            "parentPid": 48432,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 48432,
+            "parentPid": 62560,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 62560,
+            "parentPid": 70560,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 70560,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "bash-git-bash-path-powershell",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names powershell.exe",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "b4c5f8c7-25c3-4e02-8ed8-8a6fd0224809",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-8mfSoO\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-8mfSoO-project\\b4c5f8c7-25c3-4e02-8ed8-8a6fd0224809.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-8mfSoO\\project",
+        "prompt_id": "02e956c7-4084-4082-9bf9-da1ffc031fa8",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 27664,
+            "parentPid": 63792,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 63792,
+            "parentPid": 47684,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 47684,
+            "parentPid": 2408,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 2408,
+            "parentPid": 64888,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 64888,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "bash-git-locations-redirected",
+      "configuration": {
+        "set": "SHELL unset, Git for Windows removed from PATH, ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA name an empty directory",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "6718ccf8-8ecb-494d-82eb-2e23b4370a4d",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-krdTMo\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-krdTMo-project\\6718ccf8-8ecb-494d-82eb-2e23b4370a4d.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-krdTMo\\project",
+        "prompt_id": "0e3599b6-a1d3-46a5-bd9a-2af11bcd1c4b",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 69976,
+            "parentPid": 18396,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 18396,
+            "parentPid": 55572,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 55572,
+            "parentPid": 66788,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 66788,
+            "parentPid": 63832,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 63832,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "bash-git-off-path",
+      "configuration": {
+        "set": "SHELL unset, Git for Windows removed from PATH",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "d3054baf-cd65-4e5c-95c1-26f3e62d7a0c",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-WpqAXK\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-WpqAXK-project\\d3054baf-cd65-4e5c-95c1-26f3e62d7a0c.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-WpqAXK\\project",
+        "prompt_id": "2e9ce2b7-88b3-4ca2-a63c-0b46be2e86b3",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 17728,
+            "parentPid": 54156,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 54156,
+            "parentPid": 55268,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 55268,
+            "parentPid": 48916,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 48916,
+            "parentPid": 67924,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 67924,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "bash-opted-in",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=1",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "b6eef095-bc2e-4866-a8a1-7196fe24b6ae",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-n9V4M1\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-n9V4M1-project\\b6eef095-bc2e-4866-a8a1-7196fe24b6ae.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-n9V4M1\\project",
+        "prompt_id": "385cecbb-7003-4841-919b-ec980422fdad",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 58004,
+            "parentPid": 57648,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 57648,
+            "parentPid": 74372,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 74372,
+            "parentPid": 68468,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 68468,
+            "parentPid": 23164,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 23164,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "powershell-opted-in",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=1",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "session_id": "b2e9487f-5d1a-4628-ba75-c5ed9d5de5f4",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-hJvNBi\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-hJvNBi-project\\b2e9487f-5d1a-4628-ba75-c5ed9d5de5f4.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-hJvNBi\\project",
+        "prompt_id": "c6d38e29-0af2-4149-b1a6-9369bba7f97d",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 72644,
+            "parentPid": 54612,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 54612,
+            "parentPid": 72724,
+            "name": "powershell.exe",
+            "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 72724,
+            "parentPid": 56012,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\System32\\cmd.exe"
+          },
+          {
+            "pid": 56012,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 18208,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "claude",
+      "version": "2.1.295",
+      "capturedAt": "2026-10-11T01:45:32.422Z",
+      "case": "powershell-opted-in-pwsh-on-path",
+      "configuration": {
+        "set": "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=1, pwsh.exe first on PATH",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": true
+        }
+      },
+      "before": {
+        "session_id": "96917d27-c9de-4ea8-8308-5423cbd12aa8",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-qmDRuC\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-qmDRuC-project\\96917d27-c9de-4ea8-8308-5423cbd12aa8.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-qmDRuC\\project",
+        "prompt_id": "1cf99ff4-fa62-4c56-b920-aa4177a6be16",
+        "permission_mode": "bypassPermissions",
+        "effort": {
+          "level": "high"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "node interpreter.cjs",
+          "description": "Record the real shell process ancestry"
+        },
+        "tool_use_id": "toolu_playback_1"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 64692,
+            "parentPid": 63800,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 63800,
+            "parentPid": 72148,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+          },
+          {
+            "pid": 72148,
+            "parentPid": 71452,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\System32\\cmd.exe"
+          },
+          {
+            "pid": 71452,
+            "parentPid": 6592,
+            "name": "claude.exe",
+            "path": "C:\\users\\user\\.local\\bin\\claude.exe"
+          },
+          {
+            "pid": 6592,
+            "parentPid": 18208,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v1",
+      "version": "1.18.34",
+      "capturedAt": "2026-10-10T23:23:43.460Z",
+      "case": "bash-config-cmd",
+      "configuration": {
+        "set": "SHELL unset, opencode.json shell: \"cmd\"",
+        "opencodeShell": "cmd",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "hook": "tool.execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-LOiy4H\\project",
+        "input": {
+          "tool": "bash",
+          "sessionID": "ses_ed7de2a72ffeHAl14gKuft7WQG",
+          "callID": "call_playback"
+        },
+        "output": {
+          "args": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "tool.definition",
+        "input": {
+          "toolID": "bash"
+        },
+        "outputKeys": [
+          "description",
+          "parameters"
+        ],
+        "field": "description",
+        "statement": "Be aware: OS: win32, Shell: cmd",
+        "beforeCall": true,
+        "configShell": "cmd"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 21672,
+            "parentPid": 65428,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 65428,
+            "parentPid": 67544,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.EXE"
+          },
+          {
+            "pid": 67544,
+            "parentPid": 23332,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-shell-opencode-v1\\node_modules\\opencode-ai\\bin\\opencode.exe"
+          },
+          {
+            "pid": 23332,
+            "parentPid": 70280,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 70280,
+            "parentPid": 40056,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v1",
+      "version": "1.18.34",
+      "capturedAt": "2026-10-10T23:23:43.460Z",
+      "case": "bash-env-git-bash",
+      "configuration": {
+        "set": "SHELL names Git for Windows bash.exe",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": "C:\\Program Files\\Git\\bin\\bash.exe",
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "hook": "tool.execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-0yribl\\project",
+        "input": {
+          "tool": "bash",
+          "sessionID": "ses_ed7de5b3bffe1mhNyFLo5iAtvH",
+          "callID": "call_playback"
+        },
+        "output": {
+          "args": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "tool.definition",
+        "input": {
+          "toolID": "bash"
+        },
+        "outputKeys": [
+          "description",
+          "parameters"
+        ],
+        "field": "description",
+        "statement": "Be aware: OS: win32, Shell: bash",
+        "beforeCall": true,
+        "configShell": null
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 53484,
+            "parentPid": 55164,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 55164,
+            "parentPid": 70268,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 70268,
+            "parentPid": 50304,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 50304,
+            "parentPid": 67808,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-shell-opencode-v1\\node_modules\\opencode-ai\\bin\\opencode.exe"
+          },
+          {
+            "pid": 67808,
+            "parentPid": 70280,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v1",
+      "version": "1.18.34",
+      "capturedAt": "2026-10-10T23:23:43.460Z",
+      "case": "bash-env-unset",
+      "configuration": {
+        "set": "SHELL unset",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "hook": "tool.execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-gKojTK\\project",
+        "input": {
+          "tool": "bash",
+          "sessionID": "ses_ed7de8c21ffecZsUPIhkWB9q56",
+          "callID": "call_playback"
+        },
+        "output": {
+          "args": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "tool.definition",
+        "input": {
+          "toolID": "bash"
+        },
+        "outputKeys": [
+          "description",
+          "parameters"
+        ],
+        "field": "description",
+        "statement": "Be aware: OS: win32, Shell: powershell",
+        "beforeCall": true,
+        "configShell": null
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 43412,
+            "parentPid": 69636,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 69636,
+            "parentPid": 69748,
+            "name": "powershell.exe",
+            "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE"
+          },
+          {
+            "pid": 69748,
+            "parentPid": 24136,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-shell-opencode-v1\\node_modules\\opencode-ai\\bin\\opencode.exe"
+          },
+          {
+            "pid": 24136,
+            "parentPid": 70280,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 70280,
+            "parentPid": 40056,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v1",
+      "version": "1.18.34",
+      "capturedAt": "2026-10-10T23:23:43.460Z",
+      "case": "bash-pwsh-on-path",
+      "configuration": {
+        "set": "SHELL unset, pwsh.exe first on PATH",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": true
+        }
+      },
+      "before": {
+        "hook": "tool.execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-0MeUMG\\project",
+        "input": {
+          "tool": "bash",
+          "sessionID": "ses_ed7ddfcd9ffe61yG3grIEkrEVP",
+          "callID": "call_playback"
+        },
+        "output": {
+          "args": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "tool.definition",
+        "input": {
+          "toolID": "bash"
+        },
+        "outputKeys": [
+          "description",
+          "parameters"
+        ],
+        "field": "description",
+        "statement": "Be aware: OS: win32, Shell: pwsh",
+        "beforeCall": true,
+        "configShell": null
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 68252,
+            "parentPid": 14612,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 14612,
+            "parentPid": 66276,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.EXE"
+          },
+          {
+            "pid": 66276,
+            "parentPid": 43728,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-shell-opencode-v1\\node_modules\\opencode-ai\\bin\\opencode.exe"
+          },
+          {
+            "pid": 43728,
+            "parentPid": 70280,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 70280,
+            "parentPid": 40056,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v2",
+      "version": "2.0.20",
+      "capturedAt": "2026-10-10T22:33:33.248Z",
+      "case": "shell-config-cmd",
+      "configuration": {
+        "set": "SHELL unset, opencode.json shell: \"cmd\"",
+        "opencodeShell": "cmd",
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "hook": "execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-x8sB6Y\\project",
+        "event": {
+          "tool": "shell",
+          "sessionID": "ses_ed80caa70ffei4d8vvPvbjHBuV",
+          "agent": "build",
+          "messageID": "msg_127f35791001JXnZueAkIOIJRt",
+          "id": "call_playback",
+          "input": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "context",
+        "field": "tools.shell.description",
+        "statement": "Commands run on Windows using cmd.",
+        "beforeCall": true,
+        "shellCreated": "C:\\WINDOWS\\system32\\cmd.EXE"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 21156,
+            "parentPid": 59376,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 59376,
+            "parentPid": 63236,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.EXE"
+          },
+          {
+            "pid": 63236,
+            "parentPid": 64476,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 64476,
+            "parentPid": 58812,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 58812,
+            "parentPid": 20804,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v2",
+      "version": "2.0.20",
+      "capturedAt": "2026-10-10T22:33:33.248Z",
+      "case": "shell-env-git-bash",
+      "configuration": {
+        "set": "SHELL names Git for Windows bash.exe",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": "C:\\Program Files\\Git\\bin\\bash.exe",
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "hook": "execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-P30rGG\\project",
+        "event": {
+          "tool": "shell",
+          "sessionID": "ses_ed80cb69cffe17fpTnyu1axMf3",
+          "agent": "build",
+          "messageID": "msg_127f34b12001oMCXhM3KFJm6WJ",
+          "id": "call_playback",
+          "input": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "context",
+        "field": "tools.shell.description",
+        "statement": "Commands run on Windows using bash.",
+        "beforeCall": true,
+        "shellCreated": "C:\\Program Files\\Git\\bin\\bash.exe"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 63072,
+            "parentPid": 48392,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 48392,
+            "parentPid": 28468,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 28468,
+            "parentPid": 62812,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 62812,
+            "parentPid": 49684,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 49684,
+            "parentPid": 58812,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v2",
+      "version": "2.0.20",
+      "capturedAt": "2026-10-10T22:33:33.248Z",
+      "case": "shell-env-unset",
+      "configuration": {
+        "set": "SHELL unset",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": false
+        }
+      },
+      "before": {
+        "hook": "execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-uP6HRt\\project",
+        "event": {
+          "tool": "shell",
+          "sessionID": "ses_ed80cc26affePJEIoeOVRV3JMK",
+          "agent": "build",
+          "messageID": "msg_127f33f40001LsQ7dcKs6G1e4Y",
+          "id": "call_playback",
+          "input": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "context",
+        "field": "tools.shell.description",
+        "statement": "Commands run on Windows using powershell.",
+        "beforeCall": true,
+        "shellCreated": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 61144,
+            "parentPid": 44352,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 44352,
+            "parentPid": 44780,
+            "name": "powershell.exe",
+            "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE"
+          },
+          {
+            "pid": 44780,
+            "parentPid": 45980,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 45980,
+            "parentPid": 58812,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 58812,
+            "parentPid": 20804,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    },
+    {
+      "harness": "opencode-v2",
+      "version": "2.0.20",
+      "capturedAt": "2026-10-10T22:33:33.248Z",
+      "case": "shell-pwsh-on-path",
+      "configuration": {
+        "set": "SHELL unset, pwsh.exe first on PATH",
+        "opencodeShell": null,
+        "host": {
+          "SHELL": null,
+          "pwshOnPath": true
+        }
+      },
+      "before": {
+        "hook": "execute.before",
+        "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-B8jSo0\\project",
+        "event": {
+          "tool": "shell",
+          "sessionID": "ses_ed80c9de2ffe7ABds2mdl7UsW4",
+          "agent": "build",
+          "messageID": "msg_127f363ee00182r804tIw2F9Hq",
+          "id": "call_playback",
+          "input": {
+            "command": "node interpreter.cjs"
+          }
+        }
+      },
+      "reported": {
+        "hook": "context",
+        "field": "tools.shell.description",
+        "statement": "Commands run on Windows using pwsh.",
+        "beforeCall": true,
+        "shellCreated": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.EXE"
+      },
+      "execution": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 24332,
+            "parentPid": 54764,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 54764,
+            "parentPid": 54340,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.EXE"
+          },
+          {
+            "pid": 54340,
+            "parentPid": 664,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 664,
+            "parentPid": 58812,
+            "name": "opencode.exe",
+            "path": "C:\\Users\\user\\AppData\\Roaming\\npm\\node_modules\\@opencode\\cli\\bin\\opencode.exe"
+          },
+          {
+            "pid": 58812,
+            "parentPid": 20804,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import type {
   HookResult,
   RuntimePolicy,
   ShellCodec,
+  ShellDialect,
   ShellShapes,
   SupportLevel,
   TargetConfig,
@@ -37,6 +38,34 @@ export interface ProjectComponentOptions {
    * the resolution core reports is the one that gates the check.
    */
   support?: Readonly<Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>>;
+}
+
+/**
+ * What a harness stated about a tool call outside the call's own name and
+ * input, already reduced to portable terms by the adapter that heard it.
+ */
+export interface ReportedToolFacts {
+  /** The grammar family of the shell the harness said it runs (ADR-0029). */
+  shellDialect?: ShellDialect;
+}
+
+/**
+ * How an adapter establishes `tool.shell.dialect`, or why it cannot (ADR-0029).
+ * Whether a call carries one depends on the call and its host, which no
+ * capability matrix can hold, so this is the adapter's standing answer:
+ * `inspect` prints it, the generated support page lists it, and the contract
+ * suite holds the adapter's tables and classifier to the source it names.
+ */
+export interface ShellDialectSupport {
+  /**
+   * `tool`: a shape table entry pins it. `statement`: the adapter hears the
+   * harness state its shell and maps the name. `none`: never set.
+   */
+  readonly source: "tool" | "statement" | "none";
+  /** When a hook gets a dialect on this target, when it does not, and why. */
+  readonly rationale: string;
+  /** Repo-relative evidence path. */
+  readonly evidence: string;
 }
 
 /** A configured build target: config entry keyed by adapter/target id. */
@@ -361,8 +390,18 @@ export interface HarnessAdapter {
    * identity and shell view from its name and input. `hooknostic dispatch`
    * builds a test event's tool from it (ADR-0023), and the contract suite holds
    * it to every tool-bearing fixture.
+   *
+   * `reported` carries what the harness stated beside the call. An adapter
+   * that takes its shell dialect from such a statement applies it; one that
+   * pins the dialect by tool, or cannot establish one, ignores it (ADR-0029).
    */
-  classifyTool?(nativeName: string, input: unknown): ToolInvocation;
+  classifyTool?(nativeName: string, input: unknown, reported?: ReportedToolFacts): ToolInvocation;
+
+  /**
+   * Where this adapter's `tool.shell.dialect` comes from. Required in practice
+   * for any adapter with a shell shape table: the contract suite asks for it.
+   */
+  readonly shellDialect?: ShellDialectSupport;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

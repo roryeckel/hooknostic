@@ -94,6 +94,16 @@ export interface FileCodec {
 }
 
 /**
+ * The grammar families a shell command can be interpreted in (ADR-0029). A
+ * family, never an interpreter: one Claude Code tool runs bash or zsh, and
+ * another either PowerShell edition, under identical hook input, so a finer
+ * value could not be established on every harness that establishes this one.
+ */
+export const SHELL_DIALECTS = ["posix", "powershell", "cmd"] as const;
+
+export type ShellDialect = (typeof SHELL_DIALECTS)[number];
+
+/**
  * The normalized shell view plus the native key names it was derived from.
  * `commandKey`/`cwdKey` are descriptive data for the raw escape hatch: a hook
  * that must hand-build a native input (because it also touches keys outside
@@ -106,6 +116,15 @@ export interface ToolShell {
   cwd?: string;
   commandKey: string;
   cwdKey?: string;
+  /**
+   * The grammar family `command` will be interpreted in, where the adapter can
+   * establish it: from the tool's identity, or from what the harness itself
+   * reports (ADR-0029). Absent means unknown, not POSIX -- the tool name does
+   * not identify the interpreter, and on some harnesses nothing a hook can read
+   * does. Branch on this, never on `nativeName`, and decide what a
+   * grammar-dependent hook does when it is absent.
+   */
+  dialect?: ShellDialect;
 }
 
 /**
@@ -117,6 +136,13 @@ export interface ShellShape {
   commandKey: string;
   /** Native key carrying the working directory, when the tool has one. */
   cwdKey?: string;
+  /**
+   * The grammar family every call of this tool runs in, when the tool itself
+   * pins one whatever the host's configuration. Needs interpreter evidence, not
+   * a payload: leave it out where the harness chooses the interpreter per host
+   * or per call.
+   */
+  dialect?: ShellDialect;
 }
 
 /** Native tool name -> argument shape. Lookup is exact after `normalizeName`. */
@@ -171,6 +197,7 @@ export function shellCodec(
         ...(typeof cwd === "string" ? { cwd } : {}),
         commandKey: shape.commandKey,
         ...(shape.cwdKey !== undefined ? { cwdKey: shape.cwdKey } : {}),
+        ...(shape.dialect !== undefined ? { dialect: shape.dialect } : {}),
       };
     },
     encode(nativeName, input, patch) {

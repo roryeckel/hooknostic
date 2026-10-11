@@ -8,11 +8,12 @@
  * and audit ranges derive from each adapter's own `harness` metadata.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { SHELL_DIALECTS } from "@hooknostic/sdk";
 import {
   adapterFixturesDir,
   describeAdapterContract,
@@ -53,6 +54,23 @@ describe("scheduled scenario limitations", () => {
     );
     expect(scenarioById("agent-subagent")?.inconclusiveByHarness?.["codex"]).toMatch(/hook-trust bypass/);
     expect(scenarioById("context-compact")?.inconclusiveByHarness?.["claude"]).toMatch(/cannot deterministically fill/);
+  });
+});
+
+describe("shell dialect evidence (ADR-0029)", () => {
+  it("has a fixture carrying every dialect the vocabulary names", () => {
+    // A family joins SHELL_DIALECTS with a captured case behind it, never ahead of one.
+    const carried = new Set<string>();
+    for (const adapter of adapters) {
+      const dir = adapterFixturesDir(adapter);
+      for (const name of readdirSync(dir).filter((file) => file.endsWith(".canonical.json"))) {
+        const dialect = (
+          JSON.parse(readFileSync(resolve(dir, name), "utf8")) as { tool?: { shell?: { dialect?: string } } }
+        ).tool?.shell?.dialect;
+        if (dialect !== undefined) carried.add(dialect);
+      }
+    }
+    expect([...carried].sort()).toEqual([...SHELL_DIALECTS].sort());
   });
 });
 

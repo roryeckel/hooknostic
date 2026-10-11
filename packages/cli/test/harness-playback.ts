@@ -9,11 +9,12 @@ import { pathToFileURL } from "node:url";
 
 import { expect } from "vitest";
 
+import { dialectOfStatedShell } from "@hooknostic/adapter-opencode";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
 import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
+import type { CapabilityId, HookEventName, ShellDialect } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 const RUNTIME_POLICY = {
@@ -253,6 +254,7 @@ function playbackPluginSource(
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
           toolNativeName: event.tool?.nativeName,
+          shellDialect: event.tool?.shell?.dialect,
           lastMessage: event.lastMessage,
           turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
@@ -1282,6 +1284,65 @@ async function readTrace(path: string): Promise<{ event: HookEventName }[]> {
 
 export async function traceEvents(path: string): Promise<HookEventName[]> {
   return (await readTrace(path)).map((entry) => entry.event);
+}
+
+/**
+ * The dialect an OpenCode shell call should carry on this host, or why the lane
+ * cannot say (ADR-0029). OpenCode runs whatever the host points it at, so the
+ * expectation comes from the host and only where a capture says what follows
+ * (`.capture/shell-dialects`). On Windows and Linux: a `SHELL` naming a shell
+ * the adapter maps is the shell stated, with no `SHELL` Windows ran a
+ * PowerShell and Linux bash, and Linux ran and stated bash where `SHELL` named
+ * fish. On macOS one configuration was captured, a `SHELL` naming bash, which
+ * was stated and run. Anywhere else a call without a dialect is correct, and
+ * asserting one would blame the harness's wording for the host: a `SHELL` the
+ * adapter leaves unmapped, such as sh or tcsh, any other macOS configuration,
+ * and any other platform.
+ */
+export function openCodeShellDialectExpectation(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platform: string = process.platform,
+): { dialect: ShellDialect } | { skip: string } {
+  if (platform !== "win32" && platform !== "linux" && platform !== "darwin") {
+    return { skip: `no capture says what OpenCode states about its shell on ${platform}` };
+  }
+  const shell = env["SHELL"];
+  if (shell === undefined || shell === "") {
+    if (platform === "darwin") return { skip: "no capture says what OpenCode states on macOS with SHELL unset" };
+    return { dialect: platform === "win32" ? "powershell" : "posix" };
+  }
+  const name = shell
+    .split(/[\\/]/)
+    .at(-1)!
+    .toLowerCase()
+    .replace(/\.exe$/, "");
+  if (platform === "darwin") {
+    return name === "bash"
+      ? { dialect: "posix" }
+      : { skip: `no capture says what OpenCode states on macOS with SHELL naming ${name}` };
+  }
+  // The one shell a capture saw OpenCode refuse: it ran bash instead and said so.
+  if (name === "fish" && platform === "linux") return { dialect: "posix" };
+  const dialect = dialectOfStatedShell(name);
+  return dialect === undefined
+    ? { skip: `SHELL names ${name}, which the adapter does not map to a dialect` }
+    : { dialect };
+}
+
+/**
+ * Every shell call in a playback trace carries the dialect this host calls for.
+ * The adapter reads the shell's name out of prose the harness writes for the
+ * model, so this is the check that notices when a build rewords it: the calls
+ * would then carry no dialect at all.
+ */
+export function expectOpenCodeShellDialect(dialects: readonly unknown[], expected: ShellDialect): void {
+  expect(dialects.length, "no shell tool.before reached the trace").toBeGreaterThan(0);
+  expect(
+    dialects,
+    `this host calls for ${expected} (SHELL=${process.env["SHELL"] ?? "unset"}). A call with no dialect means ` +
+      "the build no longer states its shell in the wording packages/adapter-opencode/src/shell-statement.ts " +
+      "reads; .capture/shell-dialects/drive.mjs records what it states now.",
+  ).toEqual(dialects.map(() => expected));
 }
 
 export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {

@@ -26,7 +26,9 @@ import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs"
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
+  expectOpenCodeShellDialect,
   openCodePlaybackConfigHome,
+  openCodeShellDialectExpectation,
   playbackModelInfo,
   type PlaybackScenario,
   prepareOpenCodePluginDependency,
@@ -46,6 +48,8 @@ const adapter =
       ? undefined
       : defaultAdapterRegistry()[selected];
 const tempDirs: string[] = [];
+/** The shell calls' dialects from the lifecycle scenario's trace, once it has run. */
+let lifecycleShellDialects: unknown[] | undefined;
 
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
 const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", import.meta.url));
@@ -2310,13 +2314,28 @@ scenarioDrive("lifecycle-observe", async () => {
   const trace = (await readFile(build.tracePath, "utf8"))
     .trim()
     .split("\n")
-    .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          event: string;
+          lastMessage?: string;
+          turnId?: string;
+          toolKind?: string;
+          shellDialect?: string;
+        },
+    );
   const prompt = trace.find((entry) => entry.event === "prompt.before");
   expect(prompt?.turnId).toEqual(expect.any(String));
   expect(trace.filter((entry) => entry.event === "turn.stop").at(-1)).toMatchObject({
     lastMessage: "playback complete",
     turnId: prompt?.turnId,
   });
+
+  // Kept for the dialect test below rather than asserted here: this scenario
+  // stands for every observable event, and the dialect is none of them.
+  lifecycleShellDialects = trace
+    .filter((entry) => entry.event === "tool.before" && entry.toolKind === "shell")
+    .map((entry) => entry.shellDialect);
 });
 
 scenarioDrive("tool-before-block", async () => {
@@ -3195,5 +3214,51 @@ describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${se
     if (entry === undefined) continue;
     const skipReason = scenarioSkipReason(scenario, entry);
     it(scenario.title, { timeout: 240_000, skip: skipReason !== undefined }, entry.drive);
+  }
+
+  // ADR-0029, and a test of its own: the dialect is not a capability, so a
+  // build that rewords what it states should fail here, attributably, and not
+  // take the lifecycle scenario and every observe cell with it.
+  it("gives the lifecycle shell call the dialect this harness lets the adapter establish", (context) => {
+    if (lifecycleShellDialects === undefined) return context.skip("the lifecycle scenario did not run");
+    const dialects = lifecycleShellDialects;
+    expect(dialects.length, "no shell tool.before reached the trace").toBeGreaterThan(0);
+    if (adapter!.id === "opencode") {
+      const expectation = openCodeShellDialectExpectation();
+      if ("skip" in expectation) return context.skip(expectation.skip);
+      return expectOpenCodeShellDialect(dialects, expectation.dialect);
+    }
+    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
+    expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
+  });
+});
+
+it("expects an OpenCode dialect only where a capture says which one", () => {
+  // The lane's own judgement, pinned: asserting a dialect on a host whose shell
+  // the adapter leaves unmapped would blame the harness for the host.
+  const on = (platform: string, shell?: string) =>
+    openCodeShellDialectExpectation(shell === undefined ? {} : { SHELL: shell }, platform);
+  expect(on("linux", "/bin/bash")).toEqual({ dialect: "posix" });
+  expect(on("win32", "C:\\Program Files\\Git\\bin\\bash.exe")).toEqual({ dialect: "posix" });
+  expect(on("win32", "C:\\Program Files\\PowerShell\\7\\PWSH.EXE")).toEqual({ dialect: "powershell" });
+  expect(on("win32")).toEqual({ dialect: "powershell" });
+  expect(on("linux")).toEqual({ dialect: "posix" });
+  expect(on("linux", "")).toEqual({ dialect: "posix" });
+  // Captured on Linux only: OpenCode refused fish, ran bash and stated bash.
+  expect(on("linux", "/usr/bin/fish")).toEqual({ dialect: "posix" });
+  // macOS was captured in one configuration: SHELL named bash, stated and run.
+  expect(on("darwin", "/bin/bash")).toEqual({ dialect: "posix" });
+  for (const [platform, shell] of [
+    ["linux", "/bin/sh"],
+    ["linux", "/usr/bin/tcsh"],
+    ["win32", "C:\\tools\\fish.exe"],
+    // Nothing else was captured on macOS (ADR-0029), so not even zsh, which
+    // the adapter maps and Linux saw stated, is expected there.
+    ["darwin", "/bin/zsh"],
+    ["darwin", "/opt/homebrew/bin/fish"],
+    ["darwin", undefined],
+    ["freebsd", "/bin/bash"],
+  ] as const) {
+    expect(on(platform, shell), `${platform} ${String(shell)}`).toEqual({ skip: expect.any(String) });
   }
 });

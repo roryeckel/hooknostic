@@ -1,0 +1,38 @@
+{
+  "names": [
+    "Agent",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "Edit",
+    "EnterWorktree",
+    "ExitWorktree",
+    "Glob",
+    "Grep",
+    "ListAgents",
+    "NotebookEdit",
+    "PowerShell",
+    "Read",
+    "ReportFindings",
+    "ScheduleWakeup",
+    "SendMessage",
+    "Skill",
+    "TaskStop",
+    "WebFetch",
+    "WebSearch",
+    "Workflow",
+    "Write"
+  ],
+  "shellTools": [
+    {
+      "name": "PowerShell",
+      "properties": [
+        "command",
+        "timeout",
+        "description",
+        "run_in_background",
+        "dangerouslyDisableSandbox"
+      ]
+    }
+  ]
+}

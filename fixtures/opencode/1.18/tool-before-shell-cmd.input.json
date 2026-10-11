@@ -1,0 +1,14 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-LOiy4H\\project",
+  "input": {
+    "tool": "bash",
+    "sessionID": "ses_ed7de2a72ffeHAl14gKuft7WQG",
+    "callID": "call_playback"
+  },
+  "output": {
+    "args": {
+      "command": "node interpreter.cjs"
+    }
+  }
+}
