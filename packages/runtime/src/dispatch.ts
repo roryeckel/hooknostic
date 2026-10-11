@@ -57,8 +57,9 @@ export interface DispatchOptions {
   /**
    * The dialect the adapter established for this event's shell tool from
    * outside the codec, such as a shell the harness stated (ADR-0029). The codec
-   * cannot restate it after a rewrite, so the shim hands it over here. Without
-   * it a rewrite keeps the dialect the event's shell view arrived with.
+   * cannot restate it after a rewrite, so the shim hands it over here, for a
+   * call that arrives with no view to carry it. A dialect the event's shell
+   * view arrived with is what the hooks were shown, and is kept over this one.
    */
   shellDialect?: ShellDialect;
   /**
@@ -172,7 +173,9 @@ export async function dispatch(
       : DEFAULT_RUNTIME.notifyCharLimit;
 
   // Fixed before any hook runs: a rewrite can remove the view that carried it.
-  const establishedDialect = options.shellDialect ?? toolOf(event)?.shell?.dialect;
+  // The view's own dialect comes first, so no rewrite changes the grammar a
+  // hook was already told the command runs in.
+  const establishedDialect = toolOf(event)?.shell?.dialect ?? options.shellDialect;
 
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;

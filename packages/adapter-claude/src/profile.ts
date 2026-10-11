@@ -114,10 +114,14 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-10-10",
           method: "live-probe",
           artifact: ".capture/shell-dialects",
-          what: "Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); a Windows host without Git for Windows installed has no capture.",
+          what: "Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH, with ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA redirected to an empty directory as well, and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); a Windows host without Git for Windows installed has no capture, and no environment on this host stood in for one.",
         },
       ],
-      notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
+      notes: [
+        "https://code.claude.com/docs/en/hooks (fetched 2026-08-20)",
+        // Weaker provenance for the one host ADR-0029 has no capture of.
+        "https://code.claude.com/docs/en/setup and https://code.claude.com/docs/en/tools-reference (fetched 2026-10-10): the Bash tool needs Git Bash, and a Windows host without Git for Windows runs shell commands through the PowerShell tool",
+      ],
     },
     // Optional event fields (ADR-0027): exactly what the captured fixtures in
     // fixtures/claude/2.1 carry. prompt_id is on every payload except

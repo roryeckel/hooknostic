@@ -37,7 +37,9 @@ export const CLAUDE_TOOL_KINDS: Record<string, ToolKind> = {
  * it at fish, tcsh, PowerShell or cmd; `PowerShell` ran Windows PowerShell or
  * PowerShell 7 depending on what `PATH` resolved, under identical hook input.
  * So the dialect is a family, and the tool name is what establishes it. One
- * host has no capture: Windows without Git for Windows installed.
+ * host has no capture: Windows without Git for Windows installed. There the
+ * pin rests on Anthropic's documentation (read 2026-10-10), which says `Bash`
+ * needs Git Bash and that such a host runs shell commands through `PowerShell`.
  */
 export const CLAUDE_SHELL_SHAPES: ShellShapes = {
   Bash: { commandKey: "command", dialect: "posix" },

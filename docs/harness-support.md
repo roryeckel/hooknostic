@@ -38,7 +38,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | 2.1.286 | 2026-10-04 | live-probe | `.capture/shell-dialects` | macOS loopback shell interpreter probe: captured native Bash payload and executed Node process ancestry establish /bin/bash for this GitHub runner configuration; PowerShell was not advertised by discovery. |
 | 2.1.238 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe on the reference build: the Bash tool ran Git for Windows bash.exe. |
 | 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Linux container shell interpreter probe: Bash ran bash or zsh in nine host configurations: SHELL unset or naming bash, zsh, fish or tcsh, and CLAUDE_CODE_SHELL naming zsh, fish, tcsh or pwsh. Where the shell named was neither bash nor zsh it ran one of those two. |
-| 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); a Windows host without Git for Windows installed has no capture. |
+| 2.1.295 | 2026-10-10 | live-probe | `.capture/shell-dialects` | Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH, with ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA redirected to an empty directory as well, and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); a Windows host without Git for Windows installed has no capture, and no environment on this host stood in for one. |
 
 #### Optional event fields
 
@@ -115,7 +115,7 @@ Project support is independent of package projection.
 
 #### Shell dialect
 
-`tool.shell.dialect` is established from **the tool name**. Set on every shell view: Bash is posix and PowerShell is powershell. Each tool ran only shells of its family in every captured host configuration, so the tool name establishes it; the family, not the interpreter (Bash ran bash and zsh, PowerShell both editions). A Windows host without Git for Windows has no capture.
+`tool.shell.dialect` is established from **the tool name**. Set on every shell view: Bash is posix and PowerShell is powershell. Each tool ran only shells of its family in every captured host configuration, so the tool name establishes it; the family, not the interpreter (Bash ran bash and zsh, PowerShell both editions). A Windows host without Git for Windows has no capture; Anthropic documents that Bash needs Git Bash and that such a host uses PowerShell.
 Evidence: `.capture/shell-dialects`.
 
 #### Agent Plugin projection

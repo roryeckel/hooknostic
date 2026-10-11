@@ -95,6 +95,7 @@ for the Codex cases PowerShell 7.6.6 from Microsoft's Debian 12 package feed.
 | Windows | `Bash` | `CLAUDE_CODE_GIT_BASH_PATH` names `cmd.exe` | Git for Windows `bash.exe` |
 | Windows | `Bash` | `CLAUDE_CODE_GIT_BASH_PATH` names `powershell.exe` | Git for Windows `bash.exe` |
 | Windows | `Bash` | Git for Windows removed from `PATH` | Git for Windows `bash.exe` |
+| Windows | `Bash` | the same, and `ProgramFiles`, `ProgramFiles(x86)`, `ProgramW6432` and `LOCALAPPDATA` name an empty directory | Git for Windows `bash.exe` |
 | Windows | `PowerShell` | `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` | Windows `powershell.exe` |
 | Windows | `PowerShell` | the same, `pwsh.exe` first on `PATH` | `pwsh.exe` |
 | macOS | `Bash` | default | `/bin/bash` |
@@ -110,16 +111,39 @@ for the Codex cases PowerShell 7.6.6 from Microsoft's Debian 12 package feed.
 
 `PowerShell` was advertised with the opt-in variable set and by no default
 discovery on any platform. Its two cases have identical hook input and ran two
-PowerShell editions. `Bash` ran bash or zsh in all sixteen cases. Nine of them
-pointed it elsewhere: at fish, tcsh or PowerShell through `SHELL` or
+PowerShell editions. `Bash` ran bash or zsh in all seventeen cases. Ten of
+them pointed it elsewhere: at fish, tcsh or PowerShell through `SHELL` or
 `CLAUDE_CODE_SHELL` on Linux, and on Windows at a missing file, `cmd.exe` or
-`powershell.exe` through its Git Bash path variable, or with Git taken off
-`PATH`. The reference build's Windows default case ran Git for Windows
-`bash.exe` as well.
+`powershell.exe` through its Git Bash path variable, with Git taken off
+`PATH`, or with the install-location variables redirected as well. The
+reference build's Windows default case ran Git for Windows `bash.exe` as well.
+
+A session that does not set one of Claude Code's own interpreter variables
+(`CLAUDE_CODE_SHELL`, `CLAUDE_CODE_GIT_BASH_PATH`,
+`CLAUDE_CODE_USE_POWERSHELL_TOOL`) runs with it unset, whatever the driving
+process inherited. Claude Code's Windows host-configuration cases were
+recaptured on 2026-10-10 after the driver began enforcing that. The other
+comparisons predate it: the Windows host has none of the three set, the Linux
+container was a stock image given only this capture's own variables, and the
+macOS sessions ran on GitHub's runners.
 
 Every Windows case ran on a host with Git for Windows installed, where Claude
-Code found `bash.exe` at its install location whatever the variables said. What
-`Bash` does on a Windows host without Git for Windows is not captured.
+Code found `bash.exe` at its install location whatever the variables said. The
+last `Bash` row is the nearest this host comes to lacking it, and it changed
+nothing, so the environment cannot stand in for an uninstalled Git. What `Bash`
+does on a Windows host without Git for Windows is **not captured**.
+
+It is **documented**, which is weaker. Anthropic's setup page and tools
+reference, as read on 2026-10-10, say that Git Bash is what the `Bash` tool
+needs, that `Bash` stays available where Git Bash is installed, and that
+without Git for Windows Claude Code runs shell commands through the
+`PowerShell` tool, which is then enabled without the opt-in
+(<https://code.claude.com/docs/en/setup>,
+<https://code.claude.com/docs/en/tools-reference>). If that holds, such a host
+sends a hook no `Bash` call for the `posix` pin to be wrong about, and its
+shell calls arrive as `PowerShell`. The same pages say `PowerShell` is on by
+default beside `Bash` for some account types; in these loopback sessions it was
+advertised only with the opt-in set.
 
 ## Codex
 

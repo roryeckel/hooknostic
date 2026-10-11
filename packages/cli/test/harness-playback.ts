@@ -1291,10 +1291,11 @@ export async function traceEvents(path: string): Promise<HookEventName[]> {
  * cannot say (ADR-0029). OpenCode runs whatever the host points it at, so the
  * expectation comes from the host and only where a capture says what follows
  * (`.capture/shell-dialects`): a `SHELL` naming a shell the adapter maps is the
- * shell stated, and with no `SHELL` Windows ran a PowerShell and Linux bash.
- * Anywhere else -- a `SHELL` the adapter leaves unmapped, such as sh or tcsh, or
- * one OpenCode refuses and replaces -- a call without a dialect is correct, and
- * asserting one would blame the harness's wording for the host's shell.
+ * shell stated, with no `SHELL` Windows ran a PowerShell and Linux bash, and
+ * Linux ran and stated bash where `SHELL` named fish. Anywhere else -- a
+ * `SHELL` the adapter leaves unmapped, such as sh or tcsh -- a call without a
+ * dialect is correct, and asserting one would blame the harness's wording for
+ * the host's shell.
  */
 export function openCodeShellDialectExpectation(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -1311,6 +1312,8 @@ export function openCodeShellDialectExpectation(
     .at(-1)!
     .toLowerCase()
     .replace(/\.exe$/, "");
+  // The one shell a capture saw OpenCode refuse: it ran bash instead and said so.
+  if (name === "fish" && platform === "linux") return { dialect: "posix" };
   const dialect = dialectOfStatedShell(name);
   return dialect === undefined
     ? { skip: `SHELL names ${name}, which the adapter does not map to a dialect` }

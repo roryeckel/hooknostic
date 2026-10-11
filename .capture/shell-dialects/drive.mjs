@@ -81,7 +81,11 @@ async function session(label, script, configuration = {}) {
   }
   // The drives copy process.env, so a case's host configuration is applied there
   // for one session and restored afterwards. `null` unsets a variable.
-  const overrides = Object.entries(configuration.env ?? {});
+  // Claude Code's own interpreter variables are host configuration as well: a
+  // session that does not set one runs without it, whatever this process inherited.
+  const unset = harness === "claude"
+    ? { CLAUDE_CODE_SHELL: null, CLAUDE_CODE_GIT_BASH_PATH: null, CLAUDE_CODE_USE_POWERSHELL_TOOL: null } : {};
+  const overrides = Object.entries({ ...unset, ...(configuration.env ?? {}) });
   const inherited = overrides.map(([name]) => [name, process.env[name]]);
   for (const [name, value] of overrides) {
     if (value === null) delete process.env[name];
@@ -175,6 +179,12 @@ function configuredCases(name) {
     // something that is not a POSIX shell, or nothing, and Git taken off PATH.
     const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
     const withoutGit = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry && !/[\\/]Git([\\/]|$)|mingw64/i.test(entry)).join(delimiter);
+    // The nearest this host comes to having no Git for Windows: every variable an
+    // install location could be derived from names an empty directory.
+    const hidden = () => {
+      const empty = mkdtempSync(join(tmpdir(), "hkn-shell-dialect-empty-"));
+      return { SHELL: null, PATH: withoutGit, ProgramFiles: empty, "ProgramFiles(x86)": empty, ProgramW6432: empty, LOCALAPPDATA: empty };
+    };
     const elsewhere = [
       ["missing", join(system, "hooknostic-missing", "bash.exe"), "a missing file"],
       ["cmd", join(system, "cmd.exe"), "cmd.exe"],
@@ -188,6 +198,8 @@ function configuredCases(name) {
         ...elsewhere.map(([label, path, described]) => [tool + "-git-bash-path-" + label,
           { env: { SHELL: null, CLAUDE_CODE_GIT_BASH_PATH: path }, set: "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names " + described }]),
         [tool + "-git-off-path", { env: { SHELL: null, PATH: withoutGit }, set: "SHELL unset, Git for Windows removed from PATH" }],
+        [tool + "-git-locations-redirected", { env: hidden(),
+          set: "SHELL unset, Git for Windows removed from PATH, ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA name an empty directory" }],
       ] : []),
     ];
   }

@@ -259,8 +259,10 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
     it("holds its tables and classifier to the shell dialect source it declares", () => {
       // ADR-0029: `inspect` and the generated support page print this
       // declaration, so it has to be true of the code. Each shell-bearing
-      // fixture is re-classified with a dialect it does not record, to see
-      // whether the adapter takes one from what the harness reports.
+      // fixture is re-classified with every dialect it does not record, to
+      // see whether the adapter takes one from what the harness reports. It
+      // must take all of them on every shell tool or none on any: an adapter
+      // that hears one name, or hears for one tool, matches no declaration.
       const shellTools = fixtureNames
         .map((name) => loadFixtureFrom<{ tool?: ToolInvocation }>(join(options.fixturesDir, name)).tool)
         .filter((tool): tool is ToolInvocation => tool?.shell !== undefined);
@@ -270,13 +272,17 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       expect(declared!.rationale, "shellDialect needs a rationale").toBeTruthy();
       expect(declared!.evidence, "shellDialect needs evidence").toBeTruthy();
       const pins = Object.values(adapter.shellShapes ?? {}).some((shape) => shape.dialect !== undefined);
-      const hears = shellTools.some((tool) => {
-        const other = SHELL_DIALECTS.find((dialect) => dialect !== tool.shell!.dialect)!;
-        return adapter.classifyTool?.(tool.nativeName, tool.input, { shellDialect: other }).shell?.dialect === other;
-      });
+      const probes = shellTools.flatMap((tool) =>
+        SHELL_DIALECTS.filter((dialect) => dialect !== tool.shell!.dialect).map((dialect) => ({ tool, dialect })),
+      );
+      const heard = probes.filter(
+        ({ tool, dialect }) =>
+          adapter.classifyTool?.(tool.nativeName, tool.input, { shellDialect: dialect }).shell?.dialect === dialect,
+      );
+      const hears = heard.length === 0 ? "nothing" : heard.length === probes.length ? "everything" : "some";
       expect({ pins, hears }, `declared source "${declared!.source}"`).toEqual({
         pins: declared!.source === "tool",
-        hears: declared!.source === "statement",
+        hears: declared!.source === "statement" ? "everything" : "nothing",
       });
     });
 

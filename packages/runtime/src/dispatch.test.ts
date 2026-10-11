@@ -1286,6 +1286,30 @@ describe("shell view coherence across rewrites", () => {
     expect(seen).toEqual([undefined, "cmd", undefined, "powershell", "powershell", undefined]);
   });
 
+  it("keeps the dialect a view arrived with over an option that disagrees", async () => {
+    // The option is for a call with no view to carry a dialect. Where one
+    // arrived, the first hook was already shown it, and a rewrite that
+    // switched to the option's would change the grammar under a later guard.
+    const seen: unknown[] = [];
+    const arrived = shellEvent();
+    arrived.tool.shell = { ...arrived.tool.shell!, dialect: "posix" };
+    const watch = (id: string, input?: unknown) =>
+      hook("tool.before", {
+        id,
+        capabilities: { "tool.before.input.replace": "required" },
+        async run(event) {
+          seen.push(event.tool.shell?.dialect);
+          return input === undefined ? undefined : replaceInput(input);
+        },
+      });
+    await dispatch([watch("rewrite", { command: "ls" }), watch("guard")], arrived, {
+      ...OPTIONS,
+      shellCodec: codec,
+      shellDialect: "cmd",
+    });
+    expect(seen).toEqual(["posix", "posix"]);
+  });
+
   it("takes the codec's dialect over the previous one, and drops it with the view", async () => {
     // A table that pins the dialect is the authority after a rewrite, and an
     // input that no longer classifies leaves no view to hang a dialect on.

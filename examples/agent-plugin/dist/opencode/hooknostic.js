@@ -4915,7 +4915,7 @@ async function dispatch(hooks, event, options2) {
   };
   let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
   let notifyBudget = typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0 ? policy.notifyCharLimit : DEFAULT_RUNTIME.notifyCharLimit;
-  const establishedDialect = options2.shellDialect ?? toolOf(event)?.shell?.dialect;
+  const establishedDialect = toolOf(event)?.shell?.dialect ?? options2.shellDialect;
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options2.targetId)) return false;

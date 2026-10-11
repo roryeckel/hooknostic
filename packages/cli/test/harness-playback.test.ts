@@ -3245,10 +3245,13 @@ it("expects an OpenCode dialect only where a capture says which one", () => {
   expect(on("win32")).toEqual({ dialect: "powershell" });
   expect(on("linux")).toEqual({ dialect: "posix" });
   expect(on("linux", "")).toEqual({ dialect: "posix" });
+  // Captured on Linux only: OpenCode refused fish, ran bash and stated bash.
+  expect(on("linux", "/usr/bin/fish")).toEqual({ dialect: "posix" });
   for (const [platform, shell] of [
     ["linux", "/bin/sh"],
     ["linux", "/usr/bin/tcsh"],
-    ["linux", "/usr/bin/fish"],
+    ["darwin", "/opt/homebrew/bin/fish"],
+    ["win32", "C:\\tools\\fish.exe"],
     ["darwin", undefined],
   ] as const) {
     expect(on(platform, shell), `${platform} ${String(shell)}`).toEqual({ skip: expect.any(String) });

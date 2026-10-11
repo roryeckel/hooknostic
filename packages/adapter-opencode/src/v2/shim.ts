@@ -74,6 +74,9 @@ export async function setupOpenCodeV2(
   // description, which names the shell; no tool hook does. Kept per session and
   // replaced on every request, so a description that stops naming a shell
   // clears it. Bounded: sessions outlive executions, and nothing here ends one.
+  // The session forgotten is the one stated longest ago, and each request
+  // restates, so a call loses its dialect only if 256 other sessions state
+  // theirs between its own request and the call. It then reports none.
   const readsShell = events.has("tool.before") || events.has("tool.after") || events.has("tool.error");
   const statedShells = new Map<string, string>();
   const STATED_SHELL_SESSIONS = 256;

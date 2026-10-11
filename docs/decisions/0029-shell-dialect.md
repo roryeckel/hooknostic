@@ -24,8 +24,9 @@ what each harness does and what it tells a hook:
 - **Claude Code** has one tool per family. `Bash` ran bash or zsh on all three
   platforms. That held on Linux where `SHELL` named fish or tcsh or was unset,
   and where `CLAUDE_CODE_SHELL` named fish, tcsh or PowerShell; and on Windows
-  with Git taken off `PATH` and with its Git Bash path variable naming a missing
-  file, `cmd.exe` or `powershell.exe`. `PowerShell` ran Windows PowerShell or
+  with Git taken off `PATH`, with the install-location variables redirected as
+  well, and with its Git Bash path variable naming a missing file, `cmd.exe` or
+  `powershell.exe`. `PowerShell` ran Windows PowerShell or
   PowerShell 7 depending on what `PATH` resolved. The tool name is in the hook
   payload.
 - **OpenCode** picks the interpreter from the host: its `shell` configuration
@@ -87,10 +88,12 @@ ran both under identical input. OpenCode's statement names the exact shell.
 7. **A rewrite keeps the dialect.** `updateShell` and `replaceInput` re-derive
    the view from the new input (ADR-0007 decision 6). Where the codec states a
    dialect, that is the new one. Where it does not, the view gets the dialect
-   the adapter established for the event: the one its shim hands dispatch
-   (`shellDialect`), or failing that the one the view arrived with. It describes
-   the tool and its host, not the input, so it also reaches a view that only a
-   rewrite creates. An input that no longer classifies drops the whole view.
+   the adapter established for the event: the one the view arrived with, or for
+   a call that arrived with none, the one its shim hands dispatch
+   (`shellDialect`). The arriving view comes first because a hook has already
+   been shown it. The dialect describes the tool and its host, not the input,
+   so it also reaches a view that only a rewrite creates. An input that no
+   longer classifies drops the whole view.
 8. **`updateShell` stays dialect-blind.** It lowers the command under the
    tool's native key and does not quote or translate. The hook writes a command
    in the dialect it read.
@@ -115,9 +118,15 @@ ran both under identical input. OpenCode's statement names the exact shell.
 
 - **Claude Code's `Bash` on a Windows host without Git for Windows.** Every
   Windows capture had it installed, and Claude Code found it at its install
-  location whatever the host's variables said. If a host without it still
-  offers `Bash` and runs it through another shell, `posix` would be wrong
-  there, not absent.
+  location whatever the host's variables said, so no environment on that host
+  could stand in for its absence. The `posix` pin therefore rests on weaker
+  provenance for this one host: Anthropic's setup page and tools reference, as
+  read on 2026-10-10, say the `Bash` tool needs Git Bash and that without Git
+  for Windows shell commands run through the `PowerShell` tool. If so, such a
+  host sends no `Bash` call to be wrong about. That is documented, not
+  captured. If a host without it did offer `Bash` and ran it through another
+  shell, `posix` would be wrong there, not absent; a capture on such a host
+  settles it.
 - **What OpenCode states on macOS.** No macOS session recorded the statement.
   A build that words it differently there reports no dialect, which is the
   safe direction, but nothing here predicts it.

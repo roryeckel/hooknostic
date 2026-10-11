@@ -347,6 +347,21 @@ describe("v2 captured boundary", () => {
       expect(seen).toEqual([undefined, "posix"]);
     });
 
+    it("counts a session from its latest statement, so one still making requests is not the one forgotten", async () => {
+      // Every model request restates the shell, and that is what makes the
+      // bound safe: only a session silent for 256 others' statements loses its
+      // dialect, never one in the middle of a turn.
+      const { seen, callbacks, call, cleanup } = await listening(["tool.before"]);
+      await callbacks["context"]!(context("busy", "zsh"));
+      await callbacks["context"]!(context("idle", "zsh"));
+      await callbacks["context"]!(context("busy", "zsh"));
+      for (let index = 0; index < 255; index += 1) await callbacks["context"]!(context(`filler-${index}`, "bash"));
+      await call("busy");
+      await call("idle");
+      await cleanup();
+      expect(seen).toEqual(["posix", undefined]);
+    });
+
     it("listens without dispatching when no hook asked for model requests", async () => {
       const tools = await listening(["tool.error"]);
       expect(Object.keys(tools.callbacks).sort()).toEqual(["context", "execute.after"]);
