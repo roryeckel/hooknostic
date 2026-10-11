@@ -15,6 +15,7 @@ import {
   HOOK_EVENT_NAMES,
   isEventFieldId,
   readEventField,
+  SHELL_DIALECTS,
 } from "@hooknostic/sdk";
 
 import { loadFixtureFrom } from "./fixtures.js";
@@ -203,13 +204,24 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       // fourth adapter shipping a one-way toolmap fails here.
       for (const name of fixtureNames) {
         const fixture = loadFixtureFrom<{
-          tool?: { nativeName: string; input: unknown; shell?: { command: string } };
+          tool?: { nativeName: string; input: unknown; shell?: { command: string; dialect?: string } };
         }>(join(options.fixturesDir, name));
         const tool = fixture.tool;
         if (tool?.shell === undefined) continue;
         expect(adapter.shellCodec, `${name} has tool.shell but adapter has no codec`).toBeDefined();
         const classified = adapter.shellCodec!.classify(tool.nativeName, tool.input);
-        expect(classified, `${name}: codec does not classify its own fixture`).toEqual(tool.shell);
+        // A dialect the codec does not state came from what the harness reported
+        // at run time, not from the table (ADR-0029); the rest is the codec's.
+        const { dialect: _reported, ...view } = tool.shell;
+        // A classifier that echoes what it was told would reproduce any string.
+        if (tool.shell.dialect !== undefined) {
+          expect(SHELL_DIALECTS as readonly string[], `${name}: unregistered shell dialect`).toContain(
+            tool.shell.dialect,
+          );
+        }
+        expect(classified, `${name}: codec does not classify its own fixture`).toEqual(
+          classified?.dialect === undefined ? view : tool.shell,
+        );
         const encoded = adapter.shellCodec!.encode(tool.nativeName, tool.input, {
           command: "hooknostic-contract-probe",
         });
@@ -224,11 +236,23 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       // `hooknostic dispatch` builds a test event's whole tool view from
       // classifyTool (ADR-0023), so it must reproduce the decoder's output, not
       // an approximation of it.
+      // A fixture's dialect is handed back as what the harness reported: an
+      // adapter that pins it by tool must reach it regardless, one that takes
+      // it from the harness must apply it, and no adapter may produce one for
+      // a fixture that records none (ADR-0029).
       for (const name of fixtureNames) {
         const tool = loadFixtureFrom<{ tool?: ToolInvocation }>(join(options.fixturesDir, name)).tool;
         if (tool === undefined) continue;
         expect(adapter.classifyTool, `${name} has a tool but adapter has no classifyTool`).toBeDefined();
-        expect(adapter.classifyTool!(tool.nativeName, tool.input), name).toEqual(tool);
+        const dialect = tool.shell?.dialect;
+        expect(
+          adapter.classifyTool!(
+            tool.nativeName,
+            tool.input,
+            dialect === undefined ? undefined : { shellDialect: dialect },
+          ),
+          name,
+        ).toEqual(tool);
       }
     });
 

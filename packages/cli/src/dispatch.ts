@@ -22,8 +22,14 @@ import {
   targetSpecFromConfig,
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
-import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec } from "@hooknostic/sdk";
-import { baseHookEventSchema, fieldsForEvent, isToolScopedEvent, readEventField } from "@hooknostic/sdk";
+import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec, ShellDialect } from "@hooknostic/sdk";
+import {
+  baseHookEventSchema,
+  fieldsForEvent,
+  isToolScopedEvent,
+  readEventField,
+  SHELL_DIALECTS,
+} from "@hooknostic/sdk";
 
 import type { CommandIO } from "./check.js";
 
@@ -106,8 +112,21 @@ const EVENT_FIELDS: Record<HookEventName, Readonly<Record<string, FieldCheck>>> 
   "turn.stop": { lastMessage: optionalString },
 };
 
-/** What the target's classifier derives; a test supplies only `nativeName` and `input`. */
+/**
+ * What the target's classifier derives. A test supplies `nativeName` and `input`,
+ * and may state one part of `shell`: see {@link statesOnlyDialect}.
+ */
 const DERIVED_TOOL_FIELDS = ["kind", "mcp", "shell"];
+
+/**
+ * The one part of `tool.shell` a test may supply is its `dialect`, for a
+ * target whose harness states the shell at run time rather than in the tool
+ * call (ADR-0029). A `shell` holding nothing else is that statement, not a
+ * derived view.
+ */
+function statesOnlyDialect(shell: unknown): shell is { dialect?: unknown } {
+  return isRecord(shell) && Object.keys(shell).length === 1 && "dialect" in shell;
+}
 
 /**
  * Complete a portable event the way a decoder completes a native one, so a
@@ -177,22 +196,50 @@ function completeEvent(
   }
   if (tool === undefined) return { event: event as unknown as HookEvent };
 
-  const derived = DERIVED_TOOL_FIELDS.filter((key) => key in tool);
+  const derived = DERIVED_TOOL_FIELDS.filter(
+    (key) => key in tool && !(key === "shell" && statesOnlyDialect(tool[key])),
+  );
   if (derived.length > 0) {
     const [verb, pronoun] = derived.length === 1 ? ["is", "it"] : ["are", "them"];
+    // Someone who tried to state a dialect should learn that it can be stated.
+    const hint =
+      isRecord(tool["shell"]) && "dialect" in tool["shell"] ? " (tool.shell may hold dialect and nothing else)" : "";
     return {
-      problem: `${derived.map((key) => `tool.${key}`).join(" and ")} ${verb} derived from tool.nativeName and tool.input by the target's classifier; omit ${pronoun}`,
+      problem: `${derived.map((key) => `tool.${key}`).join(" and ")} ${verb} derived from tool.nativeName and tool.input by the target's classifier; omit ${pronoun}${hint}`,
     };
   }
-  const extra = Object.keys(tool).find((key) => key !== "nativeName" && key !== "input");
+  const extra = Object.keys(tool).find((key) => key !== "nativeName" && key !== "input" && key !== "shell");
   if (extra !== undefined) return { problem: `tool has no field ${JSON.stringify(extra)}` };
+  const stated = statesOnlyDialect(tool["shell"]) ? tool["shell"].dialect : undefined;
+  if (stated !== undefined && !(SHELL_DIALECTS as readonly unknown[]).includes(stated)) {
+    return { problem: `tool.shell.dialect must be one of ${SHELL_DIALECTS.join(", ")}` };
+  }
+  const dialect = stated as ShellDialect | undefined;
   const nativeName = tool["nativeName"];
   if (typeof nativeName !== "string" || nativeName === "")
     return { problem: "tool.nativeName must be a non-empty string" };
   if (adapter.classifyTool === undefined) {
     return { problem: `the ${adapter.id} adapter cannot classify tools, so it cannot dispatch ${name}` };
   }
-  event["tool"] = adapter.classifyTool(nativeName, tool["input"]);
+  const classified = adapter.classifyTool(
+    nativeName,
+    tool["input"],
+    dialect === undefined ? undefined : { shellDialect: dialect },
+  );
+  // The classifier decides whether a stated dialect applies, so one the target
+  // would not report for this call is refused rather than silently dropped.
+  if (dialect !== undefined && classified.shell?.dialect !== dialect) {
+    const actual =
+      classified.shell === undefined
+        ? "it has no shell view"
+        : classified.shell.dialect === undefined
+          ? "this target cannot establish one"
+          : `this target reports ${classified.shell.dialect} for the tool`;
+    return {
+      problem: `tool.shell.dialect ${JSON.stringify(dialect)} is not what the ${adapter.id} target would give ${nativeName}: ${actual}; omit it`,
+    };
+  }
+  event["tool"] = classified;
   return { event: event as unknown as HookEvent };
 }
 

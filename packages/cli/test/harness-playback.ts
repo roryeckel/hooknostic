@@ -253,6 +253,7 @@ function playbackPluginSource(
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
           toolNativeName: event.tool?.nativeName,
+          shellDialect: event.tool?.shell?.dialect,
           lastMessage: event.lastMessage,
           turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
@@ -1282,6 +1283,26 @@ async function readTrace(path: string): Promise<{ event: HookEventName }[]> {
 
 export async function traceEvents(path: string): Promise<HookEventName[]> {
   return (await readTrace(path)).map((entry) => entry.event);
+}
+
+/**
+ * The dialects an OpenCode shell call may carry on this host (ADR-0029). The
+ * adapter reads the shell's name out of prose the harness writes for the
+ * model, so this is the check that notices when a build rewords it: the call
+ * would then carry no dialect at all. Which shell the harness picks is the
+ * host's business -- `SHELL`, then what `PATH` resolves -- so off Windows the
+ * lane expects a POSIX shell and on Windows any of the three families.
+ */
+export function expectOpenCodeShellDialect(dialects: readonly unknown[]): void {
+  expect(dialects.length, "no shell tool.before reached the trace").toBeGreaterThan(0);
+  const allowed = process.platform === "win32" ? ["posix", "powershell", "cmd"] : ["posix"];
+  for (const dialect of dialects) {
+    expect(
+      allowed,
+      `OpenCode stated no shell this adapter maps for this host (SHELL=${process.env["SHELL"] ?? "unset"}); ` +
+        "see packages/adapter-opencode/src/shell-statement.ts",
+    ).toContain(dialect);
+  }
 }
 
 export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {

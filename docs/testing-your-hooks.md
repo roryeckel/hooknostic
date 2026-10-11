@@ -61,6 +61,21 @@ itself. An event that supplies any of the three is rejected. So Claude's
 `Write` is a file write however its input looks, and an input the classifier
 does not recognize leaves `tool.shell` absent, exactly as in a real session.
 
+One part of `shell` can be stated: its `dialect`, the grammar family the command
+runs in (ADR-0029). OpenCode states its shell at run time rather than in the
+tool call, so an OpenCode event carries no dialect unless the test says what the
+harness would have stated:
+
+```json
+{ "event": "tool.before", "tool": { "nativeName": "bash", "input": { "command": "ls" }, "shell": { "dialect": "powershell" } } }
+```
+
+`shell` may hold `dialect` and nothing else. The target's classifier decides
+whether it applies, and an event is refused if the target would give that call a
+different dialect or none: Claude's `Bash` is always `posix`, and Codex never
+establishes one, so a hook's unknown-dialect branch is what a Codex event
+exercises.
+
 ## Results
 
 Each result is the dispatch's `HookResult` (`event`, `effects`, `terminatedBy`,

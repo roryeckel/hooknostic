@@ -1,0 +1,14 @@
+{
+  "hook": "execute.before",
+  "directory": "/tmp/hkn-shell-dialect-mmrcz4/project",
+  "event": {
+    "tool": "shell",
+    "sessionID": "ses_ed80b50dbffeUXOMFDQ7LYjDnV",
+    "agent": "build",
+    "messageID": "msg_127f4aff9001d2eh7H1Z8FvBsA",
+    "id": "call_playback",
+    "input": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    }
+  }
+}

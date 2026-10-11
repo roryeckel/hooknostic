@@ -239,11 +239,14 @@ interface ToolInvocation {
   // Normalized shell view, present when the adapter's shape table knows this
   // tool's argument keys; absent means uncaptured -- fall back to `input`.
   // commandKey/cwdKey expose the native keys for hand-built replaceInput calls.
+  // dialect is the grammar family the command runs in, where the adapter can
+  // establish it (ADR-0029); absent means unknown, never POSIX by default.
   shell?: {
     command: string;
     cwd?: string;
     commandKey: string;
     cwdKey?: string;
+    dialect?: "posix" | "powershell" | "cmd";
   };
 
   // Normalized file view (ADR-0026), present when the adapter's file shape
@@ -261,6 +264,13 @@ interface ToolInvocation {
 Each adapter derives `shell` from a per-tool **shape table** (`ShellShapes`),
 which also drives the inverse: `updateShell` is lowered through the same table,
 so the normalized read and the portable write cannot skew (Decision 0007).
+
+The view's `dialect` has two sources and no third (Decision 0029). A shape entry
+declares one where the tool itself pins a grammar family, as Claude Code's
+`Bash` and `PowerShell` do. Where the host's configuration picks the
+interpreter, as on OpenCode, the shim listens for the shell the harness states
+and the decoder attaches its family. Where neither exists, as on Codex, the
+dialect is absent. An adapter never infers one from the host platform.
 
 The category is best-effort classification for portable matching; `nativeName` and
 `event.raw` remain available for intentional harness-specific behavior.

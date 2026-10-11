@@ -73,11 +73,18 @@ function toolOf(event: HookEvent): ToolInvocation | undefined {
  * later guard hook reading `event.tool.shell.command`. When the new input no
  * longer classifies (or no codec was supplied), the view is deleted -- absence
  * tells a hook to fall back to `input`, where a stale value tells it a lie.
+ *
+ * The dialect is the exception that survives (ADR-0029): it describes the tool
+ * and its host, not the input, so a rewrite keeps the one the adapter
+ * established where the codec does not restate it. An input that no longer
+ * classifies still drops the whole view, dialect included.
  */
 function setToolInput(tool: ToolInvocation, input: unknown, options: DispatchOptions): void {
+  const dialect = tool.shell?.dialect;
   tool.input = input;
   const shell = options.shellCodec?.classify(tool.nativeName, input);
-  if (shell !== undefined) tool.shell = shell;
+  if (shell !== undefined)
+    tool.shell = shell.dialect === undefined && dialect !== undefined ? { ...shell, dialect } : shell;
   else delete tool.shell;
   // The same rule for the file view: a rewrite must not leave a later guard
   // reading the paths of an input that no longer exists.

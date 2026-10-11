@@ -4521,7 +4521,8 @@ function shellCodec(shapes, options) {
         command,
         ...typeof cwd === "string" ? { cwd } : {},
         commandKey: shape.commandKey,
-        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {}
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {},
+        ...shape.dialect !== void 0 ? { dialect: shape.dialect } : {}
       };
     },
     encode(nativeName, input, patch) {
@@ -4601,7 +4602,7 @@ function matchesTool(match, tool) {
     return false;
   return true;
 }
-var TOOL_KINDS, PATCH_BEGIN, PATCH_END, PATCH_ENVIRONMENT, PATCH_END_OF_FILE, PATCH_UPDATE, PATCH_FILE_HEADERS, PATCH_MOVE;
+var TOOL_KINDS, SHELL_DIALECTS, PATCH_BEGIN, PATCH_END, PATCH_ENVIRONMENT, PATCH_END_OF_FILE, PATCH_UPDATE, PATCH_FILE_HEADERS, PATCH_MOVE;
 var init_tools = __esm({
   "../../packages/sdk/dist/tools.js"() {
     "use strict";
@@ -4616,6 +4617,7 @@ var init_tools = __esm({
       "mcp",
       "other"
     ];
+    SHELL_DIALECTS = ["posix", "powershell", "cmd"];
     PATCH_BEGIN = "*** Begin Patch";
     PATCH_END = "*** End Patch";
     PATCH_ENVIRONMENT = "*** Environment ID:";
@@ -4627,7 +4629,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, shellDialectSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4643,6 +4645,7 @@ var init_schemas = __esm({
     supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
     requirementLevelSchema = external_exports.enum(["required", "optional"]);
     toolKindSchema = external_exports.enum(TOOL_KINDS);
+    shellDialectSchema = external_exports.enum(SHELL_DIALECTS);
     eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
     fieldAcceptanceSchema = external_exports.string().refine((value) => {
       const colon = value.indexOf(":");
@@ -4664,7 +4667,8 @@ var init_schemas = __esm({
         command: external_exports.string(),
         cwd: external_exports.string().optional(),
         commandKey: external_exports.string(),
-        cwdKey: external_exports.string().optional()
+        cwdKey: external_exports.string().optional(),
+        dialect: shellDialectSchema.optional()
       }).strict().optional(),
       file: external_exports.object({
         paths: external_exports.array(external_exports.string()),
@@ -5063,9 +5067,11 @@ function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
 function setToolInput(tool, input, options) {
+  const dialect = tool.shell?.dialect;
   tool.input = input;
   const shell = options.shellCodec?.classify(tool.nativeName, input);
-  if (shell !== void 0) tool.shell = shell;
+  if (shell !== void 0)
+    tool.shell = shell.dialect === void 0 && dialect !== void 0 ? { ...shell, dialect } : shell;
   else delete tool.shell;
   const file = options.fileCodec?.classify(tool.nativeName, input);
   if (file !== void 0) tool.file = file;
@@ -5557,8 +5563,8 @@ var CLAUDE_TOOL_KINDS = {
   Agent: "agent"
 };
 var CLAUDE_SHELL_SHAPES = {
-  Bash: { commandKey: "command" },
-  PowerShell: { commandKey: "command" }
+  Bash: { commandKey: "command", dialect: "posix" },
+  PowerShell: { commandKey: "command", dialect: "powershell" }
 };
 var claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);
 var CLAUDE_FILE_SHAPES = {

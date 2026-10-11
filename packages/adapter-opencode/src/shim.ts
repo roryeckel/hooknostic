@@ -9,6 +9,7 @@ import { planOpenCodeApplication } from "./apply.js";
 import { POST_TIMEOUT_MS, withTimeout } from "./bounded-post.js";
 import type { OpenCodeEnrichment, OpenCodeNativeEvent } from "./decode.js";
 import { decodeOpenCode, OpenCodeDecodeError } from "./decode.js";
+import { statedShellV1 } from "./shell-statement.js";
 import { opencodeFileCodec, opencodeShellCodec } from "./toolmap.js";
 
 export { setupOpenCodeV2 } from "./v2/shim.js";
@@ -163,11 +164,30 @@ export function createHooknosticHooks(
     }
   };
 
+  /**
+   * The shell the harness last said its `bash` tool runs (ADR-0029). The host
+   * calls `tool.definition` for every tool on each model step, before any call
+   * of that step, and the description it hands over names the shell; no tool
+   * callback does. Kept per plugin instance, since the callback carries no
+   * session, and replaced on every statement so a description that stops
+   * naming a shell clears it.
+   *
+   * One value for every session of the instance is sound only if they share a
+   * shell. That rests on source reading, not a capture: 1.18.34 resolves the
+   * tool's shell once per project instance, and a configuration change builds
+   * a new instance, which loads this plugin afresh. Two sessions of one
+   * instance running different shells has no captured case either way.
+   */
+  let statedShell: string | undefined;
+
   /** A block the plugin meant to deliver, as opposed to a bug escaping. */
   class HooknosticBlock extends Error {}
 
   const run = async (native: OpenCodeNativeEvent): Promise<void> => {
-    const enrichment = await enrich(native);
+    const enrichment: OpenCodeEnrichment = {
+      ...(await enrich(native)),
+      ...(statedShell !== undefined ? { shell: statedShell } : {}),
+    };
     let event;
     try {
       event = decodeOpenCode(native, invocation, enrichment);
@@ -428,6 +448,21 @@ export function createHooknosticHooks(
 
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
   if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
+  // Read only, and never dispatched: this hook exists to let a plugin rewrite a
+  // definition, and the shim only listens for the shell it names.
+  if (events.has("tool.before") || events.has("tool.after") || events.has("permission.request")) {
+    hooks["tool.definition"] = async (input, output) => {
+      // Fail open, and to unknown: these are the host's live objects, and a
+      // listener that threw would break its tool listing over a dialect.
+      try {
+        const toolID = (input as { toolID?: unknown } | null | undefined)?.toolID;
+        if (typeof toolID !== "string" || toolID.toLowerCase() !== "bash") return;
+        statedShell = statedShellV1((output as { description?: unknown } | null | undefined)?.description);
+      } catch {
+        statedShell = undefined;
+      }
+    };
+  }
   // permission.request arrives on the generic event bus as
   // `permission.asked` (the dedicated permission.ask callback never fires on
   // 1.18.x — captured live, .capture/opencode-permission). Denial goes

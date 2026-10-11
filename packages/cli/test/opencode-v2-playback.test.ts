@@ -9,7 +9,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { opencodeAdapter, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { resolveTargetAdapter } from "@hooknostic/core";
 
-import { buildPlaybackArtifact, runProcess, startModelPlayback, traceEvents } from "./harness-playback.js";
+import {
+  buildPlaybackArtifact,
+  expectOpenCodeShellDialect,
+  runProcess,
+  startModelPlayback,
+  traceEvents,
+} from "./harness-playback.js";
 
 const enabled = process.env["HOOKNOSTIC_PLAYBACK"] === "opencode-v2";
 const version = process.env["HOOKNOSTIC_PLAYBACK_VERSION"] ?? opencodeV2Harness.referenceVersion;
@@ -292,6 +298,12 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       hooknostic_hooknostic_echo: "other",
     }))
       expect(trace).toContainEqual(expect.objectContaining({ event: "tool.before", toolNativeName, toolKind }));
+    // The shell call carries the dialect of the shell this build said it runs.
+    expectOpenCodeShellDialect(
+      trace
+        .filter((row) => row.event === "tool.before" && row.toolNativeName === "shell")
+        .map((row) => row.shellDialect),
+    );
     // Both envelopes are visible. Neither carries an authoritative MCP identity.
     expect(trace.some((row) => row.toolKind === "mcp")).toBe(false);
     const inner = completed.find((row) => row.event.tool === "hooknostic_hooknostic_echo");

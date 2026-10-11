@@ -1,0 +1,25 @@
+{
+  "names": [
+    "bash",
+    "edit",
+    "glob",
+    "grep",
+    "read",
+    "skill",
+    "task",
+    "todowrite",
+    "webfetch",
+    "write"
+  ],
+  "shellTools": [
+    {
+      "name": "bash",
+      "type": "function",
+      "properties": [
+        "command",
+        "timeout",
+        "workdir"
+      ]
+    }
+  ]
+}

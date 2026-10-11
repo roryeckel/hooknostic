@@ -1,0 +1,14 @@
+{
+  "hook": "tool.execute.before",
+  "directory": "/tmp/hkn-shell-dialect-GK3eby/project",
+  "input": {
+    "tool": "bash",
+    "sessionID": "ses_ed7de3493ffeFjdkSL9Rnc4wFR",
+    "callID": "call_playback"
+  },
+  "output": {
+    "args": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    }
+  }
+}

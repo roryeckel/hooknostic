@@ -1227,6 +1227,58 @@ describe("shell view coherence across rewrites", () => {
     await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
     expect(event.tool.shell).toBeUndefined();
   });
+
+  it("keeps a dialect the adapter established across a rewrite the codec cannot restate it for", async () => {
+    // The dialect an adapter took from what its harness reported is not in the
+    // shape table, so re-classifying the new input alone would silently turn a
+    // known grammar into an unknown one for every later hook (ADR-0029).
+    const seen: (string | undefined)[] = [];
+    const guard = hook("tool.before", {
+      id: "guard",
+      async run(event) {
+        seen.push(event.tool.shell?.dialect);
+      },
+    });
+    for (const rewrite of [replaceInput({ command: "pnpm install" }), updateShell({ command: "pnpm install" })]) {
+      const rewriter = hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return rewrite;
+        },
+      });
+      const event = shellEvent();
+      event.tool.shell = { ...event.tool.shell!, dialect: "powershell" };
+      await dispatch([rewriter, guard], event, { ...OPTIONS, shellCodec: codec });
+      expect(event.tool.shell).toEqual({ command: "pnpm install", commandKey: "command", dialect: "powershell" });
+    }
+    expect(seen).toEqual(["powershell", "powershell"]);
+  });
+
+  it("takes the codec's dialect over the previous one, and drops it with the view", async () => {
+    // A table that pins the dialect is the authority after a rewrite, and an
+    // input that no longer classifies leaves no view to hang a dialect on.
+    const pinned = shellCodec({ Bash: { commandKey: "command", dialect: "posix" } });
+    const rewriteTo = (input: unknown) =>
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return replaceInput(input);
+        },
+      });
+    const stated = (): ToolBeforeEvent => {
+      const event = shellEvent();
+      event.tool.shell = { ...event.tool.shell!, dialect: "powershell" };
+      return event;
+    };
+    const restated = stated();
+    await dispatch([rewriteTo({ command: "pnpm install" })], restated, { ...OPTIONS, shellCodec: pinned });
+    expect(restated.tool.shell?.dialect).toBe("posix");
+    const dropped = stated();
+    await dispatch([rewriteTo({ notACommand: true })], dropped, { ...OPTIONS, shellCodec: codec });
+    expect(dropped.tool.shell).toBeUndefined();
+  });
 });
 
 describe("file view coherence across rewrites (ADR-0026)", () => {

@@ -125,9 +125,122 @@ describe("createHooknosticHooks", () => {
       "event",
       "experimental.chat.system.transform",
       "experimental.session.compacting",
+      "tool.definition",
       "tool.execute.after",
       "tool.execute.before",
     ]);
+  });
+
+  describe("the stated shell (ADR-0029)", () => {
+    // The statement as 1.18.34 delivered it for each configuration
+    // (.capture/shell-dialects), in the description's own paragraph layout.
+    const definition = (shell: string) => ({
+      description: `Executes a given command.
+
+Be aware: OS: win32, Shell: ${shell}
+
+All commands run in the cwd.`,
+      parameters: {},
+    });
+    function listening() {
+      const seen: unknown[] = [];
+      const plugin = definePlugin({
+        name: "dialect",
+        hooks: [
+          hook("tool.before", {
+            id: "before",
+            async run(event) {
+              seen.push(event.tool.shell?.dialect);
+            },
+          }),
+          hook("tool.after", {
+            id: "after",
+            async run(event) {
+              seen.push(event.tool.shell?.dialect);
+            },
+          }),
+        ],
+      });
+      return { seen, h: createHooknosticHooks(plugin, { capabilities: LEVELS }, PLUGIN_INPUT) };
+    }
+    const before = (h: ReturnType<typeof hooks>, tool = "bash") =>
+      h["tool.execute.before"]!({ tool, sessionID: "s", callID: "c" }, { args: { command: "ls" } });
+
+    it("reaches the tool events that follow the statement", async () => {
+      const { seen, h } = listening();
+      await before(h);
+      await h["tool.definition"]!({ toolID: "bash" }, definition("pwsh"));
+      await before(h);
+      await h["tool.execute.after"]!({ tool: "bash", sessionID: "s", callID: "c", args: { command: "ls" } }, {});
+      await h["tool.definition"]!({ toolID: "bash" }, definition("cmd"));
+      await before(h);
+      expect(seen).toEqual([undefined, "powershell", "powershell", "cmd"]);
+    });
+
+    it("is replaced by every statement, so an unreadable or unmapped one leaves no dialect", async () => {
+      const { seen, h } = listening();
+      await h["tool.definition"]!({ toolID: "bash" }, definition("zsh"));
+      await before(h);
+      // tcsh is a real captured answer; a description with no statement is a harness that stopped making one.
+      await h["tool.definition"]!({ toolID: "bash" }, definition("tcsh"));
+      await before(h);
+      await h["tool.definition"]!({ toolID: "bash" }, definition("zsh"));
+      await h["tool.definition"]!({ toolID: "bash" }, { description: "Executes a command.", parameters: {} });
+      await before(h);
+      expect(seen).toEqual(["posix", undefined, undefined]);
+    });
+
+    it("listens to the bash definition only, and never rewrites it", async () => {
+      const { seen, h } = listening();
+      const output = definition("zsh");
+      const untouched = structuredClone(output);
+      await h["tool.definition"]!({ toolID: "bash" }, output);
+      expect(output).toEqual(untouched);
+      // Another tool's description mentioning a shell says nothing about bash's.
+      // Each is checked before bash is stated again, so a wrong one cannot be
+      // papered over by the next statement.
+      for (const toolID of ["read", "task", undefined, 42]) {
+        await h["tool.definition"]!({ toolID }, definition("cmd"));
+        await before(h);
+      }
+      await h["tool.definition"]!(null, null);
+      await h["tool.definition"]!({ toolID: "read" }, { description: "Reads a file.", parameters: {} });
+      await before(h);
+      await before(h, "read");
+      expect(seen).toEqual(["posix", "posix", "posix", "posix", "posix", undefined]);
+    });
+
+    it("fails open, and to unknown, when the definition cannot be read", async () => {
+      // The listener sits in the host's tool-listing path: throwing there would
+      // break the session over a dialect, and keeping the old one would be stale.
+      const { seen, h } = listening();
+      await h["tool.definition"]!({ toolID: "bash" }, definition("zsh"));
+      const unreadable = {
+        get description(): string {
+          throw new Error("live object went away");
+        },
+      };
+      await expect(h["tool.definition"]!({ toolID: "bash" }, unreadable)).resolves.toBeUndefined();
+      await before(h);
+      expect(seen).toEqual([undefined]);
+    });
+
+    it("is listened for only when a hook receives a tool", () => {
+      const without = createHooknosticHooks(
+        definePlugin({ name: "p", hooks: [hook("turn.stop", { id: "t", async run() {} })] }),
+        { capabilities: LEVELS },
+        PLUGIN_INPUT,
+      );
+      expect(without["tool.definition"]).toBeUndefined();
+      for (const event of ["tool.before", "tool.after", "permission.request"] as const) {
+        const withTool = createHooknosticHooks(
+          definePlugin({ name: "p", hooks: [hook(event, { id: "t", async run() {} })] }),
+          { capabilities: LEVELS },
+          PLUGIN_INPUT,
+        );
+        expect(withTool["tool.definition"], event).toBeDefined();
+      }
+    });
   });
 
   it("blocks by throwing inside tool.execute.before", async () => {
@@ -246,7 +359,8 @@ describe("createHooknosticHooks", () => {
       },
     };
     const h = createHooknosticHooks(plugin, { capabilities: LEVELS }, { ...PLUGIN_INPUT, client });
-    expect(Object.keys(h)).toEqual(["event", "dispose"]);
+    // A permission request names the bash tool, so its view needs the stated shell too.
+    expect(Object.keys(h)).toEqual(["tool.definition", "event", "dispose"]);
     const native = {
       hook: "event",
       directory: PLUGIN_INPUT.directory,

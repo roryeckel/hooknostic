@@ -115,3 +115,19 @@ changed from advisory drift to clean after adding this variant. This establishes
 the field's presence in this configuration, not when it was introduced or its
 behavior under mutation. No capability, range, reference version, or rolling
 playback record changes.
+
+**The stated shell is captured (2.0.20).** `tool-before-shell-cmd` and
+`tool-before-shell-tcsh` come from `@opencode/cli` 2.0.20 sessions over the
+loopback model (2026-10-10, `.capture/shell-dialects`): Windows with
+`opencode.json` `shell: "cmd"`, and a Linux container with `SHELL` naming tcsh. The
+`input` files are the `execute.before` envelopes, argument values scripted. Each
+`enrichment.json` holds what the shim hands the decoder beside the envelope
+(ADR-0029): the shell name this adapter's parser read out of
+`tools.shell.description` in the last `context` callback before the call, in the
+same session. The existing `context` fixture shows that description's shape; the
+stating sentence of each case is recorded in
+`.capture/shell-dialects/observations*.json`. The name never enters `event.raw`.
+The interpreter that ran matched it in both sessions (live-probe, same record).
+`cmd` is a shell this adapter maps to a dialect; `tcsh` is one it does not, so
+that canonical carries none. As elsewhere in this directory, the canonical
+`harness.version` is the adapter's reference build, not the capture version.

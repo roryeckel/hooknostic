@@ -1,6 +1,6 @@
 ---
 name: extend-vocabulary
-description: Checklist for growing the portable vocabulary — adding or changing an Effect, capability id, diagnostic code (HNxxx), hook event, ToolKind, ShellShapes or FileShapes entry, a normalized tool view (tool.shell, tool.file), or anything in packages/sdk/src/{effects,capabilities,schemas,tools,result,hook}.ts, packages/runtime/src/dispatch.ts, or an adapter's profile.ts/toolmap.ts/apply.ts.
+description: Checklist for growing the portable vocabulary — adding or changing an Effect, capability id, diagnostic code (HNxxx), hook event, ToolKind, ShellShapes or FileShapes entry, a shell dialect (ShellDialect, tool.shell.dialect, a shape's dialect, a stated shell name), a normalized tool view (tool.shell, tool.file), or anything in packages/sdk/src/{effects,capabilities,schemas,tools,result,hook}.ts, packages/runtime/src/dispatch.ts, or an adapter's profile.ts/toolmap.ts/apply.ts.
 ---
 
 # Extending the vocabulary
@@ -71,6 +71,27 @@ testkit re-classifies every file-bearing fixture and requires a fixture per
 entry. Uncaptured tools stay absent. A new or renamed tool name also needs its
 `ToolKind` entry — capture found OpenCode's patch tools misclassified because
 only the shape had been considered.
+
+## Shell dialect
+
+ADR-0029 is the decision; this is what moves. A payload capture is not
+evidence for a dialect: only the interpreter that ran is, observed across the
+host configurations that could change it (`.capture/shell-dialects`).
+
+- **A tool that pins one**: `dialect` on its `ShellShapes` entry. The codec
+  emits it, and the contract suite then requires the tool's fixtures to record
+  it.
+- **A harness that states its shell**: the shim listens, the decoder receives
+  the name as enrichment and maps it, and `classifyTool` applies a
+  `ReportedToolFacts.shellDialect`. Map a name only after a capture saw it
+  stated and run. Promote an enrichment fixture for a mapped name and for an
+  unmapped one, and keep the playback assertion that a real shell call carries
+  a dialect: it is what notices reworded prose.
+- **Neither**: leave it absent. Never derive it from the platform or an
+  environment variable.
+- **A new family**: `SHELL_DIALECTS` in `tools.ts` (the schema twin derives
+  from it), the name map, and the three places docs list the values
+  (`design.md` §6.3, `concepts.md`, `writing-hooks-safely.md`).
 
 ## New normalized tool view
 

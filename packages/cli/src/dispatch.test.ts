@@ -254,6 +254,88 @@ describe("hooknostic dispatch", () => {
     expect(broken.err()).toMatch(/^line 2: not JSON .*\nline 3: not JSON /);
   });
 
+  const DIALECT_HOOKS = `
+import { block, definePlugin, hook } from "@hooknostic/sdk";
+
+export default definePlugin({
+  name: "dialect-fixture",
+  hooks: [
+    hook("tool.before", {
+      id: "dialect",
+      match: { kind: "shell" },
+      capabilities: { "tool.before.block": "required" },
+      run(event) {
+        return block(String(event.tool.shell?.dialect));
+      },
+    }),
+  ],
+});
+`;
+  const stating = (nativeName: string, shell: unknown) => ({
+    event: "tool.before",
+    tool: { nativeName, input: { command: "ls" }, shell },
+  });
+
+  it("gives a shell call the dialect its target would, taking a stated one only where the harness states it", async () => {
+    const dir = await project(DIALECT_HOOKS);
+    const dialects = async (target: string, events: unknown[]) =>
+      (await dispatched(dir, target, events)).map((result) => (result.effects[0]!.effect as { reason: string }).reason);
+
+    // Claude pins it by tool name; stating the same one changes nothing.
+    expect(
+      await dialects("claude", [
+        toolBefore("Bash", { command: "ls" }),
+        toolBefore("PowerShell", { command: "ls" }),
+        stating("Bash", { dialect: "posix" }),
+      ]),
+    ).toEqual(["posix", "powershell", "posix"]);
+    // Codex withholds the interpreter, so a hook there always meets the unknown case.
+    expect(await dialects("codex", [toolBefore("Bash", { command: "ls" })])).toEqual(["undefined"]);
+    // OpenCode states its shell at run time: unknown until the test says what it stated (ADR-0029).
+    expect(
+      await dialects("opencode", [
+        toolBefore("bash", { command: "ls" }),
+        stating("bash", { dialect: "cmd" }),
+        stating("bash", { dialect: "posix" }),
+      ]),
+    ).toEqual(["undefined", "cmd", "posix"]);
+  });
+
+  it("refuses a stated dialect the target would not give the call", async () => {
+    const dir = await project(DIALECT_HOOKS);
+    const refusal = async (target: string, event: unknown) => {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events: [event],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      return outcome.ok ? "accepted" : outcome.errors.join("; ");
+    };
+    // Silently dropping it would let a test pass against a grammar the hook never sees.
+    expect(await refusal("claude", stating("Bash", { dialect: "powershell" }))).toBe(
+      'event 1: tool.shell.dialect "powershell" is not what the claude target would give Bash: this target reports posix for the tool; omit it',
+    );
+    expect(await refusal("codex", stating("Bash", { dialect: "posix" }))).toBe(
+      'event 1: tool.shell.dialect "posix" is not what the codex target would give Bash: this target cannot establish one; omit it',
+    );
+    expect(await refusal("opencode", stating("read", { dialect: "posix" }))).toBe(
+      'event 1: tool.shell.dialect "posix" is not what the opencode target would give read: it has no shell view; omit it',
+    );
+    expect(await refusal("opencode", stating("bash", { dialect: "bash" }))).toBe(
+      "event 1: tool.shell.dialect must be one of posix, powershell, cmd",
+    );
+    // Anything beyond the dialect is still the classifier's to derive.
+    const derived =
+      "event 1: tool.shell is derived from tool.nativeName and tool.input by the target's classifier; omit it";
+    expect(await refusal("opencode", stating("bash", { dialect: "cmd", command: "ls" }))).toBe(
+      derived + " (tool.shell may hold dialect and nothing else)",
+    );
+    expect(await refusal("opencode", stating("bash", {}))).toBe(derived);
+    expect(await refusal("opencode", stating("bash", "cmd"))).toBe(derived);
+  });
+
   it("refuses a field the target's decoder never produces, and admits one it derives", async () => {
     // ADR-0027: the consumer case -- a turn.stop test carried a lastMessage to a
     // target whose decoder could not produce one, and passed.

@@ -26,6 +26,7 @@ import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs"
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
+  expectOpenCodeShellDialect,
   openCodePlaybackConfigHome,
   playbackModelInfo,
   type PlaybackScenario,
@@ -2310,13 +2311,32 @@ scenarioDrive("lifecycle-observe", async () => {
   const trace = (await readFile(build.tracePath, "utf8"))
     .trim()
     .split("\n")
-    .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          event: string;
+          lastMessage?: string;
+          turnId?: string;
+          toolKind?: string;
+          shellDialect?: string;
+        },
+    );
   const prompt = trace.find((entry) => entry.event === "prompt.before");
   expect(prompt?.turnId).toEqual(expect.any(String));
   expect(trace.filter((entry) => entry.event === "turn.stop").at(-1)).toMatchObject({
     lastMessage: "playback complete",
     turnId: prompt?.turnId,
   });
+
+  // ADR-0029: the grammar of the shell call, as far as each harness lets an
+  // adapter establish it before the call runs.
+  const dialects = trace
+    .filter((entry) => entry.event === "tool.before" && entry.toolKind === "shell")
+    .map((entry) => entry.shellDialect);
+  if (adapter!.id === "opencode") expectOpenCodeShellDialect(dialects);
+  // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
+  else expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
+  expect(dialects.length).toBeGreaterThan(0);
 });
 
 scenarioDrive("tool-before-block", async () => {

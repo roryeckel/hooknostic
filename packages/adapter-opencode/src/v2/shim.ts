@@ -3,11 +3,12 @@ import type { HookEvent, PluginSpec } from "@hooknostic/sdk";
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 
 import { withTimeout } from "../bounded-post.js";
+import { statedShellV2 } from "../shell-statement.js";
 import type { OpenCodeShimOptions } from "../shim.js";
 import type { OpenCodeV2Application } from "./apply.js";
 import { planOpenCodeV2Application } from "./apply.js";
 import type { OpenCodeV2Execution } from "./decode.js";
-import { decodeOpenCodeV2, OpenCodeV2DecodeError } from "./decode.js";
+import { decodeOpenCodeV2, OpenCodeV2DecodeError, record } from "./decode.js";
 import { opencodeV2FileCodec, opencodeV2ShellCodec } from "./toolmap.js";
 
 type Callback = (event: Record<string, unknown>) => Promise<void>;
@@ -68,6 +69,31 @@ export async function setupOpenCodeV2(
     "session.execution.interrupted",
   ]);
   const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
+  // The shell each session's `shell` tool was last said to run (ADR-0029). The
+  // context hook precedes every model request and carries the tool's
+  // description, which names the shell; no tool hook does. Kept per session and
+  // replaced on every request, so a description that stops naming a shell
+  // clears it. Bounded: sessions outlive executions, and nothing here ends one.
+  const readsShell = events.has("tool.before") || events.has("tool.after") || events.has("tool.error");
+  const statedShells = new Map<string, string>();
+  const STATED_SHELL_SESSIONS = 256;
+  const noteShell = (e: Record<string, unknown>) => {
+    // Fail open, and to unknown: the event is the host's live object, and a
+    // listener that threw would fail its model request over a dialect. The
+    // old statement goes first, so a read that throws leaves none behind.
+    try {
+      const sessionID = e.sessionID;
+      if (typeof sessionID !== "string") return;
+      statedShells.delete(sessionID);
+      const name = statedShellV2(record(record(e.tools).shell).description);
+      if (name === undefined) return;
+      statedShells.set(sessionID, name);
+      const oldest = statedShells.keys().next();
+      if (statedShells.size > STATED_SHELL_SESSIONS && !oldest.done) statedShells.delete(oldest.value);
+    } catch {
+      // Nothing to report it to; the session's dialect is unknown until the next request.
+    }
+  };
   // Posting after an interrupted or failed execution would override it, and a
   // child's result has already been returned to its parent by the time it stops.
   const post = async (
@@ -104,11 +130,12 @@ export async function setupOpenCodeV2(
     execution?: OpenCodeV2Execution,
   ) => {
     let event: HookEvent;
+    const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : undefined;
     try {
       event = decodeOpenCodeV2(
         { hook, directory: ctx.location.directory, event: native },
         { targetId, ...(options.harnessVersion ? { harnessVersion: options.harnessVersion } : {}) },
-        execution ? { execution } : {},
+        { ...(execution ? { execution } : {}), ...(shell !== undefined ? { shell } : {}) },
       );
     } catch (error) {
       if (error instanceof OpenCodeV2DecodeError) return;
@@ -186,9 +213,16 @@ export async function setupOpenCodeV2(
       registrations.push(await ctx.tool.hook("execute.before", (e) => run("execute.before", e)));
     if (events.has("tool.after") || events.has("tool.error"))
       registrations.push(await ctx.tool.hook("execute.after", (e) => run("execute.after", e)));
+    // Registered for tool hooks too, where it only listens for the stated shell.
+    if (events.has("model.request.before") || readsShell)
+      registrations.push(
+        await ctx.session.hook("context", async (e) => {
+          if (readsShell) noteShell(e);
+          await run("context", e); // dispatches only where a hook takes the event
+        }),
+      );
     if (events.has("model.request.before"))
-      for (const name of ["context", "title", "generate"])
-        registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
+      for (const name of ["title", "generate"]) registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
     if (events.has("model.request.before") || events.has("context.compact.before"))
       registrations.push(
         await ctx.session.hook("compaction", async (e) => {
