@@ -37,9 +37,10 @@ export const CLAUDE_TOOL_KINDS: Record<string, ToolKind> = {
  * it at fish, tcsh, PowerShell or cmd; `PowerShell` ran Windows PowerShell or
  * PowerShell 7 depending on what `PATH` resolved, under identical hook input.
  * So the dialect is a family, and the tool name is what establishes it. A
- * Windows host with no Git for Windows advertised no `Bash` at all, whatever
- * its Git Bash path variable named: `PowerShell` was its only shell tool.
- * `toolmap.test.ts` holds both pins to every captured call.
+ * Windows host with no Git for Windows produced no `Bash` call: where Claude
+ * Code started, `PowerShell` was the only shell tool it advertised, whatever
+ * its Git Bash path variable named. `toolmap.test.ts` holds both pins to
+ * every captured call.
  */
 export const CLAUDE_SHELL_SHAPES: ShellShapes = {
   Bash: { commandKey: "command", dialect: "posix" },

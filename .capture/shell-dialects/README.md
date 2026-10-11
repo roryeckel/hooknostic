@@ -58,7 +58,10 @@ model from `packages/cli/test/harness-playback.ts`.
    redacts only the account path segment to `user`.
 
 Each harness rerun clears its ignored output directory before discovery, so
-retired cases cannot survive into a new capture. Every platform and comparison
+retired cases cannot survive into a new capture. `HKN_CAPTURE_ROOT` names
+another root for that output, for a host that mounts the checkout read-only;
+wherever it is, the driver clears only a directory that is empty or holds the
+metadata of a previous capture of the same harness. Every platform and comparison
 has its own output directory; promotion requires metadata and process
 observations to match the selected platform.
 
@@ -145,17 +148,24 @@ changed nothing: the environment cannot stand in for an uninstalled Git.
 
 The last four rows are a host that never had it: Windows Sandbox, a disposable
 Windows (10.0.26100) with no Git for Windows and no `bash.exe` on `PATH`,
-running the same Claude Code build. `Bash` was not advertised in any of its
-eight configurations. In the six that started, `PowerShell` was the only shell
-tool and was advertised without the opt-in. Each call reached the hook as
-`PowerShell`, with the same input as the opted-in cases above, and ran Windows
+running the same Claude Code build. None of its eight configurations produced
+a `Bash` call. Six started, and in each `PowerShell` was the only shell tool
+advertised, without the opt-in. Each call reached the hook as `PowerShell`,
+with the same input as the opted-in cases above, and ran Windows
 `powershell.exe`. Pointing the Git Bash path variable at a missing file,
 `cmd.exe` or `powershell.exe` did not bring `Bash` back, and neither did naming
-`powershell.exe` through `CLAUDE_CODE_SHELL` or `SHELL`. With the PowerShell
-tool turned off, alone or with the Git Bash path variable naming `cmd.exe`,
-Claude Code exited before any request: it printed that it requires a shell
-tool, that Git Bash was not found and that the PowerShell tool is disabled. So
-this host sent a hook no `Bash` call for the `posix` pin to be wrong about.
+`powershell.exe` through `CLAUDE_CODE_SHELL` or `SHELL`. The other two turned
+the PowerShell tool off, alone and with the Git Bash path variable naming
+`cmd.exe`. Under those Claude Code exited before any model request, so it
+advertised nothing: it printed that it requires a shell tool, that Git Bash was
+not found and that the PowerShell tool is disabled. So this host sent a hook no
+`Bash` call for the `posix` pin to be wrong about.
+
+That the host had no Git for Windows rests on two things. The driver looks
+for one before it runs: `git.exe` on `PATH`, `bash.exe` at the install
+locations, and the registry key, and it records what it found (nothing). That
+check cannot see a copy unpacked somewhere unusual, so the record also keeps
+Claude Code's own account, the "Git Bash was not found" it printed.
 
 Anthropic's setup page and tools reference, as read on 2026-10-10, say the
 same: Git Bash is what the `Bash` tool needs, and without Git for Windows
@@ -291,8 +301,46 @@ down. The launcher then copies the raw output to `captured/without-git/` and
 removes its temporary folders once the sandbox has released them. The
 sandbox needs the network for the dependency install only; the model is the
 same loopback. `--keep` leaves the sandbox open, and `--prepare-only` writes
-its configuration without starting it. Promote that capture with
-`HKN_CAPTURE_ACCOUNT=WDAGUtilityAccount`, the sandbox's account.
+its configuration without starting it. If a step fails, the sandbox is closed
+by hand or it does not report in time, the launcher says which, keeps the
+sandbox's logs and names their folder, and copies nothing.
+
+The driver records the account it ran as and that account's home directory in
+the raw metadata, so a sandbox capture needs no `HKN_CAPTURE_ACCOUNT`.
+Promotion redacts that home exactly, in values and in keys, and the account's
+name inside the folder name a harness derives from a working directory
+(`--Users-<name>-`), and rewrites nothing else. The home is matched only where
+a path begins and only as a whole segment: followed by a separator, a closing
+quote or the end. A deeper folder that ends the same way, a sibling such as
+`name+old`, and a URL whose host and path happen to spell a home that names no
+drive are all left alone. A home that names a drive is redacted inside a URL as
+well, since that is how a file URL spells it. A recorded home that is a drive or
+the root has no last segment to redact and is not used.
+
+A capture that records no usable home is redacted by account instead: the
+account between path separators, wherever that appears. That is how raw
+captures made before the driver recorded a home are promoted, with
+`HKN_CAPTURE_ACCOUNT` naming the account where it was not the one logged in.
+The rule cannot tell the account's folder from another folder of the same
+name. A raw without-git capture from before then also lacks the configuration
+plan promotion checks, and is run again.
+
+Either way promotion refuses to write anything when an account can still be
+read in the result: a home directory under any name but `user`, or a known
+account left anywhere as a word of its own. That is what catches every
+occurrence the rules above leave alone, so the cost of a careful rule is a
+refusal and never a wrong record. Capture as an account whose name nothing
+else in the record shares: one called `node` or `bash` cannot be told from the
+program, and promotion refuses it instead of rewriting that program's path.
+An account or home folder called `user`, in any letter case, is the placeholder
+already and is not treated as something to hide. A promotion that reads
+captures made as several accounts redacts every one of them throughout.
+Promotion also refuses when redaction would make two keys of one map the same.
+Nothing is written until every file of a promotion has passed.
+
+The launcher needs to be the only Windows Sandbox on the host. It tells its
+sandbox's state from the processes running, which cannot tell one sandbox from
+another, so it refuses to start while one is open.
 
 Promote with `node .capture/shell-dialects/promote.mjs <comparison>`, where the
 comparison is `win32` (the default), `darwin`, `linux`, `configured`,
@@ -333,8 +381,14 @@ path is redacted; process names and temporary path shapes remain as observed.
 | `claude-tools-without-git.json` | advertised tools with no Git for Windows and nothing set |
 
 A configured record embeds the shell tools its discovery advertised. The
-without-git record has a discovery per configuration and lists each one's shell
-tools, and keeps a call that ran nothing with what the harness reported. A case
+without-git record has a discovery per configuration. One that started lists
+its shell tools; one that did not records its exit code, that it made no model
+request, and what it printed. Promotion refuses a capture that lacks a
+configuration the driver planned, holds a session the driver itself could not
+complete, or holds anything but one call for each of the driver's shell tools
+that a started configuration advertised. The driver calls `Bash` and
+`PowerShell`, and stops the run if a configuration advertises any other tool
+that takes a command: that would be a shell tool nobody probed. A case
 carries `reported` where OpenCode stated its shell and `transcript` where the
 Codex transcript probe ran.
 

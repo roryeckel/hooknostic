@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Evidence-only shell interpreter probe; model replies and argument values are scripted.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
-import { release, tmpdir } from "node:os";
+import { homedir, release, tmpdir, userInfo } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,7 +29,9 @@ const configured = mode === "configured";
 const withoutGitMode = mode === "without-git";
 // Where a Git for Windows install shows: git.exe on PATH, bash.exe at an install
 // location, or its registry key. The locations are also spelled out, because
-// Claude Code found one there with these variables redirected.
+// Claude Code found one there with these variables redirected. This keeps the
+// comparison off a host that plainly has one; it cannot see a copy unpacked
+// somewhere else, so the record also keeps what Claude Code says it found.
 function gitForWindows() {
   const onPath = (process.env.PATH ?? "").split(delimiter).filter(Boolean).map((directory) => join(directory, "git.exe"));
   const roots = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.ProgramW6432,
@@ -59,12 +61,47 @@ const captureBase = process.env.HKN_CAPTURE_ROOT ? resolve(process.env.HKN_CAPTU
 const captureRoot = resolve(captureBase, (mode ? [mode] : []).concat(process.platform === "win32" ? [] : process.platform).join("-"));
 const out = resolve(captureRoot, mode === "builds" ? harness + "-" + version : harness);
 if (dirname(out) !== captureRoot) throw new Error("Capture path must be a direct child of the output root");
+// Only a previous capture of this harness is cleared: the root can be named from outside, and this deletes.
+const previousCapture = () => {
+  try {
+    const previous = JSON.parse(readFileSync(join(out, "metadata.json"), "utf8"));
+    return previous.harness === harness && previous.platform === process.platform && typeof previous.capturedAt === "string"
+      && (mode !== "builds" || previous.version === version);
+  } catch {
+    return false;
+  }
+};
+if (existsSync(out) && readdirSync(out).length && !previousCapture()) throw new Error("Not a capture directory, so not cleared: " + out);
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 // Every directory on PATH holding a bash.exe, whoever installed it: Windows ships a WSL launcher by that name.
 const bashOnPath = () => [...new Set((process.env.PATH ?? "").split(delimiter).filter(Boolean).map((directory) => join(directory, "bash.exe").toLowerCase()))].filter((file) => existsSync(file));
+// The shell tools this driver calls on Claude Code. Promotion expects a call for each one advertised.
+const claudeShellTools = ["Bash", "PowerShell"];
+// The host configurations of the without-git comparison: a label, what it sets, and how the record words it.
+function withoutGitConfigurations() {
+  const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+  const powershell = join(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+  const cmd = join(system, "cmd.exe");
+  return [
+    ["default", {}, "nothing else set"],
+    ["powershell-tool-off", { CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" }, "CLAUDE_CODE_USE_POWERSHELL_TOOL=0"],
+    ["git-bash-path-missing", { CLAUDE_CODE_GIT_BASH_PATH: join(system, "hooknostic-missing", "bash.exe") }, "CLAUDE_CODE_GIT_BASH_PATH names a missing file"],
+    ["git-bash-path-cmd", { CLAUDE_CODE_GIT_BASH_PATH: cmd }, "CLAUDE_CODE_GIT_BASH_PATH names cmd.exe"],
+    ["git-bash-path-powershell", { CLAUDE_CODE_GIT_BASH_PATH: powershell }, "CLAUDE_CODE_GIT_BASH_PATH names powershell.exe"],
+    ["git-bash-path-cmd-powershell-tool-off", { CLAUDE_CODE_GIT_BASH_PATH: cmd, CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" },
+      "CLAUDE_CODE_GIT_BASH_PATH names cmd.exe, CLAUDE_CODE_USE_POWERSHELL_TOOL=0"],
+    ["claude-code-shell-powershell", { CLAUDE_CODE_SHELL: powershell }, "CLAUDE_CODE_SHELL names powershell.exe"],
+    ["shell-powershell", { SHELL: powershell }, "SHELL names powershell.exe"],
+    // Where PATH holds a bash.exe, such as the WSL launcher Windows can ship, that one is named too.
+    ...bashOnPath().slice(0, 1).map((file) => ["git-bash-path-bash-on-path", { CLAUDE_CODE_GIT_BASH_PATH: file }, "CLAUDE_CODE_GIT_BASH_PATH names the bash.exe on PATH"]),
+  ];
+}
+// The account and its home are for promotion to redact from paths; they stay in the ignored raw output.
 writeFileSync(join(out, "metadata.json"), JSON.stringify({ harness, version, platform: process.platform, capturedAt: new Date().toISOString(),
-  ...(withoutGitMode ? { windows: release(), gitForWindows: gitForWindows(), bashOnPath: bashOnPath() } : {}) }, null, 2) + "\n");
+  account: userInfo().username, home: homedir(),
+  ...(withoutGitMode ? { windows: release(), gitForWindows: gitForWindows(), bashOnPath: bashOnPath(),
+    configurations: withoutGitConfigurations().map(([label]) => label), shellTools: claudeShellTools } : {}) }, null, 2) + "\n");
 const prompt = "Execute the requested shell probe once, then stop.";
 const command = "node interpreter.cjs; echo hooknostic-shell-finished";
 
@@ -168,7 +205,7 @@ async function session(label, script, configuration = {}) {
   if (existsSync(captureDir)) cpSync(captureDir, destination, { recursive: true });
   const observation = existsSync(join(scratch, "interpreter.json"))
     ? JSON.parse(readFileSync(join(scratch, "interpreter.json"), "utf8")) : null;
-  const summary = { label, exit: result.code, errors: server.errors, tools, observation,
+  const summary = { label, exit: result.code, errors: server.errors, requests: server.requests.length, tools, observation,
     // What the session saw, and in a configured case what it set; PATH is described, not copied.
     host, ...(configured ? { set: configuration.set, opencodeShell: configuration.opencodeShell ?? null } : {}),
     ...(withoutGitMode ? { set: configuration.set } : {}),
@@ -242,48 +279,29 @@ function configuredCases(name) {
 
 // A Windows host with no Git for Windows. Each host configuration gets its own
 // discovery, because which shell tools exist is the question here, and then a
-// call to every shell tool it advertised. A configuration the harness will not
-// start under, or a call that runs nothing, is an observation too: it is
-// recorded, and only a run that exercises no shell tool at all fails.
+// call to every shell tool it advertised. A configuration under which Claude
+// Code exits without starting is an observation, and so is a call that runs
+// nothing: both are recorded. A session the driver could not complete, through
+// a playback fault or a killed process, is neither, and stops the run.
 async function withoutGit() {
-  const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
-  const powershell = join(system, "WindowsPowerShell", "v1.0", "powershell.exe");
-  const cmd = join(system, "cmd.exe");
-  const configurations = [
-    ["default", {}, "nothing else set"],
-    ["powershell-tool-off", { CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" }, "CLAUDE_CODE_USE_POWERSHELL_TOOL=0"],
-    ["git-bash-path-missing", { CLAUDE_CODE_GIT_BASH_PATH: join(system, "hooknostic-missing", "bash.exe") }, "CLAUDE_CODE_GIT_BASH_PATH names a missing file"],
-    ["git-bash-path-cmd", { CLAUDE_CODE_GIT_BASH_PATH: cmd }, "CLAUDE_CODE_GIT_BASH_PATH names cmd.exe"],
-    ["git-bash-path-powershell", { CLAUDE_CODE_GIT_BASH_PATH: powershell }, "CLAUDE_CODE_GIT_BASH_PATH names powershell.exe"],
-    ["git-bash-path-cmd-powershell-tool-off", { CLAUDE_CODE_GIT_BASH_PATH: cmd, CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" },
-      "CLAUDE_CODE_GIT_BASH_PATH names cmd.exe, CLAUDE_CODE_USE_POWERSHELL_TOOL=0"],
-    ["claude-code-shell-powershell", { CLAUDE_CODE_SHELL: powershell }, "CLAUDE_CODE_SHELL names powershell.exe"],
-    ["shell-powershell", { SHELL: powershell }, "SHELL names powershell.exe"],
-    // The WSL launcher Windows ships is the one bash.exe such a host has.
-    ...bashOnPath().slice(0, 1).map((file) => ["git-bash-path-bash-on-path", { CLAUDE_CODE_GIT_BASH_PATH: file }, "CLAUDE_CODE_GIT_BASH_PATH names the bash.exe on PATH"]),
-  ];
   let exercised = 0;
-  for (const [label, env, set] of configurations) {
+  for (const [label, env, set] of withoutGitConfigurations()) {
     const configuration = { env: { SHELL: null, ...env }, set: (Object.hasOwn(env, "SHELL") ? "" : "SHELL unset, ") + set };
-    const attempt = async (name, script) => {
-      try {
-        return await session(name, script, configuration);
-      } catch (error) {
-        // A session that never returned still leaves its record.
-        const summary = { label: name, exit: null, errors: [String(error)], tools: [], observation: null, set: configuration.set, tail: "" };
-        mkdirSync(join(out, name), { recursive: true });
-        writeFileSync(join(out, name, "drive.json"), JSON.stringify(summary, null, 2) + "\n");
-        console.log(JSON.stringify({ label: name, exit: null, errors: summary.errors }));
-        return summary;
-      }
-    };
-    const discovery = await attempt("discovery-" + label, [{ kind: "text", text: "discovery complete" }]);
-    for (const name of ["Bash", "PowerShell"]) {
+    const discovery = await session("discovery-" + label, [{ kind: "text", text: "discovery complete" }], configuration);
+    if (discovery.exit === null || discovery.errors.length) throw new Error("Discovery did not complete: " + label);
+    // Exiting before any model request is not starting; failing after one is a fault of this run.
+    if (discovery.exit !== 0 && discovery.requests > 0) throw new Error("Discovery failed after starting: " + label);
+    if (discovery.exit !== 0) { console.log("did not start under " + label); continue; }
+    // A tool that takes a command and is not one this driver calls would be a shell tool nobody probed.
+    const unprobed = discovery.tools.filter((tool) => ["command", "cmd"].some((key) => tool.properties.includes(key)) && !claudeShellTools.includes(tool.name));
+    if (unprobed.length) throw new Error("An advertised tool takes a command and is not one this driver calls: " + unprobed.map((tool) => tool.name).join(", "));
+    for (const name of claudeShellTools) {
       const tool = discovery.tools.find((entry) => entry.name === name);
       if (!tool) { console.log("not advertised under " + label + ": " + name); continue; }
       // The bare probe, as in the Windows host-configuration cases: cmd.exe may be what runs it.
       const args = { command: "node interpreter.cjs", ...(tool.properties.includes("description") ? { description: "Record the real shell process ancestry" } : {}) };
-      const result = await attempt(name.toLowerCase() + "-" + label, [{ kind: "tool", toolName: name, arguments: args }, { kind: "text", text: "probe complete" }]);
+      const result = await session(name.toLowerCase() + "-" + label, [{ kind: "tool", toolName: name, arguments: args }, { kind: "text", text: "probe complete" }], configuration);
+      if (result.exit === null || result.errors.length) throw new Error("Probe did not complete: " + result.label);
       if (result.observation) exercised++;
     }
   }
@@ -300,7 +318,7 @@ async function comparison() {
   const discovery = await session("discovery", [{ kind: "text", text: "discovery complete" }], discoveryConfiguration);
   if (discovery.exit !== 0 || discovery.errors.length) throw new Error("Discovery failed");
   writeFileSync(join(out, "discovery.json"), JSON.stringify(discovery.tools, null, 2) + "\n");
-  const names = harness === "claude" ? ["Bash", "PowerShell"] : harness === "codex" ? ["exec_command"] : harness === "opencode-v2" ? ["shell"] : ["bash"];
+  const names = harness === "claude" ? claudeShellTools : harness === "codex" ? ["exec_command"] : harness === "opencode-v2" ? ["shell"] : ["bash"];
   let completed = 0;
   for (const name of names) {
     const tool = discovery.tools.find((entry) => entry.name === name);

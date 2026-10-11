@@ -74,4 +74,72 @@ describe("the dialect each Claude Code shell tool pins", () => {
       Object.keys(CLAUDE_SHELL_SHAPES).sort(),
     );
   });
+
+  it("never met a Bash call on the Windows host with no Git for Windows", () => {
+    // `Bash` is pinned to posix on the strength of Git Bash being what runs it
+    // on Windows. On a host without one, the pin holds only because no `Bash`
+    // call exists there: not advertised where Claude Code started, and no
+    // start at all otherwise. A call that reached a hook as `Bash` and ran
+    // nothing would have no interpreter for the test above to judge, so it is
+    // ruled out here, along with a re-capture that began to offer the tool.
+    const path = fileURLToPath(
+      new URL("../../../.capture/shell-dialects/observations-without-git.json", import.meta.url),
+    );
+    const record = JSON.parse(readFileSync(path, "utf8")) as {
+      host: { gitForWindows: string[]; bashOnPath: string[] };
+      configurations: {
+        configuration: string;
+        started: boolean;
+        requests?: number;
+        output?: string;
+        advertised?: { name: string }[];
+      }[];
+      cases: ObservedCase[];
+    };
+    expect(record.host.gitForWindows).toEqual([]);
+    // The eight host configurations the validation record describes. They are
+    // named here, not read back from the record, so one cut down to fewer fails.
+    // The driver adds a ninth only on a host with a bash.exe on PATH, which this one had not.
+    expect(record.configurations.map((entry) => entry.configuration).sort()).toEqual(
+      [
+        "claude-code-shell-powershell",
+        "default",
+        "git-bash-path-cmd",
+        "git-bash-path-cmd-powershell-tool-off",
+        "git-bash-path-missing",
+        "git-bash-path-powershell",
+        "powershell-tool-off",
+        "shell-powershell",
+        ...(record.host.bashOnPath.length > 0 ? ["git-bash-path-bash-on-path"] : []),
+      ].sort(),
+    );
+    // A call is named for its tool and its configuration, which promotion enforces.
+    const callsUnder = (configuration: string) =>
+      record.cases.filter((candidate) =>
+        Object.keys(CLAUDE_SHELL_SHAPES).some((tool) => candidate.case === `${tool.toLowerCase()}-${configuration}`),
+      );
+    const started = record.configurations.filter((entry) => entry.started);
+    expect(started.length).toBeGreaterThan(0);
+    for (const entry of started) {
+      expect(
+        entry.advertised!.map((tool) => tool.name),
+        entry.configuration,
+      ).toEqual(["PowerShell"]);
+      // Its one advertised tool was then called under that configuration, and that is what a hook saw.
+      expect(
+        callsUnder(entry.configuration).map((call) => call.before?.tool_name),
+        entry.configuration,
+      ).toEqual(["PowerShell"]);
+    }
+    // One that did not start made no model request, so it advertised nothing and
+    // called nothing. What it printed is the harness's own word that the host has
+    // no Git Bash, which the driver's check for an install cannot give by itself.
+    for (const entry of record.configurations.filter((candidate) => !candidate.started)) {
+      expect(entry.requests, entry.configuration).toBe(0);
+      expect(entry.output, entry.configuration).toContain("Git Bash was not found");
+      expect(callsUnder(entry.configuration), entry.configuration).toEqual([]);
+    }
+    // No call is left over: none under a configuration that is not listed, none under another name.
+    expect(record.cases).toHaveLength(started.length);
+  });
 });

@@ -26,9 +26,10 @@ what each harness does and what it tells a hook:
   and where `CLAUDE_CODE_SHELL` named fish, tcsh or PowerShell; and on Windows
   with Git taken off `PATH`, with the install-location variables redirected as
   well, and with its Git Bash path variable naming a missing file, `cmd.exe` or
-  `powershell.exe`. A Windows host with no Git for Windows offered no `Bash`
-  at all, under any configuration tried: `PowerShell` was its only shell tool,
-  and with that turned off Claude Code would not start. `PowerShell` ran Windows
+  `powershell.exe`. A Windows host with no Git for Windows produced no `Bash`
+  call under any configuration tried: where Claude Code started, `PowerShell`
+  was the only shell tool it advertised, and with that turned off it would not
+  start. `PowerShell` ran Windows
   PowerShell or PowerShell 7 depending on what `PATH` resolved. The tool name
   is in the hook payload.
 - **OpenCode** picks the interpreter from the host: its `shell` configuration
@@ -119,10 +120,12 @@ ran both under identical input. OpenCode's statement names the exact shell.
 ## What stays unknown
 
 - **Claude Code's `Bash` on a Windows host without Git for Windows, on another
-  build.** One build was captured on such a host, in Windows Sandbox. It
-  advertised no `Bash` under any of eight host configurations, including those
-  that pointed its Git Bash path variable at `cmd.exe` and `powershell.exe`, so
-  no `Bash` call reached a hook for the `posix` pin to be wrong about.
+  build.** One build was captured on such a host, in Windows Sandbox, under
+  eight host configurations. In the six that started it advertised no `Bash`,
+  including those that pointed its Git Bash path variable at `cmd.exe` and
+  `powershell.exe`; in the two that turned the PowerShell tool off it exited
+  before any model request. So no `Bash` call reached a hook for the `posix`
+  pin to be wrong about.
   Anthropic's setup page and tools reference, as read on 2026-10-10, describe
   the same thing: `Bash` needs Git Bash, and without it shell commands run
   through `PowerShell`. A build that did offer `Bash` there and ran it through

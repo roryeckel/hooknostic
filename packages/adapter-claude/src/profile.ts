@@ -121,7 +121,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
           date: "2026-10-10",
           method: "live-probe",
           artifact: ".capture/shell-dialects",
-          what: "Windows Sandbox shell interpreter probe on a host with no Git for Windows: Bash was not advertised under any of eight host configurations. In six, PowerShell was the only shell tool, advertised without the opt-in, and ran Windows powershell.exe, including with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe and with CLAUDE_CODE_SHELL or SHELL naming powershell.exe. In the two that set CLAUDE_CODE_USE_POWERSHELL_TOOL=0, Claude Code did not start. So no Bash call reaches a hook there for the posix pin to be wrong about (ADR-0029).",
+          what: "Windows Sandbox shell interpreter probe on a host with no Git for Windows: of eight host configurations, six started, and in each PowerShell was the only shell tool advertised, without the opt-in, and ran Windows powershell.exe. That includes CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe, and CLAUDE_CODE_SHELL or SHELL naming powershell.exe. The two that set CLAUDE_CODE_USE_POWERSHELL_TOOL=0 exited before any model request, reporting that Git Bash was not found. So no Bash call reaches a hook there for the posix pin to be wrong about (ADR-0029).",
         },
       ],
       notes: [

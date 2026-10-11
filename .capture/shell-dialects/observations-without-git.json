@@ -64,7 +64,7 @@
       "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names cmd.exe, CLAUDE_CODE_USE_POWERSHELL_TOOL=0",
       "started": false,
       "exit": 1,
-      "errors": [],
+      "requests": 0,
       "output": "Claude Code on Windows requires a shell tool. Git Bash was not found and the PowerShell tool is disabled (CLAUDE_CODE_USE_POWERSHELL_TOOL=0).\n  - Install Git for Windows: https://git-scm.com/downloads/win, or\n  - Remove CLAUDE_CODE_USE_POWERSHELL_TOOL from your environment or settings.\n"
     },
     {
@@ -106,7 +106,7 @@
       "set": "SHELL unset, CLAUDE_CODE_USE_POWERSHELL_TOOL=0",
       "started": false,
       "exit": 1,
-      "errors": [],
+      "requests": 0,
       "output": "Claude Code on Windows requires a shell tool. Git Bash was not found and the PowerShell tool is disabled (CLAUDE_CODE_USE_POWERSHELL_TOOL=0).\n  - Install Git for Windows: https://git-scm.com/downloads/win, or\n  - Remove CLAUDE_CODE_USE_POWERSHELL_TOOL from your environment or settings.\n"
     },
     {
@@ -131,7 +131,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-11T03:44:06.902Z",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
       "case": "powershell-claude-code-shell-powershell",
       "configuration": {
         "set": "SHELL unset, CLAUDE_CODE_SHELL names powershell.exe",
@@ -141,10 +141,10 @@
         }
       },
       "before": {
-        "session_id": "7e05300e-ac30-43fc-b384-c561a20ae704",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-7pUCQU\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-7pUCQU-project\\7e05300e-ac30-43fc-b384-c561a20ae704.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-7pUCQU\\project",
-        "prompt_id": "66153a23-2eca-4ac6-bb9d-5945b5a39dad",
+        "session_id": "75554396-6ed3-4f53-80b6-33de883010b9",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-QvWGxD\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-QvWGxD-project\\75554396-6ed3-4f53-80b6-33de883010b9.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-QvWGxD\\project",
+        "prompt_id": "67eda3ec-303f-4466-b781-6732e0540d2b",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -162,32 +162,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 6460,
-            "parentPid": 2008,
+            "pid": 3804,
+            "parentPid": 1732,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           },
           {
-            "pid": 2008,
-            "parentPid": 2424,
+            "pid": 1732,
+            "parentPid": 7740,
             "name": "powershell.exe",
             "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
           },
           {
-            "pid": 2424,
-            "parentPid": 9060,
+            "pid": 7740,
+            "parentPid": 5752,
             "name": "cmd.exe",
             "path": "C:\\Windows\\System32\\cmd.exe"
           },
           {
-            "pid": 9060,
-            "parentPid": 6068,
+            "pid": 5752,
+            "parentPid": 9836,
             "name": "claude.exe",
             "path": "C:\\hkn\\tools\\claude.exe"
           },
           {
-            "pid": 6068,
-            "parentPid": 7444,
+            "pid": 9836,
+            "parentPid": 7440,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           }
@@ -197,7 +197,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-11T03:44:06.902Z",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
       "case": "powershell-default",
       "configuration": {
         "set": "SHELL unset, nothing else set",
@@ -207,10 +207,10 @@
         }
       },
       "before": {
-        "session_id": "f2e72315-fdab-4ec8-b08f-b4387bc4752b",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-buVDYQ\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-buVDYQ-project\\f2e72315-fdab-4ec8-b08f-b4387bc4752b.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-buVDYQ\\project",
-        "prompt_id": "2fb692a7-5b47-4460-b512-2c27e07ce7f4",
+        "session_id": "44439b17-02fe-43fd-8794-78da20aebeeb",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-StDnOX\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-StDnOX-project\\44439b17-02fe-43fd-8794-78da20aebeeb.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-StDnOX\\project",
+        "prompt_id": "2bd5a920-f629-4f26-9564-57a01e403ed1",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -228,32 +228,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 9308,
-            "parentPid": 9012,
+            "pid": 6096,
+            "parentPid": 3048,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           },
           {
-            "pid": 9012,
-            "parentPid": 6932,
+            "pid": 3048,
+            "parentPid": 7376,
             "name": "powershell.exe",
             "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
           },
           {
-            "pid": 6932,
-            "parentPid": 9992,
+            "pid": 7376,
+            "parentPid": 8524,
             "name": "cmd.exe",
             "path": "C:\\Windows\\System32\\cmd.exe"
           },
           {
-            "pid": 9992,
-            "parentPid": 6068,
+            "pid": 8524,
+            "parentPid": 9836,
             "name": "claude.exe",
             "path": "C:\\hkn\\tools\\claude.exe"
           },
           {
-            "pid": 6068,
-            "parentPid": 7444,
+            "pid": 9836,
+            "parentPid": 7440,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           }
@@ -263,7 +263,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-11T03:44:06.902Z",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
       "case": "powershell-git-bash-path-cmd",
       "configuration": {
         "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names cmd.exe",
@@ -273,10 +273,10 @@
         }
       },
       "before": {
-        "session_id": "59660aac-ccf8-4432-b651-61f6b47c3b48",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Zf4Dmr\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-Zf4Dmr-project\\59660aac-ccf8-4432-b651-61f6b47c3b48.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Zf4Dmr\\project",
-        "prompt_id": "a58f8d72-7b2e-42fa-b709-7ad9bbbeabb9",
+        "session_id": "8e644b34-860a-4686-8e11-318905fb9b3f",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-U1Fqma\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-U1Fqma-project\\8e644b34-860a-4686-8e11-318905fb9b3f.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-U1Fqma\\project",
+        "prompt_id": "7ec57683-739e-4cf5-9c2d-59d31637cf81",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -294,32 +294,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 3412,
-            "parentPid": 1404,
+            "pid": 4896,
+            "parentPid": 5396,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           },
           {
-            "pid": 1404,
-            "parentPid": 8528,
+            "pid": 5396,
+            "parentPid": 10080,
             "name": "powershell.exe",
             "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
           },
           {
-            "pid": 8528,
-            "parentPid": 2300,
+            "pid": 10080,
+            "parentPid": 9380,
             "name": "cmd.exe",
             "path": "C:\\Windows\\System32\\cmd.exe"
           },
           {
-            "pid": 2300,
-            "parentPid": 6068,
+            "pid": 9380,
+            "parentPid": 9836,
             "name": "claude.exe",
             "path": "C:\\hkn\\tools\\claude.exe"
           },
           {
-            "pid": 6068,
-            "parentPid": 7444,
+            "pid": 9836,
+            "parentPid": 7440,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           }
@@ -329,7 +329,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-11T03:44:06.902Z",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
       "case": "powershell-git-bash-path-missing",
       "configuration": {
         "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names a missing file",
@@ -339,10 +339,10 @@
         }
       },
       "before": {
-        "session_id": "91a8db7c-b802-4be9-93a1-7f97d5ee9379",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-O4YCzf\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-O4YCzf-project\\91a8db7c-b802-4be9-93a1-7f97d5ee9379.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-O4YCzf\\project",
-        "prompt_id": "4cb45371-e33c-4699-99a0-7377ce6cf2c7",
+        "session_id": "20978d8f-c7be-4124-82c8-7a6a261d06ba",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Lv9iJH\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-Lv9iJH-project\\20978d8f-c7be-4124-82c8-7a6a261d06ba.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Lv9iJH\\project",
+        "prompt_id": "d6a38f7a-b806-4a30-9fc3-6944a0d344c8",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -360,32 +360,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 2748,
-            "parentPid": 9844,
+            "pid": 5432,
+            "parentPid": 3276,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           },
           {
-            "pid": 9844,
-            "parentPid": 8944,
+            "pid": 3276,
+            "parentPid": 7628,
             "name": "powershell.exe",
             "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
           },
           {
-            "pid": 8944,
-            "parentPid": 7576,
+            "pid": 7628,
+            "parentPid": 10056,
             "name": "cmd.exe",
             "path": "C:\\Windows\\System32\\cmd.exe"
           },
           {
-            "pid": 7576,
-            "parentPid": 6068,
+            "pid": 10056,
+            "parentPid": 9836,
             "name": "claude.exe",
             "path": "C:\\hkn\\tools\\claude.exe"
           },
           {
-            "pid": 6068,
-            "parentPid": 7444,
+            "pid": 9836,
+            "parentPid": 7440,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           }
@@ -395,7 +395,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-11T03:44:06.902Z",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
       "case": "powershell-git-bash-path-powershell",
       "configuration": {
         "set": "SHELL unset, CLAUDE_CODE_GIT_BASH_PATH names powershell.exe",
@@ -405,10 +405,10 @@
         }
       },
       "before": {
-        "session_id": "59c21ae2-44a8-4cbc-a225-12ea66433cd3",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-E1SJ6E\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-E1SJ6E-project\\59c21ae2-44a8-4cbc-a225-12ea66433cd3.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-E1SJ6E\\project",
-        "prompt_id": "536de3ac-0614-4c22-b1d1-836486c86b21",
+        "session_id": "f917da36-b0d4-4971-8591-cc5ee565e38a",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Xi3YYz\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-Xi3YYz-project\\f917da36-b0d4-4971-8591-cc5ee565e38a.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-Xi3YYz\\project",
+        "prompt_id": "594a2d6e-951a-4133-bce8-a7df767dc8c0",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -426,32 +426,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 9660,
-            "parentPid": 9640,
+            "pid": 1612,
+            "parentPid": 7908,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           },
           {
-            "pid": 9640,
-            "parentPid": 7784,
+            "pid": 7908,
+            "parentPid": 8884,
             "name": "powershell.exe",
             "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
           },
           {
-            "pid": 7784,
-            "parentPid": 10184,
+            "pid": 8884,
+            "parentPid": 9324,
             "name": "cmd.exe",
             "path": "C:\\Windows\\System32\\cmd.exe"
           },
           {
-            "pid": 10184,
-            "parentPid": 6068,
+            "pid": 9324,
+            "parentPid": 9836,
             "name": "claude.exe",
             "path": "C:\\hkn\\tools\\claude.exe"
           },
           {
-            "pid": 6068,
-            "parentPid": 7444,
+            "pid": 9836,
+            "parentPid": 7440,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           }
@@ -461,7 +461,7 @@
     {
       "harness": "claude",
       "version": "2.1.295",
-      "capturedAt": "2026-10-11T03:44:06.902Z",
+      "capturedAt": "2026-10-11T04:22:02.380Z",
       "case": "powershell-shell-powershell",
       "configuration": {
         "set": "SHELL names powershell.exe",
@@ -471,10 +471,10 @@
         }
       },
       "before": {
-        "session_id": "9bcc40cf-f4da-43fb-bf19-2e8312fd1638",
-        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-LcJMeE\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-LcJMeE-project\\9bcc40cf-f4da-43fb-bf19-2e8312fd1638.jsonl",
-        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-LcJMeE\\project",
-        "prompt_id": "96c24261-ad9b-4087-bbb5-2435569e4b82",
+        "session_id": "cac81671-5380-4c22-8689-fbd537ac525d",
+        "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-jCK0oi\\claude-home\\projects\\C--Users-user-AppData-Local-Temp-hkn-shell-dialect-jCK0oi-project\\cac81671-5380-4c22-8689-fbd537ac525d.jsonl",
+        "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-jCK0oi\\project",
+        "prompt_id": "2711573b-9b36-487c-8e2b-df9e3f821e47",
         "permission_mode": "bypassPermissions",
         "effort": {
           "level": "high"
@@ -492,32 +492,32 @@
         "node": "v24.20.0",
         "ancestry": [
           {
-            "pid": 3008,
-            "parentPid": 8060,
+            "pid": 632,
+            "parentPid": 7316,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           },
           {
-            "pid": 8060,
-            "parentPid": 7992,
+            "pid": 7316,
+            "parentPid": 8044,
             "name": "powershell.exe",
             "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
           },
           {
-            "pid": 7992,
-            "parentPid": 7432,
+            "pid": 8044,
+            "parentPid": 6120,
             "name": "cmd.exe",
             "path": "C:\\Windows\\System32\\cmd.exe"
           },
           {
-            "pid": 7432,
-            "parentPid": 6068,
+            "pid": 6120,
+            "parentPid": 9836,
             "name": "claude.exe",
             "path": "C:\\hkn\\tools\\claude.exe"
           },
           {
-            "pid": 6068,
-            "parentPid": 7444,
+            "pid": 9836,
+            "parentPid": 7440,
             "name": "node.exe",
             "path": "C:\\hkn\\node\\node.exe"
           }
