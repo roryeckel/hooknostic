@@ -8,9 +8,10 @@ contract suite in `@hooknostic/testkit` audits every row.
 See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.
 
 > [!WARNING]
-> **macOS is untested.** Every record below was established on Windows or Linux.
-> CI runs only the unit and fixture tests on macOS; no harness session has been
-> captured or played back there.
+> **macOS has shell interpreter captures and nothing else.** Each harness ran its
+> shell tool on a GitHub macOS runner (`.capture/shell-dialects`); every other
+> record below was established on Windows or Linux. CI runs only the unit and
+> fixture tests on macOS, and the playback suite has never run there.
 
 | Harness | Recommended target range | Validated ranges | Reference build | Fixtures |
 | --- | --- | --- | --- | --- |

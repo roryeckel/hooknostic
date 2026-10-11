@@ -1,51 +1,63 @@
-# Skills name their own directory, and one-shot OpenCode runs keep their hooks
+# A shell view names the grammar its command runs in
 
-0.4.0 adds a portable way for a skill to name the scripts it ships, and fixes a
-`turn.stop` hook being cut off when a one-shot `opencode run` exited.
+A shell tool's name does not say which interpreter runs its command. In the
+[interpreter captures](../.capture/shell-dialects/README.md), Claude Code's `Bash`
+ran Git Bash on Windows, OpenCode's `bash` ran PowerShell, Git Bash, cmd or tcsh
+depending on how the host was configured, and Codex's `Bash` ran PowerShell or cmd
+under identical hook input. 0.5.0 adds `tool.shell.dialect`, the grammar family a
+command will be interpreted in, wherever the adapter can establish it
+([ADR-0029](decisions/0029-shell-dialect.md)).
 
-- Write `${SKILL_DIR}` in a SKILL.md body to name the skill's own directory:
-  `node "${SKILL_DIR}/scripts/status.mjs"`. Claude Code's projection writes
-  `${CLAUDE_SKILL_DIR}`, which Claude expands to the absolute directory; Codex
-  and OpenCode get `.`, a path their skill instructions resolve against the
-  skill's directory. Package and project delivery alike, body only
-  ([ADR-0028](decisions/0028-skill-directory-token.md)).
-- A skill whose text keeps a reference its target shows the model as written,
-  such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}` anywhere, fails
-  the build as the `<adapter>:skill-reference-unexpanded` degradation (**HN101**).
-  Shell parameters such as `${HOME}` are left alone.
-- The OpenCode 1.x plugin now returns `dispose`, which the build measured in
-  [.capture/opencode-dispose](../.capture/opencode-dispose/README.md) awaits before a
-  one-shot `opencode run` exits. Earlier supported builds have not been verified
-  to call or await it, so they may still cut off in-flight hooks. When called,
-  it waits for the hooks still running, for up to
-  their timeouts plus one 10 s host round trip and never more than 15 s, so a
-  `turn.stop` hook dispatched at `session.idle` finishes instead of being killed.
+- `tool.shell.dialect` is `"posix"`, `"powershell"` or `"cmd"`. It is absent where
+  the target cannot establish one, and absent means unknown, not POSIX.
+- Claude Code sets it on every shell view, by tool: `Bash` is `posix` and
+  `PowerShell` is `powershell`.
+- OpenCode 1.x and 2.x set it from the shell the harness itself states before a
+  call: `posix` for bash and zsh, `powershell` for either PowerShell, `cmd` for cmd.
+  It is absent for any other shell, and until the harness has stated one
+  ([OpenCode families](opencode-families.md)).
+- Codex never sets it: the model picks the interpreter per call, and no hook input
+  says which.
+- `hooknostic inspect <target>` prints where a target's dialect comes from, with the
+  adapter's reason and its evidence, and the generated support table says the same
+  for every target.
+- `hooknostic dispatch` takes the dialect a harness would have stated, so each
+  branch of a hook can be tested: `"shell": { "dialect": "powershell" }` on an
+  OpenCode test event's tool.
 
 ## Migrating
 
-- A package with Claude-only text in a skill, such as `${CLAUDE_PLUGIN_ROOT}`,
-  now fails its Codex and OpenCode targets. Replace a skill-relative path with
-  `${SKILL_DIR}`, or accept the id you have handled:
-  `components.accept: ["codex:skill-reference-unexpanded"]`.
-- Project delivery reports degradations too: `target.project.degradations` in
-  the build report, under the same `components.onDegraded` and `accept`.
-- `projectSkillFiles` in `@hooknostic/core` takes the target's skill-text rules
-  as a fourth argument; adapter authors pass their own.
-- A one-shot `opencode run` on OpenCode 1.x can now take up to 15 s longer to
-  return while its hooks finish.
+- A hook that does not read `dialect` builds and behaves as before.
+- A hook that parses or quotes a command should branch on `dialect`, never on
+  `tool.nativeName`, and decide what an absent one means: a guard that parses fails
+  closed, and a rewrite that quotes fails open
+  ([writing hooks safely](writing-hooks-safely.md#branch-on-the-shell-dialect-and-decide-what-unknown-means)).
+- An OpenCode plugin with tool hooks (on 1.x, permission hooks too) also listens,
+  read only, for the statement: on `tool.definition` in 1.x and `context` in 2.x.
+- `hooknostic dispatch` refuses a stated dialect the target would not give that
+  call. Claude's `Bash` is always `posix`, and Codex establishes none, so a Codex
+  event exercises a hook's unknown branch.
+- Adapter authors declare `shellDialect` (source, rationale, evidence) on an adapter
+  with a shell shape table, and the contract suite holds its tables and classifier
+  to the source it names. `classifyTool` takes what the harness reported as an
+  optional third argument.
 
 ## Limits
 
-- On Codex and OpenCode the model still resolves `./...` against the skill's
-  directory. A command that must run from the project should be given the
-  project explicitly. Codex's guidance comes from its bundled models'
-  instructions; a model behind a custom provider may not have it.
-- A project skill that already sits at its destination is discovered in place
-  and cannot be rewritten; a `${SKILL_DIR}` in it is reported.
-- OpenCode 2.x: `run --standalone` terminates its private server without calling
-  plugin cleanup, so a hook still running when the run ends is lost. Through the
-  background service it completes there. Measured on Windows only.
+- A family, not an interpreter: `posix` is bash or zsh and `powershell` is either
+  edition, so a hook cannot assume a PowerShell 7 operator such as `&&`.
+- The OpenCode dialect rests on the wording of the harness's statement. A build
+  that words it differently reports no dialect until its statement is captured.
+  The 1.x statement carries no session, so one is kept per plugin instance.
+- macOS was captured on GitHub runners where `SHELL` named bash, and in no other
+  configuration. What OpenCode states under zsh, a Mac's default, was captured on
+  Linux only.
+- Claude Code on a Windows host without Git for Windows was captured on one build,
+  which advertised no `Bash` there. Another build that offered `Bash` on such a
+  host and ran it through another shell would report `posix` wrongly.
+- Codex needs the interpreter in its hook input before a dialect can be set:
+  [openai/codex#44836](https://github.com/openai/codex/issues/44836).
 
-Start with the [README](../README.md); [configuration](configuration.md) covers
-skills that run their own scripts, and [OpenCode families](opencode-families.md)
-covers one-shot runs.
+Start with the [README](../README.md); [writing hooks safely](writing-hooks-safely.md)
+covers branching on the dialect, and [testing your hooks](testing-your-hooks.md)
+covers stating one in a test event.
