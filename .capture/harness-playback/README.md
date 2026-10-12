@@ -276,3 +276,38 @@ With these changes the Claude lane passed on 2.1.238 and on 2.1.296, each
 installed from npm into an isolated directory on Windows. Not established:
 whether an interactive session holds its first request for a connecting server,
 and what the tool returns for a server that fails to connect.
+
+## Windows private CSI folder-trust correction (2026-10-11)
+
+Claude Code 2.1.238's folder-trust walk failed on both the invocation-policy
+change and an independently installed and bundled archive of pre-change commit
+831a2e3. Both PTY scenarios reproduced the failure on that baseline before a
+user prompt was submitted. The hook artifacts match after removing generated
+source-path labels and comments.
+
+[claude-windows-trust-csi.json](claude-windows-trust-csi.json) records the native
+terminal text seen by the old selection helper, including its initial entry
+frame before any arrow keys. This is **processed terminal capture**: the old
+driver already removed some CSI sequences and whitespace. It is not raw ConPTY
+traffic or a hook-payload fixture. Account paths are redacted to `user`, and
+the capture retains hashes of the ignored diagnostic reports.
+
+The initial frame has the wanted `>1.Yes,Itrustthisfolder` selection followed
+by `ESC[>0q`. The old ANSI regex allowed only digits, semicolons and question
+marks in CSI parameters, so it left that private sequence intact. The selector
+read its `>` as the latest option cursor, sent unnecessary up keys, and failed
+to confirm an already-selected option. The later frames retain those cursor
+redraws. This establishes the parsing defect; it does not assign semantics to
+the private terminal sequence.
+
+Both Claude PTY drives now share Node's `stripVTControlCharacters` before
+recognizing dialogs and selection cursors. The regression passes the captured
+initial frame through that same normalizer and the actual first-run walk. It
+failed with the original regex and the same folder-trust selection error; the
+corrected helper confirms the selection with one Enter and no arrow keys.
+Native hooks, fixture payloads, support ratings and invocation policy are
+unchanged by this playback-driver correction.
+
+With the correction, the complete reference Claude playback lane passed all
+42 enabled tests (nine skips), exit zero. The isolated regression also passed
+with the existing PTY unit tests. No paid-model smoke was run.
