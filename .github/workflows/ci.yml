@@ -120,6 +120,15 @@ jobs:
           HOOKNOSTIC_SMOKE: ""
           HOOKNOSTIC_PACK: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
 
+      - name: LiteLLM sidecar compatibility (loopback only)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/litellm-probe"
+          source "$RUNNER_TEMP/litellm-probe/bin/activate"
+          python -m pip install --disable-pip-version-check -r .github/requirements/litellm.txt
+          python scripts/probe-litellm-sidecar.py
+
       # The reproducibility gate. rewrite-shell commits its build output, so a
       # rebuild that changes bytes is either an undeclared input to the bundle or
       # a genuine source change someone forgot to rebuild -- both worth failing
