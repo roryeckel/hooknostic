@@ -17,7 +17,9 @@ import {
   parseJsonObject,
   projectPackageSkillTexts,
   SKILL_REFERENCE_UNEXPANDED,
+  skillInvocationPolicyProfiles,
   validateNpmRuntimePackage,
+  withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE } from "@hooknostic/core";
@@ -28,6 +30,12 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
+import {
+  CLAUDE_SKILL_POLICY_RATIONALE,
+  claudeNewerSkillPolicyValidation,
+  claudePackageSkillPolicyValidation,
+  claudeSkillPolicy,
+} from "./skill-policy.js";
 import { CLAUDE_PLUGIN_SKILL_TEXT } from "./skill-text.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
@@ -235,8 +243,12 @@ function componentCounts(
       if (component !== "agent-plugin.client-extension.files") return 0;
       // Only the overlay files npm would read as install input are withheld;
       // the manifest extension and every other overlay file are emitted.
+      const insideRejectedSkill = isRejectedSkillPath(source);
       return source.files.filter(
-        (file) => file.path.startsWith(prefix) && isRootNpmManifestPath(file.path.slice(prefix.length)),
+        (file) =>
+          file.path.startsWith(prefix) &&
+          (isRootNpmManifestPath(file.path.slice(prefix.length)) ||
+            insideRejectedSkill(file.path.slice(prefix.length))),
       ).length;
     },
   });
@@ -312,6 +324,8 @@ export async function projectAgentPluginToClaude(
     const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
     if (!file.path.startsWith(prefix)) continue;
     const path = file.path.slice(prefix.length);
+    // Native overlays cannot restore a canonical skill rejected by the loader.
+    if (insideRejectedSkill(path)) continue;
     if (isRootNpmManifestPath(path)) {
       // Dropping a declared overlay file degrades the client-extension
       // component, so it obeys the same policy as any other unrepresentable
@@ -558,7 +572,7 @@ export async function projectAgentPluginToClaude(
   };
 }
 
-export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
+const nativeClaudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: CLAUDE_AGENT_PLUGIN_NAMESPACE,
   // A Claude plugin loads hooks/hooks.json from its own installed root, so the
   // package IS the hook channel here and both share the target's output.
@@ -721,3 +735,17 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   ],
   project: projectAgentPluginToClaude,
 };
+export const claudeAgentPluginProjector = withSkillInvocationPolicy(
+  {
+    ...nativeClaudeAgentPluginProjector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeClaudeAgentPluginProjector.profiles,
+      claudePackageSkillPolicyValidation,
+      CLAUDE_SKILL_POLICY_RATIONALE,
+      "exact",
+      [claudeNewerSkillPolicyValidation],
+    ),
+  },
+  "claude",
+  claudeSkillPolicy,
+);

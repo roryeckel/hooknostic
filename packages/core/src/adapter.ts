@@ -4,6 +4,7 @@ import type {
   AgentPluginProjectionProfile,
   AgentPluginProjector,
   ProjectComponents,
+  SkillPolicyFileProjector,
 } from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
@@ -275,6 +276,13 @@ export interface HarnessAdapter {
   /** Independently maintained families; omitted for single-family adapters. */
   readonly harnessFamilies?: readonly HarnessMetadata[];
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
+  /** Adapter-owned native edits composed for targets sharing a project skill directory. */
+  skillInvocationPolicy?: {
+    destination: string;
+    /** Captured alternate native discovery directories, relative to project ancestors. */
+    discoveryDirectories?: readonly string[];
+    projectFiles: SkillPolicyFileProjector;
+  };
   projectPaths?: readonly string[];
   /**
    * Native project paths the harness reads from the root checkout, never from

@@ -1,3 +1,4 @@
+import { SKILL_INVOCATION_POLICY, skillPolicyCount } from "./skill-policy.js";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginComponentId,
@@ -40,6 +41,8 @@ export function componentSummary(
   const discovered = new Map<AgentPluginComponentId, number>([["agent-plugin.manifest", 1]]);
 
   if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
+  const policyCount = skillPolicyCount(source.skills);
+  if (policyCount) discovered.set(SKILL_INVOCATION_POLICY, policyCount);
 
   for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
     if (!id.startsWith("agent-plugin.mcp.")) continue;

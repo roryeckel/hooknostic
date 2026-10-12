@@ -13,6 +13,9 @@ import {
   type AgentPluginProjectionProfile,
   type AgentPluginProjector,
   type AgentPluginRuntimePackage,
+  selectSkillPolicies,
+  SKILL_INVOCATION_POLICY,
+  skillPolicyCount,
 } from "@hooknostic/agent-plugin";
 import { type CompatibilityPolicy, leastCapable, meetsMinimum } from "@hooknostic/sdk";
 
@@ -241,6 +244,7 @@ function discoveredComponents(
 ): AgentPluginComponentId[] {
   const ids = new Set<AgentPluginComponentId>(["agent-plugin.manifest"]);
   if (source.skills.length > 0) ids.add("agent-plugin.skills");
+  if (skillPolicyCount(source.skills)) ids.add(SKILL_INVOCATION_POLICY);
   for (const server of Object.values(source.mcp?.mcpServers ?? {})) {
     ids.add(`agent-plugin.mcp.${server.type}` as AgentPluginComponentId);
   }
@@ -267,6 +271,7 @@ export function analyzeAgentPluginProjection(
    * does; without it, package delivery accepted any supported level.
    */
   compatibility?: Pick<Required<CompatibilityPolicy>, "minimum" | "onBelowMinimum">,
+  accept?: readonly string[],
 ): AgentPluginProjectionResolution {
   const projector = adapter.agentPluginProjector;
   if (projector === undefined) {
@@ -297,6 +302,37 @@ export function analyzeAgentPluginProjection(
   if (!resolved.matrix) return resolved;
   for (const component of discoveredComponents(source, projector.namespace, runtimePackage)) {
     const support = resolved.matrix[component] ?? { level: "unsupported" as const };
+    if (component === SKILL_INVOCATION_POLICY) {
+      // Policy is per skill: accepting one known missing gate must neither
+      // relax the whole skills component nor be defeated by blanket HN205.
+      const selection = selectSkillPolicies(source.skills, {
+        adapter: adapter.id,
+        support,
+        onUnsupported,
+        ...(accept === undefined ? {} : { accept }),
+      });
+      resolved.diagnostics.push(
+        ...diagnosticsFromAgentPluginIssues(
+          selection.issues.filter((issue) => issue.severity === "error"),
+          target.id,
+        ),
+      );
+      if (
+        selection.applied.size &&
+        compatibility !== undefined &&
+        !meetsMinimum(support.level, compatibility.minimum)
+      ) {
+        resolved.diagnostics.push({
+          code: "HN206",
+          severity: compatibility.onBelowMinimum,
+          target: target.id,
+          component,
+          support: support.level,
+          message: `${component} package projection support ${support.level} is below ${compatibility.minimum}`,
+        });
+      }
+      continue;
+    }
     if (support.level === "unsupported") {
       resolved.diagnostics.push({
         code: "HN205",

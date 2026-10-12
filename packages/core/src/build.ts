@@ -23,6 +23,8 @@ import {
   npmManifestCoordinate,
   packageComponents,
   type ProjectComponents,
+  SKILL_INVOCATION_POLICY,
+  skillPolicyCount,
   validateContainedCommands,
 } from "@hooknostic/agent-plugin";
 import {
@@ -65,6 +67,7 @@ import { isStrictDescendant, validateOutputLayout } from "./output-layout.js";
 import { effectiveCompatibility, effectiveRuntime } from "./policy.js";
 import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
+import { planProjectSkillPolicies } from "./skill-policy.js";
 
 export const HOOKNOSTIC_VERSION = "0.5.0";
 
@@ -554,6 +557,8 @@ function analyzedProjectionReport(
 ): AgentPluginTargetReport {
   const discovered = new Map<AgentPluginComponentId, number>([["agent-plugin.manifest", 1]]);
   if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
+  const declaredPolicies = skillPolicyCount(source.skills);
+  if (declaredPolicies) discovered.set(SKILL_INVOCATION_POLICY, declaredPolicies);
   for (const type of ["stdio", "streamable-http", "sse"] as const) {
     const count = Object.values(source.mcp?.mcpServers ?? {}).filter((server) => server.type === type).length;
     if (count > 0) discovered.set(`agent-plugin.mcp.${type}`, count);
@@ -839,6 +844,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
+        config.components!.accept,
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -987,6 +993,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         config.components!.onUnsupported ?? "error",
         effectiveRuntimePackage(config.components!),
         effectiveCompatibility(config, id),
+        config.components!.accept,
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -1041,6 +1048,36 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
 
   const mainGuardTargets: string[] = [];
   try {
+    const skillPolicyPlans: ReturnType<typeof planProjectSkillPolicies> =
+      componentSource === undefined
+        ? new Map()
+        : planProjectSkillPolicies(
+            componentSource,
+            resolve(configDir, config.project?.root ?? "."),
+            Object.keys(analysis.targets).flatMap((id) => {
+              const spec = targetSpecFromConfig(id, config.targets[id]!);
+              if (spec.delivery !== "project") return [];
+              const adapter = adapterFor(id)!;
+              const matrix = resolveAgentPluginProjection(spec, {
+                profiles: adapter.projectComponentProfiles ?? [],
+              }).matrix;
+              return [
+                {
+                  id,
+                  adapter: adapter.id,
+                  componentsSelected: (config.components?.targets ?? Object.keys(config.targets)).includes(id),
+                  ...adapter.skillInvocationPolicy,
+                  ...(matrix?.[SKILL_INVOCATION_POLICY] === undefined
+                    ? {}
+                    : { support: matrix[SKILL_INVOCATION_POLICY] }),
+                },
+              ];
+            }),
+            {
+              onUnsupported: config.components?.onUnsupported ?? "error",
+              ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
+            },
+          );
     for (const id of Object.keys(analysis.targets)) {
       const adapter = adapterFor(id)!;
       const targetConfig = config.targets[id]!;
@@ -1113,6 +1150,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             ...(materializedTrees.length === 0 ? {} : { materializedTrees }),
             support: projectionResolutions.get(id)?.matrix ?? {},
             onUnsupported: config.components!.onUnsupported ?? "error",
+            ...(config.components!.accept === undefined ? {} : { accept: config.components!.accept }),
             ...(config.components!.mcpEnvironment === undefined
               ? {}
               : { mcpEnvironment: config.components!.mcpEnvironment }),
@@ -1200,14 +1238,25 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           await projectPath(root, configFromRoot);
           await projectPath(root, output);
           integration = adapter.projectIntegration(artifacts, output, configFromRoot);
-          if (componentSource && (config.components?.targets ?? Object.keys(config.targets)).includes(id)) {
+          const componentsSelected = (config.components?.targets ?? Object.keys(config.targets)).includes(id);
+          if (componentSource && (componentsSelected || skillPolicyPlans.has(id))) {
+            const projectSource: ProjectComponents = componentsSelected
+              ? componentSource
+              : {
+                  origin: componentSource.origin,
+                  skills: componentSource.skills.filter((skill) => skill.policy?.allowImplicitInvocation !== undefined),
+                };
             if (!adapter.projectComponents)
               throw new Error(`adapter ${adapter.id} has no project component integrator`);
             const support = resolveAgentPluginProjection(spec, { profiles: adapter.projectComponentProfiles ?? [] });
             diagnostics.push(...support.diagnostics);
             if (!support.matrix)
               throw new Error("project component support is unavailable for the configured version range");
-            const selected = applyProjectMcpOverrides(componentSource, config.components?.mcpOverrides?.[id]);
+            const policyPlan = skillPolicyPlans.get(id);
+            const selected = applyProjectMcpOverrides(
+              policyPlan?.source ?? projectSource,
+              componentsSelected ? config.components?.mcpOverrides?.[id] : undefined,
+            );
             for (const message of selected.errors) {
               diagnostics.push({ code: "HN501", severity: "error", target: id, message });
             }
@@ -1228,7 +1277,8 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             }
             const selectedSource = selected.source;
             const counts: AgentPluginTargetReport["components"] = {};
-            const omissions: AgentPluginTargetReport["omissions"] = [];
+            const omissions: AgentPluginTargetReport["omissions"] = [...(policyPlan?.selection.omissions ?? [])];
+            diagnostics.push(...diagnosticsFromAgentPluginIssues(policyPlan?.selection.issues ?? [], id));
             const count = (component: AgentPluginComponentId, discovered: number): boolean => {
               if (!discovered) return true;
               const cell = support.matrix![component];
@@ -1265,6 +1315,38 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               return supported;
             };
             if (!count("agent-plugin.skills", selectedSource.skills.length)) selectedSource.skills = [];
+            if (projectSource.skills.length) {
+              const emitted = selectedSource.skills.length;
+              counts["agent-plugin.skills"] = {
+                support: support.matrix["agent-plugin.skills"]?.level ?? "unsupported",
+                discovered: projectSource.skills.length,
+                emitted,
+                skipped: projectSource.skills.length - emitted,
+              };
+            }
+            const declaredPolicies = skillPolicyCount(projectSource.skills);
+            if (declaredPolicies) {
+              const applied = selectedSource.skills.filter((skill) =>
+                policyPlan?.selection.applied.has(skill.name),
+              ).length;
+              counts[SKILL_INVOCATION_POLICY] = {
+                support: support.matrix[SKILL_INVOCATION_POLICY]?.level ?? "unsupported",
+                discovered: declaredPolicies,
+                emitted: applied,
+                skipped: declaredPolicies - applied,
+              };
+              const cell = support.matrix[SKILL_INVOCATION_POLICY];
+              const compatibility = effectiveCompatibility(config, id);
+              if (applied && cell && !meetsMinimum(cell.level, compatibility.minimum))
+                diagnostics.push({
+                  code: "HN206",
+                  severity: compatibility.onBelowMinimum,
+                  target: id,
+                  component: SKILL_INVOCATION_POLICY,
+                  support: cell.level,
+                  message: `${SKILL_INVOCATION_POLICY} project support ${cell.level} is below ${compatibility.minimum}`,
+                });
+            }
             for (const type of ["stdio", "streamable-http", "sse"] as const) {
               const servers = Object.entries(selectedSource.mcp?.config.mcpServers ?? {}).filter(
                 ([, server]) => server.type === type,
@@ -1295,12 +1377,16 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             }
             count(
               "agent-plugin.runtime-package",
-              config.components === undefined || effectiveRuntimePackage(config.components) === undefined ? 0 : 1,
+              !componentsSelected ||
+                config.components === undefined ||
+                effectiveRuntimePackage(config.components) === undefined
+                ? 0
+                : 1,
             );
             const namespace = adapter.agentPluginProjector?.namespace;
             count(
               "agent-plugin.client-extension.files",
-              components && namespace
+              componentsSelected && components && namespace
                 ? components.files.filter((file) => file.path.startsWith(namespace + "/")).length +
                     (components.manifest.extensions?.[namespace] ? 1 : 0)
                 : 0,
@@ -1328,6 +1414,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 : { mcpEnvironment: config.components.mcpEnvironment }),
               support: support.matrix,
             });
+            projected.degradations = [...(projected.degradations ?? []), ...(policyPlan?.selection.degradations ?? [])];
+            const destination = adapter.skillInvocationPolicy?.destination;
+            if (destination !== undefined)
+              projected.omittedFiles = (policyPlan?.selection.omissions ?? []).map(
+                (omission) => `${destination}/${omission.name}/SKILL.md`,
+              );
             // Not an omission: the skill is delivered, in place, and counting
             // it as skipped would misreport a component that is present. Warn,
             // never `onUnsupported`, because the same declaration is usually
@@ -1393,6 +1485,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             integration.entries.push(...projected.entries);
             integration.guidance.push(...projected.guidance);
             integration.absent = [...(integration.absent ?? []), ...(projected.absent ?? [])];
+            integration.omittedFiles = [...(integration.omittedFiles ?? []), ...(projected.omittedFiles ?? [])];
             integration.relinquishFiles = [
               ...(integration.relinquishFiles ?? []),
               ...(projected.relinquishFiles ?? []),

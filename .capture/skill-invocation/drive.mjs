@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Evidence-only project-skill gate probe. All model replies are scripted on loopback.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+// Native project/package skill policy probes. Model replies are scripted on loopback.
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -20,16 +20,24 @@ const protocol = {
 }[harness];
 if (!protocol) throw new Error("Specify claude, codex, opencode-v1, or opencode-v2");
 const executable = process.env.HKN_SKILL_HARNESS_BINARY ?? (harness.startsWith("opencode") ? "opencode" : harness);
+const policyProbe = process.argv.includes("--policy");
+const packaged = process.argv.includes("--package");
+const discoveryDirectory = process.argv.find(argument => argument.startsWith("--discovery-root="))?.slice(17);
+if (discoveryDirectory !== undefined && (packaged || policyProbe || !/^\.[a-z]+\/skills?$/.test(discoveryDirectory)))
+  throw new Error("Discovery-root probes require a native project-relative skill directory and no policy/package flag");
+const selectedCase = process.argv.find(argument => argument.startsWith("--case="))?.slice(7);
+const versionHome = mkdtempSync(join(tmpdir(), "hkn-skill-version-"));
 const versionResult = await runProcess(executable, ["--version"], {
   cwd: repo,
-  env: withoutCredentials(),
-  timeoutMs: 30000,
+  env: { ...withoutCredentials(), HOME: versionHome, USERPROFILE: versionHome, XDG_DATA_HOME: versionHome, XDG_STATE_HOME: versionHome, CODEX_HOME: versionHome },
+  timeoutMs: 120000,
 });
 const version = versionResult.stdout.match(/\d+\.\d+\.\d+/)?.[0];
-if (versionResult.code !== 0 || !version) throw new Error("Could not identify harness version");
-const out = join(repo, ".capture/skill-invocation/captured", `${harness}-${version}-${Date.now()}`);
+if (versionResult.code !== 0 || !version) throw new Error(`Could not identify harness version: ${versionResult.stderr} ${versionResult.stdout}`);
+const out = join(repo, ".capture/skill-invocation/captured", `${harness}-${version}${policyProbe ? "-policy" : ""}${packaged ? "-package" : ""}${discoveryDirectory === undefined ? "" : `-discovery-${discoveryDirectory.replaceAll("/", "-")}`}-${Date.now()}`);
 mkdirSync(out, { recursive: true });
 const skillNames = ["gate-control", "gate-claude", "gate-codex", "gate-opencode"];
+const nativeSkillName = name => packaged && harness === "opencode-v1" ? `gate-probe-${name}` : name;
 const q = (value) => `'${String(value).replaceAll("'", "''")}'`;
 const textStrings = (value) =>
   typeof value === "string"
@@ -42,19 +50,22 @@ const evidenceStrings = (requests) => [
 ];
 
 async function session(label, gated, prompt, action) {
+  if (selectedCase !== undefined && label !== selectedCase && label !== "baseline") return;
   const root = mkdtempSync(join(tmpdir(), "hkn-skill-gate-"));
   const project = join(root, "project");
-  const skills = join(project, harness === "claude" ? ".claude" : ".agents", "skills");
+  const plugin = join(root, "plugin");
+  mkdirSync(project, { recursive: true });
+  const skills = packaged ? join(plugin, "skills") : discoveryDirectory === undefined ? join(project, harness === "claude" ? ".claude" : ".agents", "skills") : join(project, discoveryDirectory);
   for (const name of skillNames) {
     const dir = join(skills, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "SKILL.md"),
-      `---\nname: ${name}\ndescription: GATE_DESCRIPTION_${name} harmless capture control.\n${gated && name === "gate-claude" ? "disable-model-invocation: true\n" : ""}---\n\nGATE_BODY_${name}\nRespond with the word done.\n`,
+      `---\nname: ${nativeSkillName(name)}\ndescription: GATE_DESCRIPTION_${name} harmless capture control.\n${(gated || label === "allowed") && name === "gate-claude" ? `disable-model-invocation: ${gated}\n` : ""}${policyProbe && harness === "opencode-v2" && (gated || label === "allowed") && name === "gate-opencode" ? `metadata:\n  opencode/autoinvoke: "${!gated}"\n` : ""}---\n\nGATE_BODY_${name}\nRespond with the word done.\n`,
     );
-    if (gated && name === "gate-codex") {
+    if ((gated || label === "allowed") && name === "gate-codex") {
       mkdirSync(join(dir, "agents"));
-      writeFileSync(join(dir, "agents/openai.yaml"), "policy:\n  allow_implicit_invocation: false\n");
+      writeFileSync(join(dir, "agents/openai.yaml"), `policy:\n  allow_implicit_invocation: ${!gated}\n`);
     }
   }
   const env = {
@@ -88,9 +99,54 @@ async function session(label, gated, prompt, action) {
     "OPENAI_BASE_URL",
   ])
     delete env[key];
-  const git = await runProcess("git", ["init"], { cwd: project, env, timeoutMs: 30000 });
-  if (git.code !== 0) throw new Error("Could not initialize isolated project");
+  const git = await runProcess(process.env.HKN_SKILL_GIT_BINARY ?? "git", ["init"], { cwd: project, env, timeoutMs: 30000 });
+  if (git.code !== 0) throw new Error(`Could not initialize isolated project: ${git.stderr}`);
   if (harness === "opencode-v1") await prepareOpenCodePluginDependency(project, version);
+  if (packaged && harness === "claude") {
+    mkdirSync(join(plugin, ".claude-plugin"));
+    writeFileSync(join(plugin, ".claude-plugin/plugin.json"), JSON.stringify({ name: "gate-probe", version: "1.0.0" }));
+    const marketplace = join(root, "marketplace");
+    mkdirSync(join(marketplace, ".claude-plugin"), { recursive: true });
+    cpSync(plugin, join(marketplace, "plugins/gate-probe"), { recursive: true });
+    writeFileSync(join(marketplace, ".claude-plugin/marketplace.json"), JSON.stringify({ name: "gate-capture", owner: { name: "Hooknostic contributors" }, plugins: [{ name: "gate-probe", source: "./plugins/gate-probe" }] }));
+    for (const args of [["plugin", "marketplace", "add", marketplace], ["plugin", "install", "gate-probe@gate-capture"]]) {
+      const installed = await runProcess(executable, args, { cwd: project, env, timeoutMs: 60000 });
+      if (installed.code !== 0) throw new Error(`Plugin install failed: ${installed.stderr} ${installed.stdout}`);
+    }
+  }
+  if (packaged && harness === "codex") {
+    mkdirSync(join(plugin, ".codex-plugin"));
+    writeFileSync(join(plugin, ".codex-plugin/plugin.json"), JSON.stringify({ name: "gate-probe", version: "1.0.0", description: "Harmless skill policy capture", skills: "./skills/" }));
+    const marketplace = join(root, "marketplace");
+    mkdirSync(join(marketplace, ".agents/plugins"), { recursive: true });
+    cpSync(plugin, join(marketplace, "plugins/gate-probe"), { recursive: true });
+    writeFileSync(join(marketplace, ".agents/plugins/marketplace.json"), JSON.stringify({ name: "gate-capture", owner: { name: "Hooknostic contributors" }, plugins: [{ name: "gate-probe", source: { source: "local", path: "./plugins/gate-probe" } }] }));
+    for (const args of [["plugin", "marketplace", "add", marketplace], ["plugin", "add", "gate-probe@gate-capture"]]) {
+      const installed = await runProcess(executable, args, { cwd: project, env, timeoutMs: 60000 });
+      if (installed.code !== 0) throw new Error(`Plugin install failed: ${installed.stderr} ${installed.stdout}`);
+    }
+  }
+  let installedPackage;
+  if (packaged && harness.startsWith("opencode")) {
+    writeFileSync(join(plugin, "package.json"), JSON.stringify({ name: "gate-probe", version: "1.0.0", type: "module", exports: { ".": "./index.js", "./server": "./index.js" } }));
+    const values = skillNames.map(name => ({ id: `gate-probe/${name}`, name, description: `GATE_DESCRIPTION_${name} harmless capture control.`, manifest: `skills/${name}/SKILL.md`, ...((gated || label === "allowed") && name === "gate-opencode" ? { autoinvoke: !gated } : {}) }));
+    const common = 'import { readFileSync } from "node:fs";\nimport { dirname, join } from "node:path";\nimport { fileURLToPath } from "node:url";\nconst root = dirname(fileURLToPath(import.meta.url));\n';
+    const module = harness === "opencode-v1"
+      ? `export default async () => ({ config(config) { config.skills = { ...(config.skills ?? {}), paths: [...(config.skills?.paths ?? []), join(root, "skills")] }; ${gated || label === "allowed" ? `config.permission = { ...(config.permission ?? {}), skill: { "${nativeSkillName("gate-opencode")}": "${gated ? "deny" : "allow"}" } };` : ""} } });\n`
+      : `export default { id: "gate-probe", async setup(ctx) { await ctx.skill.transform(editor => { for (const skill of ${JSON.stringify(values)}) { const { manifest, ...info } = skill; const path = join(root, manifest); editor.add({ ...info, path, content: readFileSync(path, "utf8").replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n/, "") }); } }); } };\n`;
+    writeFileSync(join(plugin, "index.js"), common + module);
+    const relocated = join(root, "installed"); mkdirSync(relocated);
+    writeFileSync(join(relocated, "package.json"), JSON.stringify({ private: true }));
+    const installed = await runProcess("npm", ["install", "--offline", "--ignore-scripts", "--install-links", "--no-audit", "--no-fund", plugin], { cwd: relocated, env, timeoutMs: 60000 });
+    if (installed.code !== 0) throw new Error(`Local package install failed: ${installed.stderr} ${installed.stdout}`);
+    installedPackage = join(relocated, "node_modules/gate-probe");
+  }
+  if (action?.kind === "read-skill") {
+    const candidates = packaged ? readdirSync(env.CODEX_HOME, { recursive: true }).filter(path => String(path).replaceAll("\\", "/").endsWith("/skills/gate-codex/SKILL.md")) : [];
+    const path = packaged ? join(env.CODEX_HOME, candidates[0] ?? "missing-skill") : join(skills, "gate-codex/SKILL.md");
+    if (!existsSync(path)) throw new Error("Installed skill path was not found");
+    action = { kind: "tool", toolName: action.toolName, arguments: { [action.key]: process.platform === "win32" ? `Get-Content -Raw -LiteralPath ${q(path)}` : `cat ${q(path)}`, ...(action.toolName === "exec_command" ? { login: false, yield_time_ms: 30000, max_output_tokens: 2000 } : {}) } };
+  }
   const server = await startModelPlayback(protocol, "rewrite", [
     ...(action ? [action] : []),
     { kind: "text", text: "capture complete" },
@@ -128,12 +184,13 @@ async function session(label, gated, prompt, action) {
       );
     } else if (harness === "codex") {
       if (process.platform === "win32")
-        writeFileSync(join(env.CODEX_HOME, "config.toml"), '[windows]\nsandbox = "unelevated"\n');
+        writeFileSync(join(env.CODEX_HOME, "config.toml"), (existsSync(join(env.CODEX_HOME, "config.toml")) ? readFileSync(join(env.CODEX_HOME, "config.toml"), "utf8") : "") + '\n[windows]\nsandbox = "unelevated"\n');
       result = await runProcess(
         executable,
         [
           "exec",
           "-",
+          ...(policyProbe && label.startsWith("load-") ? ["--dangerously-bypass-approvals-and-sandbox"] : []),
           "--color",
           "never",
           "-c",
@@ -157,13 +214,14 @@ async function session(label, gated, prompt, action) {
           "-c",
           `projects={${q(project)}={trust_level="trusted"}}`,
         ],
-        { cwd: project, input: prompt, timeoutMs: 120000, env },
+        { cwd: project, input: prompt, timeoutMs: 240000, env },
       );
     } else if (harness === "opencode-v1") {
       writeOpencodeConfig(project, server.baseUrl, "local-playback", "hooknostic-playback");
       const configPath = join(project, "opencode.json");
       const config = JSON.parse(readFileSync(configPath, "utf8"));
-      if (gated && !label.startsWith("plugin-")) config.permission = { skill: { "gate-opencode": "deny" } };
+      if (packaged) config.plugin = [installedPackage];
+      if (!packaged && (gated || label === "allowed") && !label.startsWith("plugin-")) config.permission = { skill: { "gate-opencode": gated ? "deny" : "allow" } };
       if (gated && label.startsWith("plugin-")) {
         const plugins = join(project, ".opencode/plugins");
         mkdirSync(plugins, { recursive: true });
@@ -175,7 +233,7 @@ async function session(label, gated, prompt, action) {
       writeFileSync(configPath, JSON.stringify(config, null, 2));
       // Match the dependency helper's isolated config location.
       env.XDG_CONFIG_HOME = openCodePlaybackConfigHome(project);
-      result = await runProcess(executable, ["run", prompt, "--model", "drift/hooknostic-playback"], {
+      result = await runProcess(executable, ["run", ...(label === "explicit-native" ? ["--command", nativeSkillName("gate-opencode"), ""] : [prompt]), "--model", "drift/hooknostic-playback"], {
         cwd: project,
         timeoutMs: 120000,
         env,
@@ -186,6 +244,7 @@ async function session(label, gated, prompt, action) {
         JSON.stringify(
           {
             model: "playback/hooknostic-playback",
+            ...(packaged ? { plugins: [installedPackage] } : {}),
             providers: {
               playback: {
                 name: "Playback",
@@ -195,7 +254,7 @@ async function session(label, gated, prompt, action) {
                 models: { "hooknostic-playback": { name: "Playback", limit: { context: 128000, output: 4096 } } },
               },
             },
-            ...(gated ? { permission: { skill: { "gate-opencode": "deny" } } } : {}),
+            ...(gated && !policyProbe ? { permission: { skill: { "gate-opencode": "deny" } } } : {}),
           },
           null,
           2,
@@ -207,6 +266,9 @@ async function session(label, gated, prompt, action) {
         env: { ...env, HKN_PLAYBACK_KEY: "local-playback" },
       });
     }
+  } catch (error) {
+    // Retain failed controls for diagnosis; promotion still rejects them.
+    result = { code: null, stdout: "", stderr: String(error) };
   } finally {
     await server.close();
   }
@@ -221,6 +283,10 @@ async function session(label, gated, prompt, action) {
   const evidence = {
     pluginConfig,
     harness,
+    policyProbe,
+    delivery: packaged ? "package" : "project",
+    ...(discoveryDirectory === undefined ? {} : { discoveryDirectory }),
+    ...(harness === "codex" && policyProbe && label.startsWith("load-") ? { loadingSandbox: "disabled for synthetic read controls" } : {}),
     version,
     platform: process.platform,
     capturedAt: new Date().toISOString(),
@@ -235,6 +301,8 @@ async function session(label, gated, prompt, action) {
     initial: evidenceStrings(modelRequests.slice(0, 1)),
     subsequent: evidenceStrings(modelRequests.slice(1)),
   };
+  const visible = (name) => evidence.initial.some((text) => text.includes(`GATE_DESCRIPTION_${name}`) || (harness === "claude" && new RegExp(`^- (?:gate-probe:)?${name}(?::|$)`, "m").test(text)));
+  evidence.visibleSkills = skillNames.filter(visible);
   writeFileSync(join(dir, "evidence.json"), JSON.stringify(evidence, null, 2) + "\n");
   console.log(
     JSON.stringify({
@@ -244,7 +312,7 @@ async function session(label, gated, prompt, action) {
       exit: result.code,
       errors: server.errors,
       requests: server.requests.length,
-      listed: skillNames.filter((name) => evidence.initial.some((text) => text.includes(`GATE_DESCRIPTION_${name}`))),
+      listed: evidence.visibleSkills,
       bodies: skillNames.filter((name) =>
         [...evidence.initial, ...evidence.subsequent].some((text) => text.includes(`GATE_BODY_${name}`)),
       ),
@@ -253,10 +321,26 @@ async function session(label, gated, prompt, action) {
   );
   if (result.code !== 0 || server.errors.length || !server.requests.length)
     throw new Error(`Inconclusive ${label}: ${result.stderr.slice(-1500)}`);
+  if (policyProbe) {
+    const native = harness === "claude" ? "gate-claude" : harness === "codex" ? "gate-codex" : "gate-opencode";
+    if (["baseline", "gated", "allowed"].includes(label)) {
+      if (!visible("gate-control") || (visible(native) === gated)) throw new Error(`Invalid discovery control: ${label}`);
+    }
+    if (label === "explicit-native" || label === "load-control") {
+      if (![...evidence.initial, ...evidence.subsequent].some(text => text.includes(`GATE_BODY_${native}`))) throw new Error(`Skill body did not reach the model: ${label}`);
+    }
+    if (label === "load-gated") {
+      const loaded = [...evidence.initial, ...evidence.subsequent].some(text => text.includes(`GATE_BODY_${native}`));
+      if (loaded !== (harness === "codex" || harness === "opencode-v2"))
+        throw new Error(`Unexpected forced-loading result: ${harness}`);
+    }
+  }
   return evidence;
 }
 
-if (process.argv[3] === "--plugin-only") {
+if (discoveryDirectory !== undefined) {
+  await session("baseline", false, "Reply with done.");
+} else if (process.argv[3] === "--plugin-only") {
   if (harness !== "opencode-v1") throw new Error("The v1 config callback probe requires opencode-v1");
   const baseline = await session("plugin-baseline", false, "Reply with done.");
   if (!skillNames.every((name) => baseline.initial.some((text) => text.includes(`GATE_DESCRIPTION_${name}`))))
@@ -272,18 +356,28 @@ if (process.argv[3] === "--plugin-only") {
   });
 } else {
   const discovery = await session("baseline", false, "Reply with done.");
-  if (!skillNames.every((name) => discovery.initial.some((text) => text.includes(`GATE_DESCRIPTION_${name}`))))
+  if (!skillNames.every((name) => discovery.visibleSkills.includes(name)))
     throw new Error("Baseline failed to advertise every control");
   await session("gated", true, "Reply with done.");
-  if (harness === "codex") await session("explicit-native", true, "$gate-codex");
-  else if (harness === "claude") await session("explicit-native", true, "/gate-claude");
+  if (policyProbe) await session("allowed", false, "Reply with done.");
+  if (harness === "codex") await session("explicit-native", true, packaged ? "$gate-probe:gate-codex" : "$gate-codex");
+  else if (harness === "claude") await session("explicit-native", true, packaged ? "/gate-probe:gate-claude" : "/gate-claude");
   else {
     const tool = discovery.tools.find((tool) => tool.name.toLowerCase() === "skill");
     const key = tool?.properties.find((key) => key === "name" || key === "id");
     if (!tool || !key) throw new Error("No discovered skill tool argument");
-    const action = { kind: "tool", toolName: tool.name, arguments: { [key]: "gate-opencode" } };
+    const action = { kind: "tool", toolName: tool.name, arguments: { [key]: packaged && harness === "opencode-v2" ? "gate-probe/gate-opencode" : nativeSkillName("gate-opencode") } };
     await session("load-control", false, "Reply with done.", action);
-    await session("load-denied", true, "Reply with done.", action);
+    await session(policyProbe ? "load-gated" : "load-denied", true, "Reply with done.", action);
+    if (policyProbe) await session("explicit-native", true, harness === "opencode-v1" ? `/${nativeSkillName("gate-opencode")}` : packaged ? "@gate-probe/gate-opencode" : "@gate-opencode", harness === "opencode-v2" ? action : undefined);
+  }
+  if (policyProbe && (harness === "claude" || harness === "codex")) {
+    const tool = discovery.tools.find(tool => harness === "claude" ? tool.name.toLowerCase() === "skill" : /exec_command|shell_command|shell/.test(tool.name));
+    const key = tool?.properties.find(key => harness === "claude" ? key === "skill" : key === "cmd" || key === "command");
+    if (!tool || !key) throw new Error("No native loading tool was advertised");
+    const action = harness === "claude" ? { kind: "tool", toolName: tool.name, arguments: { [key]: packaged ? "gate-probe:gate-claude" : "gate-claude" } } : { kind: "read-skill", toolName: tool.name, key };
+    await session("load-control", false, "Reply with done.", action);
+    await session("load-gated", true, "Reply with done.", action);
   }
 }
 console.log(JSON.stringify({ completed: harness, out }));

@@ -28,6 +28,7 @@ import { opencodeHarness } from "./harness.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
+import { opencodeSkillPolicy } from "./skill-policy.js";
 import {
   classifyOpenCodeTool,
   OPENCODE_FILE_SHAPES,
@@ -112,6 +113,11 @@ export function opencodeV1Adapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    skillInvocationPolicy: {
+      destination: ".agents/skills",
+      discoveryDirectories: [".claude/skills", ".opencode/skills", ".opencode/skill"],
+      projectFiles: opencodeSkillPolicy,
+    },
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.

@@ -3,8 +3,9 @@
 Question: which native project-skill declarations affect model visibility, and
 what happens when a gated skill is explicitly requested or its tool is forced?
 This is evidence for [issue #28](https://github.com/roryeckel/hooknostic/issues/28),
-within [CONTRIBUTING](../../CONTRIBUTING.md). It introduces no portable declaration,
-capability, or projection policy.
+within [CONTRIBUTING](../../CONTRIBUTING.md). The original native-gate probes are
+retained below. The policy follow-ups establish projection evidence for
+[ADR-0030](../../docs/decisions/0030-skill-invocation-policy.md).
 
 ## Method
 
@@ -86,7 +87,7 @@ unique raw-output directory. To produce evidence, pass those directory names
 in the same command to combine its cases. Review the output before committing.
 Do not overwrite historical evidence with a capture of a different version.
 
-## Limits and consequences
+## Limits of the original probes
 
 - Claude and Codex's tested declarations hide implicit discovery while
   retaining explicit user invocation. The tested OpenCode deny rule both hides
@@ -97,5 +98,146 @@ Do not overwrite historical evidence with a capture of a different version.
   other platforms, and a v2 plugin-supplied permission rule were not tested.
 - These captures establish only the named inputs and versions. They do not
   establish that a harness never reads another vendor's policy anywhere.
-- Issue #28 still needs a portable declaration and an explicit decision about
-  these semantic differences. No support rating or public API changes here.
+- These original deny probes alone do not establish the portable policy.
+
+## Policy follow-ups — 2026-10-11
+
+Evidence class: **live-probe**, native Windows, isolated state, loopback model
+responses and tool calls. `--policy` runs ordinary discovery without a gate,
+discovery with the native gate, discovery with an explicit native allow setting,
+explicit user invocation, an ungated forced loading control, and gated forced
+loading. Every complete run exits zero with no playback errors. The driver
+requires discovery controls and explicit/ungated body markers, and promotion
+requires all six cases. Failed or timed-out sessions are not promoted.
+
+Claude's native listing sometimes retains a skill's name without its description.
+`visibleSkills` records either an exact Claude list entry or the description
+marker; `descriptionMarkersInInitialRequest` remains the narrower marker-only
+summary. Explicit request cases are never used to infer ordinary discovery.
+
+`--package` installs Claude and Codex through a fresh local marketplace.
+OpenCode packages are installed by offline npm from a local source with
+`--install-links --ignore-scripts`, relocated into `node_modules`, and loaded
+through the native package declaration. The v1 package's config callback supplies
+`skills.paths` and the permission rule. The v2 package registers qualified IDs
+through `ctx.skill.transform` and supplies `autoinvoke`. Project v2 discovery
+instead reads `metadata["opencode/autoinvoke"]` from SKILL.md.
+
+| Native route | Gate | Explicit user invocation | Forced model loading |
+| --- | --- | --- | --- |
+| Claude project and installed package | `disable-model-invocation: true` | `/skill` or `/plugin:skill` delivers the body | A scripted native Skill call is rejected; its ungated control loads the body |
+| Codex project and installed package | `policy.allow_implicit_invocation: false` in `agents/openai.yaml` | `$skill` or `$plugin:skill` delivers the body | Direct file reading remains available; discovery policy is not filesystem access control |
+| OpenCode v1 project and installed package | Named `permission.skill` deny | Native `run --command skill` delivers the body despite deny | The skill tool rejects a scripted load; the ungated control succeeds |
+| OpenCode v2 project and installed package | `opencode/autoinvoke: "false"` or registered `autoinvoke: false` | `@skill` / `@plugin/skill` with a scripted skill-tool load delivers the body | A scripted skill-tool load remains available despite the hidden listing |
+
+The explicit allow cases set the inverse native value and restore ordinary
+discovery. V1 merges named rules through the callback surface already probed by
+the original plugin-only pair. No TUI command-menu visibility or picker behavior
+is claimed. V2's explicit case observes a user reference plus tool loading; it
+does not establish automatic body injection by a TUI reference picker.
+
+Codex forced file-read controls disable the nested harness sandbox. The ordinary
+and explicit invocation probes keep their normal harness settings. This isolates
+the discovery declaration from Windows tool-process sandbox startup, which hung
+both gated and ungated reads. It establishes file readability with sandbox access
+allowed, not a filesystem permission grant or a claim about sandbox enforcement.
+
+The policy evidence filenames include delivery, preserving the original October
+4 files. Adapter skill-policy validation records name the supported minimum
+builds; the generated [support page](../../docs/harness-support.md) derives ranges
+from those records. Older untested ranges remain unsupported.
+
+### Alternate native source ownership
+
+Separate `--discovery-root=<directory>` probes place all four control skills in
+one alternate native source and record ordinary model requests. The reference
+Codex build discovers `.codex/skills`; both reference OpenCode builds discover
+`.claude/skills`, `.opencode/skills` and `.opencode/skill`. Each successful probe
+shows all four descriptions with no model tool calls. The reference Claude probe
+did not list `.agents/skills`; that observation is specific to the isolated
+project and does not establish behavior on other versions. The committed
+`*-discovery-*.json` records contain excerpts and raw-request hashes.
+
+Policy planning treats authored native sources as unowned, including alternate
+paths, rather than assuming a generated copy controls their discovery. The
+ancestor-path ownership check is conservative; OpenCode v1's reference binary
+source also scans ancestor `.claude` and `.agents` directories. The alternate
+probes establish project-local discovery, not duplicate-name precedence or
+command-menu behavior. Seven alternate-path regressions, two nested-collection
+regressions, an ancestor-path mutant, and two overlay report-count regressions
+failed before their fixes, then passed. The final policy build suite passes all
+34 cases. Raw negative reports remain in ignored `captured/review-*.json`.
+
+The reference OpenCode v1 installed-package policy evidence was repeated with
+qualified `gate-probe-*` names. All six controls passed, including explicit
+`run --command gate-probe-gate-opencode` while its permission rule was `deny`.
+
+```sh
+node --experimental-strip-types .capture/skill-invocation/drive.mjs claude --policy
+node --experimental-strip-types .capture/skill-invocation/drive.mjs codex --policy --package
+node --experimental-strip-types .capture/skill-invocation/drive.mjs opencode-v1 --policy --package
+node --experimental-strip-types .capture/skill-invocation/drive.mjs opencode-v2 --policy --package
+```
+
+Run both delivery forms for each selected reference/newer binary. A diagnostic
+rerun can select `--case=<label>` (it retains the baseline control); promote it
+together with the other successful cases from that exact harness and version.
+Do not promote partial evidence as a complete policy run. Vendor startup traffic
+can cause timeouts despite the local model; successful control cases must be
+observed before drawing a behavioral conclusion.
+
+## Implementation verification
+
+The policy regression suite covers strict parsing, native overlays, preserved
+fields and body bytes (including UTF-8 BOM input), declaration removal, drift,
+shared destinations, unchanged in-place sources, and failure/omission/accepted
+emission with diagnostics and report counts. Nine semantic mutants each made the
+new regressions fail before restoring the implementation. The BOM body-boundary
+regression also failed against the original helper and passed after correction.
+Three mixed hook/component regressions failed before including configured shared
+readers excluded by `components.targets`; policy-only integration now enforces
+their gates or reports shared omissions while leaving their MCP delivery scoped.
+Raw mutation logs remain in ignored `captured/`.
+
+Independent review found two additional strict-input cases: a Claude overlay
+could restore a rejected canonical skill, and an earlier frontmatter error could
+mask a malformed reserved policy. Four build regressions failed before the fixes
+and passed after rejecting the overlay and validating the reserved value first.
+The negative JSON report remains in ignored `captured/review-negative.json`.
+
+The full standard suite passed all 1,820 tests with two workers (83 skipped)
+after an obsolete, manifestless dependency stub was preserved outside `packages/`.
+Root lint, format checking,
+build, and example regeneration passed. Native policy controls above passed
+independently of the initial broader playback failures. Codex reference playback
+passed. A follow-up investigation compared an independently installed and bundled
+archive of pre-change commit 831a2e3 with the policy implementation. All eleven
+previously failing tests passed on both copies with matched reference binaries:
+one child-stdin cleanup test, three OpenCode v1 scenarios and seven OpenCode v2
+scenarios. The native hook artifacts match after normalizing generated source
+paths and comments. Raw reports and comparison hashes remain in ignored
+`captured/playback-investigation/`.
+
+The child-stdin fixture and process helper are unchanged. The earlier OpenCode
+v1 failures occurred during npm dependency installation, before the native
+harness was launched; their exact timeout cause was not reproduced. The earlier
+v2 run mixed a reference binary on PATH with the globally installed binary used
+by Windows capture drivers: retained OAuth logs identify 2.0.20 while the lane
+selected 2.0.17. Explicit `HKN_OPENCODE_BINARY` selection keeps those paths on
+the same build. An isolated copy of 2.0.20 also passed all seven formerly failing v2 scenarios
+on both the baseline and policy implementation. These failures do not establish
+an invocation-policy regression.
+
+Claude's follow-up exposed a separate folder-trust parsing defect reproduced on
+the pre-change baseline. Its original ANSI stripper retained a private CSI
+sequence, whose `>` was mistaken for the option cursor. The captured-frame
+regression failed with that stripper and passed after sharing Node's VT control
+stripping across both PTY drives. See the [playback capture record](../harness-playback/README.md#windows-private-csi-folder-trust-correction-2026-10-11).
+
+Complete reference playback now passes with one worker and explicit native
+binary selection: Claude has 42 passing tests and nine skips, Codex has 41 passing
+tests and ten skips, OpenCode v1 has 35 passing tests and sixteen skips, and
+OpenCode v2 has all 29 tests passing. Each lane exited zero. The Claude and Codex
+reference versions are recorded in adapter validation records; the corresponding
+native lanes use the reference binaries. Failed and diagnostic runs remain
+separate from promoted policy evidence.

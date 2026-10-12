@@ -2,12 +2,18 @@ import { relative } from "node:path";
 
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { RELATIVE_SKILL_TEXT } from "@hooknostic/agent-plugin";
+import { RELATIVE_SKILL_TEXT, skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
 import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
+import {
+  OPENCODE_SKILL_POLICY_RATIONALE,
+  opencodeNewerSkillPolicyValidation,
+  opencodeProjectSkillPolicyValidation,
+  skillPermissionSource,
+} from "./skill-policy.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
 /** Project wiring whose `.opencode/plugins` module is `wrap(importPathOfArtifact)`. */
 export function projectIntegrationWith(wrap: (importPath: string) => string) {
@@ -53,7 +59,12 @@ export async function projectComponents(
     target: RELATIVE_SKILL_TEXT,
     harness: "OpenCode",
   });
-  if (source.mcp) {
+  const skillPolicies = Object.fromEntries(
+    source.skills.flatMap((skill) =>
+      skill.policy?.allowImplicitInvocation === undefined ? [] : [[skill.name, skill.policy.allowImplicitInvocation]],
+    ),
+  );
+  if (source.mcp || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
     const sourceRoot = relative(root, source.mcp?.root ?? root).replaceAll("\\", "/") || ".";
@@ -105,6 +116,7 @@ ${emitMcp ? "const configure = (config) => {" : "export default async () => ({ c
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
+${emitMcp ? "" : skillPermissionSource(skillPolicies)}
 ${emitMcp ? "};" : "} });"}
 `;
     result.files.push({
@@ -118,7 +130,7 @@ ${emitMcp ? "};" : "} });"}
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: opencodeHarness.recommendedRange,
     components: {
@@ -183,3 +195,10 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  opencodeProjectSkillPolicyValidation,
+  OPENCODE_SKILL_POLICY_RATIONALE,
+  "emulated",
+  [opencodeNewerSkillPolicyValidation],
+);

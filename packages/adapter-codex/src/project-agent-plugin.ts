@@ -20,11 +20,14 @@ import {
   projectPackageSkillTexts,
   RELATIVE_SKILL_TEXT,
   SKILL_REFERENCE_UNEXPANDED,
+  skillInvocationPolicyProfiles,
+  withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, rangeWithin } from "@hooknostic/core";
 
 import { CODEX_PLUGIN_HOOKS_PATH, CODEX_PLUGIN_MODE_RANGE } from "./generate.js";
+import { CODEX_SKILL_POLICY_RATIONALE, codexPackageSkillPolicyValidation, codexSkillPolicy } from "./skill-policy.js";
 
 /** Codex reads its own plugin metadata from here; a root plugin.json outranks it. */
 const NATIVE_MANIFEST_PATH = ".codex-plugin/plugin.json";
@@ -450,7 +453,7 @@ export function translateMcp(
  * - Hook commands resolve against the session cwd, not the install cache, which
  *   is why the generated command is anchored with `${PLUGIN_ROOT}`.
  */
-export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
+const nativeCodexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: CODEX_AGENT_PLUGIN_NAMESPACE,
   profiles: [
     {
@@ -1338,3 +1341,15 @@ export const codexAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     };
   },
 };
+export const codexAgentPluginProjector = withSkillInvocationPolicy(
+  {
+    ...nativeCodexAgentPluginProjector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeCodexAgentPluginProjector.profiles,
+      codexPackageSkillPolicyValidation,
+      CODEX_SKILL_POLICY_RATIONALE,
+    ),
+  },
+  "codex",
+  codexSkillPolicy,
+);

@@ -21,6 +21,7 @@ import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
+import { claudeSkillPolicy } from "./skill-policy.js";
 import {
   classifyClaudeTool,
   CLAUDE_FILE_SHAPES,
@@ -100,6 +101,7 @@ export function claudeAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    skillInvocationPolicy: { destination: ".claude/skills", projectFiles: claudeSkillPolicy },
     agentPluginProjector: claudeAgentPluginProjector,
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",
