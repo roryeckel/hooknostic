@@ -27,6 +27,8 @@ import type { PluginIR } from "./ir.js";
 import type { ProjectIntegration } from "./project-files.js";
 
 export interface ProjectComponentOptions {
+  /** Policies actually applied to discovered copies, including copies emitted by other targets. */
+  invocationPolicies?: Readonly<Record<string, boolean>>;
   /** Effective startup timeout per MCP server for this target. */
   mcpStartupTimeoutMs?: Readonly<Record<string, number>>;
   /** Stdio cwd overrides already validated as contained by the project root. */

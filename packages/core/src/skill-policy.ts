@@ -20,22 +20,31 @@ export interface ProjectSkillPolicyTarget {
   componentsSelected?: boolean;
 }
 
-/** Compose native edits once for each shared skill destination, without harness conditionals. */
+export interface ProjectSkillPolicyPlan {
+  source: ProjectComponents;
+  discovered: ProjectSkill[];
+  selection: SkillPolicySelection<ProjectSkill>;
+  /** Surviving physical copies this target discovers, including other targets' copies. */
+  observed: { destination: string; skill: ProjectSkill; authored?: boolean }[];
+  invocationPolicies: Readonly<Record<string, boolean>>;
+  omittedFiles: string[];
+}
+
+/** Compose policy per physical destination, using every configured discovery reader. */
 export function planProjectSkillPolicies(
   source: ProjectComponents,
   root: string,
   targets: readonly ProjectSkillPolicyTarget[],
   options: { onUnsupported: "error" | "warn"; accept?: readonly string[] },
-): Map<string, { source: ProjectComponents; selection: SkillPolicySelection<ProjectSkill> }> {
-  const sharedDestinations = new Set(
-    targets.filter((target) => target.componentsSelected !== false).map((target) => target.destination),
-  );
+): Map<string, ProjectSkillPolicyPlan> {
+  const destinations = [
+    ...new Set(
+      targets.flatMap((target) =>
+        target.componentsSelected !== false && target.destination !== undefined ? [target.destination] : [],
+      ),
+    ),
+  ];
   const declaredSkills = source.skills.filter((skill) => skill.policy?.allowImplicitInvocation !== undefined);
-  const readers = targets.filter(
-    (target) =>
-      target.componentsSelected !== false ||
-      (declaredSkills.length > 0 && target.destination !== undefined && sharedDestinations.has(target.destination)),
-  );
   const canonical = (path: string) => {
     try {
       return realpathSync.native(path);
@@ -43,10 +52,18 @@ export function planProjectSkillPolicies(
       return resolve(path);
     }
   };
-  const plans = new Map<string, { source: ProjectComponents; selection: SkillPolicySelection<ProjectSkill> }>();
-  for (const target of readers) {
-    const inventory: ProjectComponents =
-      target.componentsSelected === false ? { origin: source.origin, skills: declaredSkills } : source;
+  const contains = (directory: string, path: string) => {
+    const offset = relative(canonical(directory), canonical(path));
+    return offset === "" || (!isAbsolute(offset) && offset !== ".." && !offset.startsWith(`..${sep}`));
+  };
+  const reads = (target: ProjectSkillPolicyTarget, destination: string) =>
+    [target.destination, ...(target.discoveryDirectories ?? [])].some(
+      (directory) => directory !== undefined && contains(resolve(root, directory), resolve(root, destination)),
+    );
+  const plans = new Map<string, ProjectSkillPolicyPlan>();
+  const readers: ProjectSkillPolicyTarget[] = [];
+  for (const target of targets) {
+    let inventory = target.componentsSelected === false ? declaredSkills : source.skills;
     const nativeRoots: string[] = [];
     for (let ancestor = resolve(root); ; ancestor = dirname(ancestor)) {
       for (const directory of [
@@ -57,49 +74,65 @@ export function planProjectSkillPolicies(
       if (dirname(ancestor) === ancestor) break;
     }
     const inPlace = new Set(
-      inventory.skills
-        .filter((skill) =>
-          nativeRoots.some((directory) => {
-            const path = relative(canonical(directory), canonical(skill.source));
-            return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
-          }),
-        )
+      inventory
+        .filter((skill) => nativeRoots.some((directory) => contains(directory, skill.source)))
         .map((skill) => skill.name),
     );
-    const selection = selectSkillPolicies(inventory.skills, {
+    if (
+      target.componentsSelected === false &&
+      !(declaredSkills.length && (destinations.some((destination) => reads(target, destination)) || inPlace.size))
+    )
+      continue;
+    if (target.componentsSelected === false && !destinations.some((destination) => reads(target, destination)))
+      inventory = inventory.filter((skill) => inPlace.has(skill.name));
+    readers.push(target);
+    const selection = selectSkillPolicies(inventory, {
       ...options,
       adapter: target.adapter,
       ...(target.support === undefined ? {} : { support: target.support }),
       inPlace,
     });
-    plans.set(target.id, { source: { ...inventory, skills: selection.skills }, selection });
+    plans.set(target.id, {
+      source: target.componentsSelected === false ? { origin: source.origin, skills: [] } : { ...source, skills: [] },
+      discovered: inventory,
+      selection,
+      observed: selection.skills
+        .filter((skill) => inPlace.has(skill.name))
+        .map((skill) => ({
+          destination: relative(root, dirname(skill.source)).replaceAll("\\", "/"),
+          skill,
+          authored: true,
+        })),
+      invocationPolicies: {},
+      omittedFiles: [],
+    });
   }
-  const groups = new Map<string, ProjectSkillPolicyTarget[]>();
-  for (const target of readers) {
-    const key = target.destination ?? `target:${target.id}`;
-    groups.set(key, [...(groups.get(key) ?? []), target]);
-  }
-  for (const group of groups.values()) {
+  const originalOmissions = new Map(
+    readers.map((target) => [target.id, [...plans.get(target.id)!.selection.omissions]]),
+  );
+  for (const destination of destinations) {
+    const group = readers.filter((target) => reads(target, destination));
     const omittedBy = new Map<string, string>();
     for (const target of group) {
-      for (const omitted of plans.get(target.id)!.selection.omissions) omittedBy.set(omitted.name, target.id);
+      for (const omitted of originalOmissions.get(target.id)!) omittedBy.set(omitted.name, target.id);
     }
     for (const target of group) {
       const plan = plans.get(target.id)!;
       for (const [name, owner] of omittedBy) {
         if (!plan.selection.skills.some((skill) => skill.name === name)) continue;
-        const reason = `Skill ${JSON.stringify(name)} was omitted from the shared ${target.destination} directory because target ${JSON.stringify(owner)} cannot apply its invocation policy.`;
-        plan.selection.omissions.push({ component: "agent-plugin.skills.invocation-policy", name, reason });
-        plan.selection.issues.push({
-          severity: options.onUnsupported,
-          scope: "projection",
-          component: "agent-plugin.skills.invocation-policy",
-          message: reason,
-        });
+        const reason = `Skill ${JSON.stringify(name)} was omitted from the shared ${destination} directory because target ${JSON.stringify(owner)} cannot apply its invocation policy.`;
+        if (!plan.selection.omissions.some((omission) => omission.name === name)) {
+          plan.selection.omissions.push({ component: "agent-plugin.skills.invocation-policy", name, reason });
+          plan.selection.issues.push({
+            severity: options.onUnsupported,
+            scope: "projection",
+            component: "agent-plugin.skills.invocation-policy",
+            message: reason,
+          });
+        }
       }
-      plan.source.skills = plan.selection.skills.filter((skill) => !omittedBy.has(skill.name));
-      plan.selection.skills = plan.source.skills;
-      for (const name of omittedBy.keys()) plan.selection.applied.delete(name);
+      if (target.componentsSelected !== false && target.destination === destination)
+        plan.omittedFiles.push(...[...omittedBy.keys()].map((name) => `${destination}/${name}/SKILL.md`));
     }
     // All readers get identical bytes. Each adapter supplies only its own
     // native edits; the core knows neither their keys nor their semantics.
@@ -122,13 +155,28 @@ export function planProjectSkillPolicies(
         }
       }
       for (const target of group) {
-        const planned = plans.get(target.id)!.source.skills.find((candidate) => candidate.name === skill.name);
+        const plan = plans.get(target.id)!;
+        const planned = plan.selection.skills.find((candidate) => candidate.name === skill.name);
         if (planned !== undefined) {
-          const index = plans.get(target.id)!.source.skills.indexOf(planned);
-          plans.get(target.id)!.source.skills[index] = { ...planned, files };
+          const copy = { ...planned, files };
+          plan.observed.push({ destination, skill: copy });
+          if (target.componentsSelected !== false && target.destination === destination) plan.source.skills.push(copy);
         }
       }
     }
+  }
+  for (const target of readers) {
+    const plan = plans.get(target.id)!;
+    // Adapters without a declared discovery destination retain their existing emission path.
+    if (target.componentsSelected !== false && target.destination === undefined)
+      plan.source.skills = plan.selection.skills;
+    const observed = new Set(plan.observed.map((copy) => copy.skill.name));
+    for (const name of plan.selection.applied) if (!observed.has(name)) plan.selection.applied.delete(name);
+    plan.invocationPolicies = Object.fromEntries(
+      plan.selection.skills.flatMap((skill) =>
+        plan.selection.applied.has(skill.name) ? [[skill.name, skill.policy!.allowImplicitInvocation!]] : [],
+      ),
+    );
   }
   return plans;
 }

@@ -1240,11 +1240,14 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
           integration = adapter.projectIntegration(artifacts, output, configFromRoot);
           const componentsSelected = (config.components?.targets ?? Object.keys(config.targets)).includes(id);
           if (componentSource && (componentsSelected || skillPolicyPlans.has(id))) {
+            const policyPlan = skillPolicyPlans.get(id);
             const projectSource: ProjectComponents = componentsSelected
               ? componentSource
               : {
                   origin: componentSource.origin,
-                  skills: componentSource.skills.filter((skill) => skill.policy?.allowImplicitInvocation !== undefined),
+                  skills:
+                    policyPlan?.discovered ??
+                    componentSource.skills.filter((skill) => skill.policy?.allowImplicitInvocation !== undefined),
                 };
             if (!adapter.projectComponents)
               throw new Error(`adapter ${adapter.id} has no project component integrator`);
@@ -1252,7 +1255,6 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             diagnostics.push(...support.diagnostics);
             if (!support.matrix)
               throw new Error("project component support is unavailable for the configured version range");
-            const policyPlan = skillPolicyPlans.get(id);
             const selected = applyProjectMcpOverrides(
               policyPlan?.source ?? projectSource,
               componentsSelected ? config.components?.mcpOverrides?.[id] : undefined,
@@ -1314,9 +1316,18 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               }
               return supported;
             };
-            if (!count("agent-plugin.skills", selectedSource.skills.length)) selectedSource.skills = [];
+            const observedNames = new Set(
+              adapter.skillInvocationPolicy?.destination === undefined
+                ? selectedSource.skills.map((skill) => skill.name)
+                : (policyPlan?.observed.map((copy) => copy.skill.name) ??
+                    selectedSource.skills.map((skill) => skill.name)),
+            );
+            if (!count("agent-plugin.skills", observedNames.size)) {
+              selectedSource.skills = [];
+              observedNames.clear();
+            }
             if (projectSource.skills.length) {
-              const emitted = selectedSource.skills.length;
+              const emitted = observedNames.size;
               counts["agent-plugin.skills"] = {
                 support: support.matrix["agent-plugin.skills"]?.level ?? "unsupported",
                 discovered: projectSource.skills.length,
@@ -1326,9 +1337,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             }
             const declaredPolicies = skillPolicyCount(projectSource.skills);
             if (declaredPolicies) {
-              const applied = selectedSource.skills.filter((skill) =>
-                policyPlan?.selection.applied.has(skill.name),
-              ).length;
+              const applied = [...observedNames].filter((name) => policyPlan?.selection.applied.has(name)).length;
               counts[SKILL_INVOCATION_POLICY] = {
                 support: support.matrix[SKILL_INVOCATION_POLICY]?.level ?? "unsupported",
                 discovered: declaredPolicies,
@@ -1413,13 +1422,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
                 ? {}
                 : { mcpEnvironment: config.components.mcpEnvironment }),
               support: support.matrix,
+              ...(policyPlan === undefined ? {} : { invocationPolicies: policyPlan.invocationPolicies }),
             });
             projected.degradations = [...(projected.degradations ?? []), ...(policyPlan?.selection.degradations ?? [])];
-            const destination = adapter.skillInvocationPolicy?.destination;
-            if (destination !== undefined)
-              projected.omittedFiles = (policyPlan?.selection.omissions ?? []).map(
-                (omission) => `${destination}/${omission.name}/SKILL.md`,
-              );
+            projected.omittedFiles = policyPlan?.omittedFiles ?? [];
             // Not an omission: the skill is delivered, in place, and counting
             // it as skipped would misreport a component that is present. Warn,
             // never `onUnsupported`, because the same declaration is usually
@@ -1592,6 +1598,69 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         });
         target.status = "failed";
         if (target.projection) target.projection.status = "failed";
+      }
+    }
+
+    // Validate each alternate reader against the writer's final native bytes.
+    // The reader's projector runs in-place for validation only; its files are discarded.
+    for (const [id, policyPlan] of skillPolicyPlans) {
+      const adapter = adapterFor(id)!;
+      const destination = adapter.skillInvocationPolicy?.destination;
+      const target = report.targets[id]!;
+      if (destination === undefined || target.status === "failed" || !target.project || !adapter.projectComponents)
+        continue;
+      const root = resolve(configDir, config.project?.root ?? ".");
+      const support = resolveAgentPluginProjection(targetSpecFromConfig(id, config.targets[id]!), {
+        profiles: adapter.projectComponentProfiles ?? [],
+      }).matrix;
+      if (support === undefined) continue;
+      for (const copy of policyPlan.observed.filter(
+        (copy) =>
+          policyPlan.discovered.some(
+            (skill) => skill.name === copy.skill.name && skill.policy?.allowImplicitInvocation !== undefined,
+          ) &&
+          (copy.destination !== destination ||
+            (copy.authored && !(config.components?.targets ?? Object.keys(config.targets)).includes(id))),
+      )) {
+        const prefix = `${copy.destination}/${copy.skill.name}/`;
+        const files = copy.authored
+          ? copy.skill.files
+          : planned
+              .flatMap((plan) => plan.integration?.files ?? [])
+              .filter((file) => file.path.startsWith(prefix))
+              .map((file) => ({
+                path: file.path.slice(prefix.length),
+                contents: typeof file.contents === "string" ? new TextEncoder().encode(file.contents) : file.contents,
+                mode: file.mode ?? 0o644,
+              }));
+        if (!files.some((file) => file.path === "SKILL.md")) continue;
+        const checked = await adapter.projectComponents(
+          {
+            origin: componentSource!.origin,
+            skills: [{ ...copy.skill, source: resolve(root, destination, copy.skill.name), files }],
+          },
+          root,
+          config.targets[id]!.output,
+          relative(root, options.configPath).replaceAll("\\", "/"),
+          { ...(support === undefined ? {} : { support }), invocationPolicies: {} },
+        );
+        const degradations = (checked.degradations ?? []).map((degradation) => ({
+          ...degradation,
+          ...(degradation.path === undefined
+            ? {}
+            : { path: degradation.path.replace(`${destination}/`, `${copy.destination}/`) }),
+        }));
+        const additional = diagnosticsFromAgentPluginDegradations(degradations, {
+          target: id,
+          adapter: adapter.id,
+          onDegraded: config.components?.onDegraded ?? "error",
+          support,
+          ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
+        });
+        diagnostics.push(...additional);
+        const recorded = degradationReport(adapter.id, degradations);
+        target.project.degradations = [...(target.project.degradations ?? []), ...(recorded.degradations ?? [])];
+        if (hasFatal(additional)) target.status = "failed";
       }
     }
 

@@ -59,11 +59,13 @@ export async function projectComponents(
     target: RELATIVE_SKILL_TEXT,
     harness: "OpenCode",
   });
-  const skillPolicies = Object.fromEntries(
-    source.skills.flatMap((skill) =>
-      skill.policy?.allowImplicitInvocation === undefined ? [] : [[skill.name, skill.policy.allowImplicitInvocation]],
-    ),
-  );
+  const skillPolicies =
+    options.invocationPolicies ??
+    Object.fromEntries(
+      source.skills.flatMap((skill) =>
+        skill.policy?.allowImplicitInvocation === undefined ? [] : [[skill.name, skill.policy.allowImplicitInvocation]],
+      ),
+    );
   if (source.mcp || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);

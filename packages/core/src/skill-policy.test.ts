@@ -114,6 +114,265 @@ const fm = (text: string) => parse(text.split("---")[1]!);
 const counts = (discovered: number, emitted: number) => ({ discovered, emitted, skipped: discovered - emitted });
 
 describe("skill invocation policy builds", () => {
+  it("limits an authored-only excluded reader to the skills it discovers", async () => {
+    const f = await fixture("project", ["claude", "codex"], {
+      components: {
+        targets: ["claude"],
+        skills: ["./skills", "./.codex/skills"],
+        accept: ["codex:skill-policy-in-place"],
+      },
+      hooks: true,
+    });
+    await mkdir(join(f.root, ".codex/skills/native"), { recursive: true });
+    await writeFile(join(f.root, ".codex/skills/native/SKILL.md"), manifest().replace("name: review", "name: native"));
+    // Exercise an unavailable invocation gate without changing ordinary skill support.
+    const codex = registry.codex!;
+    const customRegistry = {
+      ...registry,
+      codex: {
+        ...codex,
+        projectComponentProfiles: codex.projectComponentProfiles!.map((profile) => ({
+          ...profile,
+          components: {
+            ...profile.components,
+            [SKILL_INVOCATION_POLICY]: {
+              ...profile.components[SKILL_INVOCATION_POLICY]!,
+              level: "unsupported" as const,
+            },
+          },
+        })),
+      },
+    };
+    const built = await buildProject({ ...f.options, registry: customRegistry, dryRun: true });
+    expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+    expect(built.report.targets.codex!.project!.components["agent-plugin.skills"]).toMatchObject(counts(1, 1));
+    expect(built.report.targets.codex!.project!.components[SKILL_INVOCATION_POLICY]).toMatchObject({
+      support: "unsupported",
+      ...counts(1, 0),
+    });
+    expect(built.report.targets.codex!.project!.degradations?.map((degradation) => degradation.name)).toEqual([
+      "native",
+    ]);
+  }, 60_000);
+
+  it("retains ordinary skill support checks for adapters without discovery metadata", async () => {
+    const f = await fixture("project", ["claude"], { components: { onUnsupported: "warn" } });
+    await writeFile(join(f.root, "skills/review/SKILL.md"), manifest(false));
+    const { skillInvocationPolicy: _policy, ...adapter } = registry.claude!;
+    const customRegistry = { ...registry, claude: adapter };
+    const built = await buildProject({ ...f.options, registry: customRegistry, dryRun: true });
+    expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+    expect(built.report.targets.claude!.project!.components["agent-plugin.skills"]).toMatchObject(counts(1, 1));
+    customRegistry.claude = {
+      ...adapter,
+      projectComponentProfiles: adapter.projectComponentProfiles!.map((profile) => ({
+        ...profile,
+        components: {
+          ...profile.components,
+          "agent-plugin.skills": { level: "unsupported", rationale: "Synthetic unsupported component" },
+        },
+      })),
+    };
+    const unavailable = await buildProject({ ...f.options, registry: customRegistry, dryRun: true });
+    expect(unavailable.ok, JSON.stringify(unavailable.report.diagnostics)).toBe(true);
+    expect(unavailable.report.targets.claude!.project!.components["agent-plugin.skills"]).toMatchObject(counts(1, 0));
+    expect(
+      unavailable
+        .plan!.flatMap((target) => target.integration?.files ?? [])
+        .some((file) => file.path.endsWith("SKILL.md")),
+    ).toBe(false);
+  }, 60_000);
+
+  it.each([".agents/skills", ".codex/skills"])(
+    "validates accepted authored text for an excluded reader of %s",
+    async (source) => {
+      const f = await fixture("project", ["claude", "codex"], {
+        source,
+        components: { targets: ["claude"], accept: ["codex:skill-policy-in-place"] },
+        hooks: true,
+      });
+      await writeFile(
+        join(f.root, source, "review/SKILL.md"),
+        manifest().replace(body, "${CLAUDE_SKILL_DIR}/reference.md\n"),
+      );
+      const built = await buildProject({ ...f.options, dryRun: true });
+      expect(built.ok).toBe(false);
+      expect(built.report.diagnostics).toContainEqual(
+        expect.objectContaining({
+          target: "codex",
+          code: "HN101",
+          severity: "error",
+          degradation: "codex:skill-reference-unexpanded",
+        }),
+      );
+    },
+    60_000,
+  );
+
+  it.each(["error", "warn", "accepted"] as const)(
+    "handles alternate-reader %s across every discoverable copy",
+    async (behavior) => {
+      const f = await fixture("project", ["claude", "codex", "oc1"], {
+        components: {
+          targets: ["claude", "codex"],
+          onUnsupported: behavior === "warn" ? "warn" : "error",
+          ...(behavior === "accepted" ? { accept: ["opencode:skill-implicit-invocation-unenforced"] } : {}),
+        },
+        hooks: true,
+      });
+      f.config.targets.oc1!.version = opencodeProjectSkillPolicyValidation.version.replace(/\.\d+$/, ".0");
+      await f.save();
+      const built = await buildProject({ ...f.options, dryRun: true });
+      expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(behavior !== "error");
+      for (const id of ["claude", "codex", "oc1"]) {
+        expect(built.report.targets[id]!.project!.components["agent-plugin.skills"]).toMatchObject(
+          counts(1, behavior === "accepted" ? 1 : 0),
+        );
+        if (behavior !== "accepted")
+          expect(built.report.targets[id]!.project!.omissions).toContainEqual(
+            expect.objectContaining({ name: "review" }),
+          );
+      }
+      if (behavior === "error") return;
+      expect((await runProject({ ...f.options, command: "sync" })).ok).toBe(true);
+      for (const destination of [".claude/skills", ".agents/skills"]) {
+        const path = join(f.root, destination, "review/SKILL.md");
+        if (behavior === "warn") await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
+        else expect(fm(await readFile(path, "utf8")).metadata["opencode/autoinvoke"]).toBeUndefined();
+      }
+      if (behavior === "accepted") {
+        expect(built.report.targets.oc1!.project!.components[SKILL_INVOCATION_POLICY]).toMatchObject({
+          support: "unsupported",
+          ...counts(1, 0),
+        });
+        expect(built.report.diagnostics).toContainEqual(
+          expect.objectContaining({
+            code: "HN101",
+            severity: "info",
+            degradation: "opencode:skill-implicit-invocation-unenforced",
+          }),
+        );
+        await expect(readFile(join(f.root, ".opencode/plugins/hooknostic-components.js"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    },
+    60_000,
+  );
+
+  it("keeps omissions confined to copies the unsupported reader discovers", async () => {
+    const f = await fixture("project", ["claude"]);
+    const loaded = await loadProjectComponents({ skills: [join(f.root, "skills")] });
+    const plans = planProjectSkillPolicies(
+      loaded.source,
+      f.root,
+      [
+        { id: "writer-a", adapter: "a", destination: ".a/skills", support: { level: "exact" } },
+        { id: "writer-b", adapter: "b", destination: ".b/skills", support: { level: "unsupported" } },
+        {
+          id: "reader",
+          adapter: "r",
+          destination: ".b/skills",
+          discoveryDirectories: [".a/skills"],
+          support: { level: "exact" },
+          componentsSelected: false,
+        },
+      ],
+      { onUnsupported: "warn" },
+    );
+    expect(plans.get("writer-a")!.source.skills.map((skill) => skill.name)).toEqual(["review"]);
+    expect(plans.get("writer-b")!.source.skills).toEqual([]);
+    expect(plans.get("reader")!.source.skills).toEqual([]);
+    expect(plans.get("reader")!.observed.map((copy) => copy.destination)).toEqual([".a/skills"]);
+    expect(plans.get("writer-a")!.selection.omissions).toEqual([]);
+  });
+
+  it("reports a preserved authored source for an excluded reader without emitting another copy", async () => {
+    const f = await fixture("project", ["claude", "codex"], {
+      source: ".codex/skills",
+      components: { targets: ["claude"], onUnsupported: "warn" },
+      hooks: true,
+    });
+    const path = join(f.root, ".codex/skills/review/SKILL.md");
+    const original = await readFile(path);
+    const failed = await buildProject({ ...f.options, dryRun: true });
+    expect(failed.ok).toBe(false);
+    expect(failed.report.diagnostics).toContainEqual(
+      expect.objectContaining({ target: "codex", severity: "error", message: expect.stringContaining("move it") }),
+    );
+    Object.assign(f.config.components, { accept: ["codex:skill-policy-in-place"] });
+    await f.save();
+    const accepted = await buildProject({ ...f.options, dryRun: true });
+    expect(accepted.ok, JSON.stringify(accepted.report.diagnostics)).toBe(true);
+    expect(accepted.report.targets.codex!.project!.components["agent-plugin.skills"]).toMatchObject(counts(1, 1));
+    expect(accepted.report.targets.codex!.project!.components[SKILL_INVOCATION_POLICY]).toMatchObject(counts(1, 0));
+    expect((await runProject({ ...f.options, command: "sync" })).ok).toBe(true);
+    expect(await readFile(path)).toEqual(original);
+    await expect(readFile(join(f.root, ".agents/skills/review/SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
+  }, 60_000);
+
+  it("validates alternate copies after the writer rewrites skill text", async () => {
+    const f = await fixture("project", ["claude", "oc2"], { components: { targets: ["claude"] }, hooks: true });
+    await writeFile(
+      join(f.root, "skills/review/SKILL.md"),
+      manifest().replace(body, "Read ${SKILL_DIR}/reference.md\n"),
+    );
+    const failed = await buildProject({ ...f.options, dryRun: true });
+    expect(failed.ok).toBe(false);
+    expect(failed.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        target: "oc2",
+        code: "HN101",
+        severity: "error",
+        degradation: "opencode:skill-reference-unexpanded",
+      }),
+    );
+    Object.assign(f.config.components, { accept: ["opencode:skill-reference-unexpanded"] });
+    await f.save();
+    const accepted = await buildProject({ ...f.options, dryRun: true });
+    expect(accepted.ok, JSON.stringify(accepted.report.diagnostics)).toBe(true);
+    expect(accepted.report.targets.oc2!.project!.degradations).toContainEqual(
+      expect.objectContaining({
+        path: ".claude/skills/review/SKILL.md",
+        reason: expect.stringContaining("CLAUDE_SKILL_DIR"),
+      }),
+    );
+  }, 60_000);
+
+  it.each(["oc1", "oc2"] as const)(
+    "gates Claude copies for the excluded %s alternate discovery reader",
+    async (id) => {
+      const f = await fixture("project", ["claude", id], {
+        components: { targets: ["claude"], mcp: "./mcp.json" },
+        hooks: true,
+      });
+      await writeFile(
+        join(f.root, "mcp.json"),
+        JSON.stringify({
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: { selectedOnly: { type: "stdio", command: "node", args: ["-e", "process.exit(0)"] } },
+        }),
+      );
+      const built = await buildProject({ ...f.options, dryRun: true });
+      expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+      expect(built.report.targets[id]!.project!.components[SKILL_INVOCATION_POLICY]).toMatchObject(counts(1, 1));
+      expect(built.report.targets[id]!.project!.components["agent-plugin.mcp.stdio"]).toBeUndefined();
+      expect((await runProject({ ...f.options, command: "sync" })).ok).toBe(true);
+      const native = fm(await readFile(join(f.root, ".claude/skills/review/SKILL.md"), "utf8"));
+      expect(native["disable-model-invocation"]).toBe(true);
+      if (id === "oc2") expect(native.metadata["opencode/autoinvoke"]).toBe("false");
+      else {
+        const module = await import(pathToFileURL(join(f.root, ".opencode/plugins/hooknostic-components.js")).href);
+        const config = { permission: { skill: { review: "ask" } }, mcp: { untouched: true } };
+        (await module.default()).config(config);
+        expect(config.permission.skill.review).toBe("deny");
+        expect(config.mcp).toEqual({ untouched: true });
+      }
+      await expect(readFile(join(f.root, ".agents/skills/review/SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    },
+    60_000,
+  );
+
   it("does not resurrect rejected packaged skills through Claude overlays", async () => {
     const f = await fixture("package", ["claude"], { components: { onInvalid: "warn" } });
     await writeFile(join(f.root, "skills/review/SKILL.md"), manifest(true, "disable-model-invocation: false\r\n"));

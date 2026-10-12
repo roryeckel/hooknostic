@@ -172,6 +172,39 @@ The reference OpenCode v1 installed-package policy evidence was repeated with
 qualified `gate-probe-*` names. All six controls passed, including explicit
 `run --command gate-probe-gate-opencode` while its permission rule was `deny`.
 
+### Cross-target generated copies — PR #97 review
+
+The reference OpenCode builds were also probed with `--policy` and
+`--discovery-root=.claude/skills`. Both complete six-case captures are recorded
+in `evidence/*-policy-project-discovery-.claude-skills.json`, with provenance
+**live-probe**, native Windows and credential-free loopback responses. The
+OpenCode control skill also carries Claude's `disable-model-invocation` field,
+matching a copy generated for both readers. Ordinary baseline and explicit
+allow cases advertise it; the gate withholds its description; explicit native
+invocation still delivers its body. V1 rejects forced gated loading and v2
+continues to load it, matching the original project policy observations.
+
+This verifies the native gates on the alternate directory itself. Policy
+planning therefore connects configured readers to all generated destinations
+they discover, including readers excluded by `components.targets`. Such a reader
+adds its policy to another target's copy without creating an extra primary copy
+or delivering its MCP. Unaccepted omissions remove all copies exposed to the
+unsupported reader. Final-byte text checks also examine the generated copy that
+the reader sees. Authored native sources remain unowned.
+
+Twelve review regressions cover both OpenCode readers, failure/omission/accepted
+emission, independent physical destinations, preserved authored sources, scoped
+reader inventories, final-byte text checks and adapters without discovery
+metadata. Ten fail against the original committed implementation; the other
+two fail targeted support-count and acceptance mutants. All 46 policy build
+tests pass after restoration. Raw negative and restored reports remain under
+ignored `captured/playback-investigation/`.
+
+```sh
+node --experimental-strip-types .capture/skill-invocation/drive.mjs opencode-v1 --policy --discovery-root=.claude/skills
+node --experimental-strip-types .capture/skill-invocation/drive.mjs opencode-v2 --policy --discovery-root=.claude/skills
+```
+
 ```sh
 node --experimental-strip-types .capture/skill-invocation/drive.mjs claude --policy
 node --experimental-strip-types .capture/skill-invocation/drive.mjs codex --policy --package

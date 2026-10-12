@@ -23,8 +23,8 @@ const executable = process.env.HKN_SKILL_HARNESS_BINARY ?? (harness.startsWith("
 const policyProbe = process.argv.includes("--policy");
 const packaged = process.argv.includes("--package");
 const discoveryDirectory = process.argv.find(argument => argument.startsWith("--discovery-root="))?.slice(17);
-if (discoveryDirectory !== undefined && (packaged || policyProbe || !/^\.[a-z]+\/skills?$/.test(discoveryDirectory)))
-  throw new Error("Discovery-root probes require a native project-relative skill directory and no policy/package flag");
+if (discoveryDirectory !== undefined && (packaged || !/^\.[a-z]+\/skills?$/.test(discoveryDirectory)))
+  throw new Error("Discovery-root probes require a native project-relative skill directory and no package flag");
 const selectedCase = process.argv.find(argument => argument.startsWith("--case="))?.slice(7);
 const versionHome = mkdtempSync(join(tmpdir(), "hkn-skill-version-"));
 const versionResult = await runProcess(executable, ["--version"], {
@@ -63,6 +63,10 @@ async function session(label, gated, prompt, action) {
       join(dir, "SKILL.md"),
       `---\nname: ${nativeSkillName(name)}\ndescription: GATE_DESCRIPTION_${name} harmless capture control.\n${(gated || label === "allowed") && name === "gate-claude" ? `disable-model-invocation: ${gated}\n` : ""}${policyProbe && harness === "opencode-v2" && (gated || label === "allowed") && name === "gate-opencode" ? `metadata:\n  opencode/autoinvoke: "${!gated}"\n` : ""}---\n\nGATE_BODY_${name}\nRespond with the word done.\n`,
     );
+    if (policyProbe && discoveryDirectory === ".claude/skills" && name === "gate-opencode" && (gated || label === "allowed")) {
+      const path = join(dir, "SKILL.md");
+      writeFileSync(path, readFileSync(path, "utf8").replace(`description: GATE_DESCRIPTION_${name} harmless capture control.\n`, `description: GATE_DESCRIPTION_${name} harmless capture control.\ndisable-model-invocation: ${gated}\n`));
+    }
     if ((gated || label === "allowed") && name === "gate-codex") {
       mkdirSync(join(dir, "agents"));
       writeFileSync(join(dir, "agents/openai.yaml"), `policy:\n  allow_implicit_invocation: ${!gated}\n`);
@@ -338,7 +342,7 @@ async function session(label, gated, prompt, action) {
   return evidence;
 }
 
-if (discoveryDirectory !== undefined) {
+if (discoveryDirectory !== undefined && !policyProbe) {
   await session("baseline", false, "Reply with done.");
 } else if (process.argv[3] === "--plugin-only") {
   if (harness !== "opencode-v1") throw new Error("The v1 config callback probe requires opencode-v1");

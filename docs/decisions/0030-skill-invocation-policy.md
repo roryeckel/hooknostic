@@ -60,8 +60,17 @@ ancestor-path ownership checks; a copy cannot establish ownership of its source.
 
 Configured project readers participate even when `components.targets` excludes
 them: that setting cannot stop a harness discovering the shared directory.
+Reader edges follow every captured discovery directory, including OpenCode
+reading Claude's `.claude/skills` copies. Each physical destination receives
+only the policies of its readers. An unavailable gate removes every copy that
+reader discovers; it does not remove separate copies outside its discovery
+paths. Reports count each observed skill once and record affected omissions.
 Only declared shared skills and their policy are integrated for such readers;
 their MCP, runtime packages, and client extensions retain the configured scope.
+An excluded reader receives no new copy at its own destination. Configuration
+rules needed to gate another target's copy are still generated. Text degradation
+checks use the writer's final bytes, and accepted authored sources retain their
+own checks and discovery counts.
 
 An unavailable gate fails by default. `components.onUnsupported: "warn"` omits
 the whole affected skill. Ungated emission requires named acceptance:
