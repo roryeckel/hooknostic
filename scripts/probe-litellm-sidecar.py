@@ -7,6 +7,7 @@ No harness binaries, model credentials, or paid model calls are used.
 import json
 import os
 from pathlib import Path
+import secrets
 import shutil
 import socket
 import subprocess
@@ -63,13 +64,16 @@ def main():
         reserve.bind(("127.0.0.1", 0))
         port = reserve.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
+    proxy_key = "sk-" + secrets.token_hex(32)
     env = dict(
         os.environ,
         OPENAI_API_KEY="local-only-not-a-real-key",
+        LITELLM_MASTER_KEY=proxy_key,
         HARNESS_LLM_MODEL="readiness-probe",
         HARNESS_LLM_BASE_URL=f"http://127.0.0.1:{server.server_port}/v1",
         LITELLM_LOCAL_MODEL_COST_MAP="True",
         PYTHONUTF8="1",
+        PYTHONDONTWRITEBYTECODE="1",
     )
     with tempfile.TemporaryDirectory(prefix="hooknostic-sidecar-") as scratch:
         log_path = Path(scratch) / "proxy.log"
@@ -82,7 +86,10 @@ def main():
             try:
                 for _ in range(60):
                     try:
-                        with urllib.request.urlopen(base + "/health", timeout=2) as response:
+                        request = urllib.request.Request(
+                            base + "/health", headers={"Authorization": f"Bearer {proxy_key}"},
+                        )
+                        with urllib.request.urlopen(request, timeout=2) as response:
                             assert response.status == 200
                         break
                     except Exception:
@@ -101,15 +108,15 @@ def main():
                         request = urllib.request.Request(
                             base + route,
                             data=json.dumps(dict(payload, model="readiness-probe", stream=stream)).encode(),
-                            headers={"Content-Type": "application/json", "Authorization": "Bearer hooknostic-drift",
-                                     "x-api-key": "hooknostic-drift", "anthropic-version": "2023-06-01"},
+                            headers={"Content-Type": "application/json", "Authorization": f"Bearer {proxy_key}",
+                                     "x-api-key": proxy_key, "anthropic-version": "2023-06-01"},
                         )
                         with urllib.request.urlopen(request, timeout=20) as response:
                             body = response.read().decode()
                             assert response.status == 200 and "pong" in body, (route, stream, body)
                         print(f"{route} stream={stream}: 200 pong", flush=True)
             except Exception:
-                print(log_path.read_text(encoding="utf-8", errors="replace")[-8000:])
+                print(log_path.read_text(encoding="utf-8", errors="replace")[-8000:].replace(proxy_key, "<proxy-key>"))
                 raise
             finally:
                 process.terminate()
