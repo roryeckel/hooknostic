@@ -572,22 +572,35 @@ describe("skill invocation policy builds", () => {
     expect(plan.selection.applied.size).toBe(0);
   });
 
-  it("reports a policy-omitted Claude overlay as a discovered, skipped extension", async () => {
-    const f = await fixture("package", ["claude"], {
-      version: claudePackageSkillPolicyValidation.version.replace(/\.\d+$/, ".0"),
-      components: { onUnsupported: "warn" },
-    });
-    await mkdir(join(f.root, "com.anthropic.claude-code/skills/review"), { recursive: true });
-    await writeFile(join(f.root, "com.anthropic.claude-code/skills/review/SKILL.md"), manifest(false));
-    const built = await buildProject(f.options);
-    expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
-    expect(built.report.targets.claude!.projection!.components["agent-plugin.client-extension.files"]).toMatchObject(
-      counts(1, 0),
-    );
-    await expect(readFile(join(f.root, "dist/claude/skills/review/SKILL.md"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  }, 60_000);
+  it.each(["skills/review", "Skills/review", "skills/Review", "Skills/Review"])(
+    "reports a policy-omitted Claude overlay in %s as a discovered, skipped extension",
+    async (directory) => {
+      const f = await fixture("package", ["claude"], {
+        version: claudePackageSkillPolicyValidation.version.replace(/\.\d+$/, ".0"),
+        components: { onUnsupported: "warn" },
+      });
+      const overlay = join(f.root, "com.anthropic.claude-code", directory);
+      await mkdir(join(overlay, "references"), { recursive: true });
+      await writeFile(join(overlay, "SKILL.md"), manifest(false));
+      await writeFile(join(overlay, "references/review.md"), "Omitted skill reference\n");
+      const sibling = `${directory}-notes/reference.md`;
+      await mkdir(join(f.root, "com.anthropic.claude-code", `${directory}-notes`), { recursive: true });
+      await writeFile(join(f.root, "com.anthropic.claude-code", sibling), "Keep this sibling\n");
+      const built = await buildProject(f.options);
+      expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+      expect(built.report.targets.claude!.projection!.components["agent-plugin.client-extension.files"]).toMatchObject(
+        counts(3, 1),
+      );
+      await expect(readFile(join(f.root, "dist/claude", directory, "SKILL.md"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(readFile(join(f.root, "dist/claude", directory, "references/review.md"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(await readFile(join(f.root, "dist/claude", sibling), "utf8")).toBe("Keep this sibling\n");
+    },
+    60_000,
+  );
 
   it.each(["disable-model-invocation: true\r\n", "name: wrong\r\n", "description: ''\r\n"])(
     "keeps malformed reserved policy fatal with another invalid field: %s",

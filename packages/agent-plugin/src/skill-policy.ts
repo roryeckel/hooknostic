@@ -193,31 +193,24 @@ export function withSkillInvocationPolicy<TTarget extends { delivery: "package" 
           : { support: context.support[SKILL_INVOCATION_POLICY] }),
         ...(context.accept === undefined ? {} : { accept: context.accept }),
       });
-      const omitted = new Set(selection.omissions.map((item) => item.name));
+      const omittedDirectories = selection.omissions.flatMap(({ name }) => [
+        `skills/${name}`.toLowerCase(),
+        `${projector.namespace}/skills/${name}`.toLowerCase(),
+      ]);
+      // Packages may be installed on case-insensitive filesystems, where a
+      // differently cased overlay would otherwise restore an omitted skill.
+      const insideOmittedSkill = (path: string) => {
+        const folded = path.toLowerCase();
+        return omittedDirectories.some((directory) => folded === directory || folded.startsWith(`${directory}/`));
+      };
       const filtered: AgentPluginPackage = {
         ...source,
         skills: selection.skills,
-        files: source.files.filter(
-          (file) =>
-            ![...omitted].some(
-              (name) =>
-                file.path.startsWith(`skills/${name}/`) ||
-                file.path.startsWith(`${projector.namespace}/skills/${name}/`),
-            ),
-        ),
+        files: source.files.filter((file) => !insideOmittedSkill(file.path)),
         ...(source.directories === undefined
           ? {}
           : {
-              directories: source.directories.filter(
-                (path) =>
-                  ![...omitted].some(
-                    (name) =>
-                      path === `skills/${name}` ||
-                      path.startsWith(`skills/${name}/`) ||
-                      path === `${projector.namespace}/skills/${name}` ||
-                      path.startsWith(`${projector.namespace}/skills/${name}/`),
-                  ),
-              ),
+              directories: source.directories.filter((path) => !insideOmittedSkill(path)),
             }),
       };
       const plan = await projector.project(filtered, context);
