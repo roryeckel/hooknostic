@@ -12,6 +12,7 @@ import {
   projectOpenCodeV2Components,
   projectOpenCodeV2Integration,
 } from "./project.js";
+import { opencodeV2SkillPolicy } from "./skill-policy.js";
 import {
   classifyOpenCodeV2Tool,
   OPENCODE_V2_FILE_SHAPES,
@@ -46,6 +47,11 @@ export function opencodeV2Adapter(
     projectIntegration: projectOpenCodeV2Integration,
     projectComponents: projectOpenCodeV2Components,
     projectComponentProfiles: opencodeV2ProjectProfiles,
+    skillInvocationPolicy: {
+      destination: ".agents/skills",
+      discoveryDirectories: [".claude/skills", ".opencode/skills", ".opencode/skill"],
+      projectFiles: opencodeV2SkillPolicy,
+    },
     agentPluginProjector: opencodeV2Projector,
     projectMcpOptions: { startupTimeoutMs: true },
     shimExecution: "module",

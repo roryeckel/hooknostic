@@ -491,6 +491,7 @@ export function runProcess(
     env: NodeJS.ProcessEnv;
     input?: string;
     timeoutMs?: number;
+    onOutput?: (stream: "stdout" | "stderr", chunk: string) => void;
   },
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -503,8 +504,14 @@ export function runProcess(
     let stdout = "";
     let stderr = "";
     let settled = false;
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
-    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
+      options.onOutput?.("stdout", chunk);
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+      options.onOutput?.("stderr", chunk);
+    });
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;

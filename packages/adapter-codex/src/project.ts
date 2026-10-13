@@ -139,7 +139,7 @@ export async function projectComponents(
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: codexHarness.recommendedRange,
     components: {
@@ -240,3 +240,11 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+import { skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
+
+import { CODEX_SKILL_POLICY_RATIONALE, codexProjectSkillPolicyValidation } from "./skill-policy.js";
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  codexProjectSkillPolicyValidation,
+  CODEX_SKILL_POLICY_RATIONALE,
+);

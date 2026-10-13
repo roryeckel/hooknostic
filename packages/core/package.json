@@ -25,6 +25,7 @@
     "zod": "catalog:zod3"
   },
   "devDependencies": {
-    "@types/semver": "catalog:"
+    "@types/semver": "catalog:",
+    "yaml": "catalog:"
   }
 }

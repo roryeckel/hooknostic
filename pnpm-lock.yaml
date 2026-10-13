@@ -485,6 +485,9 @@ importers:
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
 
   packages/runtime:
     dependencies:

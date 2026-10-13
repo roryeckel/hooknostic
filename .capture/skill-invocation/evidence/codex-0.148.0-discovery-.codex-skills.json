@@ -1,0 +1,62 @@
+{
+  "provenance": "live-probe",
+  "harness": "codex",
+  "version": "0.148.0",
+  "platform": "win32",
+  "delivery": "project",
+  "discoveryDirectory": ".codex/skills",
+  "scope": "Native project skills; model replies and forced tool calls were scripted on loopback.",
+  "extraction": "Probe-bearing lines are verbatim excerpts from recorded request bodies; JSON paths and one-based string line numbers identify their source. Only the Windows account-name path segment is redacted to user. descriptionMarkersInInitialRequest and bodiesReachedModel summarize complete tool-bearing model requests, not just these excerpts. Complete raw requests remain in ignored captured/; their hashes are recorded per case.",
+  "cases": [
+    {
+      "label": "baseline",
+      "capturedAt": "2026-10-12T01:41:30.282Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 1,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "82f0a40bdd0ddfa10a826880d395c3e443492ce679e3435065f2bcb29c5f1690",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 10,
+              "text": "- gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: C:/Users/user/AppData/Local/Temp/hkn-skill-gate-EQQze7/project/.codex/skills/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 11,
+              "text": "- gate-codex: GATE_DESCRIPTION_gate-codex harmless capture control. (file: C:/Users/user/AppData/Local/Temp/hkn-skill-gate-EQQze7/project/.codex/skills/gate-codex/SKILL.md)"
+            },
+            {
+              "line": 12,
+              "text": "- gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: C:/Users/user/AppData/Local/Temp/hkn-skill-gate-EQQze7/project/.codex/skills/gate-control/SKILL.md)"
+            },
+            {
+              "line": 13,
+              "text": "- gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: C:/Users/user/AppData/Local/Temp/hkn-skill-gate-EQQze7/project/.codex/skills/gate-opencode/SKILL.md)"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 import type { IPty, spawn as ptySpawn } from "node-pty";
 import semver from "semver";
@@ -564,8 +565,6 @@ interface OpenCodeServeSession {
   sessionId: string;
   messages: () => Promise<ServeMessage[]>;
 }
-
-/* eslint-disable no-control-regex -- ANSI stripping needs the escape control char */
 
 async function runClaudePlayback(
   build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
@@ -1337,6 +1336,10 @@ async function prepareClaudePtyConfig(dir: string): Promise<string> {
 // matching runs against a whitespace-stripped screen.
 const DIALOG_SETTLE_MS = 600;
 
+function plainClaudePtyScreen(screen: string): string {
+  return stripVTControlCharacters(screen);
+}
+
 function dialogScreen(plainScreen: () => string): string {
   return plainScreen().replace(/\s+/g, "");
 }
@@ -1463,6 +1466,27 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
 }
 
 describe("Claude PTY first-run walk", () => {
+  it("selects folder trust when a private CSI sequence follows the native options", async () => {
+    const capture = JSON.parse(
+      await readFile(
+        new URL("../../../.capture/harness-playback/claude-windows-trust-csi.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { selectionEntry: { screen: string } };
+    let frame = capture.selectionEntry.screen;
+    const writes: string[] = [];
+    const pty = {
+      write(input: string) {
+        writes.push(input);
+        if (input === "\r") frame = "> ? for shortcuts";
+      },
+      kill() {},
+    } as unknown as IPty;
+
+    await walkFirstRunDialogs(pty, () => plainClaudePtyScreen(frame), 5_000);
+    expect(writes).toEqual(["\r"]);
+  });
+
   it("continues past the auto-mode classifier billing notice", async () => {
     // Whitespace-stripped frame as 2.1.283 rendered it in
     // .capture/claude-permission-mode (the port is the loopback's).
@@ -3000,7 +3024,7 @@ scenarioDrive(
       pty.onData((data: string) => {
         screen += data;
       });
-      const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+      const plainScreen = (): string => plainClaudePtyScreen(screen);
       // Walk first-run dialogs reactively: fresh CI state renders a different
       // sequence (theme -> API key -> security notes -> trust on 2.1.238)
       // than a box with local state (trust first on 2.1.250), so the walk
@@ -3137,7 +3161,7 @@ scenarioDrive(
       pty.onData((data: string) => {
         screen += data;
       });
-      const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+      const plainScreen = (): string => plainClaudePtyScreen(screen);
       const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {

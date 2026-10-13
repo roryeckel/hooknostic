@@ -80,10 +80,18 @@ Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
+Support resolves by harness version, and the recommended range `>=2.1 <3`
+spans 2 profiles. A build targeting one of the ranges below gets that
+table; a range spanning more than one resolves to the least capable level for
+each component.
+
+##### `>=2.1 <3 <2.1.238`
+
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
 | `agent-plugin.mcp.stdio` | emulated | A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment by Claude's own rules, except that an unset one with no default stops the server. Dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -102,6 +110,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. | `.capture/skill-directory` |
+| `claude:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `claude:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Project delivery validation records:
 
@@ -114,6 +124,50 @@ Project delivery validation records:
 | 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
 | 2.1.268 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 2.1.268 | 2026-09-12 | live-probe | `.capture/claude-project-mcp-environment` | Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields. |
+| 2.1.238 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Isolated project discovery withheld disable-model-invocation:true, false restored visibility, and explicit /skill invocation retained the gated body over loopback. |
+| 2.1.295 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project and local-marketplace installed-package discovery, native allow, explicit invocation and forced Skill calls: the gate hid ordinary discovery, kept explicit bodies, and rejected forced loading while the ungated control succeeded. |
+
+##### `>=2.1 <3 >=2.1.238`
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | unsupported | — |
+| `agent-plugin.skills` | exact | Copied into .claude/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory in a project skill too (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | exact | Native disable-model-invocation withholds automatic selection and retains explicit user invocation. Canonical policy is applied after native overlays. |
+| `agent-plugin.mcp.stdio` | emulated | A project .mcp.json has no variable naming the project or a package root, so a generated launcher resolves the package's paths, working directory and plugin variables from its own location, and Claude sees only the launcher. A package's other text therefore reaches the server literally, as Agent Plugins 1.0 requires, where package delivery lets Claude expand it; a direct source's references are resolved from Claude's environment by Claude's own rules, except that an unset one with no default stops the server. Dependencies are supplied by the project. |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.client-extension.files` | unsupported | Project integration writes .mcp.json, a skills tree and settings Claude reads from the project. The com.anthropic.claude-code namespace is an overlay on an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read it. Deliver the package to reach it. |
+| `agent-plugin.runtime-package` | unsupported | The locked install this component depends on is Claude's own, run in its plugin cache against an installed marketplace copy (ADR-0012). Project delivery installs nothing, so a manifest and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies, or deliver the package, where Claude supports this exactly. |
+
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into project remote urls and headers, where Agent Plugins 1.0 forbids all expansion in a package's declaration. | `.capture/claude-project-mcp-environment` |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A project skill that holds ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, or ${SKILL_DIR} at all when discovered in place, reaches the model with that text as written: outside a plugin Claude expands only ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}, and only in a skill's body. | `.capture/skill-directory` |
+| `claude:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `claude:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.1.286 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, a project skill with disable-model-invocation: true was absent from the ordinary listing but its body reached the model after /gate-claude. The ungated control and a skill carrying only the Codex policy remained listed. No portable invocation policy is implemented. |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A project skill under .claude/skills, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes) and ${CLAUDE_SESSION_ID} expanded, and ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written. |
+| 2.1.278 | 2026-09-22 | live-probe | `.capture/claude-project-mcp-environment` | Direct source: in its own declaration Claude resolved ${NAME:-default} to a defined variable's value, even an empty one, and otherwise to the default; a direct stdio server received the same values through the launcher, and one with an unset ${NAME} and no default did not start. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Project stdio: a synchronized package server received its ${NAME} and ${NAME:-default} args and env values literally through the generated launcher, while Claude expanded the same text in a native declaration; Claude did not expand ${CLAUDE_PROJECT_DIR} in .mcp.json, though it set that variable for the child. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/claude-project-mcp-environment` | Re-run with ${NAME:-default} added: project MCP expanded set references and substituted the default for unset ones in remote urls and headers; plain unset references remained literal, and no tested escape preserved a literal. |
+| 2.1.268 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
+| 2.1.268 | 2026-09-12 | live-probe | `.capture/claude-project-mcp-environment` | Project MCP expanded set environment references in remote URLs and headers; unset references remained literal, and tested escaping forms did not preserve exact literals in both fields. |
+| 2.1.238 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Isolated project discovery withheld disable-model-invocation:true, false restored visibility, and explicit /skill invocation retained the gated body over loopback. |
+| 2.1.295 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project and local-marketplace installed-package discovery, native allow, explicit invocation and forced Skill calls: the gate hid ordinary discovery, kept explicit bodies, and rejected forced loading while the ungated control succeeded. |
 
 Project support is independent of package projection.
 
@@ -124,10 +178,18 @@ Evidence: `.capture/shell-dialects`.
 
 #### Agent Plugin projection
 
+Support resolves by harness version, and the recommended range `>=2.1 <3`
+spans 2 profiles. A build targeting one of the ranges below gets that
+table; a range spanning more than one resolves to the least capable level for
+each component.
+
+##### `>=2.1 <3 <2.1.238`
+
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
 | `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028). |
+| `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
 | `agent-plugin.mcp.stdio` | exact | — |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -147,6 +209,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only. | `.capture/skill-directory` |
+| `claude:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `claude:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Projection validation records:
 
@@ -165,6 +229,57 @@ Projection validation records:
 | 2.1.260 | 2026-09-04 | doc-derived | `docs/baseline-2026-08-20.md` | Claude documents HTTP and SSE MCP transports and plugin root/data variables. |
 | 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-mcp-cwd` | Cross-directory MCP probe: Claude expanded plugin-root variables but ignored both relative and plugin-root-anchored native cwd; the subprocess inherited the project directory. A generated Node launcher then established the plugin subdirectory as the MCP cwd. |
 | 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-plugin-author` | Native plugin validation rejects author objects with a missing or empty name; omitting author or supplying a non-empty name passes, including whitespace-only names. |
+| 2.1.238 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a synthetic package through an isolated local marketplace: true withheld ordinary discovery, false restored it, and explicit /plugin:skill delivered the gated body over loopback. |
+| 2.1.295 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project and local-marketplace installed-package discovery, native allow, explicit invocation and forced Skill calls: the gate hid ordinary discovery, kept explicit bodies, and rejected forced loading while the ungated control succeeded. |
+
+##### `>=2.1 <3 >=2.1.238`
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | Author metadata requires a non-empty name; otherwise projection fails or explicitly omits the author under onUnsupported: warn. |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes ${CLAUDE_SKILL_DIR}, which Claude expands to the skill's absolute directory (ADR-0028). |
+| `agent-plugin.skills.invocation-policy` | exact | Native disable-model-invocation withholds automatic selection and retains explicit user invocation. Canonical policy is applied after native overlays. |
+| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.client-extension.files` | exact | — |
+| `agent-plugin.runtime-package` | exact | — |
+
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Claude substitutes set variables from its own environment (never from the server's env block) into stdio command, args, env values and cwd, where Agent Plugins 1.0 expands only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and never the command. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
+| `claude:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Claude substitutes set environment variables into remote urls and headers, where Agent Plugins 1.0 forbids all expansion. | `.capture/agent-plugin-mcp-placeholders` |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `claude:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} or a CLAUDE_ variable in its frontmatter, reaches the model with that text as written: Claude expands only its own CLAUDE_ variables, and only in a skill's body, and the projection rewrites ${SKILL_DIR} in the body only. | `.capture/skill-directory` |
+| `claude:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `claude:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | Asked, without loading it, to quote a --plugin-dir skill's description holding ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_SESSION_ID}, ${PLUGIN_ROOT} and ${SKILL_DIR}, Sonnet returned every reference as written, on 2.1.285 and again on 2.1.286 through the capture driver: Claude does not expand them in the frontmatter the skill listing shows. The quote is the model's, not the prompt itself. |
+| 2.1.285 | 2026-09-30 | live-probe | `.capture/skill-directory` | A --plugin-dir plugin's skill, loaded through the Skill tool, reached the model with ${CLAUDE_SKILL_DIR} (the skill's absolute directory, forward slashes), ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA} and ${CLAUDE_SESSION_ID} expanded, and ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME} as written, after a Base directory for this skill line. |
+| 2.1.260 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
+| 2.1.283 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | A stdio reference to a name the server's own env block also declares resolved to Claude's ambient value, not the declared one, and a name only the block declares stayed literal, in env and args alike; the child still received each declared value. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/agent-plugin-mcp-placeholders` | Claude expanded set ${NAME} and ${NAME:-default} references in a projected package's stdio command, args, env values and launcher cwd argument, and in plugin remote urls and header values as the projection emits them; plain unset references remained literal, and placeholder-like header names stayed literal and were refused as invalid. |
+| 2.1.278 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that Claude needs no target-specific forwarding declaration. |
+| 2.1.273 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA and established the plugin directory as cwd; bare runner commands remained resolvable. |
+| 2.1.260 | 2026-09-04 | live-probe | `.capture/harness-playback` | Claude discovered a projected skill, started projected stdio/HTTP/SSE MCP servers with root/data variables, and executed merged Hooknostic hooks. |
+| 2.1.260 | 2026-09-05 | live-probe | `.capture/claude-marketplace-deps` | Marketplace installation copied a plugin with package.json/package-lock.json and installed its locked npm dependency in the cached plugin version. |
+| 2.1.260 | 2026-09-04 | doc-derived | `docs/baseline-2026-08-20.md` | Claude documents HTTP and SSE MCP transports and plugin root/data variables. |
+| 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-mcp-cwd` | Cross-directory MCP probe: Claude expanded plugin-root variables but ignored both relative and plugin-root-anchored native cwd; the subprocess inherited the project directory. A generated Node launcher then established the plugin subdirectory as the MCP cwd. |
+| 2.1.260 | 2026-09-07 | live-probe | `.capture/claude-plugin-author` | Native plugin validation rejects author objects with a missing or empty name; omitting author or supplying a non-empty name passes, including whitespace-only names. |
+| 2.1.238 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a synthetic package through an isolated local marketplace: true withheld ordinary discovery, false restored it, and explicit /plugin:skill delivered the gated body over loopback. |
+| 2.1.295 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project and local-marketplace installed-package discovery, native allow, explicit invocation and forced Skill calls: the gate hid ordinary discovery, kept explicit bodies, and rejected forced loading while the ungated control succeeded. |
 
 ### Codex CLI
 
@@ -226,6 +341,7 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | exact | Native agents/openai.yaml policy.allow_implicit_invocation withholds automatic selection and retains explicit user invocation; unrelated sidecar fields survive. |
 | `agent-plugin.mcp.stdio` | emulated | An owned repository-locating Node bootstrap launches the portable server from its declared source root. Node must be on PATH; project trust remains a human prerequisite. |
 | `agent-plugin.mcp.streamable-http` | exact | Native project TOML url and http_headers preserve remote declarations. |
 | `agent-plugin.mcp.sse` | unsupported | SSE project transport is not established; Codex reads url declarations as Streamable HTTP. |
@@ -237,6 +353,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a skill discovered in place, reaches the model with that text as written: Codex expands nothing in skill text. | `.capture/skill-directory` |
+| `codex:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `codex:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Project delivery validation records:
 
@@ -249,6 +367,7 @@ Project delivery validation records:
 | 0.153.2 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback, including nested-session ownership bootstrap and target-specific stdio cwd, argv, and startup timeout. |
 | 0.153.2 | 2026-09-12 | doc-derived | `.capture/codex-project-mcp` | Official Codex MCP documentation defines bearer_token_env_var as the environment variable whose token is sent in the Authorization header; project startup behavior for this field was not live-probed. |
 | 0.153.2 | 2026-09-14 | live-probe | `.capture/codex-project-mcp` | A variable set in Codex's environment but not listed in env_vars does not reach a project stdio server (undeclaredEnvVar), so the projector lists every variable the launcher expands. |
+| 0.148.0 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Isolated project discovery withheld policy.allow_implicit_invocation:false, true restored visibility, and explicit $skill delivered the gated body over loopback. A separate ordinary-discovery probe loaded authored .codex/skills alongside the primary .agents/skills route. |
 
 Project support is independent of package projection.
 
@@ -260,21 +379,29 @@ Evidence: `.capture/shell-dialects`.
 #### Agent Plugin projection
 
 Support resolves by harness version, and the recommended range `>=0.148 <1`
-spans 2 profiles. A build targeting one of the ranges below gets that
+spans 3 profiles. A build targeting one of the ranges below gets that
 table; a range spanning more than one resolves to the least capable level for
 each component.
 
-##### `>=0.140 <0.153`
+##### `>=0.140 <0.153 <0.156.1`
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.skills` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
+| `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
 | `agent-plugin.mcp.stdio` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.mcp.streamable-http` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.mcp.sse` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.client-extension.files` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
 | `agent-plugin.runtime-package` | unsupported | Hook delivery from an installed plugin is established on 0.153.2 only; the 0.148.0 binary was read as having removed it and that reading is not re-testable, so a projected plugin for these versions would carry components beside hooks nobody has watched run. |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `codex:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `codex:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Projection validation records:
 
@@ -283,13 +410,15 @@ Projection validation records:
 | 0.153.2 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 0.156.1 | 2026-09-27 | live-probe | `.capture/marketplace-launch` | On Windows, installed the documented combined example through an isolated marketplace; its skill reached model input, the generated hook denied a harmless shell marker, and the bundled MCP server returned a greeting from an unrelated project with no workspace dependencies. |
 | 0.148.0 | 2026-08-20 | doc-derived | `.capture/codex-plugin-hooks` | Recorded as having removed the plugin_hooks feature; not re-testable on this machine, so the versions between it and 0.153.2 are declined rather than assumed. |
+| 0.156.1 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Package invocation policy is probed through an isolated local marketplace, preserving explicit native user invocation while withholding automatic selection. |
 
-##### `>=0.153 <1`
+##### `>=0.153 <1 <0.156.1`
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
 | `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A model without those instructions, such as one behind a custom provider, is not told. |
+| `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
 | `agent-plugin.mcp.stdio` | emulated | The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so the projection emits a Node launcher that resolves the plugin root from its own location, creates and binds a Hooknostic-managed PLUGIN_DATA directory outside the version-scoped install root, and expands args, env values and cwd before spawning the server. The directory is chosen by Hooknostic rather than by Codex, and the server runs one process below the harness, so the contract is emulated rather than native. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
 | `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
@@ -301,6 +430,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included. | `.capture/skill-directory` |
+| `codex:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `codex:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Projection validation records:
 
@@ -332,6 +463,60 @@ Projection validation records:
 | 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A native .codex-plugin/plugin.json declaring hooks as a two-path array ran both documents' UserPromptSubmit markers in one isolated loopback session, beside the single-path control. The path-array form this projection emits when an author declares a path is consumed, not merely documented. |
 | 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed. |
 | 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A root hooks.json the native manifest never names is inert: beside a manifest with no hooks key its marker stayed absent, and beside a manifest declaring an inline hook document only the inline marker fired, while the single-path control ran in the same session. So the generated hooks.json this projection must still emit when it inlines the generated document beside an author's inline object is not discovered by convention, and generated hooks do not run twice on that path. |
+| 0.156.1 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Package invocation policy is probed through an isolated local marketplace, preserving explicit native user invocation while withholding automatic selection. |
+
+##### `>=0.153 <1 >=0.156.1`
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | Rewritten as .codex-plugin/plugin.json; name, version and description survive, and the portable manifest is removed because it would outrank the native one and suppress hooks. |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: Codex expands nothing in skill text, and the base instructions of the models it bundles tell the model to resolve a skill's relative paths against the directory containing its SKILL.md (ADR-0028). A model without those instructions, such as one behind a custom provider, is not told. |
+| `agent-plugin.skills.invocation-policy` | exact | Native agents/openai.yaml policy.allow_implicit_invocation withholds automatic selection and retains explicit user invocation; unrelated sidecar fields survive. |
+| `agent-plugin.mcp.stdio` | emulated | The native MCP route expands no Agent Plugins placeholder and binds no PLUGIN_ROOT/PLUGIN_DATA env, unlike the portable route it replaces, so the projection emits a Node launcher that resolves the plugin root from its own location, creates and binds a Hooknostic-managed PLUGIN_DATA directory outside the version-scoped install root, and expands args, env values and cwd before spawning the server. The directory is chosen by Hooknostic rather than by Codex, and the server runs one process below the harness, so the contract is emulated rather than native. Node must be on PATH, because the launcher is a Node program. |
+| `agent-plugin.mcp.streamable-http` | exact | Declared headers survive as native http_headers, which the portable route through a root manifest drops. |
+| `agent-plugin.mcp.sse` | unsupported | Codex has no sse transport: its native reader selects the transport from command vs url and ignores the portable type, so an sse server would register as a streamable_http connection to the same url. Dropped rather than emitted, because a wrong-protocol connection is worse than an absent one. |
+| `agent-plugin.client-extension.files` | exact | OpenAI documents extensions."com.openai" in a root plugin.json as the preferred source of OpenAI settings, but 0.154.0 did not run a UserPromptSubmit hook declared there while an equivalent native-manifest control did. This projection bridges that implementation gap: the inline object replaces the compatibility overlay, portable identity/skills/MCP remain canonical, authored hooks are combined with generated hooks, and namespace files are hoisted to the package root. Exact because the documented settings arrive intact at the native surface the harness consumes. |
+| `agent-plugin.runtime-package` | unsupported | Codex installs no dependencies -- measured, not assumed. A plugin shipping package.json and package-lock.json declaring one dependency installed with both files copied verbatim, no node_modules in the installed root, and the dependency failing to resolve from it; a node_modules placed there by hand made the same check pass, so the check discriminates. A node_modules shipped INSIDE the package is copied like any other content and does resolve, but Hooknostic never inventories node_modules at any depth and strips one from the source package, so that route is closed for npm specifically. Node code can be bundled, portable package content can be supplied by an explicit components.materialize provider at build time, and author-supplied content is copied verbatim. |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `codex:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, or ${SKILL_DIR} in its frontmatter, reaches the model with that text as written: Codex expands nothing in skill text, frontmatter included. | `.capture/skill-directory` |
+| `codex:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `codex:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 0.154.0 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, a $where mention handed the model the project skill's SKILL.md path and the whole file with every ${...} as written: ${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and ${HOME}. The base instructions of all seven models codex debug models lists say to resolve relative paths against the directory containing a filesystem-backed SKILL.md; the loopback model, served through a custom provider, received none. |
+| 0.154.0 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | Against the actual projected package, a synthetic ambient variable was absent without components.mcpEnvironment and reached the stdio child when the declaration generated env_vars. |
+| 0.153.2 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | The installed-plugin path at the lower validated edge behaved the same: a synthetic ambient variable was filtered without components.mcpEnvironment and reached the projected stdio child through generated env_vars. |
+| 0.154.0 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child retained every parent PATH entry plus two Codex entries while the rest of its environment was filtered to 22 keys; the generated launcher bound PLUGIN_ROOT and PLUGIN_DATA, so bare runner commands remained resolvable without relying on ambient configuration variables. |
+| 0.154.0 | 2026-09-21 | live-probe | `.capture/codex-plugin-mcp-environment` | What filters that environment, and the way through it: the same installed plugin in the same environment saw a synthetic marker in its MCP child only once its .mcp.json named it in env_vars, while its UserPromptSubmit command hook saw the marker unchanged in both cases. The marker is not credential-shaped, so the MCP baseline is an allowlist rather than a secret filter. Declared env values are copied verbatim, so Codex expands no reference of its own. |
+| 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | Four plugins differing only in how the skills directory is named: one declaring nothing had skills/ discovered, so discovery is conventional. One naming ./custom-skills/ solely inside extensions."com.openai" had its skill ignored, but that negative was expected -- portable skills/ is canonical and an inline skills value cannot replace it -- so this run says nothing about whether the namespace is read; the 2026-09-17 records below carry the corrected probe. Observed through codex debug prompt-input, so a discovered skill is one that reaches the model rather than a log line. |
+| 0.154.0 | 2026-09-16 | live-probe | `.capture/codex-client-extension` | A plugin's skills/ directory is discovered with no declaration anywhere -- no native manifest, no skills field, no extensions map. The explicit "skills" pointer this projector writes is therefore belt and braces rather than the mechanism, which is what the 180 plugins in the bundled marketplace also do. |
+| 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | No npm dependency installation. A plugin declaring is-number@7.0.0 with a package-lock.json and no node_modules installed with both manifests copied verbatim, no node_modules in the installed root, and import("is-number") failing ERR_MODULE_NOT_FOUND from there. Placing node_modules/is-number by hand made the same import succeed and removing it restored the failure, so the negative is the dependency and not a broken probe. |
+| 0.154.0 | 2026-09-15 | live-probe | `.capture/codex-marketplace-deps` | A node_modules directory shipped inside the source package survives installation and resolves from the installed plugin root, so a vendored or bundled dependency closure is a working route where a declared manifest is not. |
+| 0.153.2 | 2026-09-07 | live-probe | `.capture/codex-agent-plugin` | `codex plugin add` copies the plugin source directory wholesale -- a junk directory and a stray README both landed in the install cache -- so the filtered package is what a build adds. Installation is user-level: marketplace and plugin entries land in ~/.codex/config.toml. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | One native .codex-plugin/plugin.json declaring skills, mcpServers and hooks had all three active at once: the skill was discovered, both servers registered, and the UserPromptSubmit hook ran. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Manifest precedence suppresses hooks: a package carrying both a root plugin.json and a native manifest with hooks loaded its skill and ignored its hook, and a portable package with hooks at hooks.json or hooks/hooks.json fired nothing. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | Native MCP shape: url + http_headers registered as streamable_http with the Authorization header intact, where the same file in portable shape (type + headers) registered with http_headers empty and a type: sse server registered as streamable_http rather than being skipped. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-hooks` | A plugin hook command resolves against the session cwd: of three variants on one event, only ${PLUGIN_ROOT}/... ran; a relative path and ${CODEX_PLUGIN_ROOT} did not. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | The native MCP route implements none of the Agent Plugins placeholder contract the portable route does: ${PLUGIN_ROOT} and ${PLUGIN_DATA} read back as literal text in args, env gained neither variable, and cwd was absent unless declared. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | A declared cwd is joined to the plugin root without being expanded first, so a relative one anchors correctly (`.` reached the plugin root, `worker` reached a directory inside it) while ${PLUGIN_ROOT}/worker produced a path containing the literal placeholder. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | A native manifest carrying author, license, homepage and keywords installed normally and resolved its version from the manifest, so those fields are carried through rather than dropped. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-native-mcp` | The declared cwd is honoured at spawn, not merely recorded: in a session a server declaring cwd "." started with process.cwd() equal to the installed plugin root and resolved its relative argument against it, while an identical server declaring no cwd never started. PLUGIN_ROOT and PLUGIN_DATA were unset in the spawned process. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-plugin-launcher` | An installed projected plugin started its stdio server through the generated launcher: reached by `node ./runtime/mcp-launcher.mjs <index>` with cwd ".", the server received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and the declared working directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-isolated-home` | CODEX_HOME relocates plugin and marketplace state: the same command lists the real marketplace from the default home and none from an isolated one, and marketplace add plus plugin add both succeed inside it, leaving ~/.codex/config.toml byte-identical. `plugin add` requires the qualified <plugin>@<marketplace> form. |
+| 0.153.2 | 2026-09-08 | live-probe | `.capture/codex-hook-command` | A hook command is parsed with quoting honoured and does NOT accept Claude's exec form: of three spellings on one event, command + args failed while the quoted and bare strings both ran, so the substituted plugin-root path is quoted. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | Correction and supported-field probe: the earlier custom-skills negative was expected because portable skills/ is canonical and did not test namespace consumption. In one isolated loopback session, extensions.com.openai.hooks failed to run a UserPromptSubmit marker while an equivalent .codex-plugin/plugin.json control fired, establishing that 0.154.0 does not honour the documented inline hooks route. |
+| 0.154.0 | 2026-09-17 | doc-derived | `.capture/codex-client-extension` | Official OpenAI plugin documentation defines the inline extensions.com.openai object as replacing the compatibility overlay, keeps root identity plus portable skills/MCP canonical, and permits hooks as a path, path array, inline object, or inline-object array. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A native .codex-plugin/plugin.json declaring hooks as a two-path array ran both documents' UserPromptSubmit markers in one isolated loopback session, beside the single-path control. The path-array form this projection emits when an author declares a path is consumed, not merely documented. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed. |
+| 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A root hooks.json the native manifest never names is inert: beside a manifest with no hooks key its marker stayed absent, and beside a manifest declaring an inline hook document only the inline marker fired, while the single-path control ran in the same session. So the generated hooks.json this projection must still emit when it inlines the generated document beside an author's inline object is not discovered by convention, and generated hooks do not run twice on that path. |
+| 0.156.1 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Package invocation policy is probed through an isolated local marketplace, preserving explicit native user invocation while withholding automatic selection. |
 
 ### OpenCode
 
@@ -375,10 +560,18 @@ Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
+Support resolves by harness version, and the recommended range `>=1.18 <2`
+spans 2 profiles. A build targeting one of the ranges below gets that
+table; a range spanning more than one resolves to the least capable level for
+each component.
+
+##### `>=1.18 <2 <1.18.18`
+
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
 | `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | exact | — |
@@ -390,6 +583,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+| `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Project delivery validation records:
 
@@ -399,6 +594,46 @@ Project delivery validation records:
 | 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
 | 1.18.29 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
 | 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
+| 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | permission.skill deny withheld discovery and rejected forced model loading, while run --command explicitly invoked the same gated skill and delivered its body over loopback; allow restored discovery. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
+| 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
+
+##### `>=1.18 <2 >=1.18.18`
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | unsupported | — |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | emulated | A generated config callback sets a named permission.skill deny/allow rule. Deny withholds automatic selection and forced skill-tool loading; explicit slash invocation still loads the skill body. |
+| `agent-plugin.mcp.stdio` | emulated | A project launcher resolves portable paths and variables at runtime; dependencies are supplied by the project. |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace, at project scope or any other. |
+| `agent-plugin.runtime-package` | unsupported | Of OpenCode's three measured routes only a registry-installed package resolves a dependency closure, and it does so from its own npm manifest rather than from this component's. A project plugin is read from .opencode/plugins/ with no install step at all, so a manifest and lockfile written beside it would leave no node_modules. Bundle a Node component's dependencies, which works on every route. |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+| `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.18.34 | 2026-10-04 | live-probe | `.capture/skill-invocation` | On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and rejected a forced skill-tool call that succeeded without the rule. A v1 plugin config callback supplied the same effective rule. Claude frontmatter and Codex policy alone did not hide the controls. This is deny behavior, not established user-invoked-only equivalence. |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
+| 1.18.29 | 2026-09-11 | live-probe | `.capture/project-integration` | Repository-local hook and skill playback plus loopback MCP transports; activation boundaries are recorded in the capture notes. |
+| 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
+| 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | permission.skill deny withheld discovery and rejected forced model loading, while run --command explicitly invoked the same gated skill and delivered its body over loopback; allow restored discovery. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
+| 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
 
 Project support is independent of package projection.
 
@@ -409,10 +644,18 @@ Evidence: `.capture/shell-dialects`.
 
 #### Agent Plugin projection
 
+Support resolves by harness version, and the recommended range `>=1.18 <2`
+spans 2 profiles. A build targeting one of the ranges below gets that
+table; a range spanning more than one resolves to the least capable level for
+each component.
+
+##### `>=1.18 <2 <1.18.18`
+
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | — |
 | `agent-plugin.skills` | emulated | OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
+| `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
 | `agent-plugin.mcp.stdio` | emulated | A project plugin has no declarative config, so the servers are contributed by a generated module that resolves the install directory at load time and launches each one through a generated Node launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and expands args, env values and cwd. cwd is emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. The declared environment is applied by the launcher rather than through OpenCode's environment key, whose merge-or-replace behaviour is uncaptured, and the data directory is chosen by Hooknostic rather than by OpenCode, so the contract is emulated. Node must be on PATH, because the launcher is a Node program. |
 | `agent-plugin.mcp.streamable-http` | exact | — |
 | `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
@@ -425,6 +668,8 @@ Known degradations, reported as `HN101`:
 | --- | --- | --- | --- |
 | `opencode:skill-name-unqualified` | `agent-plugin.skills` | A skill that cannot be named `<plugin>-<skill>` -- the name would pass 64 characters or break the Agent Skills name rules, duplicate another skill in the package, or sit on no rewritable frontmatter line -- keeps its bare name in OpenCode's flat skill namespace, where another plugin's skill of that name would hide it. | `.capture/opencode-skill-namespace` |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+| `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Projection validation records:
 
@@ -449,6 +694,62 @@ Projection validation records:
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with "Plugin export is not a function". |
 | 1.18.29 | 2026-09-08 | type-derived | `.capture/opencode-agent-plugin` | A remote MCP server is attempted as [StreamableHTTP, SSE] in that order, with declared headers passed to both, which is why sse is emulated rather than unsupported. |
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A projected server started through the generated launcher received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and its declared working directory; PLUGIN_ROOT resolved to the nested package rather than to the generated module's own directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI. |
+| 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package whose config callback supplied skills.paths and permission.skill using qualified gate-probe-* names: deny withheld discovery and forced loading, explicit run --command still delivered the gated body, and allow restored discovery over loopback. |
+| 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
+
+##### `>=1.18 <2 >=1.18.18`
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | — |
+| `agent-plugin.skills` | emulated | OpenCode lists every skill in one flat namespace, so two plugins shipping a skill of the same name leave only one reachable, where Claude and Codex qualify each by its plugin. The projection names each skill `<plugin>-<skill>` by rewriting only its SKILL.md frontmatter name; the directory keeps its portable name, so package paths into it still resolve. A skill already named for its plugin keeps its name. The emitted name no longer matches its directory, as Agent Skills requires, which OpenCode accepts. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
+| `agent-plugin.skills.invocation-policy` | emulated | A generated config callback sets a named permission.skill deny/allow rule. Deny withholds automatic selection and forced skill-tool loading; explicit slash invocation still loads the skill body. |
+| `agent-plugin.mcp.stdio` | emulated | A project plugin has no declarative config, so the servers are contributed by a generated module that resolves the install directory at load time and launches each one through a generated Node launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and expands args, env values and cwd. cwd is emitted absolutely, including for the portable default of the plugin root, because OpenCode resolves a relative one from the workspace directory. The declared environment is applied by the launcher rather than through OpenCode's environment key, whose merge-or-replace behaviour is uncaptured, and the data directory is chosen by Hooknostic rather than by OpenCode, so the contract is emulated. Node must be on PATH, because the launcher is a Node program. |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | emulated | OpenCode declares no sse transport; a remote server is reached by the client trying StreamableHTTP and then SSE, so an sse server connects through that fall-back rather than through a declared transport. |
+| `agent-plugin.client-extension.files` | unsupported | OpenCode reads no portable client-extension namespace. |
+| `agent-plugin.runtime-package` | unsupported | Nothing reads the manifest this component supplies. All three OpenCode routes are now measured: a module in .opencode/plugins/ is read from disk with no install step; a package named by a local path in opencode.json is loaded rather than installed, and its declared dependencies do not resolve; and a PUBLISHED module installed by name does install its dependency closure -- but from the package's own npm manifest, which this projector generates, while the component's manifest and lockfile are copied into the nested author package where nothing reads them. Honouring it there would mean merging the runtime manifest's dependencies into the generated one, and would work on one route of three. Bundling works on all three, and Hooknostic never inventories node_modules at any depth, so npm vendoring is not reachable through this build either. Portable package content can instead be supplied by an explicit components.materialize provider at build time; author-supplied content is also copied verbatim. |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `opencode:skill-name-unqualified` | `agent-plugin.skills` | A skill that cannot be named `<plugin>-<skill>` -- the name would pass 64 characters or break the Agent Skills name rules, duplicate another skill in the package, or sit on no rewritable frontmatter line -- keeps its bare name in OpenCode's flat skill namespace, where another plugin's skill of that name would hide it. | `.capture/opencode-skill-namespace` |
+| `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+| `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.18.33 | 2026-09-30 | live-probe | `.capture/skill-directory` | Over the loopback model with isolated state, the skill tool loaded a project skill from .agents/skills and handed the model its body with every ${...} as written (${CLAUDE_SKILL_DIR}, ${CLAUDE_PLUGIN_ROOT}, ${CLAUDE_PLUGIN_DATA}, ${CLAUDE_SESSION_ID}, ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA}, ${HOME}), followed by "Base directory for this skill: <absolute path>" and "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory." |
+| 1.18.31 | 2026-09-23 | live-probe | `.capture/opencode-skill-namespace` | Two installed plugins each shipping skills/status/SKILL.md named status: `opencode debug skill` listed one status, the same plugin's in both plugin orders, so the other was unreachable. With only the frontmatter names changed to alpha-status and beta-status and the directories untouched, both were listed at their original locations, nothing was logged about the name differing from its directory, and a model call loaded alpha-status through the skill tool. |
+| 1.18.32 | 2026-09-21 | live-probe | `.capture/mcp-child-path` | An arbitrary synthetic ambient variable reached a stdio child launched from the actual projected package with or without components.mcpEnvironment, establishing that OpenCode needs no target-specific forwarding declaration. |
+| 1.18.31 | 2026-09-16 | live-probe | `.capture/mcp-child-path` | A projected stdio MCP child inherited the parent PATH unchanged, while the generated launcher bound PLUGIN_ROOT to the nested package and supplied PLUGIN_DATA; bare runner commands remained resolvable. |
+| 1.18.30 | 2026-09-16 | live-probe | `.capture/opencode-npm-publish` | The third route is now measured: this projector's output, published unmodified to a loopback registry and installed with `opencode plugin <name>`, loaded through exports["./server"] from the package cache, and the component injector contributed both the skills path and the stdio server -- each resolving its own sibling assets at the cache location rather than the build output. A scoped name works the same way, which matters because an Agent Plugins manifest name cannot be one. |
+| 1.18.30 | 2026-09-16 | live-probe | `.capture/opencode-npm-publish` | A registry-installed plugin's declared dependencies ARE installed, unlike on either other route: a published package declaring is-number@7.0.0 resolved it from the cache root beside itself, a specifier published nowhere failed, and deleting that dependency from the installed closure flipped the result -- so the check discriminates. This is the one OpenCode route on which a plugin could declare dependencies rather than bundle them. |
+| 1.18.30 | 2026-09-16 | live-probe | `.capture/opencode-npm-publish` | An installed plugin does not follow new publications. The cache directory is named @latest but pins the exact version resolved at first load; after publishing 1.0.1 over an installed 1.0.0 the consumer still loaded 1.0.0, and `opencode plugin <name> --force` -- documented as "replace existing plugin version" -- did not move it. Deleting the cached package root did. Unlike Claude and Codex, bumping the version is not enough here. |
+| 1.18.31 | 2026-09-15 | live-probe | `.capture/harness-playback` | What this projector EMITS is an installable unit, not merely the route it targets: a projected package written outside the project and named by absolute path in a root opencode.json loaded through its generated exports["./server"] entry, and the component injector reached through that entry's re-export started the stdio server through the generated launcher -- ${PLUGIN_ROOT} resolved to the nested author package, ${PLUGIN_DATA} to a directory outside both the package and the project, and the declared cwd anchored inside the package. The 1.18.30 records below establish that such a directory loads; this establishes that the build produces one. |
+| 1.18.31 | 2026-09-15 | live-probe | `.capture/opencode-plugin-routes` | A relative plugin entry resolves against the declaring config file's own directory, from a matched pair against a ROOT opencode.json naming "./plugin-package": the package at <project>/plugin-package loaded, the same package at <project>/.opencode/plugin-package did not. This is the same rule the 1.18.30 .opencode/opencode.json observation shows, seen from a config file in a different directory, and upstream closed a report of it as intended (anomalyco/opencode#28384) -- so it is a rule an author writes against, not a defect awaiting a fix. |
+| 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-plugin-routes` | A local directory declaring exports["./server"] loads as a plugin with no registry publication, and that condition is preferred over `main` when the two name different files -- so an emitted npm package is a real installable unit and its manifest is read, not decorative. |
+| 1.18.30 | 2026-09-15 | live-probe | `.capture/opencode-plugin-routes` | Two distinct functions exported from one entry module are each loaded exactly once, while one function exported as both a named export and `default` is loaded once rather than twice -- which is what lets a single package entry re-export the hook plugin and the component injector. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A project plugin's config hook contributed both an mcp entry and a skills.paths entry, each visible in `opencode debug config`, and the skill at the injected path was listed by `opencode debug skill`. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | skills.paths is additive: an injected path coexisted with the project's own configured path and with the default .agents/skills discovery directory. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Interpolation runs BEFORE plugin config hooks: in one run the same {env:VAR} header expanded when it came from opencode.json and survived verbatim when a plugin injected it. A plugin therefore cannot emit OpenCode's own syntax -- and per Agent Plugins 1.0 it must not expand the value itself either, so such text stays literal. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | The plugin scan is flat and confined to .opencode/plugin(s): two sibling modules both loaded, while .opencode/plugins/sub/probe.js and .opencode/other/probe.js did not, so the whole package nests safely below the scanned directory -- which is where it goes, because an MCP server's ${PLUGIN_ROOT} argv needs the implementation shipped beside it. |
+| 1.18.29 | 2026-09-08 | type-derived | `.capture/opencode-agent-plugin` | McpLocalConfig declares an optional cwd whose own description reads "Working directory for the MCP server process. Relative paths resolve from the workspace directory", so a working directory IS expressible and must be absolute; an injected cwd also survived config resolution unchanged. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | Every export of a plugin module is loaded as a plugin: a module carrying a non-function named export beside its default failed to load entirely with "Plugin export is not a function". |
+| 1.18.29 | 2026-09-08 | type-derived | `.capture/opencode-agent-plugin` | A remote MCP server is attempted as [StreamableHTTP, SSE] in that order, with declared headers passed to both, which is why sse is emulated rather than unsupported. |
+| 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A projected server started through the generated launcher received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and its declared working directory; PLUGIN_ROOT resolved to the nested package rather than to the generated module's own directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI. |
+| 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package whose config callback supplied skills.paths and permission.skill using qualified gate-probe-* names: deny withheld discovery and forced loading, explicit run --command still delivered the gated body, and allow restored discovery over loopback. |
+| 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
 
 ### OpenCode v2
 
@@ -496,6 +797,7 @@ Fields not listed are never produced; declaring one reports `HN108`.
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | exact | Native opencode/autoinvoke metadata (discovered skills) or autoinvoke (registered package skills) withholds automatic selection while explicit skill loading remains available. |
 | `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
 | `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
@@ -507,6 +809,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+| `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Project delivery validation records:
 
@@ -519,6 +823,8 @@ Project delivery validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-remote` | Generated project and packed relocated package execute Streamable HTTP MCP tools with recorded headers. Project variables expand and missing variables disable only the affected server; package placeholders remain literal. Default and legacy protocol probes do not fall back to SSE after HTTP 405. OAuth is unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session. |
+| 2.0.17 | 2026-10-11 | live-probe | `.capture/skill-invocation` | metadata opencode/autoinvoke:false withheld project discovery, true restored it, and @skill with a scripted skill tool call retained explicit body loading over loopback. A forced skill call could still load the hidden body. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
+| 2.0.20 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project metadata and installed-package registered-skill probes: autoinvoke:false hid discovery while forced skill calls and explicit references plus loading retained body access; native allow restored installed-package discovery. |
 
 Project support is independent of package projection.
 
@@ -533,6 +839,7 @@ Evidence: `.capture/shell-dialects`.
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | — |
 | `agent-plugin.skills` | emulated | Registers skill definitions with package-qualified IDs and their authored names through the v2 skill domain. ${SKILL_DIR} in a SKILL.md body becomes `.`: OpenCode expands nothing in skill text, and its skill tool gives the model the skill's base directory and tells it that relative paths in the skill are relative to it (ADR-0028). |
+| `agent-plugin.skills.invocation-policy` | exact | Native opencode/autoinvoke metadata (discovered skills) or autoinvoke (registered package skills) withholds automatic selection while explicit skill loading remains available. |
 | `agent-plugin.mcp.stdio` | emulated | A generated launcher resolves portable paths and environment; a v2 MCP transform registers the server. |
 | `agent-plugin.mcp.streamable-http` | exact | Loopback Streamable HTTP executes MCP tools with declared headers. Direct project environment references expand; package values remain literal. Default OAuth discovery, dynamic registration, PKCE and refresh are verified against a local issuer; provider-specific OAuth options are unverified. |
 | `agent-plugin.mcp.sse` | unsupported | A legacy SSE endpoint rejecting POST receives no GET fallback in the v2 capture and fails to connect. |
@@ -544,6 +851,8 @@ Known degradations, reported as `HN101`:
 | Degradation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
 | `opencode:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds a Claude Code variable such as ${CLAUDE_PLUGIN_ROOT}, ${PLUGIN_ROOT} or ${PLUGIN_DATA} anywhere, ${SKILL_DIR} in its frontmatter, or ${SKILL_DIR} at all in a project skill discovered in place, reaches the model with that text as written: OpenCode expands nothing in skill text. | `.capture/skill-directory` |
+| `opencode:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
+| `opencode:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
 Projection validation records:
 
@@ -556,4 +865,8 @@ Projection validation records:
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | OpenCode resolves a scoped npm coordinate from a read-only loopback registry serving an actual pnpm tarball. Its cached installation loads skills, starts stdio MCP with the expected environment/cwd, and executes generated hooks. Separate native/injected skill and Code Mode MCP calls deliver content to recorded model requests. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2-remote` | Generated project and packed relocated package execute Streamable HTTP MCP tools with recorded headers. Project variables expand and missing variables disable only the affected server; package placeholders remain literal. Default and legacy protocol probes do not fall back to SSE after HTTP 405. OAuth is unverified. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session. |
+| 2.0.17 | 2026-10-11 | live-probe | `.capture/skill-invocation` | metadata opencode/autoinvoke:false withheld project discovery, true restored it, and @skill with a scripted skill tool call retained explicit body loading over loopback. A forced skill call could still load the hidden body. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
+| 2.0.20 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project metadata and installed-package registered-skill probes: autoinvoke:false hid discovery while forced skill calls and explicit references plus loading retained body access; native allow restored installed-package discovery. |
+| 2.0.17 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package and registered package-qualified skills through ctx.skill.transform: autoinvoke:false withheld discovery while @plugin/skill plus a scripted skill call retained body loading over loopback; true restored discovery. |
+| 2.0.20 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated project metadata and installed-package registered-skill probes: autoinvoke:false hid discovery while forced skill calls and explicit references plus loading retained body access; native allow restored installed-package discovery. |
 

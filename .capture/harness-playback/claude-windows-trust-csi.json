@@ -1,0 +1,24 @@
+{
+  "harness": "Claude Code",
+  "version": "2.1.238",
+  "date": "2026-10-11",
+  "baselineRevision": "831a2e3",
+  "provenance": "processed-terminal",
+  "method": "Native Windows ConPTY folder-trust dialog on the pre-policy baseline; the original driver strips CSI matching only digits, semicolons and question marks, then whitespace. Private CSI survives that transform. No user prompt was submitted.",
+  "sourceReportSha256": "fb8d92645dd8c8568bf49791f5ecaa6bbc8b72977f92b6477189e129b54a36bb",
+  "observations": [
+    {
+      "scenario": "offline harness playback scenarios: claude asking for approval surfaces the harness's native interactive prompt",
+      "screen": "\u001b]0;claude\u0007──────────────────────────────────────────────────────────────────────────────────────────────────────────────Accessingworkspace:C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-ptyapproval-claude-XZSguVQuicksafetycheck:Isthisaprojectyoucreatedoroneyoutrust?(Likeyourowncode,awell-knownopensourceproject,orworkfromyourteam).Ifnot,takeamomenttoreviewwhat'sinthisfolderfirst.ClaudeCode'llbeabletoread,edit,andexecutefileshere.Securityguide>1.Yes,Itrustthisfolder2.No,exitEntertoconfirm·Esctocancel\u001b[>0q>>>>>>"
+    },
+    {
+      "scenario": "offline harness playback scenarios: claude an interactive permission prompt is observable and deniable from a hook",
+      "screen": "\u001b]0;claude\u0007──────────────────────────────────────────────────────────────────────────────────────────────────────────────Accessingworkspace:C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-ptyperm-claude-dsRqQpQuicksafetycheck:Isthisaprojectyoucreatedoroneyoutrust?(Likeyourowncode,awell-knownopensourceproject,orworkfromyourteam).Ifnot,takeamomenttoreviewwhat'sinthisfolderfirst.ClaudeCode'llbeabletoread,edit,andexecutefileshere.Securityguide>1.Yes,Itrustthisfolder2.No,exitEntertoconfirm·Esctocancel\u001b[>0q>>>>>>"
+    }
+  ],
+  "selectionEntry": {
+    "scenario": "offline harness playback scenarios: claude asking for approval surfaces the harness's native interactive prompt",
+    "screen": "\u001b]0;claude\u0007──────────────────────────────────────────────────────────────────────────────────────────────────────────────Accessingworkspace:C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-ptyapproval-claude-CC6Tg7Quicksafetycheck:Isthisaprojectyoucreatedoroneyoutrust?(Likeyourowncode,awell-knownopensourceproject,orworkfromyourteam).Ifnot,takeamomenttoreviewwhat'sinthisfolderfirst.ClaudeCode'llbeabletoread,edit,andexecutefileshere.Securityguide>1.Yes,Itrustthisfolder2.No,exitEntertoconfirm·Esctocancel\u001b[>0q",
+    "sourceReportSha256": "00fb1bec26206ff6247fe091bc8c1296a96d0e9dd6ae6ecd38e4e9ef075460d2"
+  }
+}

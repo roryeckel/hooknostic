@@ -61,5 +61,6 @@ export default async () => ({
     if (!paths.includes(own)) {
       config.skills = { ...(config.skills ?? {}), paths: [...paths, own] };
     }
+
   },
 });

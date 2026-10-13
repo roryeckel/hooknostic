@@ -21,6 +21,7 @@ import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
+import { codexSkillPolicy } from "./skill-policy.js";
 import {
   classifyCodexTool,
   CODEX_FILE_SHAPES,
@@ -103,6 +104,11 @@ export function codexAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    skillInvocationPolicy: {
+      destination: ".agents/skills",
+      discoveryDirectories: [".codex/skills"],
+      projectFiles: codexSkillPolicy,
+    },
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.

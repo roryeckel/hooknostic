@@ -4,6 +4,7 @@ import type {
   AgentPluginProjectionProfile,
   AgentPluginProjector,
   ProjectComponents,
+  SkillPolicyFileProjector,
 } from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
@@ -26,6 +27,8 @@ import type { PluginIR } from "./ir.js";
 import type { ProjectIntegration } from "./project-files.js";
 
 export interface ProjectComponentOptions {
+  /** Policies actually applied to discovered copies, including copies emitted by other targets. */
+  invocationPolicies?: Readonly<Record<string, boolean>>;
   /** Effective startup timeout per MCP server for this target. */
   mcpStartupTimeoutMs?: Readonly<Record<string, number>>;
   /** Stdio cwd overrides already validated as contained by the project root. */
@@ -275,6 +278,13 @@ export interface HarnessAdapter {
   /** Independently maintained families; omitted for single-family adapters. */
   readonly harnessFamilies?: readonly HarnessMetadata[];
   projectComponentProfiles?: readonly AgentPluginProjectionProfile[];
+  /** Adapter-owned native edits composed for targets sharing a project skill directory. */
+  skillInvocationPolicy?: {
+    destination: string;
+    /** Captured alternate native discovery directories, relative to project ancestors. */
+    discoveryDirectories?: readonly string[];
+    projectFiles: SkillPolicyFileProjector;
+  };
   projectPaths?: readonly string[];
   /**
    * Native project paths the harness reads from the root checkout, never from

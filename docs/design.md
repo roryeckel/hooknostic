@@ -890,6 +890,19 @@ the model as written (ADR-0028), is an HN101 degradation: fatal by default, and 
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
 
+A skill's optional `metadata["hooknostic/allow-implicit-invocation"]` accepts only
+the strings `"true"` and `"false"`. It normalizes to `SkillPolicy.allowImplicitInvocation`
+on both source records and introduces the separate component capability
+`agent-plugin.skills.invocation-policy`. Canonical policy projects after native
+overlays; absence preserves authored native behavior. An unavailable gate fails,
+or the whole skill is omitted under `onUnsupported: "warn"`. Named acceptance of
+`<adapter>:skill-implicit-invocation-unenforced` permits ungated emission with an
+informational HN101 and the actual support level retained. In-place authored
+sources require the separate `<adapter>:skill-policy-in-place` acceptance to be
+left unchanged. Neither acceptance relaxes other shortfalls or ownership checks.
+Invalid portable policy remains fatal under `onInvalid: "warn"`. Shared native
+destinations compose all readers' edits and omissions before emission (ADR-0030).
+
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
 `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the
 config file, the hook `entry`, every target output, the build report, and staging

@@ -1,10 +1,18 @@
 import type { AgentPluginPackage, AgentPluginProjectionProfile, AgentPluginProjector } from "@hooknostic/agent-plugin";
+import { skillInvocationPolicyProfiles, withSkillInvocationPolicy } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
 import { projectComponents, projectIntegrationWith } from "../project.js";
 import { createOpenCodeAgentPluginProjector, RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT } from "../project-agent-plugin.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "../skill-text.js";
 import { opencodeV2Harness } from "./harness.js";
+import {
+  OPENCODE_V2_SKILL_POLICY_RATIONALE,
+  opencodeV2NewerSkillPolicyValidation,
+  opencodeV2PackageSkillPolicyValidation,
+  opencodeV2ProjectSkillPolicyValidation,
+  opencodeV2SkillPolicy,
+} from "./skill-policy.js";
 
 // v2 loads .opencode/plugins from every ancestor of the session directory and
 // keeps the outermost copy of an id (.capture/opencode-v2, nested drive), so
@@ -38,7 +46,7 @@ const conversion = `const nativeServer = (server) => {
     ...(timeout === undefined ? {} : { timeout: { startup: timeout } }) };
 };`;
 
-export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: opencodeV2Harness.recommendedRange,
     components: {
@@ -128,6 +136,13 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
     },
   },
 ];
+export const opencodeV2ProjectProfiles = skillInvocationPolicyProfiles(
+  nativeOpenCodeV2ProjectProfiles,
+  opencodeV2ProjectSkillPolicyValidation,
+  OPENCODE_V2_SKILL_POLICY_RATIONALE,
+  "exact",
+  [opencodeV2NewerSkillPolicyValidation],
+);
 
 export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = (...args) =>
   projectComponents(
@@ -184,6 +199,7 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
     } : server));
   });
   const values = skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description,
+    ...(skill.policy === undefined ? {} : { autoinvoke: skill.policy.allowImplicitInvocation }),
     path: join(root, skill.manifestPath),
     content: readFileSync(join(root, skill.manifestPath), "utf8").replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n/, ""),
   }));
@@ -191,7 +207,7 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
 } };\n`;
 }
 
-export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
+const nativeOpenCodeV2Projector: AgentPluginProjector<TargetSpec> = {
   ...createOpenCodeAgentPluginProjector({ injector, entry: v2PackageEntry }),
   qualifiesSkillNames: false,
   profiles: opencodeV2ProjectProfiles.map((profile) => ({
@@ -207,3 +223,17 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
     },
   })),
 };
+export const opencodeV2Projector = withSkillInvocationPolicy(
+  {
+    ...nativeOpenCodeV2Projector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeOpenCodeV2Projector.profiles,
+      opencodeV2PackageSkillPolicyValidation,
+      OPENCODE_V2_SKILL_POLICY_RATIONALE,
+      "exact",
+      [opencodeV2NewerSkillPolicyValidation],
+    ),
+  },
+  "opencode",
+  opencodeV2SkillPolicy,
+);

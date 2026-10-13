@@ -246,14 +246,41 @@ jobs:
         run: pnpm run bundle
 
       - name: Run model-free playback
+        id: playback
         run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
           # Deliberately blank: the test routes model traffic to loopback.
           ANTHROPIC_API_KEY: ""
           ANTHROPIC_AUTH_TOKEN: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
+
+      - name: Upload OpenCode v2 failure diagnostics
+        if: ${{ always() && matrix.harness == 'opencode-v2' && steps.playback.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: opencode-v2-playback-${{ matrix.os }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          include-hidden-files: true
+          # Keep generated inputs and observations; omit dependency trees and isolated homes.
+          path: |
+            ${{ runner.temp }}/opencode-v2-playback/**/phases.jsonl
+            ${{ runner.temp }}/opencode-v2-playback/**/current-phase.json
+            ${{ runner.temp }}/opencode-v2-playback/**/*.stdout.log
+            ${{ runner.temp }}/opencode-v2-playback/**/*.stderr.log
+            ${{ runner.temp }}/opencode-v2-playback/**/failure.json
+            ${{ runner.temp }}/opencode-v2-playback/**/result.json
+            ${{ runner.temp }}/opencode-v2-playback/**/model.json
+            ${{ runner.temp }}/opencode-v2-playback/**/remote.json
+            ${{ runner.temp }}/opencode-v2-playback/**/registry.json
+            ${{ runner.temp }}/opencode-v2-playback/**/trace.jsonl
+            ${{ runner.temp }}/opencode-v2-playback/**/captured/**
+            ${{ runner.temp }}/opencode-v2-playback/**/project/opencode.json
+            ${{ runner.temp }}/opencode-v2-playback/**/package-source/**
+            !${{ runner.temp }}/opencode-v2-playback/**/node_modules/**
 
   # The ordinary codex playback lane installs referenceVersion, which predates
   # the Code Mode capture, so its Code Mode drives skip there. This lane
