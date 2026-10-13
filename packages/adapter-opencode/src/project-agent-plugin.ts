@@ -33,6 +33,7 @@ import { qualifiedSkillNames, renameSkillManifest } from "./skill-names.js";
 import {
   OPENCODE_SKILL_POLICY_RATIONALE,
   opencodeNewerSkillPolicyValidation,
+  opencodeNumericPermissionValidation,
   opencodePackageSkillPolicyValidation,
   opencodePermissionOrderValidation,
   opencodePermissionPreservationValidation,
@@ -890,7 +891,12 @@ export const opencodeAgentPluginProjector = withSkillInvocationPolicy(
       opencodePackageSkillPolicyValidation,
       OPENCODE_SKILL_POLICY_RATIONALE,
       "emulated",
-      [opencodeNewerSkillPolicyValidation, opencodePermissionOrderValidation, opencodePermissionPreservationValidation],
+      [
+        opencodeNewerSkillPolicyValidation,
+        opencodePermissionOrderValidation,
+        opencodePermissionPreservationValidation,
+        opencodeNumericPermissionValidation,
+      ],
     ),
   },
   "opencode",

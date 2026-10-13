@@ -1,0 +1,156 @@
+{
+  "provenance": "live-probe",
+  "harness": "opencode-v1",
+  "version": "1.18.18",
+  "platform": "win32",
+  "scope": "Isolated project discovery through the generated callback; credential-free loopback with no model tool calls. No installed-package, forced-loading or command-menu behavior is inferred.",
+  "extraction": "Description marker presence summarizes the first recorded model request carrying tools. Raw requests and emitted callbacks remain in ignored captured/permission-numeric-*; hashes identify complete requests. Inputs and summaries contain no account paths.",
+  "cases": [
+    {
+      "label": "numeric-deny-baseline",
+      "inputPermission": {
+        "*": "allow"
+      },
+      "capturedAt": "2026-10-13T02:55:40.485Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "123",
+        "control"
+      ],
+      "rawRequestsSha256": "90272c6472d75d111a8a2a28127a6a0ac27a917c45385bcd8d23eb53bfbf3563"
+    },
+    {
+      "label": "numeric-deny-false",
+      "inputPermission": {
+        "*": "allow"
+      },
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T02:55:49.444Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "control"
+      ],
+      "rawRequestsSha256": "ddb5bfd6f6db729abf3cee8eee8770bfb3f91f9dd1b94724a7df48e0d39c2bd6"
+    },
+    {
+      "label": "numeric-deny-true",
+      "inputPermission": {
+        "*": "allow"
+      },
+      "allowImplicitInvocation": true,
+      "capturedAt": "2026-10-13T02:55:58.452Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "123",
+        "control"
+      ],
+      "rawRequestsSha256": "397ed2154d9c83702d65f542cd7ffdc849652757bdbaf7947e1368378e1f6616"
+    },
+    {
+      "label": "numeric-allow-baseline",
+      "inputPermission": {
+        "*": "deny",
+        "read": "allow"
+      },
+      "capturedAt": "2026-10-13T02:56:07.471Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [],
+      "rawRequestsSha256": "1e2e7aa5398e965961529f877015cca88a21613e73832e9a1f9e1f5798b9fad4"
+    },
+    {
+      "label": "numeric-allow-false",
+      "inputPermission": {
+        "*": "deny",
+        "read": "allow"
+      },
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T02:56:16.148Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [],
+      "rawRequestsSha256": "d15f3c24f25e4dd4a0712760f0e0f1704a65c0fcf8089ad59e22dbcf4c23cb85"
+    },
+    {
+      "label": "numeric-allow-true",
+      "inputPermission": {
+        "*": "deny",
+        "read": "allow"
+      },
+      "allowImplicitInvocation": true,
+      "capturedAt": "2026-10-13T02:56:24.840Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "123"
+      ],
+      "rawRequestsSha256": "592af704321ff85c5cbf274d8c5a19147ac948b7fadca4ba6524c2a86b7f885d"
+    },
+    {
+      "label": "numeric-control-baseline",
+      "inputPermission": {
+        "*": "deny",
+        "skill": {
+          "123": "allow"
+        },
+        "read": "allow"
+      },
+      "capturedAt": "2026-10-13T02:56:33.549Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "123"
+      ],
+      "rawRequestsSha256": "4d4c498ae3981e07b958156646002b8b9e726bafbb476a955cb4555e58ace4e7"
+    },
+    {
+      "label": "numeric-control-false",
+      "inputPermission": {
+        "*": "deny",
+        "skill": {
+          "123": "allow"
+        },
+        "read": "allow"
+      },
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T02:56:42.365Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "123"
+      ],
+      "rawRequestsSha256": "11f7fd7d0c29d05825538adee84403bdb28286a709b0b5a0f2953f702c6d8abf"
+    },
+    {
+      "label": "numeric-control-true",
+      "inputPermission": {
+        "*": "deny",
+        "skill": {
+          "123": "allow"
+        },
+        "read": "allow"
+      },
+      "allowImplicitInvocation": true,
+      "capturedAt": "2026-10-13T02:56:51.309Z",
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "review",
+        "123"
+      ],
+      "rawRequestsSha256": "d3e2eb2fbd059f24a9fa73dfe2a54b26aeb271d3b4c080ea6c35ad2327b437b5"
+    }
+  ]
+}

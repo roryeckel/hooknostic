@@ -19,25 +19,33 @@ const versionResult = await runProcess(binary, ["--version"], {
 const version = versionResult.stdout.trim();
 if (versionResult.code !== 0 || version !== opencodeProjectSkillPolicyValidation.version)
   throw new Error("Reference binary mismatch");
-const out = new URL(`captured/permission-preservation-${Date.now()}/`, import.meta.url);
+const numeric = process.argv.includes("--numeric");
+const probe = numeric ? "permission-numeric" : "permission-preservation";
+const out = new URL(`captured/${probe}-${Date.now()}/`, import.meta.url);
 mkdirSync(out, { recursive: true });
 const cases = [];
-const inputs = [
+const inputs = numeric ? [
+  { name: "numeric-deny", skill: "123", permission: { "*": "allow" }, control: true },
+  { name: "numeric-allow", skill: "123", permission: { "*": "deny", read: "allow" }, control: false },
+  { name: "numeric-control", controlName: "123", permission: { "*": "deny", skill: { "123": "allow" }, read: "allow" }, control: true, baseline: false },
+] : [
   { name: "global-deny", permission: { skill: { control: "allow", review: "ask" }, "*": "deny", read: "allow" }, control: false },
   { name: "global-allow", permission: { skill: "deny", "*": "allow" }, control: true },
   { name: "pattern-map", permission: { skill: { "*": "deny", control: "allow" }, "sk?l*": { control: "deny", "*": "allow" }, "edit*": "deny" }, control: true },
   { name: "optional-tail", permission: { skill: "allow", "skill *": "deny", read: "allow" }, control: false },
 ];
 for (const input of inputs) {
+  const skill = input.skill ?? "review";
+  const control = input.controlName ?? "control";
   for (const allowed of [undefined, false, true]) {
     const label = `${input.name}-${allowed ?? "baseline"}`;
     const root = mkdtempSync(join(tmpdir(), "hkn-skill-preservation-"));
     const project = join(root, "project");
     mkdirSync(project);
-    for (const name of ["review", "control"]) {
+    for (const name of [skill, control]) {
       const dir = join(project, ".agents/skills", name);
       mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: PRESERVE_DESCRIPTION_${name} capture control.\n---\nPRESERVE_BODY_${name}\n`);
+      writeFileSync(join(dir, "SKILL.md"), `---\nname: "${name}"\ndescription: PRESERVE_DESCRIPTION_${name} capture control.\n---\nPRESERVE_BODY_${name}\n`);
     }
     const env = { ...withoutCredentials(), HOME: root, USERPROFILE: root, PWD: project,
       XDG_CONFIG_HOME: openCodePlaybackConfigHome(project), XDG_DATA_HOME: join(root, "data"),
@@ -57,7 +65,7 @@ for (const input of inputs) {
       if (allowed !== undefined) {
         const plugins = join(project, ".opencode/plugins");
         mkdirSync(plugins, { recursive: true });
-        const generated = `export default async () => ({ config(config) { ${skillPermissionSource({ review: allowed })} } });\n`;
+        const generated = `export default async () => ({ config(config) { ${skillPermissionSource({ [skill]: allowed })} } });\n`;
         writeFileSync(join(plugins, "policy.js"), generated);
         writeFileSync(new URL(`${label}.plugin.js`, out), generated);
       }
@@ -70,7 +78,7 @@ for (const input of inputs) {
     writeFileSync(new URL(`${label}.stdout.txt`, out), result.stdout);
     writeFileSync(new URL(`${label}.stderr.txt`, out), result.stderr);
     const first = JSON.stringify(server.requests.find(request => request.tools?.length));
-    const visible = ["review", "control"].filter(name => first?.includes(`PRESERVE_DESCRIPTION_${name}`));
+    const visible = [skill, control].filter(name => first?.includes(`PRESERVE_DESCRIPTION_${name}`));
     const summary = { label, inputPermission: input.permission,
       ...(allowed === undefined ? {} : { allowImplicitInvocation: allowed }),
       capturedAt: new Date().toISOString(), exit: result.code, errors: server.errors,
@@ -80,13 +88,13 @@ for (const input of inputs) {
     cases.push(summary);
     writeFileSync(new URL("summary.json", out), JSON.stringify(cases, null, 2) + "\n");
     if (result.code !== 0 || server.errors.length || !first) throw new Error(`Inconclusive native run: ${label}`);
-    if (visible.includes("control") !== input.control || visible.includes("review") !== (allowed ?? input.control))
+    if (visible.includes(control) !== input.control || visible.includes(skill) !== (allowed ?? input.baseline ?? input.control))
       throw new Error(`Unexpected discovery: ${label}`);
   }
 }
-writeFileSync(new URL("evidence/opencode-v1-permission-preservation.json", import.meta.url), JSON.stringify({
+writeFileSync(new URL(`evidence/opencode-v1-${probe}.json`, import.meta.url), JSON.stringify({
   provenance: "live-probe", harness: "opencode-v1", version, platform: process.platform,
   scope: "Isolated project discovery through the generated callback; credential-free loopback with no model tool calls. No installed-package, forced-loading or command-menu behavior is inferred.",
-  extraction: "Description marker presence summarizes the first recorded model request carrying tools. Raw requests and emitted callbacks remain in ignored captured/permission-preservation-*; hashes identify complete requests. Inputs and summaries contain no account paths.",
+  extraction: `Description marker presence summarizes the first recorded model request carrying tools. Raw requests and emitted callbacks remain in ignored captured/${probe}-*; hashes identify complete requests. Inputs and summaries contain no account paths.`,
   cases,
 }, null, 2) + "\n");

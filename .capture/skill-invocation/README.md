@@ -287,6 +287,41 @@ through the shared callback, not installed-package loading or forced tool access
 HKN_SKILL_HARNESS_BINARY=/path/to/reference/opencode node .capture/skill-invocation/permission-preservation.mjs
 ```
 
+### Numeric permission keys and alternate omissions — 2026-10-12
+
+JavaScript enumerates integer property keys before other keys even after deletion
+and reinsertion. Consequently the generated callback's `123` deny could precede
+an existing wildcard allow, and replaying permissions could also change an
+unrelated numeric skill's effective rule. Numeric patterns now use the native
+optional-space tail (`123 *`), preserving insertion order while matching the same
+valid Agent Skills name: those names cannot contain spaces.
+
+[`evidence/opencode-v1-permission-numeric.json`](evidence/opencode-v1-permission-numeric.json)
+records nine credential-free native Windows loopback controls against the
+reference v1 binary. Baseline, deny and allow cases for skill `123` preserve a
+separate `control` skill; a second set changes `review` while preserving an
+existing permission for `123`. All nine exited zero, with no playback errors.
+The probe verifies project discovery through the shared callback, not installed
+packages, forced loading or command menus. Raw requests and emitted callbacks
+remain in ignored `captured/permission-numeric-*`; the evidence records hashes.
+
+```sh
+HKN_SKILL_HARNESS_BINARY=/path/to/reference/opencode node .capture/skill-invocation/permission-preservation.mjs --numeric
+```
+
+Six build regressions failed before the corrections: numeric policy enforcement,
+unrelated numeric permissions in project/package callbacks, and unowned omitted
+copies in each of the three alternate OpenCode discovery directories. The latter
+use the existing discovery evidence: reconciliation now checks alternate native
+paths as well as generated destinations before reporting omission, leaving
+authored files untouched. All 54 policy build tests pass with the fixes.
+
+Final verification: root lint, format checking, build, example regeneration and
+version-literal checking exited zero. The full suite passed 1,851 tests (83
+skipped) with two workers. Reference OpenCode v1 playback passed 35 tests (16
+skipped) with one worker and the reference binary selected explicitly. Both
+test commands exited zero; no paid-model smoke was run.
+
 ### Earlier verification
 
 The policy regression suite covers strict parsing, native overlays, preserved

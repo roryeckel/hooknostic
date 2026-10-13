@@ -11,6 +11,7 @@ import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-a
 import {
   OPENCODE_SKILL_POLICY_RATIONALE,
   opencodeNewerSkillPolicyValidation,
+  opencodeNumericPermissionValidation,
   opencodePermissionOrderValidation,
   opencodePermissionPreservationValidation,
   opencodeProjectSkillPolicyValidation,
@@ -204,5 +205,10 @@ export const projectComponentProfiles = skillInvocationPolicyProfiles(
   opencodeProjectSkillPolicyValidation,
   OPENCODE_SKILL_POLICY_RATIONALE,
   "emulated",
-  [opencodeNewerSkillPolicyValidation, opencodePermissionOrderValidation, opencodePermissionPreservationValidation],
+  [
+    opencodeNewerSkillPolicyValidation,
+    opencodePermissionOrderValidation,
+    opencodePermissionPreservationValidation,
+    opencodeNumericPermissionValidation,
+  ],
 );

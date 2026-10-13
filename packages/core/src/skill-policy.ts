@@ -167,6 +167,17 @@ export function planProjectSkillPolicies(
   }
   for (const target of readers) {
     const plan = plans.get(target.id)!;
+    // Omission must also account for authored copies outside generated destinations.
+    // Reconciliation checks these paths without acquiring ownership or deleting them.
+    for (const directory of [target.destination, ...(target.discoveryDirectories ?? [])]) {
+      if (directory === undefined) continue;
+      for (const { name } of plan.selection.omissions) {
+        if (plan.observed.some((copy) => copy.authored && copy.destination === directory && copy.skill.name === name))
+          continue;
+        plan.omittedFiles.push(`${directory}/${name}/SKILL.md`);
+      }
+    }
+    plan.omittedFiles = [...new Set(plan.omittedFiles)];
     // Adapters without a declared discovery destination retain their existing emission path.
     if (target.componentsSelected !== false && target.destination === undefined)
       plan.source.skills = plan.selection.skills;

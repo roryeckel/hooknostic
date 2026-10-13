@@ -598,6 +598,7 @@ Project delivery validation records:
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
 
 ##### `>=1.18 <2 >=1.18.18`
 
@@ -632,6 +633,7 @@ Project delivery validation records:
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
 
 Project support is independent of package projection.
 
@@ -696,6 +698,7 @@ Projection validation records:
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
 
 ##### `>=1.18 <2 >=1.18.18`
 
@@ -746,6 +749,7 @@ Projection validation records:
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-numeric.json` | Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised. |
 
 ### OpenCode v2
 

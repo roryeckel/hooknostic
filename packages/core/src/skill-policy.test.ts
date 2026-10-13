@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -140,6 +140,64 @@ function skillPermission(permission: NativePermissions, name: string): Permissio
 }
 
 describe("skill invocation policy builds", () => {
+  it("enforces numeric project skill policies after wildcard permissions", async () => {
+    const f = await fixture("project", ["oc1"]);
+    await rename(join(f.root, "skills/review"), join(f.root, "skills/123"));
+    for (const allowed of [false, true]) {
+      await writeFile(
+        join(f.root, "skills/123/SKILL.md"),
+        manifest()
+          .replace("name: review", 'name: "123"')
+          .replace('"false"', JSON.stringify(String(allowed))),
+      );
+      const built = await buildProject({ ...f.options, dryRun: true });
+      expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+      const artifact = built.plan![0]!.integration!.files.find(
+        (file) => file.path === ".opencode/plugins/hooknostic-components.js",
+      )!;
+      const path = join(f.root, `numeric-${allowed}.mjs`);
+      await writeFile(path, artifact.contents);
+      const plugin = await (await import(pathToFileURL(path).href)).default();
+      const config = { permission: { "*": allowed ? "deny" : "allow" } as NativePermissions };
+      plugin.config(config);
+      expect(skillPermission(config.permission, "123")).toBe(allowed ? "allow" : "deny");
+      expect(skillPermission(config.permission, "1234")).toBe(allowed ? "deny" : "allow");
+    }
+  });
+
+  it.each(["project", "package"] as const)("preserves unrelated numeric %s skill permissions", async (delivery) => {
+    const f = await fixture(delivery, ["oc1"]);
+    const built = await buildProject({ ...f.options, dryRun: true });
+    expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+    const path = delivery === "package" ? "hooknostic-agent-plugin.js" : ".opencode/plugins/hooknostic-components.js";
+    const plan = built.plan![0]!;
+    const artifact = [...plan.artifacts, ...(plan.integration?.files ?? [])].find((file) => file.path === path)!;
+    const file = join(f.root, "numeric-control.mjs");
+    await writeFile(file, artifact.contents);
+    const plugin = await (await import(pathToFileURL(file).href)).default();
+    const config = { permission: { "*": "deny", skill: { "123": "allow" } } as NativePermissions };
+    plugin.config(config);
+    expect(skillPermission(config.permission, "123")).toBe("allow");
+    expect(skillPermission(config.permission, "1234")).toBe("deny");
+  });
+
+  it.each([".claude/skills", ".opencode/skills", ".opencode/skill"])(
+    "refuses omission over an unowned alternate native copy in %s",
+    async (destination) => {
+      const f = await fixture("project", ["oc1"], {
+        version: opencodeHarness.recommendedRange,
+        components: { onUnsupported: "warn" },
+      });
+      const path = join(f.root, destination, "review/SKILL.md");
+      await mkdir(join(f.root, destination, "review"), { recursive: true });
+      await writeFile(path, manifest());
+      const result = await runProject({ ...f.options, command: "sync" });
+      expect(result.ok).toBe(false);
+      expect(result.errors.join(" ")).toContain("cannot omit an unowned native skill");
+      expect(await readFile(path, "utf8")).toBe(manifest());
+    },
+  );
+
   it.each(["project", "package"] as const)(
     "makes generated %s skill permissions win over existing wildcard rules",
     async (delivery) => {

@@ -37,6 +37,13 @@ export const opencodePermissionPreservationValidation: SkillPolicyValidation = {
   artifact: ".capture/skill-invocation/evidence/opencode-v1-permission-preservation.json",
   what: "Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading.",
 };
+export const opencodeNumericPermissionValidation: SkillPolicyValidation = {
+  version: opencodeProjectSkillPolicyValidation.version,
+  date: "2026-10-12",
+  method: "live-probe",
+  artifact: ".capture/skill-invocation/evidence/opencode-v1-permission-numeric.json",
+  what: "Nine project loopback controls verify numeric skill allow/deny overrides and preservation of an unrelated numeric skill permission. The shared callback uses an optional-space wildcard tail to preserve rule order; installed-package loading and forced tool calls were not exercised.",
+};
 export const OPENCODE_SKILL_POLICY_RATIONALE =
   "A generated config callback sets a named permission.skill deny/allow rule. Deny withholds automatic selection and forced skill-tool loading; explicit slash invocation still loads the skill body.";
 
@@ -50,6 +57,10 @@ export function skillPermissionSource(policies: Readonly<Record<string, boolean>
   const permission = typeof config.permission === "string" ? { "*": config.permission } : { ...(config.permission ?? {}) };
   const skillRules = {};
   const setSkillRule = (pattern, action) => {
+    // Integer keys enumerate before wildcards regardless of insertion order.
+    // The native optional-space tail matches the same valid skill name while
+    // retaining rule order; Agent Skills names cannot contain spaces.
+    if (/^(0|[1-9][0-9]*)$/.test(pattern)) pattern += " *";
     delete skillRules[pattern];
     Object.defineProperty(skillRules, pattern, { value: action, enumerable: true, configurable: true, writable: true });
   };
