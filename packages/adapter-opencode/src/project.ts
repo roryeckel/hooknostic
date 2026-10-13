@@ -12,6 +12,7 @@ import {
   OPENCODE_SKILL_POLICY_RATIONALE,
   opencodeNewerSkillPolicyValidation,
   opencodePermissionOrderValidation,
+  opencodePermissionPreservationValidation,
   opencodeProjectSkillPolicyValidation,
   skillPermissionSource,
 } from "./skill-policy.js";
@@ -203,5 +204,5 @@ export const projectComponentProfiles = skillInvocationPolicyProfiles(
   opencodeProjectSkillPolicyValidation,
   OPENCODE_SKILL_POLICY_RATIONALE,
   "emulated",
-  [opencodeNewerSkillPolicyValidation, opencodePermissionOrderValidation],
+  [opencodeNewerSkillPolicyValidation, opencodePermissionOrderValidation, opencodePermissionPreservationValidation],
 );

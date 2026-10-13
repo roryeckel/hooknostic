@@ -30,20 +30,39 @@ export const opencodePermissionOrderValidation: SkillPolicyValidation = {
   artifact: ".capture/skill-invocation/evidence/opencode-v1-permission-order.json",
   what: "The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback.",
 };
+export const opencodePermissionPreservationValidation: SkillPolicyValidation = {
+  version: opencodeProjectSkillPolicyValidation.version,
+  date: "2026-10-12",
+  method: "live-probe",
+  artifact: ".capture/skill-invocation/evidence/opencode-v1-permission-preservation.json",
+  what: "Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading.",
+};
 export const OPENCODE_SKILL_POLICY_RATIONALE =
   "A generated config callback sets a named permission.skill deny/allow rule. Deny withholds automatic selection and forced skill-tool loading; explicit slash invocation still loads the skill body.";
 
 /** Merge named rules without losing native shorthand or unrelated permissions. */
 export function skillPermissionSource(policies: Readonly<Record<string, boolean>>): string {
   if (Object.keys(policies).length === 0) return "";
-  // OpenCode uses the last matching rule. Replacing a value preserves its
-  // insertion order, so remove and reinsert both levels after native wildcards.
-  return `
+  // Replay all rules matching the skill tool before moving its block last.
+  // Otherwise a trailing tool wildcard stops overriding unrelated skill rules.
+  // Native ordering/wildcards: .capture/skill-invocation permission-preservation.
+  return String.raw`
   const permission = typeof config.permission === "string" ? { "*": config.permission } : { ...(config.permission ?? {}) };
-  const skillRules = typeof permission.skill === "string" ? { "*": permission.skill } : { ...(permission.skill ?? {}) };
+  const skillRules = {};
+  const setSkillRule = (pattern, action) => {
+    delete skillRules[pattern];
+    Object.defineProperty(skillRules, pattern, { value: action, enumerable: true, configurable: true, writable: true });
+  };
+  for (const [tool, value] of Object.entries(permission)) {
+    let pattern = tool.replaceAll("\\", "/").replace(/[.+^$()|[\]{}\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
+    if (pattern.endsWith(" .*")) pattern = pattern.slice(0, -3) + "( .*)?";
+    if (!new RegExp("^" + pattern + "$", process.platform === "win32" ? "si" : "s").test("skill")) continue;
+    for (const [name, action] of Object.entries(typeof value === "string" ? { "*": value } : value)) {
+      setSkillRule(name, action);
+    }
+  }
   for (const [name, allowed] of Object.entries(${JSON.stringify(policies)})) {
-    delete skillRules[name];
-    Object.defineProperty(skillRules, name, { value: allowed ? "allow" : "deny", enumerable: true, configurable: true, writable: true });
+    setSkillRule(name, allowed ? "allow" : "deny");
   }
   delete permission.skill;
   permission.skill = skillRules;

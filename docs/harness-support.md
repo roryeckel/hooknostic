@@ -597,6 +597,7 @@ Project delivery validation records:
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | permission.skill deny withheld discovery and rejected forced model loading, while run --command explicitly invoked the same gated skill and delivered its body over loopback; allow restored discovery. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
 
 ##### `>=1.18 <2 >=1.18.18`
 
@@ -630,6 +631,7 @@ Project delivery validation records:
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | permission.skill deny withheld discovery and rejected forced model loading, while run --command explicitly invoked the same gated skill and delivered its body over loopback; allow restored discovery. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
 
 Project support is independent of package projection.
 
@@ -693,6 +695,7 @@ Projection validation records:
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package whose config callback supplied skills.paths and permission.skill using qualified gate-probe-* names: deny withheld discovery and forced loading, explicit run --command still delivered the gated body, and allow restored discovery over loopback. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
 
 ##### `>=1.18 <2 >=1.18.18`
 
@@ -742,6 +745,7 @@ Projection validation records:
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package whose config callback supplied skills.paths and permission.skill using qualified gate-probe-* names: deny withheld discovery and forced loading, explicit run --command still delivered the gated body, and allow restored discovery over loopback. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
 | 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-preservation.json` | Twelve project loopback controls preserve unrelated skill discovery while applying named allow/deny overrides across trailing scalar, map and patterned tool rules, including optional trailing wildcards; the shared callback is exercised, not installed-package loading. |
 
 ### OpenCode v2
 

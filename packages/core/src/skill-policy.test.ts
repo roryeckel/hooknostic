@@ -115,20 +115,28 @@ const counts = (discovered: number, emitted: number) => ({ discovered, emitted, 
 
 type PermissionAction = "allow" | "ask" | "deny";
 type NativePermissions = Record<string, PermissionAction | Record<string, PermissionAction>>;
-// Constructed model of the exact-name/catch-all cases in OpenCode's native
-// fromConfig/evaluate: .capture/skill-invocation documents its provenance.
+// Constructed model of the probed native fromConfig/evaluate/wildcard cases:
+// .capture/skill-invocation documents its provenance and live controls.
 function skillPermission(permission: NativePermissions, name: string): PermissionAction {
+  const matches = (value: string, pattern: string) => {
+    const expression = pattern
+      .split("*")
+      .map((part) =>
+        part
+          .split("?")
+          .map((text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("."),
+      )
+      .join(".*")
+      .replace(/ \.\*$/, "( .*)?");
+    return new RegExp(`^${expression}$`, process.platform === "win32" ? "i" : "").test(value);
+  };
   const rules = Object.entries(permission).flatMap(([tool, value]) =>
     typeof value === "string"
       ? [{ tool, pattern: "*", action: value }]
       : Object.entries(value).map(([pattern, action]) => ({ tool, pattern, action })),
   );
-  return (
-    rules
-      .reverse()
-      .find((rule) => (rule.tool === "skill" || rule.tool === "*") && (rule.pattern === name || rule.pattern === "*"))
-      ?.action ?? "ask"
-  );
+  return rules.reverse().find((rule) => matches("skill", rule.tool) && matches(name, rule.pattern))?.action ?? "ask";
 }
 
 describe("skill invocation policy builds", () => {
@@ -157,14 +165,23 @@ describe("skill invocation policy builds", () => {
           { skill: { [skill]: "ask", "*": wildcard, untouched: "ask" }, edit: "deny" },
           { skill: { [skill]: "ask", untouched: "ask" }, "*": wildcard, edit: "deny" },
           { skill: "ask", "*": wildcard, edit: "deny" },
+          { skill: "ask", "skill *": wildcard, edit: "deny" },
+          { "*": wildcard, skill: { "*": "ask", untouched: "allow" }, edit: "deny" },
+          { skill: { untouched: "allow", "*": "ask" }, "*": { untouched: "deny", "*": wildcard }, edit: "deny" },
+          {
+            skill: { "*": "ask", untouched: "allow" },
+            "sk?l*": { untouched: "deny", "*": wildcard },
+            "edit*": "allow",
+            edit: "deny",
+          },
         ] satisfies NativePermissions[]) {
           const original = structuredClone(permission);
           const config = { permission };
           plugin.config(config);
           expect(skillPermission(config.permission, skill)).toBe(allowed ? "allow" : "deny");
           expect(config.permission.edit).toBe("deny");
-          if (typeof original.skill === "object")
-            expect((config.permission.skill as Record<string, PermissionAction>).untouched).toBe("ask");
+          for (const name of ["untouched", "unlisted"])
+            expect(skillPermission(config.permission, name)).toBe(skillPermission(original, name));
           expect(permission).toEqual(original);
         }
       }

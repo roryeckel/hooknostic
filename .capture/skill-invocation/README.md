@@ -251,6 +251,44 @@ failed against the original callback before the fix.
 
 ## Implementation verification
 
+### Preserving unrelated permission rules
+
+The original reordering fix moved the complete `skill` block after a trailing
+tool wildcard. That also revived old rules for unrelated skills: a control
+explicitly allowed before a final `"*": "deny"` became discoverable after
+applying a policy to a different skill. The new project/package assertions fail
+against that callback. A native baseline withheld the control, and the old
+generated callback exposed it, reproducing the defect over loopback.
+
+The corrected callback replays every existing permission rule matching the
+`skill` tool, in order, into the final skill block before appending the portable
+overrides. Repeated patterns are removed and reinserted so their last occurrence
+keeps its position. Tool matching follows the reference build's
+[`Wildcard.match`](https://github.com/anomalyco/opencode/blob/v1.18.18/packages/core/src/util/wildcard.ts)
+for the fixed tool name `skill`, including optional trailing ` *`. The constructed
+test evaluator covers the probed exact, catch-all, `*` and `?` patterns and the
+optional tail; it is not native execution.
+
+[`permission-preservation.mjs`](permission-preservation.mjs) drives the reference
+v1 binary on native Windows with isolated homes, no credentials, and scripted
+loopback replies. Twelve successful controls compare unchanged discovery with
+generated deny and allow callbacks for trailing scalar wildcards, shorthand
+skill permissions, patterned tool permission maps and optional trailing
+wildcards. The requested skill
+follows the portable override and the unrelated control retains its baseline
+visibility. The record is
+[`evidence/opencode-v1-permission-preservation.json`](evidence/opencode-v1-permission-preservation.json),
+with native inputs, observed description markers and complete-request hashes.
+Raw requests, callbacks, and the failing pre-fix run remain in ignored
+`captured/permission-preservation-*`. The probe establishes project discovery
+through the shared callback, not installed-package loading or forced tool access.
+
+```sh
+HKN_SKILL_HARNESS_BINARY=/path/to/reference/opencode node .capture/skill-invocation/permission-preservation.mjs
+```
+
+### Earlier verification
+
 The policy regression suite covers strict parsing, native overlays, preserved
 fields and body bytes (including UTF-8 BOM input), declaration removal, drift,
 shared destinations, unchanged in-place sources, and failure/omission/accepted
