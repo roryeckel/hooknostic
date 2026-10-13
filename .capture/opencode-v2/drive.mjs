@@ -6,14 +6,33 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url));
-const { startModelPlayback, buildPlaybackArtifact, runProcess } =
-  await import("../../packages/cli/test/harness-playback.ts");
 const effect = process.argv[2] ?? "observe";
+const artifactDir = process.env.HKN_PLAYBACK_ARTIFACT_DIR ?? tmpdir();
+await mkdir(artifactDir, { recursive: true });
+const root = process.env.HKN_CAPTURE_ROOT ?? (await mkdtemp(join(await realpath(artifactDir), "hooknostic-v2-")));
+await mkdir(root, { recursive: true });
+console.log(JSON.stringify({ root, effect }));
+const { createPlaybackDiagnostics } = await import("../../packages/cli/test/playback-diagnostics.ts");
+const diagnostics = createPlaybackDiagnostics(root, effect);
+process.on("uncaughtExceptionMonitor", error => diagnostics.fail(error));
+const { startModelPlayback, buildPlaybackArtifact, runProcess } = await diagnostics.run(
+  "load-playback-helpers", () => import("../../packages/cli/test/harness-playback.ts"),
+);
+async function runCaptureProcess(phase, command, args, options) {
+  return diagnostics.run(phase, async () => {
+    const result = await runProcess(command, args, {
+      ...options,
+      onOutput: (stream, chunk) => diagnostics.output(phase, stream, chunk),
+    });
+    if (result.code !== 0) throw new Error(`${command} exited ${result.code}\n${result.stdout}${result.stderr}`);
+    return result;
+  }, { command, args, cwd: options.cwd });
+}
 // The native tool set can depend on the model id (a GPT-like id swaps edit/write
 // for apply_patch on v1), so a capture may ask for a different one.
 const modelId = process.env.HKN_MODEL_ID ?? "hooknostic-playback";
-const root = process.env.HKN_CAPTURE_ROOT ?? (await mkdtemp(join(await realpath(tmpdir()), "hooknostic-v2-")));
 const project = join(root, "project");
+diagnostics.start("prepare-project");
 const remote = effect.endsWith("-oauth") ? await (await import("./oauth-mcp.mjs")).startOAuthMcp() : effect.includes("remote") ? await (await import("./remote-mcp.mjs")).startRemoteMcp() : undefined;
 const remoteServers = remote ? Object.fromEntries(["http"].map(type => [type, {
   type: type === "http" ? "streamable-http" : "sse",
@@ -34,13 +53,16 @@ const serverProbe = Buffer.concat([
   ),
 ]);
 let packagePath, registry;
+diagnostics.complete("prepare-project");
 if (effect === "notifications") {
+  diagnostics.start("prepare-notification-package");
   packagePath = join(project, "notification-probe");
   await mkdir(packagePath);
   await writeFile(join(packagePath, "package.json"), JSON.stringify({ name: "hooknostic-notification-probe", type: "module", exports: { ".": "./index.js", "./tui": "./tui.js" } }));
   await copyFile(new URL("notification-server.js", import.meta.url), join(packagePath, "index.js"));
   await copyFile(new URL("notification-rpc.js", import.meta.url), join(packagePath, "rpc.js"));
   await copyFile(new URL("notification-tui.js", import.meta.url), join(packagePath, "tui.js"));
+  diagnostics.complete("prepare-notification-package");
 }
 if (
   effect === "artifact" ||
@@ -56,6 +78,7 @@ if (
   (effect === "project-remote" || effect === "project-oauth") ||
   effect.startsWith("package")
 ) {
+  diagnostics.start("resolve-adapter");
   const { opencodeAdapter, opencodeV2Harness } = await import("../../packages/adapter-opencode/src/index.ts");
   const { resolveTargetAdapter, resolveAgentPluginProjection } = await import("../../packages/core/src/index.ts");
   const target = {
@@ -67,8 +90,10 @@ if (
   };
   const adapter = resolveTargetAdapter(opencodeAdapter(), target).adapter;
   const output = effect.startsWith("package") ? join(root, "package-source") : project;
+  diagnostics.complete("resolve-adapter");
   let components;
   if (effect === "project-components" || (effect === "project-remote" || effect === "project-oauth")) {
+    diagnostics.start("load-project-components");
     const { loadProjectComponents } = await import("../../packages/agent-plugin/src/index.ts");
     await mkdir(join(project, "portable/skills/greet"), { recursive: true });
     await writeFile(
@@ -100,19 +125,23 @@ if (
     });
     if (loaded.issues.length) throw new Error(JSON.stringify(loaded.issues));
     components = loaded.source;
+    diagnostics.complete("load-project-components");
   }
-  await buildPlaybackArtifact(adapter, output, {
+  await diagnostics.run("build-artifact", () => buildPlaybackArtifact(adapter, output, {
     delivery: target.delivery,
     ...(components ? { project: true, components, componentOptions: { mcpStartupTimeoutMs: { greeter: 10000 } } } : {}),
-  });
-  if (effect.startsWith("mcp-")) await (await import("../opencode-v2-mcp/build-guard.mjs")).buildGuard(adapter, output);
-  if (effect === "results") await (await import("./build-results.mjs")).buildResults(adapter, output);
+  }));
+  if (effect.startsWith("mcp-")) await diagnostics.run("build-mcp-guard", async () => (await import("../opencode-v2-mcp/build-guard.mjs")).buildGuard(adapter, output));
+  if (effect === "results") await diagnostics.run("build-results", async () => (await import("./build-results.mjs")).buildResults(adapter, output));
   if (effect.startsWith("package") && effect !== "package-hooks") {
+    diagnostics.start("load-agent-plugin");
     const { loadAgentPlugin } = await import("../../packages/agent-plugin/src/index.ts");
     const source = await loadAgentPlugin({
       root: fileURLToPath(new URL("../../examples/agent-plugin", import.meta.url)),
       exclude: [".claude-plugin/**", ".agents/plugins/**", "build/**", "runtime/**"],
     });
+    diagnostics.complete("load-agent-plugin");
+    diagnostics.start("project-package");
     const serverFile = source.package.files.find((file) => file.path === "src/greet-mcp.mjs");
     serverFile.contents = new Uint8Array(serverProbe);
     // The example bundles MCP at build time; this capture substitutes its own
@@ -140,10 +169,10 @@ if (
       await mkdir(join(output, file.path, ".."), { recursive: true });
       await writeFile(join(output, file.path), file.contents);
     }
+    diagnostics.complete("project-package");
   }
   if (effect.startsWith("package")) {
-    const packed = await runProcess("pnpm", ["pack", "--pack-destination", root], { cwd: output, env: process.env });
-    if (packed.code !== 0) throw new Error(packed.stdout + packed.stderr);
+    await runCaptureProcess("pnpm-pack", "pnpm", ["pack", "--pack-destination", root], { cwd: output, env: process.env });
     const tarball = (await readdir(root)).find((name) => name.endsWith(".tgz"));
     const manifest = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
     if (effect === "package-registry") {
@@ -153,16 +182,17 @@ if (
       const installed = join(root, "relocated");
       await mkdir(installed);
       await writeFile(join(installed, "package.json"), JSON.stringify({ private: true }));
-      const installedResult = await runProcess(
+      await runCaptureProcess(
+        "npm-install",
         "npm",
         ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", join(root, tarball)],
         { cwd: installed, env: process.env },
       );
-      if (installedResult.code !== 0) throw new Error(installedResult.stdout + installedResult.stderr);
       packagePath = join(installed, "node_modules", manifest.name);
     }
   }
 }
+diagnostics.start("prepare-native-config");
 // The patch probe updates a file that must already exist.
 if (effect === "tools-patch") await writeFile(join(project, "probe.txt"), "hooknostic-before-edit\n");
 if (effect === "components" || effect === "tools" || effect.startsWith("mcp-")) {
@@ -238,40 +268,53 @@ if (registry) {
 for (const name of Object.keys(env)) {
   if (/API_KEY|AUTH_TOKEN|SECRET|TOKEN|OPENCODE/.test(name) && name !== "HKN_PLAYBACK_KEY") delete env[name];
 }
-console.log(JSON.stringify({ root, effect }));
+diagnostics.complete("prepare-native-config");
+// Save loopback observations while the harness runs, before an outer timeout can kill this process.
+function snapshotRequests() {
+  diagnostics.snapshot("model.json", { requests: model.requests, errors: model.errors });
+  if (remote) diagnostics.snapshot("remote.json", remote.requests);
+  if (registry) diagnostics.snapshot("registry.json", registry.requests);
+}
+snapshotRequests();
+const snapshotTimer = setInterval(snapshotRequests, 1000);
+snapshotTimer.unref();
+diagnostics.start("resolve-native-binary");
 let executable = process.env.HKN_OPENCODE_BINARY ?? "opencode";
 if (process.platform === "win32" && !process.env.HKN_OPENCODE_BINARY) {
-  const npmRoot = await runProcess("npm", ["root", "--global"], { cwd: project, env });
-  if (npmRoot.code !== 0) throw new Error(npmRoot.stderr);
+  const npmRoot = await runCaptureProcess("npm-root", "npm", ["root", "--global"], { cwd: project, env });
   executable = join(npmRoot.stdout.trim(), "@opencode/cli/bin/opencode.exe");
 }
+diagnostics.complete("resolve-native-binary");
 if (effect === "nested") {
   const { opencodeAdapter, opencodeV2Harness } = await import("../../packages/adapter-opencode/src/index.ts");
   const { resolveTargetAdapter } = await import("../../packages/core/src/index.ts");
   const target = { id: "opencode", version: opencodeV2Harness.referenceVersion, delivery: "project", output: "." };
   const adapter = resolveTargetAdapter(opencodeAdapter(), target).adapter;
   const build = (dir, label) => buildPlaybackArtifact(adapter, dir, { delivery: "project", project: true, label });
-  try { await (await import("./nested.mjs")).driveNested({ executable, root, project, env, build }); }
-  finally { await model.close(); }
+  try { await diagnostics.run("native-nested", async () => (await import("./nested.mjs")).driveNested({ executable, root, project, env, build })); }
+  finally { clearInterval(snapshotTimer); snapshotRequests(); await model.close(); }
   process.exit(0);
 }
 if (effect === "notifications") {
-  try { await (await import("./notification-drive.mjs")).driveNotifications({ executable, root, project, env }); }
-  finally { await model.close(); }
+  try { await diagnostics.run("native-notifications", async () => (await import("./notification-drive.mjs")).driveNotifications({ executable, root, project, env })); }
+  finally { clearInterval(snapshotTimer); snapshotRequests(); await model.close(); }
   if (model.requests.length) throw new Error("Notification probe made a model request");
   process.exit(0);
 }
 if (effect === "lifecycle" || effect.startsWith("sessions") || effect === "stop" || effect.startsWith("provider-") || effect.endsWith("-oauth")) {
   const { driveLifecycle } = await import("./lifecycle.mjs");
   try {
-    await driveLifecycle({ executable, root, project, env, model, remote });
+    await diagnostics.run("native-lifecycle", () => driveLifecycle({ executable, root, project, env, model, remote }));
   } finally {
+    clearInterval(snapshotTimer);
+    snapshotRequests();
     await model.close();
     if (remote) await writeFile(join(root, "remote.json"), JSON.stringify({ requests: remote.requests, errors: remote.errors }, null, 2));
     await remote?.close();
   }
   process.exit(0);
 }
+diagnostics.start("native-run", { command: executable, cwd: project });
 const child = spawn(
   executable,
   ["run", "--standalone", "--auto", "--format", "json", "Use the shell once to create hooknostic-tool.txt, then stop."],
@@ -286,9 +329,11 @@ let stdout = "",
   stderr = "";
 child.stdout?.on("data", (chunk) => {
   stdout += chunk;
+  diagnostics.output("native-run", "stdout", String(chunk));
 });
 child.stderr?.on("data", (chunk) => {
   stderr += chunk;
+  diagnostics.output("native-run", "stderr", String(chunk));
 });
 const timeout = setTimeout(() => child.kill(), 90000);
 try {
@@ -296,6 +341,8 @@ try {
     child.on("error", reject);
     child.on("exit", resolve);
   });
+  diagnostics.complete("native-run", { code });
+  diagnostics.start("write-results");
   process.exitCode = code === 0 ? 0 : 1;
   if (effect === "project-components" || ["package", "package-components"].includes(effect)) {
     const startup = packagePath
@@ -332,9 +379,17 @@ try {
       replacedOutput: model.requests.some((r) => JSON.stringify(r).includes("hooknostic-v2-replaced-output")),
     }),
   );
+  diagnostics.complete("write-results");
+} catch (error) {
+  diagnostics.fail(error);
+  throw error;
 } finally {
+  clearInterval(snapshotTimer);
+  snapshotRequests();
+  diagnostics.start("cleanup");
   clearTimeout(timeout);
   await model.close();
   await registry?.close();
   await remote?.close();
+  diagnostics.complete("cleanup");
 }
