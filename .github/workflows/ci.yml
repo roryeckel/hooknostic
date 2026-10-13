@@ -59,7 +59,7 @@ jobs:
     # The hosted app maintains its runtime. This image supplies the matching
     # validator CLI without adding Renovate's Node floor to workspace engines.
     container:
-      image: ghcr.io/renovatebot/renovate:44.138.0
+      image: ghcr.io/renovatebot/renovate:44.155.1
       options: --user 0
     steps:
       - uses: actions/checkout@v7
@@ -119,6 +119,15 @@ jobs:
           HOOKNOSTIC_PLAYBACK: ""
           HOOKNOSTIC_SMOKE: ""
           HOOKNOSTIC_PACK: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+
+      - name: LiteLLM sidecar compatibility (loopback only)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/litellm-probe"
+          source "$RUNNER_TEMP/litellm-probe/bin/activate"
+          python -m pip install --disable-pip-version-check -r .github/requirements/litellm.txt
+          python scripts/probe-litellm-sidecar.py
 
       # The reproducibility gate. rewrite-shell commits its build output, so a
       # rebuild that changes bytes is either an undeclared input to the bundle or
