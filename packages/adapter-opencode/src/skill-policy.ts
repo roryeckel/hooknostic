@@ -23,18 +23,29 @@ export const opencodeNewerSkillPolicyValidation: SkillPolicyValidation = {
   artifact: ".capture/skill-invocation",
   what: "Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery.",
 };
+export const opencodePermissionOrderValidation: SkillPolicyValidation = {
+  version: opencodeProjectSkillPolicyValidation.version,
+  date: "2026-10-12",
+  method: "live-probe",
+  artifact: ".capture/skill-invocation/evidence/opencode-v1-permission-order.json",
+  what: "The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback.",
+};
 export const OPENCODE_SKILL_POLICY_RATIONALE =
   "A generated config callback sets a named permission.skill deny/allow rule. Deny withholds automatic selection and forced skill-tool loading; explicit slash invocation still loads the skill body.";
 
 /** Merge named rules without losing native shorthand or unrelated permissions. */
 export function skillPermissionSource(policies: Readonly<Record<string, boolean>>): string {
   if (Object.keys(policies).length === 0) return "";
+  // OpenCode uses the last matching rule. Replacing a value preserves its
+  // insertion order, so remove and reinsert both levels after native wildcards.
   return `
   const permission = typeof config.permission === "string" ? { "*": config.permission } : { ...(config.permission ?? {}) };
   const skillRules = typeof permission.skill === "string" ? { "*": permission.skill } : { ...(permission.skill ?? {}) };
   for (const [name, allowed] of Object.entries(${JSON.stringify(policies)})) {
+    delete skillRules[name];
     Object.defineProperty(skillRules, name, { value: allowed ? "allow" : "deny", enumerable: true, configurable: true, writable: true });
   }
+  delete permission.skill;
   permission.skill = skillRules;
   config.permission = permission;
 `;

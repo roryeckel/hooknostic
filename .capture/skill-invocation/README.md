@@ -219,6 +219,36 @@ Do not promote partial evidence as a complete policy run. Vendor startup traffic
 can cause timeouts despite the local model; successful control cases must be
 observed before drawing a behavioral conclusion.
 
+## Permission ordering
+
+The reference OpenCode v1 binary was driven on native Windows with an isolated
+project, two `.agents/skills` controls, and the generated `skillPermissionSource`
+config callback. Each run used credential-free loopback replies and inspected
+the first model request carrying tools. The input placed a wildcard after an
+existing named skill rule, or a top-level permission wildcard after the `skill`
+block. Both original deny callbacks left the review skill discoverable.
+Removing and reinserting the named rules and the `skill` block made the deny
+controls hide it and the inverse allow controls restore it. All six runs exited
+zero with no playback errors. The separate control skill remained visible.
+
+The live-probe evidence is
+[`evidence/opencode-v1-permission-order.json`](evidence/opencode-v1-permission-order.json),
+including native inputs, verbatim description excerpts and raw-request hashes.
+The driver and complete requests remain under ignored
+`captured/permission-order.mjs` and `captured/permission-order-{before,after}/`.
+Run the driver with `HKN_SKILL_HARNESS_BINARY` set to the reference v1 executable
+and `before` or `after` as its argument; `before` expects the original defect.
+This probe establishes ordinary discovery through the shared callback, not
+installed-package discovery, forced loading, or command-menu behavior.
+
+The project/package build regressions evaluate emitted callbacks using a
+**constructed** model of the exact-name and catch-all rules in native
+[`fromConfig`/`evaluate`](https://github.com/anomalyco/opencode/blob/v1.18.18/packages/opencode/src/permission/index.ts).
+The live probe establishes the relevant native ordering; the constructed helper
+only flattens ordered permission entries and selects their last match. It does
+not claim to reproduce other native wildcard patterns. Both delivery regressions
+failed against the original callback before the fix.
+
 ## Implementation verification
 
 The policy regression suite covers strict parsing, native overlays, preserved

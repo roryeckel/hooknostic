@@ -113,7 +113,65 @@ async function fixture(
 const fm = (text: string) => parse(text.split("---")[1]!);
 const counts = (discovered: number, emitted: number) => ({ discovered, emitted, skipped: discovered - emitted });
 
+type PermissionAction = "allow" | "ask" | "deny";
+type NativePermissions = Record<string, PermissionAction | Record<string, PermissionAction>>;
+// Constructed model of the exact-name/catch-all cases in OpenCode's native
+// fromConfig/evaluate: .capture/skill-invocation documents its provenance.
+function skillPermission(permission: NativePermissions, name: string): PermissionAction {
+  const rules = Object.entries(permission).flatMap(([tool, value]) =>
+    typeof value === "string"
+      ? [{ tool, pattern: "*", action: value }]
+      : Object.entries(value).map(([pattern, action]) => ({ tool, pattern, action })),
+  );
+  return (
+    rules
+      .reverse()
+      .find((rule) => (rule.tool === "skill" || rule.tool === "*") && (rule.pattern === name || rule.pattern === "*"))
+      ?.action ?? "ask"
+  );
+}
+
 describe("skill invocation policy builds", () => {
+  it.each(["project", "package"] as const)(
+    "makes generated %s skill permissions win over existing wildcard rules",
+    async (delivery) => {
+      const f = await fixture(delivery, ["oc1"]);
+      const skill = delivery === "package" ? "policy-probe-review" : "review";
+      for (const allowed of [false, true]) {
+        // Policy metadata is string-valued, including its allow control.
+        await writeFile(
+          join(f.root, "skills/review/SKILL.md"),
+          manifest().replace('"false"', JSON.stringify(String(allowed))),
+        );
+        const built = await buildProject({ ...f.options, dryRun: true });
+        expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
+        const path =
+          delivery === "package" ? "hooknostic-agent-plugin.js" : ".opencode/plugins/hooknostic-components.js";
+        const plan = built.plan!.find((target) => target.target === "oc1")!;
+        const artifact = [...plan.artifacts, ...(plan.integration?.files ?? [])].find((file) => file.path === path)!;
+        const file = join(f.root, `${allowed ? "allow" : "deny"}.mjs`);
+        await writeFile(file, artifact.contents);
+        const plugin = await (await import(pathToFileURL(file).href)).default();
+        const wildcard = allowed ? "deny" : "allow";
+        for (const permission of [
+          { skill: { [skill]: "ask", "*": wildcard, untouched: "ask" }, edit: "deny" },
+          { skill: { [skill]: "ask", untouched: "ask" }, "*": wildcard, edit: "deny" },
+          { skill: "ask", "*": wildcard, edit: "deny" },
+        ] satisfies NativePermissions[]) {
+          const original = structuredClone(permission);
+          const config = { permission };
+          plugin.config(config);
+          expect(skillPermission(config.permission, skill)).toBe(allowed ? "allow" : "deny");
+          expect(config.permission.edit).toBe("deny");
+          if (typeof original.skill === "object")
+            expect((config.permission.skill as Record<string, PermissionAction>).untouched).toBe("ask");
+          expect(permission).toEqual(original);
+        }
+      }
+    },
+    60_000,
+  );
+
   it("limits an authored-only excluded reader to the skills it discovers", async () => {
     const f = await fixture("project", ["claude", "codex"], {
       components: {

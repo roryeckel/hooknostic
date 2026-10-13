@@ -596,6 +596,7 @@ Project delivery validation records:
 | 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | permission.skill deny withheld discovery and rejected forced model loading, while run --command explicitly invoked the same gated skill and delivered its body over loopback; allow restored discovery. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 
 ##### `>=1.18 <2 >=1.18.18`
 
@@ -628,6 +629,7 @@ Project delivery validation records:
 | 1.18.30 | 2026-09-11 | live-probe | `.capture/project-integration` | Project declarations replaced a same-named inherited server, an unset remote variable disabled only that server, and unaffected loopback MCP remained available. |
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | permission.skill deny withheld discovery and rejected forced model loading, while run --command explicitly invoked the same gated skill and delivered its body over loopback; allow restored discovery. Separate ordinary-discovery probes loaded .claude/skills, .opencode/skills and .opencode/skill. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 
 Project support is independent of package projection.
 
@@ -690,6 +692,7 @@ Projection validation records:
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A projected server started through the generated launcher received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and its declared working directory; PLUGIN_ROOT resolved to the nested package rather than to the generated module's own directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI. |
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package whose config callback supplied skills.paths and permission.skill using qualified gate-probe-* names: deny withheld discovery and forced loading, explicit run --command still delivered the gated body, and allow restored discovery over loopback. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 
 ##### `>=1.18 <2 >=1.18.18`
 
@@ -738,6 +741,7 @@ Projection validation records:
 | 1.18.29 | 2026-09-08 | live-probe | `.capture/opencode-agent-plugin` | A projected server started through the generated launcher received absolute PLUGIN_ROOT and PLUGIN_DATA, an expanded ${PLUGIN_DATA} argument rather than the literal text, and its declared working directory; PLUGIN_ROOT resolved to the nested package rather than to the generated module's own directory. Driven through the offline playback lane against a loopback model server, so it costs nothing and regressions fail CI. |
 | 1.18.18 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Installed a relocated local npm package whose config callback supplied skills.paths and permission.skill using qualified gate-probe-* names: deny withheld discovery and forced loading, explicit run --command still delivered the gated body, and allow restored discovery over loopback. |
 | 1.18.34 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Repeated the installed-package deny probe: ordinary discovery and forced skill calls were withheld while native slash-command invocation still loaded the body; the installed config callback's allow control restored discovery. |
+| 1.18.18 | 2026-10-12 | live-probe | `.capture/skill-invocation/evidence/opencode-v1-permission-order.json` | The generated callback's deny and allow rules win over pre-existing trailing skill and top-level permission wildcards; ordinary discovery was checked over credential-free loopback. |
 
 ### OpenCode v2
 

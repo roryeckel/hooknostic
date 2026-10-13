@@ -34,6 +34,7 @@ import {
   OPENCODE_SKILL_POLICY_RATIONALE,
   opencodeNewerSkillPolicyValidation,
   opencodePackageSkillPolicyValidation,
+  opencodePermissionOrderValidation,
   opencodeSkillPolicy,
   skillPermissionSource,
 } from "./skill-policy.js";
@@ -888,7 +889,7 @@ export const opencodeAgentPluginProjector = withSkillInvocationPolicy(
       opencodePackageSkillPolicyValidation,
       OPENCODE_SKILL_POLICY_RATIONALE,
       "emulated",
-      [opencodeNewerSkillPolicyValidation],
+      [opencodeNewerSkillPolicyValidation, opencodePermissionOrderValidation],
     ),
   },
   "opencode",
