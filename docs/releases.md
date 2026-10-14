@@ -60,6 +60,11 @@ scope, migration steps, and limits for the upcoming release. The notes generator
 places these before the family-specific harness support table. Review or replace
 them for each release so older announcements are not repeated.
 
+The generator formats the copied highlights with Prettier's Markdown parser,
+using single-line prose for GitHub release rendering. It normalizes Markdown
+layout, leaves code examples unformatted, and preserves intentional line breaks.
+The source file can remain hand-wrapped.
+
 1. Run the **Release prepare** workflow with the version (no leading `v`,
    e.g. `0.2.0`; a `-rc.1` suffix marks a prerelease). It validates the
    version, guards against duplicates, bumps every carrier, syncs the

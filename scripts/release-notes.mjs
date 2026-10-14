@@ -37,159 +37,14 @@ function escapeHtml(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-export function unwrapProse(markdown) {
-  // Release bodies render source newlines as <br>. Join prose, leaving structural blocks verbatim.
-  const newline = markdown.includes("\r\n") ? "\r\n" : "\n";
-  const lines = markdown.split(/\r?\n/);
-  const output = [];
-  let prose = null;
-  const listContainers = [];
-  let fence = null;
-  let html = null;
-  let table = false;
-  const flush = () => {
-    if (prose !== null) output.push(prose);
-    prose = null;
-  };
-  const tableSeparator = (line) => /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/.test(line);
-  const columns = (whitespace) =>
-    [...whitespace].reduce((column, char) => column + (char === "\t" ? 4 - (column % 4) : 1), 0);
-  const openingFence = (line) => {
-    const opening = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
-    return opening?.[1][0] === "`" && opening[2].includes("`") ? null : opening;
-  };
-  // CommonMark HTML types 1–5 end at a terminator; types 6–7 end at a blank line.
-  const htmlTerminator = (line) => {
-    if (/^\s*<(?:script|pre|style|textarea)(?:[ \t>]|$)/i.test(line)) return /<\/(?:script|pre|style|textarea)>/i;
-    if (/^\s*<!--/.test(line)) return /-->/;
-    if (/^\s*<\?/.test(line)) return /\?>/;
-    if (/^\s*<![A-Z]/i.test(line)) return />/;
-    if (/^\s*<!\[CDATA\[/.test(line)) return /\]\]>/;
-    return null;
-  };
-  // A destination and a title may start on following lines; title text may span lines.
-  const referenceEnd = (start, remainder) => {
-    let end = start;
-    if (remainder.trim() === "") remainder = lines[++end] ?? "";
-    const destination = remainder.trimStart().match(/^(<[^<>]*>|(?:\\.|[^\s])+)(?:[ \t]+(.*))?$/);
-    if (!destination) return start;
-    let title = destination[2] ?? "";
-    let titleStart = end;
-    if (title.trim() === "") {
-      title = (lines[end + 1] ?? "").trimStart();
-      titleStart++;
-    }
-    const delimiter = { '"': '"', "'": "'", "(": ")" }[title[0]];
-    if (!delimiter) return end;
-    for (let index = titleStart; index < lines.length; index++) {
-      const text = index === titleStart ? title.slice(1) : lines[index];
-      if (text.trim() === "" && index !== titleStart) break;
-      for (let char = 0; char < text.length; char++) {
-        if (text[char] === "\\") char++;
-        else if (text[char] === delimiter) return text.slice(char + 1).trim() === "" ? index : end;
-      }
-    }
-    return end;
-  };
-
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
-    if (fence !== null) {
-      output.push(line);
-      const closing = line.match(new RegExp(`^([ \\t]*)${fence.marker}{${fence.length},}[ \\t]*$`));
-      const indent = closing ? columns(closing[1]) - fence.containerIndent : -1;
-      if (indent >= 0 && indent <= 3) fence = null;
-      continue;
-    }
-    if (html !== null) {
-      if (html.terminator !== null || line.trim() !== "") {
-        output.push(line);
-        if (html.terminator?.test(line)) html = null;
-        continue;
-      }
-      html = null;
-    }
-    if (line.trim() === "") {
-      flush();
-      output.push(line);
-      table = false;
-      continue;
-    }
-    const indent = columns(line.match(/^[ \t]*/)[0]);
-    const opening = openingFence(line);
-    const item = line.match(/^([ \t]*(?:[-+*]|\d+[.)])([ \t]+))/);
-    const reference = line.match(/^\s*\[(?:\\.|[^\]\\])+\]:[ \t]*(.*)$/);
-    const structural =
-      reference !== null ||
-      /^\s*(?:#{1,6}(?:\s|$)|>|<)/.test(line) ||
-      /^ {0,3}(?:[=-]+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})[ \t]*$/.test(line);
-    // Less indentation only exits a list when this is not lazy paragraph continuation text.
-    if (prose === null || opening || item || structural) {
-      while (listContainers.length && indent < listContainers.at(-1)) listContainers.pop();
-    }
-    const containerIndent = listContainers.at(-1) ?? 0;
-    // Indented code is literal, even when its contents resemble a list or another Markdown block.
-    if (indent >= containerIndent + 4) {
-      flush();
-      output.push(line);
-      continue;
-    }
-    if (opening && indent - containerIndent <= 3) {
-      flush();
-      fence = { marker: opening[1][0], length: opening[1].length, containerIndent };
-      output.push(line);
-      continue;
-    }
-    if ((table && line.includes("|")) || line.trimStart().startsWith("|") || tableSeparator(lines[index + 1] ?? "")) {
-      flush();
-      table = true;
-      output.push(line);
-      continue;
-    }
-    table = false;
-    if (reference) {
-      flush();
-      const end = referenceEnd(index, reference[1]);
-      output.push(...lines.slice(index, end + 1));
-      index = end;
-      continue;
-    }
-    if (structural) {
-      flush();
-      if (line.trimStart().startsWith("<")) {
-        const terminator = htmlTerminator(line);
-        html = terminator?.test(line) ? null : { terminator };
-      }
-      output.push(line);
-      continue;
-    }
-    if (item) {
-      flush();
-      const markerIndent = columns(item[1].slice(0, -item[2].length));
-      const padding = columns(item[1]) - markerIndent;
-      // Five or more padding columns begin indented code; only one belongs to the list marker.
-      const contentIndent = markerIndent + (padding > 4 ? 1 : padding);
-      listContainers.push(contentIndent);
-      const itemOpening = padding > 4 ? null : openingFence(line.slice(item[1].length));
-      if (itemOpening) {
-        fence = { marker: itemOpening[1][0], length: itemOpening[1].length, containerIndent: contentIndent };
-        output.push(line);
-      } else if (padding > 4) {
-        output.push(line);
-      } else {
-        prose = line;
-      }
-      continue;
-    }
-    if (prose !== null && !/(?: {2,}|\\)$/.test(prose)) {
-      prose += " " + line.trimStart();
-    } else {
-      flush();
-      prose = line;
-    }
-  }
-  flush();
-  return output.join(newline);
+export async function formatHighlights(markdown) {
+  // Release bodies render source newlines as <br>; let the Markdown formatter unwrap prose.
+  const { format } = await import("prettier");
+  return format(markdown, {
+    parser: "markdown",
+    proseWrap: "never",
+    embeddedLanguageFormatting: "off",
+  });
 }
 
 /**
@@ -220,7 +75,7 @@ export function composeNotes({ highlights = "", harnessTable, generatedBody, com
 
   const render = (withBodies) => {
     const parts = [
-      ...(highlights.trim() ? [unwrapProse(highlights.trim()), ""] : []),
+      ...(highlights.trim() ? [highlights.trim(), ""] : []),
       "## Harness support",
       "",
       harnessTable.trim(),
@@ -354,7 +209,7 @@ async function main() {
       return repo ? `](https://github.com/${repo}/blob/${sha}/${target})` : `](${target})`;
     },
   );
-  const body = composeNotes({ highlights, harnessTable, generatedBody, commits });
+  const body = composeNotes({ highlights: await formatHighlights(highlights), harnessTable, generatedBody, commits });
   writeFileSync(resolve(ROOT, output), body, "utf8");
   console.log(`release notes written to ${output} (${body.length} chars, ${commits.length} commits in range)`);
 }

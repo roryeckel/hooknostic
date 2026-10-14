@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { composeNotes, unwrapProse } from "./release-notes.mjs";
+import { composeNotes, formatHighlights } from "./release-notes.mjs";
 
 it("embeds current release highlights and separate reference rows for both OpenCode families", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
@@ -52,13 +52,9 @@ it("embeds current release highlights and separate reference rows for both OpenC
     // A release body resolves relative links against /releases/tag/..., so
     // every highlights link must leave absolute, including ../ paths.
     const highlightsSection = notes.slice(0, notes.indexOf("\n## Harness support\n"));
-    // Check all curated prose without tying the release gate to an older announcement.
-    const prose = (text) =>
-      text
-        .replace(/\]\([^)]+\)/g, "]")
-        .replace(/\s+/g, " ")
-        .trim();
-    expect(prose(highlightsSection)).toBe(prose(highlights));
+    // Check the formatted highlights, including block boundaries, independently of this release's wording.
+    const withoutLinkTargets = (text) => text.replace(/\]\([^)]+\)/g, "]").trim();
+    expect(withoutLinkTargets(highlightsSection)).toBe(withoutLinkTargets(await formatHighlights(highlights)));
     expect(highlightsSection.match(/\]\((?!https:\/\/)[^)]*\)/g) ?? []).toEqual([]);
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/README.md)`);
   } finally {
@@ -68,128 +64,29 @@ it("embeds current release highlights and separate reference rows for both OpenC
 
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
-describe("release prose wrapping", () => {
-  it.each([
-    ["", "-", "```"],
-    ["", "10.", "~~~"],
-    ["- Parent\n", "  -", "```"],
-  ])("preserves a fence starting the list item %j %j %j", (prefix, marker, fence) => {
-    const indent = " ".repeat(marker.length + 1);
-    const block = `${prefix}${marker} ${fence}sh\n${indent}echo one\n${indent}echo two\n${indent}${fence}`;
-    const source = `# Highlights\n\n${block}\n\nFollowing\nprose.\n`;
-    const expected = `# Highlights\n\n${block}\n\nFollowing prose.\n`;
-    expect(unwrapProse(source)).toBe(expected);
-    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
-      expected.trim(),
-    );
-  });
-
-  it.each([
-    ["", "    ", "-"],
-    ["", "\t", "1."],
-    ["- Item\n\n", "      ", "-"],
-  ])("preserves indented code beginning with a list marker %j %j %j", (prefix, indent, marker) => {
-    const block = `${prefix}${indent}${marker} name: foo\n${indent}  value: bar`;
-    const source = `# Highlights\n\n${block}\n\nFollowing\nprose.\n`;
-    const expected = `# Highlights\n\n${block}\n\nFollowing prose.\n`;
-    expect(unwrapProse(source)).toBe(expected);
-    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
-      expected.trim(),
-    );
-  });
-
-  it("keeps a fence marker literal when a list item starts with indented code", () => {
-    const block = "-     ```sh\n      echo one\n      echo two";
-    const source = `# Highlights\n\n${block}\n\nFollowing\nprose.\n`;
-    const expected = `# Highlights\n\n${block}\n\nFollowing prose.\n`;
-    expect(unwrapProse(source)).toBe(expected);
-    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
-      expected.trim(),
-    );
-  });
-
-  it("preserves escaped brackets in reference labels", () => {
-    const definition = '[a\\]b]: /url\n  "Title"';
-    expect(unwrapProse(`${definition}\nFollowing\nprose with [a\\]b].\n`)).toBe(
-      `${definition}\nFollowing prose with [a\\]b].\n`,
-    );
-  });
-
-  it("treats a backtick in a backtick-fence info string as prose", () => {
-    expect(unwrapProse("``` js`\nFollowing\nprose.\n")).toBe("``` js` Following prose.\n");
-  });
-
-  it("retains list containers across lazy paragraph continuations", () => {
-    const source = "10. item\nlazy continuation\n    ```text\n    one\n    two\n    ```\n\nFollowing\nprose.\n";
-    expect(unwrapProse(source)).toBe(
-      "10. item lazy continuation\n    ```text\n    one\n    two\n    ```\n\nFollowing prose.\n",
-    );
-  });
-
-  it.each([
-    '[foo]: /url\n  "Title"',
-    '[foo]:\n  /url\n  "Title"',
-    "[foo]:\n  /url",
-    '[foo]: /url "Multi\n  line title"',
-    "[foo]: /url\n  'Multi\n  line title'",
-    "[foo]: /url\n  (Multi\n  line title)",
-  ])("preserves the reference definition %j", (definition) => {
-    expect(unwrapProse(`${definition}\nFollowing\nprose with [foo].\n`)).toBe(
-      `${definition}\nFollowing prose with [foo].\n`,
-    );
-  });
-
-  it.each(["    ", "\t"])("keeps %j-indented fence markers inside top-level code", (indent) => {
-    const block = `\`\`\`text\none\n${indent}\`\`\`\ntwo\nthree\n\`\`\``;
-    expect(unwrapProse(`${block}\n\nFollowing\nprose.\n`)).toBe(`${block}\n\nFollowing prose.\n`);
-  });
-
-  it("measures closing fence indentation inside its list container", () => {
-    const block = "- Item\n\n  ```text\n  one\n      ```\n  two\n  three\n     ```";
-    expect(unwrapProse(`${block}\n\nFollowing\nprose.\n`)).toBe(`${block}\n\nFollowing prose.\n`);
-  });
-
-  it.each([
-    ["<pre>", "</pre>"],
-    ["<SCRIPT>", "</SCRIPT>"],
-    ["<style>", "</style>"],
-    ["<textarea>", "</textarea>"],
-    ["<!--", "-->"],
-    ["<?processing", "?>"],
-    ["<!DECLARATION", ">"],
-    ["<![CDATA[", "]]>"],
-  ])("preserves blank lines until the terminator of %s", (opening, closing) => {
-    const block = `${opening}\none\n\ntwo\nthree\n${closing}`;
-    expect(unwrapProse(`${block}\nFollowing\nprose.\n`)).toBe(`${block}\nFollowing prose.\n`);
-  });
-
-  it("ends single-line raw HTML at its terminator and generic HTML at a blank", () => {
-    expect(unwrapProse("<!-- comment -->\nFollowing\nprose.\n\n<div>\none\ntwo\n\nMore\nprose.\n")).toBe(
-      "<!-- comment -->\nFollowing prose.\n\n<div>\none\ntwo\n\nMore prose.\n",
-    );
-  });
-
-  it("joins prose continuations within paragraphs and list items", () => {
+describe("release highlights formatting", () => {
+  it("unwraps prose while preserving headings, table rows and empty list items", async () => {
     const source =
-      "# Highlights\n\nA paragraph that\nwraps in source.\n\n- First item that\n  continues here.\n- Next item\n  with a [link](https://example.com).\n\nAnother paragraph.\n";
-    const expected =
-      "# Highlights\n\nA paragraph that wraps in source.\n\n- First item that continues here.\n- Next item with a [link](https://example.com).\n\nAnother paragraph.\n";
-    expect(unwrapProse(source)).toBe(expected);
-    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
-      expected.trim(),
+      "# Highlights\n\nA release paragraph that\nwraps in source.\n\n- ## Migration\n  Run the command.\n  Then continue.\n\nName | Value\n--- | ---\none\ntwo\n\n1. First\n2.\n3. Last\n";
+    expect(await formatHighlights(source)).toBe(
+      "# Highlights\n\nA release paragraph that wraps in source.\n\n- ## Migration\n  Run the command. Then continue.\n\n| Name | Value |\n| ---- | ----- |\n| one  |\n| two  |\n\n1. First\n2.\n3. Last\n",
     );
   });
 
-  it("preserves nested lists, fenced code, tables, headings and intentional breaks", () => {
+  it("preserves authored code, raw HTML and intentional line breaks", async () => {
     const source =
-      "## Structure\n\n- Parent item\n  - Nested item\n    continues here.\n  - Next child\n\n```yaml\nmetadata:\n  setting: false\n```\n\n~~~~text\none\n~~~\ntwo\n~~~~\n\n| Name | Value |\n| --- | --- |\n| One | Two |\n\nName | Value\n--- | ---\nOne | Two\n\n    indented code\n    stays separate\n\nLine with a break  \nNext line\\\nFinal line\n\n> A quotation\n> on two lines\n\n<div>\nraw HTML\n</div>\n\n---\n";
-    expect(unwrapProse(source)).toBe(
-      source.replace("  - Nested item\n    continues here.", "  - Nested item continues here."),
-    );
+      "# Examples\n\n```js\nconst settings={enabled:false};\n```\n\n- <pre>\n  one\n  two\n  </pre>\n\nLine with a break  \nNext line\\\nFinal line\n";
+    expect(await formatHighlights(source)).toBe(source);
   });
 });
 
 describe("composeNotes", () => {
+  it("keeps supplied highlights intact during synchronous composition", () => {
+    const highlights = "- ## Migration\n  Run the command.\n";
+    const notes = composeNotes({ highlights, harnessTable: TABLE, generatedBody: "", commits: [] });
+    expect(notes.startsWith(highlights + "\n## Harness support\n")).toBe(true);
+  });
+
   it("keeps direct-to-master commits that native notes would omit", () => {
     const notes = composeNotes({
       harnessTable: TABLE,
