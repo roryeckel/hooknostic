@@ -16,6 +16,8 @@ import {
   npmPublicationProblems,
   projectPackageSkillTexts,
   RELATIVE_SKILL_TEXT,
+  skillInvocationPolicyProfiles,
+  withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -28,6 +30,16 @@ import {
   packageEntrySource,
 } from "./generate.js";
 import { qualifiedSkillNames, renameSkillManifest } from "./skill-names.js";
+import {
+  OPENCODE_SKILL_POLICY_RATIONALE,
+  opencodeNewerSkillPolicyValidation,
+  opencodeNumericPermissionValidation,
+  opencodePackageSkillPolicyValidation,
+  opencodePermissionOrderValidation,
+  opencodePermissionPreservationValidation,
+  opencodeSkillPolicy,
+  skillPermissionSource,
+} from "./skill-policy.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
 
 /**
@@ -213,6 +225,7 @@ function injectorSource(
   manifest: AgentPluginPackage["manifest"],
   servers: Record<string, OpenCodeServer>,
   hasSkills: boolean,
+  skillPolicies: Readonly<Record<string, boolean>>,
 ): string {
   const identity = {
     name: manifest.name,
@@ -302,6 +315,7 @@ function injectorSource(
           "    }",
         ]
       : []),
+    skillPermissionSource(skillPolicies),
     "  },",
     "});",
     "",
@@ -618,13 +632,17 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
       const qualifying =
         context.support["agent-plugin.skills"]?.degradations?.some((item) => item.id === SKILL_NAME_UNQUALIFIED) ??
         false;
+      const nativeNames = new Map(source.skills.map((skill) => [skill.name, skill.name]));
       for (const { skill, name, kept } of qualifying ? qualifiedSkillNames(source.manifest.name, source.skills) : []) {
         let reason = kept;
         if (reason === undefined && name !== skill.name) {
           const contents = source.files.find((file) => file.path === skill.manifestPath)?.contents;
           const rewritten = contents === undefined ? undefined : renameSkillManifest(contents, skill.name, name);
           if (rewritten === undefined) reason = "its frontmatter has no single top-level name line to rewrite";
-          else renamed.set(skill.manifestPath, rewritten);
+          else {
+            renamed.set(skill.manifestPath, rewritten);
+            nativeNames.set(skill.name, name);
+          }
         }
         if (reason === undefined) continue;
         // Reported, never raised: core applies components.onDegraded and
@@ -708,7 +726,18 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
         path: INJECTOR_PATH,
         contents: emitters
           ? emitters.injector(source, servers)
-          : injectorSource(source.manifest, servers, source.skills.length > 0),
+          : injectorSource(
+              source.manifest,
+              servers,
+              source.skills.length > 0,
+              Object.fromEntries(
+                source.skills.flatMap((skill) =>
+                  skill.policy?.allowImplicitInvocation === undefined
+                    ? []
+                    : [[nativeNames.get(skill.name)!, skill.policy.allowImplicitInvocation]],
+                ),
+              ),
+            ),
       });
       // Either half can be absent: a config needs only one of `entry` or
       // `components`. An entry importing a module the build never produced fails
@@ -853,4 +882,23 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
   };
 }
 
-export const opencodeAgentPluginProjector = createOpenCodeAgentPluginProjector();
+const nativeOpenCodeProjector = createOpenCodeAgentPluginProjector();
+export const opencodeAgentPluginProjector = withSkillInvocationPolicy(
+  {
+    ...nativeOpenCodeProjector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeOpenCodeProjector.profiles,
+      opencodePackageSkillPolicyValidation,
+      OPENCODE_SKILL_POLICY_RATIONALE,
+      "emulated",
+      [
+        opencodeNewerSkillPolicyValidation,
+        opencodePermissionOrderValidation,
+        opencodePermissionPreservationValidation,
+        opencodeNumericPermissionValidation,
+      ],
+    ),
+  },
+  "opencode",
+  opencodeSkillPolicy,
+);

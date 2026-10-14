@@ -84,7 +84,7 @@ export function piShimEntrySource(options: {
 export function piAdapter(): HarnessAdapter {
   return {
     id: "pi",
-    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.6.0", // kept equal to package.json by versions.test.ts
     harness: piHarness,
     projectPaths: [".pi/extensions", ".pi/skills"],
     projectIntegration,
@@ -101,6 +101,13 @@ export function piAdapter(): HarnessAdapter {
     shellCodec: piShellCodec,
     shellShapes: PI_SHELL_SHAPES,
     classifyTool: classifyPiTool,
+    shellDialect: {
+      source: "none",
+      rationale:
+        "The existing Pi captures establish shell argument shapes but do not establish interpreter behavior " +
+        "across host configurations. Shell dialect is left absent pending that evidence.",
+      evidence: ".capture/pi/README.md",
+    },
 
     supportedHarnessVersions() {
       return piCapabilityProfiles.map((p) => p.range);

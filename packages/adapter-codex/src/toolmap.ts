@@ -41,6 +41,12 @@ export const CODEX_TOOL_KINDS: Record<string, ToolKind> = {
  * `.capture/codex-tools/README.md`. `shell` as a tool NAME was never observed
  * and its shape is unknown, so it is deliberately absent: a hook falls back to
  * `input` rather than being handed a guess.
+ *
+ * No entry declares a dialect (ADR-0029). The model selects the interpreter per
+ * call and the hook input does not carry the selector: identical `Bash`
+ * payloads ran PowerShell and cmd on Windows, and bash, zsh, dash and
+ * PowerShell on Linux (`.capture/shell-dialects`). The view's `dialect` stays
+ * absent, which is the signal that the grammar is unknown.
  */
 export const CODEX_SHELL_SHAPES: ShellShapes = {
   Bash: { commandKey: "command" },

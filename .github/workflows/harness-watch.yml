@@ -607,12 +607,16 @@ jobs:
         run: |
           SIDECAR_URL="http://127.0.0.1:4000"
           SIDECAR_LOG="$RUNNER_TEMP/litellm-sidecar.log"
-          OPENAI_API_KEY="$HARNESS_LLM_API_KEY" \
+          # A fresh proxy credential serves this run only; the upstream key
+          # stays in the sidecar process.
+          PROXY_KEY="sk-$(openssl rand -hex 32)"
+          echo "::add-mask::$PROXY_KEY"
+          LITELLM_MASTER_KEY="$PROXY_KEY" OPENAI_API_KEY="$HARNESS_LLM_API_KEY" \
             litellm --config .github/litellm.json --port 4000 >"$SIDECAR_LOG" 2>&1 &
           SIDECAR_PID=$!
           SIDECAR_READY=false
           for i in $(seq 1 30); do
-            if curl -sf "$SIDECAR_URL/health" > /dev/null; then
+            if curl -sf --header "Authorization: Bearer $PROXY_KEY" "$SIDECAR_URL/health" > /dev/null; then
               SIDECAR_READY=true
               break
             fi
@@ -632,7 +636,7 @@ jobs:
             # upstream token are never visible to the globally installed
             # harness package.
             echo "HARNESS_LLM_PROXY_URL=http://host.docker.internal:4000"
-            echo "HARNESS_LLM_PROXY_KEY=hooknostic-drift"
+            echo "HARNESS_LLM_PROXY_KEY=$PROXY_KEY"
           } >> "$GITHUB_ENV"
 
       - name: Run the drift capture-compare

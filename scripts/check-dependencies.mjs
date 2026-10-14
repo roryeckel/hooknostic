@@ -31,7 +31,11 @@ export function inventory(root = repoRoot) {
     "package.json",
     ...["packages", "examples"].flatMap((dir) =>
       readdirSync(resolve(root, dir), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        // pnpm's `packages/*` and `examples/*` never match a dot-directory, so
+        // one is not a member; examples/.buildtest-* is where the CLI build
+        // tests keep scratch copies, which have no manifest while being copied
+        // or removed. Every other directory is a member and needs a manifest.
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
         .map((entry) => `${dir}/${entry.name}/package.json`),
     ),
   ];

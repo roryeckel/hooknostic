@@ -41,11 +41,17 @@ export interface AgentPluginMcpConfig {
   mcpServers: Record<string, AgentPluginMcpServer>;
 }
 
+export interface SkillPolicy {
+  /** Explicit native user invocation remains available when implicit invocation is disabled. */
+  allowImplicitInvocation?: boolean;
+}
+
 export interface AgentPluginSkill {
   name: string;
   description: string;
   directory: string;
   manifestPath: string;
+  policy?: SkillPolicy;
 }
 
 /** Materialized package file. `contents` may be binary; `mode` is canonical 0644 or 0755. */
@@ -109,6 +115,7 @@ export interface LoadAgentPluginResult {
 export const AGENT_PLUGIN_COMPONENT_IDS = [
   "agent-plugin.manifest",
   "agent-plugin.skills",
+  "agent-plugin.skills.invocation-policy",
   "agent-plugin.mcp.stdio",
   "agent-plugin.mcp.streamable-http",
   "agent-plugin.mcp.sse",
@@ -252,6 +259,8 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    */
   support: Partial<Record<AgentPluginComponentId, AgentPluginComponentSupport>>;
   onUnsupported: "error" | "warn";
+  /** Qualified shortfalls explicitly accepted by the consuming configuration. */
+  accept?: readonly string[];
   /**
    * Ambient variable NAMES each MCP server reads, keyed by server name.
    *

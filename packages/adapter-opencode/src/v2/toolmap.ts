@@ -1,7 +1,14 @@
+import type { ReportedToolFacts } from "@hooknostic/core";
 import type { FileShapes, ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
 import { fileCodec, shellCodec } from "@hooknostic/sdk";
 
-/** Captured at the hook boundary: fixtures/opencode/2.0/tool-shell-workdir-before.input.json. */
+/**
+ * Captured at the hook boundary: fixtures/opencode/2.0/tool-shell-workdir-before.input.json.
+ * No dialect here: the host's configuration picks the interpreter (ADR-0029),
+ * and the dialect comes from what the harness states -- see `../shell-statement.ts`.
+ * That statement is the `shell` tool's own, and `shell` is the only tool with a
+ * view to carry it: a second entry needs its own evidence before it shares it.
+ */
 export const OPENCODE_V2_SHELL_SHAPES: ShellShapes = { shell: { commandKey: "command", cwdKey: "workdir" } };
 export const opencodeV2ShellCodec = shellCodec(OPENCODE_V2_SHELL_SHAPES);
 
@@ -35,8 +42,14 @@ const kinds: Readonly<Record<string, ToolKind>> = {
   subagent: "agent",
 };
 
-export function classifyOpenCodeV2Tool(nativeName: string, input: unknown): ToolInvocation {
-  const shell = opencodeV2ShellCodec.classify(nativeName, input);
+export function classifyOpenCodeV2Tool(
+  nativeName: string,
+  input: unknown,
+  reported?: ReportedToolFacts,
+): ToolInvocation {
+  const view = opencodeV2ShellCodec.classify(nativeName, input);
+  const dialect = reported?.shellDialect;
+  const shell = view !== undefined && dialect !== undefined ? { ...view, dialect } : view;
   const file = opencodeV2FileCodec.classify(nativeName, input);
   // Code Mode emits outer execute and inner tool hooks. The inner envelope
   // has no MCP discriminator. Even a connected server's namespace can contain

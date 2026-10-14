@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
@@ -32,7 +33,14 @@ export function projectSkillFiles(
   const degradations: AgentPluginDegradation[] = [];
   const files = source.skills.flatMap((skill) => {
     const path = `${destination}/${skill.name}`;
-    const inPlace = resolve(root, path) === resolve(skill.source);
+    const canonical = (input: string) => {
+      try {
+        return realpathSync.native(input);
+      } catch {
+        return resolve(input);
+      }
+    };
+    const inPlace = canonical(resolve(root, path)) === canonical(skill.source);
     const manifest = skill.files.find((file) => file.path === "SKILL.md");
     const projected =
       manifest === undefined || text === undefined

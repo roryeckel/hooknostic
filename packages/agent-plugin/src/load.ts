@@ -19,6 +19,7 @@ import {
   type AgentPluginSkill,
   type LoadAgentPluginOptions,
   type LoadAgentPluginResult,
+  type SkillPolicy,
 } from "./types.js";
 
 const MANIFEST_KEYS = new Set([
@@ -457,12 +458,22 @@ function extractFrontmatter(text: string): unknown {
   return document.toJS({ maxAliasCount: 0 }) as unknown;
 }
 
+class InvalidSkillPolicyError extends Error {}
+
 function validateSkillFrontmatter(
   value: unknown,
   directory: string,
   options: { allowAdditionalFields?: boolean } = {},
-): { name: string; description: string } {
+): { name: string; description: string; policy?: SkillPolicy } {
   if (!object(value)) throw new Error("frontmatter must be a mapping");
+  // A malformed reserved policy is always fatal, even when another field
+  // would otherwise cause the skill to be skipped under onInvalid: warn.
+  const invocation = object(value["metadata"]) ? value["metadata"]["hooknostic/allow-implicit-invocation"] : undefined;
+  if (invocation !== undefined && invocation !== "true" && invocation !== "false") {
+    throw new InvalidSkillPolicyError(
+      'metadata hooknostic/allow-implicit-invocation must be the string "true" or "false"',
+    );
+  }
   if (!options.allowAdditionalFields && Object.keys(value).some((key) => !SKILL_KEYS.has(key))) {
     throw new Error("frontmatter contains an unknown field");
   }
@@ -493,7 +504,11 @@ function validateSkillFrontmatter(
   ) {
     throw new Error("metadata must be a map of string values");
   }
-  return { name, description };
+  return {
+    name,
+    description,
+    ...(invocation === undefined ? {} : { policy: { allowImplicitInvocation: invocation === "true" } }),
+  };
 }
 
 function loadSkills(
@@ -522,7 +537,7 @@ function loadSkills(
     } catch (error) {
       issue(
         issues,
-        "warn",
+        error instanceof InvalidSkillPolicyError ? "error" : "warn",
         "skill",
         `skill ${JSON.stringify(directory)} is invalid and was skipped: ${error instanceof Error ? error.message : String(error)}`,
         file.path,
@@ -781,6 +796,7 @@ export interface ProjectSkill {
   name: string;
   source: string;
   files: AgentPluginFile[];
+  policy?: SkillPolicy;
 }
 export interface ProjectComponents {
   origin: "package" | "direct";
@@ -792,6 +808,7 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
     origin: "package",
     skills: source.skills.map((skill) => ({
       name: skill.name,
+      ...(skill.policy === undefined ? {} : { policy: skill.policy }),
       source: resolve(source.root, skill.directory),
       files: source.files
         .filter((f) => f.path.startsWith(skill.directory + "/"))
@@ -830,6 +847,7 @@ export async function loadProjectComponents(options: {
       names.add(skill.name);
       source.skills.push({
         name: skill.name,
+        ...(skill.policy === undefined ? {} : { policy: skill.policy }),
         source: resolve(directory, skill.directory.slice(7)),
         files: nested.files
           .filter((f) => f.path.startsWith(skill.directory + "/"))

@@ -103,6 +103,46 @@ it("allows the matrix for clean Renovate artifacts but fails closed on build or 
   runWatchStep("Require current generated artifacts", {}, "pnpm() { :; }\ngit() { return 24; }", "ci", 24);
 });
 
+it("authenticates the LiteLLM sidecar, health check, and driver with one masked disposable key", () => {
+  const result = runWatchStep(
+    "Start LiteLLM sidecar (llm transport only)",
+    {},
+    `export GITHUB_ENV=environment.txt
+    export HARNESS_LLM_API_KEY=sk-upstream-proof
+    litellm() {
+      if [[ ! "$LITELLM_MASTER_KEY" =~ ^sk-[0-9a-f]{64}$ ]] || [[ "$OPENAI_API_KEY" != "$HARNESS_LLM_API_KEY" ]]; then
+        echo 'missing disposable master key or upstream credential' >&2
+        return 23
+      fi
+      printf '%s' "$LITELLM_MASTER_KEY" > proxy-key.txt
+      while :; do command sleep 0.01; done
+    }
+    curl() {
+      [[ -s proxy-key.txt ]] || return 1
+      [[ "$*" == *"Authorization: Bearer $(cat proxy-key.txt)"* ]]
+    }
+    sleep() { command sleep 0.02; }
+    trap 'code=$?; kill "$SIDECAR_PID" 2>/dev/null || :; if [[ "$code" == 0 ]]; then
+      source "$GITHUB_ENV"
+      [[ "$HARNESS_LLM_PROXY_KEY" == "$(cat proxy-key.txt)" ]] || exit 24
+      echo authenticated-credential-forwarded
+    fi' EXIT`,
+  );
+  expect(result.stdout).toMatch(/::add-mask::sk-[0-9a-f]{64}/);
+  expect(result.stdout).toContain("authenticated-credential-forwarded");
+});
+
+it("runs the pinned LiteLLM compatibility probe in the required Ubuntu CI lane", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const test = ci.split("  test:")[1].split(/\r?\n {2}\S/)[0];
+  const probe = test.split(/\r?\n {6}- /).find((step) => step.startsWith("name: LiteLLM sidecar compatibility"));
+  expect(probe).toBeDefined();
+  expect(probe).toContain("if: matrix.os == 'ubuntu-latest'");
+  expect(probe).toContain("python -m pip install --disable-pip-version-check -r .github/requirements/litellm.txt");
+  expect(probe).toContain("python scripts/probe-litellm-sidecar.py");
+  expect(probe).not.toContain("secrets.");
+});
+
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
   const source = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), "utf8");
   const step = source

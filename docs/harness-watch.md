@@ -250,7 +250,12 @@ leading message (Claude Code's requests carry a system block after the first
 user turn, which strict chat templates reject). Both only reshape the
 model-side request; harness hook payloads are untouched.
 Configuration references environment variables, so no upstream key is written
-to the config file. Before upgrading the pinned proxy, exercise its real
+to the config file. Each paid run generates and masks a strong disposable proxy
+key, supplies it as `LITELLM_MASTER_KEY`, and uses the same key for the health
+check and `HARNESS_LLM_PROXY_KEY` passed to the isolated driver. The upstream
+API key remains in the host-side proxy process.
+
+Before upgrading the pinned proxy, exercise its real
 streaming and non-streaming translations against a loopback-only stub:
 
 ```bash
@@ -258,8 +263,10 @@ uv run --with-requirements .github/requirements/litellm.txt python scripts/probe
 ```
 
 This installs the pinned proxy in an isolated environment and makes no paid
-model calls. It proves proxy translation, not a live harness session or the
-owner's upstream credentials.
+model calls. The probe generates its own disposable proxy key and authenticates
+the health check and all six streaming/non-streaming API cases. The required
+Ubuntu CI lane runs the same probe against the pinned requirement. It proves
+proxy translation, not a live harness session or the owner's upstream credentials.
 
 | Item | Type | Purpose |
 | --- | --- | --- |

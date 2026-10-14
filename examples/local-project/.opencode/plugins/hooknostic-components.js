@@ -32,4 +32,5 @@ export default async () => ({ config(config) {
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
+
 } });

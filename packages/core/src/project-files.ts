@@ -30,6 +30,8 @@ export interface ProjectIntegration {
   entries: ProjectEntry[];
   guidance: string[];
   absent?: { path: string; key: string[] }[];
+  /** An omitted copy must not leave an unowned native skill discoverable. */
+  omittedFiles?: readonly string[];
   omissions?: ProjectComponentOmission[];
   /**
    * Emitted entries the harness will treat differently from the specification.
@@ -292,6 +294,16 @@ export async function reconcileProject(
   const manifestState = await fileState(await projectPath(root, STATE));
   const manifestBytes = manifestState.contents;
   const prior = readManifest(manifestBytes, config);
+  for (const path of integration.omittedFiles ?? []) {
+    validateDestination(path);
+    const raw = await bytes(await projectPath(root, path));
+    observedAbsentFiles.set(path, raw);
+    if (raw && !prior.owned.some((entry) => entry.path === path && entry.key === undefined)) {
+      throw new Error(
+        `cannot omit an unowned native skill: ${path}; move the authored source to a separate directory such as skills/`,
+      );
+    }
+  }
   const previous = new Map(prior.owned.map((entry) => [identity(entry), entry]));
   const desired = new Map<string, ProjectFile | ProjectEntry>();
   const relinquished = new Set(integration.relinquishFiles ?? []);

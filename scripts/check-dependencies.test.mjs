@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 import { expect, it } from "vitest";
 
@@ -173,4 +175,37 @@ it("inventories the compiler API override on the linter-supported minor line", (
     npmPackageAlias: true,
     packageName: "typescript",
   });
+});
+
+it("inventories workspace members, not the scratch copies build tests keep beside the examples", () => {
+  // A root of its own: this repository's tooling files around two members that
+  // declare nothing but the engine every manifest has to agree on.
+  const root = mkdtempSync(join(tmpdir(), "hooknostic-inventory-"));
+  try {
+    for (const path of [
+      ".github",
+      "package.json",
+      "pnpm-workspace.yaml",
+      "examples/agent-plugin/runtime/package.json",
+      "examples/agent-plugin/runtime/package-lock.json",
+    ]) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      cpSync(new URL(`../${path}`, import.meta.url), join(root, path), { recursive: true });
+    }
+    const { engines } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    for (const member of ["packages/member", "examples/agent-plugin"]) {
+      mkdirSync(join(root, member), { recursive: true });
+      writeFileSync(join(root, member, "package.json"), JSON.stringify({ engines }));
+    }
+    const before = inventory(root);
+    // The CLI build tests copy an example to examples/.buildtest-* and remove it
+    // again while this file runs; for part of that time it has no manifest.
+    mkdirSync(join(root, "examples/.buildtest-agent-plugin"));
+    expect(inventory(root)).toEqual(before);
+    // Only pnpm's own exclusion is mirrored: a member with no manifest still fails.
+    mkdirSync(join(root, "examples/unfinished"));
+    expect(() => inventory(root)).toThrow(/ENOENT.*unfinished/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -1,0 +1,399 @@
+{
+  "provenance": "live-probe",
+  "harness": "codex",
+  "version": "0.156.1",
+  "platform": "win32",
+  "delivery": "package",
+  "policyProbe": true,
+  "scope": "Native package skills; model replies and forced tool calls were scripted on loopback.",
+  "extraction": "Probe-bearing lines are verbatim excerpts from recorded request bodies; JSON paths and one-based string line numbers identify their source. Only the Windows account-name path segment is redacted to user. descriptionMarkersInInitialRequest and bodiesReachedModel summarize complete tool-bearing model requests, not just these excerpts. Complete raw requests remain in ignored captured/; their hashes are recorded per case.",
+  "cases": [
+    {
+      "label": "baseline",
+      "capturedAt": "2026-10-11T23:07:00.271Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 1,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "39a1dbba9c86645fcae7069b44c4ecb93e963c6dfc981af865c1afe5f6078a9a",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-codex: GATE_DESCRIPTION_gate-codex harmless capture control. (file: r2/gate-codex/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 17,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "gated",
+      "capturedAt": "2026-10-11T23:07:26.915Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": true,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 1,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "b6349d80753f8cd91624047ecc7d94fc6838d6cc8e5980db0a3c275708f26d62",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "allowed",
+      "capturedAt": "2026-10-11T23:07:57.064Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 1,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "daa09b0d4703f564a94d11a12b9c7c385c9636209a1d35e4f529f5a20c99ee2c",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-codex: GATE_DESCRIPTION_gate-codex harmless capture control. (file: r2/gate-codex/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 17,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "explicit-native",
+      "capturedAt": "2026-10-11T23:09:01.848Z",
+      "prompt": "$gate-probe:gate-codex",
+      "action": null,
+      "gated": true,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 1,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [
+        "gate-codex"
+      ],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "878589a292fc4a6124b0260766ccdfa9ba1cceb06607416fc05a3ef8a1fc74f2",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        },
+        {
+          "path": "$[\"0\"][\"input\"][\"3\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 6,
+              "text": "description: GATE_DESCRIPTION_gate-codex harmless capture control."
+            },
+            {
+              "line": 9,
+              "text": "GATE_BODY_gate-codex"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "load-control",
+      "capturedAt": "2026-10-11T23:09:09.712Z",
+      "prompt": "Reply with done.",
+      "action": {
+        "kind": "tool",
+        "toolName": "exec_command",
+        "arguments": {
+          "cmd": "Get-Content -Raw -LiteralPath 'C:\\Users\\user\\AppData\\Local\\Temp\\hkn-skill-gate-O0fsXX\\codex-home\\plugins\\cache\\gate-capture\\gate-probe\\1.0.0\\skills\\gate-codex\\SKILL.md'",
+          "login": false,
+          "yield_time_ms": 1000,
+          "max_output_tokens": 2000
+        }
+      },
+      "loadingSandbox": "disabled for synthetic read controls",
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [
+        "gate-codex"
+      ],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "ffe24ccf9368d1b4a3506de9c3d55ca82d3fbefb1f6d1b75d12a43134afc37df",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-codex: GATE_DESCRIPTION_gate-codex harmless capture control. (file: r2/gate-codex/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 17,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        },
+        {
+          "path": "$[\"1\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-codex: GATE_DESCRIPTION_gate-codex harmless capture control. (file: r2/gate-codex/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 17,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        },
+        {
+          "path": "$[\"1\"][\"input\"][\"4\"][\"output\"]",
+          "lines": [
+            {
+              "line": 8,
+              "text": "description: GATE_DESCRIPTION_gate-codex harmless capture control."
+            },
+            {
+              "line": 11,
+              "text": "GATE_BODY_gate-codex"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "load-gated",
+      "capturedAt": "2026-10-11T23:09:14.974Z",
+      "prompt": "Reply with done.",
+      "action": {
+        "kind": "tool",
+        "toolName": "exec_command",
+        "arguments": {
+          "cmd": "Get-Content -Raw -LiteralPath 'C:\\Users\\user\\AppData\\Local\\Temp\\hkn-skill-gate-9KgKWv\\codex-home\\plugins\\cache\\gate-capture\\gate-probe\\1.0.0\\skills\\gate-codex\\SKILL.md'",
+          "login": false,
+          "yield_time_ms": 1000,
+          "max_output_tokens": 2000
+        }
+      },
+      "loadingSandbox": "disabled for synthetic read controls",
+      "gated": true,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [
+        "gate-codex"
+      ],
+      "skillTool": null,
+      "pluginConfig": null,
+      "rawRequestsSha256": "6577a402c5401b6958a18660288cb36e6b5053ea96bf5b85209159a560c05557",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        },
+        {
+          "path": "$[\"1\"][\"input\"][\"0\"][\"content\"][\"0\"][\"text\"]",
+          "lines": [
+            {
+              "line": 14,
+              "text": "- gate-probe:gate-claude: GATE_DESCRIPTION_gate-claude harmless capture control. (file: r2/gate-claude/SKILL.md)"
+            },
+            {
+              "line": 15,
+              "text": "- gate-probe:gate-control: GATE_DESCRIPTION_gate-control harmless capture control. (file: r2/gate-control/SKILL.md)"
+            },
+            {
+              "line": 16,
+              "text": "- gate-probe:gate-opencode: GATE_DESCRIPTION_gate-opencode harmless capture control. (file: r2/gate-opencode/SKILL.md)"
+            }
+          ]
+        },
+        {
+          "path": "$[\"1\"][\"input\"][\"4\"][\"output\"]",
+          "lines": [
+            {
+              "line": 8,
+              "text": "description: GATE_DESCRIPTION_gate-codex harmless capture control."
+            },
+            {
+              "line": 11,
+              "text": "GATE_BODY_gate-codex"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    }
+  ]
+}

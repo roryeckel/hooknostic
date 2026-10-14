@@ -6,6 +6,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 import type { IPty, spawn as ptySpawn } from "node-pty";
 import semver from "semver";
@@ -28,7 +29,9 @@ import { requirePackageSupport } from "../../../scripts/verify-marketplaces.mjs"
 import { defaultAdapterRegistry } from "../src/registry.js";
 import {
   buildPlaybackArtifact,
+  expectOpenCodeShellDialect,
   openCodePlaybackConfigHome,
+  openCodeShellDialectExpectation,
   playbackModelInfo,
   type PlaybackScenario,
   prepareOpenCodePluginDependency,
@@ -50,6 +53,8 @@ const adapter =
       ? undefined
       : defaultAdapterRegistry()[selected];
 const tempDirs: string[] = [];
+/** The shell calls' dialects from the lifecycle scenario's trace, once it has run. */
+let lifecycleShellDialects: unknown[] | undefined;
 
 /** In-repo stdio MCP fixture server (see the file's header for the protocol). */
 const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", import.meta.url));
@@ -249,6 +254,107 @@ describe("model playback auxiliary requests", () => {
       expect(second.status).toBe(200);
       expect(await second.text()).toContain("hooknostic-valid-compaction-summary");
       expect(server.turnCount).toBe(2);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("model playback pending MCP servers", () => {
+  const BUILT_IN = [
+    { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" } } } },
+    {
+      name: "WaitForMcpServers",
+      input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
+    },
+  ];
+  const ECHO = { name: "mcp__plugin_probe_projection__projection_echo", input_schema: { type: "object" } };
+  const SCRIPT = [
+    { kind: "tool", toolName: "projection_echo" },
+    { kind: "text", text: "projection complete" },
+  ] as const;
+  const post = (server: { baseUrl: string }, tools: unknown[]) =>
+    fetch(`${server.baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tools }),
+    }).then(async (response) => ({ status: response.status, text: await response.text() }));
+  const toolUse = (text: string) => /"type":"tool_use","id":"([^"]+)","name":"([^"]+)"/.exec(text)?.slice(1, 3);
+
+  it("waits for a connecting server without spending the step that names its tool", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      // The stdio server has not connected: its tool is absent, the wait tool is offered.
+      const early = await post(server, BUILT_IN);
+      expect(early.status).toBe(200);
+      const wait = toolUse(early.text);
+      expect(wait?.[1]).toBe("WaitForMcpServers");
+      expect(early.text).toContain('"partial_json":"{}"');
+      expect(server.turnCount).toBe(0);
+
+      const ready = await post(server, [...BUILT_IN, ECHO]);
+      const call = toolUse(ready.text);
+      expect(call?.[1]).toBe(ECHO.name);
+      // The harness pairs each result with its call by id.
+      expect(call?.[0]).not.toBe(wait?.[0]);
+      expect(server.turnCount).toBe(1);
+
+      expect((await post(server, [...BUILT_IN, ECHO])).text).toContain("projection complete");
+      expect(server.turnCount).toBe(2);
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports the tool missing once the waits for one step are spent", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(server.errors).toEqual([]);
+      const spent = await post(server, BUILT_IN);
+      expect(spent.status).toBe(500);
+      expect(server.errors).toHaveLength(1);
+      expect(server.errors[0]).toContain("playback request exposed no usable tool");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports the tool missing at once where the harness offers no way to wait", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      const response = await post(server, BUILT_IN.slice(0, 1));
+      expect(response.status).toBe(500);
+      expect(server.errors[0]).toContain("playback request exposed no usable tool");
+      // The step was spent on the failure, not held back for a wait.
+      expect(server.turnCount).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("gives each step its own waits", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [
+      { kind: "tool", toolName: "projection_echo" },
+      { kind: "tool", toolName: "late_echo" },
+      { kind: "text" },
+    ]);
+    const LATE = { name: "mcp__plugin_probe_late__late_echo", input_schema: { type: "object" } };
+    try {
+      // Two waits, then the first step; the second step can still wait twice.
+      const calls: (string[] | undefined)[] = [];
+      for (const tools of [BUILT_IN, BUILT_IN, [...BUILT_IN, ECHO], [...BUILT_IN, ECHO], [...BUILT_IN, ECHO]]) {
+        calls.push(toolUse((await post(server, tools)).text));
+      }
+      calls.push(toolUse((await post(server, [...BUILT_IN, ECHO, LATE])).text));
+      const WAIT = "WaitForMcpServers";
+      expect(calls.map((call) => call?.[1])).toEqual([WAIT, WAIT, ECHO.name, WAIT, WAIT, LATE.name]);
+      // The harness pairs each result with its call by id, so none may repeat.
+      expect(new Set(calls.map((call) => call?.[0])).size).toBe(calls.length);
+      expect(server.turnCount).toBe(2);
+      expect(server.errors).toEqual([]);
     } finally {
       await server.close();
     }
@@ -463,8 +569,6 @@ interface OpenCodeServeSession {
   sessionId: string;
   messages: () => Promise<ServeMessage[]>;
 }
-
-/* eslint-disable no-control-regex -- ANSI stripping needs the escape control char */
 
 async function runClaudePlayback(
   build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
@@ -1305,6 +1409,10 @@ async function prepareClaudePtyConfig(dir: string): Promise<string> {
 // matching runs against a whitespace-stripped screen.
 const DIALOG_SETTLE_MS = 600;
 
+function plainClaudePtyScreen(screen: string): string {
+  return stripVTControlCharacters(screen);
+}
+
 function dialogScreen(plainScreen: () => string): string {
   return plainScreen().replace(/\s+/g, "");
 }
@@ -1431,6 +1539,27 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
 }
 
 describe("Claude PTY first-run walk", () => {
+  it("selects folder trust when a private CSI sequence follows the native options", async () => {
+    const capture = JSON.parse(
+      await readFile(
+        new URL("../../../.capture/harness-playback/claude-windows-trust-csi.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { selectionEntry: { screen: string } };
+    let frame = capture.selectionEntry.screen;
+    const writes: string[] = [];
+    const pty = {
+      write(input: string) {
+        writes.push(input);
+        if (input === "\r") frame = "> ? for shortcuts";
+      },
+      kill() {},
+    } as unknown as IPty;
+
+    await walkFirstRunDialogs(pty, () => plainClaudePtyScreen(frame), 5_000);
+    expect(writes).toEqual(["\r"]);
+  });
+
   it("continues past the auto-mode classifier billing notice", async () => {
     // Whitespace-stripped frame as 2.1.283 rendered it in
     // .capture/claude-permission-mode (the port is the loopback's).
@@ -1739,8 +1868,10 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
             "--plugin-dir",
             pluginDir,
             "--dangerously-skip-permissions",
+            // Room for a wait: the first request can precede the stdio server's
+            // connection, and the playback then spends a turn waiting for it.
             "--max-turns",
-            "3",
+            "4",
           ],
           {
             cwd: projectDir,
@@ -2614,7 +2745,16 @@ scenarioDrive("lifecycle-observe", async () => {
   const trace = (await readFile(build.tracePath, "utf8"))
     .trim()
     .split("\n")
-    .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          event: string;
+          lastMessage?: string;
+          turnId?: string;
+          toolKind?: string;
+          shellDialect?: string;
+        },
+    );
   const prompt = trace.find((entry) => entry.event === "prompt.before");
   const stop = trace.filter((entry) => entry.event === "turn.stop").at(-1);
   if (build.fields.includes("prompt.before.correlation.turnId")) expect(prompt?.turnId).toEqual(expect.any(String));
@@ -2625,6 +2765,12 @@ scenarioDrive("lifecycle-observe", async () => {
     expect(stop?.turnId).toEqual(expect.any(String));
     if (build.fields.includes("prompt.before.correlation.turnId")) expect(stop?.turnId).toBe(prompt?.turnId);
   } else expect(stop?.turnId).toBeUndefined();
+
+  // Kept for the dialect test below rather than asserted here: this scenario
+  // stands for every observable event, and the dialect is none of them.
+  lifecycleShellDialects = trace
+    .filter((entry) => entry.event === "tool.before" && entry.toolKind === "shell")
+    .map((entry) => entry.shellDialect);
 });
 
 scenarioDrive("tool-before-block", async () => {
@@ -3190,7 +3336,7 @@ scenarioDrive(
       pty.onData((data: string) => {
         screen += data;
       });
-      const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+      const plainScreen = (): string => plainClaudePtyScreen(screen);
       // Walk first-run dialogs reactively: fresh CI state renders a different
       // sequence (theme -> API key -> security notes -> trust on 2.1.238)
       // than a box with local state (trust first on 2.1.250), so the walk
@@ -3327,7 +3473,7 @@ scenarioDrive(
       pty.onData((data: string) => {
         screen += data;
       });
-      const plainScreen = (): string => screen.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+      const plainScreen = (): string => plainClaudePtyScreen(screen);
       const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
@@ -3509,5 +3655,51 @@ describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${se
     if (entry === undefined) continue;
     const skipReason = scenarioSkipReason(scenario, entry);
     it(scenario.title, { timeout: 240_000, skip: skipReason !== undefined }, entry.drive);
+  }
+
+  // ADR-0029, and a test of its own: the dialect is not a capability, so a
+  // build that rewords what it states should fail here, attributably, and not
+  // take the lifecycle scenario and every observe cell with it.
+  it("gives the lifecycle shell call the dialect this harness lets the adapter establish", (context) => {
+    if (lifecycleShellDialects === undefined) return context.skip("the lifecycle scenario did not run");
+    const dialects = lifecycleShellDialects;
+    expect(dialects.length, "no shell tool.before reached the trace").toBeGreaterThan(0);
+    if (adapter!.id === "opencode") {
+      const expectation = openCodeShellDialectExpectation();
+      if ("skip" in expectation) return context.skip(expectation.skip);
+      return expectOpenCodeShellDialect(dialects, expectation.dialect);
+    }
+    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
+    expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
+  });
+});
+
+it("expects an OpenCode dialect only where a capture says which one", () => {
+  // The lane's own judgement, pinned: asserting a dialect on a host whose shell
+  // the adapter leaves unmapped would blame the harness for the host.
+  const on = (platform: string, shell?: string) =>
+    openCodeShellDialectExpectation(shell === undefined ? {} : { SHELL: shell }, platform);
+  expect(on("linux", "/bin/bash")).toEqual({ dialect: "posix" });
+  expect(on("win32", "C:\\Program Files\\Git\\bin\\bash.exe")).toEqual({ dialect: "posix" });
+  expect(on("win32", "C:\\Program Files\\PowerShell\\7\\PWSH.EXE")).toEqual({ dialect: "powershell" });
+  expect(on("win32")).toEqual({ dialect: "powershell" });
+  expect(on("linux")).toEqual({ dialect: "posix" });
+  expect(on("linux", "")).toEqual({ dialect: "posix" });
+  // Captured on Linux only: OpenCode refused fish, ran bash and stated bash.
+  expect(on("linux", "/usr/bin/fish")).toEqual({ dialect: "posix" });
+  // macOS was captured in one configuration: SHELL named bash, stated and run.
+  expect(on("darwin", "/bin/bash")).toEqual({ dialect: "posix" });
+  for (const [platform, shell] of [
+    ["linux", "/bin/sh"],
+    ["linux", "/usr/bin/tcsh"],
+    ["win32", "C:\\tools\\fish.exe"],
+    // Nothing else was captured on macOS (ADR-0029), so not even zsh, which
+    // the adapter maps and Linux saw stated, is expected there.
+    ["darwin", "/bin/zsh"],
+    ["darwin", "/opt/homebrew/bin/fish"],
+    ["darwin", undefined],
+    ["freebsd", "/bin/bash"],
+  ] as const) {
+    expect(on(platform, shell), `${platform} ${String(shell)}`).toEqual({ skip: expect.any(String) });
   }
 });

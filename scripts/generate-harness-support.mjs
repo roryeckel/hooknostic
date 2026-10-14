@@ -41,9 +41,10 @@ const lines = [
   "See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.",
   "",
   "> [!WARNING]",
-  "> **macOS is untested.** Every record below was established on Windows or Linux.",
-  "> CI runs only the unit and fixture tests on macOS; no harness session has been",
-  "> captured or played back there.",
+  "> **macOS has shell interpreter captures and nothing else.** Each harness ran its",
+  "> shell tool on a GitHub macOS runner (`.capture/shell-dialects`); every other",
+  "> record below was established on Windows or Linux. CI runs only the unit and",
+  "> fixture tests on macOS, and the playback suite has never run there.",
   "",
   "| Harness | Recommended target range | Validated ranges | Reference build | Fixtures |",
   "| --- | --- | --- | --- | --- |",
@@ -96,6 +97,22 @@ for (const adapter of adapters) {
       "Project delivery validation records:",
     );
     lines.push("Project support is independent of package projection.", "");
+  }
+  // Not a capability: whether a call carries a dialect depends on the call and
+  // its host, so the adapter states where it comes from instead (ADR-0029).
+  if (adapter.shellDialect) {
+    const sources = {
+      tool: "is established from **the tool name**",
+      statement: "is established from **what the harness states**",
+      none: "is **not established** on this harness",
+    };
+    lines.push(
+      "#### Shell dialect",
+      "",
+      "`tool.shell.dialect` " + sources[adapter.shellDialect.source] + ". " + adapter.shellDialect.rationale,
+      "Evidence: `" + adapter.shellDialect.evidence + "`.",
+      "",
+    );
   }
   if (adapter.agentPluginProjector) {
     lines.push("#### Agent Plugin projection", "");

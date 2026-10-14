@@ -53,6 +53,23 @@ Install only the output matching your harness family. See [OpenCode families](..
 
 ## Install through a marketplace
 
+A packaged skill can require explicit user invocation with portable metadata in
+its authored `SKILL.md`:
+
+```yaml
+metadata:
+  hooknostic/allow-implicit-invocation: "false"
+```
+
+Use the quoted strings `"false"` or `"true"`; absence preserves native authored
+behavior. Native policy is generated after overlays, so keep the portable source
+in `skills/` and edit that source. Use `inspect <target> --delivery package
+--component agent-plugin.skills.invocation-policy --version <configured-range>`
+to check the package route. Unsupported policy fails by default; warning mode
+omits the affected skill. Named acceptance and shared-directory ownership are
+explained in [repository integration](../project-integration.md). Command-menu
+visibility is not part of this declaration.
+
 From here, run commands in `examples/agent-plugin`. The example includes the marketplace documents
 below. They register native output, not the portable source root.
 Do not add both portable and native manifests to one installed Codex output: the

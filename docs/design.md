@@ -239,11 +239,14 @@ interface ToolInvocation {
   // Normalized shell view, present when the adapter's shape table knows this
   // tool's argument keys; absent means uncaptured -- fall back to `input`.
   // commandKey/cwdKey expose the native keys for hand-built replaceInput calls.
+  // dialect is the grammar family the command runs in, where the adapter can
+  // establish it (ADR-0029); absent means unknown, never POSIX by default.
   shell?: {
     command: string;
     cwd?: string;
     commandKey: string;
     cwdKey?: string;
+    dialect?: "posix" | "powershell" | "cmd";
   };
 
   // Normalized file view (ADR-0026), present when the adapter's file shape
@@ -261,6 +264,13 @@ interface ToolInvocation {
 Each adapter derives `shell` from a per-tool **shape table** (`ShellShapes`),
 which also drives the inverse: `updateShell` is lowered through the same table,
 so the normalized read and the portable write cannot skew (Decision 0007).
+
+The view's `dialect` has two sources and no third (Decision 0029). A shape entry
+declares one where the tool itself pins a grammar family, as Claude Code's
+`Bash` and `PowerShell` do. Where the host's configuration picks the
+interpreter, as on OpenCode, the shim listens for the shell the harness states
+and the decoder attaches its family. Where neither exists, as on Codex, the
+dialect is absent. An adapter never infers one from the host platform.
 
 The category is best-effort classification for portable matching; `nativeName` and
 `event.raw` remain available for intentional harness-specific behavior.
@@ -879,6 +889,19 @@ it cannot name for its plugin, or a skill whose text keeps a reference the targe
 the model as written (ADR-0028), is an HN101 degradation: fatal by default, and a warning
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
+
+A skill's optional `metadata["hooknostic/allow-implicit-invocation"]` accepts only
+the strings `"true"` and `"false"`. It normalizes to `SkillPolicy.allowImplicitInvocation`
+on both source records and introduces the separate component capability
+`agent-plugin.skills.invocation-policy`. Canonical policy projects after native
+overlays; absence preserves authored native behavior. An unavailable gate fails,
+or the whole skill is omitted under `onUnsupported: "warn"`. Named acceptance of
+`<adapter>:skill-implicit-invocation-unenforced` permits ungated emission with an
+informational HN101 and the actual support level retained. In-place authored
+sources require the separate `<adapter>:skill-policy-in-place` acceptance to be
+left unchanged. Neither acceptance relaxes other shortfalls or ownership checks.
+Invalid portable policy remains fatal under `onInvalid: "warn"`. Shared native
+destinations compose all readers' edits and omissions before emission (ADR-0030).
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
 `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the

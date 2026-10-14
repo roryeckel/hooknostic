@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const names = ["gate-control", "gate-claude", "gate-codex", "gate-opencode"];
-const redact = (text) => text.replace(/(C:[\\/]Users[\\/])[^\\/]+/gi, "$1user");
+const redact = (text) => text.replace(/(C:[\\/]+Users[\\/]+)[^\\/]+/gi, "$1user");
 function redactValue(value) {
   if (typeof value === "string") return redact(value);
   if (Array.isArray(value)) return value.map(redactValue);
@@ -39,18 +39,20 @@ for (const arg of process.argv.slice(2)) {
     const raw = readFileSync(join(caseDir, "requests.json"));
     const requests = JSON.parse(raw);
     if (e.exit !== 0 || e.errors.length || !e.requestCount) throw new Error(`Incomplete session: ${label}`);
-    const key = `${e.harness}-${e.version}`;
-    const group = groups.get(key) ?? { harness: e.harness, version: e.version, platform: e.platform, cases: [] };
+    const key = `${e.harness}-${e.version}${e.policyProbe ? `-policy-${e.delivery}` : ""}${e.discoveryDirectory === undefined ? "" : `-discovery-${e.discoveryDirectory.replaceAll("/", "-")}`}`;
+    const group = groups.get(key) ?? { harness: e.harness, version: e.version, platform: e.platform, ...(e.policyProbe ? { delivery: e.delivery, policyProbe: true } : {}), ...(e.discoveryDirectory === undefined ? {} : { delivery: e.delivery, discoveryDirectory: e.discoveryDirectory }), cases: [] };
     const cases = group.cases;
     cases.push({
       label,
       capturedAt: e.capturedAt,
       prompt: e.prompt,
-      action: e.action,
+      action: redactValue(e.action),
+      ...(e.loadingSandbox === undefined ? {} : { loadingSandbox: e.loadingSandbox }),
       gated: e.gated,
       exit: e.exit,
       errors: e.errors,
       requestCount: e.requestCount,
+      ...(e.visibleSkills === undefined ? {} : { visibleSkills: e.visibleSkills }),
       descriptionMarkersInInitialRequest: names.filter((name) =>
         e.initial.some((text) => text.includes(`GATE_DESCRIPTION_${name}`)),
       ),
@@ -71,11 +73,17 @@ for (const arg of process.argv.slice(2)) {
 mkdirSync(join(root, "evidence"), { recursive: true });
 for (const [key, group] of groups) {
   const { cases, ...metadata } = group;
+  if (metadata.policyProbe) {
+    const labels = new Set(cases.map(probe => probe.label));
+    for (const label of ["baseline", "gated", "allowed", "explicit-native", "load-control", "load-gated"]) {
+      if (!labels.has(label)) throw new Error(`Incomplete policy probe ${key}: missing ${label}`);
+    }
+  }
   cases.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
   const evidence = {
     provenance: "live-probe",
     ...metadata,
-    scope: "Native project skills; model replies and forced tool calls were scripted on loopback.",
+    scope: `Native ${metadata.delivery ?? "project"} skills; model replies and forced tool calls were scripted on loopback.`,
     extraction:
       "Probe-bearing lines are verbatim excerpts from recorded request bodies; JSON paths and one-based string line numbers identify their source. Only the Windows account-name path segment is redacted to user. descriptionMarkersInInitialRequest and bodiesReachedModel summarize complete tool-bearing model requests, not just these excerpts. Complete raw requests remain in ignored captured/; their hashes are recorded per case.",
     cases,

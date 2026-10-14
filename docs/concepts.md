@@ -66,6 +66,14 @@ Codex patch touches). A view is absent when the shape is uncaptured; the raw
 ([Decision 0007](decisions/0007-portable-shell-write-back.md),
 [Decision 0026](decisions/0026-normalized-file-view.md))
 
+The same command text means different things to different interpreters, and the
+tool's name does not say which one runs it. So `tool.shell.dialect` names the
+grammar family (`posix`, `powershell` or `cmd`) wherever the adapter can
+establish it, and is absent where it cannot, which is every Codex call. A hook
+that parses or quotes a command branches on it and treats absent as unknown.
+([Decision 0029](decisions/0029-shell-dialect.md),
+[writing hooks safely](writing-hooks-safely.md#branch-on-the-shell-dialect-and-decide-what-unknown-means))
+
 Optional fields such as `turn.stop`'s `lastMessage` or `correlation.turnId` are rated
 per target like capabilities, because not every harness sends them: OpenCode's stop
 signal carries only a session id, so the adapter derives both. A hook lists the ones it

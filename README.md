@@ -82,6 +82,12 @@ export default defineConfig({
 
 Omit `entry` for a hookless package. For direct repository sources, use
 `components.skills` / `components.mcp` and project delivery instead of a package root.
+
+Skills may declare `metadata: { hooknostic/allow-implicit-invocation: "false" }`
+to require explicit user invocation across supported harness versions. Author
+them in `skills/` and let Hooknostic own the native copies; missing gates fail
+unless the skill is omitted or the specific shortfall is explicitly accepted.
+See [invocation policy](docs/project-integration.md) for authoring and support checks.
 The [existing combined example](examples/agent-plugin/) includes a bundled MCP server,
 so its generated packages run without workspace dependencies. OpenCode v1 remains
 available through an explicit version range; see [version families](docs/opencode-families.md).

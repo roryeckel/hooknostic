@@ -4369,6 +4369,7 @@ var TOOL_KINDS = [
   "mcp",
   "other"
 ];
+var SHELL_DIALECTS = ["posix", "powershell", "cmd"];
 function isPlainObject2(value) {
   if (typeof value !== "object" || value === null)
     return false;
@@ -4393,7 +4394,8 @@ function shellCodec(shapes, options2) {
         command,
         ...typeof cwd === "string" ? { cwd } : {},
         commandKey: shape.commandKey,
-        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {}
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {},
+        ...shape.dialect !== void 0 ? { dialect: shape.dialect } : {}
       };
     },
     encode(nativeName, input, patch) {
@@ -4487,6 +4489,7 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var shellDialectSchema = external_exports.enum(SHELL_DIALECTS);
 var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
 var fieldAcceptanceSchema = external_exports.string().refine((value) => {
   const colon = value.indexOf(":");
@@ -4508,7 +4511,8 @@ var toolInvocationSchema = external_exports.object({
     command: external_exports.string(),
     cwd: external_exports.string().optional(),
     commandKey: external_exports.string(),
-    cwdKey: external_exports.string().optional()
+    cwdKey: external_exports.string().optional(),
+    dialect: shellDialectSchema.optional()
   }).strict().optional(),
   file: external_exports.object({
     paths: external_exports.array(external_exports.string()),
@@ -4871,10 +4875,11 @@ function createCapabilitySet(levels) {
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, options2) {
+function setToolInput(tool, input, options2, established) {
   tool.input = input;
   const shell = options2.shellCodec?.classify(tool.nativeName, input);
-  if (shell !== void 0) tool.shell = shell;
+  if (shell !== void 0)
+    tool.shell = shell.dialect === void 0 && established !== void 0 ? { ...shell, dialect: established } : shell;
   else delete tool.shell;
   const file = options2.fileCodec?.classify(tool.nativeName, input);
   if (file !== void 0) tool.file = file;
@@ -4910,6 +4915,7 @@ async function dispatch(hooks, event, options2) {
   };
   let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
   let notifyBudget = typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0 ? policy.notifyCharLimit : DEFAULT_RUNTIME.notifyCharLimit;
+  const establishedDialect = toolOf(event)?.shell?.dialect ?? options2.shellDialect;
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options2.targetId)) return false;
@@ -5038,14 +5044,14 @@ async function dispatch(hooks, event, options2) {
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options2);
+        if (tool) setToolInput(tool, effect.input, options2, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options2);
+        setToolInput(tool, loweredShellInput, options2, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5229,6 +5235,28 @@ function withTimeout(promise) {
     if (timer !== void 0) clearTimeout(timer);
   });
 }
+var V2_STATEMENT = /Commands run on \S+ using (\S+)\.(?=\s|$)/g;
+var SENTENCE_START = /(?:^|[.!?]\s+)$/;
+function stated(pattern, description, precededBy) {
+  if (typeof description !== "string") return void 0;
+  const names = new Set(
+    [...description.matchAll(pattern)].filter((match) => precededBy === void 0 || precededBy.test(description.slice(0, match.index))).map((match) => match[1])
+  );
+  return names.size === 1 ? [...names][0] : void 0;
+}
+function statedShellV2(description) {
+  return stated(V2_STATEMENT, description, SENTENCE_START);
+}
+var DIALECT_BY_STATED_SHELL = {
+  bash: "posix",
+  zsh: "posix",
+  powershell: "powershell",
+  pwsh: "powershell",
+  cmd: "cmd"
+};
+function dialectOfStatedShell(name) {
+  return typeof name === "string" && Object.hasOwn(DIALECT_BY_STATED_SHELL, name) ? DIALECT_BY_STATED_SHELL[name] : void 0;
+}
 var OPENCODE_SHELL_SHAPES = {
   bash: { commandKey: "command" }
 };
@@ -5286,8 +5314,10 @@ var kinds = {
   websearch: "web.search",
   subagent: "agent"
 };
-function classifyOpenCodeV2Tool(nativeName, input) {
-  const shell = opencodeV2ShellCodec.classify(nativeName, input);
+function classifyOpenCodeV2Tool(nativeName, input, reported) {
+  const view = opencodeV2ShellCodec.classify(nativeName, input);
+  const dialect = reported?.shellDialect;
+  const shell = view !== void 0 && dialect !== void 0 ? { ...view, dialect } : view;
   const file = opencodeV2FileCodec.classify(nativeName, input);
   const kind = Object.hasOwn(kinds, nativeName) ? kinds[nativeName] : "other";
   return { nativeName, input, kind, ...shell ? { shell } : {}, ...file ? { file } : {} };
@@ -5329,7 +5359,12 @@ function decodeOpenCodeV2(raw, invocation, enrichment = {}) {
   };
   if (native.hook === "execute.before" || native.hook === "execute.after") {
     if (typeof event.tool !== "string") throw new OpenCodeV2DecodeError("v2 tool event has no tool name");
-    const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
+    const shellDialect = dialectOfStatedShell(enrichment.shell);
+    const tool = classifyOpenCodeV2Tool(
+      event.tool,
+      structuredClone(event.input),
+      shellDialect !== void 0 ? { shellDialect } : void 0
+    );
     if (native.hook === "execute.before") return { ...base, event: "tool.before", tool };
     if (event.status === "error") {
       const message = record2(event.error).message;
@@ -5401,6 +5436,22 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
     "session.execution.interrupted"
   ]);
   const subscribes = events.has("session.start") || events.has("turn.stop") || events.has("context.compact.after");
+  const readsShell = events.has("tool.before") || events.has("tool.after") || events.has("tool.error");
+  const statedShells = /* @__PURE__ */ new Map();
+  const STATED_SHELL_SESSIONS = 256;
+  const noteShell = (e) => {
+    try {
+      const sessionID = e.sessionID;
+      if (typeof sessionID !== "string") return;
+      statedShells.delete(sessionID);
+      const name = statedShellV2(record2(record2(e.tools).shell).description);
+      if (name === void 0) return;
+      statedShells.set(sessionID, name);
+      const oldest = statedShells.keys().next();
+      if (statedShells.size > STATED_SHELL_SESSIONS && !oldest.done) statedShells.delete(oldest.value);
+    } catch {
+    }
+  };
   const post = async (native, event, messages) => {
     const sessionID = event.session.id;
     if (native.type !== "session.execution.succeeded" || sessionID === void 0 || children.has(sessionID)) return;
@@ -5421,11 +5472,13 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
   };
   const run = async (hook2, native, modelRequest = false, execution) => {
     let event;
+    const shell = typeof native.sessionID === "string" ? statedShells.get(native.sessionID) : void 0;
+    const shellDialect = dialectOfStatedShell(shell);
     try {
       event = decodeOpenCodeV2(
         { hook: hook2, directory: ctx.location.directory, event: native },
         { targetId, ...options2.harnessVersion ? { harnessVersion: options2.harnessVersion } : {} },
-        execution ? { execution } : {}
+        { ...execution ? { execution } : {}, ...shell !== void 0 ? { shell } : {} }
       );
     } catch (error) {
       if (error instanceof OpenCodeV2DecodeError) return;
@@ -5438,6 +5491,7 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       harness: event.harness,
       capabilities: options2.capabilities,
       shellCodec: opencodeV2ShellCodec,
+      ...shellDialect !== void 0 ? { shellDialect } : {},
       fileCodec: opencodeV2FileCodec,
       ...options2.policy ? { policy: options2.policy } : {},
       ...options2.minimumCapabilityLevel ? { minimumCapabilityLevel: options2.minimumCapabilityLevel } : {},
@@ -5490,9 +5544,15 @@ async function setupOpenCodeV2(plugin, options2, ctx) {
       registrations.push(await ctx.tool.hook("execute.before", (e) => run("execute.before", e)));
     if (events.has("tool.after") || events.has("tool.error"))
       registrations.push(await ctx.tool.hook("execute.after", (e) => run("execute.after", e)));
+    if (events.has("model.request.before") || readsShell)
+      registrations.push(
+        await ctx.session.hook("context", async (e) => {
+          if (readsShell) noteShell(e);
+          await run("context", e);
+        })
+      );
     if (events.has("model.request.before"))
-      for (const name of ["context", "title", "generate"])
-        registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
+      for (const name of ["title", "generate"]) registrations.push(await ctx.session.hook(name, (e) => run(name, e)));
     if (events.has("model.request.before") || events.has("context.compact.before"))
       registrations.push(
         await ctx.session.hook("compaction", async (e) => {
@@ -5563,8 +5623,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.4.0
-@hooknostic/runtime@0.4.0
+@hooknostic/adapter-opencode@0.6.0
+@hooknostic/runtime@0.6.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5772,8 +5832,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.4.0
-hooknostic@0.4.0
+@hooknostic/sdk@0.6.0
+hooknostic@0.6.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

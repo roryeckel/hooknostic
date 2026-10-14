@@ -21,6 +21,7 @@ import { claudeHarness } from "./harness.js";
 import { claudeCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { claudeAgentPluginProjector } from "./project-agent-plugin.js";
+import { claudeSkillPolicy } from "./skill-policy.js";
 import {
   classifyClaudeTool,
   CLAUDE_FILE_SHAPES,
@@ -94,12 +95,13 @@ export function claudeShimEntrySource(options: {
 export function claudeAdapter(): HarnessAdapter {
   return {
     id: "claude",
-    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.6.0", // kept equal to package.json by versions.test.ts
     harness: claudeHarness,
     projectPaths: [".claude/settings.json", ".claude/skills", ".mcp.json"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    skillInvocationPolicy: { destination: ".claude/skills", projectFiles: claudeSkillPolicy },
     agentPluginProjector: claudeAgentPluginProjector,
     // Claude spawns `node <artifact>` per hook event.
     shimExecution: "command",
@@ -113,6 +115,15 @@ export function claudeAdapter(): HarnessAdapter {
     fileCodec: claudeFileCodec,
     fileShapes: CLAUDE_FILE_SHAPES,
     classifyTool: classifyClaudeTool,
+    shellDialect: {
+      source: "tool",
+      rationale:
+        "Set on every shell view: Bash is posix and PowerShell is powershell. Each tool ran only shells of its " +
+        "family in every captured host configuration, so the tool name establishes it; the family, not the " +
+        "interpreter (Bash ran bash and zsh, PowerShell both editions). A Windows host without Git for Windows " +
+        "produced no Bash call: where Claude Code started, PowerShell was its only shell tool.",
+      evidence: ".capture/shell-dialects",
+    },
 
     supportedHarnessVersions() {
       return claudeCapabilityProfiles.map((p) => p.range);

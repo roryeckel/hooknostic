@@ -21,7 +21,8 @@
     },
     "shell": {
       "command": "mkdir hooknostic-permission-test",
-      "commandKey": "command"
+      "commandKey": "command",
+      "dialect": "posix"
     }
   }
 }

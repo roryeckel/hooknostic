@@ -31,10 +31,20 @@ export const CLAUDE_TOOL_KINDS: Record<string, ToolKind> = {
  * rested on inference). Anything else shell-kind is absent from the table, so
  * both codec directions decline rather than guess. Neither tool has a working-directory
  * key.
+ *
+ * Each tool pins a grammar family (ADR-0029, `.capture/shell-dialects`): `Bash`
+ * ran bash or zsh on Windows, macOS and Linux, including where the host pointed
+ * it at fish, tcsh, PowerShell or cmd; `PowerShell` ran Windows PowerShell or
+ * PowerShell 7 depending on what `PATH` resolved, under identical hook input.
+ * So the dialect is a family, and the tool name is what establishes it. A
+ * Windows host with no Git for Windows produced no `Bash` call: where Claude
+ * Code started, `PowerShell` was the only shell tool it advertised, whatever
+ * its Git Bash path variable named. `toolmap.test.ts` holds both pins to
+ * every captured call.
  */
 export const CLAUDE_SHELL_SHAPES: ShellShapes = {
-  Bash: { commandKey: "command" },
-  PowerShell: { commandKey: "command" },
+  Bash: { commandKey: "command", dialect: "posix" },
+  PowerShell: { commandKey: "command", dialect: "powershell" },
 };
 
 export const claudeShellCodec = shellCodec(CLAUDE_SHELL_SHAPES);

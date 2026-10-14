@@ -1,6 +1,6 @@
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText, SKILL_REFERENCE_UNEXPANDED } from "@hooknostic/agent-plugin";
+import { contentsText, SKILL_REFERENCE_UNEXPANDED, skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectEntry, ProjectIntegration } from "@hooknostic/core";
 import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
@@ -11,6 +11,11 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
+import {
+  CLAUDE_SKILL_POLICY_RATIONALE,
+  claudeNewerSkillPolicyValidation,
+  claudeProjectSkillPolicyValidation,
+} from "./skill-policy.js";
 import { CLAUDE_PROJECT_SKILL_TEXT } from "./skill-text.js";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const manifest = artifacts.find((a) => a.path === "hooks/hooks.json");
@@ -90,7 +95,7 @@ export async function projectComponents(
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: claudeHarness.recommendedRange,
     components: {
@@ -205,3 +210,10 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  claudeProjectSkillPolicyValidation,
+  CLAUDE_SKILL_POLICY_RATIONALE,
+  "exact",
+  [claudeNewerSkillPolicyValidation],
+);

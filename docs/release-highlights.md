@@ -1,51 +1,77 @@
-# Skills name their own directory, and one-shot OpenCode runs keep their hooks
+# Skills can require explicit invocation
 
-0.4.0 adds a portable way for a skill to name the scripts it ships, and fixes a
-`turn.stop` hook being cut off when a one-shot `opencode run` exited.
+0.6.0 adds a portable declaration for skills that should be loaded only when the
+user explicitly invokes them. Declare it once in a neutral project source or an
+Agent Plugin package:
 
-- Write `${SKILL_DIR}` in a SKILL.md body to name the skill's own directory:
-  `node "${SKILL_DIR}/scripts/status.mjs"`. Claude Code's projection writes
-  `${CLAUDE_SKILL_DIR}`, which Claude expands to the absolute directory; Codex
-  and OpenCode get `.`, a path their skill instructions resolve against the
-  skill's directory. Package and project delivery alike, body only
-  ([ADR-0028](decisions/0028-skill-directory-token.md)).
-- A skill whose text keeps a reference its target shows the model as written,
-  such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}` anywhere, fails
-  the build as the `<adapter>:skill-reference-unexpanded` degradation (**HN101**).
-  Shell parameters such as `${HOME}` are left alone.
-- The OpenCode 1.x plugin now returns `dispose`, which the build measured in
-  [.capture/opencode-dispose](../.capture/opencode-dispose/README.md) awaits before a
-  one-shot `opencode run` exits. Earlier supported builds have not been verified
-  to call or await it, so they may still cut off in-flight hooks. When called,
-  it waits for the hooks still running, for up to
-  their timeouts plus one 10 s host round trip and never more than 15 s, so a
-  `turn.stop` hook dispatched at `session.idle` finishes instead of being killed.
+```yaml
+metadata:
+  hooknostic/allow-implicit-invocation: "false"
+```
+
+Hooknostic projects the policy into each target's native settings and reports
+support through the separate `agent-plugin.skills.invocation-policy` component
+capability. Native explicit invocation remains available on supported targets;
+the declaration withholds automatic model selection. See
+[project integration](project-integration.md) and
+[ADR-0030](decisions/0030-skill-invocation-policy.md) for the authoring and
+compatibility rules.
+
+- Both project delivery and packaged skills use the same string-valued metadata.
+  The portable setting takes precedence over native settings during projection,
+  while unrelated native fields, comments and skill body bytes are preserved.
+- Policy is composed for every configured reader of a generated discovery
+  directory, including readers excluded by `components.targets`. That setting
+  does not prevent a harness from discovering another target's generated copy.
+- A missing gate fails by default. `components.onUnsupported: "warn"` omits the
+  affected skill instead of delivering it without the requested policy. Shared
+  copies are omitted for every affected reader.
+- Named `components.accept` entries can explicitly accept an unavailable gate
+  or an unchanged authored native source. Reports retain the actual support
+  rating and record the accepted HN101 degradation.
 
 ## Migrating
 
-- A package with Claude-only text in a skill, such as `${CLAUDE_PLUGIN_ROOT}`,
-  now fails its Codex and OpenCode targets. Replace a skill-relative path with
-  `${SKILL_DIR}`, or accept the id you have handled:
-  `components.accept: ["codex:skill-reference-unexpanded"]`.
-- Project delivery reports degradations too: `target.project.degradations` in
-  the build report, under the same `components.onDegraded` and `accept`.
-- `projectSkillFiles` in `@hooknostic/core` takes the target's skill-text rules
-  as a fourth argument; adapter authors pass their own.
-- A one-shot `opencode run` on OpenCode 1.x can now take up to 15 s longer to
-  return while its hooks finish.
+- Existing skills without the declaration retain their authored native behavior.
+  Add it only to skills that need explicit invocation.
+- Quote `"false"` and `"true"`: YAML booleans are invalid for this reserved
+  metadata. Invalid policy remains an error even with
+  `components.onInvalid: "warn"`.
+- Keep authored skills in a neutral directory such as `skills/` and let
+  Hooknostic own the native copies. Sources already inside a configured harness's
+  native discovery directory are left untouched; move them to a neutral source
+  to let Hooknostic enforce and verify the policy.
+- Inspect `agent-plugin.skills.invocation-policy` for the configured target,
+  delivery and version range before building. Broad ranges may include versions
+  without a captured gate and need narrowing; exact support and evidence live in
+  [harness support](harness-support.md).
+- Removing the declaration regenerates from the authored source and restores
+  its native settings. Generic warning settings do not authorize delivery
+  without a gate; use the precise shortfall IDs documented in
+  [project integration](project-integration.md) for deliberate acceptance.
 
 ## Limits
 
-- On Codex and OpenCode the model still resolves `./...` against the skill's
-  directory. A command that must run from the project should be given the
-  project explicitly. Codex's guidance comes from its bundled models'
-  instructions; a model behind a custom provider may not have it.
-- A project skill that already sits at its destination is discovered in place
-  and cannot be rewritten; a `${SKILL_DIR}` in it is reported.
-- OpenCode 2.x: `run --standalone` terminates its private server without calling
-  plugin cleanup, so a hook still running when the run ends is lost. Through the
-  background service it completes there. Measured on Windows only.
+- This is discovery policy, not access control. Direct reads and forced skill
+  loads can remain possible; command-menu visibility, tool grants and execution
+  settings are outside this release's policy.
+- Gate support is version-scoped and separate from skill delivery. Unprobed
+  older versions remain unsupported, and the captured OpenCode v1 permission
+  translation is rated emulated.
+- An unowned native copy cannot be overwritten or reported as omitted. A missing
+  gate can remove a shared copy for other configured readers too.
 
-Start with the [README](../README.md); [configuration](configuration.md) covers
-skills that run their own scripts, and [OpenCode families](opencode-families.md)
-covers one-shot runs.
+## Other changes
+
+- Fix Windows Claude playback's folder-trust selection when a private terminal
+  control sequence follows the options.
+- Preserve valid unions of complementary version-range clauses while rejecting
+  gaps and wider coverage in the version-literal check.
+- Record OpenCode v2 playback phases and subprocess output as work happens.
+  Failed CI playback retains diagnostic artifacts, so a setup timeout identifies
+  the stalled phase and command.
+- Include the latest recorded harness playback validation, dependency refreshes
+  and authenticated LiteLLM sidecar verification.
+
+Start with the [README](../README.md); the [release runbook](releases.md)
+describes the preparation, draft and publication stages.

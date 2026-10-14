@@ -152,8 +152,8 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "0.160.0",
-          date: "2026-10-04",
+          version: "0.162.1",
+          date: "2026-10-11",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
@@ -172,6 +172,27 @@ export const codexCapabilityProfiles: CapabilityProfile[] = [
           method: "live-probe",
           artifact: ".capture/shell-dialects",
           what: "macOS loopback shell interpreter probe: identical commands ran through /bin/bash and /bin/zsh, while all PreToolUse payloads used Bash/command and omitted the per-call shell selector.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Linux container shell interpreter probe: identical Bash/command payloads ran bash, zsh, dash and PowerShell 7 by per-call selector, and the default did not follow SHELL (unset, or naming zsh, fish or tcsh), so no shell dialect is established (ADR-0029). The transcript file held the pending call's selector when PreToolUse ran; that is not a hook payload.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter recapture: the default and the powershell.exe selector ran Windows powershell.exe and the cmd.exe selector ran cmd.exe, under identical PreToolUse input.",
+        },
+        {
+          version: "0.156.1",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: the default and the /bin/bash selector ran bash and the /bin/zsh selector ran zsh, under identical PreToolUse input. When PreToolUse ran, the transcript file held the pending call's selector and a stated default of bash.",
         },
       ],
       notes: ["https://learn.chatgpt.com/docs/hooks (fetched 2026-08-20)"],

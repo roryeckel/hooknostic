@@ -37,6 +37,16 @@ function escapeHtml(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+export async function formatHighlights(markdown) {
+  // Release bodies render source newlines as <br>; let the Markdown formatter unwrap prose.
+  const { format } = await import("prettier");
+  return format(markdown, {
+    parser: "markdown",
+    proseWrap: "never",
+    embeddedLanguageFormatting: "off",
+  });
+}
+
 /**
  * @param {object} input
  * @param {string} [input.highlights] curated scope and migration notes for this release
@@ -199,7 +209,7 @@ async function main() {
       return repo ? `](https://github.com/${repo}/blob/${sha}/${target})` : `](${target})`;
     },
   );
-  const body = composeNotes({ highlights, harnessTable, generatedBody, commits });
+  const body = composeNotes({ highlights: await formatHighlights(highlights), harnessTable, generatedBody, commits });
   writeFileSync(resolve(ROOT, output), body, "utf8");
   console.log(`release notes written to ${output} (${body.length} chars, ${commits.length} commits in range)`);
 }
