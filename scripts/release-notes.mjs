@@ -43,7 +43,6 @@ export function unwrapProse(markdown) {
   const lines = markdown.split(/\r?\n/);
   const output = [];
   let prose = null;
-  let listIndent = null;
   const listContainers = [];
   let fence = null;
   let html = null;
@@ -51,11 +50,14 @@ export function unwrapProse(markdown) {
   const flush = () => {
     if (prose !== null) output.push(prose);
     prose = null;
-    listIndent = null;
   };
   const tableSeparator = (line) => /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/.test(line);
   const columns = (whitespace) =>
     [...whitespace].reduce((column, char) => column + (char === "\t" ? 4 - (column % 4) : 1), 0);
+  const openingFence = (line) => {
+    const opening = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
+    return opening?.[1][0] === "`" && opening[2].includes("`") ? null : opening;
+  };
   // CommonMark HTML types 1–5 end at a terminator; types 6–7 end at a blank line.
   const htmlTerminator = (line) => {
     if (/^\s*<(?:script|pre|style|textarea)(?:[ \t>]|$)/i.test(line)) return /<\/(?:script|pre|style|textarea)>/i;
@@ -114,9 +116,8 @@ export function unwrapProse(markdown) {
       continue;
     }
     const indent = columns(line.match(/^[ \t]*/)[0]);
-    let opening = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
-    if (opening?.[1][0] === "`" && opening[2].includes("`")) opening = null;
-    const item = line.match(/^(\s*(?:[-+*]|\d+[.)])[ \t]+)/);
+    const opening = openingFence(line);
+    const item = line.match(/^([ \t]*(?:[-+*]|\d+[.)])([ \t]+))/);
     const reference = line.match(/^\s*\[(?:\\.|[^\]\\])+\]:[ \t]*(.*)$/);
     const structural =
       reference !== null ||
@@ -127,6 +128,12 @@ export function unwrapProse(markdown) {
       while (listContainers.length && indent < listContainers.at(-1)) listContainers.pop();
     }
     const containerIndent = listContainers.at(-1) ?? 0;
+    // Indented code is literal, even when its contents resemble a list or another Markdown block.
+    if (indent >= containerIndent + 4) {
+      flush();
+      output.push(line);
+      continue;
+    }
     if (opening && indent - containerIndent <= 3) {
       flush();
       fence = { marker: opening[1][0], length: opening[1].length, containerIndent };
@@ -158,23 +165,27 @@ export function unwrapProse(markdown) {
     }
     if (item) {
       flush();
-      prose = line;
-      listIndent = columns(item[1]);
-      listContainers.push(listIndent);
-      continue;
-    }
-    if (indent >= (listIndent ?? 0) + 4) {
-      flush();
-      output.push(line);
+      const markerIndent = columns(item[1].slice(0, -item[2].length));
+      const padding = columns(item[1]) - markerIndent;
+      // Five or more padding columns begin indented code; only one belongs to the list marker.
+      const contentIndent = markerIndent + (padding > 4 ? 1 : padding);
+      listContainers.push(contentIndent);
+      const itemOpening = padding > 4 ? null : openingFence(line.slice(item[1].length));
+      if (itemOpening) {
+        fence = { marker: itemOpening[1][0], length: itemOpening[1].length, containerIndent: contentIndent };
+        output.push(line);
+      } else if (padding > 4) {
+        output.push(line);
+      } else {
+        prose = line;
+      }
       continue;
     }
     if (prose !== null && !/(?: {2,}|\\)$/.test(prose)) {
       prose += " " + line.trimStart();
     } else {
-      const previousListIndent = listIndent;
       flush();
       prose = line;
-      listIndent = previousListIndent;
     }
   }
   flush();

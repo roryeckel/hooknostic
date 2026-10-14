@@ -69,6 +69,45 @@ it("embeds current release highlights and separate reference rows for both OpenC
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
 describe("release prose wrapping", () => {
+  it.each([
+    ["", "-", "```"],
+    ["", "10.", "~~~"],
+    ["- Parent\n", "  -", "```"],
+  ])("preserves a fence starting the list item %j %j %j", (prefix, marker, fence) => {
+    const indent = " ".repeat(marker.length + 1);
+    const block = `${prefix}${marker} ${fence}sh\n${indent}echo one\n${indent}echo two\n${indent}${fence}`;
+    const source = `# Highlights\n\n${block}\n\nFollowing\nprose.\n`;
+    const expected = `# Highlights\n\n${block}\n\nFollowing prose.\n`;
+    expect(unwrapProse(source)).toBe(expected);
+    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
+      expected.trim(),
+    );
+  });
+
+  it.each([
+    ["", "    ", "-"],
+    ["", "\t", "1."],
+    ["- Item\n\n", "      ", "-"],
+  ])("preserves indented code beginning with a list marker %j %j %j", (prefix, indent, marker) => {
+    const block = `${prefix}${indent}${marker} name: foo\n${indent}  value: bar`;
+    const source = `# Highlights\n\n${block}\n\nFollowing\nprose.\n`;
+    const expected = `# Highlights\n\n${block}\n\nFollowing prose.\n`;
+    expect(unwrapProse(source)).toBe(expected);
+    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
+      expected.trim(),
+    );
+  });
+
+  it("keeps a fence marker literal when a list item starts with indented code", () => {
+    const block = "-     ```sh\n      echo one\n      echo two";
+    const source = `# Highlights\n\n${block}\n\nFollowing\nprose.\n`;
+    const expected = `# Highlights\n\n${block}\n\nFollowing prose.\n`;
+    expect(unwrapProse(source)).toBe(expected);
+    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
+      expected.trim(),
+    );
+  });
+
   it("preserves escaped brackets in reference labels", () => {
     const definition = '[a\\]b]: /url\n  "Title"';
     expect(unwrapProse(`${definition}\nFollowing\nprose with [a\\]b].\n`)).toBe(
