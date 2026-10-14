@@ -37,6 +37,90 @@ function escapeHtml(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+export function unwrapProse(markdown) {
+  // Release bodies render source newlines as <br>. Join prose, leaving structural blocks verbatim.
+  const newline = markdown.includes("\r\n") ? "\r\n" : "\n";
+  const lines = markdown.split(/\r?\n/);
+  const output = [];
+  let prose = null;
+  let listIndent = null;
+  let fence = null;
+  let html = false;
+  let table = false;
+  const flush = () => {
+    if (prose !== null) output.push(prose);
+    prose = null;
+    listIndent = null;
+  };
+  const tableSeparator = (line) => /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/.test(line);
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (fence !== null) {
+      output.push(line);
+      if (new RegExp(`^\\s*${fence.marker}{${fence.length},}\\s*$`).test(line)) fence = null;
+      continue;
+    }
+    if (line.trim() === "") {
+      flush();
+      output.push(line);
+      html = false;
+      table = false;
+      continue;
+    }
+    if (html) {
+      output.push(line);
+      continue;
+    }
+    const opening = line.match(/^\s*(`{3,}|~{3,})/);
+    if (opening) {
+      flush();
+      fence = { marker: opening[1][0], length: opening[1].length };
+      output.push(line);
+      continue;
+    }
+    if ((table && line.includes("|")) || line.trimStart().startsWith("|") || tableSeparator(lines[index + 1] ?? "")) {
+      flush();
+      table = true;
+      output.push(line);
+      continue;
+    }
+    table = false;
+    if (
+      /^\s*(?:#{1,6}(?:\s|$)|>|<|\[[^\]]+\]:)/.test(line) ||
+      /^ {0,3}(?:[=-]+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})[ \t]*$/.test(line)
+    ) {
+      flush();
+      html = line.trimStart().startsWith("<");
+      output.push(line);
+      continue;
+    }
+    const item = line.match(/^(\s*(?:[-+*]|\d+[.)])[ \t]+)/);
+    if (item) {
+      flush();
+      prose = line;
+      listIndent = item[1].replaceAll("\t", "    ").length;
+      continue;
+    }
+    const indent = line.match(/^\s*/)[0].replaceAll("\t", "    ").length;
+    if (indent >= (listIndent ?? 0) + 4) {
+      flush();
+      output.push(line);
+      continue;
+    }
+    if (prose !== null && !/(?: {2,}|\\)$/.test(prose)) {
+      prose += " " + line.trimStart();
+    } else {
+      const previousListIndent = listIndent;
+      flush();
+      prose = line;
+      listIndent = previousListIndent;
+    }
+  }
+  flush();
+  return output.join(newline);
+}
+
 /**
  * @param {object} input
  * @param {string} [input.highlights] curated scope and migration notes for this release
@@ -65,7 +149,7 @@ export function composeNotes({ highlights = "", harnessTable, generatedBody, com
 
   const render = (withBodies) => {
     const parts = [
-      ...(highlights.trim() ? [highlights.trim(), ""] : []),
+      ...(highlights.trim() ? [unwrapProse(highlights.trim()), ""] : []),
       "## Harness support",
       "",
       harnessTable.trim(),

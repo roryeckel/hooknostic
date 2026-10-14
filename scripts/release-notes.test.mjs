@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { composeNotes } from "./release-notes.mjs";
+import { composeNotes, unwrapProse } from "./release-notes.mjs";
 
 it("embeds current release highlights and separate reference rows for both OpenCode families", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
@@ -53,8 +53,12 @@ it("embeds current release highlights and separate reference rows for both OpenC
     // every highlights link must leave absolute, including ../ paths.
     const highlightsSection = notes.slice(0, notes.indexOf("\n## Harness support\n"));
     // Check all curated prose without tying the release gate to an older announcement.
-    const withoutLinkTargets = (text) => text.replace(/\]\([^)]+\)/g, "]");
-    expect(withoutLinkTargets(highlightsSection).trim()).toBe(withoutLinkTargets(highlights).trim());
+    const prose = (text) =>
+      text
+        .replace(/\]\([^)]+\)/g, "]")
+        .replace(/\s+/g, " ")
+        .trim();
+    expect(prose(highlightsSection)).toBe(prose(highlights));
     expect(highlightsSection.match(/\]\((?!https:\/\/)[^)]*\)/g) ?? []).toEqual([]);
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/README.md)`);
   } finally {
@@ -63,6 +67,27 @@ it("embeds current release highlights and separate reference rows for both OpenC
 });
 
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
+
+describe("release prose wrapping", () => {
+  it("joins prose continuations within paragraphs and list items", () => {
+    const source =
+      "# Highlights\n\nA paragraph that\nwraps in source.\n\n- First item that\n  continues here.\n- Next item\n  with a [link](https://example.com).\n\nAnother paragraph.\n";
+    const expected =
+      "# Highlights\n\nA paragraph that wraps in source.\n\n- First item that continues here.\n- Next item with a [link](https://example.com).\n\nAnother paragraph.\n";
+    expect(unwrapProse(source)).toBe(expected);
+    expect(composeNotes({ highlights: source, harnessTable: TABLE, generatedBody: "", commits: [] })).toContain(
+      expected.trim(),
+    );
+  });
+
+  it("preserves nested lists, fenced code, tables, headings and intentional breaks", () => {
+    const source =
+      "## Structure\n\n- Parent item\n  - Nested item\n    continues here.\n  - Next child\n\n```yaml\nmetadata:\n  setting: false\n```\n\n~~~~text\none\n~~~\ntwo\n~~~~\n\n| Name | Value |\n| --- | --- |\n| One | Two |\n\nName | Value\n--- | ---\nOne | Two\n\n    indented code\n    stays separate\n\nLine with a break  \nNext line\\\nFinal line\n\n> A quotation\n> on two lines\n\n<div>\nraw HTML\n</div>\n\n---\n";
+    expect(unwrapProse(source)).toBe(
+      source.replace("  - Nested item\n    continues here.", "  - Nested item continues here."),
+    );
+  });
+});
 
 describe("composeNotes", () => {
   it("keeps direct-to-master commits that native notes would omit", () => {
