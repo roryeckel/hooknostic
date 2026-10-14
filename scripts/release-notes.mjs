@@ -114,10 +114,13 @@ export function unwrapProse(markdown) {
       continue;
     }
     const indent = columns(line.match(/^[ \t]*/)[0]);
-    const opening = line.match(/^[ \t]*(`{3,}|~{3,})/);
+    let opening = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
+    if (opening?.[1][0] === "`" && opening[2].includes("`")) opening = null;
     const item = line.match(/^(\s*(?:[-+*]|\d+[.)])[ \t]+)/);
+    const reference = line.match(/^\s*\[(?:\\.|[^\]\\])+\]:[ \t]*(.*)$/);
     const structural =
-      /^\s*(?:#{1,6}(?:\s|$)|>|<|\[[^\]]+\]:)/.test(line) ||
+      reference !== null ||
+      /^\s*(?:#{1,6}(?:\s|$)|>|<)/.test(line) ||
       /^ {0,3}(?:[=-]+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})[ \t]*$/.test(line);
     // Less indentation only exits a list when this is not lazy paragraph continuation text.
     if (prose === null || opening || item || structural) {
@@ -137,7 +140,6 @@ export function unwrapProse(markdown) {
       continue;
     }
     table = false;
-    const reference = line.match(/^\s*\[[^\]]+\]:[ \t]*(.*)$/);
     if (reference) {
       flush();
       const end = referenceEnd(index, reference[1]);

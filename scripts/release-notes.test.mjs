@@ -69,6 +69,17 @@ it("embeds current release highlights and separate reference rows for both OpenC
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
 describe("release prose wrapping", () => {
+  it("preserves escaped brackets in reference labels", () => {
+    const definition = '[a\\]b]: /url\n  "Title"';
+    expect(unwrapProse(`${definition}\nFollowing\nprose with [a\\]b].\n`)).toBe(
+      `${definition}\nFollowing prose with [a\\]b].\n`,
+    );
+  });
+
+  it("treats a backtick in a backtick-fence info string as prose", () => {
+    expect(unwrapProse("``` js`\nFollowing\nprose.\n")).toBe("``` js` Following prose.\n");
+  });
+
   it("retains list containers across lazy paragraph continuations", () => {
     const source = "10. item\nlazy continuation\n    ```text\n    one\n    two\n    ```\n\nFollowing\nprose.\n";
     expect(unwrapProse(source)).toBe(
