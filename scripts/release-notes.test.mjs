@@ -69,6 +69,36 @@ it("embeds current release highlights and separate reference rows for both OpenC
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
 describe("release prose wrapping", () => {
+  it.each(["    ", "\t"])("keeps %j-indented fence markers inside top-level code", (indent) => {
+    const block = `\`\`\`text\none\n${indent}\`\`\`\ntwo\nthree\n\`\`\``;
+    expect(unwrapProse(`${block}\n\nFollowing\nprose.\n`)).toBe(`${block}\n\nFollowing prose.\n`);
+  });
+
+  it("measures closing fence indentation inside its list container", () => {
+    const block = "- Item\n\n  ```text\n  one\n      ```\n  two\n  three\n     ```";
+    expect(unwrapProse(`${block}\n\nFollowing\nprose.\n`)).toBe(`${block}\n\nFollowing prose.\n`);
+  });
+
+  it.each([
+    ["<pre>", "</pre>"],
+    ["<SCRIPT>", "</SCRIPT>"],
+    ["<style>", "</style>"],
+    ["<textarea>", "</textarea>"],
+    ["<!--", "-->"],
+    ["<?processing", "?>"],
+    ["<!DECLARATION", ">"],
+    ["<![CDATA[", "]]>"],
+  ])("preserves blank lines until the terminator of %s", (opening, closing) => {
+    const block = `${opening}\none\n\ntwo\nthree\n${closing}`;
+    expect(unwrapProse(`${block}\nFollowing\nprose.\n`)).toBe(`${block}\nFollowing prose.\n`);
+  });
+
+  it("ends single-line raw HTML at its terminator and generic HTML at a blank", () => {
+    expect(unwrapProse("<!-- comment -->\nFollowing\nprose.\n\n<div>\none\ntwo\n\nMore\nprose.\n")).toBe(
+      "<!-- comment -->\nFollowing prose.\n\n<div>\none\ntwo\n\nMore prose.\n",
+    );
+  });
+
   it("joins prose continuations within paragraphs and list items", () => {
     const source =
       "# Highlights\n\nA paragraph that\nwraps in source.\n\n- First item that\n  continues here.\n- Next item\n  with a [link](https://example.com).\n\nAnother paragraph.\n";

@@ -44,8 +44,9 @@ export function unwrapProse(markdown) {
   const output = [];
   let prose = null;
   let listIndent = null;
+  const listContainers = [];
   let fence = null;
-  let html = false;
+  let html = null;
   let table = false;
   const flush = () => {
     if (prose !== null) output.push(prose);
@@ -53,29 +54,48 @@ export function unwrapProse(markdown) {
     listIndent = null;
   };
   const tableSeparator = (line) => /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/.test(line);
+  const columns = (whitespace) =>
+    [...whitespace].reduce((column, char) => column + (char === "\t" ? 4 - (column % 4) : 1), 0);
+  // CommonMark HTML types 1–5 end at a terminator; types 6–7 end at a blank line.
+  const htmlTerminator = (line) => {
+    if (/^\s*<(?:script|pre|style|textarea)(?:[ \t>]|$)/i.test(line)) return /<\/(?:script|pre|style|textarea)>/i;
+    if (/^\s*<!--/.test(line)) return /-->/;
+    if (/^\s*<\?/.test(line)) return /\?>/;
+    if (/^\s*<![A-Z]/i.test(line)) return />/;
+    if (/^\s*<!\[CDATA\[/.test(line)) return /\]\]>/;
+    return null;
+  };
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     if (fence !== null) {
       output.push(line);
-      if (new RegExp(`^\\s*${fence.marker}{${fence.length},}\\s*$`).test(line)) fence = null;
+      const closing = line.match(new RegExp(`^([ \\t]*)${fence.marker}{${fence.length},}[ \\t]*$`));
+      const indent = closing ? columns(closing[1]) - fence.containerIndent : -1;
+      if (indent >= 0 && indent <= 3) fence = null;
       continue;
+    }
+    if (html !== null) {
+      if (html.terminator !== null || line.trim() !== "") {
+        output.push(line);
+        if (html.terminator?.test(line)) html = null;
+        continue;
+      }
+      html = null;
     }
     if (line.trim() === "") {
       flush();
       output.push(line);
-      html = false;
       table = false;
       continue;
     }
-    if (html) {
-      output.push(line);
-      continue;
-    }
-    const opening = line.match(/^\s*(`{3,}|~{3,})/);
-    if (opening) {
+    const indent = columns(line.match(/^[ \t]*/)[0]);
+    while (listContainers.length && indent < listContainers.at(-1)) listContainers.pop();
+    const containerIndent = listContainers.at(-1) ?? 0;
+    const opening = line.match(/^[ \t]*(`{3,}|~{3,})/);
+    if (opening && indent - containerIndent <= 3) {
       flush();
-      fence = { marker: opening[1][0], length: opening[1].length };
+      fence = { marker: opening[1][0], length: opening[1].length, containerIndent };
       output.push(line);
       continue;
     }
@@ -91,7 +111,10 @@ export function unwrapProse(markdown) {
       /^ {0,3}(?:[=-]+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})[ \t]*$/.test(line)
     ) {
       flush();
-      html = line.trimStart().startsWith("<");
+      if (line.trimStart().startsWith("<")) {
+        const terminator = htmlTerminator(line);
+        html = terminator?.test(line) ? null : { terminator };
+      }
       output.push(line);
       continue;
     }
@@ -99,10 +122,10 @@ export function unwrapProse(markdown) {
     if (item) {
       flush();
       prose = line;
-      listIndent = item[1].replaceAll("\t", "    ").length;
+      listIndent = columns(item[1]);
+      listContainers.push(listIndent);
       continue;
     }
-    const indent = line.match(/^\s*/)[0].replaceAll("\t", "    ").length;
     if (indent >= (listIndent ?? 0) + 4) {
       flush();
       output.push(line);
