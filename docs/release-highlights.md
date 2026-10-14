@@ -1,63 +1,77 @@
-# A shell view names the grammar its command runs in
+# Skills can require explicit invocation
 
-A shell tool's name does not say which interpreter runs its command. In the
-[interpreter captures](../.capture/shell-dialects/README.md), Claude Code's `Bash`
-ran Git Bash on Windows, OpenCode's `bash` ran PowerShell, Git Bash, cmd or tcsh
-depending on how the host was configured, and Codex's `Bash` ran PowerShell or cmd
-under identical hook input. 0.5.0 adds `tool.shell.dialect`, the grammar family a
-command will be interpreted in, wherever the adapter can establish it
-([ADR-0029](decisions/0029-shell-dialect.md)).
+0.6.0 adds a portable declaration for skills that should be loaded only when the
+user explicitly invokes them. Declare it once in a neutral project source or an
+Agent Plugin package:
 
-- `tool.shell.dialect` is `"posix"`, `"powershell"` or `"cmd"`. It is absent where
-  the target cannot establish one, and absent means unknown, not POSIX.
-- Claude Code sets it on every shell view, by tool: `Bash` is `posix` and
-  `PowerShell` is `powershell`.
-- OpenCode 1.x and 2.x set it from the shell the harness itself states before a
-  call: `posix` for bash and zsh, `powershell` for either PowerShell, `cmd` for cmd.
-  It is absent for any other shell, and until the harness has stated one
-  ([OpenCode families](opencode-families.md)).
-- Codex never sets it: the model picks the interpreter per call, and no hook input
-  says which.
-- `hooknostic inspect <target>` prints where a target's dialect comes from, with the
-  adapter's reason and its evidence, and the generated support table says the same
-  for every target.
-- `hooknostic dispatch` takes the dialect a harness would have stated, so each
-  branch of a hook can be tested: `"shell": { "dialect": "powershell" }` on an
-  OpenCode test event's tool.
+```yaml
+metadata:
+  hooknostic/allow-implicit-invocation: "false"
+```
+
+Hooknostic projects the policy into each target's native settings and reports
+support through the separate `agent-plugin.skills.invocation-policy` component
+capability. Native explicit invocation remains available on supported targets;
+the declaration withholds automatic model selection. See
+[project integration](project-integration.md) and
+[ADR-0030](decisions/0030-skill-invocation-policy.md) for the authoring and
+compatibility rules.
+
+- Both project delivery and packaged skills use the same string-valued metadata.
+  The portable setting takes precedence over native settings during projection,
+  while unrelated native fields, comments and skill body bytes are preserved.
+- Policy is composed for every configured reader of a generated discovery
+  directory, including readers excluded by `components.targets`. That setting
+  does not prevent a harness from discovering another target's generated copy.
+- A missing gate fails by default. `components.onUnsupported: "warn"` omits the
+  affected skill instead of delivering it without the requested policy. Shared
+  copies are omitted for every affected reader.
+- Named `components.accept` entries can explicitly accept an unavailable gate
+  or an unchanged authored native source. Reports retain the actual support
+  rating and record the accepted HN101 degradation.
 
 ## Migrating
 
-- A hook that does not read `dialect` builds and behaves as before.
-- A hook that parses or quotes a command should branch on `dialect`, never on
-  `tool.nativeName`, and decide what an absent one means: a guard that parses fails
-  closed, and a rewrite that quotes fails open
-  ([writing hooks safely](writing-hooks-safely.md#branch-on-the-shell-dialect-and-decide-what-unknown-means)).
-- An OpenCode plugin with tool hooks (on 1.x, permission hooks too) also listens,
-  read only, for the statement: on `tool.definition` in 1.x and `context` in 2.x.
-- `hooknostic dispatch` refuses a stated dialect the target would not give that
-  call. Claude's `Bash` is always `posix`, and Codex establishes none, so a Codex
-  event exercises a hook's unknown branch.
-- Adapter authors declare `shellDialect` (source, rationale, evidence) on an adapter
-  with a shell shape table, and the contract suite holds its tables and classifier
-  to the source it names. `classifyTool` takes what the harness reported as an
-  optional third argument.
+- Existing skills without the declaration retain their authored native behavior.
+  Add it only to skills that need explicit invocation.
+- Quote `"false"` and `"true"`: YAML booleans are invalid for this reserved
+  metadata. Invalid policy remains an error even with
+  `components.onInvalid: "warn"`.
+- Keep authored skills in a neutral directory such as `skills/` and let
+  Hooknostic own the native copies. Sources already inside a configured harness's
+  native discovery directory are left untouched; move them to a neutral source
+  to let Hooknostic enforce and verify the policy.
+- Inspect `agent-plugin.skills.invocation-policy` for the configured target,
+  delivery and version range before building. Broad ranges may include versions
+  without a captured gate and need narrowing; exact support and evidence live in
+  [harness support](harness-support.md).
+- Removing the declaration regenerates from the authored source and restores
+  its native settings. Generic warning settings do not authorize delivery
+  without a gate; use the precise shortfall IDs documented in
+  [project integration](project-integration.md) for deliberate acceptance.
 
 ## Limits
 
-- A family, not an interpreter: `posix` is bash or zsh and `powershell` is either
-  edition, so a hook cannot assume a PowerShell 7 operator such as `&&`.
-- The OpenCode dialect rests on the wording of the harness's statement. A build
-  that words it differently reports no dialect until its statement is captured.
-  The 1.x statement carries no session, so one is kept per plugin instance.
-- macOS was captured on GitHub runners where `SHELL` named bash, and in no other
-  configuration. What OpenCode states under zsh, a Mac's default, was captured on
-  Linux only.
-- Claude Code on a Windows host without Git for Windows was captured on one build,
-  which advertised no `Bash` there. Another build that offered `Bash` on such a
-  host and ran it through another shell would report `posix` wrongly.
-- Codex needs the interpreter in its hook input before a dialect can be set:
-  [openai/codex#44836](https://github.com/openai/codex/issues/44836).
+- This is discovery policy, not access control. Direct reads and forced skill
+  loads can remain possible; command-menu visibility, tool grants and execution
+  settings are outside this release's policy.
+- Gate support is version-scoped and separate from skill delivery. Unprobed
+  older versions remain unsupported, and the captured OpenCode v1 permission
+  translation is rated emulated.
+- An unowned native copy cannot be overwritten or reported as omitted. A missing
+  gate can remove a shared copy for other configured readers too.
 
-Start with the [README](../README.md); [writing hooks safely](writing-hooks-safely.md)
-covers branching on the dialect, and [testing your hooks](testing-your-hooks.md)
-covers stating one in a test event.
+## Other changes
+
+- Fix Windows Claude playback's folder-trust selection when a private terminal
+  control sequence follows the options.
+- Preserve valid unions of complementary version-range clauses while rejecting
+  gaps and wider coverage in the version-literal check.
+- Record OpenCode v2 playback phases and subprocess output as work happens.
+  Failed CI playback retains diagnostic artifacts, so a setup timeout identifies
+  the stalled phase and command.
+- Include the latest recorded harness playback validation, dependency refreshes
+  and authenticated LiteLLM sidecar verification.
+
+Start with the [README](../README.md); the [release runbook](releases.md)
+describes the preparation, draft and publication stages.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { composeNotes } from "./release-notes.mjs";
 
-it("generates release scope and separate reference rows for both OpenCode families", async () => {
+it("embeds current release highlights and separate reference rows for both OpenCode families", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const scratch = mkdtempSync(join(tmpdir(), "hooknostic-release-notes-"));
   try {
@@ -15,6 +15,8 @@ it("generates release scope and separate reference rows for both OpenCode famili
         "--version",
         "1.0.0-rehearsal.0",
         "--sha",
+        sha,
+        "--previous-tag",
         sha,
         "--repo",
         "owner/example",
@@ -47,11 +49,12 @@ it("generates release scope and separate reference rows for both OpenCode famili
     }
     const highlights = readFileSync(join(root, "docs/release-highlights.md"), "utf8");
     expect(notes.startsWith(highlights.trim().split("\n")[0])).toBe(true);
-    expect(notes).toContain("absent means unknown, not POSIX.");
-    expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/docs/opencode-families.md`);
     // A release body resolves relative links against /releases/tag/..., so
     // every highlights link must leave absolute, including ../ paths.
     const highlightsSection = notes.slice(0, notes.indexOf("\n## Harness support\n"));
+    // Check all curated prose without tying the release gate to an older announcement.
+    const withoutLinkTargets = (text) => text.replace(/\]\([^)]+\)/g, "]");
+    expect(withoutLinkTargets(highlightsSection).trim()).toBe(withoutLinkTargets(highlights).trim());
     expect(highlightsSection.match(/\]\((?!https:\/\/)[^)]*\)/g) ?? []).toEqual([]);
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/README.md)`);
   } finally {
