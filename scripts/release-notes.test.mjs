@@ -69,6 +69,26 @@ it("embeds current release highlights and separate reference rows for both OpenC
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
 describe("release prose wrapping", () => {
+  it("retains list containers across lazy paragraph continuations", () => {
+    const source = "10. item\nlazy continuation\n    ```text\n    one\n    two\n    ```\n\nFollowing\nprose.\n";
+    expect(unwrapProse(source)).toBe(
+      "10. item lazy continuation\n    ```text\n    one\n    two\n    ```\n\nFollowing prose.\n",
+    );
+  });
+
+  it.each([
+    '[foo]: /url\n  "Title"',
+    '[foo]:\n  /url\n  "Title"',
+    "[foo]:\n  /url",
+    '[foo]: /url "Multi\n  line title"',
+    "[foo]: /url\n  'Multi\n  line title'",
+    "[foo]: /url\n  (Multi\n  line title)",
+  ])("preserves the reference definition %j", (definition) => {
+    expect(unwrapProse(`${definition}\nFollowing\nprose with [foo].\n`)).toBe(
+      `${definition}\nFollowing prose with [foo].\n`,
+    );
+  });
+
   it.each(["    ", "\t"])("keeps %j-indented fence markers inside top-level code", (indent) => {
     const block = `\`\`\`text\none\n${indent}\`\`\`\ntwo\nthree\n\`\`\``;
     expect(unwrapProse(`${block}\n\nFollowing\nprose.\n`)).toBe(`${block}\n\nFollowing prose.\n`);

@@ -65,6 +65,30 @@ export function unwrapProse(markdown) {
     if (/^\s*<!\[CDATA\[/.test(line)) return /\]\]>/;
     return null;
   };
+  // A destination and a title may start on following lines; title text may span lines.
+  const referenceEnd = (start, remainder) => {
+    let end = start;
+    if (remainder.trim() === "") remainder = lines[++end] ?? "";
+    const destination = remainder.trimStart().match(/^(<[^<>]*>|(?:\\.|[^\s])+)(?:[ \t]+(.*))?$/);
+    if (!destination) return start;
+    let title = destination[2] ?? "";
+    let titleStart = end;
+    if (title.trim() === "") {
+      title = (lines[end + 1] ?? "").trimStart();
+      titleStart++;
+    }
+    const delimiter = { '"': '"', "'": "'", "(": ")" }[title[0]];
+    if (!delimiter) return end;
+    for (let index = titleStart; index < lines.length; index++) {
+      const text = index === titleStart ? title.slice(1) : lines[index];
+      if (text.trim() === "" && index !== titleStart) break;
+      for (let char = 0; char < text.length; char++) {
+        if (text[char] === "\\") char++;
+        else if (text[char] === delimiter) return text.slice(char + 1).trim() === "" ? index : end;
+      }
+    }
+    return end;
+  };
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
@@ -90,9 +114,16 @@ export function unwrapProse(markdown) {
       continue;
     }
     const indent = columns(line.match(/^[ \t]*/)[0]);
-    while (listContainers.length && indent < listContainers.at(-1)) listContainers.pop();
-    const containerIndent = listContainers.at(-1) ?? 0;
     const opening = line.match(/^[ \t]*(`{3,}|~{3,})/);
+    const item = line.match(/^(\s*(?:[-+*]|\d+[.)])[ \t]+)/);
+    const structural =
+      /^\s*(?:#{1,6}(?:\s|$)|>|<|\[[^\]]+\]:)/.test(line) ||
+      /^ {0,3}(?:[=-]+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})[ \t]*$/.test(line);
+    // Less indentation only exits a list when this is not lazy paragraph continuation text.
+    if (prose === null || opening || item || structural) {
+      while (listContainers.length && indent < listContainers.at(-1)) listContainers.pop();
+    }
+    const containerIndent = listContainers.at(-1) ?? 0;
     if (opening && indent - containerIndent <= 3) {
       flush();
       fence = { marker: opening[1][0], length: opening[1].length, containerIndent };
@@ -106,10 +137,15 @@ export function unwrapProse(markdown) {
       continue;
     }
     table = false;
-    if (
-      /^\s*(?:#{1,6}(?:\s|$)|>|<|\[[^\]]+\]:)/.test(line) ||
-      /^ {0,3}(?:[=-]+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})[ \t]*$/.test(line)
-    ) {
+    const reference = line.match(/^\s*\[[^\]]+\]:[ \t]*(.*)$/);
+    if (reference) {
+      flush();
+      const end = referenceEnd(index, reference[1]);
+      output.push(...lines.slice(index, end + 1));
+      index = end;
+      continue;
+    }
+    if (structural) {
       flush();
       if (line.trimStart().startsWith("<")) {
         const terminator = htmlTerminator(line);
@@ -118,7 +154,6 @@ export function unwrapProse(markdown) {
       output.push(line);
       continue;
     }
-    const item = line.match(/^(\s*(?:[-+*]|\d+[.)])[ \t]+)/);
     if (item) {
       flush();
       prose = line;
