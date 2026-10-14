@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { composeNotes } from "./release-notes.mjs";
+import { composeNotes, formatHighlights } from "./release-notes.mjs";
 
 it("embeds current release highlights and separate reference rows for both OpenCode families", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
@@ -52,9 +52,9 @@ it("embeds current release highlights and separate reference rows for both OpenC
     // A release body resolves relative links against /releases/tag/..., so
     // every highlights link must leave absolute, including ../ paths.
     const highlightsSection = notes.slice(0, notes.indexOf("\n## Harness support\n"));
-    // Check all curated prose without tying the release gate to an older announcement.
-    const withoutLinkTargets = (text) => text.replace(/\]\([^)]+\)/g, "]");
-    expect(withoutLinkTargets(highlightsSection).trim()).toBe(withoutLinkTargets(highlights).trim());
+    // Check the formatted highlights, including block boundaries, independently of this release's wording.
+    const withoutLinkTargets = (text) => text.replace(/\]\([^)]+\)/g, "]").trim();
+    expect(withoutLinkTargets(highlightsSection)).toBe(withoutLinkTargets(await formatHighlights(highlights)));
     expect(highlightsSection.match(/\]\((?!https:\/\/)[^)]*\)/g) ?? []).toEqual([]);
     expect(notes).toContain(`https://github.com/owner/example/blob/${sha}/README.md)`);
   } finally {
@@ -64,7 +64,29 @@ it("embeds current release highlights and separate reference rows for both OpenC
 
 const TABLE = "| Harness | Range |\n| --- | --- |\n| Fake | `>=1 <2` |";
 
+describe("release highlights formatting", () => {
+  it("unwraps prose while preserving headings, table rows and empty list items", async () => {
+    const source =
+      "# Highlights\n\nA release paragraph that\nwraps in source.\n\n- ## Migration\n  Run the command.\n  Then continue.\n\nName | Value\n--- | ---\none\ntwo\n\n1. First\n2.\n3. Last\n";
+    expect(await formatHighlights(source)).toBe(
+      "# Highlights\n\nA release paragraph that wraps in source.\n\n- ## Migration\n  Run the command. Then continue.\n\n| Name | Value |\n| ---- | ----- |\n| one  |\n| two  |\n\n1. First\n2.\n3. Last\n",
+    );
+  });
+
+  it("preserves authored code, raw HTML and intentional line breaks", async () => {
+    const source =
+      "# Examples\n\n```js\nconst settings={enabled:false};\n```\n\n- <pre>\n  one\n  two\n  </pre>\n\nLine with a break  \nNext line\\\nFinal line\n";
+    expect(await formatHighlights(source)).toBe(source);
+  });
+});
+
 describe("composeNotes", () => {
+  it("keeps supplied highlights intact during synchronous composition", () => {
+    const highlights = "- ## Migration\n  Run the command.\n";
+    const notes = composeNotes({ highlights, harnessTable: TABLE, generatedBody: "", commits: [] });
+    expect(notes.startsWith(highlights + "\n## Harness support\n")).toBe(true);
+  });
+
   it("keeps direct-to-master commits that native notes would omit", () => {
     const notes = composeNotes({
       harnessTable: TABLE,
