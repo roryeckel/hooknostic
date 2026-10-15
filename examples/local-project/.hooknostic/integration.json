@@ -84,7 +84,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/mcp-launcher.mjs",
-      "hash": "b91e5f70bbf2eacd47a219f05ae039923e141f44d805d17fd58cc18c922db221",
+      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
       "mode": 420
     },
     {
@@ -94,12 +94,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "b83bc58abb6c8927b727e13d03b531a1573970561377e2020f4ea01c588b80e1",
+      "hash": "47c81496971a7203804e1dced6efd0049bb7e9f786bb51f17d66816e815ccddd",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "d8fb1bbd1331f92feae3cfb84d9d0aa00ff472fd8031a65b5941683d40aace14",
+      "hash": "81a7d30aba231c65379407bb3b95c1eb728c1c5f7c430e1e3260ff7f0fab1d91",
       "mode": 420
     },
     {
@@ -114,7 +114,7 @@
     },
     {
       "path": ".hooknostic/artifacts/codex/mcp-launcher.mjs",
-      "hash": "b91e5f70bbf2eacd47a219f05ae039923e141f44d805d17fd58cc18c922db221",
+      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
       "mode": 420
     },
     {
@@ -129,12 +129,12 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "c2a223fa0edbc1f21e09c9b8591679070d32f4e5edb9ab0322c395e91da85d4c",
+      "hash": "b4e70490e7007974f25b79f2ce7f3f09381de54dfae428ae249b20fe8e5568af",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/opencode/mcp-launcher.mjs",
-      "hash": "b91e5f70bbf2eacd47a219f05ae039923e141f44d805d17fd58cc18c922db221",
+      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
       "mode": 420
     },
     {
@@ -144,7 +144,7 @@
     },
     {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "de9582bf3e2330bd37548f455fb3d71c59741969845640055f72ceb7b81f2a25",
+      "hash": "0d8b9b1c58121ab1c5485258dccf279d7c1bebb440f1da153ec91a836c6fec3a",
       "mode": 420
     },
     {

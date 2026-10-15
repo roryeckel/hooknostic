@@ -70,7 +70,7 @@ import type { ProjectIntegration } from "./project-files.js";
 import { projectPath } from "./project-files.js";
 import { planProjectSkillPolicies } from "./skill-policy.js";
 
-export const HOOKNOSTIC_VERSION = "0.6.0";
+export const HOOKNOSTIC_VERSION = "0.7.0";
 
 export interface BuildOptions {
   configPath: string;
