@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { PluginSpec } from "@hooknostic/sdk";
 import { definePlugin, hook } from "@hooknostic/sdk";
+import { loadFixture } from "@hooknostic/testkit";
 
+import type { PiNativeEvent } from "./decode.js";
+import { piHarness } from "./harness.js";
 import { piCapabilityProfiles } from "./profile.js";
 import { createHooknosticExtension, type PiExtensionApi } from "./shim.js";
 
 const LEVELS = Object.fromEntries(Object.entries(piCapabilityProfiles[0]!.matrix).map(([id, e]) => [id, e.level]));
 
-const INVOCATION = { targetId: "pi", harnessVersion: "0.84.4" };
+const INVOCATION = { targetId: "pi", harnessVersion: piHarness.referenceVersion };
 
 function pluginWith(hooks: PluginSpec["hooks"]): PluginSpec {
   return definePlugin({ name: "p", hooks });
@@ -32,7 +35,7 @@ async function fire(
   pi: ReturnType<typeof fakePi>,
   event: string,
   payload: unknown,
-  ctx: { cwd: string } = { cwd: "C:/project" },
+  ctx: PiNativeEvent["ctx"] = { cwd: "C:/project" },
 ): Promise<unknown> {
   const handlers = (pi as unknown as { subscriptions: Map<string, unknown[]> }).subscriptions.get(event);
   if (handlers === undefined || handlers.length === 0) throw new Error(`no handler for ${event}`);
@@ -41,6 +44,30 @@ async function fire(
 }
 
 describe("createHooknosticExtension", () => {
+  it.each([
+    { fixture: "tool-call-bash", portable: "tool.before", native: "tool_call" },
+    { fixture: "agent-settled-resumed", portable: "turn.stop", native: "agent_settled" },
+  ] as const)("preserves the captured callback context in raw: $fixture", async ({ fixture, portable, native }) => {
+    const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${fixture}.input.json`);
+    const pi = fakePi();
+    let observedRaw: unknown;
+    createHooknosticExtension(
+      pluginWith([
+        hook(portable, {
+          id: "inspect",
+          async run(event) {
+            observedRaw = event.raw;
+          },
+        }),
+      ]),
+      { ...INVOCATION, capabilities: LEVELS },
+    )(pi);
+
+    await fire(pi, native, input.event, input.ctx);
+    expect(input.ctx.mode).toEqual(expect.any(String));
+    expect(observedRaw).toEqual(input);
+  });
+
   it("registers only the native events the plugin's hooks require", () => {
     const pi = fakePi();
     const extension = createHooknosticExtension(pluginWith([hook("tool.before", { id: "g", async run() {} })]), {

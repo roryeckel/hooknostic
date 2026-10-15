@@ -188,11 +188,12 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
       (name: string): PiHandler =>
       async (event, ctx) => {
         const ctxCwd = (ctx as { cwd?: unknown } | undefined)?.cwd;
+        const ctxMode = (ctx as { mode?: unknown } | undefined)?.mode;
         const eventCwd = (event as { cwd?: unknown }).cwd;
         const cwd = typeof ctxCwd === "string" ? ctxCwd : typeof eventCwd === "string" ? eventCwd : process.cwd();
         const native: PiNativeEvent = {
           event: event as Record<string, unknown>,
-          ctx: { cwd },
+          ctx: { cwd, ...(typeof ctxMode === "string" ? { mode: ctxMode } : {}) },
         };
         const enrichment: PiEnrichment = {};
         if (name === "agent_settled" && readsTurnFields) {
