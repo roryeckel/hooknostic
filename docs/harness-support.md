@@ -8,10 +8,11 @@ contract suite in `@hooknostic/testkit` audits every row.
 See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.
 
 > [!WARNING]
-> **macOS has shell interpreter captures and nothing else.** Each harness ran its
-> shell tool on a GitHub macOS runner (`.capture/shell-dialects`); every other
-> record below was established on Windows or Linux. CI runs only the unit and
-> fixture tests on macOS, and the playback suite has never run there.
+> **macOS has unit and fixture coverage, but no real-harness playback evidence.**
+> Claude Code, Codex CLI, and both OpenCode families have shell interpreter
+> captures from GitHub macOS runners (`.capture/shell-dialects`). Pi has no
+> macOS harness captures. All other harness observations below were established
+> on Windows or Linux.
 
 | Harness | Recommended target range | Validated ranges | Reference build | Fixtures |
 | --- | --- | --- | --- | --- |

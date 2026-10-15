@@ -204,7 +204,7 @@ Node.js 22.13+ / pnpm 12 + TypeScript monorepo. Use the pnpm version pinned in
 | `@hooknostic/core` | Compiler: config loading, plugin model, capability analysis, diagnostics |
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |
 | `hooknostic` | CLI: compile, reconcile projects, inspect support, and test hooks |
-| `@hooknostic/adapter-{claude,codex,opencode}` | Per-harness adapters (internal) |
+| `@hooknostic/adapter-{claude,codex,opencode,pi}` | Per-harness adapters (internal) |
 | `@hooknostic/testkit` | Fixtures, fake adapters, and the adapter contract suite |
 
 ```
