@@ -22,6 +22,12 @@ It is invalid on a supported cell. A version range retains the declaration only
 when every unsupported profile in the range declares the same ID; acceptance
 cannot excuse an unclassified unsupported portion of the range.
 
+The adapter contract checks IDs across package and project profiles together.
+An omission ID belongs to one component and cannot also name a deviation or
+degradation. It may recur for that component across version profiles and both
+delivery modes. Existing shared deviation facts, such as environment expansion
+across MCP transports, remain valid; an omission must not inherit that sharing.
+
 `components.accept` may name `<adapter>:<omission-id>`. For that component, the
 HN205 diagnostic becomes information. Support remains `unsupported`, the native
 component is omitted, and reports retain discovered/emitted/skipped counts and
