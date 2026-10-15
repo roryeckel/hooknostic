@@ -12,8 +12,8 @@ const driver = fileURLToPath(new URL("./drive-capture-session.mjs", import.meta.
 const captureDriver = fileURLToPath(new URL("../.capture/pi/run-capture.mjs", import.meta.url));
 // The supported Node 22 floor needs an explicit opt-in for the drivers' TS imports.
 const nodeArgs = ["--experimental-strip-types"];
-const run = (...args) =>
-  spawnSync(process.execPath, [...nodeArgs, driver, "pi", ...args], { encoding: "utf8", timeout: 150_000 });
+const run = (env, ...args) =>
+  spawnSync(process.execPath, [...nodeArgs, driver, "pi", ...args], { env, encoding: "utf8", timeout: 150_000 });
 
 it("passes a quoted, multiword capture prompt to Pi as one argument", () => {
   const scratch = mkdtempSync(join(tmpdir(), "hooknostic-pi-capture-args-"));
@@ -124,20 +124,37 @@ it.skipIf(process.env.HOOKNOSTIC_PLAYBACK !== "pi")(
   150_000,
 );
 
-it.skipIf(process.env.HOOKNOSTIC_PLAYBACK !== "pi")(
-  "captures and compares a real Pi loopback exchange",
-  () => {
-    const scratch = mkdtempSync(join(tmpdir(), "hooknostic-pi-drift-test-"));
+it.skipIf(process.env.HOOKNOSTIC_PLAYBACK !== "pi").each(["ancestor", "home"])(
+  "captures a clean Pi loopback exchange despite %s skills",
+  (source) => {
+    const root = mkdtempSync(join(tmpdir(), "hooknostic-pi-drift-test-"));
+    const scratch = join(root, "project");
+    const home = join(root, "home");
     try {
-      const result = run("--transport", "playback", "--scratch", scratch);
+      mkdirSync(home);
+      const skill = join(source === "ancestor" ? root : home, ".agents", "skills", "isolation-probe");
+      mkdirSync(skill, { recursive: true });
+      writeFileSync(
+        join(skill, "SKILL.md"),
+        "---\nname: isolation-probe\ndescription: Drift isolation marker\n---\nOnly a harmless marker.\n",
+      );
+      const result = run(
+        { ...process.env, HOME: home, USERPROFILE: home },
+        "--transport",
+        "playback",
+        "--scratch",
+        scratch,
+      );
       expect(result.status, result.stdout + result.stderr).toBe(0);
       expect(result.stdout).toContain("Verdict: clean");
+      const prompt = JSON.parse(readFileSync(join(scratch, "captured/before_agent_start.jsonl"), "utf8").trim());
+      expect(prompt.payload.event.systemPromptOptions.skills).toEqual([]);
       const call = JSON.parse(readFileSync(join(scratch, "captured/tool_call.jsonl"), "utf8").trim());
       expect(call.payload.event.toolName).toBe("bash");
       expect(call.payload.event.input.command).toContain("hooknostic-original");
       expect(readFileSync(join(scratch, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-original");
     } finally {
-      rmSync(scratch, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   },
   150_000,

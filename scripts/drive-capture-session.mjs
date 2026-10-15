@@ -105,6 +105,8 @@ export function prepareScratch(repo, harness, scratchOverride) {
   if (harness === "pi") {
     // Copy only the passive tee, never ignored captures or user settings.
     mkdirSync(scratch, { recursive: true });
+    // Stop Pi's project skill discovery before it reaches ancestor directories.
+    mkdirSync(join(scratch, ".git"), { recursive: true });
     cpSync(join(repo, ".capture/pi/hooknostic-capture.ts"), join(scratch, "hooknostic-capture.ts"));
     rmSync(join(scratch, "captured"), { recursive: true, force: true });
     mkdirSync(join(scratch, "captured"), { recursive: true });
@@ -299,6 +301,8 @@ async function drivePi(scratch, model, toolName) {
       timeoutMs: DRIVE_TIMEOUT_MS,
       env: {
         ...withoutCredentials(),
+        HOME: scratch,
+        USERPROFILE: scratch,
         PI_CODING_AGENT_DIR: join(scratch, "pi-home"),
         HKN_CAPTURE_DIR: join(scratch, "captured"),
         HKN_PI_PROBE: "tee",
