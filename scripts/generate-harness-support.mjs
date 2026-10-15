@@ -197,6 +197,18 @@ function emitComponentTable(matrix, profiles, recordsLabel, adapterId) {
       );
     }
   }
+  const omissions = Object.entries(matrix ?? {}).flatMap(([component, support]) =>
+    support.omission === undefined ? [] : [{ component, ...support.omission }],
+  );
+  if (omissions.length > 0) {
+    lines.push("", "Unsupported components with named omissions, accepted through `components.accept` (HN205):", "");
+    lines.push("| Omission | Component | Behavior | Evidence |", "| --- | --- | --- | --- |");
+    for (const omission of omissions) {
+      lines.push(
+        `| \`${adapterId}:${omission.id}\` | \`${omission.component}\` | ${omission.summary} | \`${omission.evidence}\` |`,
+      );
+    }
+  }
   lines.push("", recordsLabel, "");
   lines.push("| Version | Date | Method | Evidence | Established |", "| --- | --- | --- | --- | --- |");
   for (const profile of profiles) {

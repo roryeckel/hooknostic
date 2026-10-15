@@ -35,6 +35,21 @@
         ".codex/hooknostic/hooknostic.mjs"
       ]
     },
+    "pi": {
+      "status": "success",
+      "adapter": "pi@0.6.0",
+      "requestedVersion": ">=0.84 <1",
+      "output": "./dist/pi",
+      "capabilities": {
+        "exact": 3,
+        "emulated": 0,
+        "approximate": 0,
+        "unsupported": 0
+      },
+      "artifacts": [
+        ".pi/extensions/hooknostic.js"
+      ]
+    },
     "opencode": {
       "status": "success",
       "adapter": "opencode@0.6.0",

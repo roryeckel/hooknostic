@@ -56,6 +56,11 @@ decision rather than a default someone forgot to think about.
 
 ## The portability wall
 
+Pi also lacks the session-start context channel required by this example, so
+its configuration intentionally selects Claude Code and Codex. Pi supports
+context injection at `prompt.before` and `model.request.before`; those are
+different lifecycle points. See the [support table](../harness-support.md).
+
 Claude Code and Codex both have an exact channel for session-start context. OpenCode
 has none — its only context-injection point is during conversation compaction. So
 `session.start.context.add` is **unsupported** on OpenCode, and a config that included

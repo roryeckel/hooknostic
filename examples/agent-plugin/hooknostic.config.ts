@@ -15,8 +15,9 @@ const bundledMcp = definePackageMaterializer({
 /**
  * Combined Agent Plugins + Hooknostic packaging: the package root carries the
  * portable plugin.json / skills / MCP server, and Hooknostic projects a complete
- * native plugin per harness — skills, MCP and hooks in one installable unit —
+ * native plugin per harness with its supported components and hooks —
  * without ever modifying the portable root.
+ * Pi's unsupported stdio MCP registration is the one explicitly accepted omission.
  *
  * The MCP server is bundled once by an author-owned materializer. Every
  * installed output runs without a package-manager install or source checkout.
@@ -31,11 +32,14 @@ export default defineConfig({
     // Each family emits its own native package loader; never interchange them.
     opencode: { version: ">=2.0.17 <3", delivery: "package", output: "./dist/opencode" },
     legacy: { adapter: "opencode", version: ">=1.18 <2", delivery: "package", output: "./dist/opencode-v1" },
+    pi: { version: ">=0.84 <1", delivery: "package", output: "./dist/pi" },
   },
 
   components: {
     root: ".",
-    targets: ["claude", "codex", "opencode", "legacy"],
+    targets: ["claude", "codex", "opencode", "legacy", "pi"],
+    // Pi receives the hooks and skill; only its stdio MCP omission is accepted.
+    accept: ["pi:mcp-stdio-omitted"],
     exclude: ["build/**", "runtime/**", ".claude-plugin/**", ".agents/plugins/**"],
     materialize: [{ provider: bundledMcp, inputs: { server: "src/greet-mcp.mjs" }, into: "bundled" }],
   },

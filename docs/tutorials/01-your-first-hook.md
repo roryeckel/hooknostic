@@ -27,7 +27,7 @@ cd examples/basic && node ../../packages/cli/bin/hooknostic.mjs check
 (In your own project you'd have the CLI installed as a dependency and run
 `npx hooknostic check` — see [Getting started](../getting-started.md).)
 
-`check` resolves both hooks against all three configured targets and passes: every
+`check` resolves both hooks against all four configured targets and passes: every
 capability this plugin needs is supported everywhere.
 
 ## The code, piece by piece
@@ -70,7 +70,7 @@ Reading it top to bottom:
 
 - **`hook("tool.before", ...)`** — subscribe to the normalized "a tool is about to run"
   event. On Claude Code and Codex that's the native `PreToolUse` event; on OpenCode
-  it's the `tool.execute.before` callback. You never see those names.
+  it's the `tool.execute.before` callback; on Pi it is `tool_call`. You never see those names.
 - **`id`** — a stable identifier. Diagnostics and the build report refer to hooks by
   id, so make it meaningful.
 - **`match: { kind: "shell" }`** — only fire for shell tools, using the portable
@@ -112,9 +112,9 @@ node ../../packages/cli/bin/hooknostic.mjs build
 
 You get one self-contained directory per target under `dist/`, plus
 `hooknostic-build.json`. Open the report and find `no-force-push`: you'll see
-`tool.before.block` resolved as `exact` on all three targets — Claude blocks via a
+`tool.before.block` resolved as `exact` on all four targets — Claude blocks via a
 `permissionDecision: "deny"` response, Codex the same, OpenCode by throwing inside the
-callback. Same hook, three mechanisms, one declared meaning.
+callback, and Pi by returning `{ block: true, reason }`. Same hook, one declared meaning.
 
 ## Try it live
 

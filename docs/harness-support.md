@@ -929,6 +929,14 @@ Known degradations, reported as `HN101`:
 | `pi:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `pi:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
+Unsupported components with named omissions, accepted through `components.accept` (HN205):
+
+| Omission | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
@@ -958,6 +966,14 @@ Known degradations, reported as `HN101`:
 | `pi:skill-reference-unexpanded` | `agent-plugin.skills` | Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references and an in-place ${SKILL_DIR} cannot be rewritten. | `.capture/pi/FEATURES.md` |
 | `pi:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `pi:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Unsupported components with named omissions, accepted through `components.accept` (HN205):
+
+| Omission | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
 
 Project delivery validation records:
 
@@ -1003,6 +1019,14 @@ Known degradations, reported as `HN101`:
 | `pi:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `pi:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
 
+Unsupported components with named omissions, accepted through `components.accept` (HN205):
+
+| Omission | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
@@ -1033,6 +1057,14 @@ Known degradations, reported as `HN101`:
 | `pi:skill-reference-unexpanded` | `agent-plugin.skills` | Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references cannot be rewritten. | `.capture/pi/FEATURES.md` |
 | `pi:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied; the skill is emitted only by explicit acceptance. | `.capture/skill-invocation` |
 | `pi:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/skill-invocation` |
+
+Unsupported components with named omissions, accepted through `components.accept` (HN205):
+
+| Omission | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
 
 Projection validation records:
 

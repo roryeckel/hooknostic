@@ -1,77 +1,65 @@
-# Skills can require explicit invocation
+# Pi joins the supported harnesses
 
-0.6.0 adds a portable declaration for skills that should be loaded only when the
-user explicitly invokes them. Declare it once in a neutral project source or an
-Agent Plugin package:
+0.7.0 adds Pi as a bundled Hooknostic target for project and package delivery.
+One portable source can now emit native Pi hooks and skills alongside Claude
+Code, Codex CLI, and OpenCode. See the [installation guide](installing-artifacts.md#pi)
+and the versioned [harness support table](harness-support.md) for supported
+operations and their evidence.
 
-```yaml
-metadata:
-  hooknostic/allow-implicit-invocation: "false"
-```
+## What is included
 
-Hooknostic projects the policy into each target's native settings and reports
-support through the separate `agent-plugin.skills.invocation-policy` component
-capability. Native explicit invocation remains available on supported targets;
-the declaration withholds automatic model selection. See
-[project integration](project-integration.md) and
-[ADR-0030](decisions/0030-skill-invocation-policy.md) for the authoring and
-compatibility rules.
+- Native Pi extensions support tool blocking and input rewriting, prompt and
+  model-request context injection, and the documented lifecycle operations.
+  Target-specific effect validation runs before effects change portable state;
+  invalid Pi input replacements follow the configured hook-error policy.
+- Captured `read`, `write`, and `edit` calls expose additive file views. The
+  dedicated PowerShell tool identifies its shell family. Pi's `bash` tool leaves
+  the dialect absent because its configured interpreter can vary.
+- Hooks declaring final-response fields receive successful assistant text and
+  its native session-entry ID. Error, cancellation, retry, and resumed-session
+  probes verify that an earlier response is not exposed as the current result.
+- Project and packaged skills support relative skill-directory references and
+  the portable implicit-invocation policy. Native explicit invocation remains
+  available when ordinary model discovery is disabled.
+- Pi participates in the shared adapter contracts, Windows/Linux loopback
+  playback, and weekly harness-version monitoring. Capture and drift drivers
+  isolate user settings and ambient skills and support the Node 22 floor.
 
-- Both project delivery and packaged skills use the same string-valued metadata.
-  The portable setting takes precedence over native settings during projection,
-  while unrelated native fields, comments and skill body bytes are preserved.
-- Policy is composed for every configured reader of a generated discovery
-  directory, including readers excluded by `components.targets`. That setting
-  does not prevent a harness from discovering another target's generated copy.
-- A missing gate fails by default. `components.onUnsupported: "warn"` omits the
-  affected skill instead of delivering it without the requested policy. Shared
-  copies are omitted for every affected reader.
-- Named `components.accept` entries can explicitly accept an unavailable gate
-  or an unchanged authored native source. Reports retain the actual support
-  rating and record the accepted HN101 degradation.
+## Adopting Pi
 
-## Migrating
+Existing target configurations remain valid. Add a `pi` target to enable Pi
+output; the CLI includes the adapter and runtime shim. Follow the
+[project integration guide](project-integration.md) for project reconciliation
+or the [package installation guide](installing-artifacts.md#pi) for Pi packages.
 
-- Existing skills without the declaration retain their authored native behavior.
-  Add it only to skills that need explicit invocation.
-- Quote `"false"` and `"true"`: YAML booleans are invalid for this reserved
-  metadata. Invalid policy remains an error even with
-  `components.onInvalid: "warn"`.
-- Keep authored skills in a neutral directory such as `skills/` and let
-  Hooknostic own the native copies. Sources already inside a configured harness's
-  native discovery directory are left untouched; move them to a neutral source
-  to let Hooknostic enforce and verify the policy.
-- Inspect `agent-plugin.skills.invocation-policy` for the configured target,
-  delivery and version range before building. Broad ranges may include versions
-  without a captured gate and need narrowing; exact support and evidence live in
-  [harness support](harness-support.md).
-- Removing the declaration regenerates from the authored source and restores
-  its native settings. Generic warning settings do not authorize delivery
-  without a gate; use the precise shortfall IDs documented in
-  [project integration](project-integration.md) for deliberate acceptance.
+The basic and shell-rewrite projects in [examples](../examples/README.md) include
+Pi project targets. The [combined package](../examples/agent-plugin/README.md)
+and [local project](../examples/local-project/README.md) include Pi in their default
+configurations, accepting only its named stdio MCP omission.
+
+`components.accept` can now name `pi:mcp-stdio-omitted`,
+`pi:mcp-streamable-http-omitted`, and `pi:mcp-sse-omitted` individually. An
+accepted omission reports HN205 as information and keeps the component rated
+unsupported, with the servers counted as skipped. Other unsupported components
+and invalid inputs remain errors. See [component policies](configuration.md#compatibility-and-component-policies).
+
+- Inspect support for the selected target version and delivery before building.
+  Skill invocation-policy support is version-scoped; a broad range can include
+  builds without a captured gate.
+- Keep portable skill sources in a neutral directory so Hooknostic can own the
+  generated native copies. Authored skills discovered in place remain untouched.
+- Feature-detect `tool.shell.dialect` before choosing shell-specific syntax.
+  Raw tool input remains available when a normalized view or dialect is absent.
 
 ## Limits
 
-- This is discovery policy, not access control. Direct reads and forced skill
-  loads can remain possible; command-menu visibility, tool grants and execution
-  settings are outside this release's policy.
-- Gate support is version-scoped and separate from skill delivery. Unprobed
-  older versions remain unsupported, and the captured OpenCode v1 permission
-  translation is rated emulated.
-- An unowned native copy cannot be overwritten or reported as omitted. A missing
-  gate can remove a shared copy for other configured readers too.
+Pi's native MCP, permission, and subagent lifecycle channels remain unsupported.
+Turn-stop and session-end mappings are rated emulated, and output replacement is
+approximate. These distinctions remain visible in capability analysis and reports.
 
-## Other changes
-
-- Fix Windows Claude playback's folder-trust selection when a private terminal
-  control sequence follows the options.
-- Preserve valid unions of complementary version-range clauses while rejecting
-  gaps and wider coverage in the version-literal check.
-- Record OpenCode v2 playback phases and subprocess output as work happens.
-  Failed CI playback retains diagnostic artifacts, so a setup timeout identifies
-  the stalled phase and command.
-- Include the latest recorded harness playback validation, dependency refreshes
-  and authenticated LiteLLM sidecar verification.
+Harness evidence was established on Windows and Linux, centered on the captured
+reference build. Pi has no macOS harness captures. Loopback playback exercises
+real harness behavior using scripted model responses and spends no model credits.
 
 Start with the [README](../README.md); the [release runbook](releases.md)
-describes the preparation, draft and publication stages.
+describes preparation, draft creation, and publication.

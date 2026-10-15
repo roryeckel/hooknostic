@@ -44,6 +44,7 @@ import {
   diagnosticsFromAgentPluginDeviations,
   diagnosticsFromAgentPluginIssues,
   resolveAgentPluginProjection,
+  unsupportedComponentDiagnostic,
 } from "./agent-plugin.js";
 import type { AnalysisResult } from "./analysis.js";
 import { analyzeCapabilities } from "./analysis.js";
@@ -499,7 +500,7 @@ function degradationReport(adapter: string, degradations: readonly AgentPluginDe
 }
 
 /**
- * Every qualified deviation and degradation id the adapters behind these
+ * Every qualified deviation, degradation, and omission id the adapters behind these
  * targets declare, in any profile. `components.accept` is checked against it
  * so a misspelt id fails instead of silently accepting nothing; any profile
  * counts, because an accepted id may belong to a version range this build
@@ -511,7 +512,11 @@ function declaredShortfallIds(adapters: readonly HarnessAdapter[]): Set<string> 
     const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
     for (const profile of profiles) {
       for (const cell of Object.values(profile.components)) {
-        for (const declaration of [...(cell?.deviations ?? []), ...(cell?.degradations ?? [])]) {
+        for (const declaration of [
+          ...(cell?.deviations ?? []),
+          ...(cell?.degradations ?? []),
+          ...(cell?.omission === undefined ? [] : [cell.omission]),
+        ]) {
           ids.add(`${adapter.id}:${declaration.id}`);
         }
       }
@@ -812,7 +817,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
       diagnostics.push({
         code: "HN501",
         severity: "error",
-        message: `components.accept names ${JSON.stringify(accepted)}, which no configured target's adapter declares as a deviation or degradation.`,
+        message: `components.accept names ${JSON.stringify(accepted)}, which no configured target's adapter declares as a deviation, degradation, or omission.`,
         remediation: "use a qualified id as a build report or `hooknostic inspect` prints it, or remove the entry.",
       });
     }
@@ -1294,13 +1299,17 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               if (!supported) {
                 const reason = cell?.rationale ?? "component has no project delivery representation";
                 omissions.push({ component, reason });
-                diagnostics.push({
-                  code: "HN205",
-                  severity: config.components?.onUnsupported ?? "error",
-                  target: id,
-                  component,
-                  message: reason,
-                });
+                diagnostics.push(
+                  unsupportedComponentDiagnostic({
+                    adapter: adapter.id,
+                    target: id,
+                    component,
+                    ...(cell === undefined ? {} : { support: cell }),
+                    onUnsupported: config.components?.onUnsupported ?? "error",
+                    ...(config.components?.accept === undefined ? {} : { accept: config.components.accept }),
+                    reason,
+                  }),
+                );
               }
               if (supported) {
                 const policy = effectiveCompatibility(config, id);

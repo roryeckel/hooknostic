@@ -154,6 +154,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       component: id,
       level: entry?.level ?? "unsupported",
       ...(entry?.rationale === undefined ? {} : { rationale: entry.rationale }),
+      ...(entry?.omission === undefined
+        ? {}
+        : { omission: { ...entry.omission, id: `${adapter.id}:${entry.omission.id}` } }),
       ...(entry?.deviations === undefined
         ? {}
         : { deviations: entry.deviations.map((deviation) => ({ ...deviation, id: `${adapter.id}:${deviation.id}` })) }),
@@ -235,6 +238,10 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       for (const deviation of row.deviations ?? []) {
         options.io.stdout(`             deviation ${deviation.id}: ${deviation.summary} (${deviation.evidence})`);
       }
+      if (row.omission !== undefined)
+        options.io.stdout(
+          `             omission ${row.omission.id}: ${row.omission.summary} (${row.omission.evidence})`,
+        );
       for (const degradation of row.degradations ?? []) {
         options.io.stdout(
           `             degradation ${degradation.id}: ${degradation.summary} (${degradation.evidence})`,

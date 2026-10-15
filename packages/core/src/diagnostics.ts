@@ -69,6 +69,8 @@ export interface Diagnostic {
   deviation?: string;
   /** Qualified degradation id, `<adapter>:<id>`, for an HN101 from a projection (ADR-0021). */
   degradation?: string;
+  /** Qualified unsupported-component omission id, for HN205 (ADR-0031). */
+  omission?: string;
   remediation?: string;
   location?: { file: string; line?: number };
 }
@@ -93,6 +95,7 @@ export function formatDiagnostic(d: Diagnostic): string {
   if (d.target) lines.push(`  target:   ${d.target}`);
   if (d.support) lines.push(`  support:  ${d.support}`);
   if (d.deviation) lines.push(`  deviation: ${d.deviation}`);
+  if (d.omission) lines.push(`  omission: ${d.omission}`);
   if (d.capability || d.field || d.component || d.target || d.support || d.deviation) lines.push("");
   lines.push(`  ${d.message}`);
   if (d.rationale) {

@@ -3,6 +3,7 @@
 **Example:** [`examples/agent-plugin`](../../examples/agent-plugin/) ·
 **You'll learn:** one Agent Plugins 1.0 package with hooks, skills, and a bundled MCP
 server, installed through Claude and Codex marketplaces or loaded by OpenCode.
+The same default configuration delivers hooks and skills to Pi with a named MCP omission.
 
 [Agent Plugins 1.0](https://agent-plugins.org/specification) standardizes the manifest,
 Agent Skills, MCP servers, and namespaced client extensions. Hooknostic reads that source
@@ -33,7 +34,8 @@ examples/agent-plugin/
     ├── claude/          # native Claude plugin
     ├── codex/           # native Codex plugin
     ├── opencode/        # OpenCode v2 package
-    └── opencode-v1/     # explicit legacy family
+    ├── opencode-v1/     # explicit legacy family
+    └── pi/              # Pi hooks and skills; MCP omission accepted
 ```
 
 The checked-in configuration selects package delivery for each target. The source
@@ -50,6 +52,26 @@ target artifacts. Read the provider like any build script. See
 The default `opencode` target uses v2; `legacy` names an explicit v1 target with
 `adapter: "opencode"`. Both outputs are packages, with distinct native loaders.
 Install only the output matching your harness family. See [OpenCode families](../opencode-families.md).
+
+### Pi hooks and skills
+
+Pi has no native MCP channel. The default configuration includes it and accepts
+only `pi:mcp-stdio-omitted`. Pi receives the same portable hooks and skill, while
+its stdio MCP registration is omitted and reported as unsupported. Other
+unsupported components remain errors:
+
+```sh
+node packages/cli/bin/hooknostic.mjs check --config examples/agent-plugin/hooknostic.config.ts
+node packages/cli/bin/hooknostic.mjs build --config examples/agent-plugin/hooknostic.config.ts
+pi install -l ./examples/agent-plugin/dist/pi
+```
+
+Run the install command from the project where you want to use the package,
+with an absolute package path if needed. Follow Pi's activation prompts, then
+ask it to run `echo HOOKNOSTIC_BLOCK_PROBE` and use the `greet` skill. The
+blocking hook and skill are present; the MCP greeting check below applies to
+the other outputs. `pnpm build:examples` also regenerates the Pi package and
+includes Pi in `examples/agent-plugin/dist/hooknostic-build.json`.
 
 ## Install through a marketplace
 

@@ -9,6 +9,7 @@ import {
   type AgentPluginDeviation,
   type AgentPluginDeviationDeclaration,
   type AgentPluginIssue,
+  type AgentPluginOmissionDeclaration,
   type AgentPluginPackage,
   type AgentPluginProjectionProfile,
   type AgentPluginProjector,
@@ -93,8 +94,10 @@ export function resolveAgentPluginProjection(
     // the range has is one the build can ship into.
     const deviations = new Map<string, AgentPluginDeviationDeclaration>();
     const degradations = new Map<string, AgentPluginDegradationDeclaration>();
+    const unsupported: (AgentPluginOmissionDeclaration | undefined)[] = [];
     for (const profile of used) {
       const candidate = profile.components[id] ?? { level: "unsupported" as const };
+      if (candidate.level === "unsupported") unsupported.push(candidate.omission);
       if (chosen === undefined || leastCapable(chosen.level, candidate.level) === candidate.level) {
         chosen = candidate;
       }
@@ -111,6 +114,10 @@ export function resolveAgentPluginProjection(
         ...(chosen.rationale === undefined ? {} : { rationale: chosen.rationale }),
         ...(deviations.size === 0 ? {} : { deviations: [...deviations.values()] }),
         ...(degradations.size === 0 ? {} : { degradations: [...degradations.values()] }),
+        // Acceptance cannot excuse an unclassified unsupported range.
+        ...(unsupported[0] !== undefined && unsupported.every((item) => item?.id === unsupported[0]!.id)
+          ? { omission: unsupported[0] }
+          : {}),
       };
     }
   }
@@ -259,6 +266,40 @@ function discoveredComponents(
   return [...ids];
 }
 
+/** HN205 retains unsupported fidelity even when its named omission is accepted. */
+export function unsupportedComponentDiagnostic(options: {
+  adapter: string;
+  target: string;
+  component: AgentPluginComponentId;
+  support?: AgentPluginComponentSupport;
+  onUnsupported: "error" | "warn";
+  accept?: readonly string[];
+  reason?: string;
+}): Diagnostic {
+  const declaration = options.support?.level === "unsupported" ? options.support.omission : undefined;
+  const qualified = declaration === undefined ? undefined : `${options.adapter}:${declaration.id}`;
+  const accepted = qualified !== undefined && options.accept?.includes(qualified) === true;
+  return {
+    code: "HN205",
+    severity: accepted ? "info" : options.onUnsupported,
+    target: options.target,
+    component: options.component,
+    support: "unsupported",
+    ...(options.support?.rationale === undefined ? {} : { rationale: options.support.rationale }),
+    ...(qualified === undefined
+      ? {}
+      : {
+          omission: qualified,
+          remediation: accepted
+            ? `Omission accepted by components.accept; support remains unsupported. Remove ${JSON.stringify(qualified)} to apply components.onUnsupported again.`
+            : `Add ${JSON.stringify(qualified)} to components.accept to permit this omission, remove the component, or set components.onUnsupported to "warn".`,
+        }),
+    message:
+      options.reason ??
+      `Agent Plugin component ${JSON.stringify(options.component)} is unsupported on ${JSON.stringify(options.target)}.`,
+  };
+}
+
 export function analyzeAgentPluginProjection(
   source: AgentPluginPackage,
   adapter: HarnessAdapter,
@@ -334,15 +375,16 @@ export function analyzeAgentPluginProjection(
       continue;
     }
     if (support.level === "unsupported") {
-      resolved.diagnostics.push({
-        code: "HN205",
-        severity: onUnsupported,
-        target: target.id,
-        component,
-        support: "unsupported",
-        ...(support.rationale === undefined ? {} : { rationale: support.rationale }),
-        message: `Agent Plugin component ${JSON.stringify(component)} is unsupported on ${JSON.stringify(target.id)}.`,
-      });
+      resolved.diagnostics.push(
+        unsupportedComponentDiagnostic({
+          adapter: adapter.id,
+          target: target.id,
+          component,
+          support,
+          onUnsupported,
+          ...(accept === undefined ? {} : { accept }),
+        }),
+      );
     } else if (compatibility !== undefined && !meetsMinimum(support.level, compatibility.minimum)) {
       // Emitted, not omitted, so not HN205, which marks a component skipped.
       resolved.diagnostics.push({
