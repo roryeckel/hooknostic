@@ -9,6 +9,10 @@ again on 2026-10-11.
 [ADR-0029](../../docs/decisions/0029-shell-dialect.md) is the decision this
 evidence supports.
 
+Pi's later [Windows/Linux probes](../pi/FEATURES.md) use this interpreter probe
+and redactor. They establish a PowerShell-family pin for `powershell`, and show
+that `bash` must remain unknown across `shellPath` configurations.
+
 ## Method
 
 No model spend. The real harness binaries connect to the loopback playback

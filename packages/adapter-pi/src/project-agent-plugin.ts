@@ -10,17 +10,24 @@ import {
   isRejectedSkillPath,
   materializedPackageFiles,
   npmPublicationProblems,
+  projectPackageSkillTexts,
+  RELATIVE_SKILL_TEXT,
+  SKILL_REFERENCE_UNEXPANDED,
+  skillInvocationPolicyProfiles,
+  withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
 
 import { PACKAGE_EXTENSION_PATH, PACKAGE_MANIFEST_PATH } from "./generate.js";
 import { piHarness } from "./harness.js";
+import { piFeatureValidation } from "./profile.js";
+import { PI_SKILL_POLICY_RATIONALE, piPackageSkillPolicyValidation, piSkillPolicy } from "./skill-policy.js";
 
 const PACKAGE_DIR = "package";
 const PACKAGE_BOUNDARY = `${PACKAGE_DIR}/package.json`;
 
 /** The pi manifest points only at accepted skills, not a directory containing rejected SKILL.md files. */
-export const piAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
+const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: "",
   packageRoot: PACKAGE_DIR,
   profiles: [
@@ -35,7 +42,15 @@ export const piAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         "agent-plugin.skills": {
           level: "exact",
           rationale:
-            "Accepted Agent Skills trees are copied without rewriting and named explicitly in the pi package manifest; an installed package skill was verified by effect on 0.84.4.",
+            "Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028).",
+          degradations: [
+            {
+              id: SKILL_REFERENCE_UNEXPANDED,
+              summary:
+                "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references cannot be rewritten.",
+              evidence: piFeatureValidation.artifact,
+            },
+          ],
         },
         "agent-plugin.mcp.stdio": {
           level: "unsupported",
@@ -65,6 +80,7 @@ export const piAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       source: {
         date: "2026-09-27",
         validatedOn: [
+          piFeatureValidation,
           {
             version: "0.84.4",
             date: "2026-09-27",
@@ -97,18 +113,24 @@ export const piAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const issues: AgentPluginIssue[] = [];
     const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
     const rejected = isRejectedSkillPath(source);
+    const skillTexts = projectPackageSkillTexts(
+      source.skills,
+      (path) => source.files.find((file) => file.path === path)?.contents,
+      RELATIVE_SKILL_TEXT,
+      "Pi",
+    );
 
     // Keep the author's files together, one level below the generated npm
     // manifest. The root manifest selects only the resources we validated.
     for (const file of source.files) {
       if (rejected(file.path)) continue;
       const path = `${PACKAGE_DIR}/${file.path}`;
-      files.push({ path, contents: file.contents, mode: file.mode });
-      copiedPaths.push(path);
+      files.push({ path, contents: skillTexts.rewritten.get(file.path) ?? file.contents, mode: file.mode });
+      if (!skillTexts.rewritten.has(file.path)) copiedPaths.push(path);
     }
     const materialized = materializedPackageFiles(context.materializedTrees, {
       prefix: `${PACKAGE_DIR}/`,
-      claimed: new Set(copiedPaths),
+      claimed: new Set(files.map((file) => file.path)),
     });
     issues.push(...materialized.issues);
     files.push(...materialized.files);
@@ -191,7 +213,24 @@ export const piAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         .filter((directory) => !rejected(`${directory}/`))
         .map((directory) => `${PACKAGE_DIR}/${directory}`),
       issues,
-      summary: { components: counts, omissions, copiedPaths: copiedPaths.sort((a, b) => a.localeCompare(b)) },
+      summary: {
+        components: counts,
+        omissions,
+        copiedPaths: copiedPaths.sort((a, b) => a.localeCompare(b)),
+        ...(skillTexts.degradations.length ? { degradations: skillTexts.degradations } : {}),
+      },
     };
   },
 };
+export const piAgentPluginProjector = withSkillInvocationPolicy(
+  {
+    ...nativePiAgentPluginProjector,
+    profiles: skillInvocationPolicyProfiles(
+      nativePiAgentPluginProjector.profiles,
+      piPackageSkillPolicyValidation,
+      PI_SKILL_POLICY_RATIONALE,
+    ),
+  },
+  "pi",
+  piSkillPolicy,
+);

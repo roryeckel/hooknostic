@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_call"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-jOj1aK\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.edit",
+    "nativeName": "edit",
+    "input": {
+      "path": "seed.txt",
+      "edits": [
+        {
+          "oldText": "alpha",
+          "newText": "beta"
+        }
+      ]
+    },
+    "file": {
+      "paths": [
+        "seed.txt"
+      ],
+      "pathKey": "path"
+    }
+  }
+}

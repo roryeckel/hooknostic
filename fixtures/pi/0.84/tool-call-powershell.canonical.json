@@ -20,7 +20,8 @@
     },
     "shell": {
       "command": "node -e \"require('node:fs').writeFileSync('hooknostic-tool.txt','hooknostic-original')\"",
-      "commandKey": "command"
+      "commandKey": "command",
+      "dialect": "powershell"
     }
   }
 }

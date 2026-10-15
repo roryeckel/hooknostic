@@ -309,6 +309,7 @@ describe("complete project integration", () => {
       frontmatter + body("${CLAUDE_SKILL_DIR}"),
     );
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
+    expect(await readFile(join(root, ".pi/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
   }, 60_000);
 
   it("fails a target whose skill text keeps a reference that target shows as written", async () => {
@@ -329,6 +330,7 @@ describe("complete project integration", () => {
       ["claude", "error"],
       ["codex", "info"],
       ["opencode", "error"],
+      ["pi", "error"],
     ]);
     expect(reported[0]).toMatchObject({
       component: "agent-plugin.skills",
@@ -353,7 +355,7 @@ describe("complete project integration", () => {
 
     const built = await buildProject(options);
     const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
-    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode", "pi"]);
     expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
   }, 60_000);
 

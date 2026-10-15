@@ -7,7 +7,7 @@ import { definePlugin, hook } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
 
 import { planPiApplication, serializePiOutput } from "./apply.js";
-import { decodePi, PiDecodeError } from "./decode.js";
+import { decodePi, PiDecodeError, type PiEnrichment } from "./decode.js";
 import { generatePiArtifacts } from "./generate.js";
 import { piHarness } from "./harness.js";
 import { piAdapter } from "./index.js";
@@ -22,13 +22,25 @@ describe("decodePi fixtures", () => {
     "before-agent-start-isolated",
     "context",
     "tool-call-write",
+    "tool-call-read",
+    "tool-call-edit",
+    "tool-call-bash-configured-powershell",
     "tool-call-bash",
     "tool-call-powershell",
     "tool-result-write",
+    "tool-result-read",
+    "tool-result-edit",
+    "tool-result-bash-configured-powershell",
     "tool-result-bash",
     "tool-result-powershell",
     "tool-result-error",
     "agent-settled",
+    "agent-settled-with-message",
+    "agent-settled-error",
+    "agent-settled-aborted",
+    "agent-settled-retry",
+    "agent-settled-retry-aborted",
+    "agent-settled-resumed",
     "session-shutdown",
     "session-before-compact",
     "session-compact",
@@ -39,7 +51,10 @@ describe("decodePi fixtures", () => {
     it(`decodes ${name} to its canonical event`, () => {
       const input = loadFixture("pi", "0.84", `${name}.input.json`);
       const canonical = loadFixture<Record<string, unknown>>("pi", "0.84", `${name}.canonical.json`);
-      const decoded = decodePi(input, INVOCATION);
+      const enrichment = name.startsWith("agent-settled-")
+        ? loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`)
+        : {};
+      const decoded = decodePi(input, INVOCATION, enrichment);
       expect(decoded).toEqual({
         ...canonical,
         harness: { ...(canonical["harness"] as object), version: piHarness.referenceVersion },
@@ -132,7 +147,7 @@ describe("classifyPiTool", () => {
     expect(bash.shell).toEqual({ command: "ls", commandKey: "command" });
     // The Windows loopback fixture captures the same command key.
     const powershell = classifyPiTool("powershell", { command: "ls" });
-    expect(powershell.shell).toEqual({ command: "ls", commandKey: "command" });
+    expect(powershell.shell).toEqual({ command: "ls", commandKey: "command", dialect: "powershell" });
   });
 
   it("does not resolve prototype members for a tool named constructor", () => {

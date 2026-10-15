@@ -1,9 +1,16 @@
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
+import {
+  RELATIVE_SKILL_TEXT,
+  SKILL_REFERENCE_UNEXPANDED,
+  skillInvocationPolicyProfiles,
+} from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
 import { projectSkillFiles } from "@hooknostic/core";
 
 import { piHarness } from "./harness.js";
+import { piFeatureValidation } from "./profile.js";
+import { PI_SKILL_POLICY_RATIONALE, piProjectSkillPolicyValidation } from "./skill-policy.js";
 
 /**
  * Project wiring: `.pi/extensions/hooknostic.js` re-exports the runtime
@@ -53,20 +60,26 @@ export async function projectComponents(
   _config: string,
   _options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
-  // Pi's captures establish discovery, not skill-text expansion. Preserve the
-  // existing byte-for-byte projection until that behavior has evidence.
-  const result = projectSkillFiles(source, root, ".pi/skills", undefined);
+  const result = projectSkillFiles(source, root, ".pi/skills", { target: RELATIVE_SKILL_TEXT, harness: "Pi" });
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: piHarness.recommendedRange,
     components: {
       "agent-plugin.skills": {
         level: "exact",
         rationale:
-          "pi implements the Agent Skills standard natively (SKILL.md + frontmatter; skills.js source 0.84.4) and discovers project-local skills from .pi/skills/.",
+          "Pi discovers .pi/skills and .agents/skills. Its explicit skill body tells the model to resolve references against the skill directory, so ${SKILL_DIR} projects to `.` in the body (ADR-0028).",
+        degradations: [
+          {
+            id: SKILL_REFERENCE_UNEXPANDED,
+            summary:
+              "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references and an in-place ${SKILL_DIR} cannot be rewritten.",
+            evidence: piFeatureValidation.artifact,
+          },
+        ],
       },
       "agent-plugin.mcp.stdio": {
         level: "unsupported",
@@ -96,6 +109,7 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     source: {
       date: "2026-09-27",
       validatedOn: [
+        piFeatureValidation,
         {
           version: "0.84.4",
           date: "2026-09-27",
@@ -114,3 +128,8 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  piProjectSkillPolicyValidation,
+  PI_SKILL_POLICY_RATIONALE,
+);

@@ -1,5 +1,21 @@
 import type { CapabilityProfile } from "@hooknostic/core";
 
+export const piFeatureValidation = {
+  version: "0.84.4",
+  date: "2026-10-14",
+  method: "live-probe" as const,
+  artifact: ".capture/pi/FEATURES.md",
+  what: "Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message.",
+};
+
+const piCompletionEdgesValidation = {
+  version: piFeatureValidation.version,
+  date: "2026-10-14",
+  method: "live-probe" as const,
+  artifact: ".capture/pi/FEATURES.md",
+  what: "Credential-free RPC probes on Windows reused one session across HTTP errors, in-flight cancellation, a successful retry, retry cancellation and subsequent successful turns, then reopened it from disk. Settled branch tips carried current success ids or unsuccessful messages; generated-extension playback verifies final fields and avoids stale responses.",
+};
+
 /**
  * pi capability data. pi extensions are persistent in-process modules (like
  * OpenCode plugins), so the generated shim never exposes module lifetime as
@@ -17,6 +33,8 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     source: {
       date: "2026-09-27",
       validatedOn: [
+        piFeatureValidation,
+        piCompletionEdgesValidation,
         // scheduled-playback:begin
         // scheduled-playback:end
         {
@@ -76,6 +94,16 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     // These fields are already decoded verbatim in the captured session-start,
     // session-shutdown, session-before-compact, and tool-* fixtures (ADR-0027).
     fields: {
+      "turn.stop.lastMessage": {
+        level: "exact",
+        rationale:
+          "The shim reads the final successful assistant message from the settled context's sessionManager.getBranch(); native event.raw remains unchanged.",
+      },
+      "turn.stop.correlation.turnId": {
+        level: "exact",
+        rationale:
+          "The native session entry id of the final successful assistant message; no prompt-side id is claimed because that entry does not yet exist before_agent_start.",
+      },
       "session.start.how": { level: "exact" },
       "session.end.reason": { level: "exact" },
       "context.compact.before.trigger": { level: "exact" },

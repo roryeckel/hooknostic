@@ -1,5 +1,5 @@
-import type { ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
-import { shellCodec } from "@hooknostic/sdk";
+import type { FileShapes, ShellShapes, ToolInvocation, ToolKind } from "@hooknostic/sdk";
+import { fileCodec, shellCodec } from "@hooknostic/sdk";
 
 /**
  * pi built-in tool names (0.84.4 type defs: `read`, `bash`, `powershell`,
@@ -24,10 +24,20 @@ const EXACT: Record<string, ToolKind> = {
  */
 export const PI_SHELL_SHAPES: ShellShapes = {
   bash: { commandKey: "command" },
-  powershell: { commandKey: "command" },
+  // Both Windows PowerShell and pwsh were observed (.capture/pi/FEATURES.md).
+  // bash remains unknown: shellPath can select PowerShell, fish or tcsh.
+  powershell: { commandKey: "command", dialect: "powershell" },
 };
 
 export const piShellCodec = shellCodec(PI_SHELL_SHAPES);
+
+/** Captured tool-call-{read,write,edit}; search/list paths scope directories. */
+export const PI_FILE_SHAPES: FileShapes = {
+  read: { pathKey: "path" },
+  write: { pathKey: "path" },
+  edit: { pathKey: "path" },
+};
+export const piFileCodec = fileCodec(PI_FILE_SHAPES);
 
 export function classifyPiTool(nativeName: string, input: unknown): ToolInvocation {
   // Own-property guard: a tool named "constructor" must not resolve a
@@ -35,7 +45,14 @@ export function classifyPiTool(nativeName: string, input: unknown): ToolInvocati
   const known = Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : undefined;
   if (known !== undefined) {
     const shell = piShellCodec.classify(nativeName, input);
-    return { kind: known, nativeName, input, ...(shell !== undefined ? { shell } : {}) };
+    const file = piFileCodec.classify(nativeName, input);
+    return {
+      kind: known,
+      nativeName,
+      input,
+      ...(shell !== undefined ? { shell } : {}),
+      ...(file !== undefined ? { file } : {}),
+    };
   }
   // Extension/MCP-via-extension tools surface under their registered name;
   // pi has no native server_tool split, so the native name stays

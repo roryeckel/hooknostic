@@ -1,0 +1,86 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "a5043e8f",
+      "parentId": "dfe1b66b",
+      "timestamp": "2026-10-15T02:09:33.736Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_BASELINE"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792030173705,
+        "responseId": "chatcmpl-playback-1",
+        "rawStopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "70d8b54a",
+      "parentId": "a5043e8f",
+      "timestamp": "2026-10-15T02:09:33.756Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "error"
+          }
+        ],
+        "timestamp": 1792030173756
+      }
+    },
+    {
+      "type": "message",
+      "id": "c21e19af",
+      "parentId": "70d8b54a",
+      "timestamp": "2026-10-15T02:09:33.759Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "error",
+        "timestamp": 1792030173757,
+        "errorMessage": "400: {\"message\":\"completion probe bad request\"}"
+      }
+    }
+  ]
+}

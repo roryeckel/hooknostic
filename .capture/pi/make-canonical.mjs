@@ -3,7 +3,7 @@
 // fixtures follow (canonical = decode minus raw). One-off; kept for
 // reproducibility. Run from the repo root:
 //   node --experimental-strip-types .capture/pi/make-canonical.mjs
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,7 +20,12 @@ const INVOCATION = { targetId: "pi", harnessVersion: piHarness.referenceVersion 
 for (const file of readdirSync(fixturesDir)) {
   if (!file.endsWith(".input.json")) continue;
   const input = JSON.parse(readFileSync(join(fixturesDir, file), "utf8"));
-  const decoded = decodePi(input, INVOCATION);
+  const enrichment = join(fixturesDir, file.replace(".input.json", ".enrichment.json"));
+  const decoded = decodePi(
+    input,
+    INVOCATION,
+    existsSync(enrichment) ? JSON.parse(readFileSync(enrichment, "utf8")) : {},
+  );
   const { raw: _raw, ...canonical } = decoded;
   const out = join(fixturesDir, file.replace(".input.json", ".canonical.json"));
   writeFileSync(out, JSON.stringify(canonical, null, 2) + "\n", "utf8");

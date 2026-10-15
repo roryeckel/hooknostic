@@ -18,6 +18,12 @@
     "input": {
       "path": "C:/Users/user/source/repos/hooknostic/hello.txt",
       "content": "hello\n"
+    },
+    "file": {
+      "paths": [
+        "C:/Users/user/source/repos/hooknostic/hello.txt"
+      ],
+      "pathKey": "path"
     }
   },
   "output": [

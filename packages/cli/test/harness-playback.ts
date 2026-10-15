@@ -478,7 +478,7 @@ const cmdEscape = require("cross-spawn/lib/util/escape.js") as {
  * an npm `.cmd` shim, which cross-spawn resolves through cmd.exe; global shims
  * forward `%*` too, so they get the double escape the MCP launcher applies.
  */
-function spawnIntact(
+export function spawnIntact(
   command: string,
   args: string[],
   options: SpawnOptions & { stdio: ["pipe", "pipe", "pipe"] },

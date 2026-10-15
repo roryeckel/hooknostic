@@ -1,0 +1,86 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "de60ea14",
+      "parentId": "4ffc43a4",
+      "timestamp": "2026-10-15T02:09:33.882Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "retry"
+          }
+        ],
+        "timestamp": 1792030173882
+      }
+    },
+    {
+      "type": "message",
+      "id": "4d5ec98f",
+      "parentId": "de60ea14",
+      "timestamp": "2026-10-15T02:09:33.884Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "error",
+        "timestamp": 1792030173882,
+        "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+      }
+    },
+    {
+      "type": "message",
+      "id": "49a2899f",
+      "parentId": "4d5ec98f",
+      "timestamp": "2026-10-15T02:09:34.217Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_RETRY"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792030173910,
+        "responseId": "chatcmpl-playback-4",
+        "rawStopReason": "stop"
+      }
+    }
+  ]
+}

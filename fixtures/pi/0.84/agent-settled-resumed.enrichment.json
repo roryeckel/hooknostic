@@ -1,0 +1,92 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "6a0e5a60",
+      "parentId": "dc9096f0",
+      "timestamp": "2026-10-15T02:09:34.294Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_AFTER_RETRY_ABORT"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792030174290,
+        "responseId": "chatcmpl-playback-5",
+        "rawStopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "6464c93a",
+      "parentId": "6a0e5a60",
+      "timestamp": "2026-10-15T02:09:34.646Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "resumed"
+          }
+        ],
+        "timestamp": 1792030174645
+      }
+    },
+    {
+      "type": "message",
+      "id": "eb96ee88",
+      "parentId": "6464c93a",
+      "timestamp": "2026-10-15T02:09:34.681Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_RESUMED"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792030174659,
+        "responseId": "chatcmpl-playback-6",
+        "rawStopReason": "stop"
+      }
+    }
+  ]
+}

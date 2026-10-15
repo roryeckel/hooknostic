@@ -33,6 +33,36 @@ interface ToolCallShape {
   input?: unknown;
 }
 
+/** Context read beside a callback, never inserted into event.raw (ADR-0027). */
+export interface PiEnrichment {
+  branch?: unknown;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function finalAssistant(branch: unknown): { lastMessage?: string; turnId?: string } {
+  if (!Array.isArray(branch)) return {};
+  const entry = record(branch.filter((value) => record(value)["type"] === "message").at(-1));
+  const message = record(entry["message"]);
+  // A user, tool result, failure or interruption at the leaf must not expose
+  // the preceding assistant's response as the just-completed turn.
+  if (message["role"] !== "assistant" || message["stopReason"] !== "stop") return {};
+  const content = message["content"];
+  const text = Array.isArray(content)
+    ? content
+        .filter((part) => record(part)["type"] === "text")
+        .map((part) => record(part)["text"])
+        .filter((part): part is string => typeof part === "string")
+        .join("\n")
+    : "";
+  return {
+    ...(text ? { lastMessage: text } : {}),
+    ...(typeof entry["id"] === "string" ? { turnId: entry["id"] } : {}),
+  };
+}
+
 /**
  * pi executes the *live* `event.input` object after the handler returns (0.84.4
  * type docs: "Mutate it in place… No re-validation is performed"). Handlers
@@ -55,7 +85,11 @@ function snapshotPiRaw(native: PiNativeEvent): PiNativeEvent {
   }
 }
 
-export function decodePi(nativeEvent: unknown, invocation: InvocationContext): HookEvent {
+export function decodePi(
+  nativeEvent: unknown,
+  invocation: InvocationContext,
+  enrichment: PiEnrichment = {},
+): HookEvent {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new PiDecodeError("native event is not an object");
   }
@@ -180,7 +214,13 @@ export function decodePi(nativeEvent: unknown, invocation: InvocationContext): H
       return { ...base, event: "context.compact.after" };
     }
     case "agent_settled": {
-      return { ...base, event: "turn.stop" };
+      const { lastMessage, turnId } = finalAssistant(enrichment.branch);
+      return {
+        ...base,
+        event: "turn.stop",
+        ...(lastMessage !== undefined ? { lastMessage } : {}),
+        ...(turnId !== undefined ? { correlation: { turnId } } : {}),
+      };
     }
     default:
       throw new PiDecodeError(`unmapped pi event "${type}"`);

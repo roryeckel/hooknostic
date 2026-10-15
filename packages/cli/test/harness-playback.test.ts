@@ -1,5 +1,5 @@
 import { execSync, spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { connect } from "node:net";
@@ -60,6 +60,10 @@ let lifecycleShellDialects: unknown[] | undefined;
 const McpFixtureServerPath = fileURLToPath(new URL("./mcp-fixture-server.mjs", import.meta.url));
 const StdinEofFixturePath = fileURLToPath(new URL("./stdin-eof-fixture.mjs", import.meta.url));
 const PluginMcpEnvFixturePath = fileURLToPath(new URL("./plugin-mcp-env-fixture.mjs", import.meta.url));
+const PiCompletionProbePath = fileURLToPath(new URL("../../../.capture/pi/probe-completion.mjs", import.meta.url));
+const PiInterpreterProbePath = fileURLToPath(
+  new URL("../../../.capture/shell-dialects/interpreter.cjs", import.meta.url),
+);
 
 async function startProjectionMcpTransports(): Promise<{
   httpUrl: string;
@@ -824,6 +828,40 @@ async function runInstalledHarness(
   else await runOpenCodePlayback(build, scenario, options);
 }
 
+const piManualSkill =
+  '---\nname: manual-probe\ndescription: hooknostic-manual-skill-hidden\nmetadata:\n  hooknostic/allow-implicit-invocation: "false"\n---\n\nHOOKNOSTIC_MANUAL_BODY Run ${SKILL_DIR}/script.mjs.\n';
+
+async function assertPiExplicitSkill(
+  projectDir: string,
+  provider: string,
+  env: NodeJS.ProcessEnv,
+  server: Awaited<ReturnType<typeof startModelPlayback>>,
+) {
+  expect(JSON.stringify(server.requests)).not.toContain("hooknostic-manual-skill-hidden");
+  const offset = server.requests.length;
+  const explicit = await runProcess(
+    "pi",
+    [
+      "--provider",
+      "hooknostic-playback",
+      "--model",
+      "hooknostic-playback",
+      "-e",
+      provider,
+      "--approve",
+      "--no-session",
+      "-p",
+      "/skill:manual-probe Report the body.",
+    ],
+    { cwd: projectDir, env, timeoutMs: 90_000 },
+  );
+  expect(explicit.code, explicit.stdout + explicit.stderr).toBe(0);
+  const delivered = JSON.stringify(server.requests.slice(offset));
+  expect(delivered).toContain("HOOKNOSTIC_MANUAL_BODY Run ./script.mjs.");
+  expect(delivered).toContain("References are relative to");
+  expect(server.errors).toEqual([]);
+}
+
 async function runPiPlayback(
   build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
   scenario: PlaybackScenario,
@@ -831,6 +869,7 @@ async function runPiPlayback(
 ): Promise<void> {
   const server = await startModelPlayback("openai-chat", scenario, options.script);
   try {
+    await mkdir(join(build.artifactDir, ".git"), { recursive: true });
     // Project delivery writes .pi/extensions/ into the artifact dir, which pi
     // discovers on startup; the provider rides in via -e.
     const providerExtension = await writePiProviderExtension(build.artifactDir, server.baseUrl);
@@ -850,6 +889,7 @@ async function runPiPlayback(
           // scratch dir is brand new, so this run must carry its own trust.
           "--approve",
           "--no-session",
+          ...(options.extraArgs ?? []),
           "-p",
           options.prompt ?? playbackPrompt(scenario),
         ],
@@ -858,6 +898,8 @@ async function runPiPlayback(
           timeoutMs: 90_000,
           env: {
             ...withoutCredentials(),
+            HOME: build.artifactDir,
+            USERPROFILE: build.artifactDir,
             PI_CODING_AGENT_DIR: join(build.artifactDir, "playback-agent-home"),
             HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
             ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
@@ -1584,6 +1626,137 @@ describe("Claude PTY first-run walk", () => {
 });
 
 describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || "disabled"}`, () => {
+  it.skipIf(adapter?.id !== "pi")(
+    "keeps completion fields current across errors, cancellation, retry, and session resume",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-completion-playback-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      const output = join(dir, "completion.json");
+      const result = await runProcess(
+        process.execPath,
+        ["--experimental-strip-types", PiCompletionProbePath, "--project", dir, "--output", output],
+        {
+          cwd: dir,
+          env: { ...withoutCredentials(), HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath },
+          timeoutMs: 90_000,
+        },
+      );
+      expect(result.code, result.stdout + result.stderr).toBe(0);
+      const captured = JSON.parse(await readFile(output, "utf8")) as {
+        cases: {
+          prompt: string;
+          branch: {
+            id: string;
+            type: string;
+            message?: { role: string; stopReason: string; content: { type: string; text?: string }[] };
+          }[];
+        }[];
+      };
+      const trace = (await readFile(build.tracePath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { event: string; lastMessage?: string; turnId?: string });
+      const stops = trace.filter((entry) => entry.event === "turn.stop");
+      expect(stops).toHaveLength(9);
+      expect(captured.cases).toHaveLength(9);
+      const successfulIds: string[] = [];
+      for (const [index, entry] of captured.cases.entries()) {
+        const leaf = entry.branch.filter((row) => row.type === "message").at(-1)!;
+        if (leaf.message?.stopReason === "stop") {
+          expect(stops[index]!.lastMessage, entry.prompt).toBe(
+            leaf.message.content
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("\n"),
+          );
+          expect(stops[index]!.turnId, entry.prompt).toBe(leaf.id);
+          successfulIds.push(leaf.id);
+        } else {
+          expect(stops[index]!.lastMessage, entry.prompt).toBeUndefined();
+          expect(stops[index]!.turnId, entry.prompt).toBeUndefined();
+        }
+      }
+      expect(new Set(successfulIds).size).toBe(6);
+      expect(stops.at(-1)).toMatchObject({ lastMessage: "COMPLETION_RESUMED" });
+    },
+    120_000,
+  );
+
+  it.skipIf(adapter?.id !== "pi" || process.platform !== "win32")(
+    "reports the PowerShell family through the generated Pi extension",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-powershell-playback-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      await writeFile(join(dir, "interpreter.cjs"), await readFile(PiInterpreterProbePath));
+      await runPiPlayback(build, "rewrite", {
+        extraArgs: ["--tools", "powershell"],
+        script: [
+          {
+            kind: "tool",
+            toolName: "powershell",
+            arguments: { command: "node interpreter.cjs; echo hooknostic-shell-finished" },
+          },
+          { kind: "text" },
+        ],
+      });
+      const observation = JSON.parse(await readFile(join(dir, "interpreter.json"), "utf8")) as {
+        ancestry: { path: string }[];
+      };
+      expect(observation.ancestry[1]!.path).toMatch(/(?:pwsh|powershell)\.exe$/i);
+      const calls = (await readFile(build.tracePath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { event: string; toolNativeName?: string; shellDialect?: string });
+      const shells = calls.filter((entry) => entry.toolNativeName === "powershell");
+      expect(shells.map((entry) => entry.event)).toEqual(["tool.before", "tool.after"]);
+      expect(shells.every((entry) => entry.shellDialect === "powershell")).toBe(true);
+    },
+    120_000,
+  );
+
+  it.skipIf(adapter?.id !== "pi" || !["win32", "linux"].includes(process.platform))(
+    "withholds a dialect when Pi bash executes a configured interpreter",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-configured-shell-playback-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      const shellPath =
+        process.platform === "win32"
+          ? join(process.env["SystemRoot"]!, "System32/WindowsPowerShell/v1.0/powershell.exe")
+          : "/bin/sh";
+      await mkdir(join(dir, ".pi"), { recursive: true });
+      await writeFile(join(dir, ".pi/settings.json"), JSON.stringify({ shellPath }));
+      // The Linux probe needs only node, its interpreter, and Pi, avoiding higher process ancestors.
+      const probe = (await readFile(PiInterpreterProbePath, "utf8")).replaceAll("i < 5", "i < 3");
+      await writeFile(join(dir, "interpreter.cjs"), probe);
+      await runPiPlayback(build, "rewrite", {
+        extraArgs: ["--tools", "bash"],
+        script: [
+          {
+            kind: "tool",
+            toolName: "bash",
+            arguments: { command: "node interpreter.cjs; echo hooknostic-shell-finished" },
+          },
+          { kind: "text" },
+        ],
+      });
+      const observation = JSON.parse(await readFile(join(dir, "interpreter.json"), "utf8")) as {
+        ancestry: { path: string }[];
+      };
+      expect(observation.ancestry[1]!.path.toLowerCase()).toBe((await realpath(shellPath)).toLowerCase());
+      const calls = (await readFile(build.tracePath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { event: string; toolNativeName?: string; shellDialect?: string });
+      const shells = calls.filter((entry) => entry.toolNativeName === "bash");
+      expect(shells.map((entry) => entry.event)).toEqual(["tool.before", "tool.after"]);
+      expect(shells.every((entry) => entry.shellDialect === undefined)).toBe(true);
+    },
+    120_000,
+  );
+
   it("uses exactly the captured reference harness version", async () => {
     const detection = await adapter!.detect!();
     expect(detection.installed, detection.detail).toBe(true);
@@ -2400,6 +2573,9 @@ describe.skipIf(adapter === undefined)(`offline harness playback: ${selected || 
         join(skillDir, "SKILL.md"),
         "---\nname: sync-probe\ndescription: hooknostic-sync-skill-visible\n---\n\nProject skill playback.\n",
       );
+      await mkdir(join(projectDir, "skills/manual-probe"), { recursive: true });
+      await mkdir(join(projectDir, ".git"), { recursive: true });
+      await writeFile(join(projectDir, "skills/manual-probe/SKILL.md"), piManualSkill);
       await writeFile(
         join(projectDir, "hooks.ts"),
         `import { definePlugin, hook, updateShell } from "@hooknostic/sdk";
@@ -2444,6 +2620,7 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
       expect((await runProject({ ...options, command: "verify" })).ok).toBe(true);
 
       const server = await startModelPlayback("openai-chat", "rewrite");
+      const env = { ...withoutCredentials(), HOME: dir, USERPROFILE: dir, PI_CODING_AGENT_DIR: join(dir, "pi-home") };
       try {
         const provider = await writePiProviderExtension(projectDir, server.baseUrl);
         const result = await runProcess(
@@ -2463,13 +2640,14 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
           {
             cwd: projectDir,
             timeoutMs: 90_000,
-            env: { ...withoutCredentials(), PI_CODING_AGENT_DIR: join(dir, "pi-home") },
+            env,
           },
         );
         expect(result.code, result.stdout + result.stderr).toBe(0);
         expect(server.errors).toEqual([]);
         expect(JSON.stringify(server.requests)).toContain("hooknostic-sync-skill-visible");
         expect(await readFile(join(projectDir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
+        await assertPiExplicitSkill(projectDir, provider, env, server);
       } finally {
         await server.close();
       }
@@ -2487,7 +2665,9 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
         const sourceDir = join(dir, "source");
         const projectDir = join(dir, "consumer");
         await mkdir(join(sourceDir, "skills", "playback-skill"), { recursive: true });
-        await mkdir(projectDir, { recursive: true });
+        await mkdir(join(projectDir, ".git"), { recursive: true });
+        await mkdir(join(sourceDir, "skills/manual-probe"), { recursive: true });
+        await writeFile(join(sourceDir, "skills/manual-probe/SKILL.md"), piManualSkill);
         await writeFile(
           join(sourceDir, "plugin.json"),
           JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "pi-playback", version: "1.0.0" }),
@@ -2499,6 +2679,10 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
         const loaded = await loadAgentPlugin({ root: sourceDir });
         expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
         expect(loaded.package).toBeDefined();
+        expect(loaded.package!.skills.map((skill) => skill.name).sort(), JSON.stringify(loaded.issues)).toEqual([
+          "manual-probe",
+          "playback-skill",
+        ]);
         const build = await buildPlaybackArtifact(adapter!, packageDir, { delivery: "package" });
         const projector = adapter!.agentPluginProjector!;
         const target = {
@@ -2543,6 +2727,8 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
         }
         const env = {
           ...withoutCredentials(),
+          HOME: dir,
+          USERPROFILE: dir,
           PI_CODING_AGENT_DIR: agentDir,
           ...(registry === undefined
             ? {}
@@ -2598,6 +2784,12 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
           expect(JSON.stringify(server.requests)).toContain("hooknostic-package-skill-available");
           expect(await readFile(join(projectDir, "hooknostic-tool.txt"), "utf8")).toBe("hooknostic-rewritten");
           expect(await traceEvents(build.tracePath)).toContain("tool.before");
+          await assertPiExplicitSkill(
+            projectDir,
+            provider,
+            { ...env, HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath },
+            server,
+          );
         } finally {
           await server.close();
           await registry?.close();
@@ -2740,8 +2932,8 @@ scenarioDrive("lifecycle-observe", async () => {
   expect(events).toContain("turn.stop");
   if (adapter!.shimExecution === "command") expect(events).toContain("session.end");
 
-  // ADR-0027: assert every field the adapter claims. Pi's captured lifecycle
-  // has neither turn ids nor final-message text, so it declares neither.
+  // ADR-0027: assert every field the adapter claims. Pi reads final-response
+  // fields from the settled session branch; its prompt callback has no turn id.
   const trace = (await readFile(build.tracePath, "utf8"))
     .trim()
     .split("\n")

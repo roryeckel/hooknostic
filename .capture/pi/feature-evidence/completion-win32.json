@@ -1,0 +1,982 @@
+{
+  "version": "0.84.4",
+  "platform": "win32",
+  "capturedAt": "2026-10-15T02:09:34.728Z",
+  "cases": [
+    {
+      "prompt": "baseline",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "dfe1b66b",
+          "parentId": "85e983bc",
+          "timestamp": "2026-10-15T02:09:33.693Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "baseline"
+              }
+            ],
+            "timestamp": 1792030173692
+          }
+        },
+        {
+          "type": "message",
+          "id": "a5043e8f",
+          "parentId": "dfe1b66b",
+          "timestamp": "2026-10-15T02:09:33.736Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_BASELINE"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173705,
+            "responseId": "chatcmpl-playback-1",
+            "rawStopReason": "stop"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "error",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "a5043e8f",
+          "parentId": "dfe1b66b",
+          "timestamp": "2026-10-15T02:09:33.736Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_BASELINE"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173705,
+            "responseId": "chatcmpl-playback-1",
+            "rawStopReason": "stop"
+          }
+        },
+        {
+          "type": "message",
+          "id": "70d8b54a",
+          "parentId": "a5043e8f",
+          "timestamp": "2026-10-15T02:09:33.756Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "error"
+              }
+            ],
+            "timestamp": 1792030173756
+          }
+        },
+        {
+          "type": "message",
+          "id": "c21e19af",
+          "parentId": "70d8b54a",
+          "timestamp": "2026-10-15T02:09:33.759Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "timestamp": 1792030173757,
+            "errorMessage": "400: {\"message\":\"completion probe bad request\"}"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "after-error",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "c21e19af",
+          "parentId": "70d8b54a",
+          "timestamp": "2026-10-15T02:09:33.759Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "timestamp": 1792030173757,
+            "errorMessage": "400: {\"message\":\"completion probe bad request\"}"
+          }
+        },
+        {
+          "type": "message",
+          "id": "2bb47fba",
+          "parentId": "c21e19af",
+          "timestamp": "2026-10-15T02:09:33.781Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "after-error"
+              }
+            ],
+            "timestamp": 1792030173781
+          }
+        },
+        {
+          "type": "message",
+          "id": "b710093f",
+          "parentId": "2bb47fba",
+          "timestamp": "2026-10-15T02:09:33.786Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_AFTER_ERROR"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173782,
+            "responseId": "chatcmpl-playback-2",
+            "rawStopReason": "stop"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "aborted",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "b710093f",
+          "parentId": "2bb47fba",
+          "timestamp": "2026-10-15T02:09:33.786Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_AFTER_ERROR"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173782,
+            "responseId": "chatcmpl-playback-2",
+            "rawStopReason": "stop"
+          }
+        },
+        {
+          "type": "message",
+          "id": "b8393a22",
+          "parentId": "b710093f",
+          "timestamp": "2026-10-15T02:09:33.806Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "aborted"
+              }
+            ],
+            "timestamp": 1792030173806
+          }
+        },
+        {
+          "type": "message",
+          "id": "d4050739",
+          "parentId": "b8393a22",
+          "timestamp": "2026-10-15T02:09:33.832Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "aborted",
+            "timestamp": 1792030173806,
+            "errorMessage": "Request aborted"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "after-abort",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "d4050739",
+          "parentId": "b8393a22",
+          "timestamp": "2026-10-15T02:09:33.832Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "aborted",
+            "timestamp": 1792030173806,
+            "errorMessage": "Request aborted"
+          }
+        },
+        {
+          "type": "message",
+          "id": "bed646e6",
+          "parentId": "d4050739",
+          "timestamp": "2026-10-15T02:09:33.856Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "after-abort"
+              }
+            ],
+            "timestamp": 1792030173856
+          }
+        },
+        {
+          "type": "message",
+          "id": "4ffc43a4",
+          "parentId": "bed646e6",
+          "timestamp": "2026-10-15T02:09:33.861Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_AFTER_ABORT"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173857,
+            "responseId": "chatcmpl-playback-3",
+            "rawStopReason": "stop"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "retry",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "de60ea14",
+          "parentId": "4ffc43a4",
+          "timestamp": "2026-10-15T02:09:33.882Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "retry"
+              }
+            ],
+            "timestamp": 1792030173882
+          }
+        },
+        {
+          "type": "message",
+          "id": "4d5ec98f",
+          "parentId": "de60ea14",
+          "timestamp": "2026-10-15T02:09:33.884Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "timestamp": 1792030173882,
+            "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+          }
+        },
+        {
+          "type": "message",
+          "id": "49a2899f",
+          "parentId": "4d5ec98f",
+          "timestamp": "2026-10-15T02:09:34.217Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_RETRY"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173910,
+            "responseId": "chatcmpl-playback-4",
+            "rawStopReason": "stop"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "retry-aborted",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "49a2899f",
+          "parentId": "4d5ec98f",
+          "timestamp": "2026-10-15T02:09:34.217Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_RETRY"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030173910,
+            "responseId": "chatcmpl-playback-4",
+            "rawStopReason": "stop"
+          }
+        },
+        {
+          "type": "message",
+          "id": "608b6553",
+          "parentId": "49a2899f",
+          "timestamp": "2026-10-15T02:09:34.237Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "retry-aborted"
+              }
+            ],
+            "timestamp": 1792030174237
+          }
+        },
+        {
+          "type": "message",
+          "id": "ec660d8a",
+          "parentId": "608b6553",
+          "timestamp": "2026-10-15T02:09:34.240Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "timestamp": 1792030174238,
+            "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "after-retry-abort",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "ec660d8a",
+          "parentId": "608b6553",
+          "timestamp": "2026-10-15T02:09:34.240Z",
+          "message": {
+            "role": "assistant",
+            "content": [],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "timestamp": 1792030174238,
+            "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+          }
+        },
+        {
+          "type": "message",
+          "id": "dc9096f0",
+          "parentId": "ec660d8a",
+          "timestamp": "2026-10-15T02:09:34.290Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "after-retry-abort"
+              }
+            ],
+            "timestamp": 1792030174289
+          }
+        },
+        {
+          "type": "message",
+          "id": "6a0e5a60",
+          "parentId": "dc9096f0",
+          "timestamp": "2026-10-15T02:09:34.294Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_AFTER_RETRY_ABORT"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030174290,
+            "responseId": "chatcmpl-playback-5",
+            "rawStopReason": "stop"
+          }
+        }
+      ]
+    },
+    {
+      "prompt": "resumed",
+      "native": {
+        "event": {
+          "type": "agent_settled"
+        },
+        "ctx": {
+          "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project",
+          "mode": "rpc"
+        }
+      },
+      "branch": [
+        {
+          "type": "message",
+          "id": "6a0e5a60",
+          "parentId": "dc9096f0",
+          "timestamp": "2026-10-15T02:09:34.294Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_AFTER_RETRY_ABORT"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030174290,
+            "responseId": "chatcmpl-playback-5",
+            "rawStopReason": "stop"
+          }
+        },
+        {
+          "type": "message",
+          "id": "6464c93a",
+          "parentId": "6a0e5a60",
+          "timestamp": "2026-10-15T02:09:34.646Z",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "resumed"
+              }
+            ],
+            "timestamp": 1792030174645
+          }
+        },
+        {
+          "type": "message",
+          "id": "eb96ee88",
+          "parentId": "6464c93a",
+          "timestamp": "2026-10-15T02:09:34.681Z",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "COMPLETION_RESUMED"
+              }
+            ],
+            "api": "openai-completions",
+            "provider": "hooknostic-playback",
+            "model": "hooknostic-playback",
+            "usage": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 0,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792030174659,
+            "responseId": "chatcmpl-playback-6",
+            "rawStopReason": "stop"
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "phase": "baseline",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "error",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "after-error",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "aborted",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "after-abort",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "retry",
+      "event": {
+        "type": "auto_retry_start",
+        "attempt": 1,
+        "maxAttempts": 1,
+        "delayMs": 25,
+        "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+      }
+    },
+    {
+      "phase": "retry",
+      "event": {
+        "type": "auto_retry_end",
+        "success": true,
+        "attempt": 1
+      }
+    },
+    {
+      "phase": "retry",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "retry-aborted",
+      "event": {
+        "type": "auto_retry_start",
+        "attempt": 1,
+        "maxAttempts": 1,
+        "delayMs": 25,
+        "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+      }
+    },
+    {
+      "phase": "retry-aborted",
+      "event": {
+        "type": "auto_retry_end",
+        "success": false,
+        "attempt": 1,
+        "finalError": "Retry cancelled"
+      }
+    },
+    {
+      "phase": "retry-aborted",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "after-retry-abort",
+      "event": {
+        "type": "agent_settled"
+      }
+    },
+    {
+      "phase": "resumed",
+      "event": {
+        "type": "agent_settled"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "phase": "baseline",
+      "fault": "success"
+    },
+    {
+      "phase": "error",
+      "fault": "error"
+    },
+    {
+      "phase": "after-error",
+      "fault": "success"
+    },
+    {
+      "phase": "aborted",
+      "fault": "hold"
+    },
+    {
+      "phase": "after-abort",
+      "fault": "success"
+    },
+    {
+      "phase": "retry",
+      "fault": "retry"
+    },
+    {
+      "phase": "retry",
+      "fault": "success"
+    },
+    {
+      "phase": "retry-aborted",
+      "fault": "retry"
+    },
+    {
+      "phase": "after-retry-abort",
+      "fault": "success"
+    },
+    {
+      "phase": "resumed",
+      "fault": "success"
+    }
+  ]
+}

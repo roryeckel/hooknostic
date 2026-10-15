@@ -9,6 +9,12 @@ retained below. The policy follow-ups establish projection evidence for
 
 ## Method
 
+Pi's later [feature probes](../pi/FEATURES.md) establish
+`disable-model-invocation` for `.pi/skills`, project/ancestor `.agents/skills`,
+and installed-package skills. A true gate hides the ordinary listing, false
+restores it, and explicit `/skill:feature-probe` still delivers the gated body.
+The record contains verbatim model-request observations and reproduction steps.
+
 Evidence class: **live-probe**, native Windows, 2026-10-04. The real harnesses
 ran against the repository's loopback playback server. Replies and forced tool
 calls were scripted, with no model credentials or model spend. The observations

@@ -19,6 +19,10 @@ full-text `input` event per submitted print-mode prompt.
 
 ## Invocation shape
 
+Additional credential-free captures on 2026-10-14 establish read/edit inputs,
+configurable shell execution, and final-response context. Their reproduction
+steps and bounded observations are in [.capture/pi/FEATURES.md](../../../.capture/pi/FEATURES.md).
+
 The shim receives each event as the live native object plus the extension
 context fields it needs: `{ event: <pi event object>, ctx: { cwd, mode } }`.
 Fixture `input.json` files are exactly that shape (post-capture, pre-decode).
@@ -33,6 +37,9 @@ Fixture `input.json` files are exactly that shape (post-capture, pre-decode).
 | `agent-start` | captured | |
 | `context` | captured | messages deep copy handed to handler |
 | `tool-call-write` | captured | write tool `{path, content}` |
+| `tool-call-read`, `tool-result-read` | captured | loopback `read` with `{path}` |
+| `tool-call-edit`, `tool-result-edit` | captured | loopback `edit` with `{path, edits}` |
+| `tool-call-bash-configured-powershell`, `tool-result-bash-configured-powershell` | captured | unchanged bash `{command}` shape while `shellPath` selects PowerShell; interpreter ancestry is separate evidence |
 | `tool-call-bash` | captured | **bash `{command}`** — the ShellShapes evidence |
 | `tool-call-powershell` | captured | Windows `--tools powershell` against loopback model; **powershell `{command}`** — ShellShapes evidence. The forced tool set changes prompt snippets, so the alternate-tool drift driver's generic bash comparator reports expected differences. |
 | `tool-result-write` | captured | |
@@ -43,6 +50,9 @@ Fixture `input.json` files are exactly that shape (post-capture, pre-decode).
 | `turn-end` | captured | `{turnIndex, message, toolResults}` |
 | `agent-end` | captured | `{messages}` |
 | `agent-settled` | captured | fires after retries/compactions settle |
+| `agent-settled-with-message` | captured | native settled envelope plus a separate `.enrichment.json` containing `ctx.sessionManager.getBranch()`; final text and native session-entry id come from that read |
+| `agent-settled-error`, `agent-settled-aborted`, `agent-settled-retry-aborted` | captured | Windows RPC loopback, 2026-10-14; HTTP failure, in-flight cancellation and retry-backoff cancellation. Enrichment contains the last three native message entries, including a preceding successful response and the unsuccessful leaf. |
+| `agent-settled-retry`, `agent-settled-resumed` | captured | Same RPC probe: one successful completion after Pi's native retry, and a new response after reopening the persisted session in another process. Enrichment contains the last three native message entries. |
 | `session-shutdown` | captured | reason `"quit"` |
 | `session-before-compact` | captured | `preparation` + `branchEntries`; env-dump content redacted (see above) |
 | `session-compact` | captured | successful compaction; `compactionEntry` carries the summary |
@@ -55,9 +65,9 @@ injection via `sendMessage({triggerTurn: true})`) lives in
 
 ## Not captured (declined, not defaulted)
 
-- `grep`, `find`, `ls`, `edit`, `read` tool input shapes remain schema-derived
-  only (installed 0.84.4 type defs); non-shell tools classify by name and raw
-  input remains available.
+- `grep`, `find`, and `ls` payloads are recorded in the feature-probe evidence,
+  but their directory-scoping paths are deliberately not single-file views.
+  Unknown inputs remain available in raw form.
 - `tool_execution_*`, `message_*`, `user_bash`, `before_provider_request`,
   `before_provider_headers`, `after_provider_response`, session tree/switch
   events — observed in the type surface; no fixtures (not adapter-observed

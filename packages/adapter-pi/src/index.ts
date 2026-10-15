@@ -21,7 +21,8 @@ import { piHarness } from "./harness.js";
 import { piCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { piAgentPluginProjector } from "./project-agent-plugin.js";
-import { classifyPiTool, PI_SHELL_SHAPES, piShellCodec } from "./toolmap.js";
+import { piSkillPolicy } from "./skill-policy.js";
+import { classifyPiTool, PI_FILE_SHAPES, PI_SHELL_SHAPES, piFileCodec, piShellCodec } from "./toolmap.js";
 import { validatePiEffect } from "./validate.js";
 
 export { piHarness } from "./harness.js";
@@ -31,11 +32,11 @@ export { projectComponents, projectComponentProfiles, projectIntegration } from 
 export { applyPi, planPiApplication, serializePiOutput } from "./apply.js";
 export type { PiApplication } from "./apply.js";
 export { PiDecodeError, decodePi } from "./decode.js";
-export type { PiNativeEvent } from "./decode.js";
+export type { PiEnrichment, PiNativeEvent } from "./decode.js";
 export { generatePiArtifacts, piHookRuntimePath } from "./generate.js";
 export { createHooknosticExtension } from "./shim.js";
 export type { PiExtensionApi, PiShimOptions } from "./shim.js";
-export { classifyPiTool, piShellCodec, PI_SHELL_SHAPES } from "./toolmap.js";
+export { classifyPiTool, piShellCodec, PI_SHELL_SHAPES, piFileCodec, PI_FILE_SHAPES } from "./toolmap.js";
 
 function resolveShimPath(): string {
   try {
@@ -90,6 +91,11 @@ export function piAdapter(): HarnessAdapter {
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
+    skillInvocationPolicy: {
+      destination: ".pi/skills",
+      discoveryDirectories: [".agents/skills"],
+      projectFiles: piSkillPolicy,
+    },
     agentPluginProjector: piAgentPluginProjector,
     // pi imports the extension module in-process.
     shimExecution: "module",
@@ -100,13 +106,16 @@ export function piAdapter(): HarnessAdapter {
 
     shellCodec: piShellCodec,
     shellShapes: PI_SHELL_SHAPES,
+    fileCodec: piFileCodec,
+    fileShapes: PI_FILE_SHAPES,
     classifyTool: classifyPiTool,
     shellDialect: {
-      source: "none",
+      source: "tool",
       rationale:
-        "The existing Pi captures establish shell argument shapes but do not establish interpreter behavior " +
-        "across host configurations. Shell dialect is left absent pending that evidence.",
-      evidence: ".capture/pi/README.md",
+        "powershell runs Windows PowerShell or pwsh, both in the powershell family. bash remains unknown: " +
+        "the same command input ran Bash, PowerShell, dash, zsh, fish and tcsh through shellPath, " +
+        "and Pi's tool description and prompt snippet do not state the selected interpreter.",
+      evidence: ".capture/pi/FEATURES.md",
     },
 
     supportedHarnessVersions() {

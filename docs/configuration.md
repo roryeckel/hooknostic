@@ -65,7 +65,7 @@ Run `node "${SKILL_DIR}/scripts/status.mjs" --project "<the user's project direc
 ```
 
 Projection writes each target's form: `${CLAUDE_SKILL_DIR}` on Claude Code, which it
-expands to the skill's absolute directory, and `.` on Codex and OpenCode, whose skill
+expands to the skill's absolute directory, and `.` on Codex, OpenCode, and Pi, whose skill
 instructions resolve relative paths against the skill's directory. Only the body is
 rewritten, on package and project delivery alike. A skill-text reference a target shows
 the model as written, such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}`

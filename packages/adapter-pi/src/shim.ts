@@ -6,9 +6,9 @@ import type { HookEventName, PluginSpec, RuntimePolicy, SupportLevel } from "@ho
 import { hookAppliesToTarget } from "@hooknostic/sdk";
 
 import { type PiApplication, planPiApplication } from "./apply.js";
-import type { PiNativeEvent } from "./decode.js";
+import type { PiEnrichment, PiNativeEvent } from "./decode.js";
 import { decodePi, PiDecodeError } from "./decode.js";
-import { piShellCodec } from "./toolmap.js";
+import { piFileCodec, piShellCodec } from "./toolmap.js";
 import { isPlainRecord, validatePiEffect } from "./validate.js";
 
 export interface PiShimOptions {
@@ -68,16 +68,25 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
   const events = new Set<HookEventName>(
     plugin.hooks.filter((hook) => hookAppliesToTarget(hook, invocation.targetId)).map((hook) => hook.event),
   );
+  const readsTurnFields = plugin.hooks.some(
+    (h) =>
+      h.event === "turn.stop" &&
+      hookAppliesToTarget(h, targetId) &&
+      h.fields?.some((field) => field === "turn.stop.lastMessage" || field === "turn.stop.correlation.turnId"),
+  );
 
   /**
    * One dispatch: decode → dispatch → plan. Returns the native handler
    * result pi should see plus the planned application (the shim applies
    * post-turn effects through the ExtensionAPI itself).
    */
-  const run = async (native: PiNativeEvent): Promise<{ result: unknown; application: PiApplication }> => {
+  const run = async (
+    native: PiNativeEvent,
+    enrichment: PiEnrichment,
+  ): Promise<{ result: unknown; application: PiApplication }> => {
     let event;
     try {
-      event = decodePi(native, invocation);
+      event = decodePi(native, invocation, enrichment);
     } catch (error) {
       if (error instanceof PiDecodeError) return { result: undefined, application: {} }; // fail-open
       throw error;
@@ -91,6 +100,7 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
         : {}),
       ...(options.policy !== undefined ? { policy: options.policy } : {}),
       shellCodec: piShellCodec,
+      fileCodec: piFileCodec,
       validateEffect(effect) {
         if (effect.kind === "replaceInput" && !isMutablePlainRecord(native.event["input"])) {
           return "pi cannot apply a rewrite because the live tool input is not a mutable plain object";
@@ -158,9 +168,12 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
     return { result: Object.keys(result).length > 0 ? result : undefined, application };
   };
 
-  const runFailingOpen = async (native: PiNativeEvent): Promise<{ result: unknown; application: PiApplication }> => {
+  const runFailingOpen = async (
+    native: PiNativeEvent,
+    enrichment: PiEnrichment,
+  ): Promise<{ result: unknown; application: PiApplication }> => {
     try {
-      return await run(native);
+      return await run(native, enrichment);
     } catch {
       // Fail open: an unintended throw here would deny the user's action
       // (pi treats a handler throw as an error surface, and an in-process
@@ -181,7 +194,17 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
           event: event as Record<string, unknown>,
           ctx: { cwd },
         };
-        const { result, application } = await runFailingOpen(native);
+        const enrichment: PiEnrichment = {};
+        if (name === "agent_settled" && readsTurnFields) {
+          try {
+            const manager = (ctx as { sessionManager?: { getBranch?: () => unknown } } | undefined)?.sessionManager;
+            const branch = manager?.getBranch?.();
+            if (branch !== undefined) enrichment.branch = branch;
+          } catch {
+            // An unavailable native read leaves optional fields absent; the hook still runs.
+          }
+        }
+        const { result, application } = await runFailingOpen(native, enrichment);
 
         // preventStop posts back into the session after the settled run.
         // Verified by effect (.capture/pi): sendMessage({triggerTurn: true})

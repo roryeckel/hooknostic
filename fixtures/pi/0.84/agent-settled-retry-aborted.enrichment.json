@@ -1,0 +1,86 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "49a2899f",
+      "parentId": "4d5ec98f",
+      "timestamp": "2026-10-15T02:09:34.217Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_RETRY"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792030173910,
+        "responseId": "chatcmpl-playback-4",
+        "rawStopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "608b6553",
+      "parentId": "49a2899f",
+      "timestamp": "2026-10-15T02:09:34.237Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "retry-aborted"
+          }
+        ],
+        "timestamp": 1792030174237
+      }
+    },
+    {
+      "type": "message",
+      "id": "ec660d8a",
+      "parentId": "608b6553",
+      "timestamp": "2026-10-15T02:09:34.240Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "error",
+        "timestamp": 1792030174238,
+        "errorMessage": "503: {\"message\":\"completion probe overloaded\"}"
+      }
+    }
+  ]
+}

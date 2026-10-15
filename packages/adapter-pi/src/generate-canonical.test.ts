@@ -3,7 +3,7 @@
 // fixtures follow (canonical = decode minus raw). One-off, kept for
 // reproducibility; run from the repo root inside vitest:
 //   HKN_WRITE_CANONICAL=1 pnpm vitest run packages/adapter-pi/src/generate-canonical.test.ts
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,7 +19,12 @@ describe.skipIf(process.env["HKN_WRITE_CANONICAL"] !== "1")("canonical fixture g
     for (const file of readdirSync(FIXTURES_DIR)) {
       if (!file.endsWith(".input.json")) continue;
       const input = JSON.parse(readFileSync(`${FIXTURES_DIR}/${file}`, "utf8"));
-      const decoded = decodePi(input, { targetId: "pi", harnessVersion: piHarness.referenceVersion });
+      const enrichment = `${FIXTURES_DIR}/${file.replace(".input.json", ".enrichment.json")}`;
+      const decoded = decodePi(
+        input,
+        { targetId: "pi", harnessVersion: piHarness.referenceVersion },
+        existsSync(enrichment) ? JSON.parse(readFileSync(enrichment, "utf8")) : {},
+      );
       const { raw: _raw, ...canonical } = decoded;
       writeFileSync(
         `${FIXTURES_DIR}/${file.replace(".input.json", ".canonical.json")}`,

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "agent_settled"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-completion-vchBbU\\project"
+  },
+  "correlation": {},
+  "event": "turn.stop"
+}

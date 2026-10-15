@@ -9,6 +9,10 @@ mutates or returns results to verify effect channels by effect.
 
 ## Layout
 
+The [feature parity probes](FEATURES.md) add model-free Windows/Linux interpreter,
+file-view, skill-text, invocation-policy, and final-response evidence for the
+contracts introduced on master after the original Pi adapter.
+
 - `hooknostic-capture.ts` — the capture + probe extension. Subscribes to
   every event the adapter observes and tees each invocation's payload to
   `captured-<probe>/<event>.jsonl`. `HKN_PI_PROBE` selects a mutation
