@@ -30,6 +30,7 @@ import {
   opencodeV2PackageSkillPolicyValidation,
   opencodeV2ProjectSkillPolicyValidation,
 } from "../../adapter-opencode/src/v2/skill-policy.js";
+import { piPackageSkillPolicyValidation, piProjectSkillPolicyValidation } from "../../adapter-pi/src/skill-policy.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";
 import { runProject } from "./project.js";
@@ -50,12 +51,14 @@ const versions = {
     codex: codexProjectSkillPolicyValidation.version,
     oc1: opencodeProjectSkillPolicyValidation.version,
     oc2: opencodeV2ProjectSkillPolicyValidation.version,
+    pi: piProjectSkillPolicyValidation.version,
   },
   package: {
     claude: claudePackageSkillPolicyValidation.version,
     codex: codexPackageSkillPolicyValidation.version,
     oc1: opencodePackageSkillPolicyValidation.version,
     oc2: opencodeV2PackageSkillPolicyValidation.version,
+    pi: piPackageSkillPolicyValidation.version,
   },
 };
 async function fixture(
@@ -140,6 +143,33 @@ function skillPermission(permission: NativePermissions, name: string): Permissio
 }
 
 describe("skill invocation policy builds", () => {
+  it("gates shared Codex copies for the excluded Pi discovery reader and removes the gate with the policy", async () => {
+    const f = await fixture("project", ["codex", "pi"], { components: { targets: ["codex"] }, hooks: true });
+    const synced = await runProject({ ...f.options, command: "sync" });
+    expect(synced.ok, JSON.stringify(synced)).toBe(true);
+    const path = join(f.root, ".agents/skills/review/SKILL.md");
+    expect(fm(await readFile(path, "utf8"))["disable-model-invocation"]).toBe(true);
+    expect(
+      parse(await readFile(join(f.root, ".agents/skills/review/agents/openai.yaml"), "utf8")).policy
+        .allow_implicit_invocation,
+    ).toBe(false);
+    await expect(readFile(join(f.root, ".pi/skills/review/SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await writeFile(join(f.root, "skills/review/SKILL.md"), manifest(false));
+    expect((await runProject({ ...f.options, command: "sync" })).ok).toBe(true);
+    expect(fm(await readFile(path, "utf8"))["disable-model-invocation"]).toBeUndefined();
+    expect((await runProject({ ...f.options, command: "verify" })).ok).toBe(true);
+  });
+
+  it("projects Pi's skill directory and invocation policy together", async () => {
+    const f = await fixture("project", ["pi"]);
+    await writeFile(join(f.root, "skills/review/SKILL.md"), manifest() + "Run ${SKILL_DIR}/script.mjs\n");
+    const synced = await runProject({ ...f.options, command: "sync" });
+    expect(synced.ok, JSON.stringify(synced.diagnostics)).toBe(true);
+    const text = await readFile(join(f.root, ".pi/skills/review/SKILL.md"), "utf8");
+    expect(fm(text)["disable-model-invocation"]).toBe(true);
+    expect(text).toContain("Run ./script.mjs");
+    expect((await runProject({ ...f.options, command: "verify" })).ok).toBe(true);
+  });
   it("enforces numeric project skill policies after wildcard permissions", async () => {
     const f = await fixture("project", ["oc1"]);
     await rename(join(f.root, "skills/review"), join(f.root, "skills/123"));
@@ -737,7 +767,7 @@ describe("skill invocation policy builds", () => {
     expect(parse(await readFile(sidecar, "utf8")).policy.allow_implicit_invocation).toBe(true);
   }, 60_000);
 
-  it.each(["claude", "codex", "oc1", "oc2"] as const)(
+  it.each(["claude", "codex", "oc1", "oc2", "pi"] as const)(
     "projects packaged %s policy after native overlays",
     async (id) => {
       const f = await fixture("package", [id]);
@@ -751,11 +781,12 @@ describe("skill invocation policy builds", () => {
       const built = await buildProject(f.options);
       expect(built.ok, JSON.stringify(built.report.diagnostics)).toBe(true);
       expect(built.report.targets[id]!.projection!.components[SKILL_INVOCATION_POLICY]).toMatchObject(counts(1, 1));
-      const prefix = id.startsWith("oc") ? "package/" : "";
+      const prefix = id.startsWith("oc") || id === "pi" ? "package/" : "";
       const text = await readFile(join(f.root, `dist/${id}/${prefix}skills/review/SKILL.md`), "utf8");
       expect(text.endsWith(body)).toBe(true);
       if (id === "claude")
         expect(fm(text)).toMatchObject({ "disable-model-invocation": true, "user-invocable": false });
+      if (id === "pi") expect(fm(text)["disable-model-invocation"]).toBe(true);
       if (id === "codex")
         expect(
           parse(await readFile(join(f.root, `dist/${id}/skills/review/agents/openai.yaml`), "utf8")),

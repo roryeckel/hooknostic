@@ -98,9 +98,12 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   },
   {
     id: "model-request-before-context-add",
-    title: "per-request injected context reaches the model as a system message in EVERY agent request",
+    title: "per-request injected context reaches the model in EVERY agent request",
     covers: ["model.request.before.context.add"],
     driver: "loopback",
+    // pi's context result appends a custom AgentMessage, converted to a user
+    // message in the provider request. Its drive asserts that model-facing
+    // role in every request rather than demanding a system message.
   },
   {
     id: "tool-before-block",
@@ -196,6 +199,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
       claude: "loopback playback cannot deterministically fill Claude's context window",
       codex: "loopback playback cannot deterministically fill Codex's context window",
       opencode: "loopback playback cannot deterministically fill OpenCode's context window",
+      pi: "loopback playback cannot deterministically fill pi's context window (the compaction cells are live-verified: .capture/pi compact-cancel/compact-run probes)",
     },
   },
   {

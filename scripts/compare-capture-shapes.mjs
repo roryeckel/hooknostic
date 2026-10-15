@@ -128,6 +128,12 @@ export const OPENCODE_MAPPED_BUS_EVENTS = new Set([
  * Bash vs exec_command).
  */
 export function variantOf(harness, payload) {
+  if (harness === "pi") {
+    const event = payload?.event;
+    return event?.type === "tool_call" || event?.type === "tool_result"
+      ? `${event.type}+${event.toolName}${event.type === "tool_result" && event.isError === true ? "+error" : ""}`
+      : String(event?.type);
+  }
   if (harness === "opencode-v2") {
     const hook = payload?.hook,
       event = payload?.event;
@@ -240,6 +246,24 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   const report = [];
   let busAppendix = [];
   let payloads = captured;
+  if (harness === "pi") {
+    // Adapter-observed channels, per decodePi and fixtures/pi/0.84. The tee
+    // also records UI/token events that have no portable hook counterpart.
+    const mapped = new Set([
+      "session_start",
+      "session_shutdown",
+      "before_agent_start",
+      "context",
+      "tool_call",
+      "tool_result",
+      "agent_settled",
+      "session_before_compact",
+      "session_compact",
+      "session_compact_failed",
+    ]);
+    payloads = captured.filter((payload) => mapped.has(payload?.event?.type));
+    busAppendix = captured.filter((payload) => !mapped.has(payload?.event?.type));
+  }
   if (harness === "opencode-v2") {
     const mapped = (payload) =>
       payload?.hook === "event"
@@ -355,9 +379,9 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
     for (const v of notExercised) report.push(`- ${v}`);
   }
   if (busAppendix.length > 0) {
-    report.push("", "### Unmapped OpenCode bus events (diagnostics only)", "");
+    report.push("", `### Unmapped ${harness === "pi" ? "Pi events" : "OpenCode bus events"} (diagnostics only)`, "");
     for (const p of busAppendix) {
-      report.push(`- ${harness === "opencode-v2" ? variantOf(harness, p) : p?.input?.event?.type}`);
+      report.push(`- ${harness === "opencode-v2" || harness === "pi" ? variantOf(harness, p) : p?.input?.event?.type}`);
     }
   }
   const verdict =
@@ -386,6 +410,7 @@ function parseArgs(argv) {
 }
 
 const FIXTURE_DIRS = {
+  pi: "fixtures/pi/0.84",
   claude: "fixtures/claude/2.1",
   codex: "fixtures/codex/0.148",
   opencode: "fixtures/opencode/1.18",
@@ -401,6 +426,15 @@ const FIXTURE_DIRS = {
  * comparator as a module and needs the same expected set.
  */
 export const EXPECTED_VARIANTS = {
+  pi: [
+    "session_start",
+    "before_agent_start",
+    "context",
+    "tool_call+bash",
+    "tool_result+bash",
+    "agent_settled",
+    "session_shutdown",
+  ],
   "opencode-v2": [
     // The first standalone session can precede lazy plugin setup. Compare
     // session.created when observed, but report its absence as unexercised.

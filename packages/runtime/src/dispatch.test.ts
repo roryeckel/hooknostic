@@ -743,6 +743,58 @@ describe("createCapabilitySet", () => {
 });
 
 describe("effect lists (ADR-0025)", () => {
+  it.each(["continue", "block"] as const)(
+    "applies target validation to each list element under onHookError: %s",
+    async (onHookError) => {
+      const event = toolBefore({ command: "original" });
+      const observed: unknown[] = [];
+      const result = await dispatch(
+        [
+          hook("tool.before", {
+            id: "rewrites",
+            capabilities: { "input.replace": "required" },
+            async run() {
+              return [replaceInput(null), updateShell({ command: "updated" })];
+            },
+          }),
+          hook("tool.before", {
+            id: "observe",
+            async run(event) {
+              observed.push(event.tool.input);
+            },
+          }),
+        ],
+        event,
+        {
+          ...OPTIONS,
+          shellCodec: shellCodec({ Bash: { commandKey: "command" } }),
+          policy: { onHookError },
+          validateEffect: (effect) =>
+            effect.kind === "replaceInput" && effect.input === null ? "requires an object" : undefined,
+        },
+      );
+      expect(result.errors).toEqual([
+        expect.objectContaining({
+          hookId: "rewrites",
+          code: "HN401",
+          message: expect.stringContaining("requires an object"),
+        }),
+      ]);
+      if (onHookError === "block") {
+        expect(event.tool.input).toEqual({ command: "original" });
+        expect(replacedInput(result)).toBeUndefined();
+        expect(terminalEffect(result)?.kind).toBe("block");
+        expect(observed).toEqual([]);
+      } else {
+        expect(event.tool.input).toEqual({ command: "updated" });
+        expect(event.tool.shell?.command).toBe("updated");
+        expect(replacedInput(result)).toEqual({ value: { command: "updated" } });
+        expect(observed).toEqual([{ command: "updated" }]);
+        expect(result.terminatedBy).toBeUndefined();
+      }
+    },
+  );
+
   it("lets one hook notify and then prevent a stop", async () => {
     const result = await dispatch(
       [

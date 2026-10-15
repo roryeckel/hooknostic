@@ -14,7 +14,7 @@ import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
 import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { CapabilityId, HookEventName, ShellDialect } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HookEventName, ShellDialect } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 const RUNTIME_POLICY = {
@@ -34,6 +34,7 @@ export interface PlaybackBuild {
   runtimePath: string;
   tracePath: string;
   events: HookEventName[];
+  fields: readonly EventFieldId[];
 }
 
 export type ModelProtocol = "anthropic-messages" | "openai-responses" | "openai-chat";
@@ -147,6 +148,7 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
 function playbackPluginSource(
   events: readonly HookEventName[],
   contextAdd: ReadonlySet<HookEventName>,
+  fields: readonly EventFieldId[],
   label?: string,
   shellMatch = false,
 ): string {
@@ -178,14 +180,10 @@ function playbackPluginSource(
       // declared-but-unresolved cell would produce unasserted dispatch noise.
       contextAdd.has(event) ? `"${event}.context.add": "optional"` : undefined,
     ].filter(Boolean);
-    // ADR-0027: the turn's fields are declared, so an in-process adapter does
-    // the work of producing them and the trace can show what arrived.
-    const turnFields =
-      event === "turn.stop"
-        ? `fields: ["lastMessage", "correlation.turnId"],\n      `
-        : event === "prompt.before"
-          ? `fields: ["correlation.turnId"],\n      `
-          : "";
+    // ADR-0027: declare only fields this target rates. Pi observes these
+    // events without claiming their optional turn id or last-message fields.
+    const eventFields = fields.filter((field) => field.startsWith(`${event}.`));
+    const turnFields = eventFields.length > 0 ? `fields: ${JSON.stringify(eventFields)},\n      ` : "";
     const capabilityBlock =
       capabilities.length > 0
         ? `capabilities: {
@@ -306,10 +304,22 @@ export async function buildPlaybackArtifact(
 
   const events = observedEvents(adapter);
   const contextAdd = contextAddEvents(adapter);
+  const target = targetFor(adapter, artifactDir, override);
+  const resolution = adapter.capabilities(target);
+  const fields = (
+    ["prompt.before.correlation.turnId", "turn.stop.lastMessage", "turn.stop.correlation.turnId"] as const
+  ).filter((field) => {
+    const level = resolution.fields?.[field]?.level;
+    return level !== undefined && level !== "unsupported";
+  });
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label, override.shellMatch), "utf8");
+  await writeFile(
+    entryPath,
+    playbackPluginSource(events, contextAdd, fields, override.label, override.shellMatch),
+    "utf8",
+  );
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared
@@ -327,6 +337,7 @@ export async function buildPlaybackArtifact(
       ...(override.shellMatch && event === "tool.before" ? { match: { kind: "shell" as const } } : {}),
       async run() {},
     });
+    definition.fields = fields.filter((field) => field.startsWith(`${event}.`));
     definition.capabilities = ((): Partial<Record<CapabilityId, "optional">> => {
       const declared: Partial<Record<CapabilityId, "optional">> = {};
       if (event === "tool.before") {
@@ -365,8 +376,6 @@ export async function buildPlaybackArtifact(
     );
   }
 
-  const target = targetFor(adapter, artifactDir, override);
-  const resolution = adapter.capabilities(target);
   const capabilities = Object.fromEntries(
     Object.entries(resolution.matrix ?? {}).map(([id, entry]) => [id, entry.level]),
   );
@@ -427,6 +436,7 @@ export async function buildPlaybackArtifact(
     runtimePath: join(artifactDir, prefix, runtime.path),
     tracePath,
     events,
+    fields,
     ...(override.project ? { project: true } : {}),
   };
 }
@@ -468,7 +478,7 @@ const cmdEscape = require("cross-spawn/lib/util/escape.js") as {
  * an npm `.cmd` shim, which cross-spawn resolves through cmd.exe; global shims
  * forward `%*` too, so they get the double escape the MCP launcher applies.
  */
-function spawnIntact(
+export function spawnIntact(
   command: string,
   args: string[],
   options: SpawnOptions & { stdio: ["pipe", "pipe", "pipe"] },
@@ -1453,4 +1463,89 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
   expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
     pairs.map((fixture) => fixture.canonical.event),
   );
+}
+
+/**
+ * Replay pi fixture invocations through the generated production artifact.
+ * pi's shim exports an extension factory, not a callback map: the factory is
+ * driven through a recording ExtensionAPI double that routes each native
+ * event to the subscription pi would have registered.
+ */
+export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
+  const pairs = await fixturePairs(fixturesDir);
+  const previousTrace = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
+  process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = build.tracePath;
+  try {
+    const imported = (await import(`${pathToFileURL(build.runtimePath).href}?playback=1`)) as {
+      default: (pi: {
+        on: (event: string, handler: (event: unknown, ctx: unknown) => Promise<unknown> | unknown) => void;
+      }) => void;
+    };
+    const subscriptions = new Map<string, Array<(event: unknown, ctx: unknown) => Promise<unknown> | unknown>>();
+    imported.default({
+      on: (event, handler) => {
+        const list = subscriptions.get(event) ?? [];
+        list.push(handler);
+        subscriptions.set(event, list);
+      },
+    });
+    for (const fixture of pairs) {
+      const native = fixture.input as {
+        event: { type?: unknown };
+        ctx: { cwd: string; mode?: string };
+      };
+      const type = native.event.type;
+      expect(typeof type, `${fixture.name}: fixture has no event type`).toBe("string");
+      const handlers = subscriptions.get(type as string);
+      expect(handlers, `${fixture.name}: generated extension did not register ${type}`).toBeDefined();
+      await handlers![0]!(native.event, { cwd: native.ctx.cwd, ...(native.ctx.mode ? { mode: native.ctx.mode } : {}) });
+    }
+  } finally {
+    if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
+    else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
+  }
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
+    pairs.map((fixture) => fixture.canonical.event),
+  );
+}
+
+/**
+ * The playback provider extension for pi: registers an openai-completions
+ * provider pointing at the loopback model server, so the drive needs no
+ * credentials and spends nothing. Same mechanism as .capture/pi's
+ * provider-ollama.ts (verified live against 0.84.4).
+ */
+export async function writePiProviderExtension(
+  artifactDir: string,
+  baseUrl: string,
+  options: { provider?: string; model?: string; apiKey?: string } = {},
+): Promise<string> {
+  const provider = options.provider ?? "hooknostic-playback";
+  const model = options.model ?? "hooknostic-playback";
+  const apiKey = options.apiKey ?? "playback";
+  const path = join(artifactDir, "playback-provider.js");
+  await writeFile(
+    path,
+    `export default function (pi) {
+  pi.registerProvider(${JSON.stringify(provider)}, {
+    baseUrl: ${JSON.stringify(baseUrl)},
+    apiKey: ${JSON.stringify(apiKey)},
+    api: "openai-completions",
+    models: [
+      {
+        id: ${JSON.stringify(model)},
+        name: ${JSON.stringify(model)},
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 8192,
+      },
+    ],
+  });
+}
+`,
+    "utf8",
+  );
+  return path;
 }

@@ -1,0 +1,2464 @@
+{
+  "platform": "win32",
+  "observations": [
+    {
+      "label": "bash-configured-powershell",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {
+        "shellPath": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 14368,
+            "parentPid": 27976,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 27976,
+            "parentPid": 42436,
+            "name": "powershell.exe",
+            "path": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 42436,
+            "parentPid": 51656,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 51656,
+            "parentPid": 52780,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 52780,
+            "parentPid": 3000,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-mg9dBE\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":14368,\"parentPid\":27976,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":27976,\"parentPid\":42436,\"name\":\"powershell.exe\",\"path\":\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\"},{\"pid\":42436,\"parentPid\":51656,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":51656,\"parentPid\":52780,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":52780,\"parentPid\":3000,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-mg9dBE\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-configured-pwsh",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {
+        "shellPath": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+      },
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 50112,
+            "parentPid": 292,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 292,
+            "parentPid": 50704,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+          },
+          {
+            "pid": 50704,
+            "parentPid": 43524,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 43524,
+            "parentPid": 52780,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 52780,
+            "parentPid": 3000,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-ZJG3XM\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":50112,\"parentPid\":292,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":292,\"parentPid\":50704,\"name\":\"pwsh.exe\",\"path\":\"C:\\\\Users\\\\user\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\"},{\"pid\":50704,\"parentPid\":43524,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":43524,\"parentPid\":52780,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":52780,\"parentPid\":3000,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-ZJG3XM\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-default",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 20916,
+            "parentPid": 49188,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 49188,
+            "parentPid": 21776,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 21776,
+            "parentPid": 36312,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 36312,
+            "parentPid": 49088,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 49088,
+            "parentPid": 8584,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-lcCaqK\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":20916,\"parentPid\":49188,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":49188,\"parentPid\":21776,\"name\":\"bash.exe\",\"path\":\"C:\\\\Program Files\\\\Git\\\\bin\\\\..\\\\usr\\\\bin\\\\bash.exe\"},{\"pid\":21776,\"parentPid\":36312,\"name\":\"bash.exe\",\"path\":\"C:\\\\Program Files\\\\Git\\\\bin\\\\..\\\\usr\\\\bin\\\\bash.exe\"},{\"pid\":36312,\"parentPid\":49088,\"name\":\"bash.exe\",\"path\":\"C:\\\\Program Files\\\\Git\\\\bin\\\\bash.exe\"},{\"pid\":49088,\"parentPid\":8584,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-lcCaqK\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-shell-env-powershell",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 43936,
+            "parentPid": 51724,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 51724,
+            "parentPid": 3448,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 3448,
+            "parentPid": 20968,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe"
+          },
+          {
+            "pid": 20968,
+            "parentPid": 33372,
+            "name": "bash.exe",
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe"
+          },
+          {
+            "pid": 33372,
+            "parentPid": 53204,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {
+        "SHELL": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-s7SeWM\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":43936,\"parentPid\":51724,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":51724,\"parentPid\":3448,\"name\":\"bash.exe\",\"path\":\"C:\\\\Program Files\\\\Git\\\\bin\\\\..\\\\usr\\\\bin\\\\bash.exe\"},{\"pid\":3448,\"parentPid\":20968,\"name\":\"bash.exe\",\"path\":\"C:\\\\Program Files\\\\Git\\\\bin\\\\..\\\\usr\\\\bin\\\\bash.exe\"},{\"pid\":20968,\"parentPid\":33372,\"name\":\"bash.exe\",\"path\":\"C:\\\\Program Files\\\\Git\\\\bin\\\\bash.exe\"},{\"pid\":33372,\"parentPid\":53204,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-s7SeWM\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "file-discovery",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "grep",
+          "type": "function",
+          "properties": [
+            "pattern",
+            "path",
+            "glob",
+            "ignoreCase",
+            "literal",
+            "context",
+            "limit"
+          ]
+        },
+        {
+          "name": "find",
+          "type": "function",
+          "properties": [
+            "pattern",
+            "path",
+            "limit"
+          ]
+        },
+        {
+          "name": "ls",
+          "type": "function",
+          "properties": [
+            "path",
+            "limit"
+          ]
+        }
+      ],
+      "before": [],
+      "after": []
+    },
+    {
+      "label": "file-edit",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "edit",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "seed.txt",
+                "edits": [
+                  {
+                    "oldText": "alpha",
+                    "newText": "beta"
+                  }
+                ]
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-jOj1aK\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "edit",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "seed.txt",
+                "edits": [
+                  {
+                    "oldText": "alpha",
+                    "newText": "beta"
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Successfully replaced 1 block(s) in seed.txt."
+                }
+              ],
+              "details": {
+                "diff": "-1 alpha\n+1 beta",
+                "patch": "--- seed.txt\n+++ seed.txt\n@@ -1,1 +1,1 @@\n-alpha\n+beta\n",
+                "firstChangedLine": 1
+              },
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-jOj1aK\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "file-find",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "find",
+          "type": "function",
+          "properties": [
+            "pattern",
+            "path",
+            "limit"
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "find",
+              "toolCallId": "call_playback",
+              "input": {
+                "pattern": "*.txt",
+                "path": "."
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-ny87z2\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "find",
+              "toolCallId": "call_playback",
+              "input": {
+                "pattern": "*.txt",
+                "path": "."
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "seed.txt"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-ny87z2\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "file-grep",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "grep",
+          "type": "function",
+          "properties": [
+            "pattern",
+            "path",
+            "glob",
+            "ignoreCase",
+            "literal",
+            "context",
+            "limit"
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "grep",
+              "toolCallId": "call_playback",
+              "input": {
+                "pattern": "alpha",
+                "path": "."
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-NmctU4\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "grep",
+              "toolCallId": "call_playback",
+              "input": {
+                "pattern": "alpha",
+                "path": "."
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "seed.txt:1: alpha"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-NmctU4\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "file-ls",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "ls",
+          "type": "function",
+          "properties": [
+            "path",
+            "limit"
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "ls",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "."
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-E0SBYn\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "ls",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "."
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": ".git/\n.pi/\ncapture.ts\nfeature-context.js\ninterpreter.cjs\nplayback-provider.js\nseed.txt"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-E0SBYn\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "file-read",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "read",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "seed.txt"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-4pvRDe\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "read",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "seed.txt"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "alpha\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-4pvRDe\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "file-write",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "write",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "created.txt",
+                "content": "written\n"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-pUwaC9\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "write",
+              "toolCallId": "call_playback",
+              "input": {
+                "path": "created.txt",
+                "content": "written\n"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Successfully wrote 8 bytes to created.txt"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-pUwaC9\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "powershell-default",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "powershell",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 44304,
+            "parentPid": 14732,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 14732,
+            "parentPid": 50184,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+          },
+          {
+            "pid": 50184,
+            "parentPid": 3964,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 3964,
+            "parentPid": 52780,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 52780,
+            "parentPid": 3000,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "powershell",
+            "description": "Execute a PowerShell command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "powershell": "Execute PowerShell commands"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "powershell",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-LB5w5o\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "powershell",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":44304,\"parentPid\":14732,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":14732,\"parentPid\":50184,\"name\":\"pwsh.exe\",\"path\":\"C:\\\\Users\\\\user\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\"},{\"pid\":50184,\"parentPid\":3964,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":3964,\"parentPid\":52780,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":52780,\"parentPid\":3000,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-LB5w5o\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "powershell-pwsh",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "powershell",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 52756,
+            "parentPid": 18436,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 18436,
+            "parentPid": 49948,
+            "name": "pwsh.exe",
+            "path": "C:\\Users\\user\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe"
+          },
+          {
+            "pid": 49948,
+            "parentPid": 53836,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 53836,
+            "parentPid": 52780,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 52780,
+            "parentPid": 3000,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "powershell",
+            "description": "Execute a PowerShell command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "powershell": "Execute PowerShell commands"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "powershell",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-AKLVo0\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "powershell",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":52756,\"parentPid\":18436,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":18436,\"parentPid\":49948,\"name\":\"pwsh.exe\",\"path\":\"C:\\\\Users\\\\user\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\"},{\"pid\":49948,\"parentPid\":53836,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":53836,\"parentPid\":52780,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":52780,\"parentPid\":3000,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-AKLVo0\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "powershell-windows",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "powershell",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "win32",
+        "node": "v24.20.0",
+        "ancestry": [
+          {
+            "pid": 2928,
+            "parentPid": 21384,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 21384,
+            "parentPid": 28252,
+            "name": "powershell.exe",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          },
+          {
+            "pid": 28252,
+            "parentPid": 53840,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          },
+          {
+            "pid": 53840,
+            "parentPid": 52780,
+            "name": "cmd.exe",
+            "path": "C:\\WINDOWS\\system32\\cmd.exe"
+          },
+          {
+            "pid": 52780,
+            "parentPid": 3000,
+            "name": "node.exe",
+            "path": "C:\\Program Files\\nodejs\\node.exe"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "powershell",
+            "description": "Execute a PowerShell command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "powershell": "Execute PowerShell commands"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "powershell",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-q4v9EN\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "powershell",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":2928,\"parentPid\":21384,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":21384,\"parentPid\":28252,\"name\":\"powershell.exe\",\"path\":\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\"},{\"pid\":28252,\"parentPid\":53840,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":53840,\"parentPid\":52780,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":52780,\"parentPid\":3000,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-q4v9EN\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "skill-agents-absent",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-1YpVut\\project\\.agents\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-agents-allowed",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-GYnOhx\\project\\.agents\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-agents-denied",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-agents-explicit",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<skill name=\"feature-probe\" location=\"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-INPmoz\\project\\.agents\\skills\\feature-probe\\SKILL.md\">\nReferences are relative to C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-INPmoz\\project\\.agents\\skills\\feature-probe.\n\nFEATURE_SKILL_BODY\nCLAUDE_SKILL_DIR=${CLAUDE_SKILL_DIR}\nCLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT}\nCLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA}\nCLAUDE_SESSION_ID=${CLAUDE_SESSION_ID}\nSKILL_DIR=${SKILL_DIR}\nPLUGIN_ROOT=${PLUGIN_ROOT}\nPLUGIN_DATA=${PLUGIN_DATA}\nHOME=${HOME}\nrelative=./scripts/where.mjs\n</skill>\n\nreport the probe body"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-ancestor-agents-absent",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-SQyWVb\\.agents\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-ancestor-agents-allowed",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-PvAe2O\\.agents\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-ancestor-agents-denied",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-ancestor-agents-explicit",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<skill name=\"feature-probe\" location=\"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-SL4RbH\\.agents\\skills\\feature-probe\\SKILL.md\">\nReferences are relative to C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-SL4RbH\\.agents\\skills\\feature-probe.\n\nFEATURE_SKILL_BODY\nCLAUDE_SKILL_DIR=${CLAUDE_SKILL_DIR}\nCLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT}\nCLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA}\nCLAUDE_SESSION_ID=${CLAUDE_SESSION_ID}\nSKILL_DIR=${SKILL_DIR}\nPLUGIN_ROOT=${PLUGIN_ROOT}\nPLUGIN_DATA=${PLUGIN_DATA}\nHOME=${HOME}\nrelative=./scripts/where.mjs\n</skill>\n\nreport the probe body"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-package-absent",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-CDefUd\\package\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-package-allowed",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-84goRM\\package\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-package-denied",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-package-explicit",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<skill name=\"feature-probe\" location=\"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-SRbRJL\\package\\skills\\feature-probe\\SKILL.md\">\nReferences are relative to C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-SRbRJL\\package\\skills\\feature-probe.\n\nFEATURE_SKILL_BODY\nCLAUDE_SKILL_DIR=${CLAUDE_SKILL_DIR}\nCLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT}\nCLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA}\nCLAUDE_SESSION_ID=${CLAUDE_SESSION_ID}\nSKILL_DIR=${SKILL_DIR}\nPLUGIN_ROOT=${PLUGIN_ROOT}\nPLUGIN_DATA=${PLUGIN_DATA}\nHOME=${HOME}\nrelative=./scripts/where.mjs\n</skill>\n\nreport the probe body"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-project-absent",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-4sfXPc\\project\\.pi\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-project-allowed",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": true,
+      "skillListing": "<available_skills>\n  <skill>\n    <name>feature-probe</name>\n    <description>FEATURE_SKILL_DESCRIPTION ${SKILL_DIR}</description>\n    <location>C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-BFoDWs\\project\\.pi\\skills\\feature-probe\\SKILL.md</location>\n  </skill>\n</available_skills>",
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-project-denied",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply done without loading any skill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "skill-project-explicit",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "descriptionVisible": false,
+      "skillListing": null,
+      "userMessages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<skill name=\"feature-probe\" location=\"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-CTGwLt\\project\\.pi\\skills\\feature-probe\\SKILL.md\">\nReferences are relative to C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-CTGwLt\\project\\.pi\\skills\\feature-probe.\n\nFEATURE_SKILL_BODY\nCLAUDE_SKILL_DIR=${CLAUDE_SKILL_DIR}\nCLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT}\nCLAUDE_PLUGIN_DATA=${CLAUDE_PLUGIN_DATA}\nCLAUDE_SESSION_ID=${CLAUDE_SESSION_ID}\nSKILL_DIR=${SKILL_DIR}\nPLUGIN_ROOT=${PLUGIN_ROOT}\nPLUGIN_DATA=${PLUGIN_DATA}\nHOME=${HOME}\nrelative=./scripts/where.mjs\n</skill>\n\nreport the probe body"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "turn-fields",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:19:49.146Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "read",
+          "type": "function",
+          "properties": [
+            "path",
+            "offset",
+            "limit"
+          ]
+        },
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        },
+        {
+          "name": "edit",
+          "type": "function",
+          "properties": [
+            "path",
+            "edits"
+          ]
+        },
+        {
+          "name": "write",
+          "type": "function",
+          "properties": [
+            "path",
+            "content"
+          ]
+        }
+      ],
+      "sessionReads": [
+        {
+          "event": "before_agent_start",
+          "branch": [
+            {
+              "type": "model_change",
+              "id": "b084641d",
+              "parentId": null,
+              "timestamp": "2026-10-15T00:20:12.184Z",
+              "provider": "hooknostic-playback",
+              "modelId": "hooknostic-playback"
+            },
+            {
+              "type": "thinking_level_change",
+              "id": "6111b905",
+              "parentId": "b084641d",
+              "timestamp": "2026-10-15T00:20:12.184Z",
+              "thinkingLevel": "off"
+            }
+          ]
+        },
+        {
+          "event": "agent_settled",
+          "branch": [
+            {
+              "type": "model_change",
+              "id": "b084641d",
+              "parentId": null,
+              "timestamp": "2026-10-15T00:20:12.184Z",
+              "provider": "hooknostic-playback",
+              "modelId": "hooknostic-playback"
+            },
+            {
+              "type": "thinking_level_change",
+              "id": "6111b905",
+              "parentId": "b084641d",
+              "timestamp": "2026-10-15T00:20:12.184Z",
+              "thinkingLevel": "off"
+            },
+            {
+              "type": "message",
+              "id": "a63ee7e6",
+              "parentId": "6111b905",
+              "timestamp": "2026-10-15T00:20:12.195Z",
+              "message": {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Perform the harmless feature probe, then stop."
+                  }
+                ],
+                "timestamp": 1792023612192
+              }
+            },
+            {
+              "type": "message",
+              "id": "d2742aa0",
+              "parentId": "a63ee7e6",
+              "timestamp": "2026-10-15T00:20:12.227Z",
+              "message": {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "toolCall",
+                    "id": "call_playback",
+                    "name": "bash",
+                    "arguments": {
+                      "command": "echo feature-probe"
+                    }
+                  }
+                ],
+                "api": "openai-completions",
+                "provider": "hooknostic-playback",
+                "model": "hooknostic-playback",
+                "usage": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "totalTokens": 0,
+                  "cost": {
+                    "input": 0,
+                    "output": 0,
+                    "cacheRead": 0,
+                    "cacheWrite": 0,
+                    "total": 0
+                  }
+                },
+                "stopReason": "toolUse",
+                "timestamp": 1792023612208,
+                "responseId": "chatcmpl-playback-1",
+                "rawStopReason": "tool_calls"
+              }
+            },
+            {
+              "type": "message",
+              "id": "d584d5c7",
+              "parentId": "d2742aa0",
+              "timestamp": "2026-10-15T00:20:12.269Z",
+              "message": {
+                "role": "toolResult",
+                "toolCallId": "call_playback",
+                "toolName": "bash",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "feature-probe\n"
+                  }
+                ],
+                "isError": false,
+                "timestamp": 1792023612268
+              }
+            },
+            {
+              "type": "message",
+              "id": "b37c76e4",
+              "parentId": "d584d5c7",
+              "timestamp": "2026-10-15T00:20:12.275Z",
+              "message": {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "FEATURE_FINAL_REPLY"
+                  }
+                ],
+                "api": "openai-completions",
+                "provider": "hooknostic-playback",
+                "model": "hooknostic-playback",
+                "usage": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "totalTokens": 0,
+                  "cost": {
+                    "input": 0,
+                    "output": 0,
+                    "cacheRead": 0,
+                    "cacheWrite": 0,
+                    "total": 0
+                  }
+                },
+                "stopReason": "stop",
+                "timestamp": 1792023612270,
+                "responseId": "chatcmpl-playback-2",
+                "rawStopReason": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "echo feature-probe"
+              }
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-JCQiyQ\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "echo feature-probe"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "feature-probe\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-JCQiyQ\\project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

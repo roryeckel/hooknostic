@@ -1,0 +1,193 @@
+import type { CapabilityProfile } from "@hooknostic/core";
+
+export const piFeatureValidation = {
+  version: "0.84.4",
+  date: "2026-10-14",
+  method: "live-probe" as const,
+  artifact: ".capture/pi/FEATURES.md",
+  what: "Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message.",
+};
+
+const piCompletionEdgesValidation = {
+  version: piFeatureValidation.version,
+  date: "2026-10-14",
+  method: "live-probe" as const,
+  artifact: ".capture/pi/FEATURES.md",
+  what: "Credential-free RPC probes on Windows reused one session across HTTP errors, in-flight cancellation, a successful retry, retry cancellation and subsequent successful turns, then reopened it from disk. Settled branch tips carried current success ids or unsuccessful messages; generated-extension playback verifies final fields and avoids stale responses.",
+};
+
+/**
+ * pi capability data. pi extensions are persistent in-process modules (like
+ * OpenCode plugins), so the generated shim never exposes module lifetime as
+ * portable state (ADR-0002). Every rated cell below traces to
+ * `.capture/pi/README.md` (captured / verified-by-effect on 0.84.4) or to the
+ * installed package's published type definitions (schema-derived); absent
+ * cells are unsupported, by omission.
+ *
+ * pi has no permission-ask mechanism and no native MCP channel in 0.84.x --
+ * those capabilities are deliberately unrated rather than approximated.
+ */
+export const piCapabilityProfiles: CapabilityProfile[] = [
+  {
+    range: ">=0.84 <1",
+    source: {
+      date: "2026-09-27",
+      validatedOn: [
+        piFeatureValidation,
+        piCompletionEdgesValidation,
+        // scheduled-playback:begin
+        // scheduled-playback:end
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/pi/0.84",
+          what: "Windows --tools powershell loopback session captured the native {command} tool_call and tool_result payloads; shell normalization now uses that observed key",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/pi/0.84",
+          what: "before-agent-start-isolated: before_agent_start captured in a fresh project and agent home against the loopback model: no user skills, context files, or third-party tool snippets; retained alongside the original populated fixture",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "captured",
+          artifact: "fixtures/pi/0.84",
+          what: "live extension event payloads incl. in-place tool_call input mutation and tool_result replacement",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "original effect probes verified tool_call block, input rewrite, tool_result replace, system-prompt injection, compaction cancel, turn injection, and context replacement; the driver's shell-split prompts invalidate its input-event cadence conclusion",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "isolated single-prompt loopback runs: one full-text input event per print-mode prompt; {action:handled} on that event suppressed before_agent_start, agent_start, and all model requests in both input probes; other modes remain unverified",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "schema-derived",
+          artifact: ".capture/pi/README.md",
+          what: "installed @earendil-works/pi-coding-agent 0.84.4 type definitions and loader/compaction source: event surface, tool input shapes, extension discovery rules",
+        },
+        {
+          version: "0.84.4",
+          date: "2026-09-27",
+          method: "live-probe",
+          artifact: ".capture/pi/README.md",
+          what: "Halogen Qwen 3.8 Flash Next drove a real bash exchange in an isolated Pi session; both streaming requests succeeded, the command marker was observed in tool_result, and captured lifecycle/tool shapes matched the committed fixtures. This direct provider probe does not validate the scheduled llm transport or unexercised effects.",
+        },
+      ],
+      notes: [
+        "https://pi.dev/ (fetched 2026-09-27); installed package dist type definitions are the schema-derived source",
+      ],
+    },
+    // These fields are already decoded verbatim in the captured session-start,
+    // session-shutdown, session-before-compact, and tool-* fixtures (ADR-0027).
+    fields: {
+      "turn.stop.lastMessage": {
+        level: "exact",
+        rationale:
+          "The shim reads the final successful assistant message from the settled context's sessionManager.getBranch(); native event.raw remains unchanged.",
+      },
+      "turn.stop.correlation.turnId": {
+        level: "exact",
+        rationale:
+          "The native session entry id of the final successful assistant message; no prompt-side id is claimed because that entry does not yet exist before_agent_start.",
+      },
+      "session.start.how": { level: "exact" },
+      "session.end.reason": { level: "exact" },
+      "context.compact.before.trigger": { level: "exact" },
+      "tool.before.correlation.toolCallId": { level: "exact" },
+      "tool.after.correlation.toolCallId": { level: "exact" },
+      "tool.error.correlation.toolCallId": { level: "exact" },
+    },
+    matrix: {
+      "session.start.observe": {
+        level: "exact",
+      },
+      "prompt.before.observe": {
+        level: "exact",
+      },
+      "prompt.before.context.add": {
+        level: "exact",
+        rationale:
+          "before_agent_start result {message} injects a custom message that rides along into the turn (verified by effect on 0.84.4)",
+      },
+      "model.request.before.observe": {
+        level: "exact",
+        rationale:
+          "the context event fires before each LLM call with the message array the call will use -- the same per-call semantics as model.request.before (a single user turn produces several)",
+      },
+      "model.request.before.context.add": {
+        level: "exact",
+        rationale:
+          "context result {messages} replaces the message array (AgentMessage[], which carries no system role): injected context rides as a custom message the model sees verbatim (verified by effect on 0.84.4; a system-role entry would be dropped by pi's message conversion)",
+      },
+      "tool.before.observe": {
+        level: "exact",
+      },
+      "tool.before.block": {
+        level: "exact",
+        rationale:
+          "tool_call result {block: true, reason} blocks execution and surfaces the reason to the model (verified by effect on 0.84.4)",
+      },
+      "tool.before.input.replace": {
+        level: "exact",
+        rationale:
+          "tool_call event.input is mutated in place and the harness executes the mutated input without re-validation (verified by effect on 0.84.4)",
+      },
+      "tool.after.observe": {
+        level: "exact",
+      },
+      "tool.after.output.replace": {
+        level: "approximate",
+        rationale:
+          "tool_result result {content} replaces text output the model sees (verified by effect on 0.84.4); non-string portable outputs are JSON-serialized into one text part, changing their type and semantics",
+      },
+      "tool.error.observe": {
+        level: "emulated",
+        rationale:
+          "pi has no dedicated tool-error event; a failed tool surfaces through tool_result with isError: true (captured, fixtures/pi/0.84/tool-result-error)",
+      },
+      "context.compact.before.observe": {
+        level: "exact",
+      },
+      "context.compact.before.block": {
+        level: "exact",
+        rationale: "session_before_compact result {cancel: true} suppresses compaction (verified by effect on 0.84.4)",
+      },
+      "context.compact.after.observe": {
+        level: "exact",
+      },
+      "turn.stop.observe": {
+        level: "emulated",
+        rationale:
+          "pi has no idle event; agent_settled fires after an agent run fully settles (no retry, compaction, or queued continuation remains), the closest semantic match to a turn boundary",
+      },
+      "turn.stop.prevent": {
+        level: "emulated",
+        rationale:
+          "no stop-prevention channel exists; prevent is delivered by sendMessage({triggerTurn: true}) from agent_settled, which starts another agent turn (verified by effect on 0.84.4)",
+      },
+      "session.end.observe": {
+        level: "emulated",
+        rationale:
+          "session_shutdown fires before the extension runtime is torn down on quit, reload, or session replacement -- the closest pi channel to a session end, and per-reload rather than strictly per-session",
+      },
+      // agent.start/agent.stop are deliberately unrated: pi's agent_start/
+      // agent_end are per-prompt loop events, not subagent lifecycles, and the
+      // portable events are subagent-scoped (Claude maps them to
+      // SubagentStart/SubagentStop). No pi channel maps to them.
+    },
+  },
+];

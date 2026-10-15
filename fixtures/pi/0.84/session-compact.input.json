@@ -1,0 +1,41 @@
+{
+  "event": {
+    "type": "session_compact",
+    "compactionEntry": {
+      "type": "compaction",
+      "id": "5bcde867",
+      "parentId": "02814647",
+      "timestamp": "2026-09-27T06:18:56.894Z",
+      "summary": "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nThe user's message consisted only of the word \"Write\" — no additional detail, specification, or context was provided in this turn.\n\n## Early Progress\n- No substantive work, decisions, or actions are present in the prefix. The only content is the single-word user prompt \"Write.\"\n- No clarifications were requested or provided.\n\n## Context for Suffix\n- There is no meaningful prior context to carry forward. The retained suffix should be interpreted as a continuation from an underspecified prompt (\"Write\"), so any goals, constraints, or subject matter must be inferred from the suffix alone.\n- If the suffix assumes a particular task, topic, or format, that information originates entirely from the retained recent work, not from this prefix.",
+      "firstKeptEntryId": "02814647",
+      "tokensBefore": 3008,
+      "details": {
+        "readFiles": [],
+        "modifiedFiles": []
+      },
+      "usage": {
+        "input": 202,
+        "output": 257,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 459,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "fromHook": false
+    },
+    "fromExtension": false,
+    "reason": "overflow",
+    "willRetry": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

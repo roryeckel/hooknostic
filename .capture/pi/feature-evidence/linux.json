@@ -1,0 +1,573 @@
+{
+  "platform": "linux",
+  "observations": [
+    {
+      "label": "bash-configured-fish",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:08:00.900Z",
+      "settings": {
+        "shellPath": "/usr/bin/fish"
+      },
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 1294,
+            "parentPid": 1292,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 1292,
+            "parentPid": 1281,
+            "path": "/usr/bin/fish"
+          },
+          {
+            "pid": 1281,
+            "parentPid": 1201,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-sjpdJh/project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"linux\",\"node\":\"v22.13.1\",\"ancestry\":[{\"pid\":1294,\"parentPid\":1292,\"path\":\"/usr/local/bin/node\"},{\"pid\":1292,\"parentPid\":1281,\"path\":\"/usr/bin/fish\"},{\"pid\":1281,\"parentPid\":1201,\"path\":\"/usr/local/bin/node\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-sjpdJh/project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-configured-sh",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:08:00.900Z",
+      "settings": {
+        "shellPath": "/bin/sh"
+      },
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 1255,
+            "parentPid": 1254,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 1254,
+            "parentPid": 1243,
+            "path": "/usr/bin/dash"
+          },
+          {
+            "pid": 1243,
+            "parentPid": 1201,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-Lk3RuJ/project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"linux\",\"node\":\"v22.13.1\",\"ancestry\":[{\"pid\":1255,\"parentPid\":1254,\"path\":\"/usr/local/bin/node\"},{\"pid\":1254,\"parentPid\":1243,\"path\":\"/usr/bin/dash\"},{\"pid\":1243,\"parentPid\":1201,\"path\":\"/usr/local/bin/node\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-Lk3RuJ/project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-configured-tcsh",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:08:00.900Z",
+      "settings": {
+        "shellPath": "/usr/bin/tcsh"
+      },
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 1315,
+            "parentPid": 1312,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 1312,
+            "parentPid": 1301,
+            "path": "/usr/bin/tcsh"
+          },
+          {
+            "pid": 1301,
+            "parentPid": 1201,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-01Ia10/project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"linux\",\"node\":\"v22.13.1\",\"ancestry\":[{\"pid\":1315,\"parentPid\":1312,\"path\":\"/usr/local/bin/node\"},{\"pid\":1312,\"parentPid\":1301,\"path\":\"/usr/bin/tcsh\"},{\"pid\":1301,\"parentPid\":1201,\"path\":\"/usr/local/bin/node\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-01Ia10/project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-configured-zsh",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:08:00.900Z",
+      "settings": {
+        "shellPath": "/usr/bin/zsh"
+      },
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 1274,
+            "parentPid": 1273,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 1273,
+            "parentPid": 1262,
+            "path": "/usr/bin/zsh"
+          },
+          {
+            "pid": 1262,
+            "parentPid": 1201,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-GR5LA8/project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"linux\",\"node\":\"v22.13.1\",\"ancestry\":[{\"pid\":1274,\"parentPid\":1273,\"path\":\"/usr/local/bin/node\"},{\"pid\":1273,\"parentPid\":1262,\"path\":\"/usr/bin/zsh\"},{\"pid\":1262,\"parentPid\":1201,\"path\":\"/usr/local/bin/node\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-GR5LA8/project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "bash-default",
+      "version": "0.84.4",
+      "capturedAt": "2026-10-15T00:08:00.900Z",
+      "settings": {},
+      "tools": [
+        {
+          "name": "bash",
+          "type": "function",
+          "properties": [
+            "command",
+            "timeout"
+          ]
+        }
+      ],
+      "interpreter": {
+        "platform": "linux",
+        "node": "v22.13.1",
+        "ancestry": [
+          {
+            "pid": 1236,
+            "parentPid": 1235,
+            "path": "/usr/local/bin/node"
+          },
+          {
+            "pid": 1235,
+            "parentPid": 1224,
+            "path": "/usr/bin/bash"
+          },
+          {
+            "pid": 1224,
+            "parentPid": 1201,
+            "path": "/usr/local/bin/node"
+          }
+        ]
+      },
+      "configuredEnvironment": {},
+      "toolDescriptions": [
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "strict": false
+          }
+        }
+      ],
+      "toolSnippets": {
+        "bash": "Execute bash commands (ls, grep, find, etc.)"
+      },
+      "before": [
+        {
+          "event": "tool_call",
+          "payload": {
+            "event": {
+              "type": "tool_call",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              }
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-2MlRBK/project",
+              "mode": "print"
+            }
+          }
+        }
+      ],
+      "after": [
+        {
+          "event": "tool_result",
+          "payload": {
+            "event": {
+              "type": "tool_result",
+              "toolName": "bash",
+              "toolCallId": "call_playback",
+              "input": {
+                "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"platform\":\"linux\",\"node\":\"v22.13.1\",\"ancestry\":[{\"pid\":1236,\"parentPid\":1235,\"path\":\"/usr/local/bin/node\"},{\"pid\":1235,\"parentPid\":1224,\"path\":\"/usr/bin/bash\"},{\"pid\":1224,\"parentPid\":1201,\"path\":\"/usr/local/bin/node\"}]}\nhooknostic-shell-finished\n"
+                }
+              ],
+              "isError": false
+            },
+            "ctx": {
+              "cwd": "/tmp/hkn-pi-features-2MlRBK/project",
+              "mode": "print"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "b710093f",
+      "parentId": "2bb47fba",
+      "timestamp": "2026-10-15T02:09:33.786Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_AFTER_ERROR"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792030173782,
+        "responseId": "chatcmpl-playback-2",
+        "rawStopReason": "stop"
+      }
+    },
+    {
+      "type": "message",
+      "id": "b8393a22",
+      "parentId": "b710093f",
+      "timestamp": "2026-10-15T02:09:33.806Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "aborted"
+          }
+        ],
+        "timestamp": 1792030173806
+      }
+    },
+    {
+      "type": "message",
+      "id": "d4050739",
+      "parentId": "b8393a22",
+      "timestamp": "2026-10-15T02:09:33.832Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "aborted",
+        "timestamp": 1792030173806,
+        "errorMessage": "Request aborted"
+      }
+    }
+  ]
+}

@@ -18,6 +18,7 @@ const ROOT_VERSION = (
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
 import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
+import { piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
@@ -1212,6 +1213,37 @@ ${run.stderr}`,
       }
     },
   );
+
+  it("builds a pi package with a discovered skill and no nonexistent hook extension", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-package-build-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "pi-build", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review code\n---\n");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        components: { root: ".", targets: ["pi"] },
+        targets: { pi: { version: "${piHarness.recommendedRange}", delivery: "package", output: "./dist/pi" } }
+      };`,
+    );
+    const capture = captureIO();
+    const code = await runBuild({
+      config: join(dir, "hooknostic.config.ts"),
+      registry: defaultAdapterRegistry(),
+      io: capture.io,
+      json: true,
+    });
+    expect(code, capture.out()).toBe(0);
+    const manifest = JSON.parse(await readFile(join(dir, "dist/pi/package.json"), "utf8"));
+    expect(manifest).toMatchObject({ name: "pi-build", pi: { skills: ["./package/skills/review"] } });
+    expect(manifest.pi).not.toHaveProperty("extensions");
+    expect(existsSync(join(dir, "dist/pi/package/skills/review/SKILL.md"))).toBe(true);
+    expect(JSON.parse(capture.out()).targets.pi.projection).toMatchObject({ status: "success" });
+  });
 
   it("preserves an empty package directory used as MCP cwd", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-empty-cwd-"));
@@ -2909,7 +2941,12 @@ describe("hooknostic doctor", () => {
     await runDoctor({ json: true, registry: defaultAdapterRegistry(), io });
     const report = JSON.parse(out());
     expect(report.command).toBe("doctor");
-    expect(report.harnesses.map((h: { adapter: string }) => h.adapter).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(report.harnesses.map((h: { adapter: string }) => h.adapter).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+      "pi",
+    ]);
     for (const harness of report.harnesses) {
       expect([
         "ok",

@@ -1,0 +1,10 @@
+{
+  "event": {
+    "type": "session_shutdown",
+    "reason": "quit"
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

@@ -98,11 +98,32 @@ describe("Claude skill overlays (ADR-0028)", () => {
 
 describe("complete project integration", () => {
   it("anchors a dot MCP override to its nested source directory for every target", async () => {
+    // pi has no MCP channel: with an MCP component configured its target
+    // fails loudly with HN205 (the documented unsupported-component behavior)
+    // and core skips staging for the whole build, so the launcher anchoring
+    // this test verifies is judged on the adapters that declare the channel.
     const { root, options } = await fixture({
       components: {
         mcp: "./services/mcp.json",
-        mcpOverrides: Object.fromEntries(Object.keys(registry).map((id) => [id, { servers: { probe: { cwd: "." } } }])),
+        mcpOverrides: Object.fromEntries(
+          Object.keys(registry)
+            .filter((id) => id !== "pi")
+            .map((id) => [id, { servers: { probe: { cwd: "." } } }]),
+        ),
       },
+      targets: Object.fromEntries(
+        Object.entries(registry)
+          .filter(([id]) => id !== "pi")
+          .map(([name, adapter]) => [
+            name,
+            {
+              adapter: name,
+              version: adapter.harness.recommendedRange,
+              delivery: "project",
+              output: `.hooknostic/artifacts/${name}`,
+            },
+          ]),
+      ),
     });
     await mkdir(join(root, "services"));
     await writeFile(
@@ -119,7 +140,7 @@ describe("complete project integration", () => {
     options.configPath = join(alias, "hooknostic.config.ts");
     const result = await buildProject(options);
     expect(result.ok, JSON.stringify(result.report.diagnostics)).toBe(true);
-    for (const id of Object.keys(registry)) {
+    for (const id of Object.keys(registry).filter((id) => id !== "pi")) {
       const run = spawnSync(process.execPath, [join(root, `.hooknostic/artifacts/${id}/mcp-launcher.mjs`), "0"], {
         cwd: root,
         encoding: "utf8",
@@ -288,6 +309,7 @@ describe("complete project integration", () => {
       frontmatter + body("${CLAUDE_SKILL_DIR}"),
     );
     expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
+    expect(await readFile(join(root, ".pi/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
   }, 60_000);
 
   it("fails a target whose skill text keeps a reference that target shows as written", async () => {
@@ -308,6 +330,7 @@ describe("complete project integration", () => {
       ["claude", "error"],
       ["codex", "info"],
       ["opencode", "error"],
+      ["pi", "error"],
     ]);
     expect(reported[0]).toMatchObject({
       component: "agent-plugin.skills",
@@ -332,7 +355,7 @@ describe("complete project integration", () => {
 
     const built = await buildProject(options);
     const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
-    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode", "pi"]);
     expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
   }, 60_000);
 
@@ -387,6 +410,29 @@ describe("complete project integration", () => {
       [".claude/skills/sample/scripts/helper.sh", 0o755],
       [".claude/skills/.gitattributes", 0o644],
     ]);
+  });
+
+  it("preserves skill bytes when the adapter has no captured text policy", () => {
+    const contents = new TextEncoder().encode(
+      '---\nname: sample\ndescription: "${SKILL_DIR}"\n---\nRun ${SKILL_DIR}/script.js with ${PLUGIN_ROOT}.\n',
+    );
+    const projected = projectSkillFiles(
+      {
+        origin: "direct",
+        skills: [
+          {
+            name: "sample",
+            source: join(tmpdir(), "hooknostic-absent-source", "sample"),
+            files: [{ path: "SKILL.md", contents, mode: 0o644 }],
+          },
+        ],
+      },
+      join(tmpdir(), "hooknostic-absent-root"),
+      ".fake/skills",
+      undefined,
+    );
+    expect(projected.files.find((file) => file.path === ".fake/skills/sample/SKILL.md")?.contents).toEqual(contents);
+    expect(projected.degradations).toBeUndefined();
   });
 
   it("carries declared MCP command resolution through build and project reports", async () => {
@@ -623,7 +669,25 @@ describe("complete project integration", () => {
     expect((await runProject({ ...options, command: "sync", targets: ["a"] })).errors.join()).toContain("partial");
   });
   it("projects MCP declarations without expanding environment values", async () => {
-    const { root, options } = await fixture({ components: { mcp: "./mcp.json" } });
+    // pi has no MCP channel (HN205 for its targets is the documented
+    // unsupported-component behavior), so this projection is judged on the
+    // adapters that declare one.
+    const { root, options } = await fixture({
+      components: { mcp: "./mcp.json" },
+      targets: Object.fromEntries(
+        Object.entries(registry)
+          .filter(([id]) => id !== "pi")
+          .map(([name, adapter]) => [
+            name,
+            {
+              adapter: name,
+              version: adapter.harness.recommendedRange,
+              delivery: "project",
+              output: `.hooknostic/artifacts/${name}`,
+            },
+          ]),
+      ),
+    });
     await writeFile(
       join(root, "mcp.json"),
       JSON.stringify({

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic"
+  },
+  "correlation": {
+    "toolCallId": "call_tgklb5sv"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "ls -la hello.txt 2>&1; git status --porcelain | head"
+    },
+    "shell": {
+      "command": "ls -la hello.txt 2>&1; git status --porcelain | head",
+      "commandKey": "command"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "ls: cannot access 'hello.txt': No such file or directory\n?? .capture/pi/\n"
+    }
+  ]
+}

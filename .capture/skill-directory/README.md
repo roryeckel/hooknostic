@@ -74,6 +74,11 @@ What surrounds the body:
 
 ## Consequences
 
+Pi's later [feature probes](../pi/FEATURES.md) establish the same relative-path
+instruction for project and installed-package skills. All tested references,
+including `${SKILL_DIR}` in descriptions, remain literal. Pi therefore uses the
+relative body projection and unsupported-reference diagnostics too.
+
 - `${SKILL_DIR}` in a SKILL.md body projects to `${CLAUDE_SKILL_DIR}` on Claude
   Code, package and project delivery alike, and to `.` on Codex and both
   OpenCode families, where a path relative to the skill's directory is what the

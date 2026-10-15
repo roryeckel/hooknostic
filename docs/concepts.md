@@ -17,14 +17,14 @@ Component support has the same four levels as hook capabilities, with explicit
 
 ## 1. Harnesses: the tools your hooks run inside
 
-A **harness** is a coding-agent application — Claude Code, OpenAI Codex CLI, OpenCode.
+A **harness** is a coding-agent application — Claude Code, OpenAI Codex CLI, OpenCode, or Pi.
 Each one lets you attach code to moments in its lifecycle ("a tool is about to run",
 "a session just started"), but each invented its own way of doing it:
 
 - **Claude Code** and **Codex CLI** run each hook as a separate subprocess: they send a
   JSON event on stdin and read a JSON answer on stdout.
-- **OpenCode** loads your hook code as a JavaScript module inside its own long-running
-  process and calls functions on it.
+- **OpenCode** and **Pi** load your hook code as a JavaScript module inside their own
+  long-running processes and call functions on it.
 
 Different event names, different payloads, different rules. Hooknostic's job is to be
 the translation layer — with the crucial property that it *refuses to translate

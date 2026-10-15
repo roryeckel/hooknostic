@@ -8,6 +8,7 @@ import type {
 } from "@hooknostic/agent-plugin";
 import type {
   CapabilityId,
+  Effect,
   EventFieldId,
   FileCodec,
   FileShapes,
@@ -242,6 +243,13 @@ export interface NativeHookResult {
 export interface RuntimeAdapter {
   decode(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
   apply(result: HookResult, nativeEvent: unknown, invocation: InvocationContext): Promise<NativeHookResult>;
+  /**
+   * Target constraints shared by portable dispatch and the generated shim.
+   * Runs after portable validation and shell lowering, before event mutation.
+   * A rejection reason becomes HN401 under onHookError; undefined accepts.
+   * Checks requiring a live native object remain in the shim.
+   */
+  validateEffect?(effect: Effect, event: HookEvent): string | undefined;
 }
 
 /** Build-time inputs for generating a target's shim entry module source. */

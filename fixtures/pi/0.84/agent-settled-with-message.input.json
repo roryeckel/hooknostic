@@ -1,0 +1,9 @@
+{
+  "event": {
+    "type": "agent_settled"
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-JCQiyQ\\project",
+    "mode": "print"
+  }
+}

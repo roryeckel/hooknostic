@@ -1,0 +1,21 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "bash",
+    "toolCallId": "call_tgklb5sv",
+    "input": {
+      "command": "ls -la hello.txt 2>&1; git status --porcelain | head"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "ls: cannot access 'hello.txt': No such file or directory\n?? .capture/pi/\n"
+      }
+    ],
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

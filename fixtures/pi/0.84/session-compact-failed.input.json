@@ -1,0 +1,13 @@
+{
+  "event": {
+    "type": "session_compact_failed",
+    "reason": "overflow",
+    "aborted": true,
+    "willRetry": false,
+    "fromExtension": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

@@ -1,13 +1,13 @@
 # Hooknostic documentation
 
 Welcome! This is the documentation hub for Hooknostic — portable hooks, skills, and MCP servers, compiled into native packages or project integrations for Claude Code, OpenAI
-Codex CLI, and OpenCode.
+Codex CLI, OpenCode, and Pi.
 
 Pick your path:
 
 ## Choose a workflow
 
-- [Distribute a standards-based package](tutorials/04-packaging-with-agent-plugins.md): Agent Plugins 1.0 → native Claude/Codex marketplace plugins or OpenCode packages.
+- [Distribute a standards-based package](tutorials/04-packaging-with-agent-plugins.md): Agent Plugins 1.0 → native Claude/Codex marketplace plugins or OpenCode/Pi packages. The tutorial walks through Claude/Codex marketplace installation; see [Pi installation](installing-artifacts.md#pi) for its npm route.
 - [Maintain a repository](project-integration.md): direct hooks, skills, and MCP with init, sync, and verify.
 - [Configuration and commands](configuration.md): source forms, delivery, policies, and build reports.
 

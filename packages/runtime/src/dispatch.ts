@@ -55,6 +55,13 @@ export interface DispatchOptions {
    */
   shellCodec?: ShellCodec;
   /**
+   * Target-specific application check after portable validation and shell
+   * lowering, before an effect changes the canonical event. A returned reason
+   * is an HN401 failure governed by onHookError. updateShell reaches this
+   * check as its lowered replaceInput effect.
+   */
+  validateEffect?: (effect: Effect, event: HookEvent) => string | undefined;
+  /**
    * The dialect the adapter established for this event's shell tool from
    * outside the codec, such as a shell the harness stated (ADR-0029). The codec
    * cannot restate it after a rewrite, so the shim hands it over here, for a
@@ -305,6 +312,29 @@ export async function dispatch(
               `"${toolOf(event)?.nativeName ?? "<none>"}", whose argument shape this target has ` +
               `not captured; guard with event.tool.shell !== undefined, and use ` +
               `replaceInput for uncaptured shapes.`,
+          },
+          capabilities,
+        );
+      }
+    }
+
+    if (options.validateEffect !== undefined) {
+      const nativeEffect: Effect =
+        effect.kind === "updateShell" ? { kind: "replaceInput", input: loweredShellInput } : effect;
+      let rejection: string | undefined;
+      try {
+        rejection = options.validateEffect(nativeEffect, event);
+      } catch (error) {
+        rejection = `target validation failed: ${errorMessage(error)}`;
+      }
+      if (rejection !== undefined) {
+        return failDispatch(
+          hook.id,
+          {
+            hookId: hook.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook.id}" returned "${effect.kind}" that target "${options.targetId}" cannot apply: ${rejection}`,
           },
           capabilities,
         );

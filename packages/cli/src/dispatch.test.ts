@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE, codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
+import { createHooknosticExtension, type PiExtensionApi, piHarness } from "@hooknostic/adapter-pi";
+import { stageUserModule } from "@hooknostic/core";
+import type { PluginSpec } from "@hooknostic/sdk";
 
 import { runCli } from "./cli.js";
 import type { DispatchResult } from "./dispatch.js";
@@ -131,6 +134,81 @@ const toolBefore = (nativeName: string, input: Record<string, unknown>) => ({
 });
 
 describe("hooknostic dispatch", () => {
+  it.each(["continue", "block"] as const)("matches Pi replacement validation under onHookError: %s", async (policy) => {
+    const targets = JSON.stringify({
+      pi: { version: piHarness.referenceVersion, delivery: "project", output: "./dist/pi" },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const replacement of [null, [], "invalid"]) {
+        const dir = await project(
+          `import { definePlugin, hook } from "@hooknostic/sdk";
+export default definePlugin({ name: "pi-validation", hooks: [
+  hook("tool.before", { id: "rewrite", capabilities: { "tool.before.input.replace": "required" },
+    run() { return { kind: "replaceInput", input: ${JSON.stringify(replacement)} }; } }),
+  hook("tool.before", { id: "observe", capabilities: { "tool.before.block": "required" },
+    run(event) { return { kind: "block", reason: "observed: " + JSON.stringify(event.tool.input) }; } })
+] });`,
+          targets,
+          `runtime: { onHookError: "${policy}" },`,
+        );
+        const [result] = await dispatched(dir, "pi", [toolBefore("bash", { command: "original" })]);
+        expect(result!.errors).toEqual([
+          expect.objectContaining({ hookId: "rewrite", code: "HN401", kind: "unsupported-effect" }),
+        ]);
+        expect(result!.terminatedBy).toBe(policy === "block" ? "rewrite" : "observe");
+        expect(result!.effects).toHaveLength(1);
+        if (policy === "continue") {
+          expect(result!.effects[0]!.effect).toEqual({ kind: "block", reason: 'observed: {"command":"original"}' });
+        }
+
+        const staged = await stageUserModule(join(dir, "hooks.ts"), EVALUATE);
+        try {
+          const plugin = (await import(staged.href)).default as PluginSpec;
+          let handler: Parameters<NonNullable<PiExtensionApi["on"]>>[1] | undefined;
+          createHooknosticExtension(plugin, {
+            capabilities: { "tool.before.input.replace": "exact", "tool.before.block": "exact" },
+            policy: { onHookError: policy },
+          })({
+            on: (_name, callback) => {
+              handler = callback;
+            },
+          });
+          const input = { command: "original" };
+          const native = await handler!({ type: "tool_call", toolName: "bash", input }, { cwd: dir });
+          const plan = result!.native.body as { block: { reason: string } };
+          expect(native).toEqual({ block: true, reason: plan.block.reason });
+          expect(input).toEqual({ command: "original" });
+          expect(error).toHaveBeenLastCalledWith(expect.stringContaining(result!.errors[0]!.message));
+        } finally {
+          await staged.dispose();
+        }
+      }
+
+      // Positive controls: sharing the validator must also preserve raw and
+      // lowered shell replacements rather than rejecting every replacement.
+      for (const effect of [
+        { kind: "replaceInput", input: { command: "rewritten", timeout: 10 } },
+        { kind: "updateShell", command: "rewritten" },
+      ]) {
+        const dir = await project(
+          `import { definePlugin, hook } from "@hooknostic/sdk";
+export default definePlugin({ name: "pi-validation", hooks: [
+  hook("tool.before", { id: "rewrite", capabilities: { "tool.before.input.replace": "required" },
+    run() { return ${JSON.stringify(effect)}; } })
+] });`,
+          targets,
+          `runtime: { onHookError: "${policy}" },`,
+        );
+        const [result] = await dispatched(dir, "pi", [toolBefore("bash", { command: "original", timeout: 10 })]);
+        expect(result!.errors).toEqual([]);
+        expect(result!.native.body).toEqual({ inputReplacement: { command: "rewritten", timeout: 10 } });
+      }
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("classifies the tool as the target's decoder would and answers in its native reply", async () => {
     const dir = await project(HOOKS);
 

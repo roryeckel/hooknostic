@@ -106,7 +106,7 @@ including `doctor`, while `check` and `build` still require at least one target.
 
 Claude project hooks are structural entries in `.claude/settings.json`. Codex
 uses `.codex/hooks.json`. OpenCode gets a generated discovery module under
-`.opencode/plugins/`. Registration commands and timeout budgets derive from the
+`.opencode/plugins/`. Pi gets `.pi/extensions/hooknostic.js`. Registration commands and timeout budgets derive from the
 compiled runtime plan. Codex hook commands locate the nearest owned integration,
 validate its configuration identity and runtime hash, and therefore work from
 nested directories. Codex does not read `.codex/hooks.json` from a linked git
@@ -116,9 +116,9 @@ write the file into the worktree, since it takes effect once it reaches the root
 checkout, but they warn HN107 and name the root checkout. Launch Claude MCP sessions from the project root; restart
 harnesses after changing registrations and review their trust prompts.
 
-Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`.
-Sources already in their destination are discovered directly. Claude, Codex,
-and OpenCode copy other sources deterministically with all included supporting
+Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`;
+Pi uses `.pi/skills`. Sources already in their destination are discovered directly.
+Each target copies other sources deterministically with all included supporting
 resources. No symlinks are required.
 Duplicate skill names and unowned destination collisions fail.
 Direct project sources preserve additional harness-native frontmatter while

@@ -160,6 +160,7 @@ edition, so a hook cannot assume a PowerShell 7 operator such as `&&`.
 | Claude Code | Set whenever the view is: `Bash` is `posix`, `PowerShell` is `powershell` |
 | OpenCode | Set once the harness has stated a shell this adapter maps: bash, zsh, powershell, pwsh or cmd. Absent before that, and for any other shell |
 | Codex | Never set: the model picks the interpreter per call, and no hook input says which |
+| Pi | `powershell` is `powershell`; `bash` stays unknown because `shellPath` can select different interpreter families without changing the hook input |
 
 `hooknostic inspect <target>` prints the same answer for one target, with the
 adapter's reason and its evidence.

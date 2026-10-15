@@ -37,6 +37,7 @@ const SHIMS = {
   claude: resolve(packageDir, "../adapter-claude/src/shim.ts"),
   codex: resolve(packageDir, "../adapter-codex/src/shim.ts"),
   opencode: resolve(packageDir, "../adapter-opencode/src/shim.ts"),
+  pi: resolve(packageDir, "../adapter-pi/src/shim.ts"),
 };
 
 /** Bare specifiers of workspace packages that are not published. */
