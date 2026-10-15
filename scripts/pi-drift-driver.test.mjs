@@ -10,7 +10,10 @@ import { runProcess, startModelPlayback } from "../packages/cli/test/harness-pla
 
 const driver = fileURLToPath(new URL("./drive-capture-session.mjs", import.meta.url));
 const captureDriver = fileURLToPath(new URL("../.capture/pi/run-capture.mjs", import.meta.url));
-const run = (...args) => spawnSync(process.execPath, [driver, "pi", ...args], { encoding: "utf8", timeout: 150_000 });
+// The supported Node 22 floor needs an explicit opt-in for the drivers' TS imports.
+const nodeArgs = ["--experimental-strip-types"];
+const run = (...args) =>
+  spawnSync(process.execPath, [...nodeArgs, driver, "pi", ...args], { encoding: "utf8", timeout: 150_000 });
 
 it("passes a quoted, multiword capture prompt to Pi as one argument", () => {
   const scratch = mkdtempSync(join(tmpdir(), "hooknostic-pi-capture-args-"));
@@ -36,7 +39,7 @@ it("passes a quoted, multiword capture prompt to Pi as one argument", () => {
       writeFileSync(launcher, '#!/bin/sh\nexec node "$(dirname "$0")/record-argv.mjs" "$@"\n');
       chmodSync(launcher, 0o755);
     }
-    const result = spawnSync(process.execPath, [captureDriver, "tee"], {
+    const result = spawnSync(process.execPath, [...nodeArgs, captureDriver, "tee"], {
       cwd: scratch,
       encoding: "utf8",
       timeout: 10_000,
@@ -52,7 +55,7 @@ it("passes a quoted, multiword capture prompt to Pi as one argument", () => {
     expect(argv.at(-1)).toBe(
       "Create a file named hello.txt with the content 'hi from pi', then list the current directory using bash.",
     );
-    const failed = spawnSync(process.execPath, [captureDriver, "tee"], {
+    const failed = spawnSync(process.execPath, [...nodeArgs, captureDriver, "tee"], {
       cwd: scratch,
       encoding: "utf8",
       timeout: 10_000,
@@ -71,7 +74,7 @@ it("passes a quoted, multiword capture prompt to Pi as one argument", () => {
 });
 
 it("reports an unavailable Pi proxy path as inconclusive", () => {
-  const result = spawnSync(process.execPath, [driver, "pi", "--transport", "llm"], {
+  const result = spawnSync(process.execPath, [...nodeArgs, driver, "pi", "--transport", "llm"], {
     encoding: "utf8",
     timeout: 30_000,
     env: {
@@ -91,17 +94,21 @@ it.skipIf(process.env.HOOKNOSTIC_PLAYBACK !== "pi")(
     const scratch = mkdtempSync(join(tmpdir(), "hooknostic-pi-proxy-test-"));
     const server = await startModelPlayback("openai-chat", "rewrite");
     try {
-      const result = await runProcess(process.execPath, [driver, "pi", "--transport", "llm", "--scratch", scratch], {
-        cwd: fileURLToPath(new URL("..", import.meta.url)),
-        env: {
-          ...process.env,
-          HARNESS_LLM_MODEL: "hooknostic-drift-test",
-          HARNESS_LLM_PROXY_URL: server.baseUrl,
-          HARNESS_LLM_PROXY_KEY: "playback",
-          HARNESS_LLM_API_KEY: "never-pass-to-pi",
+      const result = await runProcess(
+        process.execPath,
+        [...nodeArgs, driver, "pi", "--transport", "llm", "--scratch", scratch],
+        {
+          cwd: fileURLToPath(new URL("..", import.meta.url)),
+          env: {
+            ...process.env,
+            HARNESS_LLM_MODEL: "hooknostic-drift-test",
+            HARNESS_LLM_PROXY_URL: server.baseUrl,
+            HARNESS_LLM_PROXY_KEY: "playback",
+            HARNESS_LLM_API_KEY: "never-pass-to-pi",
+          },
+          timeoutMs: 150_000,
         },
-        timeoutMs: 150_000,
-      });
+      );
       expect(result.code, result.stdout + result.stderr).toBe(0);
       expect(result.stdout).toContain("Verdict: clean");
       expect(server.urls).toContain("POST /v1/chat/completions");

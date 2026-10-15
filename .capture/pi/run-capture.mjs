@@ -1,5 +1,5 @@
 // Drive the pi capture sessions (Windows PowerShell-friendly).
-// Usage: node .capture/pi/run-capture.mjs [probe]
+// Usage: node --experimental-strip-types .capture/pi/run-capture.mjs [probe]
 //   probe: tee (default) | block-bash | mutate-input | replace-output |
 //          inject-before-agent | input-handled | compact-cancel | prevent-stop
 //

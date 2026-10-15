@@ -17,7 +17,7 @@ contracts introduced on master after the original Pi adapter.
   every event the adapter observes and tees each invocation's payload to
   `captured-<probe>/<event>.jsonl`. `HKN_PI_PROBE` selects a mutation
   experiment; `HKN_CAPTURE_DIR` redirects output.
-- `run-capture.mjs` — drives one probe session (`node .capture/pi/run-capture.mjs
+- `run-capture.mjs` — drives one probe session (`node --experimental-strip-types .capture/pi/run-capture.mjs
   [probe]`), writing to `captured-<probe>/` (gitignored). It uses the
   `ollama-localhost/deepseek-v4.1-flash:cloud` entry in Pi's user-wide
   `~/.pi/agent/models.json`. Compaction probes copy that entry into an
@@ -215,14 +215,14 @@ Run `pnpm run bundle` first; the capture driver uses the repository's Pi
 playback launcher to preserve CLI arguments on Windows.
 
 ```
-node .capture/pi/run-capture.mjs tee             # passive capture
-node .capture/pi/run-capture.mjs block-bash      # tool_call block probe
-node .capture/pi/run-capture.mjs mutate-input     # in-place input rewrite probe
-node .capture/pi/run-capture.mjs replace-output  # tool_result replace probe
-node .capture/pi/run-capture.mjs inject-before-agent
-node .capture/pi/run-capture.mjs input-handled   # prompt suppression probe
-node .capture/pi/run-capture.mjs compact-cancel  # compaction cancel probe
-node .capture/pi/run-capture.mjs prevent-stop   # agent_settled turn-injection probe
+node --experimental-strip-types .capture/pi/run-capture.mjs tee             # passive capture
+node --experimental-strip-types .capture/pi/run-capture.mjs block-bash      # tool_call block probe
+node --experimental-strip-types .capture/pi/run-capture.mjs mutate-input     # in-place input rewrite probe
+node --experimental-strip-types .capture/pi/run-capture.mjs replace-output  # tool_result replace probe
+node --experimental-strip-types .capture/pi/run-capture.mjs inject-before-agent
+node --experimental-strip-types .capture/pi/run-capture.mjs input-handled   # prompt suppression probe
+node --experimental-strip-types .capture/pi/run-capture.mjs compact-cancel  # compaction cancel probe
+node --experimental-strip-types .capture/pi/run-capture.mjs prevent-stop   # agent_settled turn-injection probe
 node .capture/pi/make-fixtures.mjs               # regenerate fixtures (redacting)
 ```
 
