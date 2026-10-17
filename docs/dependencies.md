@@ -34,6 +34,11 @@ resolves the two semver requirements to the same package. Renovate retains each
 named catalog's major line. Moving consumers between catalogs or changing those
 lines is a separate manual migration.
 
+Renovate also keeps `@types/node` on 22.x, the oldest supported Node major, so
+type checking rejects APIs unavailable on that runtime. Updates within 22.x
+retain the normal npm update schedule; moving to another declaration major
+requires a manual compatibility decision.
+
 Type checking and declaration emission use TypeScript 7 through the
 `@typescript/native` npm alias. Tools that consume the compiler API, including
 typescript-eslint, resolve `typescript` to Microsoft's `@typescript/typescript6`
