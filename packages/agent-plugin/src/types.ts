@@ -158,11 +158,16 @@ export interface AgentPluginDeviationDeclaration {
  */
 export type AgentPluginDegradationDeclaration = AgentPluginDeviationDeclaration;
 
+/** A named, evidence-backed omission of an unsupported component (ADR-0031). */
+export type AgentPluginOmissionDeclaration = AgentPluginDeviationDeclaration;
+
 export interface AgentPluginComponentSupport {
   level: AgentPluginProjectionSupportLevel;
   rationale?: string;
   deviations?: readonly AgentPluginDeviationDeclaration[];
   degradations?: readonly AgentPluginDegradationDeclaration[];
+  /** Acceptance permits omission only; this declaration requires level `unsupported`. */
+  omission?: AgentPluginOmissionDeclaration;
 }
 
 /** One instance of a declared deviation found in the package being projected. */

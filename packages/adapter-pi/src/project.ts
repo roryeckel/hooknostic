@@ -9,6 +9,7 @@ import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } f
 import { projectSkillFiles } from "@hooknostic/core";
 
 import { piHarness } from "./harness.js";
+import { piMcpOmissions } from "./omissions.js";
 import { piFeatureValidation } from "./profile.js";
 import { PI_SKILL_POLICY_RATIONALE, piProjectSkillPolicyValidation } from "./skill-policy.js";
 
@@ -83,16 +84,19 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       },
       "agent-plugin.mcp.stdio": {
         level: "unsupported",
+        omission: piMcpOmissions.stdio,
         rationale:
           "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
       },
       "agent-plugin.mcp.streamable-http": {
         level: "unsupported",
+        omission: piMcpOmissions["streamable-http"],
         rationale:
           "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
       },
       "agent-plugin.mcp.sse": {
         level: "unsupported",
+        omission: piMcpOmissions.sse,
         rationale:
           "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
       },

@@ -884,7 +884,7 @@ describe("hooknostic build end-to-end", () => {
       expect(existsSync(output)).toBe(false);
     }
   });
-  it("builds the rewrite-shell example into three self-contained target artifacts", { timeout: 120_000 }, async () => {
+  it("builds the rewrite-shell example into four self-contained target artifacts", { timeout: 120_000 }, async () => {
     const dir = await cleanExample("rewrite-shell");
     const { io, out } = captureIO();
     const code = await runBuild({
@@ -897,7 +897,7 @@ describe("hooknostic build end-to-end", () => {
 
     const report = JSON.parse(out());
     expect(report.schemaVersion).toBe(2);
-    expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode", "pi"]);
     for (const target of Object.values(report.targets) as { status: string }[]) {
       expect(target.status).toBe("success");
     }
@@ -911,6 +911,7 @@ describe("hooknostic build end-to-end", () => {
     expect(existsSync(join(dir, "dist/codex/.codex/hooks.json"))).toBe(true);
     expect(existsSync(join(dir, "dist/codex/.codex/hooknostic/hooknostic.mjs"))).toBe(true);
     expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
+    expect(existsSync(join(dir, "dist/pi/.pi/extensions/hooknostic.js"))).toBe(true);
 
     // The bundle embeds the portable handlers — no cross-directory refs.
     const bundle = await readFile(claudeRuntime, "utf8");
@@ -1141,8 +1142,8 @@ ${run.stderr}`,
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.components.targets).toEqual(["claude", "codex", "opencode", "legacy"]);
-      for (const id of ["claude", "codex", "opencode", "legacy"]) {
+      expect(report.components.targets).toEqual(["claude", "codex", "opencode", "legacy", "pi"]);
+      for (const id of ["claude", "codex", "opencode", "legacy", "pi"]) {
         expect(report.targets[id].projection, id).toMatchObject({ status: "success" });
       }
 
@@ -1191,7 +1192,7 @@ ${run.stderr}`,
         license: "MIT",
       });
 
-      // Every harness gets all three components in one installable unit; the
+      // MCP-capable harnesses get all three components in one installable unit; the
       // Codex manifest naming its hooks is what a local-mode target would
       // silently omit.
       const codexManifest = JSON.parse(await readFile(join(dir, "dist/codex/.codex-plugin/plugin.json"), "utf8"));
@@ -1213,6 +1214,40 @@ ${run.stderr}`,
       }
     },
   );
+
+  it("builds Pi in the default combined example with an accepted MCP omission", async () => {
+    const dir = await cleanExample("agent-plugin");
+    const mcpBefore = await readFile(join(dir, "mcp.json"), "utf8");
+    const config = join(dir, "hooknostic.config.ts");
+    for (const run of [runCheck, runBuild]) {
+      const capture = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io }), capture.out()).toBe(
+        0,
+      );
+      const report = JSON.parse(capture.out());
+      expect(Object.keys(report.targets)).toContain("pi");
+      expect(report.targets.pi.projection).toMatchObject({
+        status: "success",
+        components: {
+          "agent-plugin.mcp.stdio": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+        },
+      });
+      expect(report.targets.pi.projection.omissions).toContainEqual(
+        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "greeter" }),
+      );
+      expect(report.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "HN205", severity: "info", omission: "pi:mcp-stdio-omitted" }),
+      );
+    }
+    const output = join(dir, "dist/pi");
+    const manifest = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
+    expect(manifest.pi).toEqual({ extensions: ["./hooknostic.js"], skills: ["./package/skills/greet"] });
+    expect(await readFile(join(output, "hooknostic.js"), "utf8")).toContain("Hooknostic marketplace probe blocked.");
+    expect(await readFile(join(output, "package/skills/greet/SKILL.md"), "utf8")).toContain("git status --short");
+    // Portable source files may survive copying; native Pi activation declares
+    // only the extension and skill, never an MCP server.
+    expect(await readFile(join(dir, "mcp.json"), "utf8")).toBe(mcpBefore);
+  });
 
   it("builds a pi package with a discovered skill and no nonexistent hook extension", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-package-build-"));

@@ -478,6 +478,10 @@ Claude would install it without the validation `runtimePackage` inputs receive.
 The root name is matched case-insensitively, like inventory exclusions. Omitting
 a declared overlay file degrades the client-extension component, so it follows
 `onUnsupported`: an HN205 error by default, a recorded omission under `"warn"`.
+An adapter may declare a named omission on an unsupported component; accepting
+its qualified ID in `components.accept` reports HN205 as information while
+retaining unsupported support and skipped counts (ADR-0031). This does not
+accept invalid input, missing projectors, or required hook capabilities.
 
 The same reasoning reserves the rest of Claude's native configuration against
 the package root. `.mcp.json`, `hooks/hooks.json`, and anything under

@@ -71,17 +71,25 @@ import { defineConfig } from "@hooknostic/sdk";
 
 export default defineConfig({
   entry: "./src/hooks.ts",
-  components: { root: "./portable" },
+  components: { root: "./portable", accept: ["pi:mcp-stdio-omitted"] },
   targets: {
     claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
     codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
     opencode: { version: ">=2.0.17 <3", delivery: "package", output: "./dist/opencode" },
+    pi: { version: ">=0.84 <1", delivery: "package", output: "./dist/pi" },
   },
 });
 ```
 
 Omit `entry` for a hookless package. For direct repository sources, use
 `components.skills` / `components.mcp` and project delivery instead of a package root.
+
+Pi receives the hooks and skills. `pi:mcp-stdio-omitted` explicitly accepts
+omitting stdio MCP registration from Pi's native output because it has no native MCP
+channel. Support remains `unsupported`, and the report records the skipped servers.
+Other unsupported components still fail. HTTP transports have separate IDs:
+`pi:mcp-streamable-http-omitted` and `pi:mcp-sse-omitted`. See
+[component policies](docs/configuration.md#compatibility-and-component-policies).
 
 Skills may declare `metadata: { hooknostic/allow-implicit-invocation: "false" }`
 to require explicit user invocation across supported harness versions. Author

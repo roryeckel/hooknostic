@@ -20,6 +20,7 @@ import type { TargetSpec } from "@hooknostic/core";
 
 import { PACKAGE_EXTENSION_PATH, PACKAGE_MANIFEST_PATH } from "./generate.js";
 import { piHarness } from "./harness.js";
+import { piMcpOmissions } from "./omissions.js";
 import { piFeatureValidation } from "./profile.js";
 import { PI_SKILL_POLICY_RATIONALE, piPackageSkillPolicyValidation, piSkillPolicy } from "./skill-policy.js";
 
@@ -54,16 +55,19 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
         },
         "agent-plugin.mcp.stdio": {
           level: "unsupported",
+          omission: piMcpOmissions.stdio,
           rationale:
             "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
         },
         "agent-plugin.mcp.streamable-http": {
           level: "unsupported",
+          omission: piMcpOmissions["streamable-http"],
           rationale:
             "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
         },
         "agent-plugin.mcp.sse": {
           level: "unsupported",
+          omission: piMcpOmissions.sse,
           rationale:
             "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
         },

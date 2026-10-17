@@ -103,9 +103,9 @@ Build it:
 cd examples/rewrite-shell && node ../../packages/cli/bin/hooknostic.mjs build
 ```
 
-Then open `hooknostic-build.json`. For this plugin all three targets support both
+Then open `hooknostic-build.json`. For this plugin all four targets support both
 capabilities (`tool.before.input.replace` is `exact` everywhere: `updatedInput` on
-Claude, `allow` + `updatedInput` on Codex, in-place args mutation on OpenCode). But the
+Claude, `allow` + `updatedInput` on Codex, in-place args mutation on OpenCode and Pi). But the
 mechanism generalizes: every optional capability that *didn't* resolve gets recorded
 here too, so "which targets are actually rewriting npm to pnpm?" is a question the
 report answers — you never have to guess what degraded where.

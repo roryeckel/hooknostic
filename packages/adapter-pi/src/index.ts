@@ -85,7 +85,7 @@ export function piShimEntrySource(options: {
 export function piAdapter(): HarnessAdapter {
   return {
     id: "pi",
-    adapterVersion: "0.6.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.7.0", // kept equal to package.json by versions.test.ts
     harness: piHarness,
     projectPaths: [".pi/extensions", ".pi/skills"],
     projectIntegration,

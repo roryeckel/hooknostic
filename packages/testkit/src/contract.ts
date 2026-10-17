@@ -18,6 +18,7 @@ import {
   SHELL_DIALECTS,
 } from "@hooknostic/sdk";
 
+import { assertComponentShortfalls } from "./component-shortfalls.js";
 import { loadFixtureFrom } from "./fixtures.js";
 
 export interface AdapterContractOptions {
@@ -90,26 +91,11 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
     // A deviation is a harness fact like any level (ADR-0019), so it cites a
     // capture the same profile records as a validation, rather than evidence
     // that exists only in the declaration. A degradation (ADR-0021) cites the
-    // capture that makes its translation necessary. Both share one id space,
+    // capture that makes its translation necessary. Named unsupported omissions
+    // cite their established limitation. All share one id space,
     // because `components.accept` names them the same way.
-    it("declares each Agent Plugin deviation and degradation with a stable id and validated evidence", () => {
-      const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
-      for (const profile of profiles) {
-        const validated = new Set(profile.source.validatedOn.map((record) => record.artifact));
-        for (const [component, cell] of Object.entries(profile.components)) {
-          const declared = [...(cell.deviations ?? []), ...(cell.degradations ?? [])];
-          const ids = declared.map((deviation) => deviation.id);
-          expect(new Set(ids).size, `${profile.range} ${component} repeats a deviation or degradation id`).toBe(
-            ids.length,
-          );
-          for (const deviation of declared) {
-            const label = `${profile.range} ${component} ${deviation.id}`;
-            expect(deviation.id, label).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
-            expect(deviation.summary, `${label} needs a summary`).toBeTruthy();
-            expect(validated.has(deviation.evidence), `${label} cites evidence no validatedOn record names`).toBe(true);
-          }
-        }
-      }
+    it("declares each Agent Plugin shortfall with a stable id and validated evidence", () => {
+      assertComponentShortfalls(adapter);
     });
 
     it("has a native input fixture for every advertised observable event", () => {

@@ -250,8 +250,10 @@ interface ComponentPolicy<TTarget extends string> {
    */
   onDegraded?: "error" | "warn";
   /**
-   * Qualified deviation and degradation ids to ship whatever `onDeviation`
-   * and `onDegraded` say, such as `"opencode:skill-name-unqualified"`. Each
+   * Qualified deviation, degradation, and omission ids, such as
+   * `"opencode:skill-name-unqualified"` or `"pi:mcp-stdio-omitted"`. An
+   * accepted omission skips that unsupported component; it does not enable it.
+   * Overrides the corresponding component policy for that named shortfall. Each
    * accepted instance is still reported, as information, and still recorded in
    * the build report. An id no adapter declares is an error, so a typo cannot
    * silently accept nothing.
