@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | Baseline date | August 20, 2026 |
-| Primary implementation | Node.js 22.13+ / TypeScript / ESM |
+| Primary implementation | Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+ / TypeScript / ESM |
 | Initial harness targets | Claude Code, OpenAI Codex, OpenCode |
 | Companion standard | Agent Plugins 1.0 (optional integration) |
 
@@ -952,7 +952,7 @@ hooknostic/
 | `@hooknostic/adapter-*` | Not initially | Harness adapters. |
 | `@hooknostic/testkit` | Maybe later | For external adapter authors post-stabilization. |
 
-**Build technology:** Node 22.13+, TypeScript, ESM; pnpm workspaces; esbuild for the
+**Build technology:** Node `^22.22.2 || ^24.15.0 || >=26.0.0`, TypeScript, ESM; pnpm workspaces; esbuild for the
 dependency-free per-target runtime `.mjs`; Zod internally (measure size/cold-start before
 shipping it inside hook bundles); no daemon; explicit Windows path/executable support.
 

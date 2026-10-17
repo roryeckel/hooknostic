@@ -17,7 +17,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
           version: "2.0.32",
           date: "2026-10-17",
           method: "captured",
-          artifact: "fixtures/opencode/2.0",
+          artifact: "fixtures/opencode/2.0/tool-custom-error.input.json",
           what: "Windows loopback recapture: a plain custom Error is wrapped as Tool.Error and delivered through execute.after (tool-custom-error); project and relocated-package tools/call HTTP requests preserve the declared endpoint and headers without appending codemode=false (remote/playback-recapture.json).",
         },
         {

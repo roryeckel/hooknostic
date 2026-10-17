@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import semver from "semver";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { opencodeAdapter, opencodeV2Harness } from "@hooknostic/adapter-opencode";
+import { opencodeAdapter, opencodeV2CapabilityProfiles, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { resolveTargetAdapter } from "@hooknostic/core";
 
 // @ts-expect-error The constructed loopback model is plain JavaScript.
@@ -226,10 +227,16 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
         correlation: { toolCallId: "call_probe_1" },
       }),
     ]);
-    // The reference build omits the plain exception; the later recapture wraps
-    // it as Tool.Error. Both must keep the typed read failure above intact.
+    const customErrorCapture = opencodeV2CapabilityProfiles
+      .flatMap((profile) => profile.source.validatedOn ?? [])
+      .find((record) => record.artifact === "fixtures/opencode/2.0/tool-custom-error.input.json");
+    expect(customErrorCapture).toBeDefined();
     const customErrors = errors.filter((row) => row.tool.nativeName === "probe_failure");
-    expect(customErrors.length).toBeLessThanOrEqual(1);
+    // Require the recaptured behavior on that build and newer playback. The
+    // exact transition between the two captured builds is not established.
+    if (semver.gte(version, customErrorCapture!.version)) expect(customErrors).toHaveLength(1);
+    else if (semver.eq(version, opencodeV2Harness.referenceVersion)) expect(customErrors).toHaveLength(0);
+    else expect(customErrors.length).toBeLessThanOrEqual(1);
     if (customErrors.length) {
       expect(customErrors[0]).toMatchObject({
         error: { message: "hooknostic-thrown-tool-error" },
