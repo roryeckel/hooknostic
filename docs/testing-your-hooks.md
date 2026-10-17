@@ -53,13 +53,30 @@ event does not declare is rejected, so a misspelling fails instead of being
 ignored.
 
 **Tool events** (`tool.before`, `tool.after`, `tool.error`, `permission.request`)
-need a `tool` holding only `nativeName` and `input`. Other events refuse one.
+need a `tool` holding `nativeName` and `input`. Other events refuse one.
 These are the harness's own tool name and arguments: Claude's `Bash` takes
 `command`, while Codex's `exec_command` takes `cmd`. Dispatch classifies the
 call the way that target's decoder does and fills in `kind`, `mcp` and `shell`
-itself. An event that supplies any of the three is rejected. So Claude's
+itself. An event that supplies any of the three is rejected, with the one
+exception described next. So Claude's
 `Write` is a file write however its input looks, and an input the classifier
 does not recognize leaves `tool.shell` absent, exactly as in a real session.
+
+One part of `shell` can be stated: its `dialect`, the grammar family the command
+runs in (ADR-0029). OpenCode states its shell at run time rather than in the
+tool call, so an OpenCode event carries no dialect unless the test says what the
+harness would have stated:
+
+```json
+{ "event": "tool.before", "tool": { "nativeName": "bash", "input": { "command": "ls" }, "shell": { "dialect": "powershell" } } }
+```
+
+`shell` may hold `dialect` and nothing else. The target's classifier decides
+whether it applies, and an event is refused if the target would give that call a
+different dialect or none: Claude's `Bash` is always `posix`, and Codex never
+establishes one, so a hook's unknown-dialect branch is what a Codex event
+exercises. `hooknostic inspect <target>` says where each target's dialect comes
+from.
 
 ## Results
 
@@ -76,6 +93,10 @@ Each result is the dispatch's `HookResult` (`event`, `effects`, `terminatedBy`,
 
 A hook that throws or times out appears in `errors`, as it would under the
 runtime policy in a real harness. That is still a successful dispatch.
+
+Dispatch also runs the adapter's effect validator. For example, Pi rejects a
+replacement input that is not a plain object with HN401. Rejected effects obey
+`onHookError`: continue without the replacement, or block where supported.
 
 ## What carries between events
 
@@ -107,6 +128,10 @@ Behaviour that depends on the host process is also out of reach. That includes
 which executable runs the hook (see [Writing hooks safely](writing-hooks-safely.md)),
 environment a harness sets, and concurrent calls. Events in one run are
 dispatched one at a time, in the same process.
+
+Checks that require a live native object also remain in the shim. Dispatch can
+validate a Pi replacement's shape, but cannot establish whether the harness's
+actual input object is mutable.
 
 ## From code
 

@@ -13,6 +13,12 @@ walks through it line by line. Choose the package or repository path, or start w
 
 ## Running them
 
+`basic/` and `rewrite-shell/` include Pi project targets. The default
+`agent-plugin/` and `local-project/` configurations include Pi's hooks and skills
+and accept only `pi:mcp-stdio-omitted`; MCP is delivered to the other harnesses.
+`context-injection/` requires session-start context injection, unavailable on
+Pi and OpenCode.
+
 From the repository root:
 
 ```bash
@@ -41,6 +47,9 @@ repository.
 `agent-plugin/` is committed specifically because it is the only example using
 `components`, and that config shape is where a machine-specific path can reach
 the build report — a gate that rebuilds only `rewrite-shell` cannot see it.
+
+Pi output is also rebuilt by `pnpm build:examples` and committed under `dist/pi/`
+in both examples; each default build report includes its Pi target.
 
 The basic and context-injection examples are built on demand and their output is gitignored.
 

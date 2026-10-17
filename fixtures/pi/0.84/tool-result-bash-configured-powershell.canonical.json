@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-mg9dBE\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    },
+    "shell": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished",
+      "commandKey": "command"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "{\"platform\":\"win32\",\"node\":\"v24.20.0\",\"ancestry\":[{\"pid\":14368,\"parentPid\":27976,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":27976,\"parentPid\":42436,\"name\":\"powershell.exe\",\"path\":\"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\"},{\"pid\":42436,\"parentPid\":51656,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"},{\"pid\":51656,\"parentPid\":52780,\"name\":\"cmd.exe\",\"path\":\"C:\\\\WINDOWS\\\\system32\\\\cmd.exe\"},{\"pid\":52780,\"parentPid\":3000,\"name\":\"node.exe\",\"path\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\"}]}\nhooknostic-shell-finished\r\n"
+    }
+  ]
+}

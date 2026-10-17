@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "context"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic"
+  },
+  "correlation": {},
+  "event": "model.request.before"
+}

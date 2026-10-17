@@ -18,7 +18,7 @@ hooknostic-build.json
 .hooknostic-staging-*/
 examples/*/com.anthropic.claude-code/
 !examples/agent-plugin/com.anthropic.claude-code/
-.capture/*/captured/
+.capture/*/captured*/
 # nested git repos used for codex/opencode capture + smoke (documented in fixtures READMEs)
 .capture/codex/
 .capture/codex-smoke/

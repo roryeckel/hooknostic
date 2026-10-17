@@ -51,6 +51,38 @@ set the bit on the source instead.
 Direct-source `exclude` patterns are evaluated independently relative to each
 configured skill collection root. They do not change the canonical MCP document.
 
+Skills that require explicit user invocation declare:
+
+```yaml
+metadata:
+  hooknostic/allow-implicit-invocation: "false"
+```
+
+Both `"false"` and `"true"` must be quoted strings. Keep the authored skill in a
+neutral directory such as `skills/`; Hooknostic owns the native copies. Portable
+policy overrides native settings during projection, preserving unrelated fields
+and body bytes. Removing it restores the source's authored native settings.
+A skill already authored in a configured harness's native discovery directory
+remains untouched; move it to a neutral source so the policy can be owned and
+verified. This includes `.codex/skills` for Codex and `.claude/skills`,
+`.opencode/skills` and `.opencode/skill` for OpenCode, as well as each target's
+generated destination.
+
+Check `inspect <target> --delivery project --component agent-plugin.skills.invocation-policy`
+with the configured `--version` range. A gate unavailable anywhere in that range
+fails by default. `components.onUnsupported: "warn"` omits the skill, including
+the shared `.agents/skills` copy for both configured readers. An unowned native
+copy cannot be reported as omitted.
+
+To intentionally retain a skill despite a missing gate, list
+`<adapter>:skill-implicit-invocation-unenforced` in `components.accept`. To retain
+an in-place authored source unchanged, accept `<adapter>:skill-policy-in-place`.
+These emit an informational HN101 degradation and retain the actual support
+rating. They accept only that named policy shortfall; generic warning settings
+do not permit ungated emission, and ownership conflicts still fail. See
+[ADR-0030](decisions/0030-skill-invocation-policy.md) and
+[harness support](harness-support.md) for projection details and evidence.
+
 | Command | Effect |
 | --- | --- |
 | `init --local` | Create missing config/hook scaffolding without overwrite, installation, or activation |
@@ -75,7 +107,7 @@ including `doctor`, while `check` and `build` still require at least one target.
 
 Claude project hooks are structural entries in `.claude/settings.json`. Codex
 uses `.codex/hooks.json`. OpenCode gets a generated discovery module under
-`.opencode/plugins/`. Registration commands and timeout budgets derive from the
+`.opencode/plugins/`. Pi gets `.pi/extensions/hooknostic.js`. Registration commands and timeout budgets derive from the
 compiled runtime plan. Codex hook commands locate the nearest owned integration,
 validate its configuration identity and runtime hash, and therefore work from
 nested directories. Codex does not read `.codex/hooks.json` from a linked git
@@ -85,9 +117,9 @@ write the file into the worktree, since it takes effect once it reaches the root
 checkout, but they warn HN107 and name the root checkout. Launch Claude MCP sessions from the project root; restart
 harnesses after changing registrations and review their trust prompts.
 
-Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`.
-Sources already in their destination are discovered directly. Claude, Codex,
-and OpenCode copy other sources deterministically with all included supporting
+Claude skills use `.claude/skills`; Codex and OpenCode use `.agents/skills`;
+Pi uses `.pi/skills`. Sources already in their destination are discovered directly.
+Each target copies other sources deterministically with all included supporting
 resources. No symlinks are required.
 Duplicate skill names and unowned destination collisions fail.
 Direct project sources preserve additional harness-native frontmatter while
@@ -179,6 +211,13 @@ Unsupported paths/transports fail by default. No command silently installs a
 plugin or writes user-wide configuration to compensate for a missing feature.
 
 ## Ownership and recovery
+
+`components.targets` does not isolate native skill discovery. If configured
+project harnesses share a destination, invocation policy applies to all readers
+of declared shared skills, including readers excluded from component delivery.
+An unavailable, unaccepted gate omits the shared copy and reports every affected
+target. This policy integration does not add the excluded target's MCP servers,
+runtime packages, or client extensions.
 
 Commit `.hooknostic/integration.json` with generated files. It contains only
 schema, root-relative owner identity, paths, canonical hashes, and file modes.

@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE, codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
+import { createHooknosticExtension, type PiExtensionApi, piHarness } from "@hooknostic/adapter-pi";
+import { stageUserModule } from "@hooknostic/core";
+import type { PluginSpec } from "@hooknostic/sdk";
 
 import { runCli } from "./cli.js";
 import type { DispatchResult } from "./dispatch.js";
@@ -131,6 +134,81 @@ const toolBefore = (nativeName: string, input: Record<string, unknown>) => ({
 });
 
 describe("hooknostic dispatch", () => {
+  it.each(["continue", "block"] as const)("matches Pi replacement validation under onHookError: %s", async (policy) => {
+    const targets = JSON.stringify({
+      pi: { version: piHarness.referenceVersion, delivery: "project", output: "./dist/pi" },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const replacement of [null, [], "invalid"]) {
+        const dir = await project(
+          `import { definePlugin, hook } from "@hooknostic/sdk";
+export default definePlugin({ name: "pi-validation", hooks: [
+  hook("tool.before", { id: "rewrite", capabilities: { "tool.before.input.replace": "required" },
+    run() { return { kind: "replaceInput", input: ${JSON.stringify(replacement)} }; } }),
+  hook("tool.before", { id: "observe", capabilities: { "tool.before.block": "required" },
+    run(event) { return { kind: "block", reason: "observed: " + JSON.stringify(event.tool.input) }; } })
+] });`,
+          targets,
+          `runtime: { onHookError: "${policy}" },`,
+        );
+        const [result] = await dispatched(dir, "pi", [toolBefore("bash", { command: "original" })]);
+        expect(result!.errors).toEqual([
+          expect.objectContaining({ hookId: "rewrite", code: "HN401", kind: "unsupported-effect" }),
+        ]);
+        expect(result!.terminatedBy).toBe(policy === "block" ? "rewrite" : "observe");
+        expect(result!.effects).toHaveLength(1);
+        if (policy === "continue") {
+          expect(result!.effects[0]!.effect).toEqual({ kind: "block", reason: 'observed: {"command":"original"}' });
+        }
+
+        const staged = await stageUserModule(join(dir, "hooks.ts"), EVALUATE);
+        try {
+          const plugin = (await import(staged.href)).default as PluginSpec;
+          let handler: Parameters<NonNullable<PiExtensionApi["on"]>>[1] | undefined;
+          createHooknosticExtension(plugin, {
+            capabilities: { "tool.before.input.replace": "exact", "tool.before.block": "exact" },
+            policy: { onHookError: policy },
+          })({
+            on: (_name, callback) => {
+              handler = callback;
+            },
+          });
+          const input = { command: "original" };
+          const native = await handler!({ type: "tool_call", toolName: "bash", input }, { cwd: dir });
+          const plan = result!.native.body as { block: { reason: string } };
+          expect(native).toEqual({ block: true, reason: plan.block.reason });
+          expect(input).toEqual({ command: "original" });
+          expect(error).toHaveBeenLastCalledWith(expect.stringContaining(result!.errors[0]!.message));
+        } finally {
+          await staged.dispose();
+        }
+      }
+
+      // Positive controls: sharing the validator must also preserve raw and
+      // lowered shell replacements rather than rejecting every replacement.
+      for (const effect of [
+        { kind: "replaceInput", input: { command: "rewritten", timeout: 10 } },
+        { kind: "updateShell", command: "rewritten" },
+      ]) {
+        const dir = await project(
+          `import { definePlugin, hook } from "@hooknostic/sdk";
+export default definePlugin({ name: "pi-validation", hooks: [
+  hook("tool.before", { id: "rewrite", capabilities: { "tool.before.input.replace": "required" },
+    run() { return ${JSON.stringify(effect)}; } })
+] });`,
+          targets,
+          `runtime: { onHookError: "${policy}" },`,
+        );
+        const [result] = await dispatched(dir, "pi", [toolBefore("bash", { command: "original", timeout: 10 })]);
+        expect(result!.errors).toEqual([]);
+        expect(result!.native.body).toEqual({ inputReplacement: { command: "rewritten", timeout: 10 } });
+      }
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("classifies the tool as the target's decoder would and answers in its native reply", async () => {
     const dir = await project(HOOKS);
 
@@ -252,6 +330,132 @@ describe("hooknostic dispatch", () => {
     const broken = captureIO();
     expect(await runCli(argv, { io: broken.io })).toBe(2);
     expect(broken.err()).toMatch(/^line 2: not JSON .*\nline 3: not JSON /);
+  });
+
+  const DIALECT_HOOKS = `
+import { block, definePlugin, hook, replaceInput } from "@hooknostic/sdk";
+
+export default definePlugin({
+  name: "dialect-fixture",
+  hooks: [
+    // Gives a call whose input has no shell view one, as a normalizing hook might.
+    hook("tool.before", {
+      id: "fill",
+      match: { kind: "shell" },
+      capabilities: { "tool.before.input.replace": "required" },
+      run(event) {
+        if (event.tool.shell === undefined) return replaceInput({ command: "ls" });
+      },
+    }),
+    hook("tool.before", {
+      id: "dialect",
+      match: { kind: "shell" },
+      capabilities: { "tool.before.block": "required" },
+      run(event) {
+        return block(String(event.tool.shell?.dialect));
+      },
+    }),
+  ],
+});
+`;
+  const stating = (nativeName: string, shell: unknown) => ({
+    event: "tool.before",
+    tool: { nativeName, input: { command: "ls" }, shell },
+  });
+
+  it("gives a shell call the dialect its target would, taking a stated one only where the harness states it", async () => {
+    const dir = await project(DIALECT_HOOKS);
+    const dialects = async (target: string, events: unknown[]) =>
+      (await dispatched(dir, target, events)).map((result) => (result.effects[0]!.effect as { reason: string }).reason);
+
+    // Claude pins it by tool name; stating the same one changes nothing.
+    expect(
+      await dialects("claude", [
+        toolBefore("Bash", { command: "ls" }),
+        toolBefore("PowerShell", { command: "ls" }),
+        stating("Bash", { dialect: "posix" }),
+      ]),
+    ).toEqual(["posix", "powershell", "posix"]);
+    // Codex withholds the interpreter, so a hook there always meets the unknown case.
+    expect(await dialects("codex", [toolBefore("Bash", { command: "ls" })])).toEqual(["undefined"]);
+    // OpenCode states its shell at run time: unknown until the test says what it stated (ADR-0029).
+    expect(
+      await dialects("opencode", [
+        toolBefore("bash", { command: "ls" }),
+        stating("bash", { dialect: "cmd" }),
+        stating("bash", { dialect: "posix" }),
+      ]),
+    ).toEqual(["undefined", "cmd", "posix"]);
+  });
+
+  it("refuses a stated dialect the target would not give the call", async () => {
+    const dir = await project(DIALECT_HOOKS);
+    const refusal = async (target: string, event: unknown) => {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events: [event],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      return outcome.ok ? "accepted" : outcome.errors.join("; ");
+    };
+    // Silently dropping it would let a test pass against a grammar the hook never sees.
+    expect(await refusal("claude", stating("Bash", { dialect: "powershell" }))).toBe(
+      'event 1: tool.shell.dialect "powershell" is not what the claude target would give Bash: this target reports posix for the tool; omit it',
+    );
+    expect(await refusal("codex", stating("Bash", { dialect: "posix" }))).toBe(
+      'event 1: tool.shell.dialect "posix" is not what the codex target would give Bash: this target cannot establish one; omit it',
+    );
+    expect(await refusal("opencode", stating("read", { dialect: "posix" }))).toBe(
+      'event 1: tool.shell.dialect "posix" is not what the opencode target would give read: it has no shell view; omit it',
+    );
+    expect(await refusal("opencode", stating("bash", { dialect: "bash" }))).toBe(
+      "event 1: tool.shell.dialect must be one of posix, powershell, cmd",
+    );
+    // Anything beyond the dialect is still the classifier's to derive.
+    const derived =
+      "event 1: tool.shell is derived from tool.nativeName and tool.input by the target's classifier; omit it";
+    expect(await refusal("opencode", stating("bash", { dialect: "cmd", command: "ls" }))).toBe(
+      derived + " (tool.shell may hold dialect and nothing else)",
+    );
+    expect(await refusal("opencode", stating("bash", {}))).toBe(derived);
+    expect(await refusal("opencode", stating("bash", "cmd"))).toBe(derived);
+  });
+
+  it("keeps a stated dialect for a shell call whose view only a rewrite creates", async () => {
+    // OpenCode states its shell before the call, whatever the call's arguments
+    // turn out to be. Where the tool pins the dialect or nothing establishes
+    // one, a call with no view has none to state.
+    const dir = await project(DIALECT_HOOKS);
+    const viewless = (nativeName: string, dialect: string) => ({
+      event: "tool.before",
+      tool: { nativeName, input: { script: "ls" }, shell: { dialect } },
+    });
+    const [result] = await dispatched(dir, "opencode", [viewless("bash", "cmd")]);
+    expect(result!.effects.map((entry) => entry.effect)).toEqual([
+      { kind: "replaceInput", input: { command: "ls" } },
+      { kind: "block", reason: "cmd" },
+    ]);
+    // OpenCode 1.x classifies `shell` as a shell tool and has no shape for it,
+    // so no rewrite can ever give it a view: its dialect has nowhere to wait.
+    for (const [target, nativeName] of [
+      ["claude", "Bash"],
+      ["codex", "Bash"],
+      ["opencode", "read"],
+      ["opencode", "shell"],
+    ] as const) {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events: [viewless(nativeName, "posix")],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      expect(outcome.ok ? "accepted" : outcome.errors.join("; "), target).toBe(
+        `event 1: tool.shell.dialect "posix" is not what the ${target} target would give ${nativeName}: it has no shell view; omit it`,
+      );
+    }
   });
 
   it("refuses a field the target's decoder never produces, and admits one it derives", async () => {

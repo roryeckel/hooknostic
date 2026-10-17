@@ -13,6 +13,7 @@ import {
   projectOpenCodeV2Components,
   projectOpenCodeV2Integration,
 } from "./project.js";
+import { opencodeV2SkillPolicy } from "./skill-policy.js";
 import {
   classifyOpenCodeV2Tool,
   OPENCODE_V2_FILE_SHAPES,
@@ -41,7 +42,7 @@ export function opencodeV2Adapter(
 ): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.4.0",
+    adapterVersion: "0.7.0",
     harness: opencodeV2Harness,
     projectPaths: [".opencode/plugins", ".opencode/agents", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration: projectOpenCodeV2Integration,
@@ -49,6 +50,11 @@ export function opencodeV2Adapter(
     projectComponentProfiles: opencodeV2ProjectProfiles,
     // v2 reads the same .opencode/agents markdown as v1 (.capture/agents).
     agents: opencodeAgents,
+    skillInvocationPolicy: {
+      destination: ".agents/skills",
+      discoveryDirectories: [".claude/skills", ".opencode/skills", ".opencode/skill"],
+      projectFiles: opencodeV2SkillPolicy,
+    },
     agentPluginProjector: opencodeV2Projector,
     projectMcpOptions: { startupTimeoutMs: true },
     shimExecution: "module",
@@ -62,6 +68,15 @@ export function opencodeV2Adapter(
     fileCodec: opencodeV2FileCodec,
     fileShapes: OPENCODE_V2_FILE_SHAPES,
     classifyTool: classifyOpenCodeV2Tool,
+    shellDialect: {
+      source: "statement",
+      rationale:
+        "From the shell the harness states in its shell tool description before a call (context hook): posix for " +
+        "bash and zsh, powershell for powershell and pwsh, cmd for cmd. Absent until a statement is heard for the " +
+        "session, for any other shell (the host's shell setting, SHELL and PATH choose it), and on a build that " +
+        "words the statement differently.",
+      evidence: ".capture/shell-dialects",
+    },
     supportedHarnessVersions: () => opencodeV2CapabilityProfiles.map((p) => p.range),
     supportedDeliveries: () => ["project", "package"],
     capabilities: (target) => resolveCapabilityMatrix("opencode", opencodeV2CapabilityProfiles, target.version),

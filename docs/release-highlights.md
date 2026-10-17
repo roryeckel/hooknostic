@@ -1,51 +1,65 @@
-# Skills name their own directory, and one-shot OpenCode runs keep their hooks
+# Pi joins the supported harnesses
 
-0.4.0 adds a portable way for a skill to name the scripts it ships, and fixes a
-`turn.stop` hook being cut off when a one-shot `opencode run` exited.
+0.7.0 adds Pi as a bundled Hooknostic target for project and package delivery.
+One portable source can now emit native Pi hooks and skills alongside Claude
+Code, Codex CLI, and OpenCode. See the [installation guide](installing-artifacts.md#pi)
+and the versioned [harness support table](harness-support.md) for supported
+operations and their evidence.
 
-- Write `${SKILL_DIR}` in a SKILL.md body to name the skill's own directory:
-  `node "${SKILL_DIR}/scripts/status.mjs"`. Claude Code's projection writes
-  `${CLAUDE_SKILL_DIR}`, which Claude expands to the absolute directory; Codex
-  and OpenCode get `.`, a path their skill instructions resolve against the
-  skill's directory. Package and project delivery alike, body only
-  ([ADR-0028](decisions/0028-skill-directory-token.md)).
-- A skill whose text keeps a reference its target shows the model as written,
-  such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}` anywhere, fails
-  the build as the `<adapter>:skill-reference-unexpanded` degradation (**HN101**).
-  Shell parameters such as `${HOME}` are left alone.
-- The OpenCode 1.x plugin now returns `dispose`, which the build measured in
-  [.capture/opencode-dispose](../.capture/opencode-dispose/README.md) awaits before a
-  one-shot `opencode run` exits. Earlier supported builds have not been verified
-  to call or await it, so they may still cut off in-flight hooks. When called,
-  it waits for the hooks still running, for up to
-  their timeouts plus one 10 s host round trip and never more than 15 s, so a
-  `turn.stop` hook dispatched at `session.idle` finishes instead of being killed.
+## What is included
 
-## Migrating
+- Native Pi extensions support tool blocking and input rewriting, prompt and
+  model-request context injection, and the documented lifecycle operations.
+  Target-specific effect validation runs before effects change portable state;
+  invalid Pi input replacements follow the configured hook-error policy.
+- Captured `read`, `write`, and `edit` calls expose additive file views. The
+  dedicated PowerShell tool identifies its shell family. Pi's `bash` tool leaves
+  the dialect absent because its configured interpreter can vary.
+- Hooks declaring final-response fields receive successful assistant text and
+  its native session-entry ID. Error, cancellation, retry, and resumed-session
+  probes verify that an earlier response is not exposed as the current result.
+- Project and packaged skills support relative skill-directory references and
+  the portable implicit-invocation policy. Native explicit invocation remains
+  available when ordinary model discovery is disabled.
+- Pi participates in the shared adapter contracts, Windows/Linux loopback
+  playback, and weekly harness-version monitoring. Capture and drift drivers
+  isolate user settings and ambient skills and support the Node 22 floor.
 
-- A package with Claude-only text in a skill, such as `${CLAUDE_PLUGIN_ROOT}`,
-  now fails its Codex and OpenCode targets. Replace a skill-relative path with
-  `${SKILL_DIR}`, or accept the id you have handled:
-  `components.accept: ["codex:skill-reference-unexpanded"]`.
-- Project delivery reports degradations too: `target.project.degradations` in
-  the build report, under the same `components.onDegraded` and `accept`.
-- `projectSkillFiles` in `@hooknostic/core` takes the target's skill-text rules
-  as a fourth argument; adapter authors pass their own.
-- A one-shot `opencode run` on OpenCode 1.x can now take up to 15 s longer to
-  return while its hooks finish.
+## Adopting Pi
+
+Existing target configurations remain valid. Add a `pi` target to enable Pi
+output; the CLI includes the adapter and runtime shim. Follow the
+[project integration guide](project-integration.md) for project reconciliation
+or the [package installation guide](installing-artifacts.md#pi) for Pi packages.
+
+The basic and shell-rewrite projects in [examples](../examples/README.md) include
+Pi project targets. The [combined package](../examples/agent-plugin/README.md)
+and [local project](../examples/local-project/README.md) include Pi in their default
+configurations, accepting only its named stdio MCP omission.
+
+`components.accept` can now name `pi:mcp-stdio-omitted`,
+`pi:mcp-streamable-http-omitted`, and `pi:mcp-sse-omitted` individually. An
+accepted omission reports HN205 as information and keeps the component rated
+unsupported, with the servers counted as skipped. Other unsupported components
+and invalid inputs remain errors. See [component policies](configuration.md#compatibility-and-component-policies).
+
+- Inspect support for the selected target version and delivery before building.
+  Skill invocation-policy support is version-scoped; a broad range can include
+  builds without a captured gate.
+- Keep portable skill sources in a neutral directory so Hooknostic can own the
+  generated native copies. Authored skills discovered in place remain untouched.
+- Feature-detect `tool.shell.dialect` before choosing shell-specific syntax.
+  Raw tool input remains available when a normalized view or dialect is absent.
 
 ## Limits
 
-- On Codex and OpenCode the model still resolves `./...` against the skill's
-  directory. A command that must run from the project should be given the
-  project explicitly. Codex's guidance comes from its bundled models'
-  instructions; a model behind a custom provider may not have it.
-- A project skill that already sits at its destination is discovered in place
-  and cannot be rewritten; a `${SKILL_DIR}` in it is reported.
-- OpenCode 2.x: `run --standalone` terminates its private server without calling
-  plugin cleanup, so a hook still running when the run ends is lost. Through the
-  background service it completes there. Measured on Windows only.
+Pi's native MCP, permission, and subagent lifecycle channels remain unsupported.
+Turn-stop and session-end mappings are rated emulated, and output replacement is
+approximate. These distinctions remain visible in capability analysis and reports.
 
-Start with the [README](../README.md); [configuration](configuration.md) covers
-skills that run their own scripts, and [OpenCode families](opencode-families.md)
-covers one-shot runs.
+Harness evidence was established on Windows and Linux, centered on the captured
+reference build. Pi has no macOS harness captures. Loopback playback exercises
+real harness behavior using scripted model responses and spends no model credits.
+
+Start with the [README](../README.md); the [release runbook](releases.md)
+describes preparation, draft creation, and publication.

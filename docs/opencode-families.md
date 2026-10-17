@@ -16,6 +16,13 @@ HN203. Live `project.root` integration permits one family per repository,
 because both activate the same native paths. After changing an existing project target, run `hooknostic sync` and
 restart the affected OpenCode session so it loads the new artifact.
 
+Both families report `tool.shell.dialect` from the shell OpenCode itself states
+before a call, not from the tool name or the platform: OpenCode runs whatever
+its `shell` setting, `SHELL` or `PATH` selects. It is `posix` for bash and zsh,
+`powershell` for either PowerShell, `cmd` for cmd, and absent for any other
+shell and until the harness has stated one
+([Decision 0029](decisions/0029-shell-dialect.md)).
+
 V2 currently verifies prompt observation/blocking, shell observation/blocking
 and rewriting, model-visible tool output replacement, ordinary/title/generation/
 compaction context injection, compaction lifecycle, ask-only permission denial,

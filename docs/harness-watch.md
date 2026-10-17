@@ -49,6 +49,18 @@ The drift lane's two transports (issue #1 §6–7):
   provider path into hooks (the repo's codex router history shows these vary
   by model).
 
+Pi's free drift lane can be reproduced with
+`node scripts/drive-capture-session.mjs pi --transport playback` after bundling.
+It uses an isolated project and agent home, the passive `.capture/pi/` tee,
+and the same loopback provider as Pi playback. Captures stay under the printed
+scratch path; expected lifecycle and bash events are compared with Pi fixtures.
+Pi's `llm` driver uses the same provider extension against the local LiteLLM
+proxy. A loopback proxy test verifies the wiring; a failed proxy probe reports
+exit 5 (inconclusive). The scheduled paid route has not yet been run.
+A direct Halogen Qwen live-provider check passed on the reference build;
+its procedure and limits are recorded in [the Pi capture notes](../.capture/pi/README.md).
+Its rolling record is maintained by the same recorder as the other lanes.
+
 ## What automation edits — and what it never touches
 
 Automation writes exactly two things on a pass:
@@ -74,7 +86,7 @@ scheduled run.
 - `schedule: cron "23 5 * * 1"` — weekly, Monday 05:23 UTC, off-minute.
 - `workflow_dispatch` with inputs `harness` (filter), `version` (pin a build
   under test, overriding the dist-tag), `force_llm` (enables the paid drift
-  transport).
+  transport), and `dry_run` (skips record, issue, PR, and comment writers).
 
 Scheduled workflows are disabled by GitHub after 60 days of repository
 inactivity; the dispatch backstop is the documented recovery (`Actions →
@@ -238,7 +250,12 @@ leading message (Claude Code's requests carry a system block after the first
 user turn, which strict chat templates reject). Both only reshape the
 model-side request; harness hook payloads are untouched.
 Configuration references environment variables, so no upstream key is written
-to the config file. Before upgrading the pinned proxy, exercise its real
+to the config file. Each paid run generates and masks a strong disposable proxy
+key, supplies it as `LITELLM_MASTER_KEY`, and uses the same key for the health
+check and `HARNESS_LLM_PROXY_KEY` passed to the isolated driver. The upstream
+API key remains in the host-side proxy process.
+
+Before upgrading the pinned proxy, exercise its real
 streaming and non-streaming translations against a loopback-only stub:
 
 ```bash
@@ -246,8 +263,10 @@ uv run --with-requirements .github/requirements/litellm.txt python scripts/probe
 ```
 
 This installs the pinned proxy in an isolated environment and makes no paid
-model calls. It proves proxy translation, not a live harness session or the
-owner's upstream credentials.
+model calls. The probe generates its own disposable proxy key and authenticates
+the health check and all six streaming/non-streaming API cases. The required
+Ubuntu CI lane runs the same probe against the pinned requirement. It proves
+proxy translation, not a live harness session or the owner's upstream credentials.
 
 | Item | Type | Purpose |
 | --- | --- | --- |

@@ -18,6 +18,7 @@ const ROOT_VERSION = (
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
 import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
+import { piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
@@ -883,7 +884,7 @@ describe("hooknostic build end-to-end", () => {
       expect(existsSync(output)).toBe(false);
     }
   });
-  it("builds the rewrite-shell example into three self-contained target artifacts", { timeout: 120_000 }, async () => {
+  it("builds the rewrite-shell example into four self-contained target artifacts", { timeout: 120_000 }, async () => {
     const dir = await cleanExample("rewrite-shell");
     const { io, out } = captureIO();
     const code = await runBuild({
@@ -896,7 +897,7 @@ describe("hooknostic build end-to-end", () => {
 
     const report = JSON.parse(out());
     expect(report.schemaVersion).toBe(2);
-    expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "opencode", "pi"]);
     for (const target of Object.values(report.targets) as { status: string }[]) {
       expect(target.status).toBe("success");
     }
@@ -910,6 +911,7 @@ describe("hooknostic build end-to-end", () => {
     expect(existsSync(join(dir, "dist/codex/.codex/hooks.json"))).toBe(true);
     expect(existsSync(join(dir, "dist/codex/.codex/hooknostic/hooknostic.mjs"))).toBe(true);
     expect(existsSync(join(dir, "dist/opencode/.opencode/plugins/hooknostic.js"))).toBe(true);
+    expect(existsSync(join(dir, "dist/pi/.pi/extensions/hooknostic.js"))).toBe(true);
 
     // The bundle embeds the portable handlers — no cross-directory refs.
     const bundle = await readFile(claudeRuntime, "utf8");
@@ -1140,8 +1142,8 @@ ${run.stderr}`,
       expect(code, out()).toBe(0);
 
       const report = JSON.parse(out());
-      expect(report.components.targets).toEqual(["claude", "codex", "opencode", "legacy"]);
-      for (const id of ["claude", "codex", "opencode", "legacy"]) {
+      expect(report.components.targets).toEqual(["claude", "codex", "opencode", "legacy", "pi"]);
+      for (const id of ["claude", "codex", "opencode", "legacy", "pi"]) {
         expect(report.targets[id].projection, id).toMatchObject({ status: "success" });
       }
 
@@ -1190,7 +1192,7 @@ ${run.stderr}`,
         license: "MIT",
       });
 
-      // Every harness gets all three components in one installable unit; the
+      // MCP-capable harnesses get all three components in one installable unit; the
       // Codex manifest naming its hooks is what a local-mode target would
       // silently omit.
       const codexManifest = JSON.parse(await readFile(join(dir, "dist/codex/.codex-plugin/plugin.json"), "utf8"));
@@ -1212,6 +1214,71 @@ ${run.stderr}`,
       }
     },
   );
+
+  it("builds Pi in the default combined example with an accepted MCP omission", async () => {
+    const dir = await cleanExample("agent-plugin");
+    const mcpBefore = await readFile(join(dir, "mcp.json"), "utf8");
+    const config = join(dir, "hooknostic.config.ts");
+    for (const run of [runCheck, runBuild]) {
+      const capture = captureIO();
+      expect(await run({ config, json: true, registry: defaultAdapterRegistry(), io: capture.io }), capture.out()).toBe(
+        0,
+      );
+      const report = JSON.parse(capture.out());
+      expect(Object.keys(report.targets)).toContain("pi");
+      expect(report.targets.pi.projection).toMatchObject({
+        status: "success",
+        components: {
+          "agent-plugin.mcp.stdio": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+        },
+      });
+      expect(report.targets.pi.projection.omissions).toContainEqual(
+        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "greeter" }),
+      );
+      expect(report.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "HN205", severity: "info", omission: "pi:mcp-stdio-omitted" }),
+      );
+    }
+    const output = join(dir, "dist/pi");
+    const manifest = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
+    expect(manifest.pi).toEqual({ extensions: ["./hooknostic.js"], skills: ["./package/skills/greet"] });
+    expect(await readFile(join(output, "hooknostic.js"), "utf8")).toContain("Hooknostic marketplace probe blocked.");
+    expect(await readFile(join(output, "package/skills/greet/SKILL.md"), "utf8")).toContain("git status --short");
+    // Portable source files may survive copying; native Pi activation declares
+    // only the extension and skill, never an MCP server.
+    expect(await readFile(join(dir, "mcp.json"), "utf8")).toBe(mcpBefore);
+  });
+
+  it("builds a pi package with a discovered skill and no nonexistent hook extension", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-pi-package-build-"));
+    cleanupDirs.push(dir);
+    await mkdir(join(dir, "skills", "review"), { recursive: true });
+    await writeFile(
+      join(dir, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "pi-build", version: "1.0.0" }),
+    );
+    await writeFile(join(dir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review code\n---\n");
+    await writeFile(
+      join(dir, "hooknostic.config.ts"),
+      `export default {
+        components: { root: ".", targets: ["pi"] },
+        targets: { pi: { version: "${piHarness.recommendedRange}", delivery: "package", output: "./dist/pi" } }
+      };`,
+    );
+    const capture = captureIO();
+    const code = await runBuild({
+      config: join(dir, "hooknostic.config.ts"),
+      registry: defaultAdapterRegistry(),
+      io: capture.io,
+      json: true,
+    });
+    expect(code, capture.out()).toBe(0);
+    const manifest = JSON.parse(await readFile(join(dir, "dist/pi/package.json"), "utf8"));
+    expect(manifest).toMatchObject({ name: "pi-build", pi: { skills: ["./package/skills/review"] } });
+    expect(manifest.pi).not.toHaveProperty("extensions");
+    expect(existsSync(join(dir, "dist/pi/package/skills/review/SKILL.md"))).toBe(true);
+    expect(JSON.parse(capture.out()).targets.pi.projection).toMatchObject({ status: "success" });
+  });
 
   it("preserves an empty package directory used as MCP cwd", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-empty-cwd-"));
@@ -2909,7 +2976,12 @@ describe("hooknostic doctor", () => {
     await runDoctor({ json: true, registry: defaultAdapterRegistry(), io });
     const report = JSON.parse(out());
     expect(report.command).toBe("doctor");
-    expect(report.harnesses.map((h: { adapter: string }) => h.adapter).sort()).toEqual(["claude", "codex", "opencode"]);
+    expect(report.harnesses.map((h: { adapter: string }) => h.adapter).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+      "pi",
+    ]);
     for (const harness of report.harnesses) {
       expect([
         "ok",
@@ -3374,6 +3446,39 @@ describe("hooknostic inspect", () => {
     const typo = captureIO();
     expect(await runInspect({ target: "claude", field: "turn.stop.lastMesage", registry, io: typo.io })).toBe(2);
     expect(typo.err()).toContain('unknown field "turn.stop.lastMesage"');
+  });
+
+  it("says where each target's shell dialect comes from, and why it can be absent (ADR-0029)", async () => {
+    // Not a capability, so nothing else here would answer "why is dialect
+    // undefined on Codex" with something a user can quote upstream.
+    const registry = defaultAdapterRegistry();
+    const source = async (target: string, version?: string) => {
+      const capture = captureIO();
+      expect(
+        await runInspect({ target, json: true, registry, io: capture.io, ...(version ? { version } : {}) }),
+        capture.err(),
+      ).toBe(0);
+      return (JSON.parse(capture.out()) as { shellDialect: { source: string; rationale: string } }).shellDialect;
+    };
+    expect(await source("claude")).toMatchObject({ source: "tool" });
+    expect(await source("codex")).toMatchObject({ source: "none", rationale: expect.stringContaining("selector") });
+    expect(await source("opencode", opencodeHarness.recommendedRange)).toMatchObject({
+      source: "statement",
+      rationale: expect.stringContaining("tool.definition"),
+    });
+    expect(await source("opencode", opencodeV2Harness.recommendedRange)).toMatchObject({
+      source: "statement",
+      rationale: expect.stringContaining("context hook"),
+    });
+    const text = captureIO();
+    expect(await runInspect({ target: "codex", registry, io: text.io })).toBe(0);
+    expect(text.out()).toMatch(
+      /^none {9}tool\.shell\.dialect source\n {13}The model selects the interpreter per call/m,
+    );
+    // A single-capability answer stays that one answer.
+    const single = captureIO();
+    expect(await runInspect({ target: "codex", capability: "tool.before.block", registry, io: single.io })).toBe(0);
+    expect(single.out()).not.toContain("tool.shell.dialect");
   });
 
   it("supports single-capability queries and unknown targets", async () => {

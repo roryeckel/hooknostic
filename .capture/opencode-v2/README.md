@@ -60,6 +60,22 @@ Windows still discovers compatibility skills under the actual user home even
 with redirected HOME/USERPROFILE and XDG paths. Probes never call those skills;
 all model replies are scripted. Only scratch state is written.
 
+## Timeout diagnostics
+
+The driver prints its scratch root before setup and records each setup/native
+phase in `phases.jsonl` and `current-phase.json`. Package-manager phases include
+the command, arguments and working directory. Their stdout/stderr and the native
+run's output are written as they arrive, so a parent test timeout cannot discard
+the last output. Loopback model, remote MCP and registry observations are also
+snapshotted once per second while the harness runs.
+
+Set `HKN_PLAYBACK_ARTIFACT_DIR` to collect each drive's fresh scratch directory
+under one parent. CI does this for playback and uploads phase logs, subprocess
+output, generated package inputs and capture observations when either OpenCode
+v2 lane fails. Dependency trees and isolated user homes are excluded. An
+unfinished `started` phase identifies where an externally killed driver stopped;
+an ordinary exception records `failure.json` with that phase and its stack.
+
 
 `project-components` exercises generated project integration, including the
 native wrapper, skill copy and MCP launcher. The stdio command is the portable

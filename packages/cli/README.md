@@ -2,7 +2,8 @@
 
 Compile portable hooks, skills, and MCP servers into native packages or repository
 integrations for Claude Code, Codex, and OpenCode. Agent Plugins 1.0 packages can be
-projected for Claude and Codex marketplace distribution. Requires Node.js 22.13+.
+projected for Claude and Codex marketplace distribution.
+Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
 
 ```sh
 npm install --save-dev hooknostic @hooknostic/sdk

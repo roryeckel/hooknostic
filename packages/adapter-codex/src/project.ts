@@ -254,7 +254,7 @@ export async function projectComponents(
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: codexHarness.recommendedRange,
     components: {
@@ -351,6 +351,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
           what: "At the reference build, spawn_agent gained agent_type once a project agent existed, and a definition synchronized by Hooknostic's project delivery was delegated to and ran on its developer_instructions and native model, its result returning through wait_agent (packages/cli/test/agent-definition-playback.test.ts).",
         },
         {
+          version: "0.156.1",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, a project skill with policy.allow_implicit_invocation: false was absent from the ordinary listing but its full file reached the model after $gate-codex. The ungated control and a skill carrying only Claude frontmatter remained listed. No portable invocation policy is implemented.",
+        },
+        {
           version: "0.154.0",
           date: "2026-09-30",
           method: "live-probe",
@@ -396,3 +403,11 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+import { skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
+
+import { CODEX_SKILL_POLICY_RATIONALE, codexProjectSkillPolicyValidation } from "./skill-policy.js";
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  codexProjectSkillPolicyValidation,
+  CODEX_SKILL_POLICY_RATIONALE,
+);

@@ -13,6 +13,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       date: "2026-08-29",
       validatedOn: [
         {
+          version: "2.1.295",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "Windows ConPTY trust selection repaints only the cursor, with labels retained in earlier writes (claude-windows-trust-295.json). With a reconstructed terminal screen, both interactive permission denial and hook-requested approval passed against the loopback model on Node 22.22.2.",
+        },
+        {
           version: "2.1.238",
           date: "2026-08-20",
           method: "captured",
@@ -116,15 +123,75 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "2.1.283",
-          date: "2026-09-28",
+          version: "2.1.296",
+          date: "2026-10-11",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
         },
         // scheduled-playback:end
+        {
+          version: "2.1.286",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: native Bash payload and executed Node process ancestry establish Git for Windows bash.exe for this configuration; PowerShell was not advertised by the discovery turn.",
+        },
+        {
+          version: "2.1.286",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: captured native Bash payload and executed Node process ancestry establish /bin/bash for this GitHub runner configuration; PowerShell was not advertised by discovery.",
+        },
+        {
+          version: "2.1.238",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe on the reference build: the Bash tool ran Git for Windows bash.exe.",
+        },
+        {
+          version: "2.1.295",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Linux container shell interpreter probe: Bash ran bash or zsh in nine host configurations: SHELL unset or naming bash, zsh, fish or tcsh, and CLAUDE_CODE_SHELL naming zsh, fish, tcsh or pwsh. Where the shell named was neither bash nor zsh it ran one of those two.",
+        },
+        {
+          version: "2.1.295",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: with CLAUDE_CODE_USE_POWERSHELL_TOOL=1 the PowerShell tool was advertised and ran Windows powershell.exe, or pwsh.exe when that was first on PATH, under identical hook input. Bash ran Git for Windows bash.exe beside it, and also with Git removed from PATH, with ProgramFiles, ProgramFiles(x86), ProgramW6432 and LOCALAPPDATA redirected to an empty directory as well, and with CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe. Establishes the dialect each tool name pins (ADR-0029); no environment on this host stood in for one without Git for Windows, which the next record covers.",
+        },
+        {
+          version: "2.1.295",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows Sandbox shell interpreter probe on a host with no Git for Windows: of eight host configurations, six started, and in each PowerShell was the only shell tool advertised, without the opt-in, and ran Windows powershell.exe. That includes CLAUDE_CODE_GIT_BASH_PATH naming a missing file, cmd.exe or powershell.exe, and CLAUDE_CODE_SHELL or SHELL naming powershell.exe. The two that set CLAUDE_CODE_USE_POWERSHELL_TOOL=0 exited before any model request, reporting that Git Bash was not found. So no Bash call reaches a hook there for the posix pin to be wrong about (ADR-0029).",
+        },
+        {
+          version: "2.1.295",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: with SHELL naming bash, Bash was the only shell tool advertised and ran bash, as it did on 2.1.286.",
+        },
+        {
+          version: "2.1.296",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "A -p run's first model request preceded a plugin stdio MCP server's connection: it listed WaitForMcpServers and the plugin's HTTP and SSE tools, and not the stdio tool. After a WaitForMcpServers call with no arguments the next request listed it, and the server had started with the projected root, working directory and data directory. The Claude playback lane passes on this build once its model makes that call.",
+        },
       ],
-      notes: ["https://code.claude.com/docs/en/hooks (fetched 2026-08-20)"],
+      notes: [
+        "https://code.claude.com/docs/en/hooks (fetched 2026-08-20)",
+        // What Anthropic documents for a Windows host without Git for Windows; the sandbox capture agrees.
+        "https://code.claude.com/docs/en/setup and https://code.claude.com/docs/en/tools-reference (fetched 2026-10-10): the Bash tool needs Git Bash, and a Windows host without Git for Windows runs shell commands through the PowerShell tool",
+      ],
     },
     // Optional event fields (ADR-0027): exactly what the captured fixtures in
     // fixtures/claude/2.1 carry. prompt_id is on every payload except
@@ -184,7 +251,7 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.context.add": { level: "exact" },
       // Inside a subagent the payload carries agent_type, and so does every
       // event of a session started as an agent; a plain session's carry none, so
-      // a named agent is never confused with it (ADR-0030, fixtures
+      // a named agent is never confused with it (ADR-0033, fixtures
       // pre-tool-read-subagent, 2.1.238 and 2.1.283; .capture/agents primary-*).
       "tool.before.agent.identity": { level: "exact" },
 

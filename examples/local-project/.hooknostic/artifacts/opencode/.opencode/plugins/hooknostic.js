@@ -4407,6 +4407,7 @@ var TOOL_KINDS = [
   "mcp",
   "other"
 ];
+var SHELL_DIALECTS = ["posix", "powershell", "cmd"];
 function isPlainObject2(value) {
   if (typeof value !== "object" || value === null)
     return false;
@@ -4431,7 +4432,8 @@ function shellCodec(shapes, options) {
         command,
         ...typeof cwd === "string" ? { cwd } : {},
         commandKey: shape.commandKey,
-        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {}
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {},
+        ...shape.dialect !== void 0 ? { dialect: shape.dialect } : {}
       };
     },
     encode(nativeName, input, patch) {
@@ -4525,6 +4527,7 @@ var capabilityIdSchema = external_exports.enum(ALL_CAPABILITY_IDS);
 var supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
 var requirementLevelSchema = external_exports.enum(["required", "optional"]);
 var toolKindSchema = external_exports.enum(TOOL_KINDS);
+var shellDialectSchema = external_exports.enum(SHELL_DIALECTS);
 var eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
 var fieldAcceptanceSchema = external_exports.string().refine((value) => {
   const colon = value.indexOf(":");
@@ -4546,7 +4549,8 @@ var toolInvocationSchema = external_exports.object({
     command: external_exports.string(),
     cwd: external_exports.string().optional(),
     commandKey: external_exports.string(),
-    cwdKey: external_exports.string().optional()
+    cwdKey: external_exports.string().optional(),
+    dialect: shellDialectSchema.optional()
   }).strict().optional(),
   file: external_exports.object({
     paths: external_exports.array(external_exports.string()),
@@ -4926,10 +4930,11 @@ function createCapabilitySet(levels) {
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, options) {
+function setToolInput(tool, input, options, established) {
   tool.input = input;
   const shell = options.shellCodec?.classify(tool.nativeName, input);
-  if (shell !== void 0) tool.shell = shell;
+  if (shell !== void 0)
+    tool.shell = shell.dialect === void 0 && established !== void 0 ? { ...shell, dialect: established } : shell;
   else delete tool.shell;
   const file = options.fileCodec?.classify(tool.nativeName, input);
   if (file !== void 0) tool.file = file;
@@ -4965,6 +4970,7 @@ async function dispatch(hooks, event, options) {
   };
   let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
   let notifyBudget = typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0 ? policy.notifyCharLimit : DEFAULT_RUNTIME.notifyCharLimit;
+  const establishedDialect = toolOf(event)?.shell?.dialect ?? options.shellDialect;
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options.targetId)) return false;
@@ -5070,17 +5076,38 @@ async function dispatch(hooks, event, options) {
         );
       }
     }
+    if (options.validateEffect !== void 0) {
+      const nativeEffect = effect.kind === "updateShell" ? { kind: "replaceInput", input: loweredShellInput } : effect;
+      let rejection;
+      try {
+        rejection = options.validateEffect(nativeEffect, event);
+      } catch (error) {
+        rejection = `target validation failed: ${errorMessage(error)}`;
+      }
+      if (rejection !== void 0) {
+        return failDispatch(
+          hook2.id,
+          {
+            hookId: hook2.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook2.id}" returned "${effect.kind}" that target "${options.targetId}" cannot apply: ${rejection}`
+          },
+          capabilities
+        );
+      }
+    }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options);
+        if (tool) setToolInput(tool, effect.input, options, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options);
+        setToolInput(tool, loweredShellInput, options, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5319,6 +5346,27 @@ function withTimeout(promise) {
     if (timer !== void 0) clearTimeout(timer);
   });
 }
+var V1_STATEMENT = /^Be aware: OS: \S+, Shell: (\S+)[ \t]*\r?$/gm;
+function stated(pattern, description, precededBy) {
+  if (typeof description !== "string") return void 0;
+  const names = new Set(
+    [...description.matchAll(pattern)].filter((match) => precededBy === void 0 || precededBy.test(description.slice(0, match.index))).map((match) => match[1])
+  );
+  return names.size === 1 ? [...names][0] : void 0;
+}
+function statedShellV1(description) {
+  return stated(V1_STATEMENT, description);
+}
+var DIALECT_BY_STATED_SHELL = {
+  bash: "posix",
+  zsh: "posix",
+  powershell: "powershell",
+  pwsh: "powershell",
+  cmd: "cmd"
+};
+function dialectOfStatedShell(name) {
+  return typeof name === "string" && Object.hasOwn(DIALECT_BY_STATED_SHELL, name) ? DIALECT_BY_STATED_SHELL[name] : void 0;
+}
 var EXACT = {
   bash: "shell",
   shell: "shell",
@@ -5356,12 +5404,14 @@ var OPENCODE_FILE_SHAPES = {
 var opencodeFileCodec = fileCodec(OPENCODE_FILE_SHAPES, {
   normalizeName: (name) => name.toLowerCase()
 });
-function classifyOpenCodeTool(nativeName, input) {
+function classifyOpenCodeTool(nativeName, input, reported) {
   const mcpMatch = /^([^_]+)_(.+)$/.exec(nativeName);
   const lowered = nativeName.toLowerCase();
   const known = Object.hasOwn(EXACT, lowered) ? EXACT[lowered] : void 0;
   if (known !== void 0) {
-    const shell = opencodeShellCodec.classify(nativeName, input);
+    const view = opencodeShellCodec.classify(nativeName, input);
+    const dialect = reported?.shellDialect;
+    const shell = view !== void 0 && dialect !== void 0 ? { ...view, dialect } : view;
     const file = opencodeFileCodec.classify(nativeName, input);
     return {
       kind: known,
@@ -5422,6 +5472,8 @@ function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
   }
   const input = native.input ?? {};
   const output = native.output ?? {};
+  const shellDialect = dialectOfStatedShell(enrichment.shell);
+  const reported = shellDialect !== void 0 ? { shellDialect } : void 0;
   const base = {
     schemaVersion: 1,
     harness: {
@@ -5446,7 +5498,7 @@ function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
       return {
         ...base,
         event: "tool.before",
-        tool: classifyOpenCodeTool(input.tool, snapshotOpenCodeArgs(output["args"]))
+        tool: classifyOpenCodeTool(input.tool, snapshotOpenCodeArgs(output["args"]), reported)
       };
     }
     case "tool.execute.after": {
@@ -5456,7 +5508,7 @@ function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
       return {
         ...base,
         event: "tool.after",
-        tool: classifyOpenCodeTool(input.tool, input.args),
+        tool: classifyOpenCodeTool(input.tool, input.args, reported),
         output: output["output"]
       };
     }
@@ -5472,7 +5524,7 @@ function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
           ...typeof permission.callID === "string" ? { toolCallId: permission.callID } : {}
         },
         event: "permission.request",
-        tool: classifyOpenCodeTool(permission.type ?? "unknown", native.input)
+        tool: classifyOpenCodeTool(permission.type ?? "unknown", native.input, reported)
       };
     }
     case "chat.message": {
@@ -5528,7 +5580,8 @@ function decodeOpenCode(nativeEvent, invocation, enrichment = {}) {
             event: "permission.request",
             tool: classifyOpenCodeTool(
               typeof properties.permission === "string" ? properties.permission : "unknown",
-              properties.metadata
+              properties.metadata,
+              reported
             )
           };
         }
@@ -5580,10 +5633,15 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       return {};
     }
   };
+  let statedShell;
   class HooknosticBlock extends Error {
   }
   const run = async (native) => {
-    const enrichment = await enrich(native);
+    const enrichment = {
+      ...await enrich(native),
+      ...statedShell !== void 0 ? { shell: statedShell } : {}
+    };
+    const shellDialect = dialectOfStatedShell(enrichment.shell);
     let event;
     try {
       event = decodeOpenCode(native, invocation, enrichment);
@@ -5598,6 +5656,7 @@ function createHooknosticHooks(plugin, options, pluginInput) {
       ...options.minimumCapabilityLevel !== void 0 ? { minimumCapabilityLevel: options.minimumCapabilityLevel } : {},
       ...options.policy !== void 0 ? { policy: options.policy } : {},
       shellCodec: opencodeShellCodec,
+      ...shellDialect !== void 0 ? { shellDialect } : {},
       fileCodec: opencodeFileCodec,
       ...options.pluginRoot !== void 0 ? { plugin: { root: options.pluginRoot } } : {}
     });
@@ -5737,6 +5796,17 @@ function createHooknosticHooks(plugin, options, pluginInput) {
   };
   if (events.has("tool.before")) hooks["tool.execute.before"] = callback("tool.execute.before");
   if (events.has("tool.after")) hooks["tool.execute.after"] = callback("tool.execute.after");
+  if (events.has("tool.before") || events.has("tool.after") || events.has("permission.request")) {
+    hooks["tool.definition"] = async (input, output) => {
+      try {
+        const toolID = input?.toolID;
+        if (typeof toolID !== "string" || toolID.toLowerCase() !== "bash") return;
+        statedShell = statedShellV1(output?.description);
+      } catch {
+        statedShell = void 0;
+      }
+    };
+  }
   if (events.has("permission.request")) hooks["event"] = callback("event");
   if (events.has("prompt.before")) hooks["chat.message"] = callback("chat.message");
   if (events.has("context.compact.before")) {
@@ -5767,8 +5837,8 @@ export {
 /*!
 Bundled package notices
 
-@hooknostic/adapter-opencode@0.4.0
-@hooknostic/runtime@0.4.0
+@hooknostic/adapter-opencode@0.7.0
+@hooknostic/runtime@0.7.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -5976,8 +6046,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.4.0
-hooknostic@0.4.0
+@hooknostic/sdk@0.7.0
+hooknostic@0.7.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

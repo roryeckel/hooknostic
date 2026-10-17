@@ -22,7 +22,8 @@
     },
     "shell": {
       "command": "echo hooknostic-fixture",
-      "commandKey": "command"
+      "commandKey": "command",
+      "dialect": "posix"
     }
   }
 }

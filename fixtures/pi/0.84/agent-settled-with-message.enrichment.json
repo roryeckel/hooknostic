@@ -1,0 +1,130 @@
+{
+  "branch": [
+    {
+      "type": "model_change",
+      "id": "b084641d",
+      "parentId": null,
+      "timestamp": "2026-10-15T00:20:12.184Z",
+      "provider": "hooknostic-playback",
+      "modelId": "hooknostic-playback"
+    },
+    {
+      "type": "thinking_level_change",
+      "id": "6111b905",
+      "parentId": "b084641d",
+      "timestamp": "2026-10-15T00:20:12.184Z",
+      "thinkingLevel": "off"
+    },
+    {
+      "type": "message",
+      "id": "a63ee7e6",
+      "parentId": "6111b905",
+      "timestamp": "2026-10-15T00:20:12.195Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Perform the harmless feature probe, then stop."
+          }
+        ],
+        "timestamp": 1792023612192
+      }
+    },
+    {
+      "type": "message",
+      "id": "d2742aa0",
+      "parentId": "a63ee7e6",
+      "timestamp": "2026-10-15T00:20:12.227Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_playback",
+            "name": "bash",
+            "arguments": {
+              "command": "echo feature-probe"
+            }
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1792023612208,
+        "responseId": "chatcmpl-playback-1",
+        "rawStopReason": "tool_calls"
+      }
+    },
+    {
+      "type": "message",
+      "id": "d584d5c7",
+      "parentId": "d2742aa0",
+      "timestamp": "2026-10-15T00:20:12.269Z",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "call_playback",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "feature-probe\n"
+          }
+        ],
+        "isError": false,
+        "timestamp": 1792023612268
+      }
+    },
+    {
+      "type": "message",
+      "id": "b37c76e4",
+      "parentId": "d584d5c7",
+      "timestamp": "2026-10-15T00:20:12.275Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "FEATURE_FINAL_REPLY"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792023612270,
+        "responseId": "chatcmpl-playback-2",
+        "rawStopReason": "stop"
+      }
+    }
+  ]
+}

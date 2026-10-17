@@ -20,7 +20,9 @@ import {
   parseJsonObject,
   projectPackageSkillTexts,
   SKILL_REFERENCE_UNEXPANDED,
+  skillInvocationPolicyProfiles,
   validateNpmRuntimePackage,
+  withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 import type { TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE } from "@hooknostic/core";
@@ -32,6 +34,12 @@ import {
   environmentExpansionReason,
 } from "./mcp-expansion.js";
 import { PRIMARY_AGENT_DELEGABLE, primaryDelegableDeviations, renderClaudeAgent } from "./project.js";
+import {
+  CLAUDE_SKILL_POLICY_RATIONALE,
+  claudeNewerSkillPolicyValidation,
+  claudePackageSkillPolicyValidation,
+  claudeSkillPolicy,
+} from "./skill-policy.js";
 import { CLAUDE_PLUGIN_SKILL_TEXT } from "./skill-text.js";
 
 export const CLAUDE_AGENT_PLUGIN_NAMESPACE = "com.anthropic.claude-code";
@@ -247,7 +255,7 @@ function componentCounts(
     ...(defaultAgent === undefined ? {} : { defaultAgent }),
     skipped: (component, discovered) => {
       if (component === "agent-plugin.runtime-package") return runtimePackage === "skipped" ? 1 : 0;
-      // A package never sets the default agent (ADR-0029, decision 10).
+      // A package never sets the default agent (ADR-0032, decision 10).
       if (component === "agents.default") return discovered;
       // A refused stdio server is discovered but not emitted; without this the
       // report contradicts summary.omissions and .mcp.json alike.
@@ -255,8 +263,12 @@ function componentCounts(
       if (component !== "agent-plugin.client-extension.files") return 0;
       // Only the overlay files npm would read as install input are withheld;
       // the manifest extension and every other overlay file are emitted.
+      const insideRejectedSkill = isRejectedSkillPath(source);
       return source.files.filter(
-        (file) => file.path.startsWith(prefix) && isRootNpmManifestPath(file.path.slice(prefix.length)),
+        (file) =>
+          file.path.startsWith(prefix) &&
+          (isRootNpmManifestPath(file.path.slice(prefix.length)) ||
+            insideRejectedSkill(file.path.slice(prefix.length))),
       ).length;
     },
   });
@@ -333,6 +345,8 @@ export async function projectAgentPluginToClaude(
     const prefix = `${CLAUDE_AGENT_PLUGIN_NAMESPACE}/`;
     if (!file.path.startsWith(prefix)) continue;
     const path = file.path.slice(prefix.length);
+    // Native overlays cannot restore a canonical skill rejected by the loader.
+    if (insideRejectedSkill(path)) continue;
     if (isRootNpmManifestPath(path)) {
       // Dropping a declared overlay file degrades the client-extension
       // component, so it obeys the same policy as any other unrepresentable
@@ -551,7 +565,7 @@ export async function projectAgentPluginToClaude(
       files.set(hookFile.path, hookFile);
     }
 
-    // Agent definitions configured beside the package (ADR-0029). Claude qualifies
+    // Agent definitions configured beside the package (ADR-0032). Claude qualifies
     // each by the plugin, so the authored name is kept. A package already
     // shipping a file at the same path would otherwise be replaced silently,
     // so that is fatal, case-folded like every other generated-path check.
@@ -624,7 +638,7 @@ export async function projectAgentPluginToClaude(
   };
 }
 
-export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
+const nativeClaudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: CLAUDE_AGENT_PLUGIN_NAMESPACE,
   // A Claude plugin loads hooks/hooks.json from its own installed root, so the
   // package IS the hook channel here and both share the target's output.
@@ -851,3 +865,17 @@ export const claudeAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   ],
   project: projectAgentPluginToClaude,
 };
+export const claudeAgentPluginProjector = withSkillInvocationPolicy(
+  {
+    ...nativeClaudeAgentPluginProjector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeClaudeAgentPluginProjector.profiles,
+      claudePackageSkillPolicyValidation,
+      CLAUDE_SKILL_POLICY_RATIONALE,
+      "exact",
+      [claudeNewerSkillPolicyValidation],
+    ),
+  },
+  "claude",
+  claudeSkillPolicy,
+);

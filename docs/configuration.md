@@ -1,7 +1,7 @@
 # Configuration and commands
 
-Install `hooknostic` and `@hooknostic/sdk` with Node.js 22.13 or newer. Configuration
-is executable TypeScript or JavaScript; review it and its imported providers before
+Install `hooknostic` and `@hooknostic/sdk` with Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
+Configuration is executable TypeScript or JavaScript; review it and its imported providers before
 running a command. Paths resolve from `hooknostic.config.ts`.
 
 ## Choose your sources and delivery
@@ -85,6 +85,24 @@ up, and an id nothing rates below exact is an error. `hooknostic inspect <target
 
 An accepted instance remains visible as information in diagnostics and the report.
 Unknown ids fail validation. Acceptance does not make unsupported components work.
+An unsupported component can declare a named omission (ADR-0031). Pi declares
+`pi:mcp-stdio-omitted`, `pi:mcp-streamable-http-omitted`, and
+`pi:mcp-sse-omitted`. List only the omissions you intend in `components.accept`:
+
+```ts
+components: {
+  root: ".",
+  accept: ["pi:mcp-stdio-omitted"],
+}
+```
+
+This permits Pi's stdio MCP servers to be skipped while keeping HTTP/SSE and
+other unsupported components fatal. HN205 becomes informational for the accepted
+omission; reports retain `unsupported` support and skipped counts. The same rule
+applies to project delivery. Adapter IDs qualify acceptance even when a target
+uses another name. `inspect` lists the available omission IDs and their evidence.
+Portable source files may still be copied into a package; native MCP registration
+is omitted. Acceptance never changes required hook capabilities or invalid-input policy.
 For strict translation, set `compatibility.minimum: "exact"` and
 `components.onDeviation: "error"`. For a known exception, accept its specific id
 instead of reducing every diagnostic to a warning.
@@ -98,7 +116,7 @@ Run `node "${SKILL_DIR}/scripts/status.mjs" --project "<the user's project direc
 ```
 
 Projection writes each target's form: `${CLAUDE_SKILL_DIR}` on Claude Code, which it
-expands to the skill's absolute directory, and `.` on Codex and OpenCode, whose skill
+expands to the skill's absolute directory, and `.` on Codex, OpenCode, and Pi, whose skill
 instructions resolve relative paths against the skill's directory. Only the body is
 rewritten, on package and project delivery alike. A skill-text reference a target shows
 the model as written, such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}`

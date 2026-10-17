@@ -199,7 +199,7 @@ describe("buildPluginIR", () => {
     expect(result.diagnostics[0]).toMatchObject({ code: "HN501", hookId: "s" });
   });
 
-  it("carries an agent scope declared through hook() to the IR (ADR-0030)", () => {
+  it("carries an agent scope declared through hook() to the IR (ADR-0033)", () => {
     const { ir, diagnostics } = buildPluginIR(
       definePlugin({
         name: "scoped",

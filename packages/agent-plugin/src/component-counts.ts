@@ -1,4 +1,5 @@
 import { type AgentDefinition, servesAsPrimary } from "./agent-definitions.js";
+import { SKILL_INVOCATION_POLICY, skillPolicyCount } from "./skill-policy.js";
 import {
   AGENT_PLUGIN_COMPONENT_IDS,
   type AgentPluginPackage,
@@ -19,11 +20,11 @@ export interface ComponentDiscoveryOptions {
    */
   namespace?: string;
   hasRuntimePackage?: boolean;
-  /** Agent definitions configured beside the package (ADR-0029). */
+  /** Agent definitions configured beside the package (ADR-0032). */
   agents?: readonly AgentDefinition[];
   /** The harness key whose `native` blocks `agents.native` counts. */
   harness?: string;
-  /** `components.defaultAgent`, counted as `agents.default` (ADR-0029). */
+  /** `components.defaultAgent`, counted as `agents.default` (ADR-0032). */
   defaultAgent?: string;
 }
 
@@ -48,6 +49,8 @@ export function discoverComponents(
   const discovered = new Map<ComponentId, number>([["agent-plugin.manifest", 1]]);
 
   if (source.skills.length > 0) discovered.set("agent-plugin.skills", source.skills.length);
+  const policyCount = skillPolicyCount(source.skills);
+  if (policyCount) discovered.set(SKILL_INVOCATION_POLICY, policyCount);
 
   for (const id of AGENT_PLUGIN_COMPONENT_IDS) {
     if (!id.startsWith("agent-plugin.mcp.")) continue;

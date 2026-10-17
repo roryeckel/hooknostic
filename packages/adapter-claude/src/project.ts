@@ -5,7 +5,12 @@ import type {
   AgentPluginProjectionProfile,
 } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText, renderMarkdownFrontmatter, SKILL_REFERENCE_UNEXPANDED } from "@hooknostic/agent-plugin";
+import {
+  contentsText,
+  renderMarkdownFrontmatter,
+  SKILL_REFERENCE_UNEXPANDED,
+  skillInvocationPolicyProfiles,
+} from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   HarnessAdapter,
@@ -22,6 +27,11 @@ import {
   ENVIRONMENT_EXPANSION_DEVIATION,
   environmentExpansionReason,
 } from "./mcp-expansion.js";
+import {
+  CLAUDE_SKILL_POLICY_RATIONALE,
+  claudeNewerSkillPolicyValidation,
+  claudeProjectSkillPolicyValidation,
+} from "./skill-policy.js";
 import { CLAUDE_PROJECT_SKILL_TEXT } from "./skill-text.js";
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const manifest = artifacts.find((a) => a.path === "hooks/hooks.json");
@@ -61,7 +71,7 @@ export const claudeAgents: NonNullable<HarnessAdapter["agents"]> = {
  * Claude has no agent mode: every agent file can run as a session (`--agent`,
  * the `agent` setting) and is offered for delegation. So a `primary`
  * definition is delegable too, which only a project permission rule,
- * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0029 decision 9).
+ * `Agent(<name>)`, would withhold (`.capture/agents`, ADR-0032 decision 9).
  */
 export const PRIMARY_AGENT_DELEGABLE = "primary-agent-delegable";
 
@@ -175,7 +185,7 @@ export async function projectComponents(
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: claudeHarness.recommendedRange,
     components: {
@@ -266,6 +276,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       date: "2026-09-12",
       validatedOn: [
         {
+          version: "2.1.286",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, a project skill with disable-model-invocation: true was absent from the ordinary listing but its body reached the model after /gate-claude. The ungated control and a skill carrying only the Codex policy remained listed. No portable invocation policy is implemented.",
+        },
+        {
           version: "2.1.285",
           date: "2026-09-30",
           method: "live-probe",
@@ -339,3 +356,10 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  claudeProjectSkillPolicyValidation,
+  CLAUDE_SKILL_POLICY_RATIONALE,
+  "exact",
+  [claudeNewerSkillPolicyValidation],
+);

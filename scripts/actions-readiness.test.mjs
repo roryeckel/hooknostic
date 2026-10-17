@@ -45,7 +45,7 @@ it("routes bot updates through readiness while humans, forks, and master pushes 
     mutate(context);
     expect(evaluate(context)).toBe(false);
   }
-  for (const job of ["dependency-policy", "test", "harness-playback", "code-mode"]) {
+  for (const job of ["dependency-policy", "test", "node-compatibility", "harness-playback", "code-mode"]) {
     const body = ci.split(`  ${job}:`)[1].split(/\r?\n {2}\S/)[0];
     // GitHub permits hyphens in property names; JavaScript needs brackets.
     const condition = body
@@ -66,7 +66,7 @@ it("routes bot updates through readiness while humans, forks, and master pushes 
 
 it("makes every full CI lane wait for Renovate artifact readiness", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  for (const job of ["dependency-policy", "test", "harness-playback", "code-mode"]) {
+  for (const job of ["dependency-policy", "test", "node-compatibility", "harness-playback", "code-mode"]) {
     const body = ci.split(`  ${job}:`)[1].split(/\r?\n {2}\S/)[0];
     expect(body).toContain("needs: renovate-ready");
     expect(body).toContain("!cancelled()");
@@ -101,6 +101,46 @@ it("allows the matrix for clean Renovate artifacts but fails closed on build or 
   runWatchStep("Require current generated artifacts", {}, "pnpm() { :; }\ngit() { :; }", "ci");
   runWatchStep("Require current generated artifacts", {}, "pnpm() { return 23; }", "ci", 23);
   runWatchStep("Require current generated artifacts", {}, "pnpm() { :; }\ngit() { return 24; }", "ci", 24);
+});
+
+it("authenticates the LiteLLM sidecar, health check, and driver with one masked disposable key", () => {
+  const result = runWatchStep(
+    "Start LiteLLM sidecar (llm transport only)",
+    {},
+    `export GITHUB_ENV=environment.txt
+    export HARNESS_LLM_API_KEY=sk-upstream-proof
+    litellm() {
+      if [[ ! "$LITELLM_MASTER_KEY" =~ ^sk-[0-9a-f]{64}$ ]] || [[ "$OPENAI_API_KEY" != "$HARNESS_LLM_API_KEY" ]]; then
+        echo 'missing disposable master key or upstream credential' >&2
+        return 23
+      fi
+      printf '%s' "$LITELLM_MASTER_KEY" > proxy-key.txt
+      while :; do command sleep 0.01; done
+    }
+    curl() {
+      [[ -s proxy-key.txt ]] || return 1
+      [[ "$*" == *"Authorization: Bearer $(cat proxy-key.txt)"* ]]
+    }
+    sleep() { command sleep 0.02; }
+    trap 'code=$?; kill "$SIDECAR_PID" 2>/dev/null || :; if [[ "$code" == 0 ]]; then
+      source "$GITHUB_ENV"
+      [[ "$HARNESS_LLM_PROXY_KEY" == "$(cat proxy-key.txt)" ]] || exit 24
+      echo authenticated-credential-forwarded
+    fi' EXIT`,
+  );
+  expect(result.stdout).toMatch(/::add-mask::sk-[0-9a-f]{64}/);
+  expect(result.stdout).toContain("authenticated-credential-forwarded");
+});
+
+it("runs the pinned LiteLLM compatibility probe in the required Ubuntu CI lane", () => {
+  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const test = ci.split("  test:")[1].split(/\r?\n {2}\S/)[0];
+  const probe = test.split(/\r?\n {6}- /).find((step) => step.startsWith("name: LiteLLM sidecar compatibility"));
+  expect(probe).toBeDefined();
+  expect(probe).toContain("if: matrix.os == 'ubuntu-latest'");
+  expect(probe).toContain("python -m pip install --disable-pip-version-check -r .github/requirements/litellm.txt");
+  expect(probe).toContain("python scripts/probe-litellm-sidecar.py");
+  expect(probe).not.toContain("secrets.");
 });
 
 function runWatchStep(name, expressions, prelude = "", workflow = "harness-watch", status = 0) {
@@ -269,4 +309,49 @@ it("an already published version never reaches publication", () => {
   );
   expect(result.stdout).toContain("already on the registry; skipping");
   expect(result.stdout).not.toContain("UNEXPECTED_PUBLICATION");
+});
+
+// download-artifact can extract files before failing its digest check. File
+// presence alone must never authorize a record, report, or reconciliation.
+it.each([
+  ["Gate on pass", "skip=true", "skip=false"],
+  ["Resolve verify outcome", "failed=false", "failed=true"],
+  ["Gate on drift relevance", "run=false", "run=true"],
+  ["Resolve verdict", "publish=false", "publish=true"],
+  ["Reconcile failure issues after a passing run", "", ""],
+])("%s ignores files left by a failed download and accepts successful downloads", (step, declined, accepted) => {
+  for (const outcome of ["failure", "skipped", "", "success"]) {
+    const result = runWatchStep(
+      step,
+      {
+        "steps.artifact.outcome": outcome,
+        "steps.outcome.outcome": outcome,
+        "steps.verdict.outcome": outcome,
+        "matrix.harness": "codex",
+        "matrix.latest": "0.0.0-readiness-probe",
+        "matrix.jump": "patch",
+        "inputs.force_llm": "false",
+        "inputs.dry_run": "false",
+        "github.server_url": "https://github.com",
+        "github.repository": "owner/project",
+        "github.run_id": "123",
+      },
+      `printf '{"outcome":"pass"}' > watch-outcome-codex.json
+      printf '{"verdict":"drift"}' > drift-verdict-codex.json
+      jq() {
+        echo ARTIFACT_READ >&2
+        if [[ "$1" == "-r" ]]; then echo install-failure; fi
+      }
+      gh() { echo EXTERNAL_CALL >&2; }
+      trap 'if [[ -f "$GITHUB_OUTPUT" ]]; then cat "$GITHUB_OUTPUT"; fi' EXIT`,
+    );
+    if (outcome !== "success") {
+      expect(result.stderr).not.toContain("ARTIFACT_READ");
+      expect(result.stderr).not.toContain("EXTERNAL_CALL");
+      if (declined) expect(result.stdout).toContain(declined);
+    } else {
+      expect(result.stderr).toContain("ARTIFACT_READ");
+      if (accepted) expect(result.stdout).toContain(accepted);
+    }
+  }
 });

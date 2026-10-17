@@ -27,6 +27,12 @@ export const harnessLanes = {
     profileExport: "opencodeV2CapabilityProfiles",
     harnessExport: "opencodeV2Harness",
   },
+  pi: {
+    pkg: "@earendil-works/pi-coding-agent",
+    module: "../packages/adapter-pi/src/profile.ts",
+    profileExport: "piCapabilityProfiles",
+    harnessExport: "piHarness",
+  },
 };
 
 /** Preserve the old explicit automation selector as a v1 alias. */

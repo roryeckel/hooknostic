@@ -1,4 +1,5 @@
 import type { AgentPluginPackage, AgentPluginProjectionProfile, AgentPluginProjector } from "@hooknostic/agent-plugin";
+import { skillInvocationPolicyProfiles, withSkillInvocationPolicy } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, TargetSpec } from "@hooknostic/core";
 
 import { PRIMARY_AGENT_MODEL_IGNORED, projectComponents, projectIntegrationWith } from "../project.js";
@@ -11,6 +12,13 @@ import {
 } from "../project-agent-plugin.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "../skill-text.js";
 import { opencodeV2Harness } from "./harness.js";
+import {
+  OPENCODE_V2_SKILL_POLICY_RATIONALE,
+  opencodeV2NewerSkillPolicyValidation,
+  opencodeV2PackageSkillPolicyValidation,
+  opencodeV2ProjectSkillPolicyValidation,
+  opencodeV2SkillPolicy,
+} from "./skill-policy.js";
 
 // v2 loads .opencode/plugins from every ancestor of the session directory and
 // keeps the outermost copy of an id (.capture/opencode-v2, nested drive), so
@@ -44,7 +52,7 @@ const conversion = `const nativeServer = (server) => {
     ...(timeout === undefined ? {} : { timeout: { startup: timeout } }) };
 };`;
 
-export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: opencodeV2Harness.recommendedRange,
     components: {
@@ -110,6 +118,13 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
       date: "2026-09-26",
       validatedOn: [
         {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and returned permission.rejected for a forced skill-tool call that succeeded without the rule. Claude frontmatter and Codex policy alone did not hide the controls. Explicit UI invocation and plugin-supplied v2 rules were not tested.",
+        },
+        {
           version: "2.0.18",
           date: "2026-09-30",
           method: "live-probe",
@@ -169,6 +184,13 @@ export const opencodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] 
     },
   },
 ];
+export const opencodeV2ProjectProfiles = skillInvocationPolicyProfiles(
+  nativeOpenCodeV2ProjectProfiles,
+  opencodeV2ProjectSkillPolicyValidation,
+  OPENCODE_V2_SKILL_POLICY_RATIONALE,
+  "exact",
+  [opencodeV2NewerSkillPolicyValidation],
+);
 
 export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = (...args) =>
   projectComponents(
@@ -241,6 +263,7 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
     } : server));
   });
   const values = skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description,
+    ...(skill.policy === undefined ? {} : { autoinvoke: skill.policy.allowImplicitInvocation }),
     path: join(root, skill.manifestPath),
     content: readFileSync(join(root, skill.manifestPath), "utf8").replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n/, ""),
   }));
@@ -248,7 +271,7 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
 ${definitions.length === 0 ? "" : "  await ctx.agent.transform(editor => { for (const agent of agents) editor.update(agent.id, target => Object.assign(target, agent)); });\n"}} };\n`;
 }
 
-export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
+const nativeOpenCodeV2Projector: AgentPluginProjector<TargetSpec> = {
   ...createOpenCodeAgentPluginProjector({ injector, entry: v2PackageEntry }),
   qualifiesSkillNames: false,
   profiles: opencodeV2ProjectProfiles.map((profile) => ({
@@ -292,3 +315,17 @@ export const opencodeV2Projector: AgentPluginProjector<TargetSpec> = {
     },
   })),
 };
+export const opencodeV2Projector = withSkillInvocationPolicy(
+  {
+    ...nativeOpenCodeV2Projector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeOpenCodeV2Projector.profiles,
+      opencodeV2PackageSkillPolicyValidation,
+      OPENCODE_V2_SKILL_POLICY_RATIONALE,
+      "exact",
+      [opencodeV2NewerSkillPolicyValidation],
+    ),
+  },
+  "opencode",
+  opencodeV2SkillPolicy,
+);

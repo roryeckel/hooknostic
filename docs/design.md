@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | Baseline date | August 20, 2026 |
-| Primary implementation | Node.js 22.13+ / TypeScript / ESM |
+| Primary implementation | Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+ / TypeScript / ESM |
 | Initial harness targets | Claude Code, OpenAI Codex, OpenCode |
 | Companion standard | Agent Plugins 1.0 (optional integration) |
 
@@ -203,7 +203,7 @@ interface BaseHookEvent {
     turnId?: string;
     toolCallId?: string;
     agentId?: string;
-    agentType?: string; // the agent the event ran in, as the harness names it (ADR-0030)
+    agentType?: string; // the agent the event ran in, as the harness names it (ADR-0033)
     parentAgentId?: string;
   };
 
@@ -240,11 +240,14 @@ interface ToolInvocation {
   // Normalized shell view, present when the adapter's shape table knows this
   // tool's argument keys; absent means uncaptured -- fall back to `input`.
   // commandKey/cwdKey expose the native keys for hand-built replaceInput calls.
+  // dialect is the grammar family the command runs in, where the adapter can
+  // establish it (ADR-0029); absent means unknown, never POSIX by default.
   shell?: {
     command: string;
     cwd?: string;
     commandKey: string;
     cwdKey?: string;
+    dialect?: "posix" | "powershell" | "cmd";
   };
 
   // Normalized file view (ADR-0026), present when the adapter's file shape
@@ -262,6 +265,13 @@ interface ToolInvocation {
 Each adapter derives `shell` from a per-tool **shape table** (`ShellShapes`),
 which also drives the inverse: `updateShell` is lowered through the same table,
 so the normalized read and the portable write cannot skew (Decision 0007).
+
+The view's `dialect` has two sources and no third (Decision 0029). A shape entry
+declares one where the tool itself pins a grammar family, as Claude Code's
+`Bash` and `PowerShell` do. Where the host's configuration picks the
+interpreter, as on OpenCode, the shim listens for the shell the harness states
+and the decoder attaches its family. Where neither exists, as on Codex, the
+dialect is absent. An adapter never infers one from the host platform.
 
 The category is best-effort classification for portable matching; `nativeName` and
 `event.raw` remain available for intentional harness-specific behavior.
@@ -403,7 +413,7 @@ hook("session.start", {
 Intentional scoping is not a portability failure and emits no warnings.
 
 A hook on a tool event, `agent.start` or `agent.stop` can also be scoped to the agents
-it runs in ([ADR-0030](decisions/0030-agent-scoped-hooks.md), proposed):
+it runs in ([ADR-0033](decisions/0033-agent-scoped-hooks.md), proposed):
 
 ```ts
 hook("tool.before", {
@@ -488,6 +498,10 @@ Claude would install it without the validation `runtimePackage` inputs receive.
 The root name is matched case-insensitively, like inventory exclusions. Omitting
 a declared overlay file degrades the client-extension component, so it follows
 `onUnsupported`: an HN205 error by default, a recorded omission under `"warn"`.
+An adapter may declare a named omission on an unsupported component; accepting
+its qualified ID in `components.accept` reports HN205 as information while
+retaining unsupported support and skipped counts (ADR-0031). This does not
+accept invalid input, missing projectors, or required hook capabilities.
 
 The same reasoning reserves the rest of Claude's native configuration against
 the package root. `.mcp.json`, `hooks/hooks.json`, and anything under
@@ -900,7 +914,7 @@ the model as written (ADR-0028), is an HN101 degradation: fatal by default, and 
 under `onDegraded: "warn"`. Any deviation or degradation id listed in `components.accept`
 ships whatever the policy says, and is still reported, as information (ADR-0022).
 
-Agent definitions ([ADR-0029](decisions/0029-portable-agents.md), proposed) are
+Agent definitions ([ADR-0032](decisions/0032-portable-agents.md), proposed) are
 Hooknostic input beside the package, as hook source is, not package content: Agent
 Plugins 1.0 has no agents component. `components.agents` names directories of
 [Hooknostic Agent Definition 0.1](spec/agents/0.1.md) files, parsed into one
@@ -914,6 +928,18 @@ on Codex, which has no such agents), `agents.native` for the passthrough, and
 starts as, which no package target takes. A target's `agents: { include?, exclude? }`
 selects which definitions it receives; a deselected one is never counted there. A
 definitions directory inside the package root is excluded from its inventory.
+A skill's optional `metadata["hooknostic/allow-implicit-invocation"]` accepts only
+the strings `"true"` and `"false"`. It normalizes to `SkillPolicy.allowImplicitInvocation`
+on both source records and introduces the separate component capability
+`agent-plugin.skills.invocation-policy`. Canonical policy projects after native
+overlays; absence preserves authored native behavior. An unavailable gate fails,
+or the whole skill is omitted under `onUnsupported: "warn"`. Named acceptance of
+`<adapter>:skill-implicit-invocation-unenforced` permits ungated emission with an
+informational HN101 and the actual support level retained. In-place authored
+sources require the separate `<adapter>:skill-policy-in-place` acceptance to be
+left unchanged. Neither acceptance relaxes other shortfalls or ownership checks.
+Invalid portable policy remains fatal under `onInvalid: "warn"`. Shared native
+destinations compose all readers' edits and omissions before emission (ADR-0030).
 
 Inventory is deny-listed, never allow-listed. The loader always omits `.git`,
 `node_modules`, `.env`, `.env.*`, and `.npmrc` at any depth; core additionally omits the
@@ -960,7 +986,7 @@ hooknostic/
 | `@hooknostic/adapter-*` | Not initially | Harness adapters. |
 | `@hooknostic/testkit` | Maybe later | For external adapter authors post-stabilization. |
 
-**Build technology:** Node 22.13+, TypeScript, ESM; pnpm workspaces; esbuild for the
+**Build technology:** Node `^22.22.2 || ^24.15.0 || >=26.0.0`, TypeScript, ESM; pnpm workspaces; esbuild for the
 dependency-free per-target runtime `.mjs`; Zod internally (measure size/cold-start before
 shipping it inside hook bundles); no daemon; explicit Windows path/executable support.
 

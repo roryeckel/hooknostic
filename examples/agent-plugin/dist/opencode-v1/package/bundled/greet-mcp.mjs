@@ -5,7 +5,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -45,7 +45,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   enumerable: true
 }) : target, mod));
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/dialects-DoSzNhcb.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/dialects-DoSzNhcb.mjs
 var DRAFT_2020_12_URIS = /* @__PURE__ */ new Set(["https://json-schema.org/draft/2020-12/schema", "http://json-schema.org/draft/2020-12/schema"]);
 var DRAFT_2019_09_URIS = /* @__PURE__ */ new Set(["https://json-schema.org/draft/2019-09/schema", "http://json-schema.org/draft/2019-09/schema"]);
 var DRAFT_07_URIS = /* @__PURE__ */ new Set(["https://json-schema.org/draft-07/schema", "http://json-schema.org/draft-07/schema"]);
@@ -62,7 +62,7 @@ function declaredDialect(schema, remedy) {
   throw new Error(`JSON Schema declares an unsupported dialect ("$schema": "${schema.$schema.slice(0, 200)}"). The default validator supports JSON Schema 2020-12, 2019-09, draft-07, and draft-06; ${remedy}`);
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/util.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -133,6 +133,7 @@ __export(util_exports, {
   required: () => required,
   safeExtend: () => safeExtend,
   shallowClone: () => shallowClone,
+  sizeCaps: () => sizeCaps,
   slugify: () => slugify,
   stringifyPrimitive: () => stringifyPrimitive,
   toZod: () => toZod,
@@ -652,6 +653,18 @@ function prefixIssues(path, issues) {
 function unwrapMessage(message) {
   return typeof message === "string" ? message : message?.message;
 }
+function sizeCaps(defChecks) {
+  const caps = [];
+  for (const ch of defChecks ?? []) {
+    const d = ch._zod.def;
+    if (!/_(length|size)$|_equals$/.test(d.check))
+      break;
+    const max = d.maximum ?? d.length ?? d.size;
+    if (max >= 0)
+      caps.push([max, ch]);
+  }
+  return caps;
+}
 function attachSchema(issues, start, inst) {
   var _a3;
   for (let i = start; i < issues.length; i++) {
@@ -905,7 +918,7 @@ function constantCatch(value) {
   return fn;
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/core.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -1026,7 +1039,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/errors.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/errors.js
 function _getMessage() {
   const internals = this._zod;
   internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -1141,7 +1154,7 @@ function formatError(error2, mapper = (issue2) => issue2.message) {
   return fieldErrors;
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/parse.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
   return { callee: params?.callee ?? callee, Err: params?.Err };
 }
@@ -1289,7 +1302,7 @@ var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/regexes.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/;
 var cuid2 = /^[0-9a-z]+$/;
 var ulid = /^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$/;
@@ -1349,7 +1362,7 @@ var _null = /^null$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/checks.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -1669,7 +1682,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/doc.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = [], closed = {}) {
     this.content = [];
@@ -1710,14 +1723,14 @@ ${content.join("\n")}
   }
 };
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/versions.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 6,
-  patch: 5
+  patch: 6
 };
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/schemas.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -2336,6 +2349,29 @@ var $ZodDate = /* @__PURE__ */ $constructor("$ZodDate", (inst, def) => {
     return payload;
   };
 });
+function capSize(inst, size) {
+  const caps = sizeCaps(inst._zod.def.checks);
+  if (!caps.length)
+    return;
+  const cap = Math.min(...caps.map((c) => c[0]));
+  const parse2 = inst._zod.parse;
+  inst._zod.parse = (payload, ctx) => {
+    const n = size(payload.value);
+    if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
+      for (const [max, ch] of sizeCaps(inst._zod.def.checks)) {
+        if (n > max && ch._zod.def.when(payload)) {
+          const start = payload.issues.length;
+          ch._zod.check(payload);
+          payload.issues[start].continue = false;
+          attachSchema(payload.issues, start, inst);
+          return payload;
+        }
+      }
+    }
+    return parse2(payload, ctx);
+  };
+}
+var arraySize = (input) => Array.isArray(input) ? input.length : -1;
 function handleArrayResult(result, final, index) {
   if (result.issues.length) {
     final.issues.push(...prefixIssues(index, result.issues));
@@ -2379,6 +2415,7 @@ var $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
     }
     return payload;
   };
+  capSize(inst, arraySize);
 });
 function handlePropertyResult(result, final, key, input, optin, optout) {
   const isPresent = key in input;
@@ -3425,7 +3462,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/memoizer.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/memoizer.js
 var $ZodCyclicError = class extends Error {
   constructor() {
     super(`Cannot parse a reference cycle that closes through a transform`);
@@ -3699,7 +3736,7 @@ function isBackEdge(ctx, value) {
   return backEdges !== void 0 && isRef(value) && backEdges.has(value);
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/locales/en.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/locales/en.js
 var error = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -3824,7 +3861,7 @@ function en_default() {
   };
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/registries.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/registries.js
 var _a2;
 var $ZodRegistry = class {
   constructor() {
@@ -3872,7 +3909,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/api.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
   if (def.checks)
     def.checks = [...def.checks];
@@ -4425,7 +4462,7 @@ function _check(fn, params) {
   return ch;
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/to-json-schema.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
   for (const source of sources) {
     for (const key of Reflect.ownKeys(source)) {
@@ -4955,7 +4992,7 @@ var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) =
   return finalize(ctx, schema);
 };
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/json-schema-processors.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/core/json-schema-processors.js
 var narrowMin = (agg, key, value) => {
   if (agg[key] === void 0 || value > agg[key])
     agg[key] = value;
@@ -5703,7 +5740,7 @@ function toJSONSchema(input, params) {
   return finalize(ctx, input);
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/errors.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/classic/errors.js
 var _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
   Object.defineProperty(proto, key, {
@@ -5748,7 +5785,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, void 0
   Parent: Error
 });
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/parse.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/classic/parse.js
 var parse = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -5762,7 +5799,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/schemas.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
   if (!globalConfig.localeError)
     config(en_default());
@@ -6796,7 +6833,7 @@ function preprocess(fn, schema) {
   });
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/compat.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -6814,7 +6851,7 @@ var ZodFirstPartyTypeKind;
 /* @__PURE__ */ (function(ZodFirstPartyTypeKind2) {
 })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/iso.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -6839,7 +6876,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// ../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/coerce.js
+// ../../node_modules/.pnpm/zod@4.6.6/node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint2,
@@ -6864,7 +6901,7 @@ function date3(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+core@2.1.0/node_modules/@modelcontextprotocol/core/dist/auth-CGP0BDVq.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+core@2.3.1/node_modules/@modelcontextprotocol/core/dist/auth-BNDyLTqp.mjs
 var LATEST_PROTOCOL_VERSION = "2025-11-25";
 var SUPPORTED_PROTOCOL_VERSIONS = [
   LATEST_PROTOCOL_VERSION,
@@ -7753,7 +7790,8 @@ var OAuthTokensSchema = object({
   token_type: string2(),
   expires_in: coerce_exports.number().optional(),
   scope: string2().optional(),
-  refresh_token: string2().optional()
+  refresh_token: string2().optional(),
+  issuer: string2().optional().catch(void 0)
 }).strip();
 var IdJagTokenExchangeResponseSchema = object({
   issued_token_type: literal("urn:ietf:params:oauth:token-type:id-jag"),
@@ -7791,7 +7829,8 @@ var OAuthClientInformationSchema = object({
   client_id: string2(),
   client_secret: string2().optional(),
   client_id_issued_at: number2().optional(),
-  client_secret_expires_at: number2().optional()
+  client_secret_expires_at: number2().optional(),
+  issuer: string2().optional().catch(void 0)
 }).strip();
 var OAuthClientInformationFullSchema = OAuthClientMetadataSchema.merge(OAuthClientInformationSchema);
 var OAuthClientRegistrationErrorSchema = object({
@@ -7803,7 +7842,7 @@ var OAuthTokenRevocationRequestSchema = object({
   token_type_hint: string2().optional()
 }).strip();
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/src-D-y6h4N7.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/src-Cqbh3MYc.mjs
 var BRANDS = /* @__PURE__ */ Symbol.for("mcp.sdk.errorBrands");
 function stampErrorBrands(instance, ctor) {
   const brands = /* @__PURE__ */ new Set();
@@ -10046,7 +10085,8 @@ function build() {
     ListResourceTemplatesResultResponseSchema: wireResultResponse(ListResourceTemplatesResultSchema$1),
     ReadResourceResultResponseSchema: wireResultResponse(union([ReadResourceResultSchema$1, InputRequiredResultSchema])),
     CompleteResultResponseSchema: wireResultResponse(CompleteResultSchema$1),
-    DiscoverResultResponseSchema: wireResultResponse(DiscoverResultSchema$1)
+    DiscoverResultResponseSchema: wireResultResponse(DiscoverResultSchema$1),
+    SubscriptionsListenResultResponseSchema: wireResultResponse(SubscriptionsListenResultSchema$1)
   };
 }
 var memo2;
@@ -10474,6 +10514,8 @@ var rev2026Codec = {
       const rawInputRequests = raw["inputRequests"];
       const inputRequests = isPlainObject$4(rawInputRequests) ? rawInputRequests : {};
       const requestState = raw["requestState"];
+      const metaParse = raw["_meta"] === void 0 ? void 0 : buildSchemas2026().ResultMetaSchema.safeParse(raw["_meta"]);
+      const meta2 = metaParse?.success ? metaParse.data : void 0;
       if (Object.keys(inputRequests).length === 0 && typeof requestState !== "string") return {
         kind: "invalid",
         error: new SdkError(SdkErrorCode.InvalidResult, `Invalid result for ${method}: input_required carries neither inputRequests nor requestState (every input_required result must include at least one of the two)`, {
@@ -10484,7 +10526,8 @@ var rev2026Codec = {
       return {
         kind: "input_required",
         inputRequests,
-        ...typeof requestState === "string" && { requestState }
+        ...typeof requestState === "string" && { requestState },
+        ...meta2 !== void 0 && { _meta: meta2 }
       };
     }
     if (rawResultType !== "complete") return {
@@ -10550,6 +10593,9 @@ function isSpecRequestMethod(method) {
 }
 function isSpecNotificationMethod(method) {
   return ALL_CODECS.some((codec) => codec.hasNotificationMethod(method));
+}
+function isExtensionReusedRequestMethod(method) {
+  return method === "tasks/get" || method === "tasks/cancel";
 }
 var ALL_CODECS = [rev2025Codec, rev2026Codec];
 function isPlainObject$3(value) {
@@ -11528,6 +11574,8 @@ var Protocol = class {
   _transport;
   _requestMessageId = 0;
   _requestHandlers = /* @__PURE__ */ new Map();
+  /** Methods registered with an explicit schema; the era gate in `_onrequest` reads it for the Tasks extension names. */
+  _customSchemaRequestMethods = /* @__PURE__ */ new Set();
   _requestHandlerAbortControllers = /* @__PURE__ */ new Map();
   _notificationHandlers = /* @__PURE__ */ new Map();
   _responseHandlers = /* @__PURE__ */ new Map();
@@ -11811,7 +11859,7 @@ var Protocol = class {
         return;
       }
     }
-    if (isSpecRequestMethod(request.method) && !codec.hasRequestMethod(request.method)) {
+    if (isSpecRequestMethod(request.method) && !codec.hasRequestMethod(request.method) && !(isExtensionReusedRequestMethod(request.method) && this._customSchemaRequestMethods.has(request.method))) {
       sendErrorResponse(ProtocolErrorCode.MethodNotFound, "Method not found");
       return;
     }
@@ -11944,8 +11992,11 @@ var Protocol = class {
   }
   request(request, schemaOrOptions, maybeOptions) {
     const codec = this._resolveOutboundCodec(request.method);
+    if (isStandardSchema(schemaOrOptions)) {
+      if (!isExtensionReusedRequestMethod(request.method)) this._assertOutboundRequestInEra(codec, request.method);
+      return this._requestWithSchemaViaCodec(codec, request, schemaOrOptions, maybeOptions);
+    }
     this._assertOutboundRequestInEra(codec, request.method);
-    if (isStandardSchema(schemaOrOptions)) return this._requestWithSchemaViaCodec(codec, request, schemaOrOptions, maybeOptions);
     const validate2 = codecResultValidator(codec, request.method);
     if (validate2 === void 0) throw new TypeError(`'${request.method}' is not a spec method; pass a result schema as the second argument to request().`);
     return this._requestWithSchemaViaCodec(codec, request, validate2, schemaOrOptions);
@@ -12138,7 +12189,7 @@ var Protocol = class {
   * Emits a notification, which is a one-way message that does not expect a response.
   */
   async notification(notification, options) {
-    return this._notificationViaCodec(this._resolveOutboundCodec(notification.method), notification, options);
+    return await this._notificationViaCodec(this._resolveOutboundCodec(notification.method), notification, options);
   }
   /**
   * The notification funnel proper, keyed by the resolved era codec —
@@ -12189,6 +12240,8 @@ var Protocol = class {
       return maybeHandler(parsed.data, ctx);
     };
     else throw new TypeError("setRequestHandler: handler is required");
+    if (typeof schemasOrHandler === "function") this._customSchemaRequestMethods.delete(method);
+    else this._customSchemaRequestMethods.add(method);
     this._requestHandlers.set(method, this._wrapHandler(method, stored));
   }
   /**
@@ -12218,6 +12271,7 @@ var Protocol = class {
   */
   removeRequestHandler(method) {
     this._requestHandlers.delete(method);
+    this._customSchemaRequestMethods.delete(method);
   }
   /**
   * Asserts that a request handler has not already been set for the given method, in preparation for a new one being automatically installed.
@@ -12295,7 +12349,8 @@ function manualInputRequiredValue(decoded) {
   return {
     resultType: "input_required",
     inputRequests: decoded.inputRequests,
-    ...decoded.requestState !== void 0 && { requestState: decoded.requestState }
+    ...decoded.requestState !== void 0 && { requestState: decoded.requestState },
+    ...decoded._meta !== void 0 && { _meta: decoded._meta }
   };
 }
 /*!
@@ -12451,7 +12506,7 @@ function normalizeRawShapeSchema(schema) {
   return schema;
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CEoC__sr.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CEoC__sr.mjs
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -19461,10 +19516,10 @@ var AjvJsonSchemaValidator = class {
 };
 var Ajv = import_ajv.Ajv;
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
 import process from "node:process";
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/mcp-Dw2OlZ1f.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/mcp-DIH4cS6P.mjs
 var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
@@ -19529,7 +19584,7 @@ var StdioListenRouter = class {
   _serverCapabilities;
   /**
   * The serving instance's identity, stamped onto the graceful-close
-  * results' `_meta` (the spec's `SubscriptionsListenResultMeta` extends
+  * results' `_meta` (the spec's `SubscriptionsListenResultMetaObject` extends
   * `ResultMetaObject`). Handed over together with the capabilities.
   */
   _serverInfo;
@@ -19860,6 +19915,11 @@ var Server = class extends Protocol {
     this.setNotificationHandler("notifications/initialized", () => this.oninitialized?.());
     if (modernProtocolVersions(this._supportedProtocolVersions).length > 0) this.setRequestHandler("server/discover", () => this._ondiscover());
     if (this._capabilities.logging) this._registerLoggingHandler();
+  }
+  /** Attaches to the given transport; rejects while this instance is connected to another one. */
+  async connect(transport) {
+    if (this.transport !== void 0) throw new SdkError(SdkErrorCode.AlreadyConnected, "Use a separate Server instance per connection: this instance is already connected to a transport. To connect it to a new transport, call close() first.");
+    await super.connect(transport);
   }
   /**
   * Registers the built-in `logging/setLevel` request handler.
@@ -20414,21 +20474,41 @@ var Server = class extends Protocol {
 function discoverAdvertisedCapabilities(capabilities) {
   return { ...capabilities };
 }
+function toolInputElementCount(value, max) {
+  let count = 0;
+  const stack = [value];
+  while (stack.length > 0) {
+    const node2 = stack.pop();
+    if (node2 === null || typeof node2 !== "object") continue;
+    if (Array.isArray(node2)) for (const child of node2) {
+      if (++count > max) return count;
+      if (child !== null && typeof child === "object") stack.push(child);
+    }
+    else for (const key in node2) {
+      if (!Object.prototype.hasOwnProperty.call(node2, key)) continue;
+      if (++count > max) return count;
+      const child = node2[key];
+      if (child !== null && typeof child === "object") stack.push(child);
+    }
+  }
+  return count;
+}
+function resolveMaxToolInputElements(value) {
+  if (value === void 0 || value === Infinity) return void 0;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 1) throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
+  return value;
+}
 var McpServer = class {
   /**
   * The underlying {@linkcode Server} instance, useful for advanced operations like sending notifications.
   */
   server;
+  _maxToolInputElements;
   _registeredResources = {};
   _registeredResourceTemplates = {};
   _registeredTools = {};
   _registeredPrompts = {};
-  /**
-  * Per-tool JSON-converted `inputSchema`, memoized so the SEP-2243
-  * registration-time scan and the pre-dispatch validation step share one
-  * conversion instead of paying it twice per request under the
-  * per-request-factory `createMcpHandler` model.
-  */
+  /** Per-tool JSON-converted `inputSchema`, filled on first use by `toolInputSchemaJson()`. */
   _toolInputSchemaJson = {};
   /**
   * The JSON-serialized `inputSchema` of a registered tool, or `undefined`
@@ -20453,6 +20533,7 @@ var McpServer = class {
   }
   constructor(serverInfo, options) {
     this.server = new Server(serverInfo, options);
+    this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
     if (options?.capabilities?.tools) this.setToolRequestHandlers();
     if (options?.capabilities?.resources) this.setResourceRequestHandlers();
     if (options?.capabilities?.prompts) this.setPromptRequestHandlers();
@@ -20525,7 +20606,7 @@ var McpServer = class {
         name,
         title: tool.title,
         description: tool.description,
-        inputSchema: tool.inputSchema ? standardSchemaToJsonSchema(tool.inputSchema, "input") : EMPTY_OBJECT_JSON_SCHEMA,
+        inputSchema: tool.inputSchema ? convertListedInputSchema(name, tool.inputSchema) : EMPTY_OBJECT_JSON_SCHEMA,
         annotations: tool.annotations,
         icons: tool.icons,
         execution: tool.execution,
@@ -20570,6 +20651,7 @@ var McpServer = class {
   * Validates tool input arguments against the tool's input schema.
   */
   async validateToolInput(tool, args, toolName) {
+    if (this._maxToolInputElements !== void 0 && toolInputElementCount(args, this._maxToolInputElements) > this._maxToolInputElements) throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Invalid arguments for tool ${toolName}: arguments contain more than the maximum of ${this._maxToolInputElements} elements`);
     if (!tool.inputSchema) return;
     const parseResult = await validateStandardSchema(tool.inputSchema, args ?? {});
     if (!parseResult.success) throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Input validation error: Invalid arguments for tool ${toolName}: ${parseResult.error}`);
@@ -20844,20 +20926,19 @@ var McpServer = class {
   }
   _createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, icons, execution, scopeChallenge, _meta, handler) {
     validateAndWarnToolName(name);
-    if (inputSchema !== void 0) try {
-      const json = standardSchemaToJsonSchema(inputSchema, "input");
-      this._toolInputSchemaJson[name] = json;
-      const scan = scanXMcpHeaderDeclarations(json);
-      if (!scan.valid) console.warn(`[mcp-sdk] tool '${name}' carries an invalid x-mcp-header declaration and will be excluded by conforming Streamable HTTP clients: ${scan.reason}`);
-    } catch {
-    }
     let currentHandler = handler;
+    let outputSchemaJson;
     const registeredTool = {
       title,
       description,
       inputSchema,
       outputSchema,
-      outputSchemaJson: convertOutputSchemaJson(outputSchema),
+      get outputSchemaJson() {
+        return outputSchemaJson ??= convertOutputSchemaJson(registeredTool.outputSchema);
+      },
+      set outputSchemaJson(value) {
+        outputSchemaJson = value;
+      },
       annotations,
       icons,
       execution,
@@ -20984,6 +21065,12 @@ var EMPTY_OBJECT_JSON_SCHEMA = {
   type: "object",
   properties: {}
 };
+function convertListedInputSchema(name, inputSchema) {
+  const json = standardSchemaToJsonSchema(inputSchema, "input");
+  const scan = scanXMcpHeaderDeclarations(json);
+  if (!scan.valid) console.warn(`[mcp-sdk] tool '${name}' carries an invalid x-mcp-header declaration and will be excluded by conforming Streamable HTTP clients: ${scan.reason}`);
+  return json;
+}
 function convertOutputSchemaJson(outputSchema) {
   if (outputSchema === void 0) return void 0;
   try {
@@ -20996,7 +21083,7 @@ function createPromptHandler(name, argsSchema, callback) {
   if (argsSchema) {
     const typedCallback = callback;
     return async (args, ctx) => {
-      const parseResult = await validateStandardSchema(argsSchema, args);
+      const parseResult = await validateStandardSchema(argsSchema, args ?? {});
       if (!parseResult.success) throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Invalid arguments for prompt ${name}: ${parseResult.error}`);
       return typedCallback(parseResult.data, ctx);
     };
@@ -21030,10 +21117,10 @@ function unwrapOptionalSchema(schema) {
   return schema.def?.innerType ?? schema;
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/index.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/index.mjs
 var DEFAULT_MAX_REQUEST_BODY_SIZE = 4 * 1024 * 1024;
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.1.0/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
+// ../../node_modules/.pnpm/@modelcontextprotocol+server@2.3.1/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
 var swallowsErrorsAfterClose = /* @__PURE__ */ Symbol("swallowsErrorsAfterClose");
 var StdioServerTransport = class {
   _readBuffer;

@@ -6,7 +6,7 @@ import { HOOK_EVENT_NAMES } from "./events.js";
 import { ALL_EVENT_FIELD_IDS, isEventFieldId } from "./fields.js";
 import { findNonJsonPath } from "./json.js";
 import { SUPPORT_LEVELS } from "./support.js";
-import { TOOL_KINDS } from "./tools.js";
+import { SHELL_DIALECTS, TOOL_KINDS } from "./tools.js";
 
 /**
  * Runtime validation for canonical objects. Canonical schemas are strict for
@@ -20,6 +20,7 @@ export const capabilityIdSchema = z.enum(ALL_CAPABILITY_IDS);
 export const supportLevelSchema = z.enum(SUPPORT_LEVELS);
 export const requirementLevelSchema = z.enum(["required", "optional"]);
 export const toolKindSchema = z.enum(TOOL_KINDS);
+export const shellDialectSchema = z.enum(SHELL_DIALECTS);
 export const eventFieldIdSchema = z.enum(ALL_EVENT_FIELD_IDS as [string, ...string[]]);
 
 /** `<adapter>:<field id>`: an adapter id as `components.accept` spells one, then a registered field. */
@@ -63,6 +64,7 @@ export const toolInvocationSchema = z
         cwd: z.string().optional(),
         commandKey: z.string(),
         cwdKey: z.string().optional(),
+        dialect: shellDialectSchema.optional(),
       })
       .strict()
       .optional(),
@@ -157,7 +159,7 @@ export const runtimePolicySchema = z
   })
   .strict();
 
-/** ADR-0029, decision 11: authored definition names, in the shape of a hook's `targets`. */
+/** ADR-0032, decision 11: authored definition names, in the shape of a hook's `targets`. */
 export const agentSelectionSchema = z
   .object({
     include: z.array(z.string().min(1)).optional(),
@@ -468,7 +470,7 @@ export const targetScopeSchema = z
   })
   .strict();
 
-/** ADR-0030: the same shape as targets, naming agents as the harness reports them. */
+/** ADR-0033: the same shape as targets, naming agents as the harness reports them. */
 export const agentScopeSchema = z
   .object({
     include: z.array(z.string().min(1)).optional(),

@@ -1,6 +1,6 @@
 ---
 name: harness-capture
-description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
+description: Capture real harness behavior before implementing against it. Use when adding or changing any claim about Claude Code, Codex, or OpenCode — hook payload fields, tool argument shapes (ShellShapes, FileShapes, toolmap, tool.shell, tool.file), which tools a harness advertises, whether a wire channel (updatedInput, systemMessage) is honoured, which interpreter or shell dialect a shell tool runs (.capture/shell-dialects) — or when adding fixtures under fixtures/<harness>/, editing a provenance README, working in .capture/ (including .capture/file-tools), or verifying an adapter claim live.
 ---
 
 # Harness capture
@@ -58,6 +58,15 @@ advertised tools and their live argument keys, and scripts one call per case
 (`TurnAction.arguments`, or `freeformInput` for a grammar tool like Codex's
 `apply_patch`). The hook payload is **captured**; say in the provenance row
 that the argument *values* were scripted. Its README is the worked example.
+
+**A payload cannot show which interpreter ran.** A shell tool's grammar is
+established by the process that executed the command, observed under each host
+configuration that could change it, and compared with whatever the harness
+states about its shell. `.capture/shell-dialects` is the procedure: process
+ancestry on three platforms, a host-configuration comparison, a per-build mode,
+and fixture promotion. Its Linux half ran in a container as an unprivileged
+account. Give any scratch `npm install` an explicit `--prefix`: without one
+npm installs into the nearest ancestor that has a `package.json`.
 
 ## The router/hook-boundary distinction (Codex)
 

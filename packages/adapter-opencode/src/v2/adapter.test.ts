@@ -123,7 +123,7 @@ describe("v2 captured boundary", () => {
       { capabilities: { "tool.before.observe": "exact", "tool.before.input.replace": "exact" } },
       {
         location: { directory: "." },
-        session: { hook: vi.fn() },
+        session: { hook: async () => ({ dispose: async () => {} }) },
         tool: {
           hook: async (_name, fn) => {
             callback = fn;
@@ -163,7 +163,7 @@ describe("v2 captured boundary", () => {
       { capabilities: { "tool.error.observe": "approximate" } },
       {
         location: { directory: "." },
-        session: { hook: vi.fn() },
+        session: { hook: async () => ({ dispose }) },
         tool: {
           hook: async (name, fn) => {
             expect(name).toBe("execute.after");
@@ -182,7 +182,8 @@ describe("v2 captured boundary", () => {
       expect.anything(),
     );
     await cleanup();
-    expect(dispose).toHaveBeenCalledOnce();
+    // The tool hook, and the context listener an error hook's tool view needs.
+    expect(dispose).toHaveBeenCalledTimes(2);
   });
   it("does not infer MCP ownership from a connected server namespace", () => {
     const catalog = JSON.parse(readFileSync(fixtures + "mcp-identity/tool.registry.json", "utf8")).event;
@@ -193,6 +194,213 @@ describe("v2 captured boundary", () => {
       expect(tool).toMatchObject({ id: `hooknostic_${name}`, options: { namespace: "hooknostic", codemode: true } });
       expect(classifyOpenCodeV2Tool(tool.id, {})).toEqual({ kind: "other", nativeName: tool.id, input: {} });
     }
+  });
+  describe("the stated shell (ADR-0029)", () => {
+    // The sentence as 2.0.20 delivered it for each configuration (.capture/shell-dialects).
+    const context = (sessionID: string, shell?: string) => ({
+      sessionID,
+      agent: "build",
+      tools:
+        shell === undefined
+          ? { read: { description: "Read a file." } }
+          : { shell: { description: `Execute a shell command. Commands run on Linux using ${shell}. Quote paths.` } },
+    });
+    async function listening(
+      events: readonly ("tool.before" | "tool.after" | "tool.error" | "model.request.before")[],
+    ) {
+      const seen: unknown[] = [];
+      const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+      const register = async (name: string, fn: (event: Record<string, unknown>) => Promise<void>) => {
+        callbacks[name] = fn;
+        return { dispose: async () => {} };
+      };
+      const cleanup = await setupOpenCodeV2(
+        definePlugin({
+          name: "dialect",
+          hooks: events.map((event) =>
+            hook(event, {
+              id: event,
+              run(received) {
+                seen.push("tool" in received ? received.tool.shell?.dialect : received.event);
+              },
+            }),
+          ),
+        }),
+        { capabilities: Object.fromEntries(events.map((event) => [`${event}.observe`, "exact"])) },
+        {
+          location: { directory: "." },
+          session: { hook: register },
+          tool: { hook: register },
+          event: { async *subscribe() {} },
+        },
+      );
+      const call = (sessionID: string, tool = "shell") =>
+        callbacks["execute.before"]!({ tool, sessionID, id: "call", input: { command: "ls" } });
+      return { seen, callbacks, call, cleanup };
+    }
+
+    it("reaches the tool events of the session it was stated for", async () => {
+      const { seen, callbacks, call, cleanup } = await listening(["tool.before", "tool.after"]);
+      await call("one");
+      await callbacks["context"]!(context("one", "zsh"));
+      await callbacks["context"]!(context("two", "cmd"));
+      await call("one");
+      await call("two");
+      await call("three");
+      await callbacks["execute.after"]!({
+        tool: "shell",
+        sessionID: "one",
+        id: "call",
+        input: { command: "ls" },
+        status: "completed",
+        result: { content: [] },
+      });
+      await cleanup();
+      expect(seen).toEqual([undefined, "posix", "cmd", undefined, "posix"]);
+    });
+
+    it("is replaced by every request, so an unmapped or missing statement leaves no dialect", async () => {
+      const { seen, callbacks, call, cleanup } = await listening(["tool.before"]);
+      await callbacks["context"]!(context("one", "pwsh"));
+      await call("one");
+      // tcsh is a real captured answer; a request offering no shell tool states nothing.
+      await callbacks["context"]!(context("one", "tcsh"));
+      await call("one");
+      await callbacks["context"]!(context("one", "pwsh"));
+      await callbacks["context"]!(context("one"));
+      await call("one");
+      await callbacks["context"]!(context("one", "pwsh"));
+      await call("one", "read");
+      await cleanup();
+      expect(seen).toEqual(["powershell", undefined, undefined, undefined]);
+    });
+
+    it("reaches a view that a rewrite creates", async () => {
+      // The call arrives with an input that has no shell view, so the decoder
+      // has nothing to attach the dialect to; dispatch must still know it when
+      // a hook's rewrite produces the first view.
+      const seen: unknown[] = [];
+      const callbacks: Record<string, (event: Record<string, unknown>) => Promise<void>> = {};
+      const register = async (name: string, fn: (event: Record<string, unknown>) => Promise<void>) => {
+        callbacks[name] = fn;
+        return { dispose: async () => {} };
+      };
+      const cleanup = await setupOpenCodeV2(
+        definePlugin({
+          name: "late-view",
+          hooks: [
+            hook("tool.before", {
+              id: "fill",
+              capabilities: { "tool.before.input.replace": "required" },
+              run(event) {
+                seen.push(event.tool.shell?.dialect);
+                return replaceInput({ command: "ls" });
+              },
+            }),
+            hook("tool.before", {
+              id: "read",
+              run(event) {
+                seen.push(event.tool.shell?.dialect);
+              },
+            }),
+          ],
+        }),
+        { capabilities: { "tool.before.observe": "exact", "tool.before.input.replace": "exact" } },
+        {
+          location: { directory: "." },
+          session: { hook: register },
+          tool: { hook: register },
+          event: { async *subscribe() {} },
+        },
+      );
+      await callbacks["context"]!(context("one", "zsh"));
+      await callbacks["execute.before"]!({ tool: "shell", sessionID: "one", id: "call", input: { script: "ls" } });
+      await cleanup();
+      expect(seen).toEqual([undefined, "posix"]);
+    });
+
+    it("fails open, and to unknown, when the request's tools cannot be read", async () => {
+      // The listener sits in the host's model-request path: throwing there would
+      // fail the request over a dialect, and keeping the old one would be stale.
+      const { seen, callbacks, call, cleanup } = await listening(["tool.before"]);
+      await callbacks["context"]!(context("one", "zsh"));
+      const unreadable = {
+        sessionID: "one",
+        get tools(): unknown {
+          throw new Error("live object went away");
+        },
+      };
+      await expect(callbacks["context"]!(unreadable)).resolves.toBeUndefined();
+      await call("one");
+      await cleanup();
+      expect(seen).toEqual([undefined]);
+    });
+
+    it("keeps a bounded number of sessions, forgetting the one stated longest ago", async () => {
+      const { seen, callbacks, call, cleanup } = await listening(["tool.before"]);
+      await callbacks["context"]!(context("first", "zsh"));
+      await callbacks["context"]!(context("second", "zsh"));
+      for (let index = 0; index < 255; index += 1) await callbacks["context"]!(context(`filler-${index}`, "bash"));
+      await call("first");
+      await call("second");
+      await cleanup();
+      expect(seen).toEqual([undefined, "posix"]);
+    });
+
+    it("counts a session from its latest statement, so one still making requests is not the one forgotten", async () => {
+      // Every model request restates the shell, and that is what makes the
+      // bound safe: only a session silent for 256 others' statements loses its
+      // dialect, never one in the middle of a turn.
+      const { seen, callbacks, call, cleanup } = await listening(["tool.before"]);
+      await callbacks["context"]!(context("busy", "zsh"));
+      await callbacks["context"]!(context("idle", "zsh"));
+      await callbacks["context"]!(context("busy", "zsh"));
+      for (let index = 0; index < 255; index += 1) await callbacks["context"]!(context(`filler-${index}`, "bash"));
+      await call("busy");
+      await call("idle");
+      await cleanup();
+      expect(seen).toEqual(["posix", undefined]);
+    });
+
+    it("listens without dispatching when no hook asked for model requests", async () => {
+      const tools = await listening(["tool.error"]);
+      expect(Object.keys(tools.callbacks).sort()).toEqual(["context", "execute.after"]);
+      await tools.callbacks["context"]!(context("one", "zsh"));
+      expect(tools.seen).toEqual([]);
+      await tools.cleanup();
+      // With a model-request hook the same callback also dispatches, once.
+      const both = await listening(["tool.before", "model.request.before"]);
+      expect(Object.keys(both.callbacks).sort()).toEqual([
+        "compaction",
+        "context",
+        "execute.before",
+        "generate",
+        "title",
+      ]);
+      await both.callbacks["context"]!(context("one", "zsh"));
+      await both.call("one");
+      expect(both.seen).toEqual(["model.request.before", "posix"]);
+      await both.cleanup();
+      // And a plugin with neither registers no context listener at all.
+      const neither = await listening([]);
+      expect(Object.keys(neither.callbacks)).toEqual([]);
+      await neither.cleanup();
+    });
+
+    it("gives the shell view the stated dialect, and never makes a view to carry one", () => {
+      const reported = { shellDialect: "cmd" } as const;
+      expect(classifyOpenCodeV2Tool("shell", { command: "dir" }, reported).shell).toEqual({
+        command: "dir",
+        commandKey: "command",
+        cwdKey: "workdir",
+        dialect: "cmd",
+      });
+      expect(classifyOpenCodeV2Tool("shell", { command: 42 }, reported).shell).toBeUndefined();
+      for (const name of ["Shell", "read", "execute", "bash"])
+        expect(classifyOpenCodeV2Tool(name, { command: "dir" }, reported), name).toEqual(
+          classifyOpenCodeV2Tool(name, { command: "dir" }),
+        );
+    });
   });
   it("keeps unknown and Code Mode tools raw without guessing an MCP identity", () => {
     const input = { code: "return tools.example.echo({})" };
@@ -208,6 +416,7 @@ describe("v2 captured boundary", () => {
       const enrichment = existsSync(fixtures + file.replace(".input.", ".enrichment."))
         ? JSON.parse(readFileSync(fixtures + file.replace(".input.", ".enrichment."), "utf8"))
         : {};
+      const original = structuredClone(raw);
       const decoded = decodeOpenCodeV2(
         raw,
         { targetId: target.id, harnessVersion: opencodeV2Harness.referenceVersion },
@@ -215,6 +424,7 @@ describe("v2 captured boundary", () => {
       );
       expect(decoded).toEqual({ ...canonical, raw });
       expect(decoded.raw).toBe(raw);
+      expect(decoded.raw).toEqual(original);
     });
   }
   describe("turn.stop posting", () => {

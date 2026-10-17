@@ -743,6 +743,58 @@ describe("createCapabilitySet", () => {
 });
 
 describe("effect lists (ADR-0025)", () => {
+  it.each(["continue", "block"] as const)(
+    "applies target validation to each list element under onHookError: %s",
+    async (onHookError) => {
+      const event = toolBefore({ command: "original" });
+      const observed: unknown[] = [];
+      const result = await dispatch(
+        [
+          hook("tool.before", {
+            id: "rewrites",
+            capabilities: { "input.replace": "required" },
+            async run() {
+              return [replaceInput(null), updateShell({ command: "updated" })];
+            },
+          }),
+          hook("tool.before", {
+            id: "observe",
+            async run(event) {
+              observed.push(event.tool.input);
+            },
+          }),
+        ],
+        event,
+        {
+          ...OPTIONS,
+          shellCodec: shellCodec({ Bash: { commandKey: "command" } }),
+          policy: { onHookError },
+          validateEffect: (effect) =>
+            effect.kind === "replaceInput" && effect.input === null ? "requires an object" : undefined,
+        },
+      );
+      expect(result.errors).toEqual([
+        expect.objectContaining({
+          hookId: "rewrites",
+          code: "HN401",
+          message: expect.stringContaining("requires an object"),
+        }),
+      ]);
+      if (onHookError === "block") {
+        expect(event.tool.input).toEqual({ command: "original" });
+        expect(replacedInput(result)).toBeUndefined();
+        expect(terminalEffect(result)?.kind).toBe("block");
+        expect(observed).toEqual([]);
+      } else {
+        expect(event.tool.input).toEqual({ command: "updated" });
+        expect(event.tool.shell?.command).toBe("updated");
+        expect(replacedInput(result)).toEqual({ value: { command: "updated" } });
+        expect(observed).toEqual([{ command: "updated" }]);
+        expect(result.terminatedBy).toBeUndefined();
+      }
+    },
+  );
+
   it("lets one hook notify and then prevent a stop", async () => {
     const result = await dispatch(
       [
@@ -1227,6 +1279,113 @@ describe("shell view coherence across rewrites", () => {
     await dispatch(hooks, event, { ...OPTIONS, shellCodec: codec });
     expect(event.tool.shell).toBeUndefined();
   });
+
+  it("keeps a dialect the adapter established across a rewrite the codec cannot restate it for", async () => {
+    // The dialect an adapter took from what its harness reported is not in the
+    // shape table, so re-classifying the new input alone would silently turn a
+    // known grammar into an unknown one for every later hook (ADR-0029).
+    const seen: (string | undefined)[] = [];
+    const guard = hook("tool.before", {
+      id: "guard",
+      async run(event) {
+        seen.push(event.tool.shell?.dialect);
+      },
+    });
+    for (const rewrite of [replaceInput({ command: "pnpm install" }), updateShell({ command: "pnpm install" })]) {
+      const rewriter = hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return rewrite;
+        },
+      });
+      const event = shellEvent();
+      event.tool.shell = { ...event.tool.shell!, dialect: "powershell" };
+      await dispatch([rewriter, guard], event, { ...OPTIONS, shellCodec: codec });
+      expect(event.tool.shell).toEqual({ command: "pnpm install", commandKey: "command", dialect: "powershell" });
+    }
+    expect(seen).toEqual(["powershell", "powershell"]);
+  });
+
+  it("gives a view a rewrite creates the dialect the adapter established for the event", async () => {
+    // The harness can state its shell before a call whose input has no view
+    // yet. The first view then appears mid-dispatch, and only the dispatch
+    // options still know the dialect. It also returns after a rewrite that
+    // briefly had no view.
+    const seen: unknown[] = [];
+    const rewriteTo = (id: string, input: unknown) =>
+      hook("tool.before", {
+        id,
+        capabilities: { "tool.before.input.replace": "required" },
+        async run(event) {
+          seen.push(event.tool.shell?.dialect);
+          return replaceInput(input);
+        },
+      });
+    const hooks = [
+      rewriteTo("one", { command: "ls" }),
+      rewriteTo("two", { notACommand: true }),
+      rewriteTo("three", { command: "ls" }),
+    ];
+    const viewless = toolBefore({ notACommand: true });
+    await dispatch(hooks, viewless, { ...OPTIONS, shellCodec: codec, shellDialect: "cmd" });
+    expect(viewless.tool.shell).toEqual({ command: "ls", commandKey: "command", dialect: "cmd" });
+    // Without the option, the dialect the view arrived with is remembered instead.
+    const arrived = shellEvent();
+    arrived.tool.shell = { ...arrived.tool.shell!, dialect: "powershell" };
+    await dispatch(hooks, arrived, { ...OPTIONS, shellCodec: codec });
+    expect(arrived.tool.shell?.dialect).toBe("powershell");
+    expect(seen).toEqual([undefined, "cmd", undefined, "powershell", "powershell", undefined]);
+  });
+
+  it("keeps the dialect a view arrived with over an option that disagrees", async () => {
+    // The option is for a call with no view to carry a dialect. Where one
+    // arrived, the first hook was already shown it, and a rewrite that
+    // switched to the option's would change the grammar under a later guard.
+    const seen: unknown[] = [];
+    const arrived = shellEvent();
+    arrived.tool.shell = { ...arrived.tool.shell!, dialect: "posix" };
+    const watch = (id: string, input?: unknown) =>
+      hook("tool.before", {
+        id,
+        capabilities: { "tool.before.input.replace": "required" },
+        async run(event) {
+          seen.push(event.tool.shell?.dialect);
+          return input === undefined ? undefined : replaceInput(input);
+        },
+      });
+    await dispatch([watch("rewrite", { command: "ls" }), watch("guard")], arrived, {
+      ...OPTIONS,
+      shellCodec: codec,
+      shellDialect: "cmd",
+    });
+    expect(seen).toEqual(["posix", "posix"]);
+  });
+
+  it("takes the codec's dialect over the previous one, and drops it with the view", async () => {
+    // A table that pins the dialect is the authority after a rewrite, and an
+    // input that no longer classifies leaves no view to hang a dialect on.
+    const pinned = shellCodec({ Bash: { commandKey: "command", dialect: "posix" } });
+    const rewriteTo = (input: unknown) =>
+      hook("tool.before", {
+        id: "rewriter",
+        capabilities: { "tool.before.input.replace": "required" },
+        async run() {
+          return replaceInput(input);
+        },
+      });
+    const stated = (): ToolBeforeEvent => {
+      const event = shellEvent();
+      event.tool.shell = { ...event.tool.shell!, dialect: "powershell" };
+      return event;
+    };
+    const restated = stated();
+    await dispatch([rewriteTo({ command: "pnpm install" })], restated, { ...OPTIONS, shellCodec: pinned });
+    expect(restated.tool.shell?.dialect).toBe("posix");
+    const dropped = stated();
+    await dispatch([rewriteTo({ notACommand: true })], dropped, { ...OPTIONS, shellCodec: codec });
+    expect(dropped.tool.shell).toBeUndefined();
+  });
 });
 
 describe("file view coherence across rewrites (ADR-0026)", () => {
@@ -1539,7 +1698,7 @@ describe("plugin context (ADR-0020)", () => {
   });
 });
 
-describe("agent-scoped hooks (ADR-0030)", () => {
+describe("agent-scoped hooks (ADR-0033)", () => {
   const inAgent = (agentType?: string): ToolBeforeEvent => {
     const event = toolBefore({ command: "ls" });
     if (agentType !== undefined) event.correlation.agentType = agentType;

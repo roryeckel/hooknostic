@@ -16,7 +16,7 @@ jobs:
   renovate-ready:
     name: Renovate artifact readiness
     # A dependency update can require a PAT-authored artifact refresh. Do not
-    # start seven runners on the intermediate commit: its successor will
+    # start the full validation matrix on the intermediate commit: its successor will
     # trigger this workflow again. A no-op refresh proceeds immediately.
     if: >-
       github.event_name == 'pull_request' &&
@@ -59,7 +59,7 @@ jobs:
     # The hosted app maintains its runtime. This image supplies the matching
     # validator CLI without adding Renovate's Node floor to workspace engines.
     container:
-      image: ghcr.io/renovatebot/renovate:44.117.1
+      image: ghcr.io/renovatebot/renovate:44.155.1
       options: --user 0
     steps:
       - uses: actions/checkout@v7
@@ -120,6 +120,15 @@ jobs:
           HOOKNOSTIC_SMOKE: ""
           HOOKNOSTIC_PACK: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
 
+      - name: LiteLLM sidecar compatibility (loopback only)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/litellm-probe"
+          source "$RUNNER_TEMP/litellm-probe/bin/activate"
+          python -m pip install --disable-pip-version-check -r .github/requirements/litellm.txt
+          python scripts/probe-litellm-sidecar.py
+
       # The reproducibility gate. rewrite-shell commits its build output, so a
       # rebuild that changes bytes is either an undeclared input to the bundle or
       # a genuine source change someone forgot to rebuild -- both worth failing
@@ -165,6 +174,29 @@ jobs:
             exit 1
           fi
 
+  node-compatibility:
+    needs: renovate-ready
+    if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
+    name: Node 22 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/compatibility/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+        env:
+          HOOKNOSTIC_PLAYBACK: ""
+          HOOKNOSTIC_SMOKE: ""
+          HOOKNOSTIC_PACK: "1"
+
   harness-playback:
     needs: renovate-ready
     if: ${{ !cancelled() && (needs.renovate-ready.result == 'success' || needs.renovate-ready.result == 'skipped') }}
@@ -179,6 +211,10 @@ jobs:
             os: ubuntu-latest
           - harness: codex
             os: ubuntu-latest
+          - harness: pi
+            os: ubuntu-latest
+          - harness: pi
+            os: windows-latest
           - harness: opencode-v1
             os: ubuntu-latest
           - harness: opencode-v2
@@ -214,14 +250,41 @@ jobs:
         run: pnpm run bundle
 
       - name: Run model-free playback
-        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/agent-definition-playback.test.ts
+        id: playback
+        run: pnpm exec vitest run packages/cli/test/harness-playback.test.ts packages/cli/test/opencode-v2-playback.test.ts packages/cli/test/agent-definition-playback.test.ts scripts/pi-drift-driver.test.mjs
         env:
           HOOKNOSTIC_PLAYBACK: ${{ matrix.harness }}
+          HKN_PLAYBACK_ARTIFACT_DIR: ${{ runner.temp }}/opencode-v2-playback
           # Deliberately blank: the test routes model traffic to loopback.
           ANTHROPIC_API_KEY: ""
           ANTHROPIC_AUTH_TOKEN: ""
           OPENAI_API_KEY: ""
           OPENROUTER_API_KEY: ""
+
+      - name: Upload OpenCode v2 failure diagnostics
+        if: ${{ always() && matrix.harness == 'opencode-v2' && steps.playback.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: opencode-v2-playback-${{ matrix.os }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          include-hidden-files: true
+          # Keep generated inputs and observations; omit dependency trees and isolated homes.
+          path: |
+            ${{ runner.temp }}/opencode-v2-playback/**/phases.jsonl
+            ${{ runner.temp }}/opencode-v2-playback/**/current-phase.json
+            ${{ runner.temp }}/opencode-v2-playback/**/*.stdout.log
+            ${{ runner.temp }}/opencode-v2-playback/**/*.stderr.log
+            ${{ runner.temp }}/opencode-v2-playback/**/failure.json
+            ${{ runner.temp }}/opencode-v2-playback/**/result.json
+            ${{ runner.temp }}/opencode-v2-playback/**/model.json
+            ${{ runner.temp }}/opencode-v2-playback/**/remote.json
+            ${{ runner.temp }}/opencode-v2-playback/**/registry.json
+            ${{ runner.temp }}/opencode-v2-playback/**/trace.jsonl
+            ${{ runner.temp }}/opencode-v2-playback/**/captured/**
+            ${{ runner.temp }}/opencode-v2-playback/**/project/opencode.json
+            ${{ runner.temp }}/opencode-v2-playback/**/package-source/**
+            !${{ runner.temp }}/opencode-v2-playback/**/node_modules/**
 
   # The ordinary codex playback lane installs referenceVersion, which predates
   # the Code Mode capture, so its Code Mode drives skip there. This lane

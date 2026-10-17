@@ -73,7 +73,7 @@ describe("capability registry", () => {
     ]);
   });
 
-  it("gives exactly the agent-scoped events an agent.identity capability (ADR-0030)", () => {
+  it("gives exactly the agent-scoped events an agent.identity capability (ADR-0033)", () => {
     for (const event of HOOK_EVENT_NAMES) {
       expect(agentIdentityCapability(event), event).toBe(
         isAgentScopedEvent(event) ? `${event}.agent.identity` : undefined,
@@ -147,6 +147,21 @@ describe("canonical schemas", () => {
     };
     expect(toolInvocationSchema.parse(tool)).toEqual(tool);
     expect(() => toolInvocationSchema.parse({ ...tool, file: { ...tool.file, resolved: "/abs/a.txt" } })).toThrow();
+  });
+
+  it("validates a shell view's dialect against the registered families", () => {
+    // The schema is strict: a dialect the type declares but this twin omitted
+    // would reject every event an adapter decodes with one.
+    const tool = {
+      kind: "shell",
+      nativeName: "PowerShell",
+      input: { command: "ls" },
+      shell: { command: "ls", commandKey: "command", dialect: "powershell" },
+    };
+    expect(toolInvocationSchema.parse(tool)).toEqual(tool);
+    for (const dialect of ["bash", "pwsh", ""]) {
+      expect(() => toolInvocationSchema.parse({ ...tool, shell: { ...tool.shell, dialect } })).toThrow();
+    }
   });
 
   it("validates a canonical event envelope and passes through event payload fields", () => {
@@ -349,7 +364,7 @@ describe("canonical schemas", () => {
       hooknosticConfigSchema.safeParse({ ...project, components: { skills: ["./skills"], defaultAgent: "planner" } })
         .success,
     ).toBe(false);
-    // With a package root, for package delivery (ADR-0029): the definitions are
+    // With a package root, for package delivery (ADR-0032): the definitions are
     // translated into each native package rather than shipped as package files.
     expect(
       hooknosticConfigSchema.safeParse({ ...project, components: { root: ".", agents: ["./agents"] } }).success,

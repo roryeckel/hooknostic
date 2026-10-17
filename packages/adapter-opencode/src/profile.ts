@@ -176,13 +176,69 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
         // .capture/harness-playback/README.md. Keep field order stable.
         // scheduled-playback:begin
         {
-          version: "1.18.33",
-          date: "2026-09-28",
+          version: "1.19.0",
+          date: "2026-10-11",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
         },
         // scheduled-playback:end
+        {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: tool.execute.before bash payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration.",
+        },
+        {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: captured tool.execute.before bash payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration.",
+        },
+        {
+          version: "1.18.34",
+          date: "2026-10-10",
+          method: "captured",
+          artifact: "fixtures/opencode/1.18",
+          what: "tool-before-shell-cmd and tool-before-shell-tcsh: tool.execute.before payloads from sessions whose tool.definition hook stated the bash tool's shell, cmd on Windows and tcsh on Linux. Pins the stated shell as the source of tool.shell.dialect, and tcsh as a shell with none (ADR-0029).",
+        },
+        {
+          version: "1.18.0",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe on the floor of the recommended range: the bash tool.definition description stated Shell: powershell before the call, and powershell.exe ran.",
+        },
+        {
+          version: "1.18.18",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe on the reference build: the bash tool.definition description stated Shell: powershell before the call, and powershell.exe ran.",
+        },
+        {
+          version: "1.18.34",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Linux container shell interpreter probe: the bash tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the tool.definition hook stated each by name before the call.",
+        },
+        {
+          version: "1.18.34",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: one bash tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical tool.execute.before input, and the tool.definition hook stated each shell by name before the call.",
+        },
+        {
+          version: "1.18.34",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: with SHELL naming bash, the bash tool ran bash and the tool.definition hook stated bash before the call, naming the platform darwin. No other macOS configuration was captured.",
+        },
       ],
       notes: ["https://opencode.ai/docs/plugins (fetched 2026-08-20)"],
     },
@@ -269,14 +325,14 @@ export const opencodeCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.agent.identity": {
         level: "unsupported",
         rationale:
-          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0030, .capture/agents).",
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0033, .capture/agents).",
       },
 
       "tool.after.observe": { level: "exact" },
       "tool.after.agent.identity": {
         level: "unsupported",
         rationale:
-          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0030, .capture/agents).",
+          "tool.execute.before/after carry only tool, sessionID and callID, in a subagent as elsewhere; the running agent is named only on chat.message (ADR-0033, .capture/agents).",
       },
       "tool.after.output.replace": {
         level: "approximate",

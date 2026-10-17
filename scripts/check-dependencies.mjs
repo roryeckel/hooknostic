@@ -6,16 +6,20 @@ import { fileURLToPath } from "node:url";
 import { isMainModule } from "./is-main-module.mjs";
 
 // Reuse the workspace's existing YAML parser; this script runs after install.
-const { parse } = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url))("yaml");
+const workspaceRequire = createRequire(new URL("../packages/agent-plugin/package.json", import.meta.url));
+const { parse } = workspaceRequire("yaml");
+const { minVersion } = workspaceRequire("semver");
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 export const dependencySections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 export const nodeFiles = Object.fromEntries(
-  ["ci", "playback", "publishing"].map((role) => [role, `.github/node/${role}/.node-version`]),
+  ["ci", "playback", "publishing", "compatibility"].map((role) => [role, `.github/node/${role}/.node-version`]),
 );
 
-export function checkEngines(manifests) {
+export function checkEngines(manifests, compatibilityVersion) {
   const requirement = manifests["package.json"]?.engines?.node;
   if (!requirement) throw new Error("Root Node engine requirement is missing");
+  if (compatibilityVersion !== undefined && compatibilityVersion !== minVersion(requirement)?.version)
+    throw new Error("Compatibility Node must match the declared minimum");
   for (const [path, pkg] of Object.entries(manifests)) {
     if (pkg.engines?.node !== requirement) throw new Error(`${path}: Node engine must agree with root ${requirement}`);
   }
@@ -27,20 +31,40 @@ export function inventory(root = repoRoot) {
     "package.json",
     ...["packages", "examples"].flatMap((dir) =>
       readdirSync(resolve(root, dir), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        // pnpm's `packages/*` and `examples/*` never match a dot-directory, so
+        // one is not a member; examples/.buildtest-* is where the CLI build
+        // tests keep scratch copies, which have no manifest while being copied
+        // or removed. Every other directory is a member and needs a manifest.
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
         .map((entry) => `${dir}/${entry.name}/package.json`),
     ),
   ];
   const manifests = Object.fromEntries(paths.map((path) => [path, JSON.parse(read(path))]));
-  checkEngines(manifests);
+  checkEngines(manifests, read(nodeFiles.compatibility).trim());
   const workspace = parse(read("pnpm-workspace.yaml"));
   const catalogs = { default: workspace.catalog, ...workspace.catalogs };
   const expected = [];
-  const add = (manager, packageFile, depName, currentValue, depType = "") =>
-    expected.push({ manager, packageFile, depName, currentValue, depType });
-  for (const [name, dependencies] of Object.entries(catalogs)) {
-    for (const [dep, range] of Object.entries(dependencies))
-      add("npm", "pnpm-workspace.yaml", dep, range, `pnpm.catalog.${name}`);
+  const add = (manager, packageFile, depName, currentValue, depType = "", aliasTarget) =>
+    expected.push({
+      manager,
+      packageFile,
+      depName,
+      currentValue,
+      depType,
+      ...(aliasTarget ? { npmPackageAlias: true, packageName: aliasTarget } : {}),
+    });
+  const declarations = [
+    ...Object.entries(catalogs).map(([name, dependencies]) => [`pnpm.catalog.${name}`, dependencies]),
+    ["pnpm-workspace.overrides", workspace.overrides ?? {}],
+  ];
+  for (const [depType, dependencies] of declarations) {
+    for (const [dep, range] of Object.entries(dependencies)) {
+      // Renovate extracts an npm alias as its local name, target package and
+      // version range, rather than leaving the npm: prefix in currentValue.
+      const alias = /^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/.exec(range);
+      if (range.startsWith("npm:") && !alias) throw new Error(`Unsupported npm alias: ${dep}`);
+      add("npm", "pnpm-workspace.yaml", dep, alias?.[2] ?? range, depType, alias?.[1]);
+    }
   }
   for (const [path, pkg] of Object.entries(manifests)) {
     for (const section of dependencySections) {
@@ -88,9 +112,11 @@ export function inventory(root = repoRoot) {
       const role =
         name === "release-publish.yml"
           ? "publishing"
-          : ["harness-playback", "code-mode", "verify", "drift"].includes(jobName)
-            ? "playback"
-            : "ci";
+          : jobName === "node-compatibility"
+            ? "compatibility"
+            : ["harness-playback", "code-mode", "verify", "drift"].includes(jobName)
+              ? "playback"
+              : "ci";
       for (const step of job.steps ?? []) {
         if (!step.uses || step.uses.startsWith("./")) continue;
         const [dep, value] = step.uses.split("@");
@@ -122,7 +148,15 @@ export function inventory(root = repoRoot) {
 }
 
 export function checkExtraction(expected, packageFiles) {
-  const key = (dep) => JSON.stringify([dep.manager, dep.packageFile, dep.depName, dep.currentValue, dep.depType ?? ""]);
+  const key = (dep) =>
+    JSON.stringify([
+      dep.manager,
+      dep.packageFile,
+      dep.depName,
+      dep.currentValue,
+      dep.depType ?? "",
+      dep.npmPackageAlias ? dep.packageName : "",
+    ]);
   const wanted = new Set(expected.map(key));
   const found = new Set();
   const allowedFiles = new Set([...expected.map((dep) => dep.packageFile)]);

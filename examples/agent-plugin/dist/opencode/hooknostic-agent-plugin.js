@@ -19,6 +19,7 @@ export default { id: "hooknostic.components.combined-example", async setup(ctx) 
     } : server));
   });
   const values = skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description,
+    ...(skill.policy === undefined ? {} : { autoinvoke: skill.policy.allowImplicitInvocation }),
     path: join(root, skill.manifestPath),
     content: readFileSync(join(root, skill.manifestPath), "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ""),
   }));

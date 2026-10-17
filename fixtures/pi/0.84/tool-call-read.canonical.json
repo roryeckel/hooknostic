@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_call"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-4pvRDe\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "read",
+    "input": {
+      "path": "seed.txt"
+    },
+    "file": {
+      "paths": [
+        "seed.txt"
+      ],
+      "pathKey": "path"
+    }
+  }
+}

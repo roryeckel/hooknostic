@@ -9,11 +9,12 @@ import { pathToFileURL } from "node:url";
 
 import { expect } from "vitest";
 
+import { dialectOfStatedShell } from "@hooknostic/adapter-opencode";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { HarnessAdapter, ProjectComponentOptions, TargetSpec } from "@hooknostic/core";
 import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
-import type { CapabilityId, HookEventName } from "@hooknostic/sdk";
+import type { CapabilityId, EventFieldId, HookEventName, ShellDialect } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
 
 const RUNTIME_POLICY = {
@@ -33,6 +34,7 @@ export interface PlaybackBuild {
   runtimePath: string;
   tracePath: string;
   events: HookEventName[];
+  fields: readonly EventFieldId[];
 }
 
 export type ModelProtocol = "anthropic-messages" | "openai-responses" | "openai-chat";
@@ -46,7 +48,10 @@ export interface ModelPlayback {
   requests: unknown[];
   errors: string[];
   urls: string[];
-  /** How many agent turns (model requests carrying tools) have been served. */
+  /**
+   * How many agent turns (model requests carrying tools) have been served. A
+   * request answered by waiting for a connecting MCP server is not one.
+   */
   readonly turnCount: number;
   close(): Promise<void>;
 }
@@ -143,6 +148,7 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
 function playbackPluginSource(
   events: readonly HookEventName[],
   contextAdd: ReadonlySet<HookEventName>,
+  fields: readonly EventFieldId[],
   label?: string,
   shellMatch = false,
 ): string {
@@ -174,14 +180,10 @@ function playbackPluginSource(
       // declared-but-unresolved cell would produce unasserted dispatch noise.
       contextAdd.has(event) ? `"${event}.context.add": "optional"` : undefined,
     ].filter(Boolean);
-    // ADR-0027: the turn's fields are declared, so an in-process adapter does
-    // the work of producing them and the trace can show what arrived.
-    const turnFields =
-      event === "turn.stop"
-        ? `fields: ["lastMessage", "correlation.turnId"],\n      `
-        : event === "prompt.before"
-          ? `fields: ["correlation.turnId"],\n      `
-          : "";
+    // ADR-0027: declare only fields this target rates. Pi observes these
+    // events without claiming their optional turn id or last-message fields.
+    const eventFields = fields.filter((field) => field.startsWith(`${event}.`));
+    const turnFields = eventFields.length > 0 ? `fields: ${JSON.stringify(eventFields)},\n      ` : "";
     const capabilityBlock =
       capabilities.length > 0
         ? `capabilities: {
@@ -253,6 +255,7 @@ function playbackPluginSource(
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
           toolNativeName: event.tool?.nativeName,
+          shellDialect: event.tool?.shell?.dialect,
           lastMessage: event.lastMessage,
           turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
         }) + "\\n");${extraEffects}
@@ -301,10 +304,22 @@ export async function buildPlaybackArtifact(
 
   const events = observedEvents(adapter);
   const contextAdd = contextAddEvents(adapter);
+  const target = targetFor(adapter, artifactDir, override);
+  const resolution = adapter.capabilities(target);
+  const fields = (
+    ["prompt.before.correlation.turnId", "turn.stop.lastMessage", "turn.stop.correlation.turnId"] as const
+  ).filter((field) => {
+    const level = resolution.fields?.[field]?.level;
+    return level !== undefined && level !== "unsupported";
+  });
   const entryPath = join(artifactDir, "playback-hooks.ts");
   const tracePath = join(artifactDir, "hook-trace.jsonl");
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(entryPath, playbackPluginSource(events, contextAdd, override.label, override.shellMatch), "utf8");
+  await writeFile(
+    entryPath,
+    playbackPluginSource(events, contextAdd, fields, override.label, override.shellMatch),
+    "utf8",
+  );
 
   // IR capability declarations must mirror the generated source's `capabilities`
   // blocks: the analyzer validates every returned effect against the declared
@@ -322,6 +337,7 @@ export async function buildPlaybackArtifact(
       ...(override.shellMatch && event === "tool.before" ? { match: { kind: "shell" as const } } : {}),
       async run() {},
     });
+    definition.fields = fields.filter((field) => field.startsWith(`${event}.`));
     definition.capabilities = ((): Partial<Record<CapabilityId, "optional">> => {
       const declared: Partial<Record<CapabilityId, "optional">> = {};
       if (event === "tool.before") {
@@ -360,8 +376,6 @@ export async function buildPlaybackArtifact(
     );
   }
 
-  const target = targetFor(adapter, artifactDir, override);
-  const resolution = adapter.capabilities(target);
   const capabilities = Object.fromEntries(
     Object.entries(resolution.matrix ?? {}).map(([id, entry]) => [id, entry.level]),
   );
@@ -422,6 +436,7 @@ export async function buildPlaybackArtifact(
     runtimePath: join(artifactDir, prefix, runtime.path),
     tracePath,
     events,
+    fields,
     ...(override.project ? { project: true } : {}),
   };
 }
@@ -463,7 +478,7 @@ const cmdEscape = require("cross-spawn/lib/util/escape.js") as {
  * an npm `.cmd` shim, which cross-spawn resolves through cmd.exe; global shims
  * forward `%*` too, so they get the double escape the MCP launcher applies.
  */
-function spawnIntact(
+export function spawnIntact(
   command: string,
   args: string[],
   options: SpawnOptions & { stdio: ["pipe", "pipe", "pipe"] },
@@ -486,6 +501,7 @@ export function runProcess(
     env: NodeJS.ProcessEnv;
     input?: string;
     timeoutMs?: number;
+    onOutput?: (stream: "stdout" | "stderr", chunk: string) => void;
   },
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -498,8 +514,14 @@ export function runProcess(
     let stdout = "";
     let stderr = "";
     let settled = false;
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
-    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
+      options.onOutput?.("stdout", chunk);
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+      options.onOutput?.("stderr", chunk);
+    });
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -678,6 +700,42 @@ function scriptedShellCommand(scenario: PlaybackScenario, marker: string): strin
   return `node -e "${scriptedNodeScript(scenario, marker)}"`;
 }
 
+/** The advertised tool a script step names: its exact name, or a name ending in it. */
+function namedTool(tools: Record<string, unknown>[], name: string): Record<string, unknown> | undefined {
+  // Exact name first: a bare suffix match would resolve `Edit` to whichever of
+  // `Edit`, `MultiEdit` or `NotebookEdit` the harness happened to list first.
+  return (
+    tools.find((candidate) => toolName(candidate) === name) ??
+    tools.find((candidate) => toolName(candidate)?.endsWith(name))
+  );
+}
+
+/**
+ * Claude Code's tool for waiting on MCP servers that are still connecting. On
+ * 2.1.295 and 2.1.296 a `-p` run sent its first request before a plugin's
+ * stdio server had connected: the request listed this tool and the tools of
+ * the servers that had connected, and not the stdio server's. Called with no
+ * arguments it waits for every pending server, and the next request lists
+ * their tools (.capture/harness-playback).
+ */
+const PENDING_SERVERS_TOOL = "WaitForMcpServers";
+/** Waits one script step gets before its missing tool is reported as missing. */
+const PENDING_SERVER_WAITS = 2;
+
+/**
+ * True when a step names a tool the request does not list yet, and the request
+ * offers the harness's own way to wait for it. A model would wait, so the
+ * playback does: failing here would report a slow server as a missing tool.
+ */
+function awaitsPendingServers(request: Record<string, unknown>, action: TurnAction): boolean {
+  if (action.kind !== "tool" || action.toolName === undefined) return false;
+  const tools = requestTools(request);
+  return (
+    namedTool(tools, action.toolName) === undefined &&
+    tools.some((candidate) => toolName(candidate) === PENDING_SERVERS_TOOL)
+  );
+}
+
 export function scriptedTool(
   request: Record<string, unknown>,
   scenario: PlaybackScenario,
@@ -686,11 +744,8 @@ export function scriptedTool(
   explicitArguments?: Record<string, unknown>,
 ): { name: string; namespace?: string; arguments: string } {
   const tools = requestTools(request);
-  // Exact name first: a bare suffix match would resolve `Edit` to whichever of
-  // `Edit`, `MultiEdit` or `NotebookEdit` the harness happened to list first.
   const tool = preferredTool
-    ? (tools.find((candidate) => toolName(candidate) === preferredTool) ??
-      tools.find((candidate) => toolName(candidate)?.endsWith(preferredTool)))
+    ? namedTool(tools, preferredTool)
     : tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
   if (tool === undefined) {
     throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
@@ -1169,6 +1224,8 @@ export async function startModelPlayback(
   const errors: string[] = [];
   const urls: string[] = [];
   let turn = 0;
+  let waits = 0;
+  let stepWaits = 0;
   const sockets = new Set<Socket>();
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -1209,16 +1266,30 @@ export async function startModelPlayback(
         // Past the script's last turn the model keeps completing with text:
         // a harness that re-prompts (stop prevention) or retries gets a
         // defined response, never a 500.
-        const action = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
+        const scripted = isAgentTurn ? (turns[Math.min(turn, turns.length) - 1] ?? auxiliaryAction) : auxiliaryAction;
+        // A step whose tool belongs to a server still connecting waits for it
+        // and stays the next step: the wait is a turn to the harness, not to
+        // the script. Bounded, so a server that never connects is reported.
+        const waiting = isAgentTurn && stepWaits < PENDING_SERVER_WAITS && awaitsPendingServers(parsed, scripted);
+        if (waiting) {
+          turn -= 1;
+          stepWaits += 1;
+          waits += 1;
+        } else if (isAgentTurn) {
+          stepWaits = 0;
+        }
+        const action: TurnAction = waiting ? { kind: "tool", toolName: PENDING_SERVERS_TOOL, arguments: {} } : scripted;
         if (action.kind === "code" && protocol !== "openai-responses") {
           throw new Error(`Code Mode turns are only scripted for openai-responses, not ${protocol}`);
         }
+        // Counts the waits too, so no two calls of a session share an id.
+        const ordinal = turn + waits;
         if (protocol === "anthropic-messages") {
-          anthropicTurn(response, parsed, turn, action);
+          anthropicTurn(response, parsed, ordinal, action);
         } else if (protocol === "openai-responses") {
-          responsesTurn(response, parsed, turn, action);
+          responsesTurn(response, parsed, ordinal, action);
         } else {
-          chatTurn(response, parsed, turn, action);
+          chatTurn(response, parsed, ordinal, action);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1284,6 +1355,65 @@ export async function traceEvents(path: string): Promise<HookEventName[]> {
   return (await readTrace(path)).map((entry) => entry.event);
 }
 
+/**
+ * The dialect an OpenCode shell call should carry on this host, or why the lane
+ * cannot say (ADR-0029). OpenCode runs whatever the host points it at, so the
+ * expectation comes from the host and only where a capture says what follows
+ * (`.capture/shell-dialects`). On Windows and Linux: a `SHELL` naming a shell
+ * the adapter maps is the shell stated, with no `SHELL` Windows ran a
+ * PowerShell and Linux bash, and Linux ran and stated bash where `SHELL` named
+ * fish. On macOS one configuration was captured, a `SHELL` naming bash, which
+ * was stated and run. Anywhere else a call without a dialect is correct, and
+ * asserting one would blame the harness's wording for the host: a `SHELL` the
+ * adapter leaves unmapped, such as sh or tcsh, any other macOS configuration,
+ * and any other platform.
+ */
+export function openCodeShellDialectExpectation(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platform: string = process.platform,
+): { dialect: ShellDialect } | { skip: string } {
+  if (platform !== "win32" && platform !== "linux" && platform !== "darwin") {
+    return { skip: `no capture says what OpenCode states about its shell on ${platform}` };
+  }
+  const shell = env["SHELL"];
+  if (shell === undefined || shell === "") {
+    if (platform === "darwin") return { skip: "no capture says what OpenCode states on macOS with SHELL unset" };
+    return { dialect: platform === "win32" ? "powershell" : "posix" };
+  }
+  const name = shell
+    .split(/[\\/]/)
+    .at(-1)!
+    .toLowerCase()
+    .replace(/\.exe$/, "");
+  if (platform === "darwin") {
+    return name === "bash"
+      ? { dialect: "posix" }
+      : { skip: `no capture says what OpenCode states on macOS with SHELL naming ${name}` };
+  }
+  // The one shell a capture saw OpenCode refuse: it ran bash instead and said so.
+  if (name === "fish" && platform === "linux") return { dialect: "posix" };
+  const dialect = dialectOfStatedShell(name);
+  return dialect === undefined
+    ? { skip: `SHELL names ${name}, which the adapter does not map to a dialect` }
+    : { dialect };
+}
+
+/**
+ * Every shell call in a playback trace carries the dialect this host calls for.
+ * The adapter reads the shell's name out of prose the harness writes for the
+ * model, so this is the check that notices when a build rewords it: the calls
+ * would then carry no dialect at all.
+ */
+export function expectOpenCodeShellDialect(dialects: readonly unknown[], expected: ShellDialect): void {
+  expect(dialects.length, "no shell tool.before reached the trace").toBeGreaterThan(0);
+  expect(
+    dialects,
+    `this host calls for ${expected} (SHELL=${process.env["SHELL"] ?? "unset"}). A call with no dialect means ` +
+      "the build no longer states its shell in the wording packages/adapter-opencode/src/shell-statement.ts " +
+      "reads; .capture/shell-dialects/drive.mjs records what it states now.",
+  ).toEqual(dialects.map(() => expected));
+}
+
 export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
   const pairs = await fixturePairs(fixturesDir);
   for (const fixture of pairs) {
@@ -1333,4 +1463,89 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
   expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
     pairs.map((fixture) => fixture.canonical.event),
   );
+}
+
+/**
+ * Replay pi fixture invocations through the generated production artifact.
+ * pi's shim exports an extension factory, not a callback map: the factory is
+ * driven through a recording ExtensionAPI double that routes each native
+ * event to the subscription pi would have registered.
+ */
+export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
+  const pairs = await fixturePairs(fixturesDir);
+  const previousTrace = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
+  process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = build.tracePath;
+  try {
+    const imported = (await import(`${pathToFileURL(build.runtimePath).href}?playback=1`)) as {
+      default: (pi: {
+        on: (event: string, handler: (event: unknown, ctx: unknown) => Promise<unknown> | unknown) => void;
+      }) => void;
+    };
+    const subscriptions = new Map<string, Array<(event: unknown, ctx: unknown) => Promise<unknown> | unknown>>();
+    imported.default({
+      on: (event, handler) => {
+        const list = subscriptions.get(event) ?? [];
+        list.push(handler);
+        subscriptions.set(event, list);
+      },
+    });
+    for (const fixture of pairs) {
+      const native = fixture.input as {
+        event: { type?: unknown };
+        ctx: { cwd: string; mode?: string };
+      };
+      const type = native.event.type;
+      expect(typeof type, `${fixture.name}: fixture has no event type`).toBe("string");
+      const handlers = subscriptions.get(type as string);
+      expect(handlers, `${fixture.name}: generated extension did not register ${type}`).toBeDefined();
+      await handlers![0]!(native.event, { cwd: native.ctx.cwd, ...(native.ctx.mode ? { mode: native.ctx.mode } : {}) });
+    }
+  } finally {
+    if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
+    else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
+  }
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
+    pairs.map((fixture) => fixture.canonical.event),
+  );
+}
+
+/**
+ * The playback provider extension for pi: registers an openai-completions
+ * provider pointing at the loopback model server, so the drive needs no
+ * credentials and spends nothing. Same mechanism as .capture/pi's
+ * provider-ollama.ts (verified live against 0.84.4).
+ */
+export async function writePiProviderExtension(
+  artifactDir: string,
+  baseUrl: string,
+  options: { provider?: string; model?: string; apiKey?: string } = {},
+): Promise<string> {
+  const provider = options.provider ?? "hooknostic-playback";
+  const model = options.model ?? "hooknostic-playback";
+  const apiKey = options.apiKey ?? "playback";
+  const path = join(artifactDir, "playback-provider.js");
+  await writeFile(
+    path,
+    `export default function (pi) {
+  pi.registerProvider(${JSON.stringify(provider)}, {
+    baseUrl: ${JSON.stringify(baseUrl)},
+    apiKey: ${JSON.stringify(apiKey)},
+    api: "openai-completions",
+    models: [
+      {
+        id: ${JSON.stringify(model)},
+        name: ${JSON.stringify(model)},
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 8192,
+      },
+    ],
+  });
+}
+`,
+    "utf8",
+  );
+  return path;
 }

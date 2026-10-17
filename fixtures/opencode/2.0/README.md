@@ -87,3 +87,64 @@ always does. The plugin's event subscription received
 | --- | --- | --- |
 | turn-fields/events.jsonl | captured | One session in capture order: the prompt hook, then its inbox, execution, step and text events from the subscription. Deltas and unrelated events omitted |
 | execution-succeeded-with-turn | captured events, constructed enrichment | The captured completion envelope; `.enrichment.json` holds the `execution` the shim hands the decoder beside it (never in `raw`): the prompt hook's `sessionID`/`messageID` and the captured `session.text.ended` data. Canonical `harness.version` is the test's reference build |
+
+## Additional context option (Linux, 2.0.22, 2026-10-04)
+
+| Fixture | Provenance | Observed boundary |
+| --- | --- | --- |
+| context-max-tokens | captured | The `context` callback contains numeric `event.options.maxTokens`, observed as `4096` in both context callbacks of the session |
+
+Promoted during the owner-requested review in [issue #82](https://github.com/roryeckel/hooknostic/issues/82)
+from [harness-watch run 37241402964](https://github.com/roryeckel/hooknostic/actions/runs/37241402964),
+artifact `drift-verdict-opencode-v2`, `captured-opencode-v2/events.jsonl`.
+The Linux runner drove `@opencode/cli` 2.0.22 inside `node:24.21.0-bookworm`,
+with isolated state and the scripted loopback model (`dry_run=true`,
+`force_llm=false`). The model replies and shell argument values were scripted;
+the callback envelope is native harness output.
+
+The input is the first complete `context` JSON snapshot, selected without
+projecting or deleting fields. Its container paths contain no capturing account,
+so no redaction was needed. The original JSONL file's SHA-256 is
+`33fe769a9861e588c1d432ca5f8c6d0acf06f2339a737a1264b3c7add6d83f4e`.
+The canonical file comes from `decodeOpenCodeV2` minus `raw`; as in the existing
+fixture replay suite, its injected `harness.version` is the adapter's reference
+build, not the capture version above.
+
+The older `context` fixture remains intact. Both observed shapes are accepted;
+wrong types and unseen options still report drift. The complete saved session
+changed from advisory drift to clean after adding this variant. This establishes
+the field's presence in this configuration, not when it was introduced or its
+behavior under mutation. No capability, range, reference version, or rolling
+playback record changes.
+
+**The stated shell is captured (2.0.20).** `tool-before-shell-cmd` and
+`tool-before-shell-tcsh` come from `@opencode/cli` 2.0.20 sessions over the
+loopback model (2026-10-10, `.capture/shell-dialects`): Windows with
+`opencode.json` `shell: "cmd"`, and a Linux container with `SHELL` naming tcsh. The
+`input` files are the `execute.before` envelopes, argument values scripted. Each
+`enrichment.json` holds what the shim hands the decoder beside the envelope
+(ADR-0029): the shell name this adapter's parser read out of
+`tools.shell.description` in the last `context` callback before the call, in the
+same session. The existing `context` fixture shows that description's shape; the
+stating sentence of each case is recorded in
+`.capture/shell-dialects/observations*.json`. The name never enters `event.raw`.
+The interpreter that ran matched it in both sessions (live-probe, same record).
+`cmd` is a shell this adapter maps to a dialect; `tcsh` is one it does not, so
+that canonical carries none. As elsewhere in this directory, the canonical
+`harness.version` is the adapter's reference build, not the capture version.
+
+## Playback recapture (Windows, 2.0.32, 2026-10-17)
+
+The existing results, project-remote and package-remote loopback drives were
+run with the installed native executable and isolated state. No paid model or
+real credential was used. The capturing account's home-directory segment is
+redacted to user, as in the earlier fixtures.
+
+| Case | Provenance | Observation |
+| --- | --- | --- |
+| tool-custom-error | captured | The custom tool's plain JavaScript Error is wrapped as Tool.Error and delivered through execute.after, preserving input, message and call ID |
+| remote/playback-recapture.json | captured HTTP rows + constructed scenario labels | Actual project and relocated-package tools/call requests preserve /http and the expanded/literal header; neither appends codemode=false |
+
+The canonical harness version still comes from the reference metadata, as in
+other replay fixtures. Earlier exception omissions and query-bearing requests
+remain historical observations. Procedure and limits: .capture/opencode-v2-audit.

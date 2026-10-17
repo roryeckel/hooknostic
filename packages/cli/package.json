@@ -1,6 +1,6 @@
 {
   "name": "hooknostic",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "license": "Apache-2.0",
   "author": "Rory Eckel <16675082+roryeckel@users.noreply.github.com>",
@@ -28,7 +28,7 @@
   ],
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "files": [
     "bin",
@@ -57,10 +57,12 @@
     "@hooknostic/adapter-claude": "workspace:*",
     "@hooknostic/adapter-codex": "workspace:*",
     "@hooknostic/adapter-opencode": "workspace:*",
+    "@hooknostic/adapter-pi": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/testkit": "workspace:*",
     "@types/semver": "catalog:",
+    "@xterm/headless": "catalog:",
     "node-pty": "catalog:",
     "semver": "catalog:semver-runtime"
   }

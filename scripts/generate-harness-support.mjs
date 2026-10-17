@@ -41,9 +41,11 @@ const lines = [
   "See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping separate outputs.",
   "",
   "> [!WARNING]",
-  "> **macOS is untested.** Every record below was established on Windows or Linux.",
-  "> CI runs only the unit and fixture tests on macOS; no harness session has been",
-  "> captured or played back there.",
+  "> **macOS has unit and fixture coverage, but no real-harness playback evidence.**",
+  "> Claude Code, Codex CLI, and both OpenCode families have shell interpreter",
+  "> captures from GitHub macOS runners (`.capture/shell-dialects`). Pi has no",
+  "> macOS harness captures. All other harness observations below were established",
+  "> on Windows or Linux.",
   "",
   "| Harness | Recommended target range | Validated ranges | Reference build | Fixtures |",
   "| --- | --- | --- | --- | --- |",
@@ -96,6 +98,22 @@ for (const adapter of adapters) {
       "Project delivery validation records:",
     );
     lines.push("Project support is independent of package projection.", "");
+  }
+  // Not a capability: whether a call carries a dialect depends on the call and
+  // its host, so the adapter states where it comes from instead (ADR-0029).
+  if (adapter.shellDialect) {
+    const sources = {
+      tool: "is established from **the tool name**",
+      statement: "is established from **what the harness states**",
+      none: "is **not established** on this harness",
+    };
+    lines.push(
+      "#### Shell dialect",
+      "",
+      "`tool.shell.dialect` " + sources[adapter.shellDialect.source] + ". " + adapter.shellDialect.rationale,
+      "Evidence: `" + adapter.shellDialect.evidence + "`.",
+      "",
+    );
   }
   if (adapter.agentPluginProjector) {
     lines.push("#### Agent Plugin projection", "");
@@ -176,6 +194,18 @@ function emitComponentTable(matrix, profiles, recordsLabel, adapterId) {
     for (const degradation of degradations) {
       lines.push(
         `| \`${adapterId}:${degradation.id}\` | \`${degradation.component}\` | ${degradation.summary} | \`${degradation.evidence}\` |`,
+      );
+    }
+  }
+  const omissions = Object.entries(matrix ?? {}).flatMap(([component, support]) =>
+    support.omission === undefined ? [] : [{ component, ...support.omission }],
+  );
+  if (omissions.length > 0) {
+    lines.push("", "Unsupported components with named omissions, accepted through `components.accept` (HN205):", "");
+    lines.push("| Omission | Component | Behavior | Evidence |", "| --- | --- | --- | --- |");
+    for (const omission of omissions) {
+      lines.push(
+        `| \`${adapterId}:${omission.id}\` | \`${omission.component}\` | ${omission.summary} | \`${omission.evidence}\` |`,
       );
     }
   }

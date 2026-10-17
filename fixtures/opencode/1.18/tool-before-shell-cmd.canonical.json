@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "tool.execute.before"
+  },
+  "session": {
+    "id": "ses_ed7de2a72ffeHAl14gKuft7WQG",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-LOiy4H\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "node interpreter.cjs"
+    },
+    "shell": {
+      "command": "node interpreter.cjs",
+      "commandKey": "command",
+      "dialect": "cmd"
+    }
+  }
+}

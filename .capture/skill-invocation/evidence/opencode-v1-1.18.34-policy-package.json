@@ -1,0 +1,423 @@
+{
+  "provenance": "live-probe",
+  "harness": "opencode-v1",
+  "version": "1.18.34",
+  "platform": "win32",
+  "delivery": "package",
+  "policyProbe": true,
+  "scope": "Native package skills; model replies and forced tool calls were scripted on loopback.",
+  "extraction": "Probe-bearing lines are verbatim excerpts from recorded request bodies; JSON paths and one-based string line numbers identify their source. Only the Windows account-name path segment is redacted to user. descriptionMarkersInInitialRequest and bodiesReachedModel summarize complete tool-bearing model requests, not just these excerpts. Complete raw requests remain in ignored captured/; their hashes are recorded per case.",
+  "cases": [
+    {
+      "label": "baseline",
+      "capturedAt": "2026-10-11T22:48:32.822Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": {
+        "name": "skill",
+        "type": "function",
+        "properties": [
+          "name"
+        ]
+      },
+      "pluginConfig": null,
+      "rawRequestsSha256": "b9cff370591489059a89a01178acef0e6c6e3a7111647b96c37970baf8a1f56d",
+      "excerpts": [
+        {
+          "path": "$[\"1\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            },
+            {
+              "line": 131,
+              "text": "    <description>GATE_DESCRIPTION_gate-opencode harmless capture control.</description>"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "gated",
+      "capturedAt": "2026-10-11T22:49:11.536Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": true,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": {
+        "name": "skill",
+        "type": "function",
+        "properties": [
+          "name"
+        ]
+      },
+      "pluginConfig": null,
+      "rawRequestsSha256": "5f702de2eec8151c0cf98c56e6b3b1871d43a7f4cd22d39b63d5659d74e27349",
+      "excerpts": [
+        {
+          "path": "$[\"1\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "allowed",
+      "capturedAt": "2026-10-11T22:49:52.858Z",
+      "prompt": "Reply with done.",
+      "action": null,
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": {
+        "name": "skill",
+        "type": "function",
+        "properties": [
+          "name"
+        ]
+      },
+      "pluginConfig": null,
+      "rawRequestsSha256": "af9dfe4c9c30f9dc550eb3ec0714994791d8ac358768aebaa408ea99829f2a5a",
+      "excerpts": [
+        {
+          "path": "$[\"1\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            },
+            {
+              "line": 131,
+              "text": "    <description>GATE_DESCRIPTION_gate-opencode harmless capture control.</description>"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    },
+    {
+      "label": "load-control",
+      "capturedAt": "2026-10-11T22:50:11.340Z",
+      "prompt": "Reply with done.",
+      "action": {
+        "kind": "tool",
+        "toolName": "skill",
+        "arguments": {
+          "name": "gate-opencode"
+        }
+      },
+      "gated": false,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 3,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex",
+        "gate-opencode"
+      ],
+      "bodiesReachedModel": [
+        "gate-opencode"
+      ],
+      "skillTool": {
+        "name": "skill",
+        "type": "function",
+        "properties": [
+          "name"
+        ]
+      },
+      "pluginConfig": null,
+      "rawRequestsSha256": "e59270f4e49f6e7b0fd42341c74e45de9d0e12470425fd5edc8f758dc76d11a8",
+      "excerpts": [
+        {
+          "path": "$[\"1\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            },
+            {
+              "line": 131,
+              "text": "    <description>GATE_DESCRIPTION_gate-opencode harmless capture control.</description>"
+            }
+          ]
+        },
+        {
+          "path": "$[\"2\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            },
+            {
+              "line": 131,
+              "text": "    <description>GATE_DESCRIPTION_gate-opencode harmless capture control.</description>"
+            }
+          ]
+        },
+        {
+          "path": "$[\"2\"][\"messages\"][\"3\"][\"content\"]",
+          "lines": [
+            {
+              "line": 4,
+              "text": "GATE_BODY_gate-opencode"
+            }
+          ]
+        }
+      ],
+      "toolResponses": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_playback",
+          "content": "<skill_content name=\"gate-opencode\">\n# Skill: gate-opencode\n\nGATE_BODY_gate-opencode\nRespond with the word done.\n\nBase directory for this skill: C:\\Users\\user\\AppData\\Local\\Temp\\hkn-skill-gate-hNIfHM\\installed\\node_modules\\gate-probe\\skills\\gate-opencode\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n\n</skill_files>\n</skill_content>"
+        }
+      ]
+    },
+    {
+      "label": "load-gated",
+      "capturedAt": "2026-10-11T22:50:40.936Z",
+      "prompt": "Reply with done.",
+      "action": {
+        "kind": "tool",
+        "toolName": "skill",
+        "arguments": {
+          "name": "gate-opencode"
+        }
+      },
+      "gated": true,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 3,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex"
+      ],
+      "bodiesReachedModel": [],
+      "skillTool": {
+        "name": "skill",
+        "type": "function",
+        "properties": [
+          "name"
+        ]
+      },
+      "pluginConfig": null,
+      "rawRequestsSha256": "f60e0dd9a5edf4ca698a4ec2c611252834a5d1bf6789869dc285792ebe8815c8",
+      "excerpts": [
+        {
+          "path": "$[\"1\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            }
+          ]
+        },
+        {
+          "path": "$[\"2\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            }
+          ]
+        }
+      ],
+      "toolResponses": [
+        {
+          "role": "tool",
+          "tool_call_id": "call_playback",
+          "content": "The user has specified a rule which prevents you from using this specific tool call. Here are some of the relevant rules [{\"permission\":\"*\",\"action\":\"allow\",\"pattern\":\"*\"},{\"permission\":\"skill\",\"pattern\":\"gate-opencode\",\"action\":\"deny\"}]"
+        }
+      ]
+    },
+    {
+      "label": "explicit-native",
+      "capturedAt": "2026-10-11T22:51:46.456Z",
+      "prompt": "/gate-opencode",
+      "action": null,
+      "gated": true,
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "visibleSkills": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex"
+      ],
+      "descriptionMarkersInInitialRequest": [
+        "gate-control",
+        "gate-claude",
+        "gate-codex"
+      ],
+      "bodiesReachedModel": [
+        "gate-opencode"
+      ],
+      "skillTool": {
+        "name": "skill",
+        "type": "function",
+        "properties": [
+          "name"
+        ]
+      },
+      "pluginConfig": null,
+      "rawRequestsSha256": "38840afd8379a5113fa5a14997c55c9d14ab42fdfbd187064111b5add61e26ca",
+      "excerpts": [
+        {
+          "path": "$[\"0\"][\"messages\"][\"2\"][\"content\"]",
+          "lines": [
+            {
+              "line": 1,
+              "text": "GATE_BODY_gate-opencode"
+            }
+          ]
+        },
+        {
+          "path": "$[\"1\"][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 116,
+              "text": "    <description>GATE_DESCRIPTION_gate-claude harmless capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>GATE_DESCRIPTION_gate-codex harmless capture control.</description>"
+            },
+            {
+              "line": 126,
+              "text": "    <description>GATE_DESCRIPTION_gate-control harmless capture control.</description>"
+            }
+          ]
+        },
+        {
+          "path": "$[\"1\"][\"messages\"][\"1\"][\"content\"]",
+          "lines": [
+            {
+              "line": 1,
+              "text": "GATE_BODY_gate-opencode"
+            }
+          ]
+        }
+      ],
+      "toolResponses": []
+    }
+  ]
+}

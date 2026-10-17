@@ -76,17 +76,19 @@ async function fixture(
   const registry = defaultAdapterRegistry();
   if (!options.v2) registry.opencode = opencodeV1Adapter();
   const targets = Object.fromEntries(
-    Object.entries(registry).map(([name, adapter]) => [
-      name,
-      {
-        adapter: name,
-        version:
-          name === "opencode" && options.v2 ? opencodeV2Harness.recommendedRange : adapter.harness.recommendedRange,
-        delivery: "project",
-        output: `.hooknostic/artifacts/${name}`,
-        ...options.targets?.[name],
-      },
-    ]),
+    Object.entries(registry)
+      .filter(([name]) => name !== "pi")
+      .map(([name, adapter]) => [
+        name,
+        {
+          adapter: name,
+          version:
+            name === "opencode" && options.v2 ? opencodeV2Harness.recommendedRange : adapter.harness.recommendedRange,
+          delivery: "project",
+          output: `.hooknostic/artifacts/${name}`,
+          ...options.targets?.[name],
+        },
+      ]),
   );
   const config = {
     project: { root: "." },

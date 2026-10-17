@@ -37,6 +37,7 @@ const SHIMS = {
   claude: resolve(packageDir, "../adapter-claude/src/shim.ts"),
   codex: resolve(packageDir, "../adapter-codex/src/shim.ts"),
   opencode: resolve(packageDir, "../adapter-opencode/src/shim.ts"),
+  pi: resolve(packageDir, "../adapter-pi/src/shim.ts"),
 };
 
 /** Bare specifiers of workspace packages that are not published. */
@@ -117,7 +118,11 @@ for (const id of Object.keys(SHIMS)) {
 // 4. Declarations.
 const tsc = spawnSync(
   process.execPath,
-  [require.resolve("typescript/bin/tsc"), "-p", join(packageDir, "tsconfig.types.json")],
+  [
+    join(dirname(require.resolve("@typescript/native/package.json")), "bin", "tsc"),
+    "-p",
+    join(packageDir, "tsconfig.types.json"),
+  ],
   { stdio: "inherit" },
 );
 if (tsc.status !== 0) fail("declaration emit failed");

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "0.84.4",
+    "nativeEvent": "tool_call"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-mg9dBE\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    },
+    "shell": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished",
+      "commandKey": "command"
+    }
+  }
+}

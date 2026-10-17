@@ -1,0 +1,14 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "bash",
+    "toolCallId": "call_tgklb5sv",
+    "input": {
+      "command": "ls -la hello.txt 2>&1; git status --porcelain | head"
+    }
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

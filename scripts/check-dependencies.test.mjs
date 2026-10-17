@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 import { expect, it } from "vitest";
 
@@ -122,4 +124,88 @@ it("keeps intentional catalog lines and the manual Node floor outside automatic 
   expect(major.groupName).toBeNull();
   expect(config.automerge).toBe(false);
   expect(config.vulnerabilityAlerts.automerge).toBe(false);
+});
+
+it("keeps the compatibility runtime at the declared minimum instead of a newer patch", () => {
+  const manifests = { "package.json": { engines: { node: ">=99.1.0" } } };
+  expect(() => checkEngines(manifests, "99.1.0")).not.toThrow();
+  for (const version of ["99.0.0", "99.1.1", "100.0.0"]) {
+    expect(() => checkEngines(manifests, version)).toThrow("Compatibility Node must match the declared minimum");
+  }
+});
+it("compares npm alias targets as well as alias names and version ranges", () => {
+  const expected = {
+    manager: "npm",
+    packageFile: "pnpm-workspace.yaml",
+    depName: "compiler",
+    depType: "pnpm.catalog.default",
+    currentValue: "~7.0.2",
+    npmPackageAlias: true,
+    packageName: "typescript",
+  };
+  const extract = (dep) => ({ npm: [{ packageFile: expected.packageFile, deps: [dep] }] });
+  expect(() => checkExtraction([expected], extract(expected))).not.toThrow();
+  for (const changed of [
+    { ...expected, packageName: "another-package" },
+    { ...expected, packageName: undefined },
+    { ...expected, npmPackageAlias: false },
+  ]) {
+    expect(() => checkExtraction([expected], extract(changed))).toThrow("Unexpected extracted dependency");
+  }
+});
+
+it("inventories catalog aliases using Renovate's range and target fields", () => {
+  const dependencies = inventory();
+  expect(dependencies.find((dep) => dep.depName === "@typescript/native")).toMatchObject({
+    currentValue: expect.stringMatching(/^~\d+\.\d+\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "typescript",
+  });
+  expect(dependencies.find((dep) => dep.depName === "typescript")).toMatchObject({
+    currentValue: expect.stringMatching(/^~\d+\.\d+\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "@typescript/typescript6",
+  });
+});
+
+it("inventories the compiler API override on the linter-supported minor line", () => {
+  expect(inventory().find((dep) => dep.depName === "@typescript/typescript6>@typescript/old")).toMatchObject({
+    depType: "pnpm-workspace.overrides",
+    currentValue: expect.stringMatching(/^~6\.0\.\d+$/),
+    npmPackageAlias: true,
+    packageName: "typescript",
+  });
+});
+
+it("inventories workspace members, not the scratch copies build tests keep beside the examples", () => {
+  // A root of its own: this repository's tooling files around two members that
+  // declare nothing but the engine every manifest has to agree on.
+  const root = mkdtempSync(join(tmpdir(), "hooknostic-inventory-"));
+  try {
+    for (const path of [
+      ".github",
+      "package.json",
+      "pnpm-workspace.yaml",
+      "examples/agent-plugin/runtime/package.json",
+      "examples/agent-plugin/runtime/package-lock.json",
+    ]) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      cpSync(new URL(`../${path}`, import.meta.url), join(root, path), { recursive: true });
+    }
+    const { engines } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    for (const member of ["packages/member", "examples/agent-plugin"]) {
+      mkdirSync(join(root, member), { recursive: true });
+      writeFileSync(join(root, member, "package.json"), JSON.stringify({ engines }));
+    }
+    const before = inventory(root);
+    // The CLI build tests copy an example to examples/.buildtest-* and remove it
+    // again while this file runs; for part of that time it has no manifest.
+    mkdirSync(join(root, "examples/.buildtest-agent-plugin"));
+    expect(inventory(root)).toEqual(before);
+    // Only pnpm's own exclusion is mirrored: a member with no manifest still fails.
+    mkdirSync(join(root, "examples/unfinished"));
+    expect(() => inventory(root)).toThrow(/ENOENT.*unfinished/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -57,6 +57,33 @@ const manifestOnlyExtensionSource: AgentPluginPackage = {
 const adapterWithProjector = { id: "test", agentPluginProjector: projector } as HarnessAdapter;
 
 describe("resolveAgentPluginProjection", () => {
+  it.each(["same", "missing", "different", "supported"])(
+    "keeps omission acceptance classified across a %s profile",
+    (kind) => {
+      const omission = { id: "mcp-stdio-omitted", summary: "No MCP channel", evidence: ".capture/test" };
+      const components = { "agent-plugin.mcp.stdio": { level: "unsupported" as const, omission } };
+      const second =
+        kind === "supported"
+          ? { level: "exact" as const }
+          : {
+              level: "unsupported" as const,
+              ...(kind === "missing"
+                ? {}
+                : { omission: kind === "same" ? omission : { ...omission, id: "another-omission" } }),
+            };
+      const resolved = resolveAgentPluginProjection(target, {
+        profiles: [
+          { ...projector.profiles[0]!, components },
+          { ...projector.profiles[1]!, components: { "agent-plugin.mcp.stdio": second } },
+        ],
+      });
+      expect(resolved.matrix?.["agent-plugin.mcp.stdio"]).toMatchObject({ level: "unsupported" });
+      expect(resolved.matrix?.["agent-plugin.mcp.stdio"]?.omission).toEqual(
+        kind === "same" || kind === "supported" ? omission : undefined,
+      );
+    },
+  );
+
   it("takes the least capable support across every intersected profile", () => {
     const result = resolveAgentPluginProjection(target, projector);
     expect(result.diagnostics).toEqual([]);

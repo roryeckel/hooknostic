@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.before",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_ed80caa70ffei4d8vvPvbjHBuV",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-shell-dialect-x8sB6Y\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback",
+    "agentType": "build"
+  },
+  "event": "tool.before",
+  "tool": {
+    "nativeName": "shell",
+    "input": {
+      "command": "node interpreter.cjs"
+    },
+    "kind": "shell",
+    "shell": {
+      "command": "node interpreter.cjs",
+      "commandKey": "command",
+      "cwdKey": "workdir",
+      "dialect": "cmd"
+    }
+  }
+}

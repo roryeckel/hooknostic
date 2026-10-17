@@ -43,11 +43,17 @@ export interface AgentPluginMcpConfig {
   mcpServers: Record<string, AgentPluginMcpServer>;
 }
 
+export interface SkillPolicy {
+  /** Explicit native user invocation remains available when implicit invocation is disabled. */
+  allowImplicitInvocation?: boolean;
+}
+
 export interface AgentPluginSkill {
   name: string;
   description: string;
   directory: string;
   manifestPath: string;
+  policy?: SkillPolicy;
 }
 
 /** Materialized package file. `contents` may be binary; `mode` is canonical 0644 or 0755. */
@@ -111,6 +117,7 @@ export interface LoadAgentPluginResult {
 export const AGENT_PLUGIN_COMPONENT_IDS = [
   "agent-plugin.manifest",
   "agent-plugin.skills",
+  "agent-plugin.skills.invocation-policy",
   "agent-plugin.mcp.stdio",
   "agent-plugin.mcp.streamable-http",
   "agent-plugin.mcp.sse",
@@ -121,7 +128,7 @@ export const AGENT_PLUGIN_COMPONENT_IDS = [
 export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number];
 
 /**
- * Agent definitions (ADR-0029). Not an Agent Plugins 1.0 component -- the
+ * Agent definitions (ADR-0032). Not an Agent Plugins 1.0 component -- the
  * standard leaves agents out until their formats converge -- but delivered and
  * reported through the same profiles, levels and shortfall policy, so both
  * share one id space. `agents.definition` is the portable core (name,
@@ -171,11 +178,16 @@ export interface AgentPluginDeviationDeclaration {
  */
 export type AgentPluginDegradationDeclaration = AgentPluginDeviationDeclaration;
 
+/** A named, evidence-backed omission of an unsupported component (ADR-0031). */
+export type AgentPluginOmissionDeclaration = AgentPluginDeviationDeclaration;
+
 export interface AgentPluginComponentSupport {
   level: AgentPluginProjectionSupportLevel;
   rationale?: string;
   deviations?: readonly AgentPluginDeviationDeclaration[];
   degradations?: readonly AgentPluginDegradationDeclaration[];
+  /** Acceptance permits omission only; this declaration requires level `unsupported`. */
+  omission?: AgentPluginOmissionDeclaration;
 }
 
 /** One instance of a declared deviation found in the package being projected. */
@@ -272,6 +284,8 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
    */
   support: Partial<Record<ComponentId, AgentPluginComponentSupport>>;
   onUnsupported: "error" | "warn";
+  /** Qualified shortfalls explicitly accepted by the consuming configuration. */
+  accept?: readonly string[];
   /**
    * Ambient variable NAMES each MCP server reads, keyed by server name.
    *
@@ -284,14 +298,14 @@ export interface AgentPluginProjectionContext<TTarget = AgentPluginProjectionTar
   mcpEnvironment?: Readonly<Record<string, readonly string[]>>;
   /**
    * Agent definitions configured beside the package (`components.agents`,
-   * ADR-0029). They are Hooknostic input, like hook source, not package
+   * ADR-0032). They are Hooknostic input, like hook source, not package
    * content, so they arrive here rather than in the package: the Agent Plugins
    * 1.0 format has no agents component to carry them.
    */
   agents?: readonly AgentDefinition[];
   /**
    * `components.defaultAgent`. No projector delivers it: a package would start
-   * every session of every user who enables it as that agent (ADR-0029). Each
+   * every session of every user who enables it as that agent (ADR-0032). Each
    * reports it as the unsupported `agents.default`.
    */
   defaultAgent?: string;

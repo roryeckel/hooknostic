@@ -7,12 +7,25 @@ import type {
   AgentPluginProjectionProfile,
 } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
-import { RELATIVE_SKILL_TEXT, renderMarkdownFrontmatter } from "@hooknostic/agent-plugin";
+import {
+  RELATIVE_SKILL_TEXT,
+  renderMarkdownFrontmatter,
+  skillInvocationPolicyProfiles,
+} from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
 import { projectAgentFiles, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
+import {
+  OPENCODE_SKILL_POLICY_RATIONALE,
+  opencodeNewerSkillPolicyValidation,
+  opencodeNumericPermissionValidation,
+  opencodePermissionOrderValidation,
+  opencodePermissionPreservationValidation,
+  opencodeProjectSkillPolicyValidation,
+  skillPermissionSource,
+} from "./skill-policy.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
 /** Project wiring whose `.opencode/plugins` module is `wrap(importPathOfArtifact)`. */
 export function projectIntegrationWith(wrap: (importPath: string) => string) {
@@ -47,7 +60,7 @@ export const opencodeAgents: NonNullable<HarnessAdapter["agents"]> = {
   projectDirectory: ".opencode/agents",
   // The file name is the identity, so `name` has nothing to say and v1 would
   // pass it to the provider as a model option. `prompt` (v1) and `system` (v2)
-  // are the instructions, and `mode` is the portable field's (ADR-0029).
+  // are the instructions, and `mode` is the portable field's (ADR-0032).
   reservedNativeKeys: ["name", "description", "mode", "prompt", "system"],
 };
 
@@ -120,7 +133,14 @@ export async function projectComponents(
   // default_agent, set from the project's plugin rather than written into a
   // configuration file that may be spelled either way (`.capture/agents`
   // inject-default, both families).
-  if (source.mcp || source.defaultAgent !== undefined) {
+  const skillPolicies =
+    options.invocationPolicies ??
+    Object.fromEntries(
+      source.skills.flatMap((skill) =>
+        skill.policy?.allowImplicitInvocation === undefined ? [] : [[skill.name, skill.policy.allowImplicitInvocation]],
+      ),
+    );
+  if (source.mcp || source.defaultAgent !== undefined || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
     if (source.mcp) result.files.push(...(await projectMcpLauncher(source, root, output)).files);
     const sourceRoot = relative(root, source.mcp?.root ?? root).replaceAll("\\", "/") || ".";
     const translated = translateMcp(
@@ -171,7 +191,9 @@ ${emitMcp ? "const configure = (config) => {" : "export default async () => ({ c
     Object.defineProperty(mcp, name, { value, enumerable: true, configurable: true, writable: true });
   }
   config.mcp = mcp;
-${source.defaultAgent === undefined ? "" : `  config.default_agent = ${JSON.stringify(source.defaultAgent)};\n`}${emitMcp ? "};" : "} });"}
+${source.defaultAgent === undefined ? "" : `  config.default_agent = ${JSON.stringify(source.defaultAgent)};\n`}
+${emitMcp ? "" : skillPermissionSource(skillPolicies)}
+${emitMcp ? "};" : "} });"}
 `;
     result.files.push({
       path: ".opencode/plugins/hooknostic-components.js",
@@ -194,7 +216,7 @@ ${source.defaultAgent === undefined ? "" : `  config.default_agent = ${JSON.stri
   return result;
 }
 
-export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
   {
     range: opencodeHarness.recommendedRange,
     components: {
@@ -248,6 +270,13 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
       date: "2026-09-11",
       validatedOn: [
         {
+          version: "1.18.34",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/skill-invocation",
+          what: "On Windows with isolated state and a loopback model, permission.skill deny omitted the named project skill and rejected a forced skill-tool call that succeeded without the rule. A v1 plugin config callback supplied the same effective rule. Claude frontmatter and Codex policy alone did not hide the controls. This is deny behavior, not established user-invoked-only equivalence.",
+        },
+        {
           version: "1.18.33",
           date: "2026-09-30",
           method: "live-probe",
@@ -300,3 +329,15 @@ export const projectComponentProfiles: readonly AgentPluginProjectionProfile[] =
     },
   },
 ];
+export const projectComponentProfiles = skillInvocationPolicyProfiles(
+  nativeProjectComponentProfiles,
+  opencodeProjectSkillPolicyValidation,
+  OPENCODE_SKILL_POLICY_RATIONALE,
+  "emulated",
+  [
+    opencodeNewerSkillPolicyValidation,
+    opencodePermissionOrderValidation,
+    opencodePermissionPreservationValidation,
+    opencodeNumericPermissionValidation,
+  ],
+);

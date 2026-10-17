@@ -10,69 +10,72 @@ import { expect, it } from "vitest";
 import { rollingPlaybackVersion } from "./check-harness-releases.mjs";
 import { harnessLaneId, harnessLanes } from "./harness-lanes.mjs";
 
-it("advances only the v2 rolling baseline through the watch command-line tools", () => {
-  const repo = fileURLToPath(new URL("../", import.meta.url));
-  const root = mkdtempSync(join(tmpdir(), "hooknostic-watch-rehearsal-"));
-  try {
-    const files = [
-      "package.json",
-      ...[
-        "harness-lanes",
-        "is-main-module",
-        "check-harness-releases",
-        "record-playback-validation",
-        "harness-playback-version",
-      ].map((name) => `scripts/${name}.mjs`),
-    ];
-    for (const id of ["opencode-v1", "opencode-v2"]) {
-      const path = harnessLanes[id].module.slice(3);
-      files.push(path, path.replace("profile.ts", "harness.ts"));
+it.each(["opencode-v2", "pi"])(
+  "advances only the %s rolling baseline through the watch command-line tools",
+  (laneId) => {
+    const repo = fileURLToPath(new URL("../", import.meta.url));
+    const root = mkdtempSync(join(tmpdir(), "hooknostic-watch-rehearsal-"));
+    try {
+      const files = [
+        "package.json",
+        ...[
+          "harness-lanes",
+          "is-main-module",
+          "check-harness-releases",
+          "record-playback-validation",
+          "harness-playback-version",
+        ].map((name) => `scripts/${name}.mjs`),
+      ];
+      for (const id of ["opencode-v1", laneId]) {
+        const path = harnessLanes[id].module.slice(3);
+        files.push(path, path.replace("profile.ts", "harness.ts"));
+      }
+      for (const file of files) {
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        cpSync(join(repo, file), join(root, file));
+      }
+      const require = createRequire(import.meta.url);
+      cpSync(dirname(require.resolve("semver/package.json")), join(root, "node_modules/semver"), { recursive: true });
+      const run = (script, ...args) =>
+        spawnSync(process.execPath, ["--experimental-strip-types", join(root, `scripts/${script}.mjs`), ...args], {
+          encoding: "utf8",
+        });
+      const reference = run("harness-playback-version", laneId).stdout.trim();
+      const untouchedPath = join(root, harnessLanes["opencode-v1"].module.slice(3));
+      const profilePath = join(root, harnessLanes[laneId].module.slice(3));
+      const untouchedBefore = readFileSync(untouchedPath, "utf8");
+      const profileBefore = readFileSync(profilePath, "utf8");
+      const baseline = rollingPlaybackVersion(profileBefore) ?? reference;
+      const parts = baseline.split(".").map(Number);
+      const newer = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+      const detect = () => {
+        const result = run("check-harness-releases", laneId, "--version", newer, "--matrix");
+        expect(result.status, result.stderr).toBe(0);
+        return JSON.parse(result.stdout).include;
+      };
+      expect(detect()).toMatchObject([
+        {
+          harness: laneId,
+          pkg: harnessLanes[laneId].pkg,
+          bootstrap: harnessLanes[laneId].bootstrap ?? "",
+          referenceVersion: reference,
+          newerAvailable: true,
+        },
+      ]);
+      const record = run("record-playback-validation", laneId, newer, "--date", "2026-09-26");
+      expect(record.status, record.stderr).toBe(0);
+      expect(record.stdout).toContain("outcome=wrote");
+      expect(rollingPlaybackVersion(readFileSync(profilePath, "utf8"))).toBe(newer);
+      expect(readFileSync(untouchedPath, "utf8")).toBe(untouchedBefore);
+      expect(detect()).toMatchObject([{ referenceVersion: reference, playbackBaseline: newer, newerAvailable: false }]);
+      const again = run("record-playback-validation", laneId, newer);
+      expect(again.status, again.stderr).toBe(0);
+      expect(again.stdout).toContain("outcome=noop");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
-    for (const file of files) {
-      mkdirSync(dirname(join(root, file)), { recursive: true });
-      cpSync(join(repo, file), join(root, file));
-    }
-    const require = createRequire(import.meta.url);
-    cpSync(dirname(require.resolve("semver/package.json")), join(root, "node_modules/semver"), { recursive: true });
-    const run = (script, ...args) =>
-      spawnSync(process.execPath, ["--experimental-strip-types", join(root, `scripts/${script}.mjs`), ...args], {
-        encoding: "utf8",
-      });
-    const reference = run("harness-playback-version", "opencode-v2").stdout.trim();
-    const v1Path = join(root, harnessLanes["opencode-v1"].module.slice(3));
-    const v2Path = join(root, harnessLanes["opencode-v2"].module.slice(3));
-    const v1Before = readFileSync(v1Path, "utf8");
-    const v2Before = readFileSync(v2Path, "utf8");
-    const baseline = rollingPlaybackVersion(v2Before) ?? reference;
-    const parts = baseline.split(".").map(Number);
-    const newer = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
-    const detect = () => {
-      const result = run("check-harness-releases", "opencode-v2", "--version", newer, "--matrix");
-      expect(result.status, result.stderr).toBe(0);
-      return JSON.parse(result.stdout).include;
-    };
-    expect(detect()).toMatchObject([
-      {
-        harness: "opencode-v2",
-        pkg: "@opencode/cli",
-        bootstrap: "postinstall.mjs",
-        referenceVersion: reference,
-        newerAvailable: true,
-      },
-    ]);
-    const record = run("record-playback-validation", "opencode-v2", newer, "--date", "2026-09-26");
-    expect(record.status, record.stderr).toBe(0);
-    expect(record.stdout).toContain("outcome=wrote");
-    expect(rollingPlaybackVersion(readFileSync(v2Path, "utf8"))).toBe(newer);
-    expect(readFileSync(v1Path, "utf8")).toBe(v1Before);
-    expect(detect()).toMatchObject([{ referenceVersion: reference, playbackBaseline: newer, newerAvailable: false }]);
-    const again = run("record-playback-validation", "opencode-v2", newer);
-    expect(again.status, again.stderr).toBe(0);
-    expect(again.stdout).toContain("outcome=noop");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+  },
+);
 
 it("keeps the OpenCode families on independent metadata and installation lanes", () => {
   const v1 = harnessLanes["opencode-v1"],

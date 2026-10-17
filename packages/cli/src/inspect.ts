@@ -149,6 +149,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       component: id,
       level: entry?.level ?? "unsupported",
       ...(entry?.rationale === undefined ? {} : { rationale: entry.rationale }),
+      ...(entry?.omission === undefined
+        ? {}
+        : { omission: { ...entry.omission, id: `${adapter.id}:${entry.omission.id}` } }),
       ...(entry?.deviations === undefined
         ? {}
         : { deviations: entry.deviations.map((deviation) => ({ ...deviation, id: `${adapter.id}:${deviation.id}` })) }),
@@ -180,6 +183,8 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
           })),
           capabilities: rows,
           fields: fieldRows,
+          // Not a capability: it varies per call and host (ADR-0029). Null where an adapter declares none.
+          shellDialect: adapter.shellDialect ?? null,
           components: componentRows,
           projectionProfiles: projection?.profilesUsed ?? [],
         },
@@ -212,6 +217,13 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     }
     if (options.field === undefined) options.io.stdout("Other optional event fields are never produced (ADR-0027).");
   }
+  // Where tool.shell.dialect comes from on this target, and why it can be absent
+  // (ADR-0029). It varies per call and host, so it is stated, not rated.
+  if (single === undefined && adapter.shellDialect !== undefined) {
+    const { source, rationale, evidence } = adapter.shellDialect;
+    options.io.stdout("");
+    options.io.stdout(`${source.padEnd(12)} tool.shell.dialect source\n             ${rationale} (${evidence})`);
+  }
   if (componentRows.length > 0) {
     options.io.stdout("");
     for (const row of componentRows) {
@@ -221,6 +233,10 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
       for (const deviation of row.deviations ?? []) {
         options.io.stdout(`             deviation ${deviation.id}: ${deviation.summary} (${deviation.evidence})`);
       }
+      if (row.omission !== undefined)
+        options.io.stdout(
+          `             omission ${row.omission.id}: ${row.omission.summary} (${row.omission.evidence})`,
+        );
       for (const degradation of row.degradations ?? []) {
         options.io.stdout(
           `             degradation ${degradation.id}: ${degradation.summary} (${degradation.evidence})`,

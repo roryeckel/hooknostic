@@ -22,8 +22,14 @@ import {
   targetSpecFromConfig,
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
-import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec } from "@hooknostic/sdk";
-import { baseHookEventSchema, fieldsForEvent, isToolScopedEvent, readEventField } from "@hooknostic/sdk";
+import type { EventFieldId, HookEvent, HookEventName, HookResult, PluginSpec, ShellDialect } from "@hooknostic/sdk";
+import {
+  baseHookEventSchema,
+  fieldsForEvent,
+  isToolScopedEvent,
+  readEventField,
+  SHELL_DIALECTS,
+} from "@hooknostic/sdk";
 
 import type { CommandIO } from "./check.js";
 
@@ -106,8 +112,21 @@ const EVENT_FIELDS: Record<HookEventName, Readonly<Record<string, FieldCheck>>> 
   "turn.stop": { lastMessage: optionalString },
 };
 
-/** What the target's classifier derives; a test supplies only `nativeName` and `input`. */
+/**
+ * What the target's classifier derives. A test supplies `nativeName` and `input`,
+ * and may state one part of `shell`: see {@link statesOnlyDialect}.
+ */
 const DERIVED_TOOL_FIELDS = ["kind", "mcp", "shell"];
+
+/**
+ * The one part of `tool.shell` a test may supply is its `dialect`, for a
+ * target whose harness states the shell at run time rather than in the tool
+ * call (ADR-0029). A `shell` holding nothing else is that statement, not a
+ * derived view.
+ */
+function statesOnlyDialect(shell: unknown): shell is { dialect?: unknown } {
+  return isRecord(shell) && Object.keys(shell).length === 1 && "dialect" in shell;
+}
 
 /**
  * Complete a portable event the way a decoder completes a native one, so a
@@ -120,7 +139,7 @@ function completeEvent(
   value: unknown,
   adapter: HarnessAdapter,
   fieldMatrix: FieldMatrix,
-): { event: HookEvent } | { problem: string } {
+): { event: HookEvent; shellDialect?: ShellDialect } | { problem: string } {
   if (!isRecord(value)) return { problem: "an event must be a JSON object" };
   for (const key of ["harness", "session", "correlation", "tool"]) {
     if (value[key] !== undefined && !isRecord(value[key])) return { problem: `${key} must be an object` };
@@ -177,23 +196,63 @@ function completeEvent(
   }
   if (tool === undefined) return { event: event as unknown as HookEvent };
 
-  const derived = DERIVED_TOOL_FIELDS.filter((key) => key in tool);
+  const derived = DERIVED_TOOL_FIELDS.filter(
+    (key) => key in tool && !(key === "shell" && statesOnlyDialect(tool[key])),
+  );
   if (derived.length > 0) {
     const [verb, pronoun] = derived.length === 1 ? ["is", "it"] : ["are", "them"];
+    // Someone who tried to state a dialect should learn that it can be stated.
+    const hint =
+      isRecord(tool["shell"]) && "dialect" in tool["shell"] ? " (tool.shell may hold dialect and nothing else)" : "";
     return {
-      problem: `${derived.map((key) => `tool.${key}`).join(" and ")} ${verb} derived from tool.nativeName and tool.input by the target's classifier; omit ${pronoun}`,
+      problem: `${derived.map((key) => `tool.${key}`).join(" and ")} ${verb} derived from tool.nativeName and tool.input by the target's classifier; omit ${pronoun}${hint}`,
     };
   }
-  const extra = Object.keys(tool).find((key) => key !== "nativeName" && key !== "input");
+  const extra = Object.keys(tool).find((key) => key !== "nativeName" && key !== "input" && key !== "shell");
   if (extra !== undefined) return { problem: `tool has no field ${JSON.stringify(extra)}` };
+  const stated = statesOnlyDialect(tool["shell"]) ? tool["shell"].dialect : undefined;
+  if (stated !== undefined && !(SHELL_DIALECTS as readonly unknown[]).includes(stated)) {
+    return { problem: `tool.shell.dialect must be one of ${SHELL_DIALECTS.join(", ")}` };
+  }
+  const dialect = stated as ShellDialect | undefined;
   const nativeName = tool["nativeName"];
   if (typeof nativeName !== "string" || nativeName === "")
     return { problem: "tool.nativeName must be a non-empty string" };
   if (adapter.classifyTool === undefined) {
     return { problem: `the ${adapter.id} adapter cannot classify tools, so it cannot dispatch ${name}` };
   }
-  event["tool"] = adapter.classifyTool(nativeName, tool["input"]);
-  return { event: event as unknown as HookEvent };
+  const classified = adapter.classifyTool(
+    nativeName,
+    tool["input"],
+    dialect === undefined ? undefined : { shellDialect: dialect },
+  );
+  // A shell call whose input has no view can still follow a statement: on a
+  // target that hears one, the dialect waits for a rewrite to make a view. That
+  // holds only for a tool the target's codec has a shape for. A shell-kind tool
+  // without one never gets a view, so a dialect stated for it has nowhere to go.
+  const viewable = Object.values(adapter.shellShapes ?? {}).some(
+    (shape) => adapter.shellCodec?.classify(nativeName, { [shape.commandKey]: "" }) !== undefined,
+  );
+  const awaitsView =
+    classified.shell === undefined &&
+    classified.kind === "shell" &&
+    viewable &&
+    adapter.shellDialect?.source === "statement";
+  // The classifier decides whether a stated dialect applies, so one the target
+  // would not report for this call is refused rather than silently dropped.
+  if (dialect !== undefined && !awaitsView && classified.shell?.dialect !== dialect) {
+    const actual =
+      classified.shell === undefined
+        ? "it has no shell view"
+        : classified.shell.dialect === undefined
+          ? "this target cannot establish one"
+          : `this target reports ${classified.shell.dialect} for the tool`;
+    return {
+      problem: `tool.shell.dialect ${JSON.stringify(dialect)} is not what the ${adapter.id} target would give ${nativeName}: ${actual}; omit it`,
+    };
+  }
+  event["tool"] = classified;
+  return { event: event as unknown as HookEvent, ...(dialect === undefined ? {} : { shellDialect: dialect }) };
 }
 
 /**
@@ -227,11 +286,11 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
     return { ok: false, errors: ["the configuration declares no entry, so there are no hooks to dispatch."] };
   }
 
-  const events: HookEvent[] = [];
+  const events: { event: HookEvent; shellDialect?: ShellDialect }[] = [];
   const problems: string[] = [];
   options.events.forEach((value, index) => {
     const completed = completeEvent(value, adapter, resolved.fields ?? {});
-    if ("event" in completed) events.push(completed.event);
+    if ("event" in completed) events.push(completed);
     else problems.push(`event ${index + 1}: ${completed.problem}`);
   });
   if (problems.length > 0) return { ok: false, errors: problems };
@@ -266,16 +325,24 @@ export async function dispatchEvents(options: DispatchEventsOptions): Promise<Di
       minimumCapabilityLevel: effectiveCompatibility(config, options.target).minimum,
       policy: effectiveRuntime(config),
       ...(adapter.shellCodec === undefined ? {} : { shellCodec: adapter.shellCodec }),
+      ...(adapter.runtime.validateEffect === undefined
+        ? {}
+        : { validateEffect: adapter.runtime.validateEffect.bind(adapter.runtime) }),
       ...(adapter.fileCodec === undefined ? {} : { fileCodec: adapter.fileCodec }),
       ...(pluginRoot === undefined ? {} : { plugin: { root: pluginRoot } }),
     };
     const results: DispatchResult[] = [];
-    for (const [index, event] of events.entries()) {
+    for (const [index, { event, shellDialect }] of events.entries()) {
       // A command harness starts a fresh process for every dispatch, so no
       // module state may carry between events there; an in-process one keeps a
       // single instance for its lifetime.
       const plugin = (index === 0 || adapter.shimExecution === "module" ? first : await load()) as PluginSpec;
-      const result = await dispatch(plugin.hooks, event, { ...common, harness: event.harness });
+      const result = await dispatch(plugin.hooks, event, {
+        ...common,
+        harness: event.harness,
+        // What a shim that heard the harness state its shell hands dispatch (ADR-0029).
+        ...(shellDialect === undefined ? {} : { shellDialect }),
+      });
       const native = await adapter.runtime.apply(result, event.raw, {
         targetId: adapter.id,
         ...(event.harness.version === undefined ? {} : { harnessVersion: event.harness.version }),

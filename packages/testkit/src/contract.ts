@@ -16,8 +16,10 @@ import {
   HOOK_EVENT_NAMES,
   isEventFieldId,
   readEventField,
+  SHELL_DIALECTS,
 } from "@hooknostic/sdk";
 
+import { assertComponentShortfalls } from "./component-shortfalls.js";
 import { loadFixtureFrom } from "./fixtures.js";
 
 export interface AdapterContractOptions {
@@ -90,32 +92,17 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
     // A deviation is a harness fact like any level (ADR-0019), so it cites a
     // capture the same profile records as a validation, rather than evidence
     // that exists only in the declaration. A degradation (ADR-0021) cites the
-    // capture that makes its translation necessary. Both share one id space,
+    // capture that makes its translation necessary. Named unsupported omissions
+    // cite their established limitation. All share one id space,
     // because `components.accept` names them the same way.
-    it("declares each Agent Plugin deviation and degradation with a stable id and validated evidence", () => {
-      const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
-      for (const profile of profiles) {
-        const validated = new Set(profile.source.validatedOn.map((record) => record.artifact));
-        for (const [component, cell] of Object.entries(profile.components)) {
-          const declared = [...(cell.deviations ?? []), ...(cell.degradations ?? [])];
-          const ids = declared.map((deviation) => deviation.id);
-          expect(new Set(ids).size, `${profile.range} ${component} repeats a deviation or degradation id`).toBe(
-            ids.length,
-          );
-          for (const deviation of declared) {
-            const label = `${profile.range} ${component} ${deviation.id}`;
-            expect(deviation.id, label).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
-            expect(deviation.summary, `${label} needs a summary`).toBeTruthy();
-            expect(validated.has(deviation.evidence), `${label} cites evidence no validatedOn record names`).toBe(true);
-          }
-        }
-      }
+    it("declares each Agent Plugin shortfall with a stable id and validated evidence", () => {
+      assertComponentShortfalls(adapter);
     });
 
     // An absent cell resolves to `unsupported` with no rationale, which
     // `inspect` and the generated support tables then print as a claim nobody
     // made. Agent definitions joined the component vocabulary after these profiles were
-    // written (ADR-0029), so every profile has to state them -- a new adapter,
+    // written (ADR-0032), so every profile has to state them -- a new adapter,
     // or a new profile range, cannot inherit that silence.
     it("states agent definition support explicitly in every component profile", () => {
       const profiles = [...(adapter.agentPluginProjector?.profiles ?? []), ...(adapter.projectComponentProfiles ?? [])];
@@ -217,13 +204,24 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       // fourth adapter shipping a one-way toolmap fails here.
       for (const name of fixtureNames) {
         const fixture = loadFixtureFrom<{
-          tool?: { nativeName: string; input: unknown; shell?: { command: string } };
+          tool?: { nativeName: string; input: unknown; shell?: { command: string; dialect?: string } };
         }>(join(options.fixturesDir, name));
         const tool = fixture.tool;
         if (tool?.shell === undefined) continue;
         expect(adapter.shellCodec, `${name} has tool.shell but adapter has no codec`).toBeDefined();
         const classified = adapter.shellCodec!.classify(tool.nativeName, tool.input);
-        expect(classified, `${name}: codec does not classify its own fixture`).toEqual(tool.shell);
+        // A dialect the codec does not state came from what the harness reported
+        // at run time, not from the table (ADR-0029); the rest is the codec's.
+        const { dialect: _reported, ...view } = tool.shell;
+        // A classifier that echoes what it was told would reproduce any string.
+        if (tool.shell.dialect !== undefined) {
+          expect(SHELL_DIALECTS as readonly string[], `${name}: unregistered shell dialect`).toContain(
+            tool.shell.dialect,
+          );
+        }
+        expect(classified, `${name}: codec does not classify its own fixture`).toEqual(
+          classified?.dialect === undefined ? view : tool.shell,
+        );
         const encoded = adapter.shellCodec!.encode(tool.nativeName, tool.input, {
           command: "hooknostic-contract-probe",
         });
@@ -238,12 +236,54 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       // `hooknostic dispatch` builds a test event's whole tool view from
       // classifyTool (ADR-0023), so it must reproduce the decoder's output, not
       // an approximation of it.
+      // A fixture's dialect is handed back as what the harness reported: an
+      // adapter that pins it by tool must reach it regardless, one that takes
+      // it from the harness must apply it, and no adapter may produce one for
+      // a fixture that records none (ADR-0029).
       for (const name of fixtureNames) {
         const tool = loadFixtureFrom<{ tool?: ToolInvocation }>(join(options.fixturesDir, name)).tool;
         if (tool === undefined) continue;
         expect(adapter.classifyTool, `${name} has a tool but adapter has no classifyTool`).toBeDefined();
-        expect(adapter.classifyTool!(tool.nativeName, tool.input), name).toEqual(tool);
+        const dialect = tool.shell?.dialect;
+        expect(
+          adapter.classifyTool!(
+            tool.nativeName,
+            tool.input,
+            dialect === undefined ? undefined : { shellDialect: dialect },
+          ),
+          name,
+        ).toEqual(tool);
       }
+    });
+
+    it("holds its tables and classifier to the shell dialect source it declares", () => {
+      // ADR-0029: `inspect` and the generated support page print this
+      // declaration, so it has to be true of the code. Each shell-bearing
+      // fixture is re-classified with every dialect it does not record, to
+      // see whether the adapter takes one from what the harness reports. It
+      // must take all of them on every shell tool or none on any: an adapter
+      // that hears one name, or hears for one tool, matches no declaration.
+      const shellTools = fixtureNames
+        .map((name) => loadFixtureFrom<{ tool?: ToolInvocation }>(join(options.fixturesDir, name)).tool)
+        .filter((tool): tool is ToolInvocation => tool?.shell !== undefined);
+      if (shellTools.length === 0 && adapter.shellShapes === undefined) return;
+      const declared = adapter.shellDialect;
+      expect(declared, "an adapter with shell tools declares where their dialect comes from").toBeDefined();
+      expect(declared!.rationale, "shellDialect needs a rationale").toBeTruthy();
+      expect(declared!.evidence, "shellDialect needs evidence").toBeTruthy();
+      const pins = Object.values(adapter.shellShapes ?? {}).some((shape) => shape.dialect !== undefined);
+      const probes = shellTools.flatMap((tool) =>
+        SHELL_DIALECTS.filter((dialect) => dialect !== tool.shell!.dialect).map((dialect) => ({ tool, dialect })),
+      );
+      const heard = probes.filter(
+        ({ tool, dialect }) =>
+          adapter.classifyTool?.(tool.nativeName, tool.input, { shellDialect: dialect }).shell?.dialect === dialect,
+      );
+      const hears = heard.length === 0 ? "nothing" : heard.length === probes.length ? "everything" : "some";
+      expect({ pins, hears }, `declared source "${declared!.source}"`).toEqual({
+        pins: declared!.source === "tool",
+        hears: declared!.source === "statement" ? "everything" : "nothing",
+      });
     });
 
     it("backs every shell shape table entry with a fixture", () => {

@@ -50,3 +50,23 @@ ValidationRecord.
 - This procedure does not upgrade the provenance of its template, playback,
   or fixture inputs. The loopback response is constructed even though the
   harness hook payloads are native output.
+
+## Reviewed v2 context variant (2026-10-04)
+
+The owner-requested [issue #82](https://github.com/roryeckel/hooknostic/issues/82)
+reviewed the playback artifact from
+[run 37241402964](https://github.com/roryeckel/hooknostic/actions/runs/37241402964).
+Select the first `hook === "context"` record from its
+`captured-opencode-v2/events.jsonl`, retain the complete envelope, check for
+account paths, and derive the canonical form with `decodeOpenCodeV2` using the
+fixture suite's injected reference version. The resulting `context-max-tokens`
+pair is additive to the old context fixture. Its exact capture version,
+platform, JSONL checksum and provenance limits are recorded in
+`fixtures/opencode/2.0/README.md`.
+
+Replaying all saved JSONL records through `compareCaptures` with the v2
+`EXPECTED_VARIANTS` reproduced the original numeric `event.options.maxTokens`
+difference, then became clean after the new fixture was added. The comparator
+was not relaxed. The regression also rejects a string token limit and an
+unseen option; the existing adapter fixture replay checks canonical output and
+raw-object identity. No new effect semantics are inferred from the option.

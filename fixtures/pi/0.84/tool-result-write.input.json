@@ -1,0 +1,22 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "write",
+    "toolCallId": "call_boguw77h",
+    "input": {
+      "path": "C:/Users/user/source/repos/hooknostic/hello.txt",
+      "content": "hello\n"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Successfully wrote 6 bytes to C:/Users/user/source/repos/hooknostic/hello.txt"
+      }
+    ],
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\source\\repos\\hooknostic",
+    "mode": "print"
+  }
+}

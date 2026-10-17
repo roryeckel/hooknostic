@@ -1,0 +1,21 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "read",
+    "toolCallId": "call_playback",
+    "input": {
+      "path": "seed.txt"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "alpha\n"
+      }
+    ],
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-4pvRDe\\project",
+    "mode": "print"
+  }
+}

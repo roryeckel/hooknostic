@@ -1,6 +1,7 @@
 import type { InvocationContext } from "@hooknostic/core";
 import type { HookEvent } from "@hooknostic/sdk";
 
+import { dialectOfStatedShell } from "./shell-statement.js";
 import { classifyOpenCodeTool } from "./toolmap.js";
 
 export class OpenCodeDecodeError extends Error {}
@@ -33,6 +34,12 @@ export interface OpenCodeEnrichment {
    * bus event itself carries only the session id.
    */
   messages?: unknown;
+  /**
+   * The shell name the harness last stated in its `bash` tool description,
+   * heard on the `tool.definition` hook (ADR-0029). No tool callback names the
+   * interpreter, so this is the only source of `tool.shell.dialect` here.
+   */
+  shell?: unknown;
 }
 
 interface ToolCallbackInput {
@@ -111,6 +118,8 @@ export function decodeOpenCode(
 
   const input = (native.input ?? {}) as ToolCallbackInput;
   const output = (native.output ?? {}) as Record<string, unknown>;
+  const shellDialect = dialectOfStatedShell(enrichment.shell);
+  const reported = shellDialect !== undefined ? { shellDialect } : undefined;
 
   const base = {
     schemaVersion: 1 as const,
@@ -137,7 +146,7 @@ export function decodeOpenCode(
       return {
         ...base,
         event: "tool.before",
-        tool: classifyOpenCodeTool(input.tool, snapshotOpenCodeArgs(output["args"])),
+        tool: classifyOpenCodeTool(input.tool, snapshotOpenCodeArgs(output["args"]), reported),
       };
     }
     case "tool.execute.after": {
@@ -147,7 +156,7 @@ export function decodeOpenCode(
       return {
         ...base,
         event: "tool.after",
-        tool: classifyOpenCodeTool(input.tool, input.args),
+        tool: classifyOpenCodeTool(input.tool, input.args, reported),
         output: output["output"],
       };
     }
@@ -164,7 +173,7 @@ export function decodeOpenCode(
           ...(typeof permission.callID === "string" ? { toolCallId: permission.callID } : {}),
         },
         event: "permission.request",
-        tool: classifyOpenCodeTool(permission.type ?? "unknown", native.input),
+        tool: classifyOpenCodeTool(permission.type ?? "unknown", native.input, reported),
       };
     }
     case "chat.message": {
@@ -246,6 +255,7 @@ export function decodeOpenCode(
             tool: classifyOpenCodeTool(
               typeof properties.permission === "string" ? properties.permission : "unknown",
               properties.metadata,
+              reported,
             ),
           };
         }

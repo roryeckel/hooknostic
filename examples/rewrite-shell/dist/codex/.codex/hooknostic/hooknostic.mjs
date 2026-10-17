@@ -4559,7 +4559,8 @@ function shellCodec(shapes, options) {
         command,
         ...typeof cwd === "string" ? { cwd } : {},
         commandKey: shape.commandKey,
-        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {}
+        ...shape.cwdKey !== void 0 ? { cwdKey: shape.cwdKey } : {},
+        ...shape.dialect !== void 0 ? { dialect: shape.dialect } : {}
       };
     },
     encode(nativeName, input, patch) {
@@ -4639,7 +4640,7 @@ function matchesTool(match, tool) {
     return false;
   return true;
 }
-var TOOL_KINDS, PATCH_BEGIN, PATCH_END, PATCH_ENVIRONMENT, PATCH_END_OF_FILE, PATCH_UPDATE, PATCH_FILE_HEADERS, PATCH_MOVE;
+var TOOL_KINDS, SHELL_DIALECTS, PATCH_BEGIN, PATCH_END, PATCH_ENVIRONMENT, PATCH_END_OF_FILE, PATCH_UPDATE, PATCH_FILE_HEADERS, PATCH_MOVE;
 var init_tools = __esm({
   "../../packages/sdk/dist/tools.js"() {
     "use strict";
@@ -4654,6 +4655,7 @@ var init_tools = __esm({
       "mcp",
       "other"
     ];
+    SHELL_DIALECTS = ["posix", "powershell", "cmd"];
     PATCH_BEGIN = "*** Begin Patch";
     PATCH_END = "*** End Patch";
     PATCH_ENVIRONMENT = "*** Environment ID:";
@@ -4665,7 +4667,7 @@ var init_tools = __esm({
 });
 
 // ../../packages/sdk/dist/schemas.js
-var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, agentSelectionSchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
+var hookEventNameSchema, capabilityIdSchema, supportLevelSchema, requirementLevelSchema, toolKindSchema, shellDialectSchema, eventFieldIdSchema, fieldAcceptanceSchema, MAX_TIMER_DELAY_MS, packageMaterializerSchema, toolInvocationSchema, baseHookEventSchema, jsonValueSchema, effectSchema, compatibilityPolicySchema, runtimePolicySchema, agentSelectionSchema, targetConfigSchema, projectMcpServerOverrideSchema, projectMcpTargetOverrideSchema, mcpEnvironmentRecordSchema, mcpEnvironmentSchema, hooknosticConfigSchema, targetScopeSchema, agentScopeSchema, toolMatchSchema, hookDefinitionSchema, pluginSpecSchema;
 var init_schemas = __esm({
   "../../packages/sdk/dist/schemas.js"() {
     "use strict";
@@ -4681,6 +4683,7 @@ var init_schemas = __esm({
     supportLevelSchema = external_exports.enum(SUPPORT_LEVELS);
     requirementLevelSchema = external_exports.enum(["required", "optional"]);
     toolKindSchema = external_exports.enum(TOOL_KINDS);
+    shellDialectSchema = external_exports.enum(SHELL_DIALECTS);
     eventFieldIdSchema = external_exports.enum(ALL_EVENT_FIELD_IDS);
     fieldAcceptanceSchema = external_exports.string().refine((value) => {
       const colon = value.indexOf(":");
@@ -4702,7 +4705,8 @@ var init_schemas = __esm({
         command: external_exports.string(),
         cwd: external_exports.string().optional(),
         commandKey: external_exports.string(),
-        cwdKey: external_exports.string().optional()
+        cwdKey: external_exports.string().optional(),
+        dialect: shellDialectSchema.optional()
       }).strict().optional(),
       file: external_exports.object({
         paths: external_exports.array(external_exports.string()),
@@ -5139,10 +5143,11 @@ function createCapabilitySet(levels) {
 function toolOf(event) {
   return "tool" in event ? event.tool : void 0;
 }
-function setToolInput(tool, input, options) {
+function setToolInput(tool, input, options, established) {
   tool.input = input;
   const shell = options.shellCodec?.classify(tool.nativeName, input);
-  if (shell !== void 0) tool.shell = shell;
+  if (shell !== void 0)
+    tool.shell = shell.dialect === void 0 && established !== void 0 ? { ...shell, dialect: established } : shell;
   else delete tool.shell;
   const file = options.fileCodec?.classify(tool.nativeName, input);
   if (file !== void 0) tool.file = file;
@@ -5178,6 +5183,7 @@ async function dispatch(hooks, event, options) {
   };
   let contextBudget = policy.contextCharLimit ?? DEFAULT_RUNTIME.contextCharLimit;
   let notifyBudget = typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0 ? policy.notifyCharLimit : DEFAULT_RUNTIME.notifyCharLimit;
+  const establishedDialect = toolOf(event)?.shell?.dialect ?? options.shellDialect;
   const matching = hooks.filter((hook2) => {
     if (hook2.event !== event.event) return false;
     if (!hookAppliesToTarget(hook2, options.targetId)) return false;
@@ -5283,17 +5289,38 @@ async function dispatch(hooks, event, options) {
         );
       }
     }
+    if (options.validateEffect !== void 0) {
+      const nativeEffect = effect.kind === "updateShell" ? { kind: "replaceInput", input: loweredShellInput } : effect;
+      let rejection;
+      try {
+        rejection = options.validateEffect(nativeEffect, event);
+      } catch (error) {
+        rejection = `target validation failed: ${errorMessage(error)}`;
+      }
+      if (rejection !== void 0) {
+        return failDispatch(
+          hook2.id,
+          {
+            hookId: hook2.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook2.id}" returned "${effect.kind}" that target "${options.targetId}" cannot apply: ${rejection}`
+          },
+          capabilities
+        );
+      }
+    }
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options);
+        if (tool) setToolInput(tool, effect.input, options, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === void 0) break;
-        setToolInput(tool, loweredShellInput, options);
+        setToolInput(tool, loweredShellInput, options, establishedDialect);
         result.effects.push({ hookId: hook2.id, effect });
         result.effects.push({
           hookId: hook2.id,
@@ -5696,7 +5723,7 @@ function decodeCodex(nativeEvent, invocation) {
       ...typeof payload.turn_id === "string" ? { turnId: payload.turn_id } : {},
       ...typeof payload.tool_use_id === "string" ? { toolCallId: payload.tool_use_id } : {},
       ...typeof payload.agent_id === "string" ? { agentId: payload.agent_id } : {},
-      // Inside a subagent only; the main agent's events carry none (ADR-0030,
+      // Inside a subagent only; the main agent's events carry none (ADR-0033,
       // fixtures pre-tool-bash-subagent and subagent-start-live).
       ...typeof payload.agent_type === "string" ? { agentType: payload.agent_type } : {}
     },
@@ -5833,8 +5860,8 @@ await runCodexCommandShim(() => Promise.resolve().then(() => (init_hooks(), hook
 /*!
 Bundled package notices
 
-@hooknostic/adapter-codex@0.4.0
-@hooknostic/runtime@0.4.0
+@hooknostic/adapter-codex@0.7.0
+@hooknostic/runtime@0.7.0
 LICENSE
 Apache License
                            Version 2.0, January 2004
@@ -6042,8 +6069,8 @@ Apache License
 /*!
 Bundled package notices
 
-@hooknostic/sdk@0.4.0
-hooknostic@0.4.0
+@hooknostic/sdk@0.7.0
+hooknostic@0.7.0
 LICENSE
 Apache License
                            Version 2.0, January 2004

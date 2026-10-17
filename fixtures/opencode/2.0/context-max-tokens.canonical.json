@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "context",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_ef6e2c044fferPAurgAQWMvn03",
+    "cwd": "/drift/opencode-v2/project"
+  },
+  "correlation": {},
+  "event": "model.request.before"
+}

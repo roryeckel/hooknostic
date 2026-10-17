@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.after",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_eb4a54842ffehvLAsDZppCJvRy",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-playback-fix-captures\\hooknostic-v2-EWilEo\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_probe_2",
+    "agentType": "build"
+  },
+  "event": "tool.error",
+  "tool": {
+    "nativeName": "probe_failure",
+    "input": {},
+    "kind": "other"
+  },
+  "error": {
+    "message": "hooknostic-thrown-tool-error"
+  }
+}

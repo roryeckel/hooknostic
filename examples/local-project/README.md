@@ -14,11 +14,19 @@ example commits native wiring, runtime artifacts, copied skill resources, and
 `.hooknostic/integration.json`. It has no Agent Plugins manifest. Dependencies
 and harness activation are explicit human steps; sync does neither.
 
-All three harnesses receive hooks, skills, a synthetic stdio MCP server, and a
+All four harnesses receive hooks and skills. Claude Code, Codex, and OpenCode
+also receive the synthetic stdio MCP server. Pi's missing native MCP channel is
+acknowledged by `components.accept: ["pi:mcp-stdio-omitted"]`, so its report
+records the unsupported, skipped server while other missing components remain errors.
+
+Claude Code, Codex, and OpenCode also receive a
 `reviewer` subagent written once in `agents/reviewer.md` as a
 [portable agent definition](../../docs/spec/agents/0.1.md). Its `native` block
 limits it to read-only tools on Claude and denies edits and shell on OpenCode. Codex
 has no per-agent tool list, so there it keeps the session's tools and sandbox.
+The Pi target deselects `reviewer` because its adapter does not implement portable
+agent projection.
+
 The server has no dependencies beyond Node and starts only when the harness
 activates it. Additional transport and source-path behavior is exercised by
 credential-free local playback fixtures. See the

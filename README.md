@@ -13,7 +13,7 @@
 </p>
 
 Keep one portable source and let Hooknostic translate it for **Claude Code**, **OpenAI
-Codex CLI**, and **OpenCode**. Adapters handle native packaging, component configuration,
+Codex CLI**, **OpenCode**, and **Pi**. Adapters handle native packaging, component configuration,
 project discovery, and lifecycle behavior. Before writing output, Hooknostic checks what
 each target can deliver and reports every compatibility shortfall.
 
@@ -25,13 +25,14 @@ validates that format and projects it into native harness artifacts. The source 
 stays unchanged. Portable TypeScript hooks can accompany it, or be used on their own;
 hooks are outside the standard's v1 portable component set. So are agents: Hooknostic's
 provisional [agent definition format](docs/spec/agents/0.1.md) compiles one
-Markdown file into each harness's own agent file (ADR-0029, proposed).
+Markdown file into each harness's own agent file (ADR-0032, proposed).
 
 ```text
 Agent Plugins 1.0 package ─┐                 ┌─ Claude Code plugin → marketplace
 TypeScript hooks ──────────┼─ check / build ─├─ Codex plugin       → marketplace
-Direct skills / MCP ───────┘                 └─ OpenCode package or project artifact
-                                    sync ─────  native repository wiring
+Direct skills / MCP ───────┘                 ├─ OpenCode package or project artifact
+                                             └─ Pi package or project artifact
+                                  sync ──────── native repository wiring
 ```
 
 The same source can contain hooks, skills, and MCP together, or only the components you
@@ -40,7 +41,7 @@ register their marketplace and list the built plugins; Hooknostic does not submi
 
 ## Choose your starting point
 
-Requires **Node.js 22.13+**. Install the CLI and configuration/hook authoring SDK:
+Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`. Install the CLI and configuration/hook authoring SDK:
 
 ```sh
 npm install --save-dev hooknostic @hooknostic/sdk
@@ -48,7 +49,7 @@ npm install --save-dev hooknostic @hooknostic/sdk
 
 | Your goal | Workflow | Start here |
 | --- | --- | --- |
-| Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or OpenCode | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
+| Distribute a plugin | Author an Agent Plugins package, `check`, `build`, then install native output through a marketplace or package manager | [Combined package and marketplace tutorial](docs/tutorials/04-packaging-with-agent-plugins.md) |
 | Maintain a repository | Keep portable hooks, skills, and MCP; `init --local`, `sync --dry-run`, `sync`, then `verify` | [Repository integration](docs/project-integration.md) |
 | Write portable hooks | Author one TypeScript entry and choose package or project delivery | [First hook walkthrough](docs/getting-started.md) |
 
@@ -72,11 +73,12 @@ import { defineConfig } from "@hooknostic/sdk";
 
 export default defineConfig({
   entry: "./src/hooks.ts",
-  components: { root: "./portable" },
+  components: { root: "./portable", accept: ["pi:mcp-stdio-omitted"] },
   targets: {
     claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
     codex: { version: ">=0.153 <1", delivery: "package", output: "./dist/codex" },
     opencode: { version: ">=2.0.17 <3", delivery: "package", output: "./dist/opencode" },
+    pi: { version: ">=0.84 <1", delivery: "package", output: "./dist/pi" },
   },
 });
 ```
@@ -84,6 +86,19 @@ export default defineConfig({
 Omit `entry` for a hookless package. For direct repository sources, use
 `components.skills` / `components.mcp` and project delivery instead of a package root.
 `components.agents` adds a directory of agent definitions to either form.
+
+Pi receives the hooks and skills. `pi:mcp-stdio-omitted` explicitly accepts
+omitting stdio MCP registration from Pi's native output because it has no native MCP
+channel. Support remains `unsupported`, and the report records the skipped servers.
+Other unsupported components still fail. HTTP transports have separate IDs:
+`pi:mcp-streamable-http-omitted` and `pi:mcp-sse-omitted`. See
+[component policies](docs/configuration.md#compatibility-and-component-policies).
+
+Skills may declare `metadata: { hooknostic/allow-implicit-invocation: "false" }`
+to require explicit user invocation across supported harness versions. Author
+them in `skills/` and let Hooknostic own the native copies; missing gates fail
+unless the skill is omitted or the specific shortfall is explicitly accepted.
+See [invocation policy](docs/project-integration.md) for authoring and support checks.
 The [existing combined example](examples/agent-plugin/) includes a bundled MCP server,
 so its generated packages run without workspace dependencies. OpenCode v1 remains
 available through an explicit version range; see [version families](docs/opencode-families.md).
@@ -120,7 +135,7 @@ export default definePlugin({
 });
 ```
 
-That one file blocks a destructive command on all three harnesses, and rewrites
+That one file blocks a destructive command on all four harnesses, and rewrites
 `npm` to `pnpm` on the ones that support input rewriting — falling back gracefully
 (and visibly) where they don't. Capability keys are relative to the hook's event
 (`block` means `tool.before.block`), and a hook can return several effects at once
@@ -189,7 +204,9 @@ tutorials built on the [examples](examples/).
 
 ## Repository
 
-Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
+Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` / pnpm 12 + TypeScript monorepo. Use the pnpm version pinned in
+`package.json`; compiler versions and compatibility constraints are documented in
+[Dependencies](docs/dependencies.md):
 
 | Package | Purpose |
 | --- | --- |
@@ -198,7 +215,7 @@ Node.js 22.13+ / pnpm 11 + TypeScript monorepo:
 | `@hooknostic/core` | Compiler: config loading, plugin model, capability analysis, diagnostics |
 | `@hooknostic/runtime` | Dispatcher: decode events → run your handlers → apply effects |
 | `hooknostic` | CLI: compile, reconcile projects, inspect support, and test hooks |
-| `@hooknostic/adapter-{claude,codex,opencode}` | Per-harness adapters (internal) |
+| `@hooknostic/adapter-{claude,codex,opencode,pi}` | Per-harness adapters (internal) |
 | `@hooknostic/testkit` | Fixtures, fake adapters, and the adapter contract suite |
 
 ```
@@ -219,6 +236,9 @@ package hooks require a narrower version range than project hooks.
 and Linux observations are recorded separately. OpenCode v2 retains explicit limitations,
 including approximate context/stop behavior and incomplete MCP identity normalization;
 read [OpenCode families](docs/opencode-families.md) before relying on those capabilities.
+Pi supports project and package hooks and skills; its native MCP and permission
+channels are unsupported. See the [support table](docs/harness-support.md) and
+[installation guide](docs/installing-artifacts.md#pi).
 
 The default compatibility minimum is `emulated`. Unsupported components and degraded
 items fail by default; known standard deviations warn and remain visible in the report.

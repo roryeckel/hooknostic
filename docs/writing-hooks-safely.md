@@ -142,6 +142,60 @@ a shell call, not a file call, so `tool.file` never sees it — and on Codex eve
 goes through the shell. A file guard that matters also needs a shell guard. And paths
 are reported as the harness sent them, relative or absolute, never resolved.
 
+## Branch on the shell dialect, and decide what unknown means
+
+A shell tool's name does not identify its grammar. `nativeName` is harness
+vocabulary: in the [interpreter captures](../.capture/shell-dialects/README.md),
+Claude's `Bash` ran Git Bash on Windows, OpenCode's `bash` ran PowerShell, Git
+Bash, cmd or tcsh depending on how the host was configured, and Codex's `Bash`
+ran PowerShell or cmd under identical hook input.
+
+`tool.shell.dialect` is the grammar family the command will be interpreted in,
+where the adapter can establish it: `"posix"`, `"powershell"` or `"cmd"`. A
+family, not an interpreter: `posix` is bash or zsh, and `powershell` is either
+edition, so a hook cannot assume a PowerShell 7 operator such as `&&`.
+
+| Target | `dialect` |
+| --- | --- |
+| Claude Code | Set whenever the view is: `Bash` is `posix`, `PowerShell` is `powershell` |
+| OpenCode | Set once the harness has stated a shell this adapter maps: bash, zsh, powershell, pwsh or cmd. Absent before that, and for any other shell |
+| Codex | Never set: the model picks the interpreter per call, and no hook input says which |
+| Pi | `powershell` is `powershell`; `bash` stays unknown because `shellPath` can select different interpreter families without changing the hook input |
+
+`hooknostic inspect <target>` prints the same answer for one target, with the
+adapter's reason and its evidence.
+
+**Absent means unknown, not POSIX.** Make that case a decision, as with an absent
+view:
+
+```ts
+const shell = tool.shell;
+if (shell === undefined) return block(`Unrecognized ${tool.nativeName} input`);
+switch (shell.dialect) {
+  case "posix":
+    return guardPosix(shell.command);
+  case "powershell":
+    return guardPowerShell(shell.command);
+  case "cmd":
+  case undefined:
+    // No parser for this grammar, or no way to know it: a guard refuses.
+    return block("Cannot verify this command's shell grammar");
+}
+```
+
+- **A guard that parses fails closed** on a dialect it has no parser for, and on
+  an absent one. A guard that only searches the text for a substring does not
+  depend on the grammar and need not branch at all.
+- **A rewrite that quotes fails open**: skip it unless the dialect is one it
+  writes correctly. `updateShell` places your command under the tool's native
+  key and does not quote or translate it.
+- **Never branch on `nativeName`** to pick a parser. It is the mistake the field
+  exists to remove.
+
+To test these branches, `hooknostic dispatch` takes the dialect the harness
+would state: see [testing your hooks](testing-your-hooks.md).
+([Decision 0029](decisions/0029-shell-dialect.md))
+
 ## Returning more than one effect
 
 A hook returns one effect, or an ordered list of them — `[notify(message),

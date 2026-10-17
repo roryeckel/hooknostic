@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "opencode",
+    "nativeEvent": "execute.before",
+    "version": "2.0.17"
+  },
+  "session": {
+    "id": "ses_ed78098bbffeEphIztIdQmpGXF",
+    "cwd": "/tmp/hkn-shell-dialect-j1GSaz/project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback",
+    "agentType": "build"
+  },
+  "event": "tool.before",
+  "tool": {
+    "nativeName": "shell",
+    "input": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    },
+    "kind": "shell",
+    "shell": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished",
+      "commandKey": "command",
+      "cwdKey": "workdir"
+    }
+  }
+}

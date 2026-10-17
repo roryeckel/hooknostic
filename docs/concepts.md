@@ -17,14 +17,14 @@ Component support has the same four levels as hook capabilities, with explicit
 
 ## 1. Harnesses: the tools your hooks run inside
 
-A **harness** is a coding-agent application — Claude Code, OpenAI Codex CLI, OpenCode.
+A **harness** is a coding-agent application — Claude Code, OpenAI Codex CLI, OpenCode, or Pi.
 Each one lets you attach code to moments in its lifecycle ("a tool is about to run",
 "a session just started"), but each invented its own way of doing it:
 
 - **Claude Code** and **Codex CLI** run each hook as a separate subprocess: they send a
   JSON event on stdin and read a JSON answer on stdout.
-- **OpenCode** loads your hook code as a JavaScript module inside its own long-running
-  process and calls functions on it.
+- **OpenCode** and **Pi** load your hook code as a JavaScript module inside their own
+  long-running processes and call functions on it.
 
 Different event names, different payloads, different rules. Hooknostic's job is to be
 the translation layer — with the crucial property that it *refuses to translate
@@ -65,6 +65,14 @@ Codex patch touches). A view is absent when the shape is uncaptured; the raw
 `tool.input` is always there, and the hook decides whether to fail open or closed.
 ([Decision 0007](decisions/0007-portable-shell-write-back.md),
 [Decision 0026](decisions/0026-normalized-file-view.md))
+
+The same command text means different things to different interpreters, and the
+tool's name does not say which one runs it. So `tool.shell.dialect` names the
+grammar family (`posix`, `powershell` or `cmd`) wherever the adapter can
+establish it, and is absent where it cannot, which is every Codex call. A hook
+that parses or quotes a command branches on it and treats absent as unknown.
+([Decision 0029](decisions/0029-shell-dialect.md),
+[writing hooks safely](writing-hooks-safely.md#branch-on-the-shell-dialect-and-decide-what-unknown-means))
 
 Optional fields such as `turn.stop`'s `lastMessage` or `correlation.turnId` are rated
 per target like capabilities, because not every harness sends them: OpenCode's stop

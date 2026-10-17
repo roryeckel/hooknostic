@@ -7,6 +7,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       date: "2026-09-26",
       validatedOn: [
         {
+          version: "2.0.32",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-audit",
+          what: "An isolated OAuth playback listed tools after refresh while the first model turn still received an unknown-tool result; the next captured model request carried a native catalog update advertising the tool (oauth-catalog-readiness.json). The scripted model permits two retries after that observed update and still requires a protected tools/call with the refreshed bearer.",
+        },
+        {
+          version: "2.0.32",
+          date: "2026-10-17",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/tool-custom-error.input.json",
+          what: "Windows loopback recapture: a plain custom Error is wrapped as Tool.Error and delivered through execute.after (tool-custom-error); project and relocated-package tools/call HTTP requests preserve the declared endpoint and headers without appending codemode=false (remote/playback-recapture.json).",
+        },
+        {
           version: "2.0.17",
           date: "2026-09-26",
           method: "captured",
@@ -106,13 +120,69 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         },
         // scheduled-playback:begin
         {
-          version: "2.0.18",
-          date: "2026-09-28",
+          version: "2.0.27",
+          date: "2026-10-12",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
         },
         // scheduled-playback:end
+        {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: execute.before shell payload and executed Node process ancestry establish Windows powershell.exe for this isolated configuration.",
+        },
+        {
+          version: "2.0.20",
+          date: "2026-10-04",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS loopback shell interpreter probe: captured execute.before shell payload and executed Node process ancestry establish /bin/bash for this isolated GitHub runner configuration.",
+        },
+        {
+          version: "2.0.20",
+          date: "2026-10-10",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0",
+          what: "tool-before-shell-cmd and tool-before-shell-tcsh: execute.before payloads from sessions whose context hook stated the shell tool's shell, cmd on Windows and tcsh on Linux. Pins the stated shell as the source of tool.shell.dialect, and tcsh as a shell with none (ADR-0029).",
+        },
+        {
+          version: "2.0.17",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe on the reference build: the context hook's shell tool description stated powershell before the call, and powershell.exe ran.",
+        },
+        {
+          version: "2.0.20",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Linux container shell interpreter probe: the shell tool ran bash, zsh and tcsh by SHELL, and bash where SHELL named fish or was unset; the context hook stated each by name before the call, and shell.created carried its path after.",
+        },
+        {
+          version: "2.0.20",
+          date: "2026-10-10",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "Windows loopback shell interpreter probe: one shell tool ran powershell.exe, Git for Windows bash.exe, cmd.exe and pwsh.exe by host configuration under identical execute.before input, and the context hook stated each shell by name before the call.",
+        },
+        {
+          version: "2.0.20",
+          date: "2026-10-11",
+          method: "live-probe",
+          artifact: ".capture/shell-dialects",
+          what: "macOS runner shell interpreter recapture: with SHELL naming bash, the shell tool ran bash and the context hook stated bash before the call, naming the platform macOS; shell.created carried /bin/bash. No other macOS configuration was captured.",
+        },
+        {
+          version: "2.0.22",
+          date: "2026-10-04",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/context-max-tokens.input.json",
+          what: "Linux isolated harness-watch playback capture: the context callback carries numeric event.options.maxTokens (4096). The native envelope is preserved in raw; no token-limit effect or normalized field is claimed.",
+        },
       ],
     },
     // Optional event fields (ADR-0027). The turn fields rest on the 2.0.18
@@ -159,14 +229,14 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         rationale: "Mutating event.input before execution changes the executed command.",
       },
       // execute.before/after name the running agent: the subagent inside one, the
-      // primary agent otherwise (ADR-0030, fixtures tool-read-in-subagent-*).
+      // primary agent otherwise (ADR-0033, fixtures tool-read-in-subagent-*).
       "tool.before.agent.identity": { level: "exact" },
       "tool.after.observe": { level: "exact" },
       "tool.after.agent.identity": { level: "exact" },
       "tool.error.observe": {
         level: "approximate",
         rationale:
-          "Via execute.after status error, captured for a missing-file read. A plain JavaScript exception from a custom tool bypassed this callback; shell nonzero exits are completed results.",
+          "Via execute.after status error, captured for a missing-file read. Plain custom exceptions bypassed this callback in the initial capture and were wrapped as Tool.Error in a later recapture, so error coverage varies across validated builds; shell nonzero exits are completed results.",
       },
       "tool.after.output.replace": {
         level: "approximate",

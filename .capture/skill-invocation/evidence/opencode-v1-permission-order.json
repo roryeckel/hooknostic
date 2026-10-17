@@ -1,0 +1,223 @@
+{
+  "provenance": "live-probe",
+  "harness": "opencode-v1",
+  "version": "1.18.18",
+  "platform": "win32",
+  "delivery": "project",
+  "scope": "Isolated project skills with generated skillPermissionSource callbacks. Ordinary model requests use credential-free scripted loopback replies; no skill tool call or command-menu behavior is inferred.",
+  "extraction": "Probe-bearing lines are verbatim excerpts from the first request carrying tools. Before uses the original callback; after removes and reinserts the named skill rules and the skill permission block. Raw requests and the driver remain under ignored captured/permission-order*. No account path appears in these excerpts.",
+  "cases": [
+    {
+      "stage": "before",
+      "level": "skill",
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T00:31:38.993Z",
+      "inputPermission": {
+        "skill": {
+          "review": "ask",
+          "*": "allow",
+          "control": "allow"
+        },
+        "edit": "deny"
+      },
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "review",
+        "control"
+      ],
+      "rawRequestsSha256": "407980d267443d72016bb020e9e93d1c7b0b25b7e4d0bc870941a36bfc0b1355",
+      "excerpts": [
+        {
+          "path": "$[1][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 111,
+              "text": "    <description>ORDER_DESCRIPTION_control capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>ORDER_DESCRIPTION_review capture control.</description>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "before",
+      "level": "permission",
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T00:31:48.368Z",
+      "inputPermission": {
+        "skill": {
+          "review": "ask",
+          "control": "allow"
+        },
+        "*": "allow",
+        "edit": "deny"
+      },
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "review",
+        "control"
+      ],
+      "rawRequestsSha256": "21362157b4b5f8f7cb0af9c1be1cf6b875a0e1456433cbea3feb2bcf54c237d3",
+      "excerpts": [
+        {
+          "path": "$[1][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 111,
+              "text": "    <description>ORDER_DESCRIPTION_control capture control.</description>"
+            },
+            {
+              "line": 121,
+              "text": "    <description>ORDER_DESCRIPTION_review capture control.</description>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "after",
+      "level": "skill",
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T00:32:23.897Z",
+      "inputPermission": {
+        "skill": {
+          "review": "ask",
+          "*": "allow",
+          "control": "allow"
+        },
+        "edit": "deny"
+      },
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "control"
+      ],
+      "rawRequestsSha256": "63c1ce19854e6a8726907a1aaa1796455acf59325109281ac77aa8439c4292d3",
+      "excerpts": [
+        {
+          "path": "$[1][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 111,
+              "text": "    <description>ORDER_DESCRIPTION_control capture control.</description>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "after",
+      "level": "skill",
+      "allowImplicitInvocation": true,
+      "capturedAt": "2026-10-13T00:32:37.277Z",
+      "inputPermission": {
+        "skill": {
+          "review": "ask",
+          "*": "deny",
+          "control": "allow"
+        },
+        "edit": "deny"
+      },
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "review",
+        "control"
+      ],
+      "rawRequestsSha256": "acb23fadedd604f51ff9b1428ba414a49a2986d7dda101a4a097a79a1eac7e56",
+      "excerpts": [
+        {
+          "path": "$[1][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 111,
+              "text": "    <description>ORDER_DESCRIPTION_control capture control.</description>"
+            },
+            {
+              "line": 116,
+              "text": "    <description>ORDER_DESCRIPTION_review capture control.</description>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "after",
+      "level": "permission",
+      "allowImplicitInvocation": false,
+      "capturedAt": "2026-10-13T00:32:50.981Z",
+      "inputPermission": {
+        "skill": {
+          "review": "ask",
+          "control": "allow"
+        },
+        "*": "allow",
+        "edit": "deny"
+      },
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "control"
+      ],
+      "rawRequestsSha256": "9dfbcd881ccb923322bd100064b5700f2c967ae845aa75dd1addfba321c96889",
+      "excerpts": [
+        {
+          "path": "$[1][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 111,
+              "text": "    <description>ORDER_DESCRIPTION_control capture control.</description>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "after",
+      "level": "permission",
+      "allowImplicitInvocation": true,
+      "capturedAt": "2026-10-13T00:33:04.609Z",
+      "inputPermission": {
+        "skill": {
+          "review": "ask",
+          "control": "allow"
+        },
+        "*": "deny",
+        "edit": "deny"
+      },
+      "exit": 0,
+      "errors": [],
+      "requestCount": 2,
+      "descriptionMarkersInInitialRequest": [
+        "review",
+        "control"
+      ],
+      "rawRequestsSha256": "22655f3db7da9a746bc442c110dc2c83b8f4b020a2c9ef1cedaa6669c7236589",
+      "excerpts": [
+        {
+          "path": "$[1][\"messages\"][\"0\"][\"content\"]",
+          "lines": [
+            {
+              "line": 111,
+              "text": "    <description>ORDER_DESCRIPTION_control capture control.</description>"
+            },
+            {
+              "line": 116,
+              "text": "    <description>ORDER_DESCRIPTION_review capture control.</description>"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { codexHarness } from "./harness.js";
 import { codexCapabilityProfiles } from "./profile.js";
 import { codexAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { codexAgentPluginProjector } from "./project-agent-plugin.js";
+import { codexSkillPolicy } from "./skill-policy.js";
 import {
   classifyCodexTool,
   CODEX_FILE_SHAPES,
@@ -94,7 +95,7 @@ export function codexShimEntrySource(options: {
 export function codexAdapter(): HarnessAdapter {
   return {
     id: "codex",
-    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.7.0", // kept equal to package.json by versions.test.ts
     harness: codexHarness,
     projectPaths: [".codex/hooks.json", ".codex/config.toml", ".codex/agents", ".agents/skills"],
     // Live-probed on 0.156.1 (.capture/codex-worktree-hooks). config.toml's
@@ -105,6 +106,11 @@ export function codexAdapter(): HarnessAdapter {
     projectComponents,
     projectComponentProfiles,
     agents: codexAgents,
+    skillInvocationPolicy: {
+      destination: ".agents/skills",
+      discoveryDirectories: [".codex/skills"],
+      projectFiles: codexSkillPolicy,
+    },
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: codexAgentPluginProjector,
     // Codex spawns `node <artifact>` per hook event.
@@ -119,6 +125,14 @@ export function codexAdapter(): HarnessAdapter {
     fileCodec: codexFileCodec,
     fileShapes: CODEX_FILE_SHAPES,
     classifyTool: classifyCodexTool,
+    shellDialect: {
+      source: "none",
+      rationale:
+        "The model selects the interpreter per call and no hook input carries the selector: identical " +
+        "Bash payloads ran PowerShell and cmd on Windows, and bash, zsh, dash and PowerShell on Linux. A hook " +
+        "meets the unknown case on every shell call (upstream openai/codex#44836).",
+      evidence: ".capture/shell-dialects",
+    },
 
     supportedHarnessVersions() {
       return codexCapabilityProfiles.map((p) => p.range);

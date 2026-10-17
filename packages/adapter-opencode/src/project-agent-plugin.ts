@@ -20,7 +20,9 @@ import {
   projectPackageSkillTexts,
   RELATIVE_SKILL_TEXT,
   servesAsPrimary,
+  skillInvocationPolicyProfiles,
   withoutPrimary,
+  withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
@@ -33,6 +35,16 @@ import {
   packageEntrySource,
 } from "./generate.js";
 import { qualifiedSkillNames, qualifyNames, renameSkillManifest } from "./skill-names.js";
+import {
+  OPENCODE_SKILL_POLICY_RATIONALE,
+  opencodeNewerSkillPolicyValidation,
+  opencodeNumericPermissionValidation,
+  opencodePackageSkillPolicyValidation,
+  opencodePermissionOrderValidation,
+  opencodePermissionPreservationValidation,
+  opencodeSkillPolicy,
+  skillPermissionSource,
+} from "./skill-policy.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "./skill-text.js";
 
 /**
@@ -50,7 +62,7 @@ export interface OpenCodePackageAgent {
   native: Record<string, unknown>;
 }
 
-/** An agent kept under its bare name in OpenCode's flat agent namespace (ADR-0029). */
+/** An agent kept under its bare name in OpenCode's flat agent namespace (ADR-0032). */
 export const AGENT_NAME_UNQUALIFIED = "agent-name-unqualified";
 
 const delivers = (cell: AgentPluginComponentSupport | undefined): boolean =>
@@ -239,6 +251,7 @@ function injectorSource(
   manifest: AgentPluginPackage["manifest"],
   servers: Record<string, OpenCodeServer>,
   hasSkills: boolean,
+  skillPolicies: Readonly<Record<string, boolean>>,
   agents: readonly OpenCodePackageAgent[] = [],
 ): string {
   // The config form of an agent is the markdown form's fields, with `prompt`
@@ -319,7 +332,7 @@ function injectorSource(
     ...(agentEntries.length === 0
       ? []
       : [
-          "    // Agent definitions configured beside the package (ADR-0029), registered as",
+          "    // Agent definitions configured beside the package (ADR-0032), registered as",
           "    // the project's opencode.json would declare them.",
           "    config.agent = { ...(config.agent ?? {}) };",
           "    for (const [name, agent] of agents) {",
@@ -355,6 +368,7 @@ function injectorSource(
           "    }",
         ]
       : []),
+    skillPermissionSource(skillPolicies),
     "  },",
     "});",
     "",
@@ -724,13 +738,17 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
       const qualifying =
         context.support["agent-plugin.skills"]?.degradations?.some((item) => item.id === SKILL_NAME_UNQUALIFIED) ??
         false;
+      const nativeNames = new Map(source.skills.map((skill) => [skill.name, skill.name]));
       for (const { skill, name, kept } of qualifying ? qualifiedSkillNames(source.manifest.name, source.skills) : []) {
         let reason = kept;
         if (reason === undefined && name !== skill.name) {
           const contents = source.files.find((file) => file.path === skill.manifestPath)?.contents;
           const rewritten = contents === undefined ? undefined : renameSkillManifest(contents, skill.name, name);
           if (rewritten === undefined) reason = "its frontmatter has no single top-level name line to rewrite";
-          else renamed.set(skill.manifestPath, rewritten);
+          else {
+            renamed.set(skill.manifestPath, rewritten);
+            nativeNames.set(skill.name, name);
+          }
         }
         if (reason === undefined) continue;
         // Reported, never raised: core applies components.onDegraded and
@@ -810,7 +828,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
           message: `MCP server ${JSON.stringify(name)} was omitted: ${reason}.`,
         });
       }
-      // Agent definitions configured beside the package (ADR-0029). OpenCode keeps one
+      // Agent definitions configured beside the package (ADR-0032). OpenCode keeps one
       // flat agent namespace, so each is named for its plugin as skills are
       // (ADR-0021) -- switched by the declared degradation, like skills -- and
       // a family whose plugin API cannot take native fields gets none.
@@ -818,7 +836,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
       const deliversPrimary = deliversDefinitions && delivers(context.support["agents.primary"]);
       const deliversNative = deliversDefinitions && delivers(context.support["agents.native"]);
       // Without a main-session route an `all` definition is still a subagent,
-      // and a `primary` one has nothing left to register (ADR-0029, decision 9).
+      // and a `primary` one has nothing left to register (ADR-0032, decision 9).
       const definitions = (deliversDefinitions ? (context.agents ?? []) : []).flatMap((definition) => {
         if (deliversPrimary || !servesAsPrimary(definition.mode)) return [definition];
         const mode = withoutPrimary(definition.mode);
@@ -866,7 +884,19 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
         path: INJECTOR_PATH,
         contents: emitters
           ? emitters.injector(source, servers, agents)
-          : injectorSource(source.manifest, servers, source.skills.length > 0, agents),
+          : injectorSource(
+              source.manifest,
+              servers,
+              source.skills.length > 0,
+              Object.fromEntries(
+                source.skills.flatMap((skill) =>
+                  skill.policy?.allowImplicitInvocation === undefined
+                    ? []
+                    : [[nativeNames.get(skill.name)!, skill.policy.allowImplicitInvocation]],
+                ),
+              ),
+              agents,
+            ),
       });
       // Either half can be absent: a config needs only one of `entry` or
       // `components`. An entry importing a module the build never produced fails
@@ -1029,4 +1059,23 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
   };
 }
 
-export const opencodeAgentPluginProjector = createOpenCodeAgentPluginProjector();
+const nativeOpenCodeProjector = createOpenCodeAgentPluginProjector();
+export const opencodeAgentPluginProjector = withSkillInvocationPolicy(
+  {
+    ...nativeOpenCodeProjector,
+    profiles: skillInvocationPolicyProfiles(
+      nativeOpenCodeProjector.profiles,
+      opencodePackageSkillPolicyValidation,
+      OPENCODE_SKILL_POLICY_RATIONALE,
+      "emulated",
+      [
+        opencodeNewerSkillPolicyValidation,
+        opencodePermissionOrderValidation,
+        opencodePermissionPreservationValidation,
+        opencodeNumericPermissionValidation,
+      ],
+    ),
+  },
+  "opencode",
+  opencodeSkillPolicy,
+);

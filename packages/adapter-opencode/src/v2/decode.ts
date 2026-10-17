@@ -1,6 +1,7 @@
 import type { InvocationContext } from "@hooknostic/core";
 import type { HookEvent } from "@hooknostic/sdk";
 
+import { dialectOfStatedShell } from "../shell-statement.js";
 import { classifyOpenCodeV2Tool } from "./toolmap.js";
 
 export interface OpenCodeV2NativeEvent {
@@ -22,6 +23,12 @@ export interface OpenCodeV2Enrichment {
    * only the session id.
    */
   execution?: OpenCodeV2Execution;
+  /**
+   * The shell name the harness last stated for this session in its `shell`
+   * tool description, heard on the `context` hook (ADR-0029). No tool hook
+   * names the interpreter, so this is the only source of `tool.shell.dialect`.
+   */
+  shell?: unknown;
 }
 
 export interface OpenCodeV2Execution {
@@ -29,7 +36,7 @@ export interface OpenCodeV2Execution {
   text?: Record<string, unknown>[];
 }
 export class OpenCodeV2DecodeError extends Error {}
-const record = (value: unknown): Record<string, unknown> =>
+export const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
 /**
@@ -82,9 +89,14 @@ export function decodeOpenCodeV2(
   };
   if (native.hook === "execute.before" || native.hook === "execute.after") {
     if (typeof event.tool !== "string") throw new OpenCodeV2DecodeError("v2 tool event has no tool name");
-    const tool = classifyOpenCodeV2Tool(event.tool, structuredClone(event.input));
+    const shellDialect = dialectOfStatedShell(enrichment.shell);
+    const tool = classifyOpenCodeV2Tool(
+      event.tool,
+      structuredClone(event.input),
+      shellDialect !== undefined ? { shellDialect } : undefined,
+    );
     // v2 names the running agent on every tool event: the subagent inside one,
-    // the primary agent otherwise (ADR-0030, fixtures tool-read-in-subagent-*).
+    // the primary agent otherwise (ADR-0033, fixtures tool-read-in-subagent-*).
     const scoped =
       typeof event.agent === "string"
         ? { ...base, correlation: { ...base.correlation, agentType: event.agent } }

@@ -132,7 +132,8 @@ pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, or `opencode`. You need that harness installed at the
+Use `claude`, `codex`, `opencode-v1`, `opencode-v2`, or `pi`; `opencode` remains
+an alias for the v1 lane. You need that harness installed at the
 exact version the adapter names as its reference build; the test fails loudly if
 the installed version differs. Full details in
 [`docs/testing.md`](docs/testing.md).

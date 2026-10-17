@@ -21,6 +21,7 @@ import {
   type AgentPluginSkill,
   type LoadAgentPluginOptions,
   type LoadAgentPluginResult,
+  type SkillPolicy,
 } from "./types.js";
 
 const MANIFEST_KEYS = new Set([
@@ -449,12 +450,22 @@ function extractFrontmatter(text: string): unknown {
   return parseMarkdownFrontmatter(text, "SKILL.md").data;
 }
 
+class InvalidSkillPolicyError extends Error {}
+
 function validateSkillFrontmatter(
   value: unknown,
   directory: string,
   options: { allowAdditionalFields?: boolean } = {},
-): { name: string; description: string } {
+): { name: string; description: string; policy?: SkillPolicy } {
   if (!object(value)) throw new Error("frontmatter must be a mapping");
+  // A malformed reserved policy is always fatal, even when another field
+  // would otherwise cause the skill to be skipped under onInvalid: warn.
+  const invocation = object(value["metadata"]) ? value["metadata"]["hooknostic/allow-implicit-invocation"] : undefined;
+  if (invocation !== undefined && invocation !== "true" && invocation !== "false") {
+    throw new InvalidSkillPolicyError(
+      'metadata hooknostic/allow-implicit-invocation must be the string "true" or "false"',
+    );
+  }
   if (!options.allowAdditionalFields && Object.keys(value).some((key) => !SKILL_KEYS.has(key))) {
     throw new Error("frontmatter contains an unknown field");
   }
@@ -485,7 +496,11 @@ function validateSkillFrontmatter(
   ) {
     throw new Error("metadata must be a map of string values");
   }
-  return { name, description };
+  return {
+    name,
+    description,
+    ...(invocation === undefined ? {} : { policy: { allowImplicitInvocation: invocation === "true" } }),
+  };
 }
 
 function loadSkills(
@@ -514,7 +529,7 @@ function loadSkills(
     } catch (error) {
       issue(
         issues,
-        "warn",
+        error instanceof InvalidSkillPolicyError ? "error" : "warn",
         "skill",
         `skill ${JSON.stringify(directory)} is invalid and was skipped: ${error instanceof Error ? error.message : String(error)}`,
         file.path,
@@ -773,12 +788,13 @@ export interface ProjectSkill {
   name: string;
   source: string;
   files: AgentPluginFile[];
+  policy?: SkillPolicy;
 }
 export interface ProjectComponents {
   origin: "package" | "direct";
   skills: ProjectSkill[];
   mcp?: { root: string; config: AgentPluginMcpConfig };
-  /** Portable agent definitions (ADR-0029); absent when none are configured. */
+  /** Portable agent definitions (ADR-0032); absent when none are configured. */
   agents?: AgentDefinition[];
   /** The name of the definition sessions start as (`components.defaultAgent`), where this target takes it. */
   defaultAgent?: string;
@@ -788,6 +804,7 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
     origin: "package",
     skills: source.skills.map((skill) => ({
       name: skill.name,
+      ...(skill.policy === undefined ? {} : { policy: skill.policy }),
       source: resolve(source.root, skill.directory),
       files: source.files
         .filter((f) => f.path.startsWith(skill.directory + "/"))
@@ -799,7 +816,7 @@ export function packageComponents(source: AgentPluginPackage): ProjectComponents
 export async function loadProjectComponents(options: {
   skills?: string[];
   mcp?: string;
-  /** Directories of Hooknostic Agent Definition files (ADR-0029). */
+  /** Directories of Hooknostic Agent Definition files (ADR-0032). */
   agents?: string[];
   exclude?: string[];
   executableFiles?: string[];
@@ -836,6 +853,7 @@ export async function loadProjectComponents(options: {
       names.add(skill.name);
       source.skills.push({
         name: skill.name,
+        ...(skill.policy === undefined ? {} : { policy: skill.policy }),
         source: resolve(directory, skill.directory.slice(7)),
         files: nested.files
           .filter((f) => f.path.startsWith(skill.directory + "/"))

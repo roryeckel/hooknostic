@@ -11,6 +11,7 @@ import type {
   PluginContext,
   RuntimePolicy,
   ShellCodec,
+  ShellDialect,
   SupportLevel,
   ToolInvocation,
 } from "@hooknostic/sdk";
@@ -55,6 +56,21 @@ export interface DispatchOptions {
    */
   shellCodec?: ShellCodec;
   /**
+   * Target-specific application check after portable validation and shell
+   * lowering, before an effect changes the canonical event. A returned reason
+   * is an HN401 failure governed by onHookError. updateShell reaches this
+   * check as its lowered replaceInput effect.
+   */
+  validateEffect?: (effect: Effect, event: HookEvent) => string | undefined;
+  /**
+   * The dialect the adapter established for this event's shell tool from
+   * outside the codec, such as a shell the harness stated (ADR-0029). The codec
+   * cannot restate it after a rewrite, so the shim hands it over here, for a
+   * call that arrives with no view to carry it. A dialect the event's shell
+   * view arrived with is what the hooks were shown, and is kept over this one.
+   */
+  shellDialect?: ShellDialect;
+  /**
    * This target's file-view codec (ADR-0026). Without it an input rewrite
    * drops `tool.file` rather than leaving it stale.
    */
@@ -74,11 +90,23 @@ function toolOf(event: HookEvent): ToolInvocation | undefined {
  * later guard hook reading `event.tool.shell.command`. When the new input no
  * longer classifies (or no codec was supplied), the view is deleted -- absence
  * tells a hook to fall back to `input`, where a stale value tells it a lie.
+ *
+ * The dialect is the exception that survives (ADR-0029): it describes the tool
+ * and its host, not the input, so a rewrite keeps `established` -- the one the
+ * adapter established for this event -- where the codec does not restate it.
+ * An input that no longer classifies still drops the whole view, dialect
+ * included; a later rewrite that classifies again gets it back.
  */
-function setToolInput(tool: ToolInvocation, input: unknown, options: DispatchOptions): void {
+function setToolInput(
+  tool: ToolInvocation,
+  input: unknown,
+  options: DispatchOptions,
+  established: ShellDialect | undefined,
+): void {
   tool.input = input;
   const shell = options.shellCodec?.classify(tool.nativeName, input);
-  if (shell !== undefined) tool.shell = shell;
+  if (shell !== undefined)
+    tool.shell = shell.dialect === undefined && established !== undefined ? { ...shell, dialect: established } : shell;
   else delete tool.shell;
   // The same rule for the file view: a rewrite must not leave a later guard
   // reading the paths of an input that no longer exists.
@@ -151,6 +179,11 @@ export async function dispatch(
     typeof policy.notifyCharLimit === "number" && Number.isFinite(policy.notifyCharLimit) && policy.notifyCharLimit > 0
       ? policy.notifyCharLimit
       : DEFAULT_RUNTIME.notifyCharLimit;
+
+  // Fixed before any hook runs: a rewrite can remove the view that carried it.
+  // The view's own dialect comes first, so no rewrite changes the grammar a
+  // hook was already told the command runs in.
+  const establishedDialect = toolOf(event)?.shell?.dialect ?? options.shellDialect;
 
   const matching = hooks.filter((hook) => {
     if (hook.event !== event.event) return false;
@@ -287,18 +320,41 @@ export async function dispatch(
       }
     }
 
+    if (options.validateEffect !== undefined) {
+      const nativeEffect: Effect =
+        effect.kind === "updateShell" ? { kind: "replaceInput", input: loweredShellInput } : effect;
+      let rejection: string | undefined;
+      try {
+        rejection = options.validateEffect(nativeEffect, event);
+      } catch (error) {
+        rejection = `target validation failed: ${errorMessage(error)}`;
+      }
+      if (rejection !== undefined) {
+        return failDispatch(
+          hook.id,
+          {
+            hookId: hook.id,
+            kind: "unsupported-effect",
+            code: "HN401",
+            message: `hook "${hook.id}" returned "${effect.kind}" that target "${options.targetId}" cannot apply: ${rejection}`,
+          },
+          capabilities,
+        );
+      }
+    }
+
     // Apply the effect (mutations become visible to subsequent handlers).
     switch (effect.kind) {
       case "replaceInput": {
         const tool = toolOf(event);
-        if (tool) setToolInput(tool, effect.input, options);
+        if (tool) setToolInput(tool, effect.input, options, establishedDialect);
         result.effects.push({ hookId: hook.id, effect });
         break;
       }
       case "updateShell": {
         const tool = toolOf(event);
         if (tool === undefined) break; // unreachable: lowering above required it
-        setToolInput(tool, loweredShellInput, options);
+        setToolInput(tool, loweredShellInput, options, establishedDialect);
         // Two entries: the portable effect as the hook returned it, then the
         // lowering the adapters actually consume. apply() implementations keep
         // resolving the last replaceInput with no knowledge of updateShell,

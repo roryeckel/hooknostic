@@ -17,7 +17,7 @@ const ROOT_VERSION = (
 ).version;
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
-const SHIPPED_ADAPTERS = ["claude", "codex", "opencode"];
+const SHIPPED_ADAPTERS = ["claude", "codex", "opencode", "pi"];
 
 interface Manifest {
   name: string;
@@ -234,7 +234,7 @@ describe("simulated registry install", () => {
       const report = JSON.parse(run.stdout) as {
         targets: Record<string, { status: string; requestedVersion: string }>;
       };
-      expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "modern", "opencode"]);
+      expect(Object.keys(report.targets).sort()).toEqual(["claude", "codex", "modern", "opencode", "pi"]);
       for (const target of Object.values(report.targets)) expect(target.status).toBe("success");
 
       for (const artifact of [
@@ -242,6 +242,7 @@ describe("simulated registry install", () => {
         "dist/codex/.codex/hooknostic/hooknostic.mjs",
         "dist/opencode/.opencode/plugins/hooknostic.js",
         "dist/modern/.opencode/plugins/hooknostic.js",
+        "dist/pi/.pi/extensions/hooknostic.js",
       ]) {
         const code = await readFile(join(project, artifact), "utf8");
         // Self-contained: no bare workspace specifier survives bundling…

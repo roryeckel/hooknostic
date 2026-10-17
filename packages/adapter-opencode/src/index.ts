@@ -28,6 +28,7 @@ import { opencodeHarness } from "./harness.js";
 import { opencodeCapabilityProfiles } from "./profile.js";
 import { opencodeAgents, projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
+import { opencodeSkillPolicy } from "./skill-policy.js";
 import {
   classifyOpenCodeTool,
   OPENCODE_FILE_SHAPES,
@@ -48,6 +49,7 @@ export type { OpenCodeNativeEvent } from "./decode.js";
 export { generateOpenCodeArtifacts } from "./generate.js";
 export { opencodeAgentPluginProjector } from "./project-agent-plugin.js";
 export { opencodeCapabilityProfiles } from "./profile.js";
+export { dialectOfStatedShell } from "./shell-statement.js";
 export { createHooknosticHooks } from "./shim.js";
 export type { OpenCodeHooks, OpenCodePluginInput, OpenCodeShimOptions } from "./shim.js";
 export {
@@ -105,13 +107,18 @@ export function opencodeShimEntrySource(options: {
 export function opencodeV1Adapter(): HarnessAdapter {
   return {
     id: "opencode",
-    adapterVersion: "0.4.0", // kept equal to package.json by versions.test.ts
+    adapterVersion: "0.7.0", // kept equal to package.json by versions.test.ts
     harness: opencodeHarness,
     projectPaths: [".opencode/plugins", ".opencode/agents", ".agents/skills", "opencode.json", "opencode.jsonc"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,
     agents: opencodeAgents,
+    skillInvocationPolicy: {
+      destination: ".agents/skills",
+      discoveryDirectories: [".claude/skills", ".opencode/skills", ".opencode/skill"],
+      projectFiles: opencodeSkillPolicy,
+    },
     projectMcpOptions: { startupTimeoutMs: true },
     agentPluginProjector: opencodeAgentPluginProjector,
     // OpenCode imports the plugin module in-process.
@@ -126,6 +133,15 @@ export function opencodeV1Adapter(): HarnessAdapter {
     fileCodec: opencodeFileCodec,
     fileShapes: OPENCODE_FILE_SHAPES,
     classifyTool: classifyOpenCodeTool,
+    shellDialect: {
+      source: "statement",
+      rationale:
+        "From the shell the harness states in its bash tool description before a call (tool.definition hook): " +
+        "posix for bash and zsh, powershell for powershell and pwsh, cmd for cmd. Absent until a statement is " +
+        "heard, for any other shell (the host's shell setting, SHELL and PATH choose it), and on a build that " +
+        "words the statement differently.",
+      evidence: ".capture/shell-dialects",
+    },
 
     supportedHarnessVersions() {
       return opencodeCapabilityProfiles.map((p) => p.range);

@@ -410,7 +410,81 @@ describe("shapeDiff", () => {
   });
 });
 
+describe("Pi drift", () => {
+  const fixtures = readFixtureInputs("pi/0.84");
+  const compare = (captured) =>
+    compareCaptures({ harness: "pi", fixtures, captured, expectedVariants: EXPECTED_VARIANTS.pi });
+
+  it("distinguishes tool names and result outcomes", () => {
+    expect(
+      variantOf(
+        "pi",
+        fixtures.find((row) => row.event.type === "tool_call" && row.event.toolName === "bash"),
+      ),
+    ).toBe("tool_call+bash");
+    expect(
+      variantOf(
+        "pi",
+        fixtures.find((row) => row.event.type === "tool_result" && row.event.isError),
+      ),
+    ).toBe("tool_result+bash+error");
+    expect(
+      variantOf(
+        "pi",
+        fixtures.find((row) => row.event.type === "tool_result" && !row.event.isError && row.event.toolName === "bash"),
+      ),
+    ).toBe("tool_result+bash");
+  });
+
+  it("compares mapped events while retaining unrelated events as diagnostics", () => {
+    const result = compare([...fixtures, { event: { type: "message_update" }, ctx: { cwd: "/project" } }]);
+    expect(result.verdict).toBe("clean");
+    expect(result.report).toContain("message_update");
+    expect(result.report).toContain("diagnostics only");
+  });
+
+  it.each(["added", "removed", "retyped"])("reports %s tool-input fields", (change) => {
+    const captured = JSON.parse(JSON.stringify(fixtures));
+    const tool = captured.find((row) => row.event.type === "tool_call" && row.event.toolName === "bash");
+    if (change === "added") tool.event.input.extra = true;
+    if (change === "removed") delete tool.event.input.command;
+    if (change === "retyped") tool.event.input.command = 42;
+    expect(compare(captured).verdict).toBe("drift");
+  });
+
+  it("reports a missing expected lifecycle event after a tool exchange", () => {
+    expect(compare(fixtures.filter((row) => row.event.type !== "agent_settled")).verdict).toBe("drift");
+  });
+
+  it("reports empty and unexercised tool exchanges as inconclusive", () => {
+    expect(compare([]).verdict).toBe("inconclusive");
+    expect(compare(fixtures.filter((row) => !row.event.type.startsWith("tool_"))).verdict).toBe("inconclusive");
+  });
+
+  it("reports new tool variants", () => {
+    const tool = JSON.parse(JSON.stringify(fixtures.find((row) => row.event.type === "tool_call")));
+    tool.event.toolName = "unfamiliar";
+    expect(compare([...fixtures, tool]).verdict).toBe("drift");
+  });
+});
+
 describe("OpenCode v2 drift", () => {
+  it("accepts both captured context options shapes while rejecting unseen options and types", () => {
+    const fixtures = readFixtureInputs("opencode/2.0");
+    const legacy = JSON.parse(readFileSync(join(ROOT, "fixtures/opencode/2.0/context.input.json"), "utf8"));
+    // Construct only the observed difference from the reviewed 2.0.22 capture.
+    const current = JSON.parse(JSON.stringify(legacy));
+    current.event.options.maxTokens = 4096;
+    const compare = (captured) => compareCaptures({ harness: "opencode-v2", fixtures, captured }).verdict;
+    expect(compare([legacy, current])).toBe("clean");
+    const wrongType = JSON.parse(JSON.stringify(current));
+    wrongType.event.options.maxTokens = "4096";
+    expect(compare([wrongType])).toBe("drift");
+    const unseenOption = JSON.parse(JSON.stringify(current));
+    unseenOption.event.options.unseenOption = true;
+    expect(compare([unseenOption])).toBe("drift");
+  });
+
   it("reports an unobserved first session start without declaring drift", () => {
     const fixtures = readFixtureInputs("opencode/2.0");
     const captured = fixtures.filter((row) => row.event.type !== "session.created");

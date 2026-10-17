@@ -1,11 +1,11 @@
 {
   "name": "@hooknostic/core",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Hooknostic compiler: config loading, Plugin IR, capability analysis, diagnostics, build orchestration",
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "exports": {
     ".": {
@@ -25,6 +25,7 @@
     "zod": "catalog:zod3"
   },
   "devDependencies": {
-    "@types/semver": "catalog:"
+    "@types/semver": "catalog:",
+    "yaml": "catalog:"
   }
 }
