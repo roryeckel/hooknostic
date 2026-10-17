@@ -173,6 +173,13 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
           artifact: ".capture/pi-default-agent/evidence/win32.json",
           what: "Generated-default prototype: core sync and verify deliver a portable primary default to .pi/APPEND_SYSTEM.md. Windows Pi startup receives its instructions at developer level with native or custom system prompts, project context and a projected skill; read executes normally. CLI append bypasses it; untrusted startup ignores it. Tool callbacks have no role identity (packages/cli/test/pi-default-agent-playback.test.ts).",
         },
+        {
+          version: "0.84.4",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/pi-default-agent/evidence/local-smoke-win32.json",
+          what: "Windows local Qwen smoke through Ollama: a synchronized primary default supplied its random role marker at developer level. With an explicit read-tool request, one successful native read supplied the actual random file token and the model returned both in the role's required JSON; a deselected-default control read without the role marker. The initial implicit-read attempt returned the role marker but fabricated the file value without reading, and is retained as a model-compliance limitation. No delegation or agent identity is supplied.",
+        },
       ],
     },
   },
