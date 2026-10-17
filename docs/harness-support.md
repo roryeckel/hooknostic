@@ -1045,10 +1045,10 @@ each component.
 | `agent-plugin.mcp.sse` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
 | `agent-plugin.client-extension.files` | unsupported | pi reads no portable client-extension namespace; extensions are the only code surface. |
 | `agent-plugin.runtime-package` | unsupported | pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact. |
-| `agents.definition` | unsupported | This adapter does not implement portable agent definition projection. |
-| `agents.primary` | unsupported | This adapter does not implement portable primary agent projection. |
+| `agents.definition` | unsupported | Pi has no captured native named-agent or delegation route. A selected primary-only default uses agents.default independently. |
+| `agents.primary` | unsupported | Pi has no captured native named primary-agent selection route; a fixed default role is handled separately. |
 | `agents.native` | unsupported | This adapter does not project native agent fields. |
-| `agents.default` | unsupported | This adapter does not project a default agent. |
+| `agents.default` | emulated | The selected default's instructions are written to owned .pi/APPEND_SYSTEM.md, preserving the base or custom system prompt. Windows loopback capture establishes trusted project-root startup only: this file shadows the global append, --append-system-prompt bypasses it, and nested startup ignores it. No named selection, delegation, native settings, or agent identity is supplied; agent-scoped hooks remain unsupported. |
 
 Known degradations, reported as `HN101`:
 
@@ -1073,6 +1073,8 @@ Project delivery validation records:
 | 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
 | 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback |
 | 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source. |
+| 0.84.4 | 2026-10-17 | live-probe | `.capture/pi-default-agent` | Windows loopback investigation of native project role emulation: prompt replacement and appending, trust, global and CLI precedence, nested working directories, model/thinking/tool defaults, and a minimal project prompt callback. Establishes the native append route's limits; named agents and delegation were not supplied. |
+| 0.84.4 | 2026-10-17 | live-probe | `.capture/pi-default-agent/evidence/win32.json` | Generated-default prototype: core sync and verify deliver a portable primary default to .pi/APPEND_SYSTEM.md. Windows Pi startup receives its instructions at developer level with native or custom system prompts, project context and a projected skill; read executes normally. CLI append bypasses it; untrusted startup ignores it. Tool callbacks have no role identity (packages/cli/test/pi-default-agent-playback.test.ts). |
 | 0.84.4 | 2026-10-14 | live-probe | `.capture/skill-invocation` | Pi loopback: disable-model-invocation:true withheld ordinary discovery, false restored it, and /skill:feature-probe retained the gated body. Verified .pi/skills and project/ancestor .agents/skills with isolated home and repository boundary (.capture/pi/FEATURES.md). |
 
 ##### `>=0.84 <1 >=0.84.4`
@@ -1087,10 +1089,10 @@ Project delivery validation records:
 | `agent-plugin.mcp.sse` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
 | `agent-plugin.client-extension.files` | unsupported | pi reads no portable client-extension namespace; extensions are the only code surface. |
 | `agent-plugin.runtime-package` | unsupported | pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact. |
-| `agents.definition` | unsupported | This adapter does not implement portable agent definition projection. |
-| `agents.primary` | unsupported | This adapter does not implement portable primary agent projection. |
+| `agents.definition` | unsupported | Pi has no captured native named-agent or delegation route. A selected primary-only default uses agents.default independently. |
+| `agents.primary` | unsupported | Pi has no captured native named primary-agent selection route; a fixed default role is handled separately. |
 | `agents.native` | unsupported | This adapter does not project native agent fields. |
-| `agents.default` | unsupported | This adapter does not project a default agent. |
+| `agents.default` | emulated | The selected default's instructions are written to owned .pi/APPEND_SYSTEM.md, preserving the base or custom system prompt. Windows loopback capture establishes trusted project-root startup only: this file shadows the global append, --append-system-prompt bypasses it, and nested startup ignores it. No named selection, delegation, native settings, or agent identity is supplied; agent-scoped hooks remain unsupported. |
 
 Known degradations, reported as `HN101`:
 
@@ -1115,6 +1117,8 @@ Project delivery validation records:
 | 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
 | 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback |
 | 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source. |
+| 0.84.4 | 2026-10-17 | live-probe | `.capture/pi-default-agent` | Windows loopback investigation of native project role emulation: prompt replacement and appending, trust, global and CLI precedence, nested working directories, model/thinking/tool defaults, and a minimal project prompt callback. Establishes the native append route's limits; named agents and delegation were not supplied. |
+| 0.84.4 | 2026-10-17 | live-probe | `.capture/pi-default-agent/evidence/win32.json` | Generated-default prototype: core sync and verify deliver a portable primary default to .pi/APPEND_SYSTEM.md. Windows Pi startup receives its instructions at developer level with native or custom system prompts, project context and a projected skill; read executes normally. CLI append bypasses it; untrusted startup ignores it. Tool callbacks have no role identity (packages/cli/test/pi-default-agent-playback.test.ts). |
 | 0.84.4 | 2026-10-14 | live-probe | `.capture/skill-invocation` | Pi loopback: disable-model-invocation:true withheld ordinary discovery, false restored it, and /skill:feature-probe retained the gated body. Verified .pi/skills and project/ancestor .agents/skills with isolated home and repository boundary (.capture/pi/FEATURES.md). |
 
 Project support is independent of package projection.

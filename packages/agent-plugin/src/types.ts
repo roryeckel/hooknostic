@@ -136,6 +136,9 @@ export type AgentPluginComponentId = (typeof AGENT_PLUGIN_COMPONENT_IDS)[number]
  * main-session contract of each definition whose mode is `primary` or `all`;
  * `agents.native` is the per-harness passthrough under `native`;
  * `agents.default` is `components.defaultAgent`, the agent a session starts as.
+ * A fixed default can be supported independently of named definitions: a
+ * primary-only default then counts only under `agents.default`; an `all`
+ * default still counts its requested delegation under `agents.definition`.
  */
 export const AGENT_COMPONENT_IDS = ["agents.definition", "agents.primary", "agents.native", "agents.default"] as const;
 export type AgentComponentId = (typeof AGENT_COMPONENT_IDS)[number];

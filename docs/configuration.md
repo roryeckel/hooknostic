@@ -31,6 +31,15 @@ an agent the OpenCode module registers. A Codex plugin has no agents route, so a
 package target reports them as unsupported. `hooknostic inspect <target> --component
 agents.definition` shows a target's level and evidence.
 
+Pi project delivery can emulate a `mode: primary` default by writing only its
+instructions to owned `.pi/APPEND_SYSTEM.md`. It offers no named selection or
+delegation. This route applies at trusted project-root startup, shadows the
+global append and is bypassed by `--append-system-prompt`; it preserves Pi's base
+or custom system prompt. Other selected definitions and `native.pi` blocks remain
+unsupported, including the delegation half of an `all` default. Pi package
+defaults and agent-scoped hooks remain unsupported. See
+[the default-agent tutorial](tutorials/05-portable-agents.md#making-it-the-default).
+
 Every target receives every definition unless it selects some. A target's
 `agents: { include?, exclude? }` names definitions by their `name`, in the shape of a
 hook's `targets`:

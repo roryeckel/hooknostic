@@ -1436,7 +1436,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             const counts: AgentPluginTargetReport["components"] = {};
             const omissions: AgentPluginTargetReport["omissions"] = [...(policyPlan?.selection.omissions ?? [])];
             diagnostics.push(...diagnosticsFromAgentPluginIssues(policyPlan?.selection.issues ?? [], id));
-            const count = (component: ComponentId, discovered: number): boolean => {
+            const count = (component: ComponentId, discovered: number, names?: readonly string[]): boolean => {
               if (!discovered) return true;
               const cell = support.matrix![component];
               const supported = cell !== undefined && cell.level !== "unsupported";
@@ -1448,7 +1448,11 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               };
               if (!supported) {
                 const reason = cell?.rationale ?? "component has no project delivery representation";
-                omissions.push({ component, reason });
+                omissions.push(
+                  ...(names === undefined
+                    ? [{ component, reason }]
+                    : names.map((name) => ({ component, name, reason }))),
+                );
                 diagnostics.push(
                   unsupportedComponentDiagnostic({
                     adapter: adapter.id,
@@ -1567,14 +1571,32 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             diagnostics.push(
               ...reservedNativeFields(selectedSource.agents ?? [], adapter, id, config.components?.onInvalid),
             );
-            if (!count("agents.definition", selectedSource.agents?.length ?? 0)) selectedSource.agents = [];
-            // The default agent is settled first: where the target takes it, it
-            // is how a harness without agents a session runs as -- Codex --
-            // still runs every session as that one (ADR-0032, decision 10).
+            // Resolve the fixed default independently of named definitions:
+            // an adapter can deliver its instructions without offering agents
+            // for selection or delegation (ADR-0032, decision 10).
             const defaultName = selectedSource.defaultAgent;
             const deliversDefault = count("agents.default", defaultName === undefined ? 0 : 1);
             if (!deliversDefault) delete selectedSource.defaultAgent;
             const isDeliveredDefault = (agent: AgentDefinition) => deliversDefault && agent.name === defaultName;
+            const definitionCell = support.matrix["agents.definition"];
+            const definitionRoute = definitionCell !== undefined && definitionCell.level !== "unsupported";
+            // A primary-only default needs only the default route. An `all`
+            // default also requests delegation, so its missing definition
+            // remains a shortfall even when the default can be delivered.
+            const definitions = (selectedSource.agents ?? []).filter(
+              (agent) => definitionRoute || !isDeliveredDefault(agent) || agent.mode !== "primary",
+            );
+            if (
+              !count(
+                "agents.definition",
+                definitions.length,
+                definitions.map((agent) => agent.name),
+              )
+            ) {
+              selectedSource.agents = (selectedSource.agents ?? [])
+                .filter(isDeliveredDefault)
+                .map((agent) => ({ ...agent, mode: "primary" }));
+            }
             // A target that cannot run a session as an agent still takes an
             // `all` definition as a subagent; a `primary` one has nothing left
             // to deliver, so it leaves the definitions too (ADR-0032,

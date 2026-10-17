@@ -191,6 +191,7 @@ components: { skills: ["./skills"], mcp: "./mcp.json", agents: ["./agents"], def
 | Claude Code | `"agent": "planner"` in `.claude/settings.json` | every session's agent; `claude --agent <name>` starts another |
 | OpenCode v1 and v2 | the default agent, set by the generated components plugin | every session's agent |
 | Codex | its instructions, and its native model and effort, in `.codex/config.toml` | an emulation, below |
+| Pi | only its instructions in `.pi/APPEND_SYSTEM.md` | an emulated fixed role at trusted project-root startup |
 
 Codex has no agent a session runs as, but a trusted project's configuration applies
 `developer_instructions`, `model` and `model_reasoning_effort` to every session in
@@ -205,6 +206,20 @@ it, which is what a default agent amounts to. The differences:
   agent's.
 - A `primary` default gets no custom agent file, since nothing on Codex could spawn
   it as one, and it does not fail the build: it already runs as every session.
+
+Pi's prototype default uses the native append-file route. Use a `mode: primary`
+definition and select only that definition for the Pi target, for example
+`agents: { include: ["planner"] }`. Its instructions follow Pi's base prompt or
+your `.pi/SYSTEM.md`. Start Pi at the trusted project root: untrusted or nested
+startup does not apply this role. The project append shadows your global
+`APPEND_SYSTEM.md`; `--append-system-prompt` bypasses it. An existing unowned or
+modified `.pi/APPEND_SYSTEM.md` is an ownership conflict that sync refuses.
+
+This does not provide a named agent list, delegation, native model/thinking/tool
+settings, or agent identity for scoped hooks. Other selected definitions and
+`native.pi` blocks are unsupported; an `all` default also reports its missing
+delegation route. Pi package delivery does not set defaults. The capture has
+validated Windows startup; reload, resume, RPC and other platforms remain unprobed.
 
 The default must be a `primary` or `all` definition. `sync` will not overwrite one the
 project already sets itself: an `agent` in `.claude/settings.json`, a `default_agent` in

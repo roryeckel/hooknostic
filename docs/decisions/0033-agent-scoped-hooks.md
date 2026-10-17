@@ -108,6 +108,11 @@ needs no state (design §7.6, ADR-0002).
    | Codex `>=0.140 <0.156.1` | unsupported | unsupported |
    | OpenCode v2 | `exact` | no such events |
    | OpenCode v1 | unsupported | no such events |
+   | Pi | unsupported | no portable subagent lifecycle events |
+
+   Pi's emulated project default (ADR-0032) supplies instructions through its
+   native append file, not agent identity. Its captured tool callbacks do not
+   name that role; delegation and agent-scoped hooks remain unsupported.
 
    - **`tool.error` and `permission.request`.** These events have not been
      captured inside a subagent on any harness, so no adapter rates their cells

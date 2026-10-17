@@ -87,7 +87,7 @@ export function piAdapter(): HarnessAdapter {
     id: "pi",
     adapterVersion: "0.7.0", // kept equal to package.json by versions.test.ts
     harness: piHarness,
-    projectPaths: [".pi/extensions", ".pi/skills"],
+    projectPaths: [".pi/extensions", ".pi/skills", ".pi/APPEND_SYSTEM.md", ".pi/.gitattributes"],
     projectIntegration,
     projectComponents,
     projectComponentProfiles,

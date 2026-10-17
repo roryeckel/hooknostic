@@ -928,6 +928,12 @@ on Codex, which has no such agents), `agents.native` for the passthrough, and
 starts as, which no package target takes. A target's `agents: { include?, exclude? }`
 selects which definitions it receives; a deselected one is never counted there. A
 definitions directory inside the package root is excluded from its inventory.
+The fixed-default route resolves independently of named definitions. Pi project
+delivery emulates only a selected default's instructions through owned
+`.pi/APPEND_SYSTEM.md`; a `primary` default counts only as `agents.default`, while
+an `all` default still reports unsupported delegation through `agents.definition`.
+Every other selected definition remains a named omission. Pi's named agents,
+native agent fields, delegation and agent-scoped hooks remain unsupported.
 A skill's optional `metadata["hooknostic/allow-implicit-invocation"]` accepts only
 the strings `"true"` and `"false"`. It normalizes to `SkillPolicy.allowImplicitInvocation`
 on both source records and introduces the separate component capability

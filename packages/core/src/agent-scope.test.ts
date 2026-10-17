@@ -106,4 +106,10 @@ describe("agent-scoped hooks across targets", () => {
       }),
     ]);
   });
+
+  it("refuses Pi agent scopes even though project defaults can supply role instructions", () => {
+    expect(analyze("pi", defaultAdapterRegistry().pi!.harness.recommendedRange)).toEqual([
+      expect.objectContaining({ code: "HN201", severity: "error", support: "unsupported" }),
+    ]);
+  });
 });
