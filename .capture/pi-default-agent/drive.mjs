@@ -24,7 +24,7 @@ const executable = process.env.HKN_PI_BINARY ?? "pi";
 const detected = await runProcess(executable, ["--version"], { cwd: repo, env: withoutCredentials() });
 assert.equal(detected.code, 0, detected.stderr);
 const version = detected.stdout.trim();
-assert.equal(version, piHarness.referenceVersion);
+assert.equal(version, process.env.HOOKNOSTIC_PLAYBACK_VERSION || piHarness.referenceVersion);
 writeFileSync(join(output, "metadata.json"), JSON.stringify({ account: userInfo().username, home: homedir() }) + "\n");
 const markers = {
   projectSystem: "HKN-PROJECT-SYSTEM",

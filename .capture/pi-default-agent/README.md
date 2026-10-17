@@ -23,7 +23,8 @@ to fail, including generated-artifact playback. It restores each source file in
 core pruning, named omissions, lost delegation, falsely supported native fields
 and agent scopes, ownership bypass, and a deselected default still being counted.
 
-The driver checks the installed binary against `piHarness.referenceVersion`.
+The driver checks the installed binary against `piHarness.referenceVersion`, or
+the explicit `HOOKNOSTIC_PLAYBACK_VERSION` used by a newer-build watch lane.
 Each case has a disposable project, agent directory and home, with an empty
 repository boundary and scrubbed model credentials. Pi runs offline against a
 scripted loopback provider. No real model, paid smoke, user trust entry, external

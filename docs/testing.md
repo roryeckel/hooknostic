@@ -174,6 +174,19 @@ variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.
 
+Pi's instruction-only project default has a separate generated-artifact check:
+
+```sh
+HOOKNOSTIC_PLAYBACK=pi pnpm exec vitest run packages/cli/test/pi-default-agent-playback.test.ts
+```
+
+CI and the harness watch include this file in their explicit playback lists. It
+synchronizes and verifies a portable primary default, then drives Pi startup with
+native/custom prompts, a projected skill, CLI append and trust controls. The
+capture driver accepts the watch lane's explicit `HOOKNOSTIC_PLAYBACK_VERSION`;
+ordinary runs require the reference build. See
+[the Pi default-role capture](../.capture/pi-default-agent/README.md).
+
 ## Marketplace release gates
 
 After `pnpm run bundle`, print the package baseline from existing capture metadata:
