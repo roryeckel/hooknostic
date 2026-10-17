@@ -7,6 +7,20 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       date: "2026-09-26",
       validatedOn: [
         {
+          version: "2.0.32",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/opencode-v2-audit",
+          what: "An isolated OAuth playback listed tools after refresh while the first model turn still received an unknown-tool result; the next captured model request carried a native catalog update advertising the tool (oauth-catalog-readiness.json). The scripted model permits two retries after that observed update and still requires a protected tools/call with the refreshed bearer.",
+        },
+        {
+          version: "2.0.32",
+          date: "2026-10-17",
+          method: "captured",
+          artifact: "fixtures/opencode/2.0/tool-custom-error.input.json",
+          what: "Windows loopback recapture: a plain custom Error is wrapped as Tool.Error and delivered through execute.after (tool-custom-error); project and relocated-package tools/call HTTP requests preserve the declared endpoint and headers without appending codemode=false (remote/playback-recapture.json).",
+        },
+        {
           version: "2.0.17",
           date: "2026-09-26",
           method: "captured",
@@ -197,7 +211,7 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
       "tool.error.observe": {
         level: "approximate",
         rationale:
-          "Via execute.after status error, captured for a missing-file read. A plain JavaScript exception from a custom tool bypassed this callback; shell nonzero exits are completed results.",
+          "Via execute.after status error, captured for a missing-file read. Plain custom exceptions bypassed this callback in the initial capture and were wrapped as Tool.Error in a later recapture, so error coverage varies across validated builds; shell nonzero exits are completed results.",
       },
       "tool.after.output.replace": {
         level: "approximate",

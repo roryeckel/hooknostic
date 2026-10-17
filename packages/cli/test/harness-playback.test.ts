@@ -8,6 +8,7 @@ import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
+import { Terminal } from "@xterm/headless";
 import type { IPty, spawn as ptySpawn } from "node-pty";
 import semver from "semver";
 import { afterAll, describe, expect, it } from "vitest";
@@ -1455,6 +1456,25 @@ function plainClaudePtyScreen(screen: string): string {
   return stripVTControlCharacters(screen);
 }
 
+function createClaudePtyScreen() {
+  // ConPTY can repaint just the cursor, leaving its label in an earlier write.
+  // Keep the displayed cells instead of treating terminal output as a log.
+  const terminal = new Terminal({ cols: 110, rows: 34, allowProposedApi: true });
+  return {
+    write(data: string): Promise<void> {
+      return new Promise((resolve) => terminal.write(data, resolve));
+    },
+    read(): string {
+      const buffer = terminal.buffer.active;
+      return Array.from(
+        { length: terminal.rows },
+        (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true) ?? "",
+      ).join("\n");
+    },
+    dispose: () => terminal.dispose(),
+  };
+}
+
 function dialogScreen(plainScreen: () => string): string {
   return plainScreen().replace(/\s+/g, "");
 }
@@ -1581,6 +1601,35 @@ async function walkFirstRunDialogs(pty: IPty, plainScreen: () => string, timeout
 }
 
 describe("Claude PTY first-run walk", () => {
+  it("selects folder trust when ConPTY repaints only the selection cursor", async () => {
+    const capture = JSON.parse(
+      await readFile(
+        new URL("../../../.capture/harness-playback/claude-windows-trust-295.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { frames: { raw: string }[] };
+    const screen = createClaudePtyScreen();
+    await screen.write(capture.frames[0]!.raw);
+    const writes: string[] = [];
+    const pty = {
+      write(input: string) {
+        writes.push(input);
+        if (input === "\u001b[A" && writes.length === 1) {
+          void screen.write(capture.frames[1]!.raw.slice(capture.frames[0]!.raw.length));
+        } else if (input === "\r") {
+          void screen.write("\u001b[2J\u001b[H> ? for shortcuts");
+        }
+      },
+      kill() {},
+    } as unknown as IPty;
+    try {
+      await walkFirstRunDialogs(pty, screen.read, 5_000);
+      expect(writes).toEqual(["\u001b[A", "\r"]);
+    } finally {
+      screen.dispose();
+    }
+  });
+
   it("selects folder trust when a private CSI sequence follows the native options", async () => {
     const capture = JSON.parse(
       await readFile(
@@ -3497,6 +3546,7 @@ scenarioDrive(
       // hook's permission-deny effect answers it; turn 2 completes.
       [{ kind: "tool", disposition: "rewrite", marker: "hooknostic-approval.txt" }, { kind: "text" }],
     );
+    const terminal = createClaudePtyScreen();
     try {
       await runProcess("git", ["init"], { cwd: dir, env: process.env, timeoutMs: 30_000 });
       // The TUI drive: first-run dialogs (trust + API key), then the prompt,
@@ -3524,11 +3574,10 @@ scenarioDrive(
           HOOKNOSTIC_PLAYBACK_EFFECTS: "permission-deny",
         } as NodeJS.ProcessEnv,
       } as never);
-      let screen = "";
       pty.onData((data: string) => {
-        screen += data;
+        void terminal.write(data);
       });
-      const plainScreen = (): string => plainClaudePtyScreen(screen);
+      const plainScreen = terminal.read;
       // Walk first-run dialogs reactively: fresh CI state renders a different
       // sequence (theme -> API key -> security notes -> trust on 2.1.238)
       // than a box with local state (trust first on 2.1.250), so the walk
@@ -3576,6 +3625,7 @@ scenarioDrive(
         "denied command executed anyway",
       ).toBeNull();
     } finally {
+      terminal.dispose();
       await server.close();
     }
   },
@@ -3640,6 +3690,7 @@ scenarioDrive(
       // hook's request-approval effect surfaces it; turn 2 completes.
       [{ kind: "tool", disposition: "rewrite", marker: "hooknostic-approval.txt" }, { kind: "text" }],
     );
+    const terminal = createClaudePtyScreen();
     try {
       await runProcess("git", ["init"], { cwd: dir, env: process.env, timeoutMs: 30_000 });
       const configDir = await prepareClaudePtyConfig(dir);
@@ -3664,12 +3715,13 @@ scenarioDrive(
       let screen = "";
       pty.onData((data: string) => {
         screen += data;
+        void terminal.write(data);
       });
-      const plainScreen = (): string => plainClaudePtyScreen(screen);
+      const plainScreen = terminal.read;
       const waitUntil = async (marker: string, timeoutMs: number): Promise<boolean> => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
-          if (plainScreen().includes(marker)) return true;
+          if (dialogScreen(plainScreen).includes(marker)) return true;
           await new Promise((r) => setTimeout(r, 500));
         }
         return false;
@@ -3696,8 +3748,8 @@ scenarioDrive(
           plainScreen().slice(-6000),
         )}`,
       ).toContain("tool.before");
-      expect(plainScreen()).not.toContain("Hook JSON output validation failed");
-      expect(dialogScreen(plainScreen)).toContain("approvalrequestedbyharnessplayback");
+      expect(plainClaudePtyScreen(screen)).not.toContain("Hook JSON output validation failed");
+      expect(dialogScreen(() => plainClaudePtyScreen(screen))).toContain("approvalrequestedbyharnessplayback");
       // Bash is preallowed: only the hook's ask can cause this prompt.
       // The native prompt must have surfaced (the effect's whole point).
       expect(
@@ -3710,6 +3762,7 @@ scenarioDrive(
         "approved command never executed",
       ).toBe("hooknostic-original");
     } finally {
+      terminal.dispose();
       await server.close();
     }
   },

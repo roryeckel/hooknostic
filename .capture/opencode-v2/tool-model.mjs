@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 export async function startToolModel(project, mcpOnly = false, remote = false, audit = false) {
   const requests = [], errors = [];
-  let index = 0, baseUrl;
+  let index = 0, callIndex = 0, registrationRetries = 0, baseUrl;
   const actions = audit === "patch" ? [
     // Offered instead of edit/write when the model id looks like a GPT model.
     ["patch", { patchText: "*** Begin Patch\n*** Add File: added.txt\n+hooknostic probe\n*** Update File: probe.txt\n@@\n-hooknostic-before-edit\n+hooknostic-after-edit\n*** End Patch" }],
@@ -47,12 +47,28 @@ export async function startToolModel(project, mcpOnly = false, remote = false, a
     requests.push(request);
     const tools = request.tools ?? [];
     const child = audit === "subagent" && request.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("hooknostic-child-task"));
-    const action = tools.length && !child ? actions[index++] : undefined;
+    const lastTool = request.messages?.findLast(message => message.role === "tool");
+    // Captured OAuth startup can list tools before the model's catalog catches
+    // up. Retry the scripted call only after its unknown-tool result and the
+    // native catalog update, with fresh call IDs and a strict retry budget.
+    const registrationPending = typeof remote === "string" && remote.endsWith("-oauth") && index === 1 &&
+      lastTool?.tool_call_id === `call_probe_${callIndex}` &&
+      typeof lastTool.content === "string" && lastTool.content.startsWith("Unknown tool 'http.hooknostic_echo'") &&
+      request.messages.some(message => message.role === "user" && typeof message.content === "string" &&
+        message.content.includes("<system-update>") && message.content.includes("tools.http.hooknostic_echo"));
+    let action;
+    if (registrationPending) {
+      if (registrationRetries < 2) {
+        registrationRetries += 1;
+        action = actions[0];
+      } else errors.push("MCP tool unavailable after two catalog-update retries");
+    } else action = tools.length && !child ? actions[index++] : undefined;
     let delta = { role: "assistant", content: child ? "hooknostic-child-result" : "tool capture complete" };
     if (action) {
       const [name, args] = action;
+      callIndex += 1;
       if (!tools.some(tool => tool.function?.name === name)) errors.push(`Missing tool ${name}`);
-      delta = { role: "assistant", tool_calls: [{ index: 0, id: `call_probe_${index}`, type: "function",
+      delta = { role: "assistant", tool_calls: [{ index: 0, id: `call_probe_${callIndex}`, type: "function",
         function: { name, arguments: JSON.stringify(typeof args === "function" ? args() : args) } }] };
     }
     res.writeHead(200, { "content-type": "text/event-stream" });

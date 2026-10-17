@@ -353,3 +353,25 @@ References: [TypeScript's side-by-side compiler guidance](https://devblogs.micro
 [typescript-eslint's supported versions](https://typescript-eslint.io/users/dependency-versions/),
 [npm-package-arg 14 release](https://github.com/npm/npm-package-arg/releases/tag/v14.0.0),
 [validate-npm-package-name 8 release](https://github.com/npm/validate-npm-package-name/releases/tag/v8.0.0).
+
+### Node minimum and npm utility majors: 2026-10-17
+
+The supported Node range is now `^22.22.2 || ^24.15.0 || >=26.0.0`, matching
+the engines of `npm-package-arg` 14 and `validate-npm-package-name` 8. Node 22
+remains supported from 22.22.2; the compatibility lane tests that exact minimum.
+Older Node 22 releases, Node 24 before 24.15.0, and the intervening odd major
+lines are outside this range. All workspace engine declarations use the same
+range. The earlier compatibility trials above remain historical observations.
+
+The workspace now uses those two npm utility majors. `@types/node` remains on
+22.x so compilation continues to reject APIs unavailable on the oldest supported
+Node major. This is a manual support-range change; Renovate still does not
+manage the engine range or compatibility pin.
+
+Validated on the official, SHA-256-verified Node 22.22.2 Windows runtime:
+the frozen engine-strict install, workspace/example build, and all 2,041 tests
+(including the actual packed-consumer install) passed. The normal lint, format,
+build, and test gates also passed on Node 24.20.0. Rebuilding the committed
+examples on Node 24 reproduced the Node 22 output byte for byte. The lockfile
+refresh also consolidated the MCP dependency tree onto the existing Zod 4.6.6
+resolution; the regenerated example bundles and notices reflect that deduplication.

@@ -28,7 +28,7 @@
   ],
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "files": [
     "bin",
@@ -62,6 +62,7 @@
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/testkit": "workspace:*",
     "@types/semver": "catalog:",
+    "@xterm/headless": "catalog:",
     "node-pty": "catalog:",
     "semver": "catalog:semver-runtime"
   }

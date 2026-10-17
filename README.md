@@ -39,7 +39,7 @@ register their marketplace and list the built plugins; Hooknostic does not submi
 
 ## Choose your starting point
 
-Requires **Node.js 22.13+**. Install the CLI and configuration/hook authoring SDK:
+Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`. Install the CLI and configuration/hook authoring SDK:
 
 ```sh
 npm install --save-dev hooknostic @hooknostic/sdk
@@ -201,7 +201,7 @@ tutorials built on the [examples](examples/).
 
 ## Repository
 
-Node.js 22.13+ / pnpm 12 + TypeScript monorepo. Use the pnpm version pinned in
+Node.js `^22.22.2 || ^24.15.0 || >=26.0.0` / pnpm 12 + TypeScript monorepo. Use the pnpm version pinned in
 `package.json`; compiler versions and compatibility constraints are documented in
 [Dependencies](docs/dependencies.md):
 

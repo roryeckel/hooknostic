@@ -4,7 +4,7 @@ This walkthrough takes you from an empty folder to portable hooks running in a r
 coding agent. It's the long-form version of what the [tutorials](tutorials/) then build
 on. Time: about 15 minutes.
 
-**Prerequisites:** Node.js 22.13 or newer, and at least one supported agent installed
+**Prerequisites:** Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, and at least one supported agent installed
 (Claude Code, OpenAI Codex CLI, OpenCode, or Pi). The sample config below uses
 the first three; [Pi installation](installing-artifacts.md#pi) covers its project
 and package routes.

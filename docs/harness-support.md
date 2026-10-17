@@ -28,6 +28,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.295 | 2026-10-17 | live-probe | `.capture/harness-playback` | Windows ConPTY trust selection repaints only the cursor, with labels retained in earlier writes (claude-windows-trust-295.json). With a reconstructed terminal screen, both interactive permission denial and hook-requested approval passed against the loopback model on Node 22.22.2. |
 | 2.1.238 | 2026-08-20 | captured | `fixtures/claude/2.1` | hook payload fixtures for every observable event, captured on Windows |
 | 2.1.250 | 2026-08-29 | live-probe | `.capture/claude-output` | Stop/SubagentStop output semantics (systemMessage rendering) verified live |
 | 2.1.250 | 2026-08-30 | captured | `fixtures/claude/2.1` | PowerShell PreToolUse payload; pins that PowerShell shares Bash's command key |
@@ -757,6 +758,8 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.0.32 | 2026-10-17 | live-probe | `.capture/opencode-v2-audit` | An isolated OAuth playback listed tools after refresh while the first model turn still received an unknown-tool result; the next captured model request carried a native catalog update advertising the tool (oauth-catalog-readiness.json). The scripted model permits two retries after that observed update and still requires a protected tools/call with the refreshed bearer. |
+| 2.0.32 | 2026-10-17 | captured | `fixtures/opencode/2.0/tool-custom-error.input.json` | Windows loopback recapture: a plain custom Error is wrapped as Tool.Error and delivered through execute.after (tool-custom-error); project and relocated-package tools/call HTTP requests preserve the declared endpoint and headers without appending codemode=false (remote/playback-recapture.json). |
 | 2.0.17 | 2026-09-26 | captured | `fixtures/opencode/2.0` | Windows private-server hook captures against a loopback model: session start, prompt, shell before/after, title/context and execution success. |
 | 2.0.17 | 2026-09-26 | live-probe | `.capture/opencode-v2` | Blocking prevents prompt admission and tool execution; command mutation writes the replacement marker; replacement tool content and system text reach recorded model requests. Private-server reload disposes and re-registers hooks; session IDs remain distinct. |
 | 2.0.17 | 2026-09-26 | captured | `fixtures/opencode/2.0` | File read/write/edit/glob/grep and webfetch hook boundaries, shell workdir, skill loading and Code Mode MCP execution. Websearch and subagent names captured before deliberate blocking; no execution claim. Code Mode emits both outer execute and inner MCP tool hooks; MCP identity is not normalized from the ambiguous tool name. |

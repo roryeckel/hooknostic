@@ -1,7 +1,7 @@
 # Configuration and commands
 
-Install `hooknostic` and `@hooknostic/sdk` with Node.js 22.13 or newer. Configuration
-is executable TypeScript or JavaScript; review it and its imported providers before
+Install `hooknostic` and `@hooknostic/sdk` with Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
+Configuration is executable TypeScript or JavaScript; review it and its imported providers before
 running a command. Paths resolve from `hooknostic.config.ts`.
 
 ## Choose your sources and delivery

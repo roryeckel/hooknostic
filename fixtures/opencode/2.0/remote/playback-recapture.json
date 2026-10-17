@@ -1,0 +1,75 @@
+{
+  "harness": "OpenCode",
+  "version": "2.0.32",
+  "date": "2026-10-17",
+  "provenance": "captured-http",
+  "method": "Existing isolated project-remote and package-remote loopback drives. Selected actual tools/call HTTP requests; scenario labels are constructed.",
+  "observations": [
+    {
+      "scenario": "project-remote",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/http",
+          "headers": {
+            "accept": "application/json, text/event-stream",
+            "content-type": "application/json",
+            "mcp-protocol-version": "2024-11-05",
+            "x-hooknostic": "remote-expanded",
+            "connection": "keep-alive",
+            "user-agent": "opencode/latest/2.0.32/cli",
+            "host": "127.0.0.1:51482",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "content-length": "182"
+          },
+          "body": {
+            "method": "tools/call",
+            "params": {
+              "name": "hooknostic_echo",
+              "arguments": {},
+              "_meta": {
+                "ai.opencode/sessionID": "ses_eb4a54015ffebJ99pz1536pRvw",
+                "progressToken": 2
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 2
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "package-remote",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/http",
+          "headers": {
+            "accept": "application/json, text/event-stream",
+            "content-type": "application/json",
+            "mcp-protocol-version": "2024-11-05",
+            "x-hooknostic": "${HKN_REMOTE_HEADER}",
+            "connection": "keep-alive",
+            "user-agent": "opencode/latest/2.0.32/cli",
+            "host": "127.0.0.1:51502",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "content-length": "182"
+          },
+          "body": {
+            "method": "tools/call",
+            "params": {
+              "name": "hooknostic_echo",
+              "arguments": {},
+              "_meta": {
+                "ai.opencode/sessionID": "ses_eb4a52f58ffepmkiUv0Z1pORuc",
+                "progressToken": 2
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 2
+          }
+        }
+      ]
+    }
+  ]
+}

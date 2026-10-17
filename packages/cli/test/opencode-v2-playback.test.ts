@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import semver from "semver";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { opencodeAdapter, opencodeV2Harness } from "@hooknostic/adapter-opencode";
+import { opencodeAdapter, opencodeV2CapabilityProfiles, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { resolveTargetAdapter } from "@hooknostic/core";
 
+// @ts-expect-error The constructed loopback model is plain JavaScript.
+import { startToolModel } from "../../../.capture/opencode-v2/tool-model.mjs";
 import {
   buildPlaybackArtifact,
   expectOpenCodeShellDialect,
@@ -26,6 +29,72 @@ const adapter = resolveTargetAdapter(opencodeAdapter(), {
   delivery: "project",
   output: ".",
 }).adapter!;
+
+async function toolModelDelta(baseUrl: string, messages: unknown[]) {
+  const response = await fetch(baseUrl + "/chat/completions", {
+    method: "POST",
+    body: JSON.stringify({ tools: [{ type: "function", function: { name: "execute" } }], messages }),
+  });
+  const chunk = (await response.text()).split("\n").find((line) => line.startsWith("data: {"))!;
+  return JSON.parse(chunk.slice(6)).choices[0].delta;
+}
+
+describe("OpenCode OAuth playback readiness", () => {
+  it("retries the MCP call after the captured tool-catalog update", async () => {
+    const capture = JSON.parse(
+      await readFile(
+        new URL("../../../.capture/opencode-v2-audit/oauth-catalog-readiness.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const model = await startToolModel(".", false, "project-oauth");
+    const request = (messages: unknown[]) => toolModelDelta(model.baseUrl, messages);
+    try {
+      const first = await request([]);
+      const retried = await request([capture.failure, capture.update]);
+      expect(retried.tool_calls).toEqual([
+        expect.objectContaining({
+          id: "call_probe_2",
+          function: first.tool_calls[0].function,
+        }),
+      ]);
+      const completed = await request([
+        capture.failure,
+        capture.update,
+        { role: "tool", tool_call_id: "call_probe_2", content: "hooknostic-oauth-output" },
+      ]);
+      expect(completed.tool_calls).toBeUndefined();
+      expect(model.errors).toEqual([]);
+    } finally {
+      await model.close();
+    }
+  });
+  it("stops retrying when the advertised MCP tool remains unavailable", async () => {
+    const capture = JSON.parse(
+      await readFile(
+        new URL("../../../.capture/opencode-v2-audit/oauth-catalog-readiness.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const model = await startToolModel(".", false, "project-oauth");
+    try {
+      for (let call = 1; call <= 3; call += 1) {
+        const messages =
+          call === 1 ? [] : [{ ...capture.failure, tool_call_id: `call_probe_${call - 1}` }, capture.update];
+        const response = await toolModelDelta(model.baseUrl, messages);
+        expect(response.tool_calls[0].id).toBe(`call_probe_${call}`);
+      }
+      const stopped = await toolModelDelta(model.baseUrl, [
+        { ...capture.failure, tool_call_id: "call_probe_3" },
+        capture.update,
+      ]);
+      expect(stopped.tool_calls).toBeUndefined();
+      expect(model.errors).toEqual(["MCP tool unavailable after two catalog-update retries"]);
+    } finally {
+      await model.close();
+    }
+  });
+});
 
 describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
   /** The shell calls' dialects from the tools drive's trace, once it has run. */
@@ -150,13 +219,31 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    expect(trace.filter((row) => row.event === "tool.error")).toEqual([
+    const errors = trace.filter((row) => row.event === "tool.error");
+    expect(errors.filter((row) => row.tool.nativeName === "read")).toEqual([
       expect.objectContaining({
         tool: expect.objectContaining({ nativeName: "read", kind: "file.read" }),
         error: { message: "File not found: definitely-missing-hooknostic.txt" },
         correlation: { toolCallId: "call_probe_1" },
       }),
     ]);
+    const customErrorCapture = opencodeV2CapabilityProfiles
+      .flatMap((profile) => profile.source.validatedOn ?? [])
+      .find((record) => record.artifact === "fixtures/opencode/2.0/tool-custom-error.input.json");
+    expect(customErrorCapture).toBeDefined();
+    const customErrors = errors.filter((row) => row.tool.nativeName === "probe_failure");
+    // Require the recaptured behavior on that build and newer playback. The
+    // exact transition between the two captured builds is not established.
+    if (semver.gte(version, customErrorCapture!.version)) expect(customErrors).toHaveLength(1);
+    else if (semver.eq(version, opencodeV2Harness.referenceVersion)) expect(customErrors).toHaveLength(0);
+    else expect(customErrors.length).toBeLessThanOrEqual(1);
+    if (customErrors.length) {
+      expect(customErrors[0]).toMatchObject({
+        error: { message: "hooknostic-thrown-tool-error" },
+        correlation: { toolCallId: "call_probe_2" },
+      });
+    }
+    expect(errors).toHaveLength(1 + customErrors.length);
     for (const name of ["probe_rich", "probe_object"]) {
       const original = trace.find((row) => row.tool.nativeName === name);
       expect(original.output).toEqual([{ type: "text", text: "hooknostic-native-content" }]);
@@ -545,12 +632,17 @@ describe.skipIf(!enabled)("OpenCode v2 offline playback", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0]).toMatchObject({
         method: "POST",
-        path: "/http?codemode=false",
+        path: expect.any(String),
         headers: {
           "x-hooknostic": mode === "project-remote" ? "remote-expanded" : "${HKN_REMOTE_HEADER}",
         },
         body: { params: { name: "hooknostic_echo", arguments: {} } },
       });
+      // The captured builds differ in whether they append codemode=false;
+      // forwarding the declared endpoint and header is the portable contract.
+      const url = new URL(calls[0].path, "http://127.0.0.1");
+      expect(url.pathname).toBe("/http");
+      expect([...url.searchParams.entries()]).toEqual(url.searchParams.has("codemode") ? [["codemode", "false"]] : []);
       const playback = JSON.parse(await readFile(join(root, "result.json"), "utf8"));
       expect(playback.errors).toEqual([]);
       expect(JSON.stringify(playback.requests)).toContain("hooknostic-remote-output");

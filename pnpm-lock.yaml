@@ -185,6 +185,9 @@ catalogs:
     '@typescript/native':
       specifier: npm:typescript@~7.0.2
       version: 7.0.2
+    '@xterm/headless':
+      specifier: ^6.0.0
+      version: 6.0.0
     cross-spawn:
       specifier: ^7.0.6
       version: 7.0.6
@@ -207,8 +210,8 @@ catalogs:
       specifier: ^1.1.0
       version: 1.1.0
     npm-package-arg:
-      specifier: ^13.0.2
-      version: 13.0.2
+      specifier: ^14.0.0
+      version: 14.0.0
     prettier:
       specifier: ^3.9.10
       version: 3.9.10
@@ -222,8 +225,8 @@ catalogs:
       specifier: ^8.71.1
       version: 8.71.1
     validate-npm-package-name:
-      specifier: ^7.0.2
-      version: 7.0.2
+      specifier: ^8.0.0
+      version: 8.0.0
     vitest:
       specifier: ^5.0.3
       version: 5.0.3
@@ -407,13 +410,13 @@ importers:
         version: 10.2.6
       npm-package-arg:
         specifier: 'catalog:'
-        version: 13.0.2
+        version: 14.0.0
       semver:
         specifier: catalog:semver-runtime
         version: 7.8.5
       validate-npm-package-name:
         specifier: 'catalog:'
-        version: 7.0.2
+        version: 8.0.0
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
@@ -467,6 +470,9 @@ importers:
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
+      '@xterm/headless':
+        specifier: 'catalog:'
+        version: 6.0.0
       node-pty:
         specifier: 'catalog:'
         version: 1.1.0
@@ -1115,6 +1121,9 @@ packages:
   '@vitest/spy@5.0.3':
     resolution: {integrity: sha512-XhFysQTB8AZ+P4gMi+Lpo99vg2AZi0qKpaB9yXQl37+CaMEAPO3iH/wGVnSyL5MPERiLezpqTVtrR6UZH5GCXg==}
 
+  '@xterm/headless@6.0.0':
+    resolution: {integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==}
+
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
@@ -1283,9 +1292,9 @@ packages:
   hookified@2.2.0:
     resolution: {integrity: sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==}
 
-  hosted-git-info@9.0.3:
-    resolution: {integrity: sha512-Hc+ghLoSt6QaYZUv0WBiIvmMDZuZZ7oaDvdH8MbfOO4lOsxdXLEvuC6ePoGs9H1X9oCLyq6+NVN0MKqD+ydxyg==}
-    engines: {node: ^20.17.0 || >=22.9.0}
+  hosted-git-info@10.1.1:
+    resolution: {integrity: sha512-DeOnSPAvOndYKfw075gt8yZzQ7S2hNztw34zBTfhIzLhmBTswIBg5/y+pqu/VD5cYWm5goAFTusDmUEmKZ0PEQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -1432,9 +1441,9 @@ packages:
   node-pty@1.1.0:
     resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
-  npm-package-arg@13.0.2:
-    resolution: {integrity: sha512-IciCE3SY3uE84Ld8WZU23gAPPV9rIYod4F+rc+vJ7h7cwAJt9Vk6TVsK60ry7Uj3SRS3bqRRIGuTp9YVlk6WNA==}
-    engines: {node: ^20.17.0 || >=22.9.0}
+  npm-package-arg@14.0.0:
+    resolution: {integrity: sha512-69XQh3k+dtGa1p+7RaR57IuG3rCko96xr/nUfN4yDYBXbTYICiWcOpsFKLN2GtGE9cyIljE+f1exnaYt9MvM+Q==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   obug@2.2.1:
     resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
@@ -1480,9 +1489,9 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
-  proc-log@6.1.0:
-    resolution: {integrity: sha512-iG+GYldRf2BQ0UDUAd6JQ/RwzaQy6mXmsk/IzlYyal4A4SNFw54MeH4/tLkF4I5WoWG9SQwuqWzS99jaFQHBuQ==}
-    engines: {node: ^20.17.0 || >=22.9.0}
+  proc-log@7.0.0:
+    resolution: {integrity: sha512-FYgfaA69XZ93zaXLoMNQ+ViDXGGBgR8aLh03txzcFhV+9xOXx7+8DLCULrKKpR9+GsH9ZfHm82aSUPpozX0Ztg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
@@ -1566,9 +1575,9 @@ packages:
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
-  validate-npm-package-name@7.0.2:
-    resolution: {integrity: sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A==}
-    engines: {node: ^20.17.0 || >=22.9.0}
+  validate-npm-package-name@8.0.0:
+    resolution: {integrity: sha512-SCv6OOV6Xj2/3cXy3dGmADluJTNcL3o7hZAglNPTe+WYuEuvxgJzxPrSDLZhF+CwyQOubqgecjMmTJGMVLWjYQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   vite@8.3.2:
     resolution: {integrity: sha512-SQr1x6W5vVSbROg7vsyXIaxK9b0G7zsT68acdWWRmnBUsgDieLCRG+Rep9WdZgcposvv/GSnr4GUUBqB3vXq6w==}
@@ -1679,9 +1688,6 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
   zod@4.6.6:
     resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
@@ -1847,12 +1853,12 @@ snapshots:
 
   '@modelcontextprotocol/core@2.3.1':
     dependencies:
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@modelcontextprotocol/server@2.3.1':
     dependencies:
       '@modelcontextprotocol/core': 2.3.1
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@oxc-project/types@0.152.0': {}
 
@@ -2092,6 +2098,8 @@ snapshots:
 
   '@vitest/spy@5.0.3': {}
 
+  '@xterm/headless@6.0.0': {}
+
   acorn-jsx@5.3.2(acorn@8.18.0):
     dependencies:
       acorn: 8.18.0
@@ -2286,7 +2294,7 @@ snapshots:
 
   hookified@2.2.0: {}
 
-  hosted-git-info@9.0.3:
+  hosted-git-info@10.1.1:
     dependencies:
       lru-cache: 11.5.3
 
@@ -2394,12 +2402,12 @@ snapshots:
     dependencies:
       node-addon-api: 7.1.1
 
-  npm-package-arg@13.0.2:
+  npm-package-arg@14.0.0:
     dependencies:
-      hosted-git-info: 9.0.3
-      proc-log: 6.1.0
+      hosted-git-info: 10.1.1
+      proc-log: 7.0.0
       semver: 7.8.5
-      validate-npm-package-name: 7.0.2
+      validate-npm-package-name: 8.0.0
 
   obug@2.2.1: {}
 
@@ -2438,7 +2446,7 @@ snapshots:
 
   prettier@3.9.10: {}
 
-  proc-log@6.1.0: {}
+  proc-log@7.0.0: {}
 
   punycode@2.3.1: {}
 
@@ -2542,7 +2550,7 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  validate-npm-package-name@7.0.2: {}
+  validate-npm-package-name@8.0.0: {}
 
   vite@8.3.2(@types/node@22.20.5)(esbuild@0.28.2)(yaml@2.9.1):
     dependencies:
@@ -2591,7 +2599,5 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   zod@3.25.76: {}
-
-  zod@4.6.5: {}
 
   zod@4.6.6: {}
