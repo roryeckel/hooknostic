@@ -67,3 +67,42 @@ unsupported.
 Final check exit codes, test counts and mutation outcomes are in
 `validation.json`. Both offline families passed on Windows. Hosted Linux
 execution and paid smoke were not run here.
+
+## Playback recapture (Windows, 2026-10-17)
+
+The results drive on 2.0.32 still reports the missing-file read and now also
+reports the custom tool's plain JavaScript exception as execute.after with
+status: error and _tag: Tool.Error. The captured full envelope is
+fixtures/opencode/2.0/tool-custom-error.input.json. The initial omission on the
+reference build remains historical; the approximate capability rating is
+unchanged because coverage differs across the validated builds.
+
+The project/package remote drives at the same version/date sent /http without
+the reference capture's codemode=false query. Selected actual tools/call HTTP
+requests are in fixtures/opencode/2.0/remote/playback-recapture.json. The
+expanded project header and literal package header, one call, and model-visible
+result still hold. Playback accepts those two observed query forms and validates
+any custom error's message and call ID; unknown errors and query parameters
+still fail.
+
+### OAuth catalog readiness
+
+A later full 2.0.32 run at the same date reached connected status and a refreshed
+tools/list response before creating the session, but its first scripted MCP call
+returned an unknown-tool result. The next model request included a native catalog
+update advertising tools.http.hooknostic_echo. Complete selected tool-result and
+catalog-update messages are preserved in oauth-catalog-readiness.json; they are
+captured model messages, not hook payloads. The test's labels are constructed.
+
+The loopback model now retries that same OAuth MCP action after the captured
+unknown-tool result and a native catalog update, assigning a fresh call ID each
+time. It permits at most two retries; exhausted retries record an error so a
+missing server cannot pass. The protected tools/call, PKCE verifier, refresh
+grant and refreshed-bearer checks remain required. The deterministic regression
+failed with the original one-shot script; a second test failed against a mutant
+that allowed a third retry. Both passed after restoration.
+
+The custom-error fixture also failed when error decoding was disabled. The
+project and package remote checks each failed against their existing mutants
+that remove configuration or headers, respectively; source bytes were restored
+after every mutant.

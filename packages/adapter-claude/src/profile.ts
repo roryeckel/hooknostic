@@ -13,6 +13,13 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       date: "2026-08-29",
       validatedOn: [
         {
+          version: "2.1.295",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/harness-playback",
+          what: "Windows ConPTY trust selection repaints only the cursor, with labels retained in earlier writes (claude-windows-trust-295.json). With a reconstructed terminal screen, both interactive permission denial and hook-requested approval passed against the loopback model on Node 22.22.2.",
+        },
+        {
           version: "2.1.238",
           date: "2026-08-20",
           method: "captured",

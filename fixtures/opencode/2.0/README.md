@@ -131,3 +131,19 @@ The interpreter that ran matched it in both sessions (live-probe, same record).
 `cmd` is a shell this adapter maps to a dialect; `tcsh` is one it does not, so
 that canonical carries none. As elsewhere in this directory, the canonical
 `harness.version` is the adapter's reference build, not the capture version.
+
+## Playback recapture (Windows, 2.0.32, 2026-10-17)
+
+The existing results, project-remote and package-remote loopback drives were
+run with the installed native executable and isolated state. No paid model or
+real credential was used. The capturing account's home-directory segment is
+redacted to user, as in the earlier fixtures.
+
+| Case | Provenance | Observation |
+| --- | --- | --- |
+| tool-custom-error | captured | The custom tool's plain JavaScript Error is wrapped as Tool.Error and delivered through execute.after, preserving input, message and call ID |
+| remote/playback-recapture.json | captured HTTP rows + constructed scenario labels | Actual project and relocated-package tools/call requests preserve /http and the expanded/literal header; neither appends codemode=false |
+
+The canonical harness version still comes from the reference metadata, as in
+other replay fixtures. Earlier exception omissions and query-bearing requests
+remain historical observations. Procedure and limits: .capture/opencode-v2-audit.

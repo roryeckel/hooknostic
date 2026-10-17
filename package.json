@@ -5,7 +5,7 @@
   "description": "Hooknostic — portable hooks, skills, and MCP with native harness packaging and project integration",
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "packageManager": "pnpm@12.11.2",
   "scripts": {

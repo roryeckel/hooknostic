@@ -1,7 +1,7 @@
 # @hooknostic/agent-plugin
 
 Load and validate Agent Plugins 1.0 packages, inventory their files, and consume
-native projection contracts. Requires Node.js 22.13.0 or newer.
+native projection contracts. Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
 
 ```sh
 npm install @hooknostic/agent-plugin

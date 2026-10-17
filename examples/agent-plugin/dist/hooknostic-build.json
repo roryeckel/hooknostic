@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:4991c41a7dbb96c7a17acb90c93e913ff1af55c2d19a3722213982f5634362eb",
+        "contentDigest": "sha256:e198095cb9250c17c1aeb5484782a29f29b5584ecbde9215e0eb71a274f9f1f1",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:82214f0fc904dd301c92c6f7eb5a3912ab05dde86711729bcbf78f521815a9b5",
+        "contentDigest": "sha256:6c81d2c2fe3b1aac5b64c07bacc4cfe98343f37ed6e3689d809b0d00d2b4d2da",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -118,7 +118,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:d6a7101f9b17383d07fb8f562f622b41c417041f2604e9a426cf828a8d35b644",
+        "contentDigest": "sha256:785a7fefe17369f9b5d78f0a856c6795ce74a6875446e9a881660f1d906a4676",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -173,7 +173,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:fd40a5a5879efe234b0a72d81bddfcf605e817f81bc53d8addcd79d2ad25d830",
+        "contentDigest": "sha256:910851b006a4bda71095801283e5ac94674e99cfa1f68898e6d4915ef8766597",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",
@@ -229,7 +229,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:6353b731f72df14612f524626edff65727308ebf97a199993ec510c0c2264401",
+        "contentDigest": "sha256:7ce1cfbcff2f21632c7bed01d57053dc7705732b99f4b7bd5d08416c377729c2",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -306,7 +306,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:2729560a40d7df9ea5dee62cf57b7d317651d6a4271a1bf98d3cec1525e5d96a"
+    "contentDigest": "sha256:d6134350181bc3daddbc1f046a1dbb3d8050fe0592c918b0d96176ac28d42f00"
   },
   "mcpServers": [
     {

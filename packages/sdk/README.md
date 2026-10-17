@@ -2,7 +2,7 @@
 
 Configure portable packages and repository integrations, and author lifecycle hooks
 in TypeScript. Compile hooks, skills, and MCP for supported
-coding-agent harnesses with the `hooknostic` CLI. Requires Node.js 22.13.0 or newer.
+coding-agent harnesses with the `hooknostic` CLI. Requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
 
 ```sh
 npm install --save-dev @hooknostic/sdk hooknostic
