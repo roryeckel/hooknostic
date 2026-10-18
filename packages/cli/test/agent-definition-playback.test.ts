@@ -55,9 +55,7 @@ async function drive(name: string): Promise<{ summary: Summary; output: string }
 const ALT_MODEL = "hooknostic-playback-alt";
 const CASES = (lane === "codex" ? ["generated"] : ["generated", "packaged"]).map((name) => ({
   name,
-  // OpenCode v2's package route registers agents through its plugin agent API,
-  // which cannot carry native fields; the child runs on the parent's model.
-  model: name === "packaged" && lane === "opencode-v2" ? "hooknostic-playback" : ALT_MODEL,
+  model: ALT_MODEL,
 }));
 
 // How each lane names the agent a session runs as, and the model such a
@@ -88,6 +86,60 @@ const DEFAULT_CASE: { model: string; agent?: string } =
         : { model: ALT_MODEL, agent: "chat.message:hn-probe" };
 
 describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"})`, () => {
+  it.skipIf(lane !== "opencode-v2")(
+    "translates the remaining packaged native agent fields against the real harness",
+    async () => {
+      const result = await runProcess(
+        process.execPath,
+        ["--experimental-strip-types", ".capture/agents/native-v2.mjs", "generated"],
+        {
+          cwd: repository,
+          env: process.env,
+          timeoutMs: 180_000,
+        },
+      );
+      expect(result.code, result.stdout + result.stderr).toBe(0);
+      const summaries = result.stdout
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("HKN-NATIVE-SUMMARY "))
+        .map((line) => JSON.parse(line.slice("HKN-NATIVE-SUMMARY ".length)));
+      expect(summaries.map((summary) => summary.case)).toEqual([
+        "fields",
+        "uncapped",
+        "object-model",
+        "primary",
+        "disabled",
+        "merge",
+      ]);
+      for (const summary of summaries) expect(summary).toMatchObject({ exit: 0, errors: [], secretInRequest: false });
+    },
+    210_000,
+  );
+
+  it.skipIf(lane !== "opencode-v2")(
+    "packaged hidden primary agents stay out of the interactive picker",
+    async () => {
+      const result = await runProcess(
+        process.execPath,
+        ["--experimental-strip-types", ".capture/agents/hidden-v2.mjs", "--generated"],
+        {
+          cwd: repository,
+          env: process.env,
+          timeoutMs: 90_000,
+        },
+      );
+      expect(result.code, result.stdout + result.stderr).toBe(0);
+      const line = result.stdout.split(/\r?\n/).find((entry) => entry.startsWith("HKN-HIDDEN-SUMMARY "));
+      expect(line, result.stdout).toBeDefined();
+      expect(JSON.parse(line!.slice("HKN-HIDDEN-SUMMARY ".length))).toMatchObject({
+        generated: true,
+        visibleInPicker: true,
+        hiddenInPicker: false,
+      });
+    },
+    120_000,
+  );
+
   it.each(CASES)(
     "$name: advertises the definition, delegates to it, and runs it on its instructions",
     async ({ name, model }) => {

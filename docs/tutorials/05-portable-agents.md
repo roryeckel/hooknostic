@@ -279,7 +279,7 @@ agent into the package:
 | --- | --- | --- | --- |
 | Claude | `agents/reviewer.md` in the plugin | `<plugin>:reviewer`, named by Claude | `claude --agent <plugin>:reviewer` |
 | OpenCode v1 | registered by the generated module | `<plugin>-reviewer` | `opencode run --agent <plugin>-reviewer` |
-| OpenCode v2 | registered by the generated module, without `native` fields | `<plugin>-reviewer` | `opencode run --agent <plugin>-reviewer` |
+| OpenCode v2 | registered by the generated module, with native v2 fields translated | `<plugin>-reviewer` | `opencode run --agent <plugin>-reviewer` |
 | Codex | nothing: a Codex plugin cannot bundle agents | — | — |
 
 OpenCode keeps every agent in one flat namespace, so the projection adds the plugin
@@ -287,6 +287,32 @@ name itself, as it does for skills. On a Codex package target the agents are
 unsupported. With the default policy, the build fails. To ship the package to Codex
 anyway, set `onUnsupported: "warn"`, and deliver subagents to Codex users through a
 project target instead.
+
+To hide a packaged OpenCode v2 primary agent from the interactive picker, put
+the flag in its native block:
+
+```yaml
+mode: primary
+native:
+  opencode:
+    hidden: true
+```
+
+The v2 package route also translates `model` (a string or structured selection,
+including variants), `color`, `steps`, `request`, `permissions`, and `disabled`.
+It preserves `hidden: false`, merges request maps, and appends permission rules
+to the host's defaults. Home paths in read/edit/external-directory rules expand
+on the consuming host. `disabled: true` removes the qualified agent id.
+Unknown/legacy fields and invalid values fail validation.
+
+Two harness limitations remain on both project and package routes: a primary
+session uses its configured model (`opencode:primary-agent-model-ignored`),
+and per-agent request headers/body survive on the agent but do not reach model
+requests (`opencode:agent-request-ignored`). Subagents use their native model
+and variant. Configure request overlays on the provider or model to make them
+effective. The build refuses active shortfalls by default; use
+`components.onDegraded: "warn"` or explicitly accept the relevant degradation
+when that behavior is acceptable.
 
 ## Where the claims come from
 

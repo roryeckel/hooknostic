@@ -201,7 +201,7 @@ The same drive ran a session as the agent:
    | Claude | the plugin's `agents/<name>.md` | `<plugin>:<name>`, qualified by Claude | `exact` | `exact`, with a deviation | `exact`, with a degradation |
    | Codex | none (openai/codex#18988) | — | `unsupported` | `unsupported` | `unsupported` |
    | OpenCode v1 | the generated module's `config` hook assigns `config.agent` | `<plugin>-<name>` | `emulated`, with a degradation | `emulated` | `exact` |
-   | OpenCode v2 | the generated module's `ctx.agent.transform` upserts through `update` | `<plugin>-<name>` | `emulated`, with a degradation | `emulated` | `unsupported` |
+   | OpenCode v2 | the generated module's `ctx.agent.transform` upserts through `update` | `<plugin>-<name>` | `emulated`, with a degradation | `emulated` | `exact`, with conditional degradations |
 
    - **Claude.** A package file at a generated agent's path, including one an
      overlay hoists there, is a fatal collision (case-folded); nothing is merged.
@@ -213,10 +213,19 @@ The same drive ran a session as the agent:
      name that cannot be qualified keeps its bare form and is reported as
      `opencode:agent-name-unqualified`. A session is started as the agent under
      the same name, which is why `agents.primary` is `emulated` there too.
-   - **OpenCode v2.** The plugin API takes OpenCode's internal agent shape, of
-     which only `id`, `description`, `mode` and `system` were observed. It needs
-     the definition's `mode` just as the project file does. `native.opencode` is
-     omitted and reported.
+   - **OpenCode v2.** The plugin API takes OpenCode's internal agent shape. It needs
+     the definition's `mode` just as the project file does. The 2026-10-17
+     captures (`.capture/agents/hidden-v2.mjs`, `native-v2.mjs`) establish the
+     native translation: model strings and objects become runtime references;
+     hidden/color/steps are assigned; request header/body maps merge;
+     permissions append with home expansion on the consuming host; and
+     `disabled: true` removes the qualified id. Invalid values and unknown or
+     legacy fields are refused as authoring errors. No native fields are
+     silently discarded. Both routes report the harness's primary-model
+     limitation and its preserved-but-unused per-agent request overlays as
+     conditional degradations. Empty request maps and disabled definitions
+     do not trigger these shortfalls. A disabled definition counts as an
+     applied removal directive, with no unsupported omission.
    - **Reserved native keys.** They are refused on package targets as on project
      targets, rather than dropped by a projector.
    - **Codex.** Each definition is reported as an omission. The build fails
@@ -251,7 +260,12 @@ The same drive ran a session as the agent:
      `agents.native` declares this as the degradation
      `opencode:primary-agent-model-ignored`, reported for a `primary` or `all`
      definition that sets `native.opencode.model`. As a subagent, the model
-     applies.
+     applies, including its model variant; this now holds on the package route
+     as well. Request overlays remain on the agent but are not sent in model
+     requests on the validated build, on either route. Nonempty headers/body
+     report `opencode:agent-request-ignored`; configure the provider or model
+     for effective request overlays. Default `onDegraded: "error"` refuses
+     either shortfall, and warning or explicit acceptance permits it.
    - **Not the default agent by itself.** A `mode` only makes the agent
      available. Which agent a session starts as changes only when the project
      names one (decision 10).

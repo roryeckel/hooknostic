@@ -11,6 +11,12 @@ import {
   RUNTIME_PLUGIN_ROOT,
 } from "../project-agent-plugin.js";
 import { OPENCODE_SKILL_REFERENCE_DEGRADATION, OPENCODE_SKILL_TEXT_RATIONALE } from "../skill-text.js";
+import {
+  AGENT_REQUEST_IGNORED,
+  nativeAgentDegradations,
+  packageAgentNative,
+  packageAgentTranslation,
+} from "./agent-native.js";
 import { opencodeV2Harness } from "./harness.js";
 import {
   OPENCODE_V2_SKILL_POLICY_RATIONALE,
@@ -103,12 +109,18 @@ const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] =
       "agents.native": {
         level: "exact",
         rationale:
-          "native.opencode fields are written verbatim into the frontmatter; model, steps (a hard stop, reported to the parent as completing without a text response) and permissions deny rules were observed taking effect. A v2 subagent keeps its own permissions rather than a subset of its parent's, and subagent and execute stay available unless denied too. A session run as the agent uses the configured model instead of native.opencode.model, which is reported per definition.",
+          "native.opencode fields are written into the frontmatter. Native model selections and variants, step caps and permission rules take effect. A subagent keeps its own permissions; subagent and execute remain available unless denied too. Primary sessions keep their configured model, and per-agent request overlays survive on the agent but are not sent in model requests; both limitations are reported per active definition.",
         degradations: [
           {
             id: PRIMARY_AGENT_MODEL_IGNORED,
             summary:
               "OpenCode 2.0.17 runs a session started as the agent on the configured model, so a native.opencode.model reaches the agent only when it runs as a subagent.",
+            evidence: ".capture/agents",
+          },
+          {
+            id: AGENT_REQUEST_IGNORED,
+            summary:
+              "OpenCode preserves per-agent request headers and body overlays but does not send them in model requests on the validated build.",
             evidence: ".capture/agents",
           },
         ],
@@ -180,6 +192,13 @@ const nativeOpenCodeV2ProjectProfiles: readonly AgentPluginProjectionProfile[] =
           artifact: ".capture/opencode-v2",
           what: "Nested drive: a session in a checkout nested inside another loads both checkouts' .opencode/plugins. With a shared id the outer copy stayed active and the nested copy failed as a duplicate; with per-checkout ids both stay active and only the copy owning the nearest integration serves the session.",
         },
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "Native project files, an independent package transform, and generated packages ran against loopback models. String/structured model selections and variants reached subagent requests; primary sessions kept the configured model. Steps 2 versus 4 capped model turns, an expanded home-path read deny prevented the scratch secret reaching the model, and the longer control read the permitted seed file. Package inventory preserved color/hidden, appended permission defaults and a seeded guard, merged request maps without losing settings, and removed a seeded qualified agent for disabled:true. Per-agent request headers/body were preserved but absent from actual model requests on both routes, while the variant body overlay reached the server (.capture/agents/native-v2.mjs).",
+        },
       ],
     },
   },
@@ -192,8 +211,8 @@ export const opencodeV2ProjectProfiles = skillInvocationPolicyProfiles(
   [opencodeV2NewerSkillPolicyValidation],
 );
 
-export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = (...args) =>
-  projectComponents(
+export const projectOpenCodeV2Components: NonNullable<HarnessAdapter["projectComponents"]> = async (...args) => {
+  const result = await projectComponents(
     ...args,
     // v2 has no config hook: the default agent goes through the agent editor's
     // default(), which starts sessions as it (.capture/agents inject-default).
@@ -206,6 +225,12 @@ export default { id: "hooknostic.components" + suffix, async setup(ctx) {
   });
 ${defaultAgent === undefined ? "" : `  await ctx.agent.transform(editor => editor.default(${JSON.stringify(defaultAgent)}));\n`}} };\n`,
   );
+  const degradations = nativeAgentDegradations(args[0].agents ?? [], args[4].support?.["agents.native"]).filter(
+    (item) => item.id === AGENT_REQUEST_IGNORED,
+  );
+  if (degradations.length > 0) (result.degradations ??= []).push(...degradations);
+  return result;
+};
 
 export function v2PackageEntry({
   hooks,
@@ -238,23 +263,24 @@ function injector(
   const skills = source.skills.map((skill) => ({ ...skill, id: `${source.manifest.name}/${skill.name}` }));
   // The agent editor has no add, and update on an unknown id upserts it; the id
   // is the name the subagent tool selects and --agent runs (.capture/agents).
-  // Only these four fields were observed taking effect, which is why native
-  // fields are omitted.
+  // The native configuration is validated and its model lowered before emission;
+  // home paths, request maps and permission rules are applied on the consuming host.
   const definitions = agents.map((agent) => ({
     id: agent.name,
     description: agent.description,
     mode: agent.mode,
     system: agent.instructions,
+    native: agent.native,
   }));
   return `import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join${definitions.length === 0 ? "" : ", posix, win32"} } from "node:path";
+${definitions.length === 0 ? "" : 'import { homedir } from "node:os";\n'}import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "package");
 const launcher = join(here, "hooknostic-runtime", "mcp-launcher.mjs");
 const servers = JSON.parse(${JSON.stringify(JSON.stringify(servers))});
 const skills = ${JSON.stringify(skills)};
-${definitions.length === 0 ? "" : `const agents = JSON.parse(${JSON.stringify(JSON.stringify(definitions))});\n`}${conversion}
+${definitions.length === 0 ? "" : `const agents = JSON.parse(${JSON.stringify(JSON.stringify(definitions))});\n${packageAgentTranslation}\n`}${conversion}
 const resolve = value => value.split(${JSON.stringify(RUNTIME_LAUNCHER)}).join(launcher).split(${JSON.stringify(RUNTIME_PLUGIN_ROOT)}).join(root);
 export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.name}`)}, async setup(ctx) {
   if (Object.keys(servers).length) await ctx.mcp.transform(editor => {
@@ -268,14 +294,46 @@ export default { id: ${JSON.stringify(`hooknostic.components.${source.manifest.n
     content: readFileSync(join(root, skill.manifestPath), "utf8").replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n/, ""),
   }));
   if (values.length) await ctx.skill.transform(editor => { for (const skill of values) editor.add(skill); });
-${definitions.length === 0 ? "" : "  await ctx.agent.transform(editor => { for (const agent of agents) editor.update(agent.id, target => Object.assign(target, agent)); });\n"}} };\n`;
+${definitions.length === 0 ? "" : "  await ctx.agent.transform(editor => { for (const agent of agents) registerAgent(editor, agent); });\n"}} };\n`;
 }
 
+const packageProjector = createOpenCodeAgentPluginProjector({ injector, entry: v2PackageEntry });
 const nativeOpenCodeV2Projector: AgentPluginProjector<TargetSpec> = {
-  ...createOpenCodeAgentPluginProjector({ injector, entry: v2PackageEntry }),
+  ...packageProjector,
+  async project(source, context) {
+    const selections = context.agents?.map(packageAgentNative);
+    const plan = await packageProjector.project(source, {
+      ...context,
+      ...(selections === undefined ? {} : { agents: selections.map((item) => item.agent) }),
+    });
+    plan.issues.push(...(selections ?? []).flatMap((item) => item.issues));
+    const degradations = nativeAgentDegradations(context.agents ?? [], context.support["agents.native"]);
+    if (degradations.length > 0) (plan.summary.degradations ??= []).push(...degradations);
+    return plan;
+  },
   qualifiesSkillNames: false,
   profiles: opencodeV2ProjectProfiles.map((profile) => ({
     ...profile,
+    source: {
+      ...profile.source,
+      validatedOn: [
+        ...profile.source.validatedOn,
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "The real interactive picker lists a visible primary agent and excludes a hidden primary agent registered through the package agent transform. A package built from native.opencode.hidden definitions preserves true and false in the host's agent inventory and produces the same picker result (.capture/agents/hidden-v2.mjs; packages/cli/test/agent-definition-playback.test.ts). No model requests were made.",
+        },
+        {
+          version: opencodeV2Harness.referenceVersion,
+          date: "2026-10-17",
+          method: "schema-derived",
+          artifact: ".capture/agents",
+          what: "Package native-field validation derives from ConfigAgent.Info, ConfigModel.Selection, ConfigProvider.Request and Permission.Rule in the reference build's published source. Canonical v2 fields are validated; unknown/legacy keys and invalid shapes fail with authoring errors. Runtime translation follows the native config loader's model lowering, request-map merging, permission append/home expansion and disabled removal; behavior is separately live-probed in native-v2.mjs.",
+        },
+      ],
+    },
     components: {
       ...profile.components,
       "agent-plugin.manifest": { level: "exact" },
@@ -308,9 +366,23 @@ const nativeOpenCodeV2Projector: AgentPluginProjector<TargetSpec> = {
           "An agent registered with mode: primary or all runs as the session through opencode run --agent <plugin>-<name>, on its instructions, and its tool events name it. The name is the projection's qualification, as for agents.definition.",
       },
       "agents.native": {
-        level: "unsupported",
+        level: "exact",
         rationale:
-          "The agent domain takes OpenCode's internal agent shape, not the frontmatter a project file carries, and only id, description, mode and system were observed taking effect through it. native.opencode fields are omitted and each agent declaring them is reported; deliver to a project target to keep them.",
+          "Native v2 agent configuration is translated through the agent editor: model selections become runtime references, hidden/color/steps are assigned, request maps merge, permission rules append with consuming-host home expansion, and disabled removes the qualified id. Unknown or invalid fields are rejected. A primary session keeps its configured model, and per-agent request overlays are retained but not sent to the model; both are reported per definition.",
+        degradations: [
+          {
+            id: PRIMARY_AGENT_MODEL_IGNORED,
+            summary:
+              "A primary session uses its configured model rather than the agent's native model; the model applies to subagents.",
+            evidence: ".capture/agents",
+          },
+          {
+            id: AGENT_REQUEST_IGNORED,
+            summary:
+              "OpenCode preserves per-agent request headers and body overlays but does not send them in model requests on the validated build.",
+            evidence: ".capture/agents",
+          },
+        ],
       },
     },
   })),

@@ -288,8 +288,7 @@ function write(path, contents) {
 
 /**
  * The same agent as a portable Hooknostic Agent Definition 0.1 file under
- * `<dir>/portable-agents/`. `withOpenCode: false` leaves out `native.opencode`,
- * for a route that cannot carry native fields and would report them.
+ * `<dir>/portable-agents/`. `withOpenCode: false` leaves out `native.opencode`.
  */
 function writePortableDefinition(dir, harness, withOpenCode = true, mode = undefined) {
   const provider = harness === "opencode-v2" ? "playback" : "drift";
@@ -432,12 +431,11 @@ const PLUGIN = "hn-plugin";
 /**
  * The `packaged` case: the portable definition configured beside a minimal
  * Agent Plugins package and built for package delivery, outside any project, so
- * what the harness loads is the package a user's build writes. OpenCode v2's
- * package route cannot carry native fields, so its definition has none. Returns
+ * what the harness loads is the package a user's build writes. Returns
  * the built package directory.
  */
 async function buildPackaged(dir, harness, mode = undefined) {
-  writePortableDefinition(dir, harness, harness !== "opencode-v2", mode);
+  writePortableDefinition(dir, harness, true, mode);
   write(
     join(dir, PLUGIN, "plugin.json"),
     `${JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: PLUGIN, version: "1.0.0", description: "Hooknostic capture probe package." }, null, 2)}\n`,
@@ -445,7 +443,7 @@ async function buildPackaged(dir, harness, mode = undefined) {
   const { registry, id, version } = buildTarget(harness);
   const target = { version, delivery: "package", output: `dist/${id}` };
   const configPath = join(dir, "hooknostic.config.ts");
-  const config = { components: { root: `./${PLUGIN}`, agents: ["./portable-agents"] }, targets: { [id]: target } };
+  const config = { components: { root: `./${PLUGIN}`, agents: ["./portable-agents"], ...acceptFor(harness, mode) }, targets: { [id]: target } };
   writeFileSync(configPath, `export default ${JSON.stringify(config, null, 2)};\n`, "utf8");
   const built = await buildProject({ configPath, registry });
   if (!built.ok) throw new Error(`hooknostic build failed: ${JSON.stringify(built.report.diagnostics)}`);

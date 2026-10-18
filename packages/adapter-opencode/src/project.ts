@@ -98,7 +98,12 @@ export function primaryModelDegradations(
 ): AgentPluginDegradation[] {
   if (!(cell?.degradations ?? []).some((item) => item.id === PRIMARY_AGENT_MODEL_IGNORED)) return [];
   return agents
-    .filter((agent) => agent.mode !== "subagent" && agent.native["opencode"]?.["model"] !== undefined)
+    .filter(
+      (agent) =>
+        agent.mode !== "subagent" &&
+        agent.native["opencode"]?.["model"] !== undefined &&
+        agent.native["opencode"]?.["disabled"] !== true,
+    )
     .map((agent) => ({
       id: PRIMARY_AGENT_MODEL_IGNORED,
       component: "agents.native",

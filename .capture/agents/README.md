@@ -104,6 +104,111 @@ test. The OpenCode v2 mode agents set no permission rules.
 
 ## Observations
 
+### Packaged OpenCode v2 primary-agent visibility (2026-10-17)
+
+Evidence: **live-probe**, Windows, OpenCode **2.0.17**, no prompts or model
+requests. [`hidden-v2.mjs`](hidden-v2.mjs) starts an isolated standalone TUI
+under a pseudoterminal, opens the actual agent picker with Ctrl+X, A, and reads
+the rendered terminal through `@xterm/headless`. A second package records the
+host's agent inventory after the package transform. User homes, credentials,
+and the background service are not used.
+
+```sh
+# Set HKN_OPENCODE_BINARY to the reference binary if it is not on PATH.
+node --experimental-strip-types .capture/agents/hidden-v2.mjs
+node --experimental-strip-types .capture/agents/hidden-v2.mjs --generated
+```
+
+The first route uses a hand-written package calling `ctx.agent.transform` and
+`editor.update`. The second builds a real Hooknostic package from two portable
+`mode: primary` definitions: one with `native.opencode.hidden: true`, the other
+with `false`. Both routes observed the same result:
+
+| Agent | Host inventory | Interactive picker |
+| --- | --- | --- |
+| `hn-picker-hidden-primary` | `mode: primary`, `hidden: true` | absent |
+| `hn-picker-visible-primary` | `mode: primary`, `hidden: false` | present |
+
+The recorded inventory and terminal screens are in
+[`evidence/opencode-v2-hidden-primary.json`](evidence/opencode-v2-hidden-primary.json).
+This establishes `hidden` through the package agent API only. It does not
+establish other native fields, default-agent selection, or direct invocation
+of a hidden agent. The native-field probes below extend this evidence to the
+rest of the v2 configuration surface.
+
+Before the fix, the generated route failed with HN205 (`agents.native`
+unsupported). The generated route now passes and is part of the OpenCode v2
+agent-definition playback lane. The original hidden-field regressions are
+retained alongside the full translation tests.
+
+### Remaining packaged OpenCode v2 native fields (2026-10-17)
+
+Evidence: **live-probe**, Windows, OpenCode **2.0.17**. The real binary runs
+standalone with isolated homes and credentials removed, against two loopback
+model servers. Model responses and tool arguments are scripted; the host's
+runtime inventory, outgoing HTTP requests and hook events are observed. No
+model credits are spent.
+
+```sh
+node --experimental-strip-types .capture/agents/native-v2.mjs plugin
+node --experimental-strip-types .capture/agents/native-v2.mjs project
+node --experimental-strip-types .capture/agents/native-v2.mjs generated
+```
+
+`plugin` applies an independent hand-written translation through the agent
+editor before the production implementation was added. `project` supplies
+native Markdown agent files as a control. `generated` builds a Hooknostic
+package from portable definitions and loads its server export. The latter is
+also run by `agent-definition-playback.test.ts` in CI.
+
+| Field | Translation and observation |
+| --- | --- |
+| `model` | Both `provider/model#variant` and `{ providerID, model, variant }` become `{ providerID, id, variant }`. Subagent requests use the alternate model and the variant's provider body overlay. A primary session keeps its configured model and omits the agent variant, on both native project and package routes. |
+| `hidden` | Boolean assignment; the earlier real-picker probe verifies visibility. |
+| `color` | The six-digit hex value survives in the real runtime agent inventory. This probe does not assert terminal color rendering. |
+| `steps` | A cap of 2 stops after two model turns; a cap of 4 permits four turns and returns the scripted completion. The second turn at the smaller cap carries the host's maximum-steps instruction. |
+| `request` | Headers and body merge by key into the existing runtime maps. The seeded map's other keys and request settings survive. **Neither the agent header nor its body marker reaches the recorded model requests**, on either route. The model variant's body marker does reach the loopback server, a positive transport control. |
+| `permissions` | Rules append after the existing defaults and a seeded guard. `~/`, `$HOME/` and `$HOME\\` expand for path actions on the consuming host; shell command resources remain literal. A forced read of the denied scratch file returns `Permission.BlockedError`; its secret never reaches the model. The longer control also reads the permitted seed file successfully. |
+| `disabled` | A package first seeds an agent under the qualified id. The subject's `disabled: true` removes it from the real inventory, and forced delegation produces no child requests. `disabled: false` keeps the other field probes active. |
+
+The `merge` case seeds request maps, settings and a permission guard before the
+subject package. The `disabled` case seeds an old agent before removing it,
+so an absent definition cannot pass merely by never having been registered.
+The observer's early project inventory snapshot is empty on this build;
+project behavior is established by the actual model requests and tool effects
+instead.
+
+[`evidence/opencode-v2-agent-native.json`](evidence/opencode-v2-agent-native.json)
+contains the derived summaries for all routes. Raw HTTP and hook records stay
+in the per-run scratch directories. Account home segments are redacted to
+`user` in the saved evidence; random scratch paths and path separators remain.
+
+Validation is separately **schema-derived** from the reference build's
+[agent configuration schema](https://github.com/anomalyco/opencode/blob/v2.0.17/packages/schema/src/config/agent.ts),
+[model selection schema](https://github.com/anomalyco/opencode/blob/v2.0.17/packages/schema/src/config/model.ts),
+[request schema](https://github.com/anomalyco/opencode/blob/v2.0.17/packages/schema/src/config/provider.ts)
+and [permission rules](https://github.com/anomalyco/opencode/blob/v2.0.17/packages/schema/src/permission.ts).
+The reference [configuration loader](https://github.com/anomalyco/opencode/blob/v2.0.17/packages/core/src/config/plugin/agent.ts)
+is the source for merge and home-expansion semantics. The package translator
+accepts the canonical v2 fields above and rejects unknown/legacy keys or invalid
+values with an authoring error, rather than silently omitting them.
+
+Support is `exact` for this translation, with two conditional degradations:
+`opencode:primary-agent-model-ignored` and `opencode:agent-request-ignored`.
+They apply only to active definitions requesting the affected behavior.
+Empty request maps and intentionally disabled definitions report neither a
+request shortfall nor an omission. Default `onDegraded: "error"` refuses an
+active shortfall; warning or explicit acceptance permits it. Disabled is an
+applied removal directive, not an unsupported definition.
+
+`node .capture/agents/verify-native-v2-mutations.mjs` proves the regressions
+fail when scalar fields disappear, request maps or permission defaults are
+replaced, home expansion is skipped, disabled agents are retained, invalid
+fields are accepted, or request shortfalls are incorrectly reported. A live
+generated-package mutant verifies that missing home expansion exposes the
+scratch secret to the recorded model request and fails the regression. Sources
+restore in `finally` after every mutation run.
+
 ### Discovery and selection
 
 | | Claude 2.1.283 | Codex 0.156.1 | OpenCode 1.18.31 | OpenCode 2.0.17 |
@@ -292,9 +397,10 @@ playback lanes install: Claude Code **2.1.238**, Codex CLI **0.148.0**, OpenCode
   projection gives it, `hn-plugin:hn-probe` on Claude and `hn-plugin-hn-probe`
   on OpenCode; delegated to, it ran on its instructions and its result came
   back. On Claude and OpenCode v1 it also ran on its native model (and on
-  Claude its native tool list). OpenCode v2's package route carries no native
-  fields, so there it ran on the parent's model, and the definition is written
-  without them.
+  Claude its native tool list). The original OpenCode v2 package probe had no
+  native fields and ran on the parent's model. The 2026-10-17 translation now
+  lets that drive emit a native model too; the packaged subagent runs on it,
+  as established by the native-field probes above and the updated playback.
 - **OpenCode v2 needs `mode: subagent`, on both routes.** A mutant emitting the
   v2 file without it failed: v2's `subagent` tool could not select the agent,
   which confirms the documented `primary` default. A mutant registering the
