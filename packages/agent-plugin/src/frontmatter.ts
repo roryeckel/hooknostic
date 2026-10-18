@@ -17,6 +17,9 @@ export function parseMarkdownFrontmatter(text: string, label: string): { data: u
   if (!match) throw new Error(`${label} has no closing frontmatter delimiter`);
   const document = parseDocument(match[1] ?? "");
   if (document.errors.length > 0) throw new Error(document.errors[0]!.message);
+  // toJS() would discard an unresolved custom tag after only a warning.
+  const customTag = document.warnings.find((warning) => warning.code === "TAG_RESOLVE_FAILED");
+  if (customTag) throw new Error(`${label} must not use custom YAML tags: ${customTag.message}`);
   return { data: document.toJS({ maxAliasCount: 0 }) as unknown, body: text.slice(match[0].length) };
 }
 

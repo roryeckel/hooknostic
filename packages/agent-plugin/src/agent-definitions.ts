@@ -110,7 +110,7 @@ function parseDefinition(text: string, stem: string, source: string): AgentDefin
     throw new Error("name must use lowercase letters and digits in hyphen-separated runs, at most 64 characters");
   }
   if (name !== stem) throw new Error(`name ${JSON.stringify(name)} must equal the file name ${JSON.stringify(stem)}`);
-  if (typeof description !== "string" || description.length === 0 || description.length > 1024) {
+  if (typeof description !== "string" || description.length === 0 || Array.from(description).length > 1024) {
     throw new Error("description must contain 1-1024 characters");
   }
   if (/[\r\n]/.test(description)) throw new Error("description must be a single line");

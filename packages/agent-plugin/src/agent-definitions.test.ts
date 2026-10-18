@@ -85,6 +85,60 @@ describe("loadAgentDefinitions", () => {
     });
   });
 
+  it("rejects custom YAML tags throughout frontmatter while accepting standard tags", async () => {
+    expect(
+      parseMarkdownFrontmatter("---\nname: !!str reviewer\ndescription: !!str Reviews diffs.\n---\nBody\n", "test")
+        .data,
+    ).toEqual({
+      name: "reviewer",
+      description: "Reviews diffs.",
+    });
+    for (const frontmatter of [
+      "name: reviewer\ndescription: !custom Reviews diffs.",
+      "!custom\nname: reviewer\ndescription: Reviews diffs.",
+      "name: reviewer\ndescription: Reviews diffs.\nnative:\n  claude:\n    model: !custom sonnet",
+      "name: reviewer\n!custom description: Reviews diffs.",
+      "name: reviewer\ndescription: !<tag:example.test,2026:review> Reviews diffs.",
+    ]) {
+      const root = await directory({ "reviewer.md": `---\n${frontmatter}\n---\nYou review diffs.\n` });
+      const loaded = await loadAgentDefinitions({ directories: [root] });
+      expect(loaded.agents, frontmatter).toEqual([]);
+      expect(loaded.issues, frontmatter).toEqual([
+        expect.objectContaining({
+          severity: "warn",
+          component: "agents.definition",
+          message: expect.stringContaining("custom YAML tags"),
+        }),
+      ]);
+    }
+  });
+
+  it("counts description limits in Unicode code points, including the upper boundary", async () => {
+    for (const length of [600, 1024]) {
+      const description = "🧪".repeat(length);
+      const root = await directory({
+        "reviewer.md": `---\nname: reviewer\ndescription: ${JSON.stringify(description)}\n---\nBody\n`,
+      });
+      const loaded = await loadAgentDefinitions({ directories: [root] });
+      expect(loaded.issues, `${length} code points`).toEqual([]);
+      expect(loaded.agents[0]?.description).toBe(description);
+    }
+    for (const description of ["", "🧪".repeat(1025)]) {
+      const root = await directory({
+        "reviewer.md": `---\nname: reviewer\ndescription: ${JSON.stringify(description)}\n---\nBody\n`,
+      });
+      const loaded = await loadAgentDefinitions({ directories: [root] });
+      expect(loaded.agents).toEqual([]);
+      expect(loaded.issues).toEqual([
+        expect.objectContaining({
+          severity: "warn",
+          component: "agents.definition",
+          message: expect.stringContaining("description must contain 1-1024 characters"),
+        }),
+      ]);
+    }
+  });
+
   it.each([
     ["no frontmatter", "You review diffs.\n", "must begin with YAML frontmatter"],
     ["an unknown mode", "---\nname: reviewer\ndescription: d\nmode: main\n---\nx\n", "mode must be one of"],
