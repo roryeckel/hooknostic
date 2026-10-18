@@ -33,6 +33,9 @@ const lane = LANES[process.env["HOOKNOSTIC_PLAYBACK"] ?? ""];
 const repository = fileURLToPath(new URL("../../..", import.meta.url));
 
 interface Summary {
+  requestedNative?: Record<string, unknown>;
+  deliveredNative?: Record<string, unknown>;
+  childWriteLanded: boolean;
   playbackErrors: string[];
   parent: { descriptionInRequest: boolean; childResultReturned: boolean; toolBearingRequests: number };
   child: { turns: { model?: string; tools: string[]; markerInSystem: boolean }[] };
@@ -86,6 +89,36 @@ const DEFAULT_CASE: { model: string; agent?: string } =
         : { model: ALT_MODEL, agent: "chat.message:hn-probe" };
 
 describe.skipIf(lane === undefined)(`agent definition playback (${lane ?? "off"})`, () => {
+  it.skipIf(lane !== "codex")(
+    "generated-sandbox: reports accepted native read-only while the child inherits the parent sandbox",
+    async () => {
+      const { summary, output } = await drive("generated-sandbox");
+      expect(summary.playbackErrors).toEqual([]);
+      expect(summary.requestedNative).toEqual({ sandbox_mode: "read-only" });
+      expect(summary.deliveredNative).toMatchObject({ sandbox_mode: "read-only" });
+      expect(summary.childWriteLanded, output).toBe(true);
+      expect(summary.child.turns.length).toBeGreaterThan(0);
+      for (const turn of summary.child.turns)
+        expect(turn).toMatchObject({ model: ALT_MODEL, markerInSystem: true, sandboxReported: "danger-full-access" });
+    },
+    300_000,
+  );
+
+  it
+    .skipIf(lane !== "opencode-v1")
+    .each(["generated-steps", "generated-maxsteps", "packaged-steps", "packaged-maxsteps"])(
+    "%s: preserves the requested cap and observes the v1 child exceeding it",
+    async (name) => {
+      const { summary, output } = await drive(name);
+      const field = name.endsWith("-maxsteps") ? "maxSteps" : "steps";
+      expect(summary.requestedNative).toEqual({ [field]: 2 });
+      expect(summary.deliveredNative).toMatchObject({ [field]: 2 });
+      expect(summary.playbackErrors).toEqual([]);
+      expect(summary.child.turns.length, output).toBe(4);
+      expect(summary.parent.childResultReturned, output).toBe(true);
+    },
+    300_000,
+  );
   it.skipIf(lane !== "opencode-v2")(
     "translates the remaining packaged native agent fields against the real harness",
     async () => {

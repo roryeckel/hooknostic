@@ -126,6 +126,11 @@ The same drive ran a session as the agent:
    - **Harness data.** Everything harness-specific goes under
      `native: { <harness>: {...} }`. It is emitted only to that harness, and keys
      the core owns are refused.
+     Adapters may validate native input before projection through `agents.validateNative`.
+     These HN503 authoring errors are independent of omission/degradation policies.
+     Codex uses versioned published schemas; a target spanning schema families must
+     satisfy each. Schema acceptance and effective role overrides are separate:
+     fields a loader accepts but ignores receive conditional degradations.
    - **Reserved keys.** `readOnly`, `tools`, `model`, `maxTurns`, `skills`, `mcp`
      and `hooks` may not be used, so a later version can define them.
 
@@ -191,8 +196,11 @@ The same drive ran a session as the agent:
      harness uses.
    - **`agents.primary` is `exact` on Claude and both OpenCode families, and
      `unsupported` on Codex.** Claude's cell declares the deviation in decision 9.
-   - **`agents.native` is `exact`.** Codex's rationale records its strict
-     parsing, and OpenCode v2's declares the degradation in decision 9.
+   - **`agents.native` is `exact` with conditional degradations.** Codex
+     validates native shapes and reports ignored role/default fields; v1 reports
+     ignored child step caps; v2 reports its primary-model and request limitations.
+     The rationale states which effects have live coverage and which claims are
+     schema/source-derived. Passthrough alone does not establish native behavior.
 
 7. **Package delivery translates the definitions into each native package:**
 
@@ -200,7 +208,7 @@ The same drive ran a session as the agent:
    | --- | --- | --- | --- | --- | --- |
    | Claude | the plugin's `agents/<name>.md` | `<plugin>:<name>`, qualified by Claude | `exact` | `exact`, with a deviation | `exact`, with a degradation |
    | Codex | none (openai/codex#18988) | — | `unsupported` | `unsupported` | `unsupported` |
-   | OpenCode v1 | the generated module's `config` hook assigns `config.agent` | `<plugin>-<name>` | `emulated`, with a degradation | `emulated` | `exact` |
+   | OpenCode v1 | the generated module's `config` hook assigns `config.agent` | `<plugin>-<name>` | `emulated`, with a degradation | `emulated` | `exact`, with a conditional degradation |
    | OpenCode v2 | the generated module's `ctx.agent.transform` upserts through `update` | `<plugin>-<name>` | `emulated`, with a degradation | `emulated` | `exact`, with conditional degradations |
 
    - **Claude.** A package file at a generated agent's path, including one an

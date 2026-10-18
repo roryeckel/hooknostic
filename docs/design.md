@@ -923,11 +923,17 @@ Claude plugin's `agents/`, or an agent registered by the generated OpenCode modu
 Codex plugin has no route. Their component ids share the profiles, levels and
 shortfall classes above: `agents.definition` for every definition,
 `agents.primary` for each one whose `mode` lets a session run as it (unsupported
-on Codex, which has no such agents), `agents.native` for the passthrough, and
+on Codex, which has no such agents), `agents.native` for native-field translation, and
 `agents.default` for `components.defaultAgent`, the agent every session of a project
 starts as, which no package target takes. A target's `agents: { include?, exclude? }`
 selects which definitions it receives; a deselected one is never counted there. A
 definitions directory inside the package root is excluded from its inventory.
+An adapter may validate native agent input before projection through
+`agents.validateNative`; native schema errors are HN503 authoring errors even
+under warning policies. Effective-field checks are separate: a loader may parse
+a field without applying it. Such requests retain their authored data and report
+declared conditional degradations. The profile states live, schema-derived and
+source-derived coverage separately; emitting a field alone proves no behavior.
 The fixed-default route resolves independently of named definitions. Pi project
 delivery emulates only a selected default's instructions through owned
 `.pi/APPEND_SYSTEM.md`; a `primary` default counts only as `agents.default`, while

@@ -95,11 +95,11 @@ prompt's place. On Codex, Codex's own instructions come first. Codex's guidance 
 tells its model not to spawn a subagent unless it is asked to, so expect to request
 the reviewer by name there.
 
-The example's `native` blocks make the reviewer read-only on Claude and OpenCode. Codex
-has no equivalent per-agent setting. An agent file's `sandbox_mode` was captured having
-no effect on the child, so on Codex the reviewer keeps the session's tools and
-sandbox. Its instructions say not to edit, but that is a request, not an enforced
-limit.
+The example's `native` blocks restrict the advertised tools on Claude and
+OpenCode v1 as captured. This does not establish a separate sandbox. Codex
+inherits the session's permissions; an agent file's `sandbox_mode` cannot create
+a separately read-only child. Its instructions ask it not to edit, without
+establishing an enforced read-only policy.
 
 `inspect` shows the recorded evidence for any target:
 
@@ -110,7 +110,17 @@ hooknostic inspect codex --delivery project --component agents.native --config h
 A few `native` details are worth knowing:
 
 - **Codex parses agent files strictly.** A single key it does not know makes it ignore
-  the whole file, with only a warning. Keep `native.codex` to documented keys.
+  the whole file, with only a warning. Hooknostic now validates the requested
+  version range against its recorded Codex schemas and refuses unknown keys or
+  invalid values with HN503, even when component policies warn.
+- **Parsing and applying a Codex field are different.** Agent-level sandbox and
+  approval settings cannot replace the parent session's policy. Schema-valid
+  fields ignored by the validated role loader report `codex:agent-field-ignored`.
+  The newer loader also restricts other settings to model/instruction overrides
+  and supported capability disabling. This broader audit is source-derived;
+  live captures establish model/effort and inherited sandbox behavior. Hooknostic
+  keeps the authored fields and fails active degradations by default. Accepting
+  a diagnostic does not make a setting effective.
 - **A Codex model needs an effort.** A child inherits the parent's reasoning effort,
   which a different model can refuse. When `native.codex` sets `model`, also set
   `model_reasoning_effort`. `sync` reminds you if you don't.
@@ -118,6 +128,10 @@ A few `native` details are worth knowing:
 - **`native.opencode` serves both OpenCode families**, whose agent fields differ: this
   example's `permission` map is v1's spelling, and v2 uses `permissions` rules. Keep
   one family per configuration when `native.opencode` sets permissions.
+- **OpenCode v1 task children ignore `steps` and `maxSteps`.** Project and package
+  routes report `opencode:agent-step-limit-ignored` when a delegable definition
+  sets either. The capture does not establish a limit for a primary-only session.
+  V1's provider-option passthrough remains available.
 
 Each harness refuses (HN503) a `native` key that would override the portable core: its
 name, description or instructions, and on OpenCode its mode. Claude and Codex also
@@ -206,6 +220,9 @@ it, which is what a default agent amounts to. The differences:
   agent's.
 - A `primary` default gets no custom agent file, since nothing on Codex could spawn
   it as one, and it does not fail the build: it already runs as every session.
+  Extra native fields are reported as omissions. For an `all` default they remain
+  in its subagent file, and `codex:default-agent-field-ignored` reports that they
+  do not configure the primary session.
 
 Pi's prototype default uses the native append-file route. Use a `mode: primary`
 definition and select only that definition for the Pi target, for example

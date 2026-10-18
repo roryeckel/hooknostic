@@ -174,6 +174,13 @@ variables from the spawned process and supplies only a dummy credential where
 the harness requires a non-empty value. Model requests are served on
 `127.0.0.1` and never forwarded.
 
+The same agent playback file checks native-field shortfalls: the Codex lane
+verifies a generated read-only request remains in TOML while the real child
+inherits its full-access parent, and the v1 lane verifies both cap spellings in
+generated project/package delivery before observing the child exceed them.
+Native validation and diagnostic-policy regressions are separate unit/core tests.
+The capture record distinguishes live behavior from schema/source-derived checks.
+
 Pi's instruction-only project default has a separate generated-artifact check:
 
 ```sh

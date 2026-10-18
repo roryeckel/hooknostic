@@ -18,12 +18,15 @@
     }
   },
   "dependencies": {
+    "ajv": "catalog:",
+    "semver": "catalog:semver-runtime",
     "@hooknostic/agent-plugin": "workspace:*",
     "@hooknostic/core": "workspace:*",
     "@hooknostic/runtime": "workspace:*",
     "@hooknostic/sdk": "workspace:*"
   },
   "devDependencies": {
+    "@types/semver": "catalog:",
     "@hooknostic/testkit": "workspace:*"
   }
 }

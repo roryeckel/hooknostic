@@ -23,6 +23,19 @@ import {
   renderTomlDocument,
 } from "@hooknostic/core";
 
+import {
+  AGENT_FIELD_IGNORED,
+  codexAgentNativeDegradations,
+  DEFAULT_AGENT_FIELD_IGNORED,
+  DEFAULT_AGENT_KEYS,
+  validateCodexAgentNative,
+} from "./agent-native.js";
+import {
+  codexAgentLoaderValidation,
+  codexAgentNativeValidation,
+  codexAgentPolicyValidation,
+  codexAgentSchemaValidation,
+} from "./agent-native-source.js";
 import { codexHarness } from "./harness.js";
 import { translateMcp } from "./project-agent-plugin.js";
 
@@ -103,14 +116,15 @@ export const codexAgents: NonNullable<HarnessAdapter["agents"]> = {
   // `mcp_servers` would declare servers outside MCP validation and its
   // launcher; `hooks` would add hook layers beside the generated dispatcher.
   reservedNativeKeys: ["name", "description", "developer_instructions", "mcp_servers", "hooks"],
+  validateNative: validateCodexAgentNative,
 };
 
 /**
  * `.codex/agents/<name>.toml`: `name`, `description` and the instructions as
  * `developer_instructions`, which Codex adds to its own base instructions
  * rather than replacing them, then `native.codex` verbatim. Codex rejects the
- * whole file over one unknown key (`.capture/agents`), so passthrough fields
- * are the author's to spell exactly as Codex's config reference does.
+ * whole file over one unknown key (`.capture/agents`); adapter-owned schema
+ * validation runs before emission, independently of omission policy.
  */
 export function renderCodexAgent(agent: AgentDefinition): { file: string; contents: string } {
   const native = Object.entries(agent.native["codex"] ?? {}).filter(
@@ -131,9 +145,6 @@ export function renderCodexAgent(agent: AgentDefinition): { file: string; conten
   }
   return { file: `${agent.name}.toml`, contents };
 }
-
-/** The agent-file keys Codex was observed to honour at the top of a project's configuration. */
-const DEFAULT_AGENT_KEYS = ["model", "model_reasoning_effort"];
 
 /**
  * Codex has no agent a session runs as, but a trusted project's
@@ -179,6 +190,13 @@ export async function projectComponents(
   const subagents = (source.agents ?? []).filter((agent) => servesAsSubagent(agent.mode));
   const agents = projectAgentFiles(subagents, codexAgents.projectDirectory, renderCodexAgent);
   result.files.push(...agents.files);
+  const nativeDegradations = codexAgentNativeDegradations(
+    source.agents ?? [],
+    source.defaultAgent,
+    options.support?.["agents.native"],
+    options.harnessVersion,
+  );
+  if (nativeDegradations.length) (result.degradations ??= []).push(...nativeDegradations);
   const defaultAgent = (source.agents ?? []).find((agent) => agent.name === source.defaultAgent);
   if (defaultAgent !== undefined) {
     const emulated = projectDefaultAgent(defaultAgent);
@@ -316,12 +334,30 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agents.native": {
         level: "exact",
         rationale:
-          "native.codex fields are written verbatim as agent-file TOML; model and model_reasoning_effort were observed taking effect. sandbox_mode in an agent file did not change the child's policy, which followed the session's. Codex rejects the whole file over one unknown key, so every field must be one Codex's configuration accepts. mcp_servers and hooks are refused, because they belong to their own components.",
+          "Native fields are schema-validated before agent-file TOML emission; model and model_reasoning_effort have live behavioral coverage. Child permissions follow the parent. The newer validated role loader limits effective overrides to model/instruction settings and supported capability disabling; schema-valid ignored fields are reported per definition, with source-derived provenance for that wider audit. A default's extra native fields do not configure its primary session. mcp_servers and hooks are reserved for their own components.",
+        degradations: [
+          {
+            id: AGENT_FIELD_IGNORED,
+            summary:
+              "Schema-valid native agent fields ignored by the validated role loader, including per-agent sandbox/approval settings, do not affect the child.",
+            evidence: ".capture/agents",
+          },
+          {
+            id: DEFAULT_AGENT_FIELD_IGNORED,
+            summary:
+              "A default offered both ways carries extra native fields to its subagent file but applies only instructions/model/effort to its primary session.",
+            evidence: ".capture/agents",
+          },
+        ],
       },
     },
     source: {
       date: "2026-09-11",
       validatedOn: [
+        ...codexAgentSchemaValidation,
+        codexAgentLoaderValidation,
+        codexAgentPolicyValidation,
+        ...codexAgentNativeValidation,
         {
           version: "0.156.1",
           date: "2026-09-29",

@@ -1,4 +1,5 @@
 import type {
+  AgentDefinition,
   AgentPluginComponentSupport,
   AgentPluginProjectionProfile,
   AgentPluginProjector,
@@ -28,6 +29,8 @@ import type { PluginIR } from "./ir.js";
 import type { ProjectIntegration } from "./project-files.js";
 
 export interface ProjectComponentOptions {
+  /** Requested harness range, for adapter-owned native configuration checks. */
+  harnessVersion?: string;
   /** Policies actually applied to discovered copies, including copies emitted by other targets. */
   invocationPolicies?: Readonly<Record<string, boolean>>;
   /** Effective startup timeout per MCP server for this target. */
@@ -329,6 +332,8 @@ export interface HarnessAdapter {
      * (per-agent hooks, MCP servers). Refused as HN503.
      */
     readonly reservedNativeKeys: readonly string[];
+    /** Authoring errors in native agent configuration; independent of omission policy. */
+    validateNative?(agent: AgentDefinition, target: TargetSpec): readonly string[];
   };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */

@@ -27,6 +27,7 @@ import {
 import type { McpLauncherDocument, McpLauncherServer, TargetSpec } from "@hooknostic/core";
 import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
 
+import { AGENT_STEP_LIMIT_IGNORED, stepLimitDegradations } from "./agent-native.js";
 import {
   PACKAGE_COMPONENTS_PATH,
   PACKAGE_ENTRY_PATH,
@@ -34,6 +35,7 @@ import {
   PACKAGE_PLUGIN_PATH,
   packageEntrySource,
 } from "./generate.js";
+import { opencodeHarness } from "./harness.js";
 import { qualifiedSkillNames, qualifyNames, renameSkillManifest } from "./skill-names.js";
 import {
   OPENCODE_SKILL_POLICY_RATIONALE,
@@ -542,12 +544,26 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
           "agents.native": {
             level: "exact",
             rationale:
-              "native.opencode fields are carried into the registered agent verbatim; a model set this way took effect in the child request and in a session run as the agent.",
+              "Native fields are carried into the registered v1 agent verbatim; model selection has live child and primary-session coverage. Native steps and maxSteps do not cap task children on the validated builds and are reported conditionally. Provider options keep native passthrough behavior.",
+            degradations: [
+              {
+                id: AGENT_STEP_LIMIT_IGNORED,
+                summary: "The validated v1 task route ignores native steps and maxSteps in packaged agents.",
+                evidence: ".capture/agents",
+              },
+            ],
           },
         },
         source: {
           date: "2026-09-08",
           validatedOn: [
+            {
+              version: opencodeHarness.referenceVersion,
+              date: "2026-10-17",
+              method: "live-probe",
+              artifact: ".capture/agents",
+              what: "Generated packages with steps:2 and maxSteps:2 each made four child requests and completed, matching their uncapped control; repeated at the newer build recorded by the project profile. Account state was isolated (evidence/opencode-v1-step-limits.json).",
+            },
             {
               version: "1.18.33",
               date: "2026-09-30",
@@ -842,6 +858,7 @@ export function createOpenCodeAgentPluginProjector(emitters?: {
         const mode = withoutPrimary(definition.mode);
         return mode === undefined ? [] : [{ ...definition, mode }];
       });
+      degradations.push(...stepLimitDegradations(definitions, context.support["agents.native"]));
       const qualifyingAgents =
         context.support["agents.definition"]?.degradations?.some((item) => item.id === AGENT_NAME_UNQUALIFIED) ?? false;
       const agentNames: { name: string; kept?: string }[] = qualifyingAgents

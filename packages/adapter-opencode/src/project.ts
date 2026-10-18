@@ -15,6 +15,7 @@ import {
 import type { GeneratedArtifact, HarnessAdapter, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
 import { projectAgentFiles, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
+import { AGENT_STEP_LIMIT_IGNORED, stepLimitDegradations } from "./agent-native.js";
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
 import {
@@ -134,6 +135,8 @@ export async function projectComponents(
     result.guidance.push("OpenCode reads project agents from .opencode/agents; restart it after synchronization.");
   const ignoredModels = primaryModelDegradations(source.agents ?? [], options.support?.["agents.native"]);
   if (ignoredModels.length > 0) (result.degradations ??= []).push(...ignoredModels);
+  const ignoredSteps = stepLimitDegradations(source.agents ?? [], options.support?.["agents.native"]);
+  if (ignoredSteps.length > 0) (result.degradations ??= []).push(...ignoredSteps);
   // The components module also carries the default agent: OpenCode's own
   // default_agent, set from the project's plugin rather than written into a
   // configuration file that may be spelled either way (`.capture/agents`
@@ -268,12 +271,33 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agents.native": {
         level: "exact",
         rationale:
-          "native.opencode fields are written verbatim into the frontmatter; model and permission were observed taking effect, a denied tool leaving the child's tool list. On 1.18.31 neither steps nor maxSteps stopped the child. OpenCode passes a key it does not know to the provider as a model option.",
+          "Native fields are written into frontmatter; model and permission have live behavioral coverage. The validated v1 task route ignores steps and maxSteps on project and package delivery; each requested cap is reported as a conditional degradation. Unknown provider-option fields retain v1's native passthrough semantics; carrying a field alone does not establish its effect.",
+        degradations: [
+          {
+            id: AGENT_STEP_LIMIT_IGNORED,
+            summary: "The validated OpenCode v1 task route does not enforce native steps or maxSteps on child agents.",
+            evidence: ".capture/agents",
+          },
+        ],
       },
     },
     source: {
       date: "2026-09-11",
       validatedOn: [
+        {
+          version: opencodeHarness.referenceVersion,
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "Isolated-home generated project and package agents declaring steps:2 or maxSteps:2 each made four child model requests and returned the scripted result, matching uncapped controls. Both native spellings are ineffective on the v1 task route (.capture/agents/drive.mjs, evidence/opencode-v1-step-limits.json).",
+        },
+        {
+          version: "1.18.31",
+          date: "2026-10-17",
+          method: "live-probe",
+          artifact: ".capture/agents",
+          what: "Repeated both ignored step-cap spellings on generated project/package agents and uncapped controls: all six cases made four child requests and returned the scripted completion. No ambient personal settings or skills were loaded.",
+        },
         {
           version: "1.18.34",
           date: "2026-10-04",

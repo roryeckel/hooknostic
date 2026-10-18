@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, parseMarkdownFrontmatter } from "@hooknostic/agent-plugin";
 
+import { codexAgentSchemaValidation } from "../../adapter-codex/src/agent-native-source.js";
 import { CODEX_PLUGIN_MODE_RANGE } from "../../adapter-codex/src/generate.js";
+import { codexHarness } from "../../adapter-codex/src/harness.js";
 import { opencodeV1Adapter, opencodeV2Harness } from "../../adapter-opencode/src/index.js";
 import { defaultAdapterRegistry } from "../../cli/src/registry.js";
 import { buildProject } from "./build.js";
@@ -101,6 +103,124 @@ async function fixture(
 }
 
 describe("agent definition project delivery", () => {
+  it("uses the requested Codex version for effective-field reporting", async () => {
+    const definition = REVIEWER.replace("    model: gpt-probe", "    model_provider: openai\n    model: gpt-probe");
+    const reference = await buildProject({
+      ...(
+        await fixture({ "reviewer.md": definition }, { targets: { codex: { version: codexHarness.referenceVersion } } })
+      ).options,
+      dryRun: true,
+    });
+    expect(reference.ok).toBe(true);
+    expect(reference.report.targets["codex"]?.project?.degradations).toBeUndefined();
+    const recent = await buildProject({
+      ...(
+        await fixture(
+          { "reviewer.md": definition },
+          { targets: { codex: { version: codexAgentSchemaValidation[1]!.version } } },
+        )
+      ).options,
+      dryRun: true,
+    });
+    expect(recent.ok).toBe(false);
+    expect(recent.report.targets["codex"]?.project?.degradations).toContainEqual(
+      expect.objectContaining({ id: "codex:agent-field-ignored", reason: expect.stringContaining("model_provider") }),
+    );
+  });
+  it("reports an all-mode default's extra Codex native fields only on its primary route", async () => {
+    const definition = WRITER.replace(
+      "---\nYou write docs.",
+      "native:\n  codex:\n    personality: friendly\n---\nYou write docs.",
+    );
+    const { options } = await fixture(
+      { "writer.md": definition },
+      { components: { defaultAgent: "writer", onUnsupported: "warn" } },
+    );
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(false);
+    expect(built.report.targets["codex"]?.project?.degradations).toContainEqual(
+      expect.objectContaining({ id: "codex:default-agent-field-ignored", name: "writer" }),
+    );
+    const accepted = await buildProject({
+      ...(
+        await fixture(
+          { "writer.md": definition },
+          {
+            components: {
+              defaultAgent: "writer",
+              onUnsupported: "warn",
+              accept: ["codex:default-agent-field-ignored"],
+            },
+          },
+        )
+      ).options,
+      dryRun: true,
+    });
+    expect(accepted.ok).toBe(true);
+    expect(
+      accepted.plan
+        ?.find((item) => item.target === "codex")
+        ?.integration?.entries.some((entry) => entry.key?.includes("personality")),
+    ).toBe(false);
+  });
+
+  it("does not validate an excluded Codex agent's native fields", async () => {
+    const definition = REVIEWER.replace(
+      "    model: gpt-probe",
+      "    hooknostic_unknown_key: true\n    model: gpt-probe",
+    );
+    const { options } = await fixture(
+      { "reviewer.md": definition },
+      { targets: { codex: { agents: { exclude: ["reviewer"] } } } },
+    );
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(true);
+    expect(built.report.diagnostics.some((diagnostic) => diagnostic.target === "codex")).toBe(false);
+  });
+  it("refuses Codex schema errors even when invalid/unsupported/degraded policies warn", async () => {
+    const definition = REVIEWER.replace(
+      "    model: gpt-probe",
+      "    hooknostic_unknown_key: true\n    model: gpt-probe",
+    );
+    const { options } = await fixture(
+      { "reviewer.md": definition },
+      { components: { onInvalid: "warn", onUnsupported: "warn", onDegraded: "warn" } },
+    );
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(false);
+    expect(built.report.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "HN503",
+        severity: "error",
+        target: "codex",
+        message: expect.stringContaining("hooknostic_unknown_key"),
+      }),
+    );
+  });
+
+  it("requires acceptance for the Codex agent sandbox shortfall", async () => {
+    const definition = REVIEWER.replace("    model: gpt-probe", "    sandbox_mode: read-only\n    model: gpt-probe");
+    const { options } = await fixture({ "reviewer.md": definition });
+    const built = await buildProject({ ...options, dryRun: true });
+    expect(built.ok).toBe(false);
+    expect(built.report.targets["codex"]?.project?.degradations).toContainEqual(
+      expect.objectContaining({ id: "codex:agent-field-ignored", name: "reviewer" }),
+    );
+    const accepted = await buildProject({
+      ...(await fixture({ "reviewer.md": definition }, { components: { accept: ["codex:agent-field-ignored"] } }))
+        .options,
+      dryRun: true,
+    });
+    expect(accepted.ok).toBe(true);
+    expect(accepted.report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN101", severity: "info", target: "codex" }),
+    );
+    expect(
+      accepted.plan
+        ?.find((item) => item.target === "codex")
+        ?.integration?.files.find((file) => file.path.endsWith("reviewer.toml"))?.contents,
+    ).toContain('sandbox_mode = "read-only"');
+  });
   it("writes each harness's native file, owns it, and detects a changed definition", async () => {
     const { root, options } = await fixture({ "reviewer.md": REVIEWER });
 
@@ -554,6 +674,49 @@ async function packageFixture(
 }
 
 describe("agent definition package delivery", () => {
+  it.each(["project", "package"] as const)(
+    "reports ignored OpenCode v1 caps on %s delivery and preserves provider options",
+    async (delivery) => {
+      const definition = REVIEWER.replace(
+        "    temperature: 0.1",
+        "    steps: 2\n    maxSteps: 2\n    temperature: 0.1\n    custom_provider_option: literal",
+      );
+      const targets = { opencode: { version: opencodeV1Adapter().harness.recommendedRange } };
+      const { options } = await packageFixture({ "reviewer.md": definition }, { targets, delivery });
+      const built = await buildProject({ ...options, dryRun: true });
+      expect(built.ok).toBe(false);
+      const report =
+        delivery === "project"
+          ? built.report.targets["opencode"]?.project
+          : built.report.targets["opencode"]?.projection;
+      expect(report?.degradations).toContainEqual(
+        expect.objectContaining({
+          id: "opencode:agent-step-limit-ignored",
+          name: "reviewer",
+          reason: expect.stringContaining("steps, maxSteps"),
+        }),
+      );
+      const accepted = await buildProject({
+        ...(
+          await packageFixture(
+            { "reviewer.md": definition },
+            { targets, delivery, components: { accept: ["opencode:agent-step-limit-ignored"] } },
+          )
+        ).options,
+        dryRun: true,
+      });
+      expect(accepted.ok).toBe(true);
+      const plan = accepted.plan?.find((item) => item.target === "opencode");
+      const files = delivery === "project" ? plan?.integration?.files : plan?.artifacts;
+      expect(
+        files?.some((file) =>
+          String(typeof file.contents === "string" ? file.contents : new TextDecoder().decode(file.contents)).includes(
+            "custom_provider_option",
+          ),
+        ),
+      ).toBe(true);
+    },
+  );
   it.each(["package", "project"] as const)(
     "applies agent exclusions beside a package root for %s delivery",
     async (delivery) => {

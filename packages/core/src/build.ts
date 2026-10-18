@@ -487,25 +487,33 @@ async function projectionExcludes(
  * that delivers native fields checks this, so a package build cannot drop a
  * field that a project build rejects.
  */
-function reservedNativeFields(
+function nativeAgentDiagnostics(
   agents: readonly AgentDefinition[],
   adapter: HarnessAdapter,
-  target: string,
+  target: TargetSpec,
   onInvalid: "error" | "warn" = "error",
 ): Diagnostic[] {
   const reserved = adapter.agents?.reservedNativeKeys ?? [];
-  return agents.flatMap((agent) =>
-    Object.keys(agent.native[adapter.id] ?? {})
+  return agents.flatMap((agent) => [
+    ...Object.keys(agent.native[adapter.id] ?? {})
       .filter((key) => reserved.includes(key))
       .map((key): Diagnostic => ({
         code: "HN503",
         severity: onInvalid,
-        target,
+        target: target.id,
         component: "agents.native",
         location: { file: agent.source },
         message: `agent ${JSON.stringify(agent.name)} sets native.${adapter.id}.${key}, which ${adapter.id} reserves for the portable definition or another component`,
       })),
-  );
+    ...(adapter.agents?.validateNative?.(agent, target) ?? []).map((message): Diagnostic => ({
+      code: "HN503",
+      severity: "error",
+      target: target.id,
+      component: "agents.native",
+      location: { file: agent.source },
+      message: `agent ${JSON.stringify(agent.name)}: ${message}`,
+    })),
+  ]);
 }
 
 /**
@@ -978,7 +986,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         targetAgents.defaultAgent,
       );
       resolution.diagnostics.push(
-        ...reservedNativeFields(targetAgents.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
+        ...nativeAgentDiagnostics(targetAgents.agents ?? [], adapterFor(id)!, spec, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       report.targets[id]!.projection = analyzedProjectionReport(
@@ -1137,7 +1145,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
         targetAgents.defaultAgent,
       );
       resolution.diagnostics.push(
-        ...reservedNativeFields(targetAgents.agents ?? [], adapterFor(id)!, id, config.components!.onInvalid),
+        ...nativeAgentDiagnostics(targetAgents.agents ?? [], adapterFor(id)!, spec, config.components!.onInvalid),
       );
       projectionResolutions.set(id, resolution);
       diagnostics.push(...resolution.diagnostics);
@@ -1569,7 +1577,12 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             // definition, so it is counted after the definitions are settled.
             // Fields the adapter reserves are refused before anything counts.
             diagnostics.push(
-              ...reservedNativeFields(selectedSource.agents ?? [], adapter, id, config.components?.onInvalid),
+              ...nativeAgentDiagnostics(
+                selectedSource.agents ?? [],
+                adapter,
+                targetSpecFromConfig(id, config.targets[id]!),
+                config.components?.onInvalid,
+              ),
             );
             // Resolve the fixed default independently of named definitions:
             // an adapter can deliver its instructions without offering agents
@@ -1662,6 +1675,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               ]),
             ];
             const projected = await adapter.projectComponents(selectedSource, root, output, configFromRoot, {
+              harnessVersion: config.targets[id]!.version,
               ...(Object.keys(selected.startupTimeoutMs).length === 0
                 ? {}
                 : { mcpStartupTimeoutMs: selected.startupTimeoutMs }),

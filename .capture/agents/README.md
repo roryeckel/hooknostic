@@ -209,6 +209,99 @@ generated-package mutant verifies that missing home expansion exposes the
 scratch secret to the recorded model request and fails the regression. Sources
 restore in `finally` after every mutation run.
 
+### Cross-harness native-field audit (2026-10-17)
+
+The OpenCode v1 step-cap probe now covers **generated project and package
+delivery**, with `steps: 2`, `maxSteps: 2`, and uncapped controls on the
+reference build and the previously validated newer build. All twelve isolated-home
+cases made four child requests and returned the scripted completion. The driver
+also reads the generated frontmatter or executes the emitted package config hook
+to verify the requested cap survives projection. This check distinguishes an
+ignored native field from a field the projector forgot to emit. No claim is made
+about step limits in a primary-only session.
+
+```sh
+# Put the desired pinned v1 binary first on PATH; set its playback version.
+node --experimental-strip-types .capture/agents/drive.mjs opencode-v1 --only generated-steps
+node --experimental-strip-types .capture/agents/drive.mjs opencode-v1 --only generated-maxsteps
+node --experimental-strip-types .capture/agents/drive.mjs opencode-v1 --only packaged-steps
+node --experimental-strip-types .capture/agents/drive.mjs opencode-v1 --only packaged-maxsteps
+```
+
+Use `HKN_CAPTURE_LABEL=native-fields-ref` or `native-fields-newer` to retain both
+builds. The matching `generated` and `packaged` cases are uncapped controls.
+`opencode:agent-step-limit-ignored` applies to delegable definitions requesting a
+cap, on the v1 profile only. Native provider-option passthrough is preserved.
+
+Fresh **Codex live probes** on both schema-recorded builds run native `direct`
+and `generated-sandbox` cases using `codex-home`, with all user state isolated.
+The parent is configured for full access in its disposable home, without a CLI
+sandbox override. The child requests read-only, reports the parent's full-access
+policy, and writes its scratch marker. The generated case preserves the native
+field and explicitly accepts `codex:agent-field-ignored`.
+
+```sh
+node --experimental-strip-types .capture/agents/drive.mjs codex-home --only direct
+node --experimental-strip-types .capture/agents/drive.mjs codex-home --only generated-sandbox
+node .capture/agents/promote-native-audit.mjs
+```
+
+Curated, derived **live-probe** evidence is in
+[`evidence/opencode-v1-step-limits.json`](evidence/opencode-v1-step-limits.json)
+and [`evidence/codex-agent-native.json`](evidence/codex-agent-native.json).
+The promotion asserts the expected observations; raw requests remain ignored.
+Only the account segment of any saved home path is redacted to `user`.
+All responses/tool arguments are scripted loopback traffic: no provider
+credentials, cloud requests, model credits, or personal settings are used.
+
+Codex native **shape validation is schema-derived**, separately from those
+behavioral observations. Regenerate the checked-in, stripped schemas and their
+redistribution notice with `node .capture/agents/extract-codex-agent-schema.mjs`.
+The source versions live in `agent-native-source.ts` and the adapter's reference
+metadata. The source schemas are
+[reference ConfigToml](https://github.com/openai/codex/blob/rust-v0.148.0/codex-rs/core/config.schema.json)
+and [newer ConfigToml](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/config.schema.json).
+The standalone role file adds `nickname_candidates`; its trimming and name rules
+derive from the matching reference `config/agent_roles.rs` and newer
+`agent-roles/src/agent_role_config.rs`. Integer formats are restricted to values
+JavaScript can represent exactly. Unknown fields, invalid nested values, and
+invalid nickname lists are authoring errors rather than accepted omissions.
+A requested range spanning both recorded schema families must satisfy both;
+this does not claim a capture of every intervening release.
+
+The broader effective-field audit is **type/source-derived**, not additional
+live coverage:
+
+| Source route | What the code establishes |
+| --- | --- |
+| [Reference role loader](https://github.com/openai/codex/blob/rust-v0.148.0/codex-rs/core/src/agent/role.rs) and [runtime overrides](https://github.com/openai/codex/blob/rust-v0.148.0/codex-rs/core/src/tools/handlers/multi_agents_common.rs) | Reloads the role's configuration layer, then reapplies live approval/reviewer/cwd/permission state. Schema acceptance does not permit replacing parent permissions. |
+| [Newer role loader](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/agent/role.rs) and [child configuration](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/agent/child_config.rs) | Applies model, effort, summary, verbosity, personality, service tier and developer instructions; accepts supported capability disabling and selected skill disabling, then reapplies live permissions. Other schema-valid settings are ignored. |
+
+The newer capability subset is `shell_tool`, `apps` (including `connectors`),
+`plugins`, `memory_tool`, and `request_permissions_tool`, with `false` only.
+Skill config entries and bundled skills apply only when disabled;
+`include_instructions` applies only as `false`; other skill settings are dropped.
+These ignored requests are reported individually under `codex:agent-field-ignored`.
+For an `all` default, extra fields carried by the subagent file also report
+`codex:default-agent-field-ignored` for their absent primary-session effect.
+Primary-only defaults keep their existing named omission reporting.
+The loader audit does not upgrade every native field to live behavioral evidence.
+
+Claude still uses the shared project/package frontmatter renderer. Model/tools
+and project maxTurns have the earlier live coverage; plugin permissionMode has
+an explicit conditional degradation. Other frontmatter fields remain passthrough
+without a new exhaustive behavioral claim. Pi explicitly refuses native fields;
+its default route remains instruction-only. No new native capability is claimed
+for either adapter by this audit.
+
+`node .capture/agents/verify-native-audit-mutations.mjs` temporarily breaks native
+validation, version selection, policy severity, selection filtering, shortfall
+reporting, primary-route boundaries, immutability, and project/package emission.
+The verifier requires assertion failures and restores every source in `finally`.
+It also drives the real reference binaries after fields are dropped, requiring
+the emitted-artifact assertions to fail without a timeout. Full reports remain
+under ignored `captured/native-audit-mutations/`.
+
 ### Discovery and selection
 
 | | Claude 2.1.283 | Codex 0.156.1 | OpenCode 1.18.31 | OpenCode 2.0.17 |
