@@ -15,8 +15,7 @@ name: Harness watch
 #              outputs map).
 #   record   — PAT job that never installs or runs the harness: rewrites the
 #              rolling scheduled-playback record (ADR-0009) on pass, opens or
-#              updates harness-watch/<harness>, optionally auto-merges via the
-#              HARNESS_WATCH_AUTOMERGE repo variable. Range-extension exits
+#              updates harness-watch/<harness>. Range-extension exits
 #              (3) file a deduped issue with GITHUB_TOKEN — the PAT
 #              deliberately has no Issues scope.
 #   report-failure — GITHUB_TOKEN only: deduped issue on playback failure.
@@ -31,6 +30,9 @@ name: Harness watch
 #                  verdict in the step summary, comments on the PR or failure
 #                  issue, files a deduped report issue for non-clean verdicts
 #                  with no destination, and closes reconciled failure issues.
+#   automerge     — opt-in PAT coordinator after publish-verdict: compares exact
+#                  generated changes, updates stale branches, waits for required
+#                  checks, and squash-merges serially with expected head SHAs.
 #
 # The version-facts hard rule (ADR-0008) holds end to end: nothing here moves
 # referenceVersion, fixtureDir, recommendedRange, or profile ranges. The drift
@@ -441,10 +443,6 @@ jobs:
             gh pr create --base master --head "$BRANCH" --label harness-watch \
               --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
           fi
-
-      - name: Auto-merge (opt-in via repo variable)
-        if: steps.record.outputs.outcome == 'wrote' && vars.HARNESS_WATCH_AUTOMERGE == 'true'
-        run: gh pr merge "harness-watch/${{ matrix.harness }}" --auto --squash
 
   report-failure:
     needs: [detect, verify]
@@ -891,3 +889,45 @@ jobs:
           if [ -n "$PR_URL" ] && [ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]; then
             gh issue close "$NUMBER" --comment "Passing run with the matching PR ($PR_URL): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
+
+  automerge:
+    # Serialize the batch only after every applicable drift verdict has been published.
+    # A failed unrelated harness must not suppress a passing lane's own evidence gate.
+    needs: [detect, verify, record, drift, publish-verdict]
+    if: ${{ always() && needs.detect.result == 'success' && needs.detect.outputs.count != '0' && needs.publish-verdict.result == 'success' && vars.HARNESS_WATCH_AUTOMERGE == 'true' && inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.HARNESS_WATCH_PAT }}
+      GH_REPO: ${{ github.repository }}
+      WATCH_MATRIX: ${{ needs.detect.outputs.matrix }}
+      WATCH_FORCE_DRIFT: ${{ inputs.force_llm }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Pin the coordinator to this run's trusted source, never a candidate PR.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .github/node/ci/.node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: watch-outcome-*
+          path: watch-evidence
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        # Patch-only batches have no drift artifacts. Missing applicable evidence
+        # is still a hold, enforced independently for each lane by the coordinator.
+        continue-on-error: true
+        with:
+          pattern: drift-verdict-*
+          path: watch-evidence
+          merge-multiple: true
+      - name: Merge validation-only PRs after current required checks
+        run: node scripts/merge-harness-watch.mjs watch-evidence

@@ -37,7 +37,7 @@ function jobSource(name) {
 describe("harness-watch workflow structure", () => {
   it("rehearses free drift without running any writer job", () => {
     expect(source).toContain("      dry_run:");
-    for (const name of ["record", "report-failure", "publish-verdict"]) {
+    for (const name of ["record", "report-failure", "publish-verdict", "automerge"]) {
       const job = jobSource(name);
       expect(job.match(/^ {4}if:.*$/m)?.[0], name).toContain("inputs.dry_run != 'true'");
     }
@@ -224,5 +224,21 @@ describe("harness-watch workflow structure", () => {
     );
     expect(destination).toContain("EXPECTED_PR_TITLE");
     expect(destination).toContain('[ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]');
+  });
+
+  it("merges in one trusted coordinator after verification and drift publishing", () => {
+    expect(jobSource("record")).not.toContain("gh pr merge");
+    const merge = jobSource("automerge");
+    expect(merge).toContain("needs: [detect, verify, record, drift, publish-verdict]");
+    expect(merge).toContain("needs.publish-verdict.result == 'success'");
+    expect(merge).toContain("vars.HARNESS_WATCH_AUTOMERGE == 'true'");
+    expect(merge).not.toContain("strategy:");
+    expect(merge).toContain("ref: ${{ github.sha }}");
+    expect(merge).toContain("persist-credentials: false");
+    expect(merge).toContain("GH_TOKEN: ${{ secrets.HARNESS_WATCH_PAT }}");
+    expect(merge).toContain("pattern: watch-outcome-*");
+    expect(merge).toContain("pattern: drift-verdict-*");
+    expect(merge).toContain("WATCH_FORCE_DRIFT: ${{ inputs.force_llm }}");
+    expect(merge).toContain("node scripts/merge-harness-watch.mjs watch-evidence");
   });
 });
