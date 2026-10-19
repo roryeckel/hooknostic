@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { opencodeAdapter, opencodeV2CapabilityProfiles, opencodeV2Harness } from "@hooknostic/adapter-opencode";
 import { resolveTargetAdapter } from "@hooknostic/core";
 
+// @ts-expect-error The capture event reader is plain JavaScript.
+import { readEventRecords } from "../../../.capture/opencode-v2/lifecycle.mjs";
 // @ts-expect-error The constructed loopback model is plain JavaScript.
 import { startToolModel } from "../../../.capture/opencode-v2/tool-model.mjs";
 import {
@@ -38,6 +40,29 @@ async function toolModelDelta(baseUrl: string, messages: unknown[]) {
   const chunk = (await response.text()).split("\n").find((line) => line.startsWith("data: {"))!;
   return JSON.parse(chunk.slice(6)).choices[0].delta;
 }
+
+describe("OpenCode playback event records", () => {
+  it("waits for a complete line while the capture is being appended", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-event-records-"));
+    const path = join(root, "events.jsonl");
+    try {
+      expect(await readEventRecords(path)).toEqual([]);
+      await writeFile(path, '{"sequence":');
+      expect(await readEventRecords(path)).toEqual([]);
+      await appendFile(path, '1}\n{"sequence":');
+      expect(await readEventRecords(path)).toEqual([{ sequence: 1 }]);
+      await appendFile(path, "2}");
+      expect(await readEventRecords(path)).toEqual([{ sequence: 1 }]);
+      await appendFile(path, "\n");
+      expect(await readEventRecords(path)).toEqual([{ sequence: 1 }, { sequence: 2 }]);
+      // A completed malformed line must still fail instead of hiding corrupt capture data.
+      await appendFile(path, '{"sequence":\n');
+      await expect(readEventRecords(path)).rejects.toThrow(SyntaxError);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("OpenCode OAuth playback readiness", () => {
   it("retries the MCP call after the captured tool-catalog update", async () => {
