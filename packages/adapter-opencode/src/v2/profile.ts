@@ -99,8 +99,8 @@ export const opencodeV2CapabilityProfiles: CapabilityProfile[] = [
         },
         // scheduled-playback:begin
         {
-          version: "2.0.27",
-          date: "2026-10-12",
+          version: "2.0.32",
+          date: "2026-10-19",
           method: "live-probe",
           artifact: ".capture/harness-playback",
           what: "scheduled model-free playback vs a newer build: artifact discovery, rewrite/block markers, and lifecycle events verified",
