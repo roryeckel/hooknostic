@@ -272,7 +272,10 @@ empty, so the guards exclude the fork no-op and detect failure). Per harness:
    an already-recorded version produces no PR and no failure issue, and a
    clean/inconclusive result must not vanish.
 3. Locate the conversation destination: an open `harness-watch/<harness>` PR
-   whose title names this exact version first, else the deduped failure issue.
+   whose title names this exact version first, else the deduped failure issue,
+   else the open range-extension issue (exact title match) that `record` filed
+   earlier in the run for an out-of-range build — so a major release gets one
+   thread, not two.
    A non-clean verdict (drift *or* inconclusive) with no destination files a
    new deduped report issue; the verdict comment lands on whichever matching
    destination exists.
