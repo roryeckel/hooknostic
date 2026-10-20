@@ -1,0 +1,27 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "bash",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "echo hooknostic-error; exit 7"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "hooknostic-error\n\n\nCommand exited with code 7"
+      }
+    ],
+    "structuredContent": {
+      "output": "hooknostic-error\n",
+      "truncated": false,
+      "exit_code": 7,
+      "wall_time_seconds": 0
+    },
+    "isError": true
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-18dFHR\\project",
+    "mode": "print"
+  }
+}

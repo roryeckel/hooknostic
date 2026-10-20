@@ -16,7 +16,7 @@ targets: {
   claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
   codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
   opencode: { version: ">=1.18 <2",  delivery: "project",  output: "./dist/opencode" },
-  pi:       { version: ">=0.84 <1",  delivery: "project",  output: "./dist/pi" },
+  pi:       { version: ">=1 <2",     delivery: "project",  output: "./dist/pi" },
 }
 ```
 
@@ -57,7 +57,13 @@ playback lane checks both `pi install -l <local-path>` and an npm-coordinate
 install served by a local read-only registry; both routes load the skill and
 honor the compiled hook. This local registry test makes no publication claim.
 
-Pi 0.84.x has no native MCP channel, so Pi targets report MCP components as
+On Pi 1.x the package also carries `hooknostic-mcp.js`, a second manifest
+extension that registers the package's stdio and streamable-HTTP MCP servers
+with Pi's native MCP client; stdio servers run through the generated
+`hooknostic-runtime/` launcher. Pi rejects SSE, so SSE servers are reported as
+unsupported. Pi's default exposure applies: the model reaches the tools through
+`codemode` scripts, whose calls still reach tool hooks. Pi 0.84.x has no native
+MCP channel, so a `>=0.84 <1` target reports every MCP component as
 unsupported. The capability report also marks permission requests unsupported
 and non-string tool-output replacement approximate.
 

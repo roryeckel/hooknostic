@@ -1,0 +1,14 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "powershell",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "Write-Output hooknostic-original"
+    }
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-76IlQb\\project",
+    "mode": "print"
+  }
+}

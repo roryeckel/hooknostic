@@ -143,8 +143,23 @@
       "mode": 420
     },
     {
+      "path": ".hooknostic/artifacts/pi/.gitattributes",
+      "hash": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "mode": 420
+    },
+    {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "0d8b9b1c58121ab1c5485258dccf279d7c1bebb440f1da153ec91a836c6fec3a",
+      "hash": "eda4685528e703e9d439009169ed8bc198f2f09734c7e9ce64190929a53b9a5c",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/pi/mcp-launcher.mjs",
+      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/pi/mcp-servers.json",
+      "hash": "837cd0aa242d3bcdfa576758b4ad8c64b26255954a7dd33483917a4ff7954022",
       "mode": 420
     },
     {
@@ -163,7 +178,7 @@
     },
     {
       "path": ".opencode/plugins/hooknostic-components.js",
-      "hash": "f43fdf255ef4285875a6628a588ec2ce9ce4b01fa6d4692acea8a19fcc4b1eac",
+      "hash": "34828f784d2b9382b0a30991a04d7bf1316fd9e3969fb9c79256d30a21de3c52",
       "mode": 420
     },
     {
@@ -173,7 +188,12 @@
     },
     {
       "path": ".pi/extensions/.gitattributes",
-      "hash": "2657c649826aee3818b66cb4f1bff3b718a4fd4d417f290579e1d0226fdfb337",
+      "hash": "b890dad119a67eaf4177a4b6cac7e16bd6ace9627e03d8502772cc8441563e3f",
+      "mode": 420
+    },
+    {
+      "path": ".pi/extensions/hooknostic-mcp.js",
+      "hash": "4c164d1ca79171fcf88f4d71eeb7056c0a3efcd14a12f594a9a56b146be66f5d",
       "mode": 420
     },
     {

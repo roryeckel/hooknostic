@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "/tmp/hkn-pi-mcp-q1fuXm/project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.error",
+  "tool": {
+    "kind": "mcp",
+    "nativeName": "mcp__probe__probe_fail",
+    "input": {},
+    "mcp": {
+      "server": "probe",
+      "tool": "probe_fail"
+    }
+  },
+  "error": {}
+}

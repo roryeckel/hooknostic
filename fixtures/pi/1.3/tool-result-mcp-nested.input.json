@@ -1,0 +1,32 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "mcp__probe__probe_echo",
+    "toolCallId": "call_playback/1",
+    "parentToolCallId": "call_playback",
+    "input": {},
+    "content": [
+      {
+        "type": "text",
+        "text": "pi-mcp-probe-output"
+      }
+    ],
+    "details": {
+      "server": "probe",
+      "tool": "probe_echo"
+    },
+    "structuredContent": {
+      "content": [
+        {
+          "type": "text",
+          "text": "pi-mcp-probe-output"
+        }
+      ]
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "/tmp/hkn-pi-mcp-6dfc7h/project",
+    "mode": "print"
+  }
+}

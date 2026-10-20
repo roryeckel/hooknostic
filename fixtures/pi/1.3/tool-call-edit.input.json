@@ -1,0 +1,20 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "edit",
+    "toolCallId": "call_playback",
+    "input": {
+      "path": "seed.txt",
+      "edits": [
+        {
+          "oldText": "alpha",
+          "newText": "beta"
+        }
+      ]
+    }
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-ElSiN9\\project",
+    "mode": "print"
+  }
+}

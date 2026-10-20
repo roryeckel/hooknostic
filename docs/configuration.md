@@ -53,18 +53,20 @@ up, and an id nothing rates below exact is an error. `hooknostic inspect <target
 An accepted instance remains visible as information in diagnostics and the report.
 Unknown ids fail validation. Acceptance does not make unsupported components work.
 An unsupported component can declare a named omission (ADR-0031). Pi declares
+`pi:mcp-sse-omitted` on 1.x, which rejects the legacy SSE transport, and
 `pi:mcp-stdio-omitted`, `pi:mcp-streamable-http-omitted`, and
-`pi:mcp-sse-omitted`. List only the omissions you intend in `components.accept`:
+`pi:mcp-sse-omitted` on a `>=0.84 <1` target, which has no native MCP channel.
+List only the omissions you intend in `components.accept`:
 
 ```ts
 components: {
   root: ".",
-  accept: ["pi:mcp-stdio-omitted"],
+  accept: ["pi:mcp-sse-omitted"],
 }
 ```
 
-This permits Pi's stdio MCP servers to be skipped while keeping HTTP/SSE and
-other unsupported components fatal. HN205 becomes informational for the accepted
+This permits Pi's SSE MCP servers to be skipped while keeping other
+unsupported components fatal. HN205 becomes informational for the accepted
 omission; reports retain `unsupported` support and skipped counts. The same rule
 applies to project delivery. Adapter IDs qualify acceptance even when a target
 uses another name. `inspect` lists the available omission IDs and their evidence.

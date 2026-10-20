@@ -1,0 +1,13 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "mcp__probe__probe_echo",
+    "toolCallId": "call_playback/1",
+    "parentToolCallId": "call_playback",
+    "input": {}
+  },
+  "ctx": {
+    "cwd": "/tmp/hkn-pi-mcp-6dfc7h/project",
+    "mode": "print"
+  }
+}

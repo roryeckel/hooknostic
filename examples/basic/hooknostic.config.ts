@@ -12,7 +12,7 @@ export default defineConfig({
   targets: {
     claude: { version: ">=2.1 <3", delivery: "package", output: "./dist/claude" },
     codex: { version: ">=0.148 <1", delivery: "project", output: "./dist/codex" },
-    pi: { version: ">=0.84 <1", delivery: "project", output: "./dist/pi" },
+    pi: { version: ">=1 <2", delivery: "project", output: "./dist/pi" },
     opencode: {
       version: ">=1.18 <2",
       delivery: "project",

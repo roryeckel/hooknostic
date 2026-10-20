@@ -1,0 +1,27 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "bash",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "echo hooknostic-original"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "hooknostic-original\n"
+      }
+    ],
+    "structuredContent": {
+      "output": "hooknostic-original\n",
+      "truncated": false,
+      "exit_code": 0,
+      "wall_time_seconds": 0.1
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-VcyewW\\project",
+    "mode": "print"
+  }
+}

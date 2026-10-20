@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "before_agent_start"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-VcyewW\\project"
+  },
+  "correlation": {},
+  "event": "prompt.before",
+  "prompt": "Run the probe command once, then reply."
+}

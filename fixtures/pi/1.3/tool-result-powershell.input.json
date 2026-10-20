@@ -1,0 +1,27 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "powershell",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "Write-Output hooknostic-original"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "hooknostic-original\r\n"
+      }
+    ],
+    "structuredContent": {
+      "output": "hooknostic-original\r\n",
+      "truncated": false,
+      "exit_code": 0,
+      "wall_time_seconds": 0.7
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-76IlQb\\project",
+    "mode": "print"
+  }
+}

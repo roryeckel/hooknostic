@@ -1,0 +1,90 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "5444caaa",
+      "parentId": "3e135ede",
+      "timestamp": "2026-10-20T01:48:16.925Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_RETRY"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792460896921,
+        "responseId": "chatcmpl-playback-4",
+        "rawStopReason": "stop",
+        "durationMs": 5,
+        "thinkingLevel": "off"
+      }
+    },
+    {
+      "type": "message",
+      "id": "4ebe9660",
+      "parentId": "5444caaa",
+      "timestamp": "2026-10-20T01:48:16.942Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "retry-aborted"
+          }
+        ],
+        "timestamp": 1792460896941
+      }
+    },
+    {
+      "type": "message",
+      "id": "19097780",
+      "parentId": "4ebe9660",
+      "timestamp": "2026-10-20T01:48:16.945Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "error",
+        "timestamp": 1792460896943,
+        "errorMessage": "503: {\"message\":\"completion probe overloaded\"}",
+        "durationMs": 1,
+        "thinkingLevel": "off"
+      }
+    }
+  ]
+}

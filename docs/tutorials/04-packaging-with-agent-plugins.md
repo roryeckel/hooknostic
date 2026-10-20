@@ -53,12 +53,13 @@ The default `opencode` target uses v2; `legacy` names an explicit v1 target with
 `adapter: "opencode"`. Both outputs are packages, with distinct native loaders.
 Install only the output matching your harness family. See [OpenCode families](../opencode-families.md).
 
-### Pi hooks and skills
+### Pi hooks, skills, and MCP servers
 
-Pi has no native MCP channel. The default configuration includes it and accepts
-only `pi:mcp-stdio-omitted`. Pi receives the same portable hooks and skill, while
-its stdio MCP registration is omitted and reported as unsupported. Other
-unsupported components remain errors:
+Pi 1.x receives the same portable hooks and skill, and its package carries a
+second extension, `hooknostic-mcp.js`, that registers the stdio MCP server with
+Pi's native MCP client through a generated launcher. Pi reaches MCP tools
+through `codemode` scripts by default, and their calls still reach the tool
+hooks. Pi rejects SSE, so an SSE server would be reported as unsupported:
 
 ```sh
 node packages/cli/bin/hooknostic.mjs check --config examples/agent-plugin/hooknostic.config.ts
@@ -69,8 +70,8 @@ pi install -l ./examples/agent-plugin/dist/pi
 Run the install command from the project where you want to use the package,
 with an absolute package path if needed. Follow Pi's activation prompts, then
 ask it to run `echo HOOKNOSTIC_BLOCK_PROBE` and use the `greet` skill. The
-blocking hook and skill are present; the MCP greeting check below applies to
-the other outputs. `pnpm build:examples` also regenerates the Pi package and
+blocking hook, skill, and MCP server are present; in Pi the greeting tool is
+reached through `codemode` rather than called directly. `pnpm build:examples` also regenerates the Pi package and
 includes Pi in `examples/agent-plugin/dist/hooknostic-build.json`.
 
 ## Install through a marketplace

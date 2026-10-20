@@ -57,8 +57,8 @@ need a `tool` holding `nativeName` and `input`. Other events refuse one.
 These are the harness's own tool name and arguments: Claude's `Bash` takes
 `command`, while Codex's `exec_command` takes `cmd`. Dispatch classifies the
 call the way that target's decoder does and fills in `kind`, `mcp` and `shell`
-itself. An event that supplies any of the three is rejected, with the one
-exception described next. So Claude's
+itself. An event that supplies any of the three is rejected, with the two
+exceptions described next. So Claude's
 `Write` is a file write however its input looks, and an input the classifier
 does not recognize leaves `tool.shell` absent, exactly as in a real session.
 
@@ -77,6 +77,21 @@ different dialect or none: Claude's `Bash` is always `posix`, and Codex never
 establishes one, so a hook's unknown-dialect branch is what a Codex event
 exercises. `hooknostic inspect <target>` says where each target's dialect comes
 from.
+
+An MCP tool's `mcp` can be stated where the harness states it outside the tool
+name (ADR-0032). pi's tool names cannot be split reliably, so a pi MCP call
+carries no server or tool unless the test supplies what the harness would have
+stated, which pi does only on the result of a tool its MCP extension
+registered:
+
+```json
+{ "event": "tool.after", "tool": { "nativeName": "mcp__docs__search", "input": {}, "mcp": { "server": "docs", "tool": "search" } }, "output": "ok" }
+```
+
+`mcp` must hold `server` and `tool`, both strings, and is accepted only on the
+events `hooknostic inspect <target>` lists as stating it. A pi `tool.before`
+event is refused one. Claude and Codex derive the split from the name, so a test
+never states it there.
 
 ## Results
 

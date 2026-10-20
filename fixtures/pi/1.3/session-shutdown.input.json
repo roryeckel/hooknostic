@@ -1,0 +1,10 @@
+{
+  "event": {
+    "type": "session_shutdown",
+    "reason": "quit"
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-VcyewW\\project",
+    "mode": "print"
+  }
+}

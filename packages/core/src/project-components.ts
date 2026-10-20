@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import {
   type AgentPluginDegradation,
@@ -11,7 +11,8 @@ import {
   unexpandedSkillReferenceReason,
 } from "@hooknostic/agent-plugin";
 
-import { bundleMcpLauncher, type McpLauncherServer } from "./mcp-launcher.js";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, type McpLauncherServer } from "./mcp-launcher.js";
+import { portableRelative } from "./portable-path.js";
 import type { ProjectIntegration } from "./project-files.js";
 /**
  * Copy each skill into the project's `destination` tree, writing the target's
@@ -118,7 +119,7 @@ export async function projectMcpLauncher(
   // The loaded MCP source and the runtime's import.meta.url are real paths.
   // Keep their relative offsets independent of the caller's project alias.
   root = await realpath(root);
-  const relativeToOutput = (path: string) => relative(resolve(root, output), path).replaceAll("\\", "/") || ".";
+  const relativeToOutput = (path: string) => portableRelative(resolve(root, output), path);
   const launcher = await bundleMcpLauncher({
     frontEnd: "self-resolving",
     rootOffset: relativeToOutput(source.mcp.root),
@@ -129,8 +130,11 @@ export async function projectMcpLauncher(
   return {
     files: [
       { path: `${output}/.gitattributes`, contents: "* -text\n" },
-      { path: `${output}/mcp-launcher.mjs`, contents: launcher },
-      { path: `${output}/mcp-servers.json`, contents: JSON.stringify({ plugin: "project", servers }, null, 2) + "\n" },
+      { path: `${output}/${MCP_LAUNCHER_FILE}`, contents: launcher },
+      {
+        path: `${output}/${MCP_SERVERS_FILE}`,
+        contents: JSON.stringify({ plugin: "project", servers }, null, 2) + "\n",
+      },
     ],
     entries: [],
     guidance: [],

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "tool_call"
+  },
+  "session": {
+    "cwd": "/tmp/hkn-pi-mcp-6dfc7h/project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.before",
+  "tool": {
+    "kind": "other",
+    "nativeName": "codemode",
+    "input": {
+      "code": "const result = await tools.mcp__probe__probe_echo({});\nreturn result;"
+    }
+  }
+}

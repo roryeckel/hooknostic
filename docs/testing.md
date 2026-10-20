@@ -74,17 +74,21 @@ scripted namespace-pair emission resolves the router's exact
 output, and the replaced marker must surface nowhere. If upstream starts
 honouring the field, the watch fails and the rating is revisited.
 
-The Claude, Codex and OpenCode v1 playback lanes also configure and call the in-repository stdio MCP
-fixture server. The dedicated MCP drive requires its tool to reach both
-`tool.before` and `tool.after` as normalized `mcp` events. Claude loads the
-fixture through `--mcp-config`, Codex through `mcp_servers`, and OpenCode
-through its local `mcp` configuration; the output-replacement drive remains
-separate because it is a capability-specific assertion.
-Pi's MCP cells are unsupported; its playback lane instead checks project
-`sync`, local-path and npm-coordinate package installation, native skill
-discovery, hook execution, and per-request context as a model-visible user
-message. The npm-coordinate test uses `pnpm pack` and a local read-only
-registry. Windows playback additionally exercises the installed Pi binary.
+The Claude, Codex, OpenCode v1 and Pi playback lanes also configure and call
+the in-repository stdio MCP fixture server. The dedicated MCP drive requires
+its tool to reach both `tool.before` and `tool.after` as normalized `mcp`
+events. Claude loads the fixture through `--mcp-config`, Codex through
+`mcp_servers`, OpenCode through its local `mcp` configuration, and Pi through
+a trusted project `.pi/mcp.json`, reaching it from a codemode script; the
+output-replacement drive remains separate because it is a capability-specific
+assertion. On Pi the MCP drive also requires `tool.mcp` on `tool.after` only,
+taken from the tool's source, and a Pi-only drive replaces the fixture tool's
+output inside a codemode script and requires the replacement, not the
+original, in the next model request. Pi's lane also checks project `sync`,
+local-path and npm-coordinate package installation, native skill discovery,
+hook execution, per-request context as a model-visible user message, and
+projected MCP servers. The npm-coordinate test uses `pnpm pack` and a local
+read-only registry. Windows playback additionally exercises the installed Pi binary.
 
 The loopback suite never switches to a paid model. Every declared driver
 limitation is written to the harness-watch workflow summary as an

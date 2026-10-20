@@ -35,6 +35,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { harnessFixtureDirs } from "./harness-fixture-dirs.mjs";
 import { isMainModule } from "./is-main-module.mjs";
 
 // ---------------------------------------------------------------------------
@@ -247,7 +248,7 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   let busAppendix = [];
   let payloads = captured;
   if (harness === "pi") {
-    // Adapter-observed channels, per decodePi and fixtures/pi/0.84. The tee
+    // Adapter-observed channels, per decodePi and fixtures/pi/1.3. The tee
     // also records UI/token events that have no portable hook counterpart.
     const mapped = new Set([
       "session_start",
@@ -409,15 +410,6 @@ function parseArgs(argv) {
   return opts;
 }
 
-const FIXTURE_DIRS = {
-  pi: "fixtures/pi/0.84",
-  claude: "fixtures/claude/2.1",
-  codex: "fixtures/codex/0.148",
-  opencode: "fixtures/opencode/1.18",
-  "opencode-v1": "fixtures/opencode/1.18",
-  "opencode-v2": "fixtures/opencode/2.0",
-};
-
 /**
  * Expected variant sets: the deterministic drive session must produce exactly
  * these (session start, prompt, PreToolUse+PostToolUse for the shell tool,
@@ -476,7 +468,7 @@ async function main() {
     );
     process.exit(2);
   }
-  const fixtureDir = opts.fixtures ?? FIXTURE_DIRS[opts.harness];
+  const fixtureDir = opts.fixtures ?? (await harnessFixtureDirs())[opts.harness];
   if (fixtureDir === undefined) {
     process.stderr.write(`unknown harness: ${opts.harness}\n`);
     process.exit(2);

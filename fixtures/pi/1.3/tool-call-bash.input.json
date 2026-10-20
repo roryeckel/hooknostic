@@ -1,0 +1,14 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "bash",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "echo hooknostic-original"
+    }
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-VcyewW\\project",
+    "mode": "print"
+  }
+}

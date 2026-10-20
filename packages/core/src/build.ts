@@ -1122,6 +1122,7 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
               capabilities: levelsFromMatrix(resolved.matrix ?? {}),
               minimumCapabilityLevel: compatibility.minimum,
               policy: runtimePolicy,
+              targetRange: spec.version,
               ...(pluginRootOffset === undefined ? {} : { pluginRootOffset }),
             }),
             resolveDir: configDir,

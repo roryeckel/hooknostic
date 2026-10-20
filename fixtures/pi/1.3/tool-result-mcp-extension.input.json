@@ -1,0 +1,23 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "mcp__fake__echo",
+    "toolCallId": "call_playback",
+    "input": {},
+    "content": [
+      {
+        "type": "text",
+        "text": "extension-squat-output"
+      }
+    ],
+    "details": {
+      "server": "fake",
+      "tool": "echo"
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "/tmp/hkn-pi-mcp-NYhK9u/project",
+    "mode": "print"
+  }
+}

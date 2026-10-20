@@ -18,8 +18,9 @@ const ROOT_VERSION = (
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
 import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
-import { piHarness } from "@hooknostic/adapter-pi";
+import { piCapabilityProfiles, piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
+import { rangeCoversVersion } from "@hooknostic/core";
 import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
 import { describeMcpCommands, runBuild } from "./build.js";
@@ -937,6 +938,29 @@ describe("hooknostic build end-to-end", () => {
     expect(await readFile(join(dir, "dist/claude/hooks/hooks.json"), "utf8")).toBe(firstHooksJson);
   });
 
+  it("settles pi's MCP line in each artifact from its target range", { timeout: 120_000 }, async () => {
+    // ADR-0032: the shim cannot check a range, so the build tells it whether
+    // its target is within the 1.x line, whose native MCP channel it decodes.
+    const dir = await cleanExample("rewrite-shell");
+    const legacy = piCapabilityProfiles.find(
+      (profile) => !rangeCoversVersion(profile.range, piHarness.referenceVersion),
+    )!.range;
+    const config = join(dir, "hooknostic.config.ts");
+    const source = await readFile(config, "utf8");
+    expect(source).toContain(JSON.stringify(piHarness.recommendedRange));
+    await writeFile(
+      config,
+      source.replace(
+        /pi: \{[^}]*\},/,
+        `pi: { version: ${JSON.stringify(piHarness.recommendedRange)}, delivery: "project", output: "./dist/pi" },\n    legacy: { adapter: "pi", version: ${JSON.stringify(legacy)}, delivery: "project", output: "./dist/legacy" },`,
+      ),
+    );
+    const { io, out } = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(0);
+    expect(await readFile(join(dir, "dist/legacy/.pi/extensions/hooknostic.js"), "utf8")).toContain("nativeMcp: false");
+    expect(await readFile(join(dir, "dist/pi/.pi/extensions/hooknostic.js"), "utf8")).not.toContain("nativeMcp: false");
+  });
+
   it("emits identical bytes no matter which directory the build was invoked from", { timeout: 240_000 }, async () => {
     // esbuild writes each module's path into a `// <path>` banner relative to
     // absWorkingDir, which defaults to the working directory. Unanchored, the
@@ -1215,7 +1239,7 @@ ${run.stderr}`,
     },
   );
 
-  it("builds Pi in the default combined example with an accepted MCP omission", async () => {
+  it("builds Pi in the default combined example with its MCP server registered", async () => {
     const dir = await cleanExample("agent-plugin");
     const mcpBefore = await readFile(join(dir, "mcp.json"), "utf8");
     const config = join(dir, "hooknostic.config.ts");
@@ -1229,23 +1253,25 @@ ${run.stderr}`,
       expect(report.targets.pi.projection).toMatchObject({
         status: "success",
         components: {
-          "agent-plugin.mcp.stdio": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+          "agent-plugin.mcp.stdio": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
         },
       });
-      expect(report.targets.pi.projection.omissions).toContainEqual(
-        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "greeter" }),
-      );
-      expect(report.diagnostics).toContainEqual(
-        expect.objectContaining({ code: "HN205", severity: "info", omission: "pi:mcp-stdio-omitted" }),
-      );
+      expect(report.targets.pi.projection.omissions).toEqual([]);
+      expect(report.diagnostics).not.toContainEqual(expect.objectContaining({ code: "HN205" }));
     }
     const output = join(dir, "dist/pi");
     const manifest = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
-    expect(manifest.pi).toEqual({ extensions: ["./hooknostic.js"], skills: ["./package/skills/greet"] });
+    expect(manifest.pi).toEqual({
+      extensions: ["./hooknostic.js", "./hooknostic-mcp.js"],
+      skills: ["./package/skills/greet"],
+    });
+    expect(JSON.parse(await readFile(join(output, "hooknostic-runtime/mcp-servers.json"), "utf8"))).toEqual({
+      plugin: "combined-example",
+      servers: [{ name: "greeter", command: "node", args: ["${PLUGIN_ROOT}/bundled/greet-mcp.mjs"] }],
+    });
     expect(await readFile(join(output, "hooknostic.js"), "utf8")).toContain("Hooknostic marketplace probe blocked.");
     expect(await readFile(join(output, "package/skills/greet/SKILL.md"), "utf8")).toContain("git status --short");
-    // Portable source files may survive copying; native Pi activation declares
-    // only the extension and skill, never an MCP server.
+    // The portable source stays read-only input.
     expect(await readFile(join(dir, "mcp.json"), "utf8")).toBe(mcpBefore);
   });
 
@@ -3389,6 +3415,27 @@ describe("hooknostic inspect", () => {
       2,
     );
     expect(component.err()).toContain("HN203");
+  });
+
+  it("decides whether the MCP identity applies from the family adapter it prints", async () => {
+    // A family selector that declares nothing resolves to an adapter whose
+    // statement is bounded; inspect must judge the range by the one it prints,
+    // as dispatch does (ADR-0032).
+    const registry = defaultAdapterRegistry();
+    const pi = registry.pi!;
+    const { mcpIdentity: _declared, ...selector } = pi;
+    registry.pi = { ...selector, resolveTarget: () => ({ adapter: pi, diagnostics: [] }) };
+    const legacy = piCapabilityProfiles.find((profile) => profile.range !== pi.mcpIdentity!.range)!.range;
+    const report = async (version: string) => {
+      const capture = captureIO();
+      expect(await runInspect({ target: "pi", version, json: true, registry, io: capture.io }), capture.err()).toBe(0);
+      return JSON.parse(capture.out()).mcpIdentity as { range: string; applies: boolean };
+    };
+    expect(await report(legacy)).toMatchObject({ range: pi.mcpIdentity!.range, applies: false });
+    expect(await report(pi.mcpIdentity!.range!)).toMatchObject({ applies: true });
+    const text = captureIO();
+    expect(await runInspect({ target: "pi", version: legacy, registry, io: text.io }), text.err()).toBe(0);
+    expect(text.out()).toContain(`tool.mcp source (outside ${pi.mcpIdentity!.range})`);
   });
 
   it("renders adapter-owned capability facts with rationale", async () => {

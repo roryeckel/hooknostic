@@ -2,6 +2,7 @@ import type {
   AgentPluginIssue,
   AgentPluginProjectionFile,
   AgentPluginProjectionPlan,
+  AgentPluginProjectionProfile,
   AgentPluginProjector,
 } from "@hooknostic/agent-plugin";
 import {
@@ -16,100 +17,133 @@ import {
   skillInvocationPolicyProfiles,
   withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
-import type { TargetSpec } from "@hooknostic/core";
+import type { McpLauncherDocument, TargetSpec } from "@hooknostic/core";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknostic/core";
 
 import { PACKAGE_EXTENSION_PATH, PACKAGE_MANIFEST_PATH } from "./generate.js";
-import { piHarness } from "./harness.js";
-import { piMcpOmissions } from "./omissions.js";
-import { piFeatureValidation } from "./profile.js";
-import { PI_SKILL_POLICY_RATIONALE, piPackageSkillPolicyValidation, piSkillPolicy } from "./skill-policy.js";
+import {
+  legacyPiMcpCells,
+  nativePiMcpCells,
+  nativePiMcpValidations,
+  type PiMcpCells,
+  piMcpExtensionSource,
+  translatePiMcp,
+} from "./mcp.js";
+import { PI_LEGACY_RANGE, PI_RANGE, piFeatureValidation, piLegacyFeatureValidation } from "./profile.js";
+import {
+  PI_SKILL_POLICY_RATIONALE,
+  piLegacyPackageSkillPolicyValidation,
+  piPackageSkillPolicyValidation,
+  piSkillPolicy,
+} from "./skill-policy.js";
 
 const PACKAGE_DIR = "package";
 const PACKAGE_BOUNDARY = `${PACKAGE_DIR}/package.json`;
+/** The generated extension registering the package's MCP servers, beside the hooks extension. */
+const MCP_EXTENSION_PATH = "hooknostic-mcp.js";
+/** The launcher and its servers document, a sibling of the copied package rather than inside it. */
+const LAUNCHER_DIR = "hooknostic-runtime";
+const LAUNCHER_PATH = `${LAUNCHER_DIR}/${MCP_LAUNCHER_FILE}`;
+const LAUNCHER_SERVERS_PATH = `${LAUNCHER_DIR}/${MCP_SERVERS_FILE}`;
+
+/** Both lines rate the same package components; only the MCP rationale differs. */
+const piPackageComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["components"] => ({
+  "agent-plugin.manifest": {
+    level: "exact",
+    rationale:
+      "Portable package identity is emitted in the npm package.json; pi reads its pi resource declarations from the same file.",
+  },
+  "agent-plugin.skills": {
+    level: "exact",
+    rationale:
+      "Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028).",
+    degradations: [
+      {
+        id: SKILL_REFERENCE_UNEXPANDED,
+        summary: "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references cannot be rewritten.",
+        evidence: piFeatureValidation.artifact,
+      },
+    ],
+  },
+  ...mcp,
+  "agent-plugin.client-extension.files": {
+    level: "unsupported",
+    rationale: "pi does not read Agent Plugins client-extension namespaces.",
+  },
+  "agent-plugin.runtime-package": {
+    level: "unsupported",
+    rationale:
+      "A local-path pi package is referenced in place, with no npm install. An npm-sourced package is installed, but pi does not perform a locked npm ci of the portable runtime manifest and lockfile; this component is not delivered on both routes.",
+  },
+});
+
+const legacyPackageProfile: AgentPluginProjectionProfile = {
+  range: PI_LEGACY_RANGE,
+  components: piPackageComponents(
+    legacyPiMcpCells(
+      "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
+    ),
+  ),
+  source: {
+    date: "2026-09-27",
+    validatedOn: [
+      piLegacyFeatureValidation,
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "live-probe",
+        artifact: ".capture/pi/README.md",
+        what: "projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "captured",
+        artifact: ".capture/pi/README.md",
+        what: "A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager.",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "live-probe",
+        artifact: ".capture/pi/README.md",
+        what: "The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model.",
+      },
+    ],
+  },
+};
+
+const packageProfile: AgentPluginProjectionProfile = {
+  range: PI_RANGE,
+  components: piPackageComponents(nativePiMcpCells),
+  source: {
+    date: "2026-10-19",
+    validatedOn: [
+      piFeatureValidation,
+      ...nativePiMcpValidations,
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/harness-playback/",
+        what: "HOOKNOSTIC_PLAYBACK=pi: the projected package installed through pi install -l --approve by local path and by npm coordinate from a local read-only registry loaded its skill into model input and honoured its compiled hook's shell rewrite against the loopback model",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/harness-playback/",
+        what: "HOOKNOSTIC_PLAYBACK=pi, by local path and by npm coordinate: the package's generated hooknostic-mcp.js registered its stdio server through the launcher, which bound PLUGIN_ROOT to the installed author package and an absolute PLUGIN_DATA outside it and passed $literal and ~/ arguments as written, and its streamable HTTP server, whose header beginning with ! and holding ${NAME} and $ arrived as written although the variable was set; a codemode script's calls to both reached the hooks as mcp tools",
+      },
+    ],
+  },
+};
 
 /** The pi manifest points only at accepted skills, not a directory containing rejected SKILL.md files. */
 const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: "",
   packageRoot: PACKAGE_DIR,
-  profiles: [
-    {
-      range: piHarness.recommendedRange,
-      components: {
-        "agent-plugin.manifest": {
-          level: "exact",
-          rationale:
-            "Portable package identity is emitted in the npm package.json; pi reads its pi resource declarations from the same file.",
-        },
-        "agent-plugin.skills": {
-          level: "exact",
-          rationale:
-            "Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028).",
-          degradations: [
-            {
-              id: SKILL_REFERENCE_UNEXPANDED,
-              summary:
-                "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references cannot be rewritten.",
-              evidence: piFeatureValidation.artifact,
-            },
-          ],
-        },
-        "agent-plugin.mcp.stdio": {
-          level: "unsupported",
-          omission: piMcpOmissions.stdio,
-          rationale:
-            "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
-        },
-        "agent-plugin.mcp.streamable-http": {
-          level: "unsupported",
-          omission: piMcpOmissions["streamable-http"],
-          rationale:
-            "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
-        },
-        "agent-plugin.mcp.sse": {
-          level: "unsupported",
-          omission: piMcpOmissions.sse,
-          rationale:
-            "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
-        },
-        "agent-plugin.client-extension.files": {
-          level: "unsupported",
-          rationale: "pi does not read Agent Plugins client-extension namespaces.",
-        },
-        "agent-plugin.runtime-package": {
-          level: "unsupported",
-          rationale:
-            "A local-path pi package is referenced in place, with no npm install. An npm-sourced package is installed, but pi does not perform a locked npm ci of the portable runtime manifest and lockfile; this component is not delivered on both routes.",
-        },
-      },
-      source: {
-        date: "2026-09-27",
-        validatedOn: [
-          piFeatureValidation,
-          {
-            version: "0.84.4",
-            date: "2026-09-27",
-            method: "live-probe",
-            artifact: ".capture/pi/README.md",
-            what: "projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback",
-          },
-          {
-            version: "0.84.4",
-            date: "2026-09-27",
-            method: "captured",
-            artifact: ".capture/pi/README.md",
-            what: "A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager.",
-          },
-          {
-            version: "0.84.4",
-            date: "2026-09-27",
-            method: "live-probe",
-            artifact: ".capture/pi/README.md",
-            what: "The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model.",
-          },
-        ],
-      },
-    },
-  ],
+  profiles: [legacyPackageProfile, packageProfile],
   project: async (source, context): Promise<AgentPluginProjectionPlan> => {
     assertPackageDelivery("pi", context.target.delivery);
     const files: AgentPluginProjectionFile[] = [];
@@ -148,6 +182,53 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 
     const hookPaths = new Set(context.hookArtifacts.map((artifact) => artifact.path.toLowerCase()));
     const hasHooks = hookPaths.has(PACKAGE_EXTENSION_PATH);
+
+    // Native MCP (pi 1.x, .capture/pi-mcp): a generated extension registers the
+    // servers, stdio ones through the shared launcher. A transport the target
+    // range cannot represent -- every one on 0.84, SSE on 1.x -- is omitted
+    // with its cell's rationale.
+    const mcp = translatePiMcp(source.mcp?.mcpServers ?? {}, context.support);
+    for (const omission of mcp.omitted) {
+      omissions.push(omission);
+      // Core reports an unsupported cell. An omission inside a supported
+      // transport would otherwise pass without a diagnostic.
+      if (context.support[omission.component]?.level === "unsupported") continue;
+      issues.push({
+        severity: context.onUnsupported,
+        scope: "projection",
+        component: omission.component,
+        path: `mcp.json#${omission.name}`,
+        message: `MCP server ${JSON.stringify(omission.name)} was omitted: ${omission.reason}.`,
+      });
+    }
+    const hasMcp = mcp.registrations.length > 0;
+    if (hasMcp) {
+      files.push({
+        path: MCP_EXTENSION_PATH,
+        contents: piMcpExtensionSource({
+          registrations: mcp.registrations,
+          rootFromHere: PACKAGE_DIR,
+          launcherFromHere: LAUNCHER_PATH,
+          resolveEnvironment: false,
+        }),
+      });
+    }
+    if (mcp.launcherServers.length > 0) {
+      const document: McpLauncherDocument = { plugin: source.manifest.name, servers: mcp.launcherServers };
+      files.push({ path: LAUNCHER_SERVERS_PATH, contents: `${JSON.stringify(document, null, 2)}\n` });
+      files.push({
+        path: LAUNCHER_PATH,
+        contents: await bundleMcpLauncher({
+          frontEnd: "self-resolving",
+          rootOffset: `../${PACKAGE_DIR}`,
+          pluginName: source.manifest.name,
+        }),
+      });
+    }
+    const extensions = [
+      ...(hasHooks ? [`./${PACKAGE_EXTENSION_PATH}`] : []),
+      ...(hasMcp ? [`./${MCP_EXTENSION_PATH}`] : []),
+    ];
     const npmName = context.target.npmName ?? source.manifest.name;
     for (const problem of npmPublicationProblems({
       name: npmName,
@@ -173,7 +254,7 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       ...(source.manifest.keywords === undefined ? {} : { keywords: source.manifest.keywords }),
       type: "module",
       pi: {
-        ...(hasHooks ? { extensions: [`./${PACKAGE_EXTENSION_PATH}`] } : {}),
+        ...(extensions.length > 0 ? { extensions } : {}),
         ...(source.skills.length > 0
           ? { skills: source.skills.map((skill) => `./${PACKAGE_DIR}/${skill.directory}`) }
           : {}),
@@ -196,9 +277,6 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
       taken.set(artifact.path.toLowerCase(), artifact.path);
       files.push({ ...artifact });
     }
-    for (const [name, server] of Object.entries(source.mcp?.mcpServers ?? {})) {
-      omissions.push({ component: `agent-plugin.mcp.${server.type}`, name, reason: "pi has no native MCP channel" });
-    }
     if (context.runtimePackage !== undefined) {
       omissions.push({
         component: "agent-plugin.runtime-package",
@@ -209,7 +287,11 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
     const counts = componentSummary(source, {
       hasRuntimePackage: context.runtimePackage !== undefined,
       skipped: (component, discovered) =>
-        component.startsWith("agent-plugin.mcp.") || component === "agent-plugin.runtime-package" ? discovered : 0,
+        component.startsWith("agent-plugin.mcp.")
+          ? mcp.omitted.filter((omission) => omission.component === component).length
+          : component === "agent-plugin.runtime-package"
+            ? discovered
+            : 0,
     });
     return {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
@@ -229,11 +311,14 @@ const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
 export const piAgentPluginProjector = withSkillInvocationPolicy(
   {
     ...nativePiAgentPluginProjector,
-    profiles: skillInvocationPolicyProfiles(
-      nativePiAgentPluginProjector.profiles,
-      piPackageSkillPolicyValidation,
-      PI_SKILL_POLICY_RATIONALE,
-    ),
+    profiles: [
+      ...skillInvocationPolicyProfiles(
+        [legacyPackageProfile],
+        piLegacyPackageSkillPolicyValidation,
+        PI_SKILL_POLICY_RATIONALE,
+      ),
+      ...skillInvocationPolicyProfiles([packageProfile], piPackageSkillPolicyValidation, PI_SKILL_POLICY_RATIONALE),
+    ],
   },
   "pi",
   piSkillPolicy,

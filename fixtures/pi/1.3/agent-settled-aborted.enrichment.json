@@ -1,0 +1,90 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "7f24b116",
+      "parentId": "996e24e6",
+      "timestamp": "2026-10-20T01:48:16.797Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_AFTER_ERROR"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792460896790,
+        "responseId": "chatcmpl-playback-2",
+        "rawStopReason": "stop",
+        "durationMs": 6,
+        "thinkingLevel": "off"
+      }
+    },
+    {
+      "type": "message",
+      "id": "c60a529a",
+      "parentId": "7f24b116",
+      "timestamp": "2026-10-20T01:48:16.815Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "aborted"
+          }
+        ],
+        "timestamp": 1792460896814
+      }
+    },
+    {
+      "type": "message",
+      "id": "2d94503b",
+      "parentId": "c60a529a",
+      "timestamp": "2026-10-20T01:48:16.840Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "aborted",
+        "timestamp": 1792460896816,
+        "errorMessage": "Request aborted",
+        "durationMs": 24,
+        "thinkingLevel": "off"
+      }
+    }
+  ]
+}

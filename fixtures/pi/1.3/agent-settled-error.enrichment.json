@@ -1,0 +1,90 @@
+{
+  "branch": [
+    {
+      "type": "message",
+      "id": "8a8503e7",
+      "parentId": "da78ff23",
+      "timestamp": "2026-10-20T01:48:16.744Z",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "COMPLETION_BASELINE"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792460896708,
+        "responseId": "chatcmpl-playback-1",
+        "rawStopReason": "stop",
+        "durationMs": 36,
+        "thinkingLevel": "off"
+      }
+    },
+    {
+      "type": "message",
+      "id": "968adec2",
+      "parentId": "8a8503e7",
+      "timestamp": "2026-10-20T01:48:16.763Z",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "error"
+          }
+        ],
+        "timestamp": 1792460896761
+      }
+    },
+    {
+      "type": "message",
+      "id": "c33aca17",
+      "parentId": "968adec2",
+      "timestamp": "2026-10-20T01:48:16.767Z",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "api": "openai-completions",
+        "provider": "hooknostic-playback",
+        "model": "hooknostic-playback",
+        "usage": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 0,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "error",
+        "timestamp": 1792460896764,
+        "errorMessage": "400: {\"message\":\"completion probe bad request\"}",
+        "durationMs": 3,
+        "thinkingLevel": "off"
+      }
+    }
+  ]
+}

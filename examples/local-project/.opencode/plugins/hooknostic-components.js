@@ -4,13 +4,16 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const declarations = JSON.parse("[[\"sample\",{\"type\":\"local\",\"command\":[\"node\",\"__HOOKNOSTIC_LAUNCHER__\",\"0\"],\"cwd\":\"__HOOKNOSTIC_PLUGIN_ROOT__\",\"enabled\":true}]]");
 
-const expandEnvironment = (value, missing) => value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (reference, name, fallback) => {
-  const resolved = process.env[name];
-  if (resolved !== undefined) return resolved;
-  if (fallback !== undefined) return fallback;
-  missing.add(name);
-  return reference;
-});
+const expandEnvironment = (value, missing) =>
+  value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (reference, name, fallback) => {
+    const resolved = process.env[name];
+    if (resolved !== undefined) return resolved;
+    if (fallback !== undefined) return fallback;
+    missing.add(name);
+    return reference;
+  });
+const warnMissingEnvironment = (name, missing) =>
+  console.warn("Hooknostic disabled MCP " + JSON.stringify(name) + ": missing environment " + [...missing].sort().join(", "));
 const resolveRemote = (name, server) => {
   const missing = new Set();
   const resolved = { ...server,
@@ -18,7 +21,7 @@ const resolveRemote = (name, server) => {
     ...(server.headers === undefined ? {} : { headers: Object.fromEntries(Object.entries(server.headers).map(([header, value]) => [header, expandEnvironment(value, missing)])) }),
   };
   if (missing.size === 0) return resolved;
-  console.warn("Hooknostic disabled MCP " + JSON.stringify(name) + ": missing environment " + [...missing].sort().join(", "));
+  warnMissingEnvironment(name, missing);
   return { ...server, enabled: false };
 };
 

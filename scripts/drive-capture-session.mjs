@@ -34,6 +34,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { flattenCaptured, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
+import { harnessFixtureDirs } from "./harness-fixture-dirs.mjs";
 
 const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -89,15 +90,6 @@ const TEE_TEMPLATE_DIRS = {
   claude: ".capture/claude",
   codex: ".capture/codex-capture",
   opencode: ".capture/opencode-capture",
-};
-
-// Fixture dir per harness relative to fixtures/<harness>/ — mirrors
-// compare-capture-shapes.mjs's FIXTURE_DIRS (which prefix fixtures/<harness>/).
-const FIXTURE_DIRS = {
-  pi: "0.84",
-  claude: "2.1",
-  codex: "0.148",
-  opencode: "1.18",
 };
 
 export function prepareScratch(repo, harness, scratchOverride) {
@@ -614,7 +606,7 @@ async function main() {
     new URL("compare-capture-shapes.mjs", import.meta.url).href
   );
   const captured = readJsonDir(dst);
-  const fixtures = readJsonDir(join(REPO, "fixtures", opts.harness, FIXTURE_DIRS[opts.harness]), {
+  const fixtures = readJsonDir(join(REPO, (await harnessFixtureDirs())[opts.harness]), {
     suffix: ".input.json",
   });
   const { verdict, report } = compareCaptures({

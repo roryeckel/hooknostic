@@ -13,19 +13,32 @@ import {
   shapeOf,
   variantOf,
 } from "./compare-capture-shapes.mjs";
+import { harnessFixtureDirs } from "./harness-fixture-dirs.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const FIXTURE_DIRS = await harnessFixtureDirs();
 
-function readFixtureInputs(harnessDir) {
-  const dir = join(ROOT, "fixtures", harnessDir);
+function readFixtureInputs(fixtureDir) {
+  const dir = join(ROOT, fixtureDir);
   return readdirSync(dir)
     .filter((f) => f.endsWith(".input.json"))
     .map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")));
 }
 
-const CLAUDE_FIXTURES = readFixtureInputs("claude/2.1");
-const CODEX_FIXTURES = readFixtureInputs("codex/0.148");
-const OPENCODE_FIXTURES = readFixtureInputs("opencode/1.18");
+const CLAUDE_FIXTURES = readFixtureInputs(FIXTURE_DIRS.claude);
+const CODEX_FIXTURES = readFixtureInputs(FIXTURE_DIRS.codex);
+const OPENCODE_FIXTURES = readFixtureInputs(FIXTURE_DIRS.opencode);
+
+describe("harnessFixtureDirs", () => {
+  it("names each drift-checked harness's reference fixture directory, from its adapter metadata", () => {
+    expect(Object.keys(FIXTURE_DIRS).sort()).toEqual(
+      ["claude", "codex", "opencode", "opencode-v1", "opencode-v2", "pi"].sort(),
+    );
+    for (const [harness, dir] of Object.entries(FIXTURE_DIRS)) {
+      expect(readFixtureInputs(dir).length, `${harness}: ${dir}`).toBeGreaterThan(0);
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // shapeOf
@@ -77,7 +90,7 @@ describe("shapeOf", () => {
 describe("variantOf", () => {
   it("separates v2 typed tool failures from successful output shapes", () => {
     const fixture = (name) =>
-      JSON.parse(readFileSync(new URL(`../fixtures/opencode/2.0/${name}.input.json`, import.meta.url), "utf8"));
+      JSON.parse(readFileSync(join(ROOT, FIXTURE_DIRS["opencode-v2"], `${name}.input.json`), "utf8"));
     expect(variantOf("opencode-v2", fixture("tool-read-error"))).toBe("execute.after+read+error");
     expect(variantOf("opencode-v2", fixture("tool-read-after"))).toBe("execute.after+read");
   });
@@ -411,7 +424,7 @@ describe("shapeDiff", () => {
 });
 
 describe("Pi drift", () => {
-  const fixtures = readFixtureInputs("pi/0.84");
+  const fixtures = readFixtureInputs(FIXTURE_DIRS.pi);
   const compare = (captured) =>
     compareCaptures({ harness: "pi", fixtures, captured, expectedVariants: EXPECTED_VARIANTS.pi });
 
@@ -470,8 +483,8 @@ describe("Pi drift", () => {
 
 describe("OpenCode v2 drift", () => {
   it("accepts both captured context options shapes while rejecting unseen options and types", () => {
-    const fixtures = readFixtureInputs("opencode/2.0");
-    const legacy = JSON.parse(readFileSync(join(ROOT, "fixtures/opencode/2.0/context.input.json"), "utf8"));
+    const fixtures = readFixtureInputs(FIXTURE_DIRS["opencode-v2"]);
+    const legacy = JSON.parse(readFileSync(join(ROOT, FIXTURE_DIRS["opencode-v2"], "context.input.json"), "utf8"));
     // Construct only the observed difference from the reviewed 2.0.22 capture.
     const current = JSON.parse(JSON.stringify(legacy));
     current.event.options.maxTokens = 4096;
@@ -486,7 +499,7 @@ describe("OpenCode v2 drift", () => {
   });
 
   it("reports an unobserved first session start without declaring drift", () => {
-    const fixtures = readFixtureInputs("opencode/2.0");
+    const fixtures = readFixtureInputs(FIXTURE_DIRS["opencode-v2"]);
     const captured = fixtures.filter((row) => row.event.type !== "session.created");
     const { verdict, report } = compareCaptures({
       harness: "opencode-v2",
@@ -507,7 +520,7 @@ describe("OpenCode v2 drift", () => {
     "session.execution.interrupted",
     "session.compaction.ended",
   ])("compares newly supported session route %s", (name) => {
-    const fixtures = readFixtureInputs("opencode/2.0");
+    const fixtures = readFixtureInputs(FIXTURE_DIRS["opencode-v2"]);
     const source = fixtures.find((row) => row.hook === name || row.event.type === name);
     expect(source).toBeDefined();
     const changed = JSON.parse(JSON.stringify(source));
@@ -517,7 +530,7 @@ describe("OpenCode v2 drift", () => {
     );
   });
   it("compares the v2 envelope and reports an unfamiliar tool variant", () => {
-    const fixtures = readFixtureInputs("opencode/2.0");
+    const fixtures = readFixtureInputs(FIXTURE_DIRS["opencode-v2"]);
     expect(compareCaptures({ harness: "opencode-v2", fixtures, captured: fixtures }).verdict).toBe("clean");
     const tool = JSON.parse(JSON.stringify(fixtures.find((row) => row.hook === "execute.before")));
     tool.event.tool = "unfamiliar";

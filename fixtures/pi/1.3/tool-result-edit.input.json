@@ -1,0 +1,32 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "edit",
+    "toolCallId": "call_playback",
+    "input": {
+      "path": "seed.txt",
+      "edits": [
+        {
+          "oldText": "alpha",
+          "newText": "beta"
+        }
+      ]
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Successfully replaced 1 block(s) in seed.txt."
+      }
+    ],
+    "details": {
+      "diff": "-1 alpha\n+1 beta",
+      "patch": "--- seed.txt\n+++ seed.txt\n@@ -1,1 +1,1 @@\n-alpha\n+beta\n",
+      "firstChangedLine": 1
+    },
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-ElSiN9\\project",
+    "mode": "print"
+  }
+}

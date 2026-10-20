@@ -16,6 +16,9 @@ import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import type { CapabilityId, EventFieldId, HookEventName, ShellDialect } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+// The fixtures entry, not the package index: the capture drivers import this
+// module under plain Node, where the contract suite's vitest import fails.
+import { declinedFixtures } from "@hooknostic/testkit/fixtures";
 
 const RUNTIME_POLICY = {
   onHookError: "continue" as const,
@@ -132,7 +135,8 @@ export type PlaybackEffect =
   | "block-continuation" // tool.after.blockContinuation on the sentinel marker
   | "request-approval" // tool.before.requestApproval on the sentinel marker
   | "permission-deny" // permission.request.block on any permission prompt
-  | "replace-outputs"; // tool.after.output.replace
+  | "replace-outputs" // tool.after.output.replace
+  | "replace-mcp-outputs"; // tool.after.output.replace, on MCP tools only
 
 export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "context-add",
@@ -143,6 +147,7 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "request-approval",
   "permission-deny",
   "replace-outputs",
+  "replace-mcp-outputs",
 ];
 
 function playbackPluginSource(
@@ -220,6 +225,9 @@ function playbackPluginSource(
         if (effects.includes("replace-outputs") && "${event}" === "tool.after") {
           return replaceOutput("hooknostic-replaced-tool-output");
         }
+        if (effects.includes("replace-mcp-outputs") && "${event}" === "tool.after" && event.tool?.kind === "mcp") {
+          return replaceOutput("hooknostic-replaced-tool-output");
+        }
         if (effects.includes("request-approval") && "${event}" === "tool.before" &&
             command?.includes("hooknostic-approval")) {
           return requestApproval("approval requested by harness playback");
@@ -255,6 +263,7 @@ function playbackPluginSource(
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
           toolNativeName: event.tool?.nativeName,
+          toolMcp: event.tool?.mcp,
           shellDialect: event.tool?.shell?.dialect,
           lastMessage: event.lastMessage,
           turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}
@@ -386,6 +395,8 @@ export async function buildPlaybackArtifact(
       minimumCapabilityLevel: "approximate",
       policy: RUNTIME_POLICY,
       harnessVersion: override.version ?? adapter.harness.referenceVersion,
+      // As buildProject does: the shim settles version-line facts from it.
+      targetRange: target.version,
     }),
     resolveDir: artifactDir,
     alias: {
@@ -1327,7 +1338,14 @@ export async function startModelPlayback(
   };
 }
 
+/**
+ * Captured input/canonical pairs. An input the directory's declined.json lists
+ * is a captured invocation the adapter deliberately does not map: it has no
+ * canonical, and its replay must dispatch no hook. Every other input must have
+ * a canonical.
+ */
 async function fixturePairs(fixturesDir: string) {
+  const declined = declinedFixtures(fixturesDir);
   const names = (await readdir(fixturesDir)).filter((name) => name.endsWith(".input.json")).sort();
   return Promise.all(
     names.map(async (name) => {
@@ -1335,9 +1353,11 @@ async function fixturePairs(fixturesDir: string) {
       return {
         name,
         input: JSON.parse(await readFile(join(fixturesDir, name), "utf8")) as Record<string, unknown>,
-        canonical: JSON.parse(await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8")) as {
-          event: HookEventName;
-        },
+        canonical: declined.has(stem)
+          ? undefined
+          : (JSON.parse(await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8")) as {
+              event: HookEventName;
+            }),
       };
     }),
   );
@@ -1414,6 +1434,11 @@ export function expectOpenCodeShellDialect(dialects: readonly unknown[], expecte
   ).toEqual(dialects.map(() => expected));
 }
 
+/** The events the replayed fixtures should trace, a declined one tracing none. */
+function canonicalEvents(pairs: readonly { canonical: { event: HookEventName } | undefined }[]): HookEventName[] {
+  return pairs.flatMap((fixture) => (fixture.canonical === undefined ? [] : [fixture.canonical.event]));
+}
+
 export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
   const pairs = await fixturePairs(fixturesDir);
   for (const fixture of pairs) {
@@ -1424,9 +1449,7 @@ export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: s
     });
     expect(result.code, `${fixture.name}: ${result.stderr}`).toBe(0);
   }
-  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical.event),
-  );
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(canonicalEvents(pairs));
 }
 
 export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
@@ -1460,9 +1483,7 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
     if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
     else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
   }
-  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical.event),
-  );
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(canonicalEvents(pairs));
 }
 
 /**
@@ -1504,9 +1525,7 @@ export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string
     if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
     else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
   }
-  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical.event),
-  );
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(canonicalEvents(pairs));
 }
 
 /**

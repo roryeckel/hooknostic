@@ -14,10 +14,9 @@ example commits native wiring, runtime artifacts, copied skill resources, and
 `.hooknostic/integration.json`. It has no Agent Plugins manifest. Dependencies
 and harness activation are explicit human steps; sync does neither.
 
-All four harnesses receive hooks and skills. Claude Code, Codex, and OpenCode
-also receive the synthetic stdio MCP server. Pi's missing native MCP channel is
-acknowledged by `components.accept: ["pi:mcp-stdio-omitted"]`, so its report
-records the unsupported, skipped server while other missing components remain errors.
+All four harnesses receive hooks, skills, and the synthetic stdio MCP server.
+Pi's is registered by the generated `.pi/extensions/hooknostic-mcp.js` with its
+native MCP client.
 The server has no dependencies beyond Node and starts only when the harness
 activates it. Additional transport and source-path behavior is exercised by
 credential-free local playback fixtures. See the

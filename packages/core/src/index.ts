@@ -20,3 +20,6 @@ export * from "./project-files.js";
 export * from "./project.js";
 export * from "./project-components.js";
 export * from "./project-mcp-bootstrap.js";
+export * from "./portable-path.js";
+export * from "./mcp-identity.js";
+export * from "./remote-environment.js";

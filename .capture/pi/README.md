@@ -23,7 +23,12 @@ contracts introduced on master after the original Pi adapter.
   `~/.pi/agent/models.json`. Compaction probes copy that entry into an
   ignored scratch settings directory with a 2048-token context window.
 - `make-fixtures.mjs` — extracts, redacts, and curates
-  `fixtures/pi/0.84/*.input.json` from the raw captures.
+  `fixtures/pi/0.84/*.input.json` from the original 0.84.4 raw captures.
+- `probe-sessions.mjs` — model-free loopback sessions (lifecycle, bash,
+  PowerShell, an exit-7 error, a populated prompt, RPC compaction, cancelled
+  compaction, and a stop-prevention continuation), writing to ignored
+  `captured-sessions/<platform>/`. `promote-sessions.mjs` curates them into
+  the reference fixture directory. See [pi 1.3.0 recapture](#pi-130-recapture-windows-and-linux-2026-10-19).
 - `scratch/` — probe workspace (probe pi-package, scratch agent dirs);
   gitignored.
 
@@ -104,6 +109,47 @@ it through `-e`, and `hooknostic-capture.ts` ran through a second `-e` with
 with the complete prompt as one argument. The tee records and loopback request
 count established the observations above; no model provider was contacted.
 
+## pi 1.3.0 recapture (Windows and Linux, 2026-10-19)
+
+The scheduled harness-watch run found 1.3.0 outside `>=0.84 <1`. Model-free
+playback had already passed against it, and its drift capture-compare showed
+only added fields. The owner chose a separate `>=1 <2` profile, so 1.3.0 is
+now the reference build and `fixtures/pi/1.3` the reference fixtures. The
+`>=0.84 <1` profile and `fixtures/pi/0.84` stay as that line's evidence.
+
+Every session used the scripted loopback model, a disposable home, agent
+directory, and project, and a repository boundary. No model provider was
+contacted. pi 1.3.0 was installed with `--ignore-scripts` into a scratch
+prefix and selected with `HKN_PI_BINARY`; the global 0.84.4 install was left
+alone and served as the comparison build.
+
+| Question | Observation on 1.3.0 | Consequence |
+|---|---|---|
+| Payload shapes (`probe-sessions.mjs`, feature and completion probes) | Every adapter-mapped event matched 0.84.4 apart from added fields: `messageType` and `systemPromptOptions` keys on `before_agent_start`, `structuredContent` on `tool_result`, `aborted` on `agent_settled`, and `systemMessage` in `session_compact`'s entry. A failed bash result carries no `details`. Tool input shapes are unchanged | No decode change for these; `fixtures/pi/1.3` records them |
+| A run started by a custom message | The tee's `prevent-stop` probe posted `sendMessage({triggerTurn: true})` from `agent_settled`. 1.3.0 fired a second `before_agent_start` with `messageType: "custom"`, the message, and no `prompt`; 0.84.4 fired one `before_agent_start` for the same session. The 1.2.0 changelog describes the union | `prompt.before` declines the custom run explicitly (`before-agent-start-custom`). It was already declined by the missing-prompt check, silently, through the shim's fail-open path |
+| Print-mode continuation | 1.3.0 completed the continuation in print mode (two model requests, the second reply printed); 0.84.4 printed the first reply and exited after one request | Stop prevention also works in print mode now; the rating stays emulated |
+| Compaction | `ctx.compact()` at `agent_end` in print mode cancelled (too small) or ended before the summary, so `compact-run` uses an RPC `compact` command with `compaction.keepRecentTokens: 1`. `{cancel: true}` produced `session_compact_failed` with `aborted: true`, no `session_compact`, and no summarization request | Compaction cancel verified by effect; reason is `"manual"` in these captures |
+| Stale ctx | After the compaction session reload, the tee's captured ctx logged the same "ctx is stale" extension error | The shim must still not cache ctx |
+| Interpreters, file tools, skills, final message | The [feature probes](FEATURES.md) matched 0.84.4 on Windows and Linux, apart from `structuredContent` | Unchanged ratings |
+| Effects | `HOOKNOSTIC_PLAYBACK=pi` passed against 1.3.0 on Windows and in the scheduled Linux run: block, rewrite, output replacement, prompt and per-request context, stop prevention, completion fields, and project/package skills with their hook | Every rated cell has 1.3.0 evidence |
+| Type surface and changelog (schema-derived) | No mapped event renamed or removed; no permission event; native MCP since 0.99.0 (`.pi/mcp.json`, `mcp__<server>__<tool>` tools); `codemode` and `tool_search` built-ins, off by default, whose nested calls reach `tool_call` with `parentToolCallId`; `context` handlers no longer see system messages (0.87.0) | MCP is projected through `pi.registerMcpServer` and its tools classify as `mcp`; nested codemode calls are captured ([pi native MCP](../pi-mcp/README.md)) |
+
+Reproduce from the repository root after `pnpm run bundle`, with
+`HKN_PI_BINARY` naming the build under test:
+
+```sh
+node --experimental-strip-types .capture/pi/probe-sessions.mjs
+node --experimental-strip-types .capture/pi/probe-features.mjs all
+node --experimental-strip-types .capture/pi/probe-completion.mjs
+node --experimental-strip-types .capture/pi/promote-sessions.mjs
+node --experimental-strip-types .capture/pi/promote-features.mjs
+node --experimental-strip-types .capture/pi/make-canonical.mjs
+```
+
+The probes check the build against `referenceVersion`;
+`HKN_PI_EXPECTED_VERSION` overrides that for a candidate probed before the
+metadata moves. Promotion accepts only the reference build.
+
 ## Captured facts (pi 0.84.4, Windows, 2026-09-27)
 
 All "verified by effect" claims below were observed as changes in model
@@ -136,9 +182,10 @@ behavior or session artifacts, never by absence of harness errors.
 
 ## Fixture curation
 
-`fixtures/pi/0.84/` holds the curated cases (input = shim invocation shape
-`{event, ctx: {cwd, mode}}`), redacted per the harness-capture skill. The
-provenance table lives in `fixtures/pi/0.84/README.md`.
+`fixtures/pi/1.3/` holds the reference build's curated cases, and
+`fixtures/pi/0.84/` those of the `>=0.84 <1` line (input = shim invocation
+shape `{event, ctx: {cwd, mode}}`), redacted per the harness-capture skill.
+Each directory's README holds its provenance table.
 
 ## Reproduce
 

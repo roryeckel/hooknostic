@@ -1,0 +1,14 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "bash",
+    "toolCallId": "call_playback",
+    "input": {
+      "command": "node interpreter.cjs; echo hooknostic-shell-finished"
+    }
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-785gKr\\project",
+    "mode": "print"
+  }
+}

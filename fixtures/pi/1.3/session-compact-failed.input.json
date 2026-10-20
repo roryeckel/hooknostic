@@ -1,0 +1,13 @@
+{
+  "event": {
+    "type": "session_compact_failed",
+    "reason": "manual",
+    "aborted": true,
+    "willRetry": false,
+    "fromExtension": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-Hy9KWl\\project",
+    "mode": "print"
+  }
+}

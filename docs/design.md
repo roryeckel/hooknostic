@@ -231,6 +231,10 @@ interface ToolInvocation {
   nativeName: string;
   input: unknown;
 
+  // Present when the harness exposes the split: parsed from a name that keeps
+  // it (Claude, Codex), or stated outside the name (results of pi's own MCP
+  // tools, ADR-0032).
+  // Absent means fall back to `nativeName` and `raw`.
   mcp?: {
     server?: string;
     tool?: string;

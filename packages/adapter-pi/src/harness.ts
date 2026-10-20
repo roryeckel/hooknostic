@@ -8,7 +8,7 @@ import type { HarnessMetadata } from "@hooknostic/core";
  */
 export const piHarness: HarnessMetadata = {
   displayName: "pi",
-  recommendedRange: ">=0.84 <1",
-  fixtureDir: "0.84",
-  referenceVersion: "0.84.4",
+  recommendedRange: ">=1 <2",
+  fixtureDir: "1.3",
+  referenceVersion: "1.3.0",
 };
