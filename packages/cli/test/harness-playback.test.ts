@@ -3181,7 +3181,65 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
     expect(trace, `fixture MCP tool did not reach the artifact: ${trace}`).toContain('"toolKind":"mcp"');
     expect(trace).toContain('"event":"tool.before"');
     expect(trace).toContain('"event":"tool.after"');
+    if (adapter!.id === "pi") {
+      // pi states the split on the result of a tool its MCP extension
+      // registered, which the generated extension reads from pi.getAllTools();
+      // a tool_call states nothing (.capture/pi-mcp).
+      const mcpEntries = trace
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { event: string; toolKind?: string; toolMcp?: unknown })
+        .filter((entry) => entry.toolKind === "mcp")
+        .map(({ event, toolMcp }) => ({ event, toolMcp }));
+      expect(mcpEntries).toEqual([
+        { event: "tool.before", toolMcp: undefined },
+        { event: "tool.after", toolMcp: { server: "hooknostic_fixture", tool: "hooknostic_echo" } },
+      ]);
+    }
   });
+
+  it.skipIf(adapter?.id !== "pi")(
+    "replaces a codemode-nested MCP tool's output, structured content included",
+    async () => {
+      // A codemode script receives an MCP tool's structuredContent, which pi
+      // fills with the server's whole result; a {content} replacement drops
+      // it, so the script returns the replacement (.capture/pi-mcp,
+      // codemode-replace). Only the MCP tool's output is replaced, not the
+      // codemode tool's own.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-mcpreplace-pi-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let recordedRequests: readonly unknown[] = [];
+      await runInstalledHarness(build, "rewrite", {
+        effects: ["replace-mcp-outputs"],
+        mcpServerPath: McpFixtureServerPath,
+        script: [
+          {
+            kind: "tool",
+            toolName: "codemode",
+            arguments: { code: "return await tools.mcp__hooknostic_fixture__hooknostic_echo({});" },
+          },
+          { kind: "text", text: "MCP output received; standing down now." },
+        ],
+        verify: async ({ server }) => {
+          recordedRequests = server.requests;
+        },
+      });
+      const trace = await readFile(build.tracePath, "utf8");
+      expect(trace, `fixture MCP tool did not reach tool.after: ${trace}`).toMatch(
+        /"event":"tool\.after"[^\n]*"toolKind":"mcp"/,
+      );
+      const contents = requestContents(recordedRequests);
+      expect(
+        contents.some((text) => text.includes("hooknostic-replaced-tool-output")),
+        `replaced MCP output missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(true);
+      expect(
+        contents.some((text) => text.includes("hooknostic-mcp-tool-output")),
+        `the fixture's original MCP output reached the model: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(false);
+    },
+  );
 });
 
 // --- registry gate (ADR-0010) ---------------------------------------------

@@ -1,10 +1,12 @@
 # pi native MCP
 
 Evidence class: **live-probe** (spawned-child records, loopback HTTP request
-headers, declared tool lists, and the extension tee's `tool_call` and
+headers, declared tool lists, model request bodies, the tool sources
+`pi.getAllTools()` reported, and the extension tee's `tool_call` and
 `tool_result` payloads), plus **captured** payloads promoted to
-`fixtures/pi/1.3`. Tested pi **1.3.0** on native Windows, **2026-10-19**,
-against the scripted loopback model. No model provider was contacted.
+`fixtures/pi/1.3`. Tested pi **1.3.0** on native Windows, **2026-10-19**, and
+on Linux, **2026-10-20**, against the scripted loopback model. No model
+provider was contacted.
 
 ## Question
 
@@ -19,10 +21,15 @@ hooks see when the model uses an MCP tool?
 
 `probe.mjs` runs one disposable pi session per case: a fresh home, agent
 directory, and project with a repository boundary; the passive tee from
-`.capture/pi`; and the loopback model, scripted to call the probe tool.
+`.capture/pi`; a passive recorder that writes, for every `tool_call` and
+`tool_result`, the tools `pi.getAllTools()` lists under the event's tool name
+with each one's `sourceInfo`; and the loopback model, scripted to call the
+probe tool.
 `recording-server.mjs` is a constructed stdio MCP server. It records its argv,
 cwd, the presence of `PATH`, the environment size, and a watched set of
-variables before serving one tool. Its stdio declaration references a set
+variables before serving its tools: `probe_echo`; `probe_structured`, which
+declares an output schema and returns structured content beside its text; and
+two failing tools. Its stdio declaration references a set
 parent variable as `${NAME}`, as `$NAME`, escaped as `$${NAME}` and `$!`, and
 as a literal, and puts `${…}`, `$NAME`, `~/`, and `${PLUGIN_ROOT}` in its
 args. The HTTP case serves a loopback streamable-HTTP endpoint that records
@@ -31,6 +38,12 @@ each request's headers.
 | Case | Route |
 |---|---|
 | `extension-direct` | `pi.registerMcpServer` from a `-e` extension, `exposure: "direct"` |
+| `extension-tool-error` | the same registration; the model calls `probe_fail` (a server error result) and `probe_throw` (a JSON-RPC error) |
+| `extension-mcp-name` | the same registration, and a second `-e` extension whose `pi.registerTool` adds `mcp__fake__echo`, returning `details: {server: "fake", tool: "echo"}`; the model calls both |
+| `extension-mcp-shadow` | the same, with the second extension's tool named `mcp__probe__probe_echo`, the native tool's own name, returning `details: {server: "shadow", tool: "echo"}` |
+| `direct-replace` | the direct registration, and a `tool_result` handler that returns only `{content}` for `probe_structured`; the model calls it |
+| `codemode-structured` | default exposure; a codemode script returns `probe_structured`'s value, with no handler |
+| `codemode-replace` | the same script, with the `direct-replace` handler |
 | `extension-unset-env` | the same, with one env value naming an unset variable |
 | `extension-default-exposure` | the same registration with pi's default exposure |
 | `codemode-nested` | default exposure; the model calls `codemode` with a script that calls the tool |
@@ -49,7 +62,8 @@ node --experimental-strip-types .capture/pi-mcp/promote.mjs
 node --experimental-strip-types .capture/pi/make-canonical.mjs
 ```
 
-Raw results stay in ignored `captured/<platform>/`.
+Raw results stay in ignored `captured/<platform>/`. `promote.mjs` reads this
+platform's directory, or the one `HKN_PI_MCP_PLATFORM` names.
 
 ## Observations
 
@@ -82,6 +96,35 @@ Raw results stay in ignored `captured/<platform>/`.
   (`isError: true`) reached `tool_result` with `isError: true` and still
   carried `details: {server, tool}`. A JSON-RPC error reached it with
   `isError: true`, the error message as text content, and `details: {}`.
+- **Tool sources.** `pi.getAllTools()` reported every native server tool with
+  `sourceInfo` `{path: "builtin:mcp", source: "builtin"}`: called directly, and
+  as a codemode script's nested call (exposure `deferred`). `codemode` itself
+  was `builtin:codemode`. The read worked from both events, through the
+  extension API object the factory received.
+- **Another extension's `mcp__` tool** (`extension-mcp-name`). pi accepted
+  `mcp__fake__echo` from `pi.registerTool`, declared it to the model beside
+  the native tools, and ran it. Its `tool_result` carried the `details` the
+  extension returned, `{server: "fake", tool: "echo"}`, the same shape as a
+  native result, and no `structuredContent`. Its source was the extension's
+  file, with `source: "cli"`.
+- **A shadowed native tool** (`extension-mcp-shadow`). With an extension tool
+  registered under `mcp__probe__probe_echo`, the server still started, but
+  the model's call ran the extension's tool: its output and `details: {server:
+  "shadow", tool: "echo"}` reached `tool_result`, and `pi.getAllTools()`
+  reported the extension's file for the name. The listed source was the one
+  that ran.
+- **Output replacement** (`direct-replace`, `codemode-structured`,
+  `codemode-replace`). pi gives an MCP tool's `tool_result` a
+  `structuredContent` holding the server's whole result. Without a handler, a
+  codemode script's call to `probe_structured` returned that object, and the
+  next model request carried the tool's marker. With a handler returning only
+  `{content}`, the next request carried the replacement and not the marker,
+  on a direct call and in the value the script returned: pi dropped the
+  `structuredContent` the handler did not supply.
+- **Linux** (2026-10-20). Every case above was repeated, and each matched the
+  Windows run. The one difference was the child environment's size (about 180
+  variables), which follows the parent's. The promoted MCP payloads were
+  identical to the Windows captures apart from `ctx.cwd`.
 - **SSE**: `pi.registerMcpServer` threw "legacy SSE transport is not
   supported; use the streamable HTTP URL", and nothing connected.
 
@@ -136,6 +179,18 @@ Raw results stay in ignored `captured/<platform>/`.
   (`fixtures/pi/1.3/tool-*-mcp*`). The adapter declares the statement for
   `>=1 <2` only, and outside it the generated shim and `classifyTool` keep an
   `mcp__` tool `other`.
+- `details` is the executing tool's own, and pi does not reserve the
+  `mcp__` prefix, so the split is taken only from a tool pi's MCP extension
+  registered. For an `mcp__` tool_result, the generated extension reads the
+  tool's `sourceInfo` from `pi.getAllTools()` and hands it to the decoder as
+  enrichment, never as part of `raw`. Only `builtin:mcp` states the split.
+  Another extension's tool keeps `kind: "mcp"`, since pi's own
+  `isMcpToolName` goes by the name too, but gets no split
+  (`tool-result-mcp-extension`, `tool-result-mcp-shadow`). The same applies
+  when the source cannot be read.
+- An output replacement returns only `{content}`, so pi drops the structured
+  result, and a codemode script gets the replacement text instead of the
+  server's object. That type change is why the cell stays approximate.
 - Model-free playback drives all of this on the reference build: package
   installation by local path and by npm coordinate, repository-local
   integration, and the fixture MCP tool through a project `.pi/mcp.json`.
@@ -147,5 +202,7 @@ Raw results stay in ignored `captured/<platform>/`.
   for user-level servers only.
 - Interactive and RPC modes. Only print mode was observed.
 - OAuth, `auth.provider`, resources, and `toolExposure`.
-- macOS and Linux. Playback on the scheduled Linux lane will exercise the
-  projected routes there.
+- macOS.
+- A replaced built-in `mcp` extension (pi marks it replaceable). Its tools
+  would report the replacement's source, so their results would get no
+  split.

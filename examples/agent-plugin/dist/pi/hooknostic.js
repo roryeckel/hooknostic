@@ -5351,6 +5351,10 @@ function snapshotPiRaw(native) {
     throw new PiDecodeError("pi event cannot be cloned");
   }
 }
+function piNativeMcpTool(source) {
+  const { path, source: kind } = record(source);
+  return path === "builtin:mcp" && kind === "builtin";
+}
 function piReportedMcp(details) {
   if (typeof details !== "object" || details === null) return void 0;
   const { server, tool } = details;
@@ -5446,7 +5450,7 @@ function decodePi(nativeEvent, invocation, enrichment = {}, options = {}) {
       const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
-      const reported = nativeMcp ? piReportedMcp(native.event["details"]) : void 0;
+      const reported = nativeMcp && piNativeMcpTool(enrichment.toolSource) ? piReportedMcp(native.event["details"]) : void 0;
       const tool = classifyPiTool(toolCall.toolName, input, reported, nativeMcp);
       if (isError) {
         return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
@@ -5496,6 +5500,12 @@ function validatePiEffect(effect) {
     return "pi cannot apply a replacement that is not a plain object";
   }
   return void 0;
+}
+function registeredToolSource(pi, name) {
+  const tools = pi.getAllTools?.();
+  if (!Array.isArray(tools)) return void 0;
+  const registered = tools.find((tool) => isPlainRecord(tool) && tool["name"] === name);
+  return isPlainRecord(registered) ? registered["sourceInfo"] : void 0;
 }
 function isMutablePlainRecord(value) {
   return isPlainRecord(value) && Object.isExtensible(value) && Reflect.ownKeys(value).every((key) => Object.getOwnPropertyDescriptor(value, key)?.configurable === true);
@@ -5603,6 +5613,14 @@ function createHooknosticExtension(plugin, options) {
           const manager = ctx?.sessionManager;
           const branch = manager?.getBranch?.();
           if (branch !== void 0) enrichment.branch = branch;
+        } catch {
+        }
+      }
+      const toolName = event.toolName;
+      if (name === "tool_result" && options.nativeMcp !== false && typeof toolName === "string" && toolName.startsWith(PI_MCP_PREFIX)) {
+        try {
+          const source = registeredToolSource(pi, toolName);
+          if (source !== void 0) enrichment.toolSource = source;
         } catch {
         }
       }

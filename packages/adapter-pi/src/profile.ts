@@ -35,6 +35,20 @@ export const piFeatureValidation = {
   what: "The isolated loopback feature probes repeated on Windows and Linux: Git Bash or a shellPath-selected PowerShell and Windows PowerShell on Windows; bash, dash, zsh, fish, and tcsh on Linux; read/write/edit/grep/find/ls payloads; project, .agents, ancestor, and package skill gates; and the settled branch's final message all matched 0.84.4, apart from tool_result's added structuredContent.",
 };
 
+/**
+ * The schema-derived reading of the 1.x builds before the reference one: the
+ * MCP identity and output-replacement facts the 1.3.0 captures established
+ * hold in each installed package's source, so `>=1 <2` rests on more than the
+ * reference build for them.
+ */
+const piEarlierMcpSourceValidations = ["1.0.0", "1.1.0", "1.2.0"].map((version) => ({
+  version,
+  date: "2026-10-20",
+  method: "schema-derived" as const,
+  artifact: ".capture/pi-mcp/README.md",
+  what: `installed @earendil-works/pi-coding-agent and pi-agent-core ${version} dist, read as in 1.3.0: every MCP server tool result carries details {server, tool}; the tool is registered by the built-in mcp extension, so pi.getAllTools() reports builtin:mcp for it; the extension runner and the agent loop drop structuredContent a content replacement does not supply, nested codemode calls included; and codemode resolves an output-schema tool to structuredContent only while the result has one`,
+}));
+
 const piCompletionEdgesValidation = {
   version: piFeatureValidation.version,
   date: "2026-10-19",
@@ -270,6 +284,21 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
           artifact: ".capture/pi/README.md",
           what: "installed @earendil-works/pi-coding-agent 1.3.0 type definitions and CHANGELOG from 0.85.0: no event the adapter maps was renamed or removed, tool input shapes are unchanged, no permission event exists, and native MCP arrived in 0.99.0",
         },
+        {
+          version: "1.3.0",
+          date: "2026-10-20",
+          method: "live-probe",
+          artifact: ".capture/pi-mcp/README.md",
+          what: "Linux loopback probes: a tool_result handler's {content} kept an MCP tool's original output, structured content included, out of the next model request on a direct call and out of the value a codemode script returned, where a control without it carried the original; pi.getAllTools() reported builtin:mcp for native server tools, direct and nested, and the registering file for another extension's mcp__ tool, which also replaced a native tool under its name",
+        },
+        {
+          version: "1.3.0",
+          date: "2026-10-20",
+          method: "live-probe",
+          artifact: ".capture/harness-playback/",
+          what: "HOOKNOSTIC_PLAYBACK=pi on Linux: the generated extension gave the fixture server's codemode-nested call tool.mcp on tool.after from pi.getAllTools() and none on tool.before, and its MCP-only output replacement reached the model in place of the fixture's output",
+        },
+        ...piEarlierMcpSourceValidations,
       ],
       notes: [
         "Installed package CHANGELOG.md and dist/core/extensions/types.d.ts (read 2026-10-19) are the schema-derived source; 1.2.0 made before_agent_start a messageType union",
@@ -277,6 +306,11 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     },
     fields: piFields,
     matrix: piMatrix("1.3.0", "1.3", {
+      "tool.after.output.replace": {
+        level: "approximate",
+        rationale:
+          "tool_result result {content} replaces text output the model sees (verified by effect on 1.3.0), and pi drops the structuredContent it does not also supply, so a codemode script that would receive an MCP tool's structured result gets the replacement text instead (verified by effect on 1.3.0, .capture/pi-mcp; schema-derived for 1.0.0 to 1.2.0); non-string portable outputs are JSON-serialized into one text part, changing their type and semantics",
+      },
       "prompt.before.observe": {
         level: "exact",
         rationale:

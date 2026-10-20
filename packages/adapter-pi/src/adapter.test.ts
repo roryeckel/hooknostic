@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
+import { analyzeCapabilities, buildPluginIR, statedMcpEvents } from "@hooknostic/core";
 import type { HooknosticConfig } from "@hooknostic/sdk";
 import type { HookResult } from "@hooknostic/sdk";
 import { definePlugin, hook } from "@hooknostic/sdk";
@@ -13,8 +13,8 @@ import { planPiApplication, serializePiOutput } from "./apply.js";
 import { decodePi, PiDecodeError, type PiEnrichment, type PiNativeEvent } from "./decode.js";
 import { generatePiArtifacts } from "./generate.js";
 import { piHarness } from "./harness.js";
-import { piAdapter } from "./index.js";
-import { PI_LEGACY_RANGE, PI_RANGE } from "./profile.js";
+import { piAdapter, piNativeMcp } from "./index.js";
+import { PI_LEGACY_RANGE, PI_RANGE, piCapabilityProfiles } from "./profile.js";
 import { classifyPiTool } from "./toolmap.js";
 
 const INVOCATION = { targetId: "pi", harnessVersion: piHarness.referenceVersion };
@@ -43,6 +43,8 @@ describe("decodePi fixtures", () => {
     "tool-call-codemode",
     "tool-call-mcp-nested",
     "tool-result-mcp-nested",
+    "tool-result-mcp-extension",
+    "tool-result-mcp-shadow",
     "agent-settled",
     "agent-settled-with-message",
     "agent-settled-error",
@@ -60,7 +62,7 @@ describe("decodePi fixtures", () => {
     it(`decodes ${name} to its canonical event`, () => {
       const input = loadFixture("pi", piHarness.fixtureDir, `${name}.input.json`);
       const canonical = loadFixture<Record<string, unknown>>("pi", piHarness.fixtureDir, `${name}.canonical.json`);
-      const enrichment = name.startsWith("agent-settled-")
+      const enrichment = existsSync(fixturePath("pi", piHarness.fixtureDir, `${name}.enrichment.json`))
         ? loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`)
         : {};
       const decoded = decodePi(input, INVOCATION, enrichment);
@@ -204,7 +206,8 @@ describe("classifyPiTool", () => {
     "takes the server and tool of the captured MCP result in %s from the details pi states",
     (name) => {
       const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${name}.input.json`);
-      const decoded = decodePi(input, INVOCATION);
+      const enrichment = loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`);
+      const decoded = decodePi(input, INVOCATION, enrichment);
       if (!("tool" in decoded)) throw new Error("expected a tool event");
       expect(decoded.tool).toEqual({
         kind: "mcp",
@@ -212,8 +215,31 @@ describe("classifyPiTool", () => {
         input: {},
         mcp: { server: "probe", tool: "probe_echo" },
       });
+      // Without the tool's source, nothing says pi's MCP extension wrote those details.
+      expect((decodePi(input, INVOCATION) as { tool: unknown }).tool).toEqual({
+        kind: "mcp",
+        nativeName: "mcp__probe__probe_echo",
+        input: {},
+      });
     },
   );
+
+  it.each([
+    ["tool-result-mcp-extension", "mcp__fake__echo", { server: "fake", tool: "echo" }],
+    ["tool-result-mcp-shadow", "mcp__probe__probe_echo", { server: "shadow", tool: "echo" }],
+  ] as const)("takes no split from the details another extension's tool states in %s", (name, nativeName, details) => {
+    // Another extension registered the tool, under an MCP-shaped name or the
+    // native tool's own; its result states a split that is that extension's.
+    const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${name}.input.json`);
+    const enrichment = loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`);
+    expect(input.event["details"]).toEqual(details);
+    const decoded = decodePi(input, INVOCATION, enrichment);
+    if (!("tool" in decoded)) throw new Error("expected a tool event");
+    expect(decoded.tool).toEqual({ kind: "mcp", nativeName, input: {} });
+    // The same details from pi's own MCP extension would state the split.
+    const native = loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, "tool-result-mcp.enrichment.json");
+    expect((decodePi(input, INVOCATION, native) as { tool: { mcp?: unknown } }).tool.mcp).toEqual(details);
+  });
 
   it("never invents an MCP split from pi's lossy tool name", () => {
     // pi 1.3.0 createMcpToolName: `get__secret` on `probe`, `_hidden` on
@@ -241,6 +267,7 @@ describe("classifyPiTool", () => {
         ctx: { cwd: "C:/project" },
       },
       INVOCATION,
+      loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, "tool-result-mcp.enrichment.json"),
     );
     expect("tool" in partial && partial.tool.mcp).toBeUndefined();
   });
@@ -250,7 +277,8 @@ describe("classifyPiTool", () => {
     ["tool-result-mcp-rpc-error", undefined],
   ] as const)("decodes the captured failing MCP call in %s with the split only where pi states it", (name, mcp) => {
     const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${name}.input.json`);
-    const decoded = decodePi(input, INVOCATION);
+    const enrichment = loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`);
+    const decoded = decodePi(input, INVOCATION, enrichment);
     expect(decoded.event).toBe("tool.error");
     if (!("tool" in decoded)) throw new Error("expected a tool event");
     expect(decoded.tool.kind).toBe("mcp");
@@ -264,7 +292,8 @@ describe("classifyPiTool", () => {
     const call = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-call-mcp.input.json");
     const legacy = { nativeMcp: false };
     const other = { kind: "other", nativeName: "mcp__probe__probe_echo", input: {} };
-    expect((decodePi(result, INVOCATION, {}, legacy) as { tool: unknown }).tool).toEqual(other);
+    const source = loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, "tool-result-mcp.enrichment.json");
+    expect((decodePi(result, INVOCATION, source, legacy) as { tool: unknown }).tool).toEqual(other);
     expect((decodePi(call, INVOCATION, {}, legacy) as { tool: unknown }).tool).toEqual(other);
     // classifyTool decides for the target's range exactly as the shim does.
     const classify = piAdapter().classifyTool!;
@@ -274,6 +303,16 @@ describe("classifyPiTool", () => {
     expect(classify("mcp__probe__probe_echo", {}, stated, `${PI_LEGACY_RANGE} || ${PI_RANGE}`)).toEqual(other);
     expect(classify("mcp__probe__probe_echo", {}, stated, PI_RANGE).mcp).toEqual(stated.mcp);
     expect(classify("mcp__probe__probe_echo", {}, stated).mcp).toEqual(stated.mcp);
+  });
+
+  it("applies the MCP split exactly where the adapter declares pi states it", () => {
+    // The shim and classifyTool decide by piNativeMcp; inspect, dispatch, and
+    // the contract suite by statedMcpEvents. One declaration answers both.
+    const { mcpIdentity } = piAdapter();
+    const probes = [...piCapabilityProfiles.map((profile) => profile.range), piHarness.referenceVersion, "2.0.0"];
+    for (const range of probes) {
+      expect(piNativeMcp(range), range).toBe(statedMcpEvents(mcpIdentity, range).length > 0);
+    }
   });
 
   it("settles the MCP line in the generated entry from the target range", () => {

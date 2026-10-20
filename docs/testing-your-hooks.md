@@ -81,7 +81,8 @@ from.
 An MCP tool's `mcp` can be stated where the harness states it outside the tool
 name (ADR-0032). pi's tool names cannot be split reliably, so a pi MCP call
 carries no server or tool unless the test supplies what the harness would have
-stated, which pi does only on a result:
+stated, which pi does only on the result of a tool its MCP extension
+registered:
 
 ```json
 { "event": "tool.after", "tool": { "nativeName": "mcp__docs__search", "input": {}, "mcp": { "server": "docs", "tool": "search" } }, "output": "ok" }

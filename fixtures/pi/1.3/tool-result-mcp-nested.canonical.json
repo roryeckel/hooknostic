@@ -6,7 +6,7 @@
     "nativeEvent": "tool_result"
   },
   "session": {
-    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-mcp-Qgii2Y\\project"
+    "cwd": "/tmp/hkn-pi-mcp-6dfc7h/project"
   },
   "correlation": {
     "toolCallId": "call_playback/1"

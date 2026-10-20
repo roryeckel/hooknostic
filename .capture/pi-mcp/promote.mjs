@@ -3,7 +3,9 @@
 // regenerate canonicals with .capture/pi/make-canonical.mjs:
 //   node --experimental-strip-types .capture/pi-mcp/promote.mjs [fixture...]
 // Naming fixtures promotes only those, leaving the others' captured temporary
-// paths as they are.
+// paths as they are. It reads captured/<platform>/ for this platform, or the
+// one HKN_PI_MCP_PLATFORM names. Each tool_result fixture gets an enrichment
+// holding the source pi.getAllTools() reported for its tool in that session.
 import { readFileSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { join } from "node:path";
@@ -15,7 +17,7 @@ register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url).href);
 const { piHarness } = await import("../../packages/adapter-pi/src/harness.ts");
 const here = fileURLToPath(new URL("./", import.meta.url));
 const fixtures = fileURLToPath(new URL(`../../fixtures/pi/${piHarness.fixtureDir}/`, import.meta.url));
-const base = join(here, "captured", "win32");
+const base = join(here, "captured", process.env.HKN_PI_MCP_PLATFORM ?? process.platform);
 const metadata = JSON.parse(readFileSync(join(base, "metadata.json"), "utf8"));
 if (metadata.version !== piHarness.referenceVersion) throw new Error(`Unexpected harness build: ${metadata.version}`);
 const redaction = createRedaction(metadata.account);
@@ -28,6 +30,12 @@ const rows = (label, event) =>
     .filter(Boolean)
     .map((line) => JSON.parse(line).payload);
 const byTool = (name) => (row) => row.event.toolName === name;
+const toolSources = (label) =>
+  readFileSync(join(base, label, "events", "tool-source.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 
 /** [fixture, case, native event, pick] */
 const CASES = [
@@ -39,6 +47,11 @@ const CASES = [
   // A server's error result still states the split; a JSON-RPC error does not.
   ["tool-result-mcp-error", "extension-tool-error", "tool_result", byTool("mcp__probe__probe_fail")],
   ["tool-result-mcp-rpc-error", "extension-tool-error", "tool_result", byTool("mcp__probe__probe_throw")],
+  // Another extension's tool under an MCP-shaped name, and one under the native
+  // tool's own name: each states a split in details, and its source is that
+  // extension's file rather than pi's MCP extension.
+  ["tool-result-mcp-extension", "extension-mcp-name", "tool_result", byTool("mcp__fake__echo")],
+  ["tool-result-mcp-shadow", "extension-mcp-shadow", "tool_result", byTool("mcp__probe__probe_echo")],
 ];
 
 const only = new Set(process.argv.slice(2));
@@ -56,4 +69,14 @@ for (const [fixture, label, event, pick] of CASES) {
   const text = JSON.stringify(redaction.redact(payload), null, 2) + "\n";
   writeFileSync(join(fixtures, `${fixture}.input.json`), redaction.published(text));
   console.log(`wrote ${fixture}.input.json`);
+  if (event !== "tool_result") continue;
+  const source = toolSources(label).find(
+    (row) =>
+      row.event === event && row.toolName === payload.event.toolName && row.toolCallId === payload.event.toolCallId,
+  );
+  if (source?.tools?.length !== 1) throw new Error(`${fixture}: no single tool source recorded beside it`);
+  const enrichment = { toolSource: source.tools[0].sourceInfo };
+  const enrichmentText = JSON.stringify(redaction.redact(enrichment), null, 2) + "\n";
+  writeFileSync(join(fixtures, `${fixture}.enrichment.json`), redaction.published(enrichmentText));
+  console.log(`wrote ${fixture}.enrichment.json`);
 }

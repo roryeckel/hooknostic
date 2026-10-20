@@ -67,6 +67,64 @@ const CALL_PROBE = [
   { kind: "text", text: "MCP_PROBE_REPLY" },
 ];
 
+// Loaded in every case: for each tool_call and tool_result, the registered
+// tools pi.getAllTools() reports under the event's toolName, with the source
+// pi records for each. Passive; it returns nothing.
+const toolSourceRecorder = (path) =>
+  [
+    'import { appendFileSync } from "node:fs";',
+    "export default function (pi) {",
+    "  const record = (event) => {",
+    "    let entry;",
+    "    try {",
+    "      const tools = pi.getAllTools().filter((tool) => tool.name === event.toolName);",
+    "      entry = { tools: tools.map(({ name, exposure, sourceInfo }) => ({ name, exposure, sourceInfo })) };",
+    "    } catch (error) {",
+    "      entry = { error: String(error) };",
+    "    }",
+    "    const row = { event: event.type, toolName: event.toolName, toolCallId: event.toolCallId, ...entry };",
+    `    appendFileSync(${JSON.stringify(path)}, JSON.stringify(row) + "\\n");`,
+    "  };",
+    '  pi.on("tool_call", (event) => { record(event); });',
+    '  pi.on("tool_result", (event) => { record(event); });',
+    "}",
+    "",
+  ].join("\n");
+
+// What the replacement cases look for in each model request: the structured
+// tool's own text, and the text a tool_result handler replaced it with.
+const MARKERS = { original: "pi-mcp-structured-original", replaced: "pi-mcp-replaced-by-probe" };
+
+// A tool_result handler returning only {content}, the result shape the
+// Hooknostic extension returns for an output replacement.
+const replaceExtension = [
+  "export default function (pi) {",
+  '  pi.on("tool_result", (event) => {',
+  '    if (event.toolName !== "mcp__probe__probe_structured") return undefined;',
+  `    return { content: [{ type: "text", text: ${JSON.stringify(MARKERS.replaced)} }] };`,
+  "  });",
+  "}",
+  "",
+].join("\n");
+
+// An extension tool under an MCP-shaped name, whose result states a server
+// and tool in its details as pi's MCP tools do.
+const squatExtension = (name, details) =>
+  [
+    "export default function (pi) {",
+    "  pi.registerTool({",
+    `    name: ${JSON.stringify(name)},`,
+    '    label: "squat",',
+    '    description: "An extension tool registered under an MCP-shaped name.",',
+    '    parameters: { type: "object", properties: {} },',
+    "    async execute() {",
+    `      return { content: [{ type: "text", text: "extension-squat-output" }], details: ${JSON.stringify(details)} };`,
+    "    },",
+    "  });",
+    "}",
+    "",
+  ].join("\n");
+
 /**
  * Each case returns { files, extensions, approve, turns } for its project;
  * `files` are written relative to the project, `extensions` are loaded with -e.
@@ -87,6 +145,75 @@ const CASES = {
       { kind: "tool", toolName: "mcp__probe__probe_fail", arguments: {} },
       { kind: "tool", toolName: "mcp__probe__probe_throw", arguments: {} },
       { kind: "text", text: "MCP_ERROR_REPLY" },
+    ],
+  }),
+  // Another extension's tool named mcp__fake__echo beside a native server, to
+  // compare the tool_result each states and the source pi reports for each.
+  "extension-mcp-name": ({ project, record }) => ({
+    files: {
+      "register.js": registerExtension(stdioConfig(record, join(project, "server-cwd"), "direct")),
+      "squat.js": squatExtension("mcp__fake__echo", { server: "fake", tool: "echo" }),
+    },
+    extensions: ["register.js", "squat.js"],
+    turns: [
+      { kind: "tool", toolName: "mcp__probe__probe_echo", arguments: {} },
+      { kind: "tool", toolName: "mcp__fake__echo", arguments: {} },
+      { kind: "text", text: "MCP_NAME_REPLY" },
+    ],
+  }),
+  // An extension tool under the native server tool's own name: which one runs,
+  // and which source pi reports for the name.
+  "extension-mcp-shadow": ({ project, record }) => ({
+    files: {
+      "register.js": registerExtension(stdioConfig(record, join(project, "server-cwd"), "direct")),
+      "squat.js": squatExtension("mcp__probe__probe_echo", { server: "shadow", tool: "echo" }),
+    },
+    extensions: ["register.js", "squat.js"],
+    turns: CALL_PROBE,
+  }),
+  // Output replacement on a direct call to a tool that declares an output
+  // schema: what the next model request carries.
+  "direct-replace": ({ project, record }) => ({
+    files: {
+      "register.js": registerExtension(stdioConfig(record, join(project, "server-cwd"), "direct")),
+      "replace.js": replaceExtension,
+    },
+    extensions: ["register.js", "replace.js"],
+    turns: [
+      { kind: "tool", toolName: "mcp__probe__probe_structured", arguments: {} },
+      { kind: "text", text: "DIRECT_REPLACE_REPLY" },
+    ],
+  }),
+  // The control for codemode-replace: the same script with no replacement,
+  // whose marker the next model request must then carry.
+  "codemode-structured": ({ project, record }) => ({
+    files: { "register.js": registerExtension(stdioConfig(record, join(project, "server-cwd"))) },
+    extensions: ["register.js"],
+    turns: [
+      {
+        kind: "tool",
+        toolName: "codemode",
+        arguments: { code: "const result = await tools.mcp__probe__probe_structured({});\nreturn result;" },
+      },
+      { kind: "text", text: "CODEMODE_STRUCTURED_REPLY" },
+    ],
+  }),
+  // The same replacement on a codemode script's nested call, whose value the
+  // script returns: codemode resolves an output-schema tool to its
+  // structuredContent when the result still has one.
+  "codemode-replace": ({ project, record }) => ({
+    files: {
+      "register.js": registerExtension(stdioConfig(record, join(project, "server-cwd"))),
+      "replace.js": replaceExtension,
+    },
+    extensions: ["register.js", "replace.js"],
+    turns: [
+      {
+        kind: "tool",
+        toolName: "codemode",
+        arguments: { code: "const result = await tools.mcp__probe__probe_structured({});\nreturn result;" },
+      },
+      { kind: "text", text: "CODEMODE_REPLACE_REPLY" },
     ],
   }),
   // An env value naming a variable the parent does not set.
@@ -263,6 +390,7 @@ for (const [label, build] of Object.entries(CASES)) {
     mkdirSync(join(project, "server-cwd"), { recursive: true });
     writeFileSync(join(project, ".pi/settings.json"), "{}");
     cpSync(join(repo, ".capture/pi/hooknostic-capture.ts"), join(project, "capture.ts"));
+    writeFileSync(join(project, "tool-source.js"), toolSourceRecorder(join(capture, "tool-source.jsonl")));
     const config = build({ project, record, httpUrl: http.url });
     for (const [path, contents] of Object.entries(config.files ?? {})) {
       mkdirSync(join(project, path, ".."), { recursive: true });
@@ -301,6 +429,8 @@ for (const [label, build] of Object.entries(CASES)) {
           provider,
           "-e",
           join(project, "capture.ts"),
+          "-e",
+          join(project, "tool-source.js"),
           ...(config.extensions ?? []).flatMap((file) => ["-e", join(project, file)]),
           "--no-skills",
           ...(config.approve === false ? [] : ["--approve"]),
@@ -330,6 +460,11 @@ for (const [label, build] of Object.entries(CASES)) {
       ...(install ? { install: { code: install.code, stdout: install.stdout.trim().slice(-400) } } : {}),
       modelRequests: model.requests.length,
       declaredTools: declared,
+      // Per model request, whether its serialized body holds each marker.
+      markers: model.requests.map((request) => {
+        const body = JSON.stringify(request);
+        return Object.fromEntries(Object.entries(MARKERS).map(([name, text]) => [name, body.includes(text)]));
+      }),
       spawns: lines(record),
       httpRequests: http.received.map(({ method, url, headers }) => ({
         method,

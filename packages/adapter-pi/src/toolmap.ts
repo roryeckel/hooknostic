@@ -48,10 +48,14 @@ export const piFileCodec = fileCodec(PI_FILE_SHAPES);
  * `mcp__<server>__<tool>` with `_`, and appends a hash after truncating to 64
  * characters or when the result collides. So `get__secret` on `probe` and
  * `secret` on `probe__get` share a name, and a long name keeps neither part
- * whole. The kind is certain from the name; the split is not, so it is never
- * parsed from it. pi states the split outside the name on a result only, in
- * `details`; decodePi hands that over as a reported fact (ADR-0032), and a
- * call without one keeps the split absent. The resource tools
+ * whole. The kind follows the name, as pi's own isMcpToolName does; the split
+ * is never parsed from it. pi states the split outside the name on a result
+ * only, in `details`; decodePi hands that over as a reported fact (ADR-0032)
+ * when pi's MCP extension registered the tool, and a call without one keeps
+ * the split absent. Another extension can register an `mcp__` name, even the
+ * native tool's own, and then the `details` are its own
+ * (tool-result-mcp-extension, tool-result-mcp-shadow): such a tool is still
+ * `mcp` by pi's naming rule, with no split. The resource tools
  * (`list_mcp_resources`, ...) reach every server and stay `other`.
  *
  * `nativeMcp` says whether the target is within the 1.x line. pi 0.84 has no
@@ -59,7 +63,7 @@ export const piFileCodec = fileCodec(PI_FILE_SHAPES);
  * extension's, which nothing establishes as an MCP call: it stays `other`, and
  * no stated split applies.
  */
-const PI_MCP_PREFIX = "mcp__";
+export const PI_MCP_PREFIX = "mcp__";
 
 export function classifyPiTool(
   nativeName: string,

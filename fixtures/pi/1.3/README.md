@@ -1,8 +1,9 @@
 # pi 1.3 fixtures
 
 Captured from live pi (`@earendil-works/pi-coding-agent` 1.3.0) sessions on
-Windows, 2026-10-19, against the scripted loopback model. No model provider
-was contacted. The tee extension and the drivers are in `.capture/pi/`:
+Windows, 2026-10-19, against the scripted loopback model, except the MCP
+payloads, captured on Linux, 2026-10-20 (below). No model provider was
+contacted. The tee extension and the drivers are in `.capture/pi/`:
 `probe-sessions.mjs` (lifecycle, shells, error, compaction, continuation),
 `probe-features.mjs` (file tools, configured shell, final message), and
 `probe-completion.mjs` (completion edges). `promote-sessions.mjs` and
@@ -65,6 +66,15 @@ Each change below is additive, except the custom-message run:
 | `tool-call-mcp`, `tool-result-mcp` | captured | [pi native MCP](../../../.capture/pi-mcp/README.md) `extension-direct` case: a server registered with `exposure: "direct"`, called directly as `mcp__probe__probe_echo`; the result carries `details: {server, tool}` |
 | `tool-result-mcp-error`, `tool-result-mcp-rpc-error` | captured | `extension-tool-error` case: a server's error result (`isError: true`) still carries `details: {server, tool}`; a JSON-RPC error arrives with `isError: true` and `details: {}` |
 | `tool-call-codemode`, `tool-call-mcp-nested`, `tool-result-mcp-nested` | captured | `codemode-nested` case, default exposure: the `codemode` call with its `{code}`, and the script's MCP call as a nested call with `toolCallId` `<parent>/1` and `parentToolCallId` |
+| `tool-result-mcp-extension` | captured | `extension-mcp-name` case: another extension's `pi.registerTool` tool, `mcp__fake__echo`, whose result carries the `details: {server: "fake", tool: "echo"}` that extension returned. No split: its source is not pi's MCP extension |
+| `tool-result-mcp-shadow` | captured | `extension-mcp-shadow` case: another extension's tool registered under the native `mcp__probe__probe_echo`, which ran in its place with `details: {server: "shadow", tool: "echo"}`. No split, as above |
+
+The MCP rows were captured on Linux, 2026-10-20, by `.capture/pi-mcp/probe.mjs`,
+and promoted by `promote.mjs`. They are identical to the Windows captures of
+2026-10-19 apart from `ctx.cwd`. Each `tool-result-mcp*` input has an
+`.enrichment.json` from the same session: the `sourceInfo` that
+`pi.getAllTools()` reported for its tool, which the generated extension reads
+beside the callback. Their temporary `hkn-pi-mcp-*` directories are volatile.
 
 ## Not captured (declined, not defaulted)
 

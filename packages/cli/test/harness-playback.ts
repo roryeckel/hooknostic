@@ -135,7 +135,8 @@ export type PlaybackEffect =
   | "block-continuation" // tool.after.blockContinuation on the sentinel marker
   | "request-approval" // tool.before.requestApproval on the sentinel marker
   | "permission-deny" // permission.request.block on any permission prompt
-  | "replace-outputs"; // tool.after.output.replace
+  | "replace-outputs" // tool.after.output.replace
+  | "replace-mcp-outputs"; // tool.after.output.replace, on MCP tools only
 
 export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "context-add",
@@ -146,6 +147,7 @@ export const ALL_PLAYBACK_EFFECTS: readonly PlaybackEffect[] = [
   "request-approval",
   "permission-deny",
   "replace-outputs",
+  "replace-mcp-outputs",
 ];
 
 function playbackPluginSource(
@@ -223,6 +225,9 @@ function playbackPluginSource(
         if (effects.includes("replace-outputs") && "${event}" === "tool.after") {
           return replaceOutput("hooknostic-replaced-tool-output");
         }
+        if (effects.includes("replace-mcp-outputs") && "${event}" === "tool.after" && event.tool?.kind === "mcp") {
+          return replaceOutput("hooknostic-replaced-tool-output");
+        }
         if (effects.includes("request-approval") && "${event}" === "tool.before" &&
             command?.includes("hooknostic-approval")) {
           return requestApproval("approval requested by harness playback");
@@ -258,6 +263,7 @@ function playbackPluginSource(
           harnessVersion: event.harness.version,
           toolKind: event.tool?.kind,
           toolNativeName: event.tool?.nativeName,
+          toolMcp: event.tool?.mcp,
           shellDialect: event.tool?.shell?.dialect,
           lastMessage: event.lastMessage,
           turnId: event.correlation.turnId,${label === undefined ? "" : `\n          label: ${JSON.stringify(label)},`}

@@ -6,11 +6,12 @@ import type {
   DetectionResult,
   GeneratedArtifact,
   HarnessAdapter,
+  McpIdentitySupport,
   PluginIR,
   RuntimeBundle,
   TargetSpec,
 } from "@hooknostic/core";
-import { detectCommandVersion, rangeWithin, resolveCapabilityMatrix } from "@hooknostic/core";
+import { detectCommandVersion, mcpIdentityApplies, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
@@ -39,12 +40,36 @@ export type { PiExtensionApi, PiShimOptions } from "./shim.js";
 export { classifyPiTool, piShellCodec, PI_SHELL_SHAPES, piFileCodec, PI_FILE_SHAPES } from "./toolmap.js";
 
 /**
+ * Where a pi MCP tool's server and tool come from (ADR-0032). Its range is the
+ * one line whose native MCP channel both makes `mcp__` tools MCP calls and
+ * states their split: `piNativeMcp` reads it, so the shim and `classifyTool`
+ * apply the split exactly where inspect, dispatch, and the contract suite say
+ * pi states it.
+ */
+export const piMcpIdentity: McpIdentitySupport = {
+  source: "statement",
+  events: ["tool.after", "tool.error"],
+  // pi 0.84 has no native MCP channel. Captured on 1.3.0; 1.0.0 to 1.2.0
+  // build the same details (schema-derived, profile.ts).
+  range: PI_RANGE,
+  rationale:
+    "pi names MCP tools mcp__<server>__<tool> but sanitizes every non-identifier character and hashes a long or " +
+    "colliding name, so the split is never parsed from it. The result of a tool pi's MCP extension registered states " +
+    "the server and tool in its details, as pi registered them, including a server's error result; a JSON-RPC failure " +
+    "leaves details empty, so that tool.error carries kind mcp without the split, and a tool_call states nothing, so " +
+    "tool.before never has it. Another extension can register an mcp__ name, even a native tool's, and its details " +
+    "are its own: the generated extension reads each result's tool source from pi.getAllTools() and takes the split " +
+    `only from builtin:mcp. Outside ${PI_RANGE} an mcp__ tool is another extension's and classifies as other.`,
+  evidence: ".capture/pi-mcp/README.md",
+};
+
+/**
  * Whether a target range (or one build) is within pi's 1.x line, whose native
  * MCP channel makes `mcp__` tools MCP calls (ADR-0032). The generated shim and
  * `classifyTool` both decide by it, so dispatch builds what the shim decodes.
  */
 export function piNativeMcp(range: string): boolean {
-  return rangeWithin(range, PI_RANGE);
+  return mcpIdentityApplies(piMcpIdentity, range);
 }
 
 function resolveShimPath(): string {
@@ -130,19 +155,7 @@ export function piAdapter(): HarnessAdapter {
         "and Pi's tool description and prompt snippet do not state the selected interpreter.",
       evidence: ".capture/pi/FEATURES.md",
     },
-    mcpIdentity: {
-      source: "statement",
-      events: ["tool.after", "tool.error"],
-      // pi 0.84 has no native MCP channel; the statement is captured on 1.3.0.
-      range: PI_RANGE,
-      rationale:
-        "pi names MCP tools mcp__<server>__<tool> but sanitizes every non-identifier character and hashes a long or " +
-        "colliding name, so the split is never parsed from it. A tool_result states the server and tool in its details, " +
-        "as pi registered them, including a server's error result; a JSON-RPC failure leaves details empty, so that " +
-        "tool.error carries kind mcp without the split, and a tool_call states nothing, so tool.before never has it. " +
-        `Outside ${PI_RANGE} an mcp__ tool is another extension's and classifies as other.`,
-      evidence: ".capture/pi-mcp/README.md",
-    },
+    mcpIdentity: piMcpIdentity,
 
     supportedHarnessVersions() {
       return piCapabilityProfiles.map((p) => p.range);

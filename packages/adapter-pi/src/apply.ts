@@ -20,7 +20,10 @@ export interface PiApplication {
   /**
    * tool_result: return {content, details, isError} — replaces the output
    * the model sees (verified by effect on 0.84.4). Content is lowered to
-   * pi's (TextContent | ImageContent)[] as text parts.
+   * pi's (TextContent | ImageContent)[] as text parts. Only content, on
+   * purpose: pi 1.x drops the structuredContent a handler does not supply,
+   * which is what keeps an MCP tool's original result from a codemode script
+   * (.capture/pi-mcp, codemode-replace).
    */
   resultReplacement?: {
     content: { type: "text"; text: string }[];

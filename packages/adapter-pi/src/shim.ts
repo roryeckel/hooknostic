@@ -8,7 +8,7 @@ import { hookAppliesToTarget } from "@hooknostic/sdk";
 import { type PiApplication, planPiApplication } from "./apply.js";
 import type { PiEnrichment, PiNativeEvent } from "./decode.js";
 import { decodePi, PiDecodeError } from "./decode.js";
-import { piFileCodec, piShellCodec } from "./toolmap.js";
+import { PI_MCP_PREFIX, piFileCodec, piShellCodec } from "./toolmap.js";
 import { isPlainRecord, validatePiEffect } from "./validate.js";
 
 export interface PiShimOptions {
@@ -39,6 +39,16 @@ export interface PiShimOptions {
 export interface PiExtensionApi {
   on?: (event: string, handler: (event: unknown, ctx: unknown) => Promise<unknown> | unknown) => void;
   sendMessage?: (message: unknown, options?: { triggerTurn?: boolean }) => void;
+  /** The registered tools, each with the `sourceInfo` of the registration pi runs. */
+  getAllTools?: () => unknown;
+}
+
+/** The source pi reports for the tool registered under `name`, if it can be read. */
+function registeredToolSource(pi: PiExtensionApi, name: string): unknown {
+  const tools = pi.getAllTools?.();
+  if (!Array.isArray(tools)) return undefined;
+  const registered: unknown = tools.find((tool) => isPlainRecord(tool) && tool["name"] === name);
+  return isPlainRecord(registered) ? registered["sourceInfo"] : undefined;
 }
 
 /** The subscription set returned by `createHooknosticExtension`. */
@@ -213,6 +223,22 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
             if (branch !== undefined) enrichment.branch = branch;
           } catch {
             // An unavailable native read leaves optional fields absent; the hook still runs.
+          }
+        }
+        // Whose `details` an MCP-named result carries: pi's MCP extension, or
+        // another extension under the same kind of name (.capture/pi-mcp).
+        const toolName = (event as { toolName?: unknown }).toolName;
+        if (
+          name === "tool_result" &&
+          options.nativeMcp !== false &&
+          typeof toolName === "string" &&
+          toolName.startsWith(PI_MCP_PREFIX)
+        ) {
+          try {
+            const source = registeredToolSource(pi, toolName);
+            if (source !== undefined) enrichment.toolSource = source;
+          } catch {
+            // An unavailable native read leaves the split absent; the hook still runs.
           }
         }
         const { result, application } = await runFailingOpen(native, enrichment);

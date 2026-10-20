@@ -4,7 +4,8 @@
 
 Accepted, 2026-10-19. Extends ADR-0023 (dispatch builds a test event's tool
 view from `classifyTool`) and follows ADR-0029's pattern for a stated shell
-dialect.
+dialect. Amended 2026-10-20: the statement is taken only from a tool pi's MCP
+extension registered (decision 7).
 
 ## Context
 
@@ -25,6 +26,16 @@ pi does state the identity outside the name, but on the result only:
 (`fixtures/pi/1.3/tool-result-mcp`), including for a server's error result
 (`tool-result-mcp-error`). A JSON-RPC failure arrives with empty `details`
 (`tool-result-mcp-rpc-error`), and `tool_call` carries nothing.
+
+`details` is whatever the executing tool returned, though, and pi does not
+reserve the `mcp__` prefix. Any extension can register a tool under an
+`mcp__` name, even the name of a native server's tool, and pi then runs the
+extension's tool in its place. Its `details` are its own
+(`tool-result-mcp-extension`, `tool-result-mcp-shadow`). `pi.getAllTools()`
+reports the source of the registration pi runs under each name. pi's MCP
+extension registers every native server tool, reached directly or from a
+codemode script, as `{path: "builtin:mcp", source: "builtin"}`. Another
+extension's tool reports that extension's file.
 
 ADR-0023 requires `classifyTool(nativeName, input)` to rebuild the decoder's
 tool view exactly, because `hooknostic dispatch` builds a test event's view
@@ -70,6 +81,16 @@ the split from `details` would break that rule.
    hint naming the events that carry it, or the range it is stated for when
    the target's range is not within it. A test therefore cannot hand a pi
    `tool.before` hook, or a pi 0.84 hook, an identity pi never gives.
+7. **pi's statement counts only from pi's MCP extension.** For an `mcp__`
+   tool_result, the shim reads the tool's `sourceInfo` from
+   `pi.getAllTools()` beside the callback and passes it as enrichment
+   (ADR-0027), never as part of `raw`. The decoder hands `details` to the
+   classifier only when that source is `builtin:mcp`. Another extension's
+   tool, a tool missing from the list, and a list that cannot be read all
+   leave the split absent. The kind still follows the name, as pi's own
+   `isMcpToolName` does, so such a tool stays `kind: "mcp"`. A stated
+   identity in a dispatch test is taken as one from pi's MCP extension, since
+   the test names the tool it means.
 
 ## Consequences
 
@@ -77,7 +98,8 @@ the split from `details` would break that rule.
   `nativeName`, but without a server or tool. A guard that needs the server
   matches on `nativeName` or reads `raw`, and must accept that pi's name may be
   ambiguous. `tool.after` and a server-reported `tool.error` carry the exact
-  identity; a `tool.error` from a JSON-RPC failure does not.
+  identity; a `tool.error` from a JSON-RPC failure does not, and neither does
+  a result from another extension's `mcp__` tool (decision 7).
 - No capability or field rating: whether a call carries the split depends on
   the call (ADR-0026 decision 7, ADR-0029 decision 10).
 - The shim does not see the running harness version, so it follows the

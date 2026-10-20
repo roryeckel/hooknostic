@@ -1,0 +1,8 @@
+{
+  "toolSource": {
+    "path": "builtin:mcp",
+    "source": "builtin",
+    "scope": "temporary",
+    "origin": "top-level"
+  }
+}

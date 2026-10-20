@@ -26,7 +26,7 @@
     "isError": false
   },
   "ctx": {
-    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-mcp-Qgii2Y\\project",
+    "cwd": "/tmp/hkn-pi-mcp-6dfc7h/project",
     "mode": "print"
   }
 }

@@ -36,6 +36,12 @@ interface ToolCallShape {
 /** Context read beside a callback, never inserted into event.raw (ADR-0027). */
 export interface PiEnrichment {
   branch?: unknown;
+  /**
+   * The `sourceInfo` that `pi.getAllTools()` reports for a tool_result's tool:
+   * the registration pi runs under that name (.capture/pi-mcp,
+   * extension-mcp-shadow).
+   */
+  toolSource?: unknown;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -83,6 +89,18 @@ function snapshotPiRaw(native: PiNativeEvent): PiNativeEvent {
   } catch {
     throw new PiDecodeError("pi event cannot be cloned");
   }
+}
+
+/**
+ * Whether a tool's source is pi's own MCP extension, which registers every
+ * native MCP server tool (`{path: "builtin:mcp", source: "builtin"}`, direct
+ * and codemode-nested alike). Another extension's tool, even under an `mcp__`
+ * name or the native tool's own, reports that extension's file (.capture/pi-mcp,
+ * extension-mcp-name and extension-mcp-shadow).
+ */
+export function piNativeMcpTool(source: unknown): boolean {
+  const { path, source: kind } = record(source);
+  return path === "builtin:mcp" && kind === "builtin";
 }
 
 /** The MCP identity a tool_result's `details` states, when it names both parts as strings. */
@@ -218,9 +236,13 @@ export function decodePi(
       // result (tool-result-mcp-error); a JSON-RPC failure leaves it empty
       // (tool-result-mcp-rpc-error). The lossy name cannot (toolmap.ts). It
       // reaches the view as a reported fact, which is how classifyTool
-      // rebuilds the same view (ADR-0023, ADR-0032). Only on the 1.x line:
-      // on 0.84 an extension's `details` states nothing pi established.
-      const reported = nativeMcp ? piReportedMcp(native.event["details"]) : undefined;
+      // rebuilds the same view (ADR-0023, ADR-0032). Only on the 1.x line, and
+      // only for a tool pi's MCP extension registered: any other extension can
+      // register an `mcp__` name, the native tool's own included, and its
+      // `details` are its own (tool-result-mcp-extension, -shadow). Without
+      // the tool's source, nothing establishes whose `details` they are.
+      const reported =
+        nativeMcp && piNativeMcpTool(enrichment.toolSource) ? piReportedMcp(native.event["details"]) : undefined;
       const tool = classifyPiTool(toolCall.toolName, input, reported, nativeMcp);
       if (isError) {
         return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };

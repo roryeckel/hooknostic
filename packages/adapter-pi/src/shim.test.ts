@@ -4,7 +4,7 @@ import type { PluginSpec } from "@hooknostic/sdk";
 import { definePlugin, hook } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
 
-import type { PiNativeEvent } from "./decode.js";
+import type { PiEnrichment, PiNativeEvent } from "./decode.js";
 import { piHarness } from "./harness.js";
 import { piCapabilityProfiles } from "./profile.js";
 import { createHooknosticExtension, type PiExtensionApi } from "./shim.js";
@@ -70,9 +70,10 @@ describe("createHooknosticExtension", () => {
 
   it("hands hooks an MCP tool only on a target within the 1.x line", async () => {
     const fixture = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-result-mcp.input.json");
+    const { toolSource } = loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, "tool-result-mcp.enrichment.json");
     const seen: unknown[] = [];
     for (const nativeMcp of [undefined, false]) {
-      const pi = fakePi();
+      const pi = { ...fakePi(), getAllTools: () => [{ name: "mcp__probe__probe_echo", sourceInfo: toolSource }] };
       createHooknosticExtension(
         pluginWith([
           hook("tool.after", {
@@ -90,6 +91,69 @@ describe("createHooknosticExtension", () => {
       { kind: "mcp", mcp: { server: "probe", tool: "probe_echo" } },
       { kind: "other", mcp: undefined },
     ]);
+  });
+
+  it("takes the MCP split only from a tool pi's MCP extension registered", async () => {
+    // tool-result-mcp-shadow: another extension's tool under the native name.
+    const fixture = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-result-mcp-shadow.input.json");
+    const source = (name: string) =>
+      loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`).toolSource;
+    const registered = (sourceInfo: unknown) => () => [
+      { name: "bash", sourceInfo: { path: "builtin:bash", source: "builtin" } },
+      { name: "mcp__probe__probe_echo", sourceInfo },
+    ];
+    const cases: [string, PiExtensionApi["getAllTools"]][] = [
+      ["native", registered(source("tool-result-mcp"))],
+      ["extension", registered(source("tool-result-mcp-shadow"))],
+      ["unregistered", () => []],
+      [
+        "unreadable",
+        () => {
+          throw new Error("runtime not bound");
+        },
+      ],
+      ["absent", undefined],
+    ];
+    const seen: Record<string, unknown> = {};
+    for (const [label, getAllTools] of cases) {
+      const pi = { ...fakePi(), ...(getAllTools === undefined ? {} : { getAllTools }) };
+      createHooknosticExtension(
+        pluginWith([
+          hook("tool.after", {
+            id: "observe",
+            async run(event) {
+              seen[label] = { kind: event.tool.kind, mcp: event.tool.mcp };
+            },
+          }),
+        ]),
+        { capabilities: LEVELS, ...INVOCATION },
+      )(pi);
+      await fire(pi, "tool_result", fixture.event, fixture.ctx);
+    }
+    expect(seen).toEqual({
+      native: { kind: "mcp", mcp: { server: "shadow", tool: "echo" } },
+      extension: { kind: "mcp", mcp: undefined },
+      unregistered: { kind: "mcp", mcp: undefined },
+      unreadable: { kind: "mcp", mcp: undefined },
+      absent: { kind: "mcp", mcp: undefined },
+    });
+  });
+
+  it("reads tool sources only for MCP-named results on the 1.x line", async () => {
+    const bash = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-result-bash.input.json");
+    const mcp = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-result-mcp.input.json");
+    for (const nativeMcp of [undefined, false]) {
+      const getAllTools = vi.fn(() => []);
+      const pi = { ...fakePi(), getAllTools };
+      createHooknosticExtension(pluginWith([hook("tool.after", { id: "observe", async run() {} })]), {
+        capabilities: LEVELS,
+        ...INVOCATION,
+        ...(nativeMcp === undefined ? {} : { nativeMcp }),
+      })(pi);
+      await fire(pi, "tool_result", bash.event, bash.ctx);
+      await fire(pi, "tool_result", mcp.event, mcp.ctx);
+      expect(getAllTools).toHaveBeenCalledTimes(nativeMcp === false ? 0 : 1);
+    }
   });
 
   it("registers only the native events the plugin's hooks require", () => {
