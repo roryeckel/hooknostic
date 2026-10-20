@@ -83,9 +83,22 @@ Run `node "${SKILL_DIR}/scripts/status.mjs" --project "<the user's project direc
 ```
 
 Projection writes each target's form: `${CLAUDE_SKILL_DIR}` on Claude Code, which it
-expands to the skill's absolute directory, and `.` on Codex, OpenCode, and Pi, whose skill
-instructions resolve relative paths against the skill's directory. Only the body is
-rewritten, on package and project delivery alike. A skill-text reference a target shows
+expands to the skill's absolute directory; `<absolute path of the directory containing this SKILL.md>`
+on Codex; and `.` on OpenCode and Pi, whose skill instructions ask the model to resolve
+relative paths against the skill's directory. Codex's model must fill the explicit
+placeholder from the SKILL.md path supplied by the harness. This improved the measured
+command bodies, but Codex performs no runtime expansion and correct model substitution
+is not guaranteed. Each Codex body rewrite therefore fails the build as
+`codex:skill-directory-model-substitution` (HN101). After reviewing the skill, use
+`components.accept: ["codex:skill-directory-model-substitution"]` to ship it with an
+informational diagnostic. Acceptance records the dependency on the model.
+
+Codex and OpenCode both write project skills to `.agents/skills`. A combined project
+sync with `${SKILL_DIR}` would produce different bytes at the same path, so sync
+rejects the conflict before writing. Use package delivery for separate projections,
+or author skill text that both targets can share.
+
+Only the body is rewritten, on package and project delivery alike. A skill-text reference a target shows
 the model as written, such as `${CLAUDE_PLUGIN_ROOT}` on Codex or `${PLUGIN_ROOT}`
 anywhere, fails the build as the `<adapter>:skill-reference-unexpanded` degradation
 (HN101); a shell parameter like `${HOME}` is left to the shell. The model may still run

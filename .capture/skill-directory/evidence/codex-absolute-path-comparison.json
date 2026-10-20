@@ -1,0 +1,524 @@
+{
+  "provenance": "live-probe",
+  "date": "2026-10-19",
+  "harness": "codex",
+  "version": "0.163.0",
+  "model": "gpt-6-luna",
+  "environment": {
+    "platform": "Windows",
+    "sandbox": "danger-full-access",
+    "windowsSandboxSetting": "unelevated",
+    "bashDirectory": "C:/Program Files/Git/bin"
+  },
+  "placeholder": "<absolute path of the directory containing this SKILL.md>",
+  "reconstructedFrontmatter": {
+    "allowed-tools": "Bash",
+    "metadata.argument-hint": "[args]"
+  },
+  "method": "Five fresh isolated marketplace installs per body and projection, interleaved in alternating order. The existing projectSkillText helper changes only skillDirectory. First launcher attempts are checked against command outputs and the script's marker; retries are recorded separately.",
+  "limits": "Body F is the issue's full body. E-reconstructed adds declared substitute frontmatter because the original values were unavailable. Native sandboxing was disabled with explicit owner authorization after sandboxed execution controls stalled. Git Bash was pinned on PATH. The sample does not establish a general probability or an exact support rating. Production projection was not changed.",
+  "summary": [
+    {
+      "body": "E-reconstructed",
+      "projection": "absolute-placeholder",
+      "sessions": 5,
+      "firstAttemptSuccesses": 5,
+      "eventualExecutions": 5
+    },
+    {
+      "body": "E-reconstructed",
+      "projection": "dot",
+      "sessions": 5,
+      "firstAttemptSuccesses": 0,
+      "eventualExecutions": 1
+    },
+    {
+      "body": "F",
+      "projection": "absolute-placeholder",
+      "sessions": 5,
+      "firstAttemptSuccesses": 5,
+      "eventualExecutions": 5
+    },
+    {
+      "body": "F",
+      "projection": "dot",
+      "sessions": 5,
+      "firstAttemptSuccesses": 1,
+      "eventualExecutions": 1
+    }
+  ],
+  "skills": {
+    "F/dot": "---\nname: where\ndescription: Show this probe's status (where its script runs)\n---\n\nPrint where this skill's script runs.\n\nRaw slash-command arguments:\n`$ARGUMENTS`\n\nReplace `<args>` below with the raw arguments above, each one wrapped in single quotes as its own word (for example `'--python' 'C:\\Users\\me\\venv\\Scripts\\python.exe'`), or with nothing when there are none. Never paste them unquoted: bash strips the backslashes out of an unquoted Windows path, so `C:\\Users\\me\\x.exe` would reach the script as `C:Usersmex.exe`. A value that itself contains a single quote is written `'it'\\''s'`.\n\n```bash\nbash \"./scripts/where.sh\" --project \"<absolute path of the user's project>\" <args>\n```\n\nReturn the output verbatim.\n",
+    "F/absolute-placeholder": "---\nname: where\ndescription: Show this probe's status (where its script runs)\n---\n\nPrint where this skill's script runs.\n\nRaw slash-command arguments:\n`$ARGUMENTS`\n\nReplace `<args>` below with the raw arguments above, each one wrapped in single quotes as its own word (for example `'--python' 'C:\\Users\\me\\venv\\Scripts\\python.exe'`), or with nothing when there are none. Never paste them unquoted: bash strips the backslashes out of an unquoted Windows path, so `C:\\Users\\me\\x.exe` would reach the script as `C:Usersmex.exe`. A value that itself contains a single quote is written `'it'\\''s'`.\n\n```bash\nbash \"<absolute path of the directory containing this SKILL.md>/scripts/where.sh\" --project \"<absolute path of the user's project>\" <args>\n```\n\nReturn the output verbatim.\n",
+    "E-reconstructed/absolute-placeholder": "---\nname: where\ndescription: Show this probe's status (where its script runs)\nallowed-tools: Bash\nmetadata:\n  argument-hint: \"[args]\"\n---\n\nPrint where this skill's script runs.\n\nRaw slash-command arguments:\n`$ARGUMENTS`\n\nReplace `<args>` below with the raw arguments above, each one wrapped in single quotes as its own word (for example `'--python' 'C:\\Users\\me\\venv\\Scripts\\python.exe'`), or with nothing when there are none. Never paste them unquoted: bash strips the backslashes out of an unquoted Windows path, so `C:\\Users\\me\\x.exe` would reach the script as `C:Usersmex.exe`. A value that itself contains a single quote is written `'it'\\''s'`.\n\n```bash\nbash \"<absolute path of the directory containing this SKILL.md>/scripts/where.sh\" --project \"<absolute path of the user's project>\" <args>\n```\n\nReturn the output verbatim.\n",
+    "E-reconstructed/dot": "---\nname: where\ndescription: Show this probe's status (where its script runs)\nallowed-tools: Bash\nmetadata:\n  argument-hint: \"[args]\"\n---\n\nPrint where this skill's script runs.\n\nRaw slash-command arguments:\n`$ARGUMENTS`\n\nReplace `<args>` below with the raw arguments above, each one wrapped in single quotes as its own word (for example `'--python' 'C:\\Users\\me\\venv\\Scripts\\python.exe'`), or with nothing when there are none. Never paste them unquoted: bash strips the backslashes out of an unquoted Windows path, so `C:\\Users\\me\\x.exe` would reach the script as `C:Usersmex.exe`. A value that itself contains a single quote is written `'it'\\''s'`.\n\n```bash\nbash \"./scripts/where.sh\" --project \"<absolute path of the user's project>\" <args>\n```\n\nReturn the output verbatim.\n"
+  },
+  "sessions": [
+    {
+      "run": "run-01",
+      "round": 1,
+      "body": "F",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-01\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-01\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-01\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-01\\project",
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-02",
+      "round": 1,
+      "body": "F",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\project\"",
+          "workdir": null,
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-02/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-02/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-02\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-03",
+      "round": 1,
+      "body": "E-reconstructed",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\project\"",
+          "workdir": null,
+          "shell": "bash",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-03/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-03/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-03\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-04",
+      "round": 1,
+      "body": "E-reconstructed",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-04\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-04\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-04\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-04\\project",
+          "shell": "bash",
+          "exitCode": 127,
+          "output": "bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-05",
+      "round": 2,
+      "body": "F",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\project\"",
+          "workdir": null,
+          "shell": "bash",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-05/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-05/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-05\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-06",
+      "round": 2,
+      "body": "F",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-06\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-06\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-06\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-06\\project",
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-07",
+      "round": 2,
+      "body": "E-reconstructed",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-07\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-07\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-07\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-07\\project",
+          "shell": "powershell",
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-08",
+      "round": 2,
+      "body": "E-reconstructed",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where/scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\project\"",
+          "workdir": null,
+          "shell": "bash",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-08/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-08/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where/scripts/where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-08\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-09",
+      "round": 3,
+      "body": "F",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-09\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-09\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-09\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-09\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-09/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-09\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-09/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where",
+          "script": "./scripts/where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-09\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-10",
+      "round": 3,
+      "body": "F",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\project\"",
+          "workdir": null,
+          "shell": "powershell",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-10/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-10/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-10\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-11",
+      "round": 3,
+      "body": "E-reconstructed",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\project",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-11/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-11/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-11\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-12",
+      "round": 3,
+      "body": "E-reconstructed",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-12\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-12\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-12/project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-12\\project",
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-13",
+      "round": 4,
+      "body": "F",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\project",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-13/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-13/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-13\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-14",
+      "round": 4,
+      "body": "F",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-14\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-14\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-14\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-14\\project",
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-15",
+      "round": 4,
+      "body": "E-reconstructed",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\project\"",
+          "workdir": null,
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        },
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-15/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-15/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where",
+          "script": "./scripts/where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-15\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-16",
+      "round": 4,
+      "body": "E-reconstructed",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\project\"",
+          "workdir": null,
+          "shell": "powershell",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-16/project; arguments: --project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-16/project",
+          "script": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where\\scripts\\where.sh",
+          "arguments": "--project C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-16\\project"
+        }
+      ]
+    },
+    {
+      "run": "run-17",
+      "round": 5,
+      "body": "F",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-17\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-17\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-17\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-17\\project",
+          "exitCode": 1,
+          "output": "/usr/bin/bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    },
+    {
+      "run": "run-18",
+      "round": 5,
+      "body": "F",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-18\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-18\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-18/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where/scripts/where.sh\" --project \"C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-18/project\"",
+          "workdir": "C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-18/project",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-18/project; arguments: --project C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-18/project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-18/project",
+          "script": "C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-18/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where/scripts/where.sh",
+          "arguments": "--project C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-18/project"
+        }
+      ]
+    },
+    {
+      "run": "run-19",
+      "round": 5,
+      "body": "E-reconstructed",
+      "projection": "absolute-placeholder",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-19\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-19\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": true,
+      "eventualExecution": true,
+      "attempts": [
+        {
+          "cmd": "bash \"C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-19/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where/scripts/where.sh\" --project \"C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-19/project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-19\\project",
+          "exitCode": 0,
+          "output": "where.sh ran; working directory: /tmp/hkn-codex-path-comparison-seVlus/run-19/project; arguments: --project C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-19/project\n"
+        }
+      ],
+      "executions": [
+        {
+          "cwd": "/tmp/hkn-codex-path-comparison-seVlus/run-19/project",
+          "script": "C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-19/codex-home/plugins/cache/skilldir-probe-market/skilldir-probe/0.0.2/skills/where/scripts/where.sh",
+          "arguments": "--project C:/Users/user/AppData/Local/Temp/hkn-codex-path-comparison-seVlus/run-19/project"
+        }
+      ]
+    },
+    {
+      "run": "run-20",
+      "round": 5,
+      "body": "E-reconstructed",
+      "projection": "dot",
+      "sessionWorkingDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-20\\project",
+      "installedSkillDirectory": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-20\\codex-home\\plugins\\cache\\skilldir-probe-market\\skilldir-probe\\0.0.2\\skills\\where",
+      "firstAttemptSuccess": false,
+      "eventualExecution": false,
+      "attempts": [
+        {
+          "cmd": "bash \"./scripts/where.sh\" --project \"C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-20\\project\"",
+          "workdir": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-codex-path-comparison-seVlus\\run-20\\project",
+          "shell": "bash",
+          "exitCode": 127,
+          "output": "bash: ./scripts/where.sh: No such file or directory\n"
+        }
+      ],
+      "executions": []
+    }
+  ]
+}

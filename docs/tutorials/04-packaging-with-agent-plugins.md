@@ -326,8 +326,15 @@ plugin's skill of the same name can hide it, set `skillNames: "authored"` on the
 
 A skill that runs a script it ships names it with `${SKILL_DIR}` in its body, as in
 `node "${SKILL_DIR}/scripts/status.mjs"`. Claude's projection writes
-`${CLAUDE_SKILL_DIR}` there and the others write `.`, the form each harness resolves
-([ADR-0028](../decisions/0028-skill-directory-token.md)). A `${CLAUDE_PLUGIN_ROOT}` in a
+`${CLAUDE_SKILL_DIR}` there; Codex writes
+`<absolute path of the directory containing this SKILL.md>`; OpenCode and Pi write `.`,
+which the model must resolve against the skill's folder
+([ADR-0028](../decisions/0028-skill-directory-token.md)). Codex's model must substitute
+the explicit placeholder from the supplied SKILL.md path. The measured command bodies
+improved, but Codex itself does not expand the placeholder, so each rewrite reports
+`codex:skill-directory-model-substitution` (HN101, an error by default). Review the
+skill before adding that id to `components.accept`; acceptance records the dependency
+on the model and keeps an informational diagnostic. A `${CLAUDE_PLUGIN_ROOT}` in a
 skill reaches Codex and OpenCode as written, so it fails the build there as the
 `skill-reference-unexpanded` degradation.
 
