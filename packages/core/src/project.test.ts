@@ -295,21 +295,60 @@ describe("complete project integration", () => {
     }
   }, 60_000);
 
-  it("writes each target's skill directory into a skill's body", async () => {
-    const { root, options } = await fixture({ components: { skills: ["./skills"] } });
-    await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
-    const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
-    const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
-    await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
-    await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
+  it.each([
+    { target: "claude", destination: ".claude/skills", replacement: "${CLAUDE_SKILL_DIR}" },
+    {
+      target: "codex",
+      destination: ".agents/skills",
+      replacement: "<absolute path of the directory containing this SKILL.md>",
+    },
+    { target: "opencode", destination: ".agents/skills", replacement: "." },
+    { target: "pi", destination: ".pi/skills", replacement: "." },
+  ])(
+    "writes $target's skill directory into a skill's body",
+    async ({ target, destination, replacement }) => {
+      const { root, options } = await fixture({
+        components: {
+          skills: ["./skills"],
+          accept: target === "codex" ? ["codex:skill-directory-model-substitution"] : [],
+        },
+        targets: {
+          [target]: {
+            version: registry[target]!.harness.recommendedRange,
+            delivery: "project",
+            output: `.hooknostic/artifacts/${target}`,
+          },
+        },
+      });
+      await mkdir(join(root, "skills/sample/scripts"), { recursive: true });
+      const frontmatter = "---\nname: sample\ndescription: Runs its launcher\n---\n";
+      const body = (dir: string) => `Run \`node "${dir}/scripts/status.mjs"\`, then ${dir}/scripts/again.\r\n`;
+      await writeFile(join(root, "skills/sample/SKILL.md"), frontmatter + body("${SKILL_DIR}"));
+      await writeFile(join(root, "skills/sample/scripts/status.mjs"), "");
+
+      const synced = await runProject({ ...options, command: "sync" });
+      expect(synced.errors).toEqual([]);
+      expect(await readFile(join(root, `${destination}/sample/SKILL.md`), "utf8")).toBe(
+        frontmatter + body(replacement),
+      );
+    },
+    60_000,
+  );
+
+  it("rejects conflicting Codex and OpenCode skill text at their shared project destination", async () => {
+    const { root, options } = await fixture({
+      components: { skills: ["./skills"], accept: ["codex:skill-directory-model-substitution"] },
+    });
+    await mkdir(join(root, "skills/sample"), { recursive: true });
+    await writeFile(
+      join(root, "skills/sample/SKILL.md"),
+      '---\nname: sample\ndescription: Runs its launcher\n---\nRun node "${SKILL_DIR}/status.mjs".\n',
+    );
 
     const synced = await runProject({ ...options, command: "sync" });
-    expect(synced.errors).toEqual([]);
-    expect(await readFile(join(root, ".claude/skills/sample/SKILL.md"), "utf8")).toBe(
-      frontmatter + body("${CLAUDE_SKILL_DIR}"),
-    );
-    expect(await readFile(join(root, ".agents/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
-    expect(await readFile(join(root, ".pi/skills/sample/SKILL.md"), "utf8")).toBe(frontmatter + body("."));
+    expect(synced.ok).toBe(false);
+    expect(synced.errors).toEqual(["duplicate integration destination: .agents/skills/sample/SKILL.md"]);
+    await expect(readFile(join(root, ".agents/skills/sample/SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
   }, 60_000);
 
   it("fails a target whose skill text keeps a reference that target shows as written", async () => {
@@ -372,6 +411,11 @@ describe("complete project integration", () => {
         severity: "error",
         target: "claude",
         message: expect.stringContaining("discovers this skill where it is"),
+      }),
+      expect.objectContaining({
+        severity: "error",
+        target: "codex",
+        degradation: "codex:skill-directory-model-substitution",
       }),
     ]);
     // The author's own file is left alone.
