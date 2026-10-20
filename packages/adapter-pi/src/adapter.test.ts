@@ -14,6 +14,7 @@ import { decodePi, PiDecodeError, type PiEnrichment, type PiNativeEvent } from "
 import { generatePiArtifacts } from "./generate.js";
 import { piHarness } from "./harness.js";
 import { piAdapter } from "./index.js";
+import { PI_LEGACY_RANGE, PI_RANGE } from "./profile.js";
 import { classifyPiTool } from "./toolmap.js";
 
 const INVOCATION = { targetId: "pi", harnessVersion: piHarness.referenceVersion };
@@ -242,6 +243,50 @@ describe("classifyPiTool", () => {
       INVOCATION,
     );
     expect("tool" in partial && partial.tool.mcp).toBeUndefined();
+  });
+
+  it.each([
+    ["tool-result-mcp-error", { server: "probe", tool: "probe_fail" }],
+    ["tool-result-mcp-rpc-error", undefined],
+  ] as const)("decodes the captured failing MCP call in %s with the split only where pi states it", (name, mcp) => {
+    const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${name}.input.json`);
+    const decoded = decodePi(input, INVOCATION);
+    expect(decoded.event).toBe("tool.error");
+    if (!("tool" in decoded)) throw new Error("expected a tool event");
+    expect(decoded.tool.kind).toBe("mcp");
+    expect(decoded.tool.mcp).toEqual(mcp);
+  });
+
+  it("keeps an mcp__ tool other, with no stated split, outside the 1.x line", () => {
+    // pi 0.84 has no native MCP channel; there an mcp__ tool is another
+    // extension's, and its details state nothing pi established.
+    const result = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-result-mcp.input.json");
+    const call = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-call-mcp.input.json");
+    const legacy = { nativeMcp: false };
+    const other = { kind: "other", nativeName: "mcp__probe__probe_echo", input: {} };
+    expect((decodePi(result, INVOCATION, {}, legacy) as { tool: unknown }).tool).toEqual(other);
+    expect((decodePi(call, INVOCATION, {}, legacy) as { tool: unknown }).tool).toEqual(other);
+    // classifyTool decides for the target's range exactly as the shim does.
+    const classify = piAdapter().classifyTool!;
+    const stated = { mcp: { server: "probe", tool: "probe_echo" } };
+    expect(classify("mcp__probe__probe_echo", {}, stated, PI_LEGACY_RANGE)).toEqual(other);
+    // A range spanning both lines is not within 1.x, so it is read conservatively.
+    expect(classify("mcp__probe__probe_echo", {}, stated, `${PI_LEGACY_RANGE} || ${PI_RANGE}`)).toEqual(other);
+    expect(classify("mcp__probe__probe_echo", {}, stated, PI_RANGE).mcp).toEqual(stated.mcp);
+    expect(classify("mcp__probe__probe_echo", {}, stated).mcp).toEqual(stated.mcp);
+  });
+
+  it("settles the MCP line in the generated entry from the target range", () => {
+    const entry = (targetRange: string) =>
+      piAdapter().shimEntry!({
+        entryImportPath: "./hooks.ts",
+        capabilities: {},
+        minimumCapabilityLevel: "exact",
+        policy: { onHookError: "continue", timeoutMs: 1000, contextCharLimit: 1000, notifyCharLimit: 1000 },
+        targetRange,
+      });
+    expect(entry(PI_LEGACY_RANGE)).toContain("  nativeMcp: false,");
+    expect(entry(PI_RANGE)).not.toContain("nativeMcp");
   });
 
   it("keeps the captured codemode script tool as other", () => {

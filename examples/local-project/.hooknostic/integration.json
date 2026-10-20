@@ -149,7 +149,7 @@
     },
     {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "3c316ba6baaa3354f218cd7387e1c1d1eae462228128eff0693a4df8b23dbfe6",
+      "hash": "79d33e5ba71debf6a36126fa5811b40335244ac833d497422e2ccef19a6fc518",
       "mode": 420
     },
     {
@@ -178,7 +178,7 @@
     },
     {
       "path": ".opencode/plugins/hooknostic-components.js",
-      "hash": "f43fdf255ef4285875a6628a588ec2ce9ce4b01fa6d4692acea8a19fcc4b1eac",
+      "hash": "34828f784d2b9382b0a30991a04d7bf1316fd9e3969fb9c79256d30a21de3c52",
       "mode": 420
     },
     {
@@ -193,7 +193,7 @@
     },
     {
       "path": ".pi/extensions/hooknostic-mcp.js",
-      "hash": "5e9181c1d7a856f87aab3a138099473fd6bde7112e0d78a45bb386a89218c848",
+      "hash": "4c164d1ca79171fcf88f4d71eeb7056c0a3efcd14a12f594a9a56b146be66f5d",
       "mode": 420
     },
     {

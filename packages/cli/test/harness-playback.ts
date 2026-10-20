@@ -16,6 +16,9 @@ import { applyProject, reconcileProject } from "@hooknostic/core";
 import { buildPluginIR, bundleRuntime } from "@hooknostic/core";
 import type { CapabilityId, EventFieldId, HookEventName, ShellDialect } from "@hooknostic/sdk";
 import { definePlugin, hook, HOOK_EVENT_NAMES } from "@hooknostic/sdk";
+// The fixtures entry, not the package index: the capture drivers import this
+// module under plain Node, where the contract suite's vitest import fails.
+import { declinedFixtures } from "@hooknostic/testkit/fixtures";
 
 const RUNTIME_POLICY = {
   onHookError: "continue" as const,
@@ -1328,11 +1331,13 @@ export async function startModelPlayback(
 }
 
 /**
- * Captured input/canonical pairs. A `declined` input is a captured invocation
- * the adapter deliberately does not map: it has no canonical, and its replay
- * must dispatch no hook. Every other input must have a canonical.
+ * Captured input/canonical pairs. An input the directory's declined.json lists
+ * is a captured invocation the adapter deliberately does not map: it has no
+ * canonical, and its replay must dispatch no hook. Every other input must have
+ * a canonical.
  */
-async function fixturePairs(fixturesDir: string, declined: ReadonlySet<string> = new Set()) {
+async function fixturePairs(fixturesDir: string) {
+  const declined = declinedFixtures(fixturesDir);
   const names = (await readdir(fixturesDir)).filter((name) => name.endsWith(".input.json")).sort();
   return Promise.all(
     names.map(async (name) => {
@@ -1421,6 +1426,11 @@ export function expectOpenCodeShellDialect(dialects: readonly unknown[], expecte
   ).toEqual(dialects.map(() => expected));
 }
 
+/** The events the replayed fixtures should trace, a declined one tracing none. */
+function canonicalEvents(pairs: readonly { canonical: { event: HookEventName } | undefined }[]): HookEventName[] {
+  return pairs.flatMap((fixture) => (fixture.canonical === undefined ? [] : [fixture.canonical.event]));
+}
+
 export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
   const pairs = await fixturePairs(fixturesDir);
   for (const fixture of pairs) {
@@ -1431,9 +1441,7 @@ export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: s
     });
     expect(result.code, `${fixture.name}: ${result.stderr}`).toBe(0);
   }
-  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical!.event),
-  );
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(canonicalEvents(pairs));
 }
 
 export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
@@ -1467,9 +1475,7 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
     if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
     else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
   }
-  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical!.event),
-  );
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(canonicalEvents(pairs));
 }
 
 /**
@@ -1479,9 +1485,7 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
  * event to the subscription pi would have registered.
  */
 export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
-  // pi >=1.2 fires before_agent_start for a custom-message run; prompt.before
-  // declines it, so the generated artifact must dispatch nothing for it.
-  const pairs = await fixturePairs(fixturesDir, new Set(["before-agent-start-custom"]));
+  const pairs = await fixturePairs(fixturesDir);
   const previousTrace = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
   process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = build.tracePath;
   try {
@@ -1513,9 +1517,7 @@ export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string
     if (previousTrace === undefined) delete process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
     else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
   }
-  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.flatMap((fixture) => (fixture.canonical === undefined ? [] : [fixture.canonical.event])),
-  );
+  expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(canonicalEvents(pairs));
 }
 
 /**

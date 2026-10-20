@@ -18,6 +18,11 @@ export interface PiShimOptions {
   policy?: RuntimePolicy;
   harnessVersion?: string;
   /**
+   * Whether the target is within pi's 1.x line, settled by the generated entry
+   * from the target range (ADR-0032). Absent: the reference build's line.
+   */
+  nativeMcp?: boolean;
+  /**
    * Absolute Agent Plugin root, surfaced to handlers as `ctx.plugin.root`
    * (ADR-0020). The generated entry resolves it from its own location.
    */
@@ -86,7 +91,12 @@ export function createHooknosticExtension(plugin: PluginSpec, options: PiShimOpt
   ): Promise<{ result: unknown; application: PiApplication }> => {
     let event;
     try {
-      event = decodePi(native, invocation, enrichment);
+      event = decodePi(
+        native,
+        invocation,
+        enrichment,
+        options.nativeMcp === undefined ? {} : { nativeMcp: options.nativeMcp },
+      );
     } catch (error) {
       if (error instanceof PiDecodeError) return { result: undefined, application: {} }; // fail-open
       throw error;

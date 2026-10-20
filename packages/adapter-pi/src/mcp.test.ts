@@ -1,13 +1,15 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix, resolve, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentPluginMcpServer } from "@hooknostic/agent-plugin";
 import { AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
-import { reconcileProject } from "@hooknostic/core";
+import { reconcileProject, REMOTE_ENVIRONMENT_SOURCE } from "@hooknostic/core";
 
 import { legacyPiMcpCells, nativePiMcpCells, piMcpExtensionSource, piNamespace, translatePiMcp } from "./mcp.js";
 import { piExtensionsRelative, projectComponents, projectIntegration } from "./project.js";
@@ -170,7 +172,7 @@ describe("pi project MCP integration", () => {
     expect(extension).toContain('const root = resolve(here, "../../tools");');
     expect(extension).toContain('resolve(here, "../../.hooknostic/artifacts/pi/mcp-launcher.mjs")');
     // A direct source resolves its own references before escaping for pi.
-    expect(extension).toContain("const expand = (value, missing) =>");
+    expect(extension).toContain(REMOTE_ENVIRONMENT_SOURCE);
     expect(result.absent).toEqual([
       { path: ".pi/mcp.json", key: ["mcpServers", "local"], fold: piNamespace },
       { path: ".pi/mcp.json", key: ["mcpServers", "remote"], fold: piNamespace },
@@ -243,6 +245,44 @@ describe("pi project MCP integration", () => {
     expect(result.absent).toEqual([{ path: ".pi/mcp.json", key: ["mcpServers", "__proto__"], fold: piNamespace }]);
   });
 
+  it("resolves its offsets from its real location when pi loads it through a link", async () => {
+    // pi resolves an extension path lexically and loads it through jiti, so the
+    // module may see the aliased path. --preserve-symlinks reproduces that.
+    const base = await realpath(await mkdtemp(join(tmpdir(), "hkn-pi-link-")));
+    roots.push(base);
+    const real = join(base, "deep", "project");
+    const shared = join(base, "shared");
+    await mkdir(join(real, ".pi", "extensions"), { recursive: true });
+    await mkdir(shared);
+    const alias = join(base, "alias");
+    await symlink(real, alias, "junction");
+    // A source root outside the project, at another depth than the alias.
+    const declared = components(real, { local: stdio() });
+    const result = await projectComponents(
+      { ...declared, mcp: { ...declared.mcp, root: shared } },
+      alias,
+      "out",
+      "c.ts",
+      {},
+    );
+    await writeFile(join(real, ".pi", "extensions", "hooknostic-mcp.js"), extensionOf(result));
+    const script = [
+      'import { pathToFileURL } from "node:url";',
+      "const registered = [];",
+      "const module = await import(pathToFileURL(process.argv[1]).href);",
+      "module.default({ registerMcpServer: (name, config) => registered.push(config) });",
+      "console.log(JSON.stringify(registered[0].cwd));",
+    ].join("\n");
+    const { stdout } = await promisify(execFile)(process.execPath, [
+      "--preserve-symlinks",
+      "--input-type=module",
+      "-e",
+      script,
+      join(alias, ".pi", "extensions", "hooknostic-mcp.js"),
+    ]);
+    expect(JSON.parse(stdout)).toBe(shared);
+  });
+
   it("computes the source offset between real paths when the project is reached through a link", async () => {
     const root = await projectRoot();
     const alias = join(await realpath(tmpdir()), `hkn-pi-alias-${process.pid}-${Date.now()}`);
@@ -266,7 +306,8 @@ describe("generated pi MCP extension", () => {
   });
 
   async function load(source: string) {
-    const dir = await mkdtemp(join(tmpdir(), "hkn-pi-mcp-unit-"));
+    // Real, as the module resolves against its own directory's real path.
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "hkn-pi-mcp-unit-")));
     dirs.push(dir);
     const path = join(dir, "hooknostic-mcp.mjs");
     await writeFile(path, source);
@@ -297,6 +338,44 @@ describe("generated pi MCP extension", () => {
         },
       ],
     ]);
+  });
+
+  it("runs the launcher on PATH's node where pi is its own executable", async () => {
+    // pi 1.3.0's config.js and extensions/loader.js detect a Bun-compiled and a
+    // Node single-executable build; in both, execPath is pi itself.
+    const source = piMcpExtensionSource({
+      registrations: [{ name: "local", type: "stdio", index: 0 }],
+      rootFromHere: ".",
+      launcherFromHere: "launcher.mjs",
+      resolveEnvironment: false,
+    });
+    const commandUnder = async (setUp: () => () => void) => {
+      const restore = setUp();
+      try {
+        const { registered, module } = await load(source);
+        module.default({ registerMcpServer: (name, config) => registered.push([name, config]) });
+        return registered[0]![1]["command"];
+      } finally {
+        restore();
+      }
+    };
+    const getBuiltinModule = process.getBuiltinModule.bind(process);
+    const sea = () => {
+      const spy = vi
+        .spyOn(process, "getBuiltinModule")
+        .mockImplementation(((id: string) =>
+          id === "node:sea" ? { isSea: () => true } : getBuiltinModule(id)) as typeof process.getBuiltinModule);
+      return () => spy.mockRestore();
+    };
+    const bun = () => {
+      Object.defineProperty(process.versions, "bun", { value: "1.2.0", configurable: true, enumerable: true });
+      return () => {
+        delete (process.versions as Record<string, string>)["bun"];
+      };
+    };
+    expect(await commandUnder(sea)).toBe("node");
+    expect(await commandUnder(bun)).toBe("node");
+    expect(await commandUnder(() => () => {})).toBe(process.execPath);
   });
 
   it("escapes a package's header values so pi sends them as written", async () => {

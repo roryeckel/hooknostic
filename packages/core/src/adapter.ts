@@ -304,6 +304,12 @@ export interface ShimEntryOptions {
   };
   harnessVersion?: string;
   /**
+   * The target's requested harness version range. The shim cannot check a
+   * range at run time without bundling a semver library, so an adapter whose
+   * decoding differs between version lines settles it here, at build time.
+   */
+  targetRange?: string;
+  /**
    * POSIX path from the runtime artifact's directory to the Agent Plugin root,
    * when the build has one for this target. The entry resolves it against its
    * own `import.meta.url` and passes the result to the shim as `pluginRoot`,
@@ -446,8 +452,13 @@ export interface HarnessAdapter {
    * `reported` carries what the harness stated beside the call. An adapter
    * that takes its shell dialect from such a statement applies it; one that
    * pins the dialect by tool, or cannot establish one, ignores it (ADR-0029).
+   *
+   * `range` is the target's version range, or one exact build. A classifier
+   * whose evidence differs between version lines classifies for it, as the
+   * target's generated shim does; absent, it classifies for the reference
+   * build (ADR-0032).
    */
-  classifyTool?(nativeName: string, input: unknown, reported?: ReportedToolFacts): ToolInvocation;
+  classifyTool?(nativeName: string, input: unknown, reported?: ReportedToolFacts, range?: string): ToolInvocation;
 
   /**
    * Where this adapter's `tool.shell.dialect` comes from. Required in practice

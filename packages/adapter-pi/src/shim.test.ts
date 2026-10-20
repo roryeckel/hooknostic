@@ -68,6 +68,30 @@ describe("createHooknosticExtension", () => {
     expect(observedRaw).toEqual(input);
   });
 
+  it("hands hooks an MCP tool only on a target within the 1.x line", async () => {
+    const fixture = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-result-mcp.input.json");
+    const seen: unknown[] = [];
+    for (const nativeMcp of [undefined, false]) {
+      const pi = fakePi();
+      createHooknosticExtension(
+        pluginWith([
+          hook("tool.after", {
+            id: "observe",
+            async run(event) {
+              seen.push({ kind: event.tool.kind, mcp: event.tool.mcp });
+            },
+          }),
+        ]),
+        { capabilities: LEVELS, ...INVOCATION, ...(nativeMcp === undefined ? {} : { nativeMcp }) },
+      )(pi);
+      await fire(pi, "tool_result", fixture.event, fixture.ctx);
+    }
+    expect(seen).toEqual([
+      { kind: "mcp", mcp: { server: "probe", tool: "probe_echo" } },
+      { kind: "other", mcp: undefined },
+    ]);
+  });
+
   it("registers only the native events the plugin's hooks require", () => {
     const pi = fakePi();
     const extension = createHooknosticExtension(pluginWith([hook("tool.before", { id: "g", async run() {} })]), {

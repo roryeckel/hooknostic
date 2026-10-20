@@ -78,6 +78,17 @@ const CASES = {
     extensions: ["register.js"],
     turns: CALL_PROBE,
   }),
+  // A failing call: an MCP tool error result, then a JSON-RPC error, so the
+  // tool_result pi reports for each can be compared with a successful one.
+  "extension-tool-error": ({ project, record }) => ({
+    files: { "register.js": registerExtension(stdioConfig(record, join(project, "server-cwd"), "direct")) },
+    extensions: ["register.js"],
+    turns: [
+      { kind: "tool", toolName: "mcp__probe__probe_fail", arguments: {} },
+      { kind: "tool", toolName: "mcp__probe__probe_throw", arguments: {} },
+      { kind: "text", text: "MCP_ERROR_REPLY" },
+    ],
+  }),
   // An env value naming a variable the parent does not set.
   "extension-unset-env": ({ project, record }) => ({
     files: {

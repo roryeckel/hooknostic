@@ -487,6 +487,9 @@ export default definePlugin({
         mcpEvent("tool.after", "mcp__a_b__c", { server: "a-b", tool: "c" }),
       ]),
     ).toEqual([["null"], ['{"server":"a-b","tool":"c"}']]);
+    // pi 0.84 has no native MCP channel: an mcp__ tool there is another
+    // extension's, so it is not an MCP tool, exactly as that target's shim decodes it.
+    expect(await identities("legacy", [mcpEvent("tool.after", "mcp__a_b__c")])).toEqual([[]]);
     // Claude parses its own; it states nothing, so a test states nothing either.
     expect(await identities("claude", [mcpEvent("tool.after", "mcp__docs__search")])).toEqual([
       ['{"server":"docs","tool":"search"}'],

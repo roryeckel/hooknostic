@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { HarnessAdapter, McpIdentityEvent } from "@hooknostic/core";
-import { buildPluginIR, rangeCoversVersion } from "@hooknostic/core";
+import { buildPluginIR, mcpIdentityApplies, rangeCoversVersion, statedMcpEvents } from "@hooknostic/core";
 import type { EventFieldId, HookEventName, ToolInvocation } from "@hooknostic/sdk";
 import {
   ALL_CAPABILITY_IDS,
@@ -68,12 +68,8 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
     const fixtureNames = readdirSync(options.fixturesDir).filter((name) => name.endsWith(".canonical.json"));
     // Fixtures are the reference build's, so the statement applies to them only
     // if its declared range covers that build.
-    const statedMcpEvents: readonly McpIdentityEvent[] =
-      adapter.mcpIdentity?.source === "statement" &&
-      (adapter.mcpIdentity.range === undefined ||
-        rangeCoversVersion(adapter.mcpIdentity.range, adapter.harness.referenceVersion))
-        ? (adapter.mcpIdentity.events ?? [])
-        : [];
+    const reference = adapter.harness.referenceVersion;
+    const statedEvents: readonly McpIdentityEvent[] = statedMcpEvents(adapter.mcpIdentity, reference);
     const coveredEvents = new Set<HookEventName>(
       fixtureNames.map((name) => loadFixtureFrom<{ event: HookEventName }>(join(options.fixturesDir, name)).event),
     );
@@ -246,7 +242,7 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
         const stated =
           tool.mcp?.server !== undefined &&
           tool.mcp.tool !== undefined &&
-          statedMcpEvents.includes(fixture.event as (typeof statedMcpEvents)[number])
+          statedEvents.includes(fixture.event as (typeof statedEvents)[number])
             ? { server: tool.mcp.server, tool: tool.mcp.tool }
             : undefined;
         const reported = {
@@ -254,7 +250,12 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
           ...(stated === undefined ? {} : { mcp: stated }),
         };
         expect(
-          adapter.classifyTool!(tool.nativeName, tool.input, Object.keys(reported).length > 0 ? reported : undefined),
+          adapter.classifyTool!(
+            tool.nativeName,
+            tool.input,
+            Object.keys(reported).length > 0 ? reported : undefined,
+            reference,
+          ),
           name,
         ).toEqual(tool);
       }
@@ -275,19 +276,19 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
         expect(identity.events ?? [], "a statement source names its events").not.toEqual([]);
         if (identity.range !== undefined) {
           expect(
-            rangeCoversVersion(identity.range, adapter.harness.referenceVersion),
+            mcpIdentityApplies(identity, reference),
             "a statement range covers the reference build its fixtures come from",
           ).toBe(true);
         }
         expect(
-          carrying.some((fixture) => statedMcpEvents.includes(fixture.event as (typeof statedMcpEvents)[number])),
+          carrying.some((fixture) => statedEvents.includes(fixture.event as (typeof statedEvents)[number])),
           "a statement source needs a fixture that carries the stated split",
         ).toBe(true);
       }
       if (identity?.source === "none") expect(carrying.map((fixture) => fixture.name)).toEqual([]);
       if (identity?.source === "statement") {
         for (const fixture of carrying) {
-          expect(statedMcpEvents, `${fixture.name}: split on an event its harness states none on`).toContain(
+          expect(statedEvents, `${fixture.name}: split on an event its harness states none on`).toContain(
             fixture.event,
           );
         }
@@ -315,7 +316,8 @@ export function describeAdapterContract(adapter: HarnessAdapter, options: Adapte
       );
       const heard = probes.filter(
         ({ tool, dialect }) =>
-          adapter.classifyTool?.(tool.nativeName, tool.input, { shellDialect: dialect }).shell?.dialect === dialect,
+          adapter.classifyTool?.(tool.nativeName, tool.input, { shellDialect: dialect }, reference).shell?.dialect ===
+          dialect,
       );
       const hears = heard.length === 0 ? "nothing" : heard.length === probes.length ? "everything" : "some";
       expect({ pins, hears }, `declared source "${declared!.source}"`).toEqual({

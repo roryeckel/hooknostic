@@ -18,8 +18,9 @@ const ROOT_VERSION = (
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE } from "@hooknostic/adapter-codex";
 import { opencodeHarness, opencodeV2Harness } from "@hooknostic/adapter-opencode";
-import { piHarness } from "@hooknostic/adapter-pi";
+import { piCapabilityProfiles, piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
+import { rangeCoversVersion } from "@hooknostic/core";
 import { makeFakeAdapter, syntheticSource } from "@hooknostic/testkit";
 
 import { describeMcpCommands, runBuild } from "./build.js";
@@ -935,6 +936,29 @@ describe("hooknostic build end-to-end", () => {
       }),
     ).toBe(0);
     expect(await readFile(join(dir, "dist/claude/hooks/hooks.json"), "utf8")).toBe(firstHooksJson);
+  });
+
+  it("settles pi's MCP line in each artifact from its target range", { timeout: 120_000 }, async () => {
+    // ADR-0032: the shim cannot check a range, so the build tells it whether
+    // its target is within the 1.x line, whose native MCP channel it decodes.
+    const dir = await cleanExample("rewrite-shell");
+    const legacy = piCapabilityProfiles.find(
+      (profile) => !rangeCoversVersion(profile.range, piHarness.referenceVersion),
+    )!.range;
+    const config = join(dir, "hooknostic.config.ts");
+    const source = await readFile(config, "utf8");
+    expect(source).toContain(JSON.stringify(piHarness.recommendedRange));
+    await writeFile(
+      config,
+      source.replace(
+        /pi: \{[^}]*\},/,
+        `pi: { version: ${JSON.stringify(piHarness.recommendedRange)}, delivery: "project", output: "./dist/pi" },\n    legacy: { adapter: "pi", version: ${JSON.stringify(legacy)}, delivery: "project", output: "./dist/legacy" },`,
+      ),
+    );
+    const { io, out } = captureIO();
+    expect(await runBuild({ config, json: true, registry: defaultAdapterRegistry(), io }), out()).toBe(0);
+    expect(await readFile(join(dir, "dist/legacy/.pi/extensions/hooknostic.js"), "utf8")).toContain("nativeMcp: false");
+    expect(await readFile(join(dir, "dist/pi/.pi/extensions/hooknostic.js"), "utf8")).not.toContain("nativeMcp: false");
   });
 
   it("emits identical bytes no matter which directory the build was invoked from", { timeout: 240_000 }, async () => {

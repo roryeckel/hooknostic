@@ -92,19 +92,20 @@ export async function projectComponents(
   const omissions = mcp.omitted.filter((omission) => support[omission.component]?.level !== "unsupported");
   if (omissions.length > 0) result.omissions = [...(result.omissions ?? []), ...omissions];
   if (mcp.registrations.length === 0) return result;
+  // Between real paths, as the launcher's own offsets are: the loaded source
+  // root is already canonical, and the generated module takes its own
+  // directory's real path, so a project reached through a junction or symlink
+  // puts neither end of an offset on the wrong side of it.
+  const projectRoot = await realpath(root);
   if (mcp.launcherServers.length > 0) {
-    const launcher = await projectMcpLauncher(source, root, output, mcp.launcherServers);
+    const launcher = await projectMcpLauncher(source, projectRoot, output, mcp.launcherServers);
     result.files.push(...launcher.files);
   }
-  // Both real paths, as the launcher's own offsets are: the loaded source root
-  // is canonical, and a project reached through a junction or symlink would
-  // otherwise put the offset on the wrong side of it.
-  const projectRoot = await realpath(root);
   result.files.push({
     path: MCP_EXTENSION_PATH,
     contents: piMcpExtensionSource({
       registrations: mcp.registrations,
-      rootFromHere: piExtensionsRelative(projectRoot, await realpath(source.mcp.root)),
+      rootFromHere: piExtensionsRelative(projectRoot, source.mcp.root),
       launcherFromHere: piExtensionsRelative(projectRoot, resolve(projectRoot, output, MCP_LAUNCHER_FILE)),
       // A project's own declarations resolve their ${NAME} references from the
       // launch environment, as on the other targets; a package's never do.

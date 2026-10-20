@@ -1,7 +1,9 @@
 // Promote the pi MCP tool payloads into the reference fixture directory, with
 // account redaction. Run from the repository root after probe.mjs, then
 // regenerate canonicals with .capture/pi/make-canonical.mjs:
-//   node --experimental-strip-types .capture/pi-mcp/promote.mjs
+//   node --experimental-strip-types .capture/pi-mcp/promote.mjs [fixture...]
+// Naming fixtures promotes only those, leaving the others' captured temporary
+// paths as they are.
 import { readFileSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { join } from "node:path";
@@ -34,9 +36,17 @@ const CASES = [
   ["tool-call-codemode", "codemode-nested", "tool_call", byTool("codemode")],
   ["tool-call-mcp-nested", "codemode-nested", "tool_call", byTool("mcp__probe__probe_echo")],
   ["tool-result-mcp-nested", "codemode-nested", "tool_result", byTool("mcp__probe__probe_echo")],
+  // A server's error result still states the split; a JSON-RPC error does not.
+  ["tool-result-mcp-error", "extension-tool-error", "tool_result", byTool("mcp__probe__probe_fail")],
+  ["tool-result-mcp-rpc-error", "extension-tool-error", "tool_result", byTool("mcp__probe__probe_throw")],
 ];
 
+const only = new Set(process.argv.slice(2));
+for (const name of only) {
+  if (!CASES.some(([fixture]) => fixture === name)) throw new Error(`Unknown fixture: ${name}`);
+}
 for (const [fixture, label, event, pick] of CASES) {
+  if (only.size > 0 && !only.has(fixture)) continue;
   const observation = JSON.parse(readFileSync(join(base, label, "observation.json"), "utf8"));
   redaction.recordCapture(observation);
   if (observation.exitCode !== 0 || observation.version !== piHarness.referenceVersion)

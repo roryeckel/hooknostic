@@ -1,6 +1,6 @@
 import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
 import type { AdapterRegistry } from "@hooknostic/core";
-import { rangeWithin, resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
+import { mcpIdentityApplies, resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
 import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, ALL_EVENT_FIELD_IDS, isCapabilityId, isEventFieldId } from "@hooknostic/sdk";
 
@@ -69,8 +69,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   // target, which can be deliberately narrower than the validated union.
   const version = options.version ?? adapter.harness.recommendedRange;
   // A declared statement applies only within the range its evidence covers (ADR-0032).
-  const mcpIdentityApplies =
-    adapter.mcpIdentity?.range === undefined || rangeWithin(version, adapter.mcpIdentity.range);
+  const mcpIdentityHolds = adapter.mcpIdentity === undefined || mcpIdentityApplies(adapter.mcpIdentity, version);
   const selected = resolveTargetAdapter(adapter, {
     id: options.target,
     version,
@@ -195,8 +194,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
           shellDialect: adapter.shellDialect ?? null,
           // Likewise per call (ADR-0032). Null where the classifier alone decides;
           // `applies` says whether the requested range is within the declared one.
-          mcpIdentity:
-            adapter.mcpIdentity === undefined ? null : { ...adapter.mcpIdentity, applies: mcpIdentityApplies },
+          mcpIdentity: adapter.mcpIdentity === undefined ? null : { ...adapter.mcpIdentity, applies: mcpIdentityHolds },
           components: componentRows,
           projectionProfiles: projection?.profilesUsed ?? [],
         },
@@ -240,7 +238,7 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   if (single === undefined && adapter.mcpIdentity !== undefined) {
     const { source, events, range, rationale, evidence } = adapter.mcpIdentity;
     options.io.stdout("");
-    if (!mcpIdentityApplies) {
+    if (!mcpIdentityHolds) {
       options.io.stdout(
         `${"none".padEnd(12)} tool.mcp source (outside ${range})\n             The harness states an MCP identity only for ${range}. (${evidence})`,
       );

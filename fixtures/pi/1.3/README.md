@@ -63,6 +63,7 @@ Each change below is additive, except the custom-message run:
 | `session-before-compact`, `session-compact` | captured | `compact-run` session: an RPC `compact` command with `compaction.keepRecentTokens: 1` after one tool exchange; reason `"manual"` (the 0.84 pair was an overflow compaction) |
 | `session-compact-failed` | captured | `compact-cancel` session: `{cancel: true}` from `session_before_compact`; `aborted: true`, no `session_compact` |
 | `tool-call-mcp`, `tool-result-mcp` | captured | [pi native MCP](../../../.capture/pi-mcp/README.md) `extension-direct` case: a server registered with `exposure: "direct"`, called directly as `mcp__probe__probe_echo`; the result carries `details: {server, tool}` |
+| `tool-result-mcp-error`, `tool-result-mcp-rpc-error` | captured | `extension-tool-error` case: a server's error result (`isError: true`) still carries `details: {server, tool}`; a JSON-RPC error arrives with `isError: true` and `details: {}` |
 | `tool-call-codemode`, `tool-call-mcp-nested`, `tool-result-mcp-nested` | captured | `codemode-nested` case, default exposure: the `codemode` call with its `{code}`, and the script's MCP call as a nested call with `toolCallId` `<parent>/1` and `parentToolCallId` |
 
 ## Not captured (declined, not defaulted)

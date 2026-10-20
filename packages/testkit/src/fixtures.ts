@@ -34,6 +34,27 @@ export function adapterFixturesDir(adapter: HarnessAdapter): string {
   return resolve(FIXTURES_ROOT, adapter.id, adapter.harness.fixtureDir);
 }
 
+/**
+ * A fixture directory's `declined.json`: the stems of captured inputs the
+ * adapter declines, each with `{reason, error}`. Empty when there is none.
+ * Canonical generation and harness playback both read it, so a declined
+ * capture is declared once.
+ */
+export function declinedFixtures(fixturesDir: string): ReadonlyMap<string, { reason: string; error: string }> {
+  const manifest = join(fixturesDir, "declined.json");
+  const declined = new Map(
+    Object.entries(
+      existsSync(manifest) ? loadFixtureFrom<Record<string, { reason: string; error: string }>>(manifest) : {},
+    ),
+  );
+  for (const [stem, entry] of declined) {
+    if (typeof entry?.reason !== "string" || typeof entry.error !== "string" || entry.error === "") {
+      throw new Error(`declined.json entry ${stem} needs a reason and a non-empty error message`);
+    }
+  }
+  return declined;
+}
+
 /** The canonical files a fixture directory should hold, and the ones it should not. */
 export interface CanonicalFixturePlan {
   /** `<stem>.canonical.json` contents, keyed by file name. */
@@ -58,17 +79,7 @@ export function planCanonicalFixtures(options: {
   isDecline: (error: unknown) => boolean;
 }): CanonicalFixturePlan {
   const { fixturesDir } = options;
-  const manifest = join(fixturesDir, "declined.json");
-  const declined = new Map(
-    Object.entries(
-      existsSync(manifest) ? loadFixtureFrom<Record<string, { reason: string; error: string }>>(manifest) : {},
-    ),
-  );
-  for (const [stem, entry] of declined) {
-    if (typeof entry?.reason !== "string" || typeof entry.error !== "string" || entry.error === "") {
-      throw new Error(`declined.json entry ${stem} needs a reason and a non-empty error message`);
-    }
-  }
+  const declined = declinedFixtures(fixturesDir);
   const writes = new Map<string, unknown>();
   const stale: string[] = [];
   const inputs = new Set<string>();

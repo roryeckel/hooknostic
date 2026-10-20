@@ -10,7 +10,7 @@ import type {
   RuntimeBundle,
   TargetSpec,
 } from "@hooknostic/core";
-import { detectCommandVersion, resolveCapabilityMatrix } from "@hooknostic/core";
+import { detectCommandVersion, rangeWithin, resolveCapabilityMatrix } from "@hooknostic/core";
 import type { CapabilityLevels } from "@hooknostic/runtime";
 import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
@@ -32,11 +32,20 @@ export { projectComponents, projectComponentProfiles, projectIntegration } from 
 export { applyPi, planPiApplication, serializePiOutput } from "./apply.js";
 export type { PiApplication } from "./apply.js";
 export { PiDecodeError, decodePi } from "./decode.js";
-export type { PiEnrichment, PiNativeEvent } from "./decode.js";
+export type { PiDecodeOptions, PiEnrichment, PiNativeEvent } from "./decode.js";
 export { generatePiArtifacts, piHookRuntimePath } from "./generate.js";
 export { createHooknosticExtension } from "./shim.js";
 export type { PiExtensionApi, PiShimOptions } from "./shim.js";
 export { classifyPiTool, piShellCodec, PI_SHELL_SHAPES, piFileCodec, PI_FILE_SHAPES } from "./toolmap.js";
+
+/**
+ * Whether a target range (or one build) is within pi's 1.x line, whose native
+ * MCP channel makes `mcp__` tools MCP calls (ADR-0032). The generated shim and
+ * `classifyTool` both decide by it, so dispatch builds what the shim decodes.
+ */
+export function piNativeMcp(range: string): boolean {
+  return rangeWithin(range, PI_RANGE);
+}
 
 function resolveShimPath(): string {
   try {
@@ -59,6 +68,7 @@ export function piShimEntrySource(options: {
   minimumCapabilityLevel?: SupportLevel;
   harnessVersion?: string;
   pluginRootOffset?: string;
+  nativeMcp?: boolean;
 }): string {
   return [
     `import plugin from ${JSON.stringify(options.entryImportPath)};`,
@@ -71,6 +81,8 @@ export function piShimEntrySource(options: {
       : []),
     `  policy: ${JSON.stringify(options.policy)},`,
     ...(options.harnessVersion !== undefined ? [`  harnessVersion: ${JSON.stringify(options.harnessVersion)},`] : []),
+    // Only a target outside the 1.x line states it; the shim defaults to 1.x.
+    ...(options.nativeMcp === false ? [`  nativeMcp: false,`] : []),
     // Resolved from the artifact's own location (ADR-0020): the offset is fixed
     // by where this adapter places the runtime relative to the package root.
     ...(options.pluginRootOffset !== undefined
@@ -108,7 +120,8 @@ export function piAdapter(): HarnessAdapter {
     shellShapes: PI_SHELL_SHAPES,
     fileCodec: piFileCodec,
     fileShapes: PI_FILE_SHAPES,
-    classifyTool: classifyPiTool,
+    classifyTool: (nativeName, input, reported, range) =>
+      classifyPiTool(nativeName, input, reported, range === undefined || piNativeMcp(range)),
     shellDialect: {
       source: "tool",
       rationale:
@@ -125,7 +138,9 @@ export function piAdapter(): HarnessAdapter {
       rationale:
         "pi names MCP tools mcp__<server>__<tool> but sanitizes every non-identifier character and hashes a long or " +
         "colliding name, so the split is never parsed from it. A tool_result states the server and tool in its details, " +
-        "as pi registered them; a tool_call states nothing, so tool.before carries kind mcp without the split.",
+        "as pi registered them, including a server's error result; a JSON-RPC failure leaves details empty, so that " +
+        "tool.error carries kind mcp without the split, and a tool_call states nothing, so tool.before never has it. " +
+        `Outside ${PI_RANGE} an mcp__ tool is another extension's and classifies as other.`,
       evidence: ".capture/pi-mcp/README.md",
     },
 
@@ -142,7 +157,11 @@ export function piAdapter(): HarnessAdapter {
     publishesNpmPackage: true,
 
     shimEntry(options) {
-      return piShimEntrySource(options);
+      const { targetRange, ...entry } = options;
+      return piShimEntrySource({
+        ...entry,
+        ...(targetRange === undefined ? {} : { nativeMcp: piNativeMcp(targetRange) }),
+      });
     },
 
     shimAliases() {

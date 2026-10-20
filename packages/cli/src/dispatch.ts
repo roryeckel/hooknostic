@@ -17,9 +17,9 @@ import {
   hookPluginRoot,
   levelsFromMatrix,
   loadConfig,
-  rangeWithin,
   resolveTargetAdapter,
   stageUserModule,
+  statedMcpEvents,
   targetSpecFromConfig,
 } from "@hooknostic/core";
 import { dispatch } from "@hooknostic/runtime";
@@ -212,10 +212,7 @@ function completeEvent(
   // so on the events its adapter declares (ADR-0032); there a test may state it.
   // Only within the versions whose evidence establishes the statement.
   const identity = adapter.mcpIdentity;
-  const mcpEvents =
-    identity?.source === "statement" && (identity.range === undefined || rangeWithin(version, identity.range))
-      ? (identity.events ?? [])
-      : [];
+  const mcpEvents = statedMcpEvents(identity, version);
   const mcpStatable = mcpEvents.includes(name as (typeof mcpEvents)[number]);
   const statedMcp = mcpStatable && statesMcpIdentity(tool["mcp"]) ? tool["mcp"] : undefined;
   const derived = DERIVED_TOOL_FIELDS.filter(
@@ -258,10 +255,12 @@ function completeEvent(
     ...(dialect === undefined ? {} : { shellDialect: dialect }),
     ...(statedMcp === undefined ? {} : { mcp: { server: statedMcp.server, tool: statedMcp.tool } }),
   };
+  // For the target's range, as its generated shim decodes (ADR-0032).
   const classified = adapter.classifyTool(
     nativeName,
     tool["input"],
     Object.keys(reported).length ? reported : undefined,
+    version,
   );
   // As for a dialect, the classifier decides whether a stated identity applies.
   if (

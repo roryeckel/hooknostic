@@ -78,6 +78,10 @@ Raw results stay in ignored `captured/<platform>/`.
   call reached both events as a nested call: `toolCallId` `<parent>/1` and
   `parentToolCallId` naming the codemode call, which itself reached the hooks
   as `codemode` with `{code}`.
+- **Failing calls** (`extension-tool-error`). A server's error result
+  (`isError: true`) reached `tool_result` with `isError: true` and still
+  carried `details: {server, tool}`. A JSON-RPC error reached it with
+  `isError: true`, the error message as text content, and `details: {}`.
 - **SSE**: `pi.registerMcpServer` threw "legacy SSE transport is not
   supported; use the streamable HTTP URL", and nothing connected.
 
@@ -96,6 +100,13 @@ Raw results stay in ignored `captured/<platform>/`.
   command, args, or env, so its `~/`, `$NAME`, and `!command` expansion
   cannot reach portable text. The launcher binds `PLUGIN_ROOT` and a
   Hooknostic-managed `PLUGIN_DATA`, which makes the stdio cell emulated.
+  pi 1.3.0's `config.js` and `extensions/loader.js` (schema-derived) also
+  detect a Bun-compiled and a Node single-executable build, whose
+  `process.execPath` is pi itself, so the generated extension uses the `node`
+  that pi's README requires on PATH there. Only the npm build was run.
+- pi resolves an extension path lexically and loads it through jiti
+  (`extensions/loader.js`), so the generated module takes its directory's real
+  path before applying offsets computed between real paths.
 - A streamable-HTTP server keeps its URL, and each header value is escaped
   (`$` → `$$`, a leading `!` → `$!`), so pi sends exactly the declared text.
   pi 1.3.0's `resolveHeadersOrThrow` copies headers into a plain object, so a
@@ -118,10 +129,13 @@ Raw results stay in ignored `captured/<platform>/`.
   `probe` and `secret` on `probe__get` share a name. The server/tool split is
   therefore never parsed from the name. `tool_result.details` names both as pi
   registered them. The decoder hands that over as a reported fact, so
-  `tool.after` and `tool.error` carry `tool.mcp`, and `classifyTool` rebuilds the
-  same view (ADR-0023, ADR-0032). `tool_call` states nothing, so `tool.before`
-  carries `kind: "mcp"` without the split (`fixtures/pi/1.3/tool-*-mcp*`). The
-  adapter declares the statement for `>=1 <2` only.
+  `tool.after` and a server-reported `tool.error` carry `tool.mcp`, and
+  `classifyTool` rebuilds the same view (ADR-0023, ADR-0032). A JSON-RPC
+  failure's empty `details` and a `tool_call` state nothing, so that
+  `tool.error` and every `tool.before` carry `kind: "mcp"` without the split
+  (`fixtures/pi/1.3/tool-*-mcp*`). The adapter declares the statement for
+  `>=1 <2` only, and outside it the generated shim and `classifyTool` keep an
+  `mcp__` tool `other`.
 - Model-free playback drives all of this on the reference build: package
   installation by local path and by npm coordinate, repository-local
   integration, and the fixture MCP tool through a project `.pi/mcp.json`.

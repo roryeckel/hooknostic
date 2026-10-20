@@ -92,11 +92,23 @@ export function piReportedMcp(details: unknown): ReportedToolFacts | undefined {
   return typeof server === "string" && typeof tool === "string" ? { mcp: { server, tool } } : undefined;
 }
 
+/** Build-time facts about the target that decoding depends on. */
+export interface PiDecodeOptions {
+  /**
+   * Whether the target is within the 1.x line, whose native MCP channel makes
+   * an `mcp__` tool an MCP call with a stated identity (ADR-0032). Settled at
+   * build time from the target range; absent, the reference build's line.
+   */
+  nativeMcp?: boolean;
+}
+
 export function decodePi(
   nativeEvent: unknown,
   invocation: InvocationContext,
   enrichment: PiEnrichment = {},
+  options: PiDecodeOptions = {},
 ): HookEvent {
+  const nativeMcp = options.nativeMcp ?? true;
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new PiDecodeError("native event is not an object");
   }
@@ -182,7 +194,12 @@ export function decodePi(
         ...withToolCallId(base),
         raw: snapshotPiRaw(native),
         event: "tool.before",
-        tool: classifyPiTool(toolCall.toolName, snapshotPiValue(toolCall.input, "tool_call input")),
+        tool: classifyPiTool(
+          toolCall.toolName,
+          snapshotPiValue(toolCall.input, "tool_call input"),
+          undefined,
+          nativeMcp,
+        ),
       };
     }
     case "tool_result": {
@@ -197,10 +214,14 @@ export function decodePi(
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
       // An MCP result's `details` names its server and tool as pi registered
-      // them (fixtures/pi/1.3/tool-result-mcp); the lossy name cannot
-      // (toolmap.ts). It reaches the view as a reported fact, which is how
-      // classifyTool rebuilds the same view (ADR-0023, ADR-0032).
-      const tool = classifyPiTool(toolCall.toolName, input, piReportedMcp(native.event["details"]));
+      // them (fixtures/pi/1.3/tool-result-mcp), including a server's error
+      // result (tool-result-mcp-error); a JSON-RPC failure leaves it empty
+      // (tool-result-mcp-rpc-error). The lossy name cannot (toolmap.ts). It
+      // reaches the view as a reported fact, which is how classifyTool
+      // rebuilds the same view (ADR-0023, ADR-0032). Only on the 1.x line:
+      // on 0.84 an extension's `details` states nothing pi established.
+      const reported = nativeMcp ? piReportedMcp(native.event["details"]) : undefined;
+      const tool = classifyPiTool(toolCall.toolName, input, reported, nativeMcp);
       if (isError) {
         return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
       }

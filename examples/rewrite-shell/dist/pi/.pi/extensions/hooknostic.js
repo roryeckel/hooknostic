@@ -5289,8 +5289,8 @@ var PI_FILE_SHAPES = {
 };
 var piFileCodec = fileCodec(PI_FILE_SHAPES);
 var PI_MCP_PREFIX = "mcp__";
-function classifyPiTool(nativeName, input, reported) {
-  if (nativeName.startsWith(PI_MCP_PREFIX)) {
+function classifyPiTool(nativeName, input, reported, nativeMcp = true) {
+  if (nativeMcp && nativeName.startsWith(PI_MCP_PREFIX)) {
     return { kind: "mcp", nativeName, input, ...reported?.mcp ? { mcp: { ...reported.mcp } } : {} };
   }
   const known = Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : void 0;
@@ -5343,7 +5343,8 @@ function piReportedMcp(details) {
   const { server, tool } = details;
   return typeof server === "string" && typeof tool === "string" ? { mcp: { server, tool } } : void 0;
 }
-function decodePi(nativeEvent, invocation, enrichment = {}) {
+function decodePi(nativeEvent, invocation, enrichment = {}, options = {}) {
+  const nativeMcp = options.nativeMcp ?? true;
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
     throw new PiDecodeError("native event is not an object");
   }
@@ -5416,7 +5417,12 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
         ...withToolCallId(base),
         raw: snapshotPiRaw(native),
         event: "tool.before",
-        tool: classifyPiTool(toolCall.toolName, snapshotPiValue(toolCall.input, "tool_call input"))
+        tool: classifyPiTool(
+          toolCall.toolName,
+          snapshotPiValue(toolCall.input, "tool_call input"),
+          void 0,
+          nativeMcp
+        )
       };
     }
     case "tool_result": {
@@ -5427,7 +5433,8 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
       const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
-      const tool = classifyPiTool(toolCall.toolName, input, piReportedMcp(native.event["details"]));
+      const reported = nativeMcp ? piReportedMcp(native.event["details"]) : void 0;
+      const tool = classifyPiTool(toolCall.toolName, input, reported, nativeMcp);
       if (isError) {
         return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
       }
@@ -5495,7 +5502,12 @@ function createHooknosticExtension(plugin, options) {
   const run = async (native, enrichment) => {
     let event;
     try {
-      event = decodePi(native, invocation, enrichment);
+      event = decodePi(
+        native,
+        invocation,
+        enrichment,
+        options.nativeMcp === void 0 ? {} : { nativeMcp: options.nativeMcp }
+      );
     } catch (error) {
       if (error instanceof PiDecodeError) return { result: void 0, application: {} };
       throw error;

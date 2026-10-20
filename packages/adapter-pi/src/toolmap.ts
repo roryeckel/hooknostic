@@ -53,11 +53,21 @@ export const piFileCodec = fileCodec(PI_FILE_SHAPES);
  * `details`; decodePi hands that over as a reported fact (ADR-0032), and a
  * call without one keeps the split absent. The resource tools
  * (`list_mcp_resources`, ...) reach every server and stay `other`.
+ *
+ * `nativeMcp` says whether the target is within the 1.x line. pi 0.84 has no
+ * native MCP channel, so there an `mcp__` tool can only be another
+ * extension's, which nothing establishes as an MCP call: it stays `other`, and
+ * no stated split applies.
  */
 const PI_MCP_PREFIX = "mcp__";
 
-export function classifyPiTool(nativeName: string, input: unknown, reported?: ReportedToolFacts): ToolInvocation {
-  if (nativeName.startsWith(PI_MCP_PREFIX)) {
+export function classifyPiTool(
+  nativeName: string,
+  input: unknown,
+  reported?: ReportedToolFacts,
+  nativeMcp = true,
+): ToolInvocation {
+  if (nativeMcp && nativeName.startsWith(PI_MCP_PREFIX)) {
     return { kind: "mcp", nativeName, input, ...(reported?.mcp ? { mcp: { ...reported.mcp } } : {}) };
   }
   // Own-property guard: a tool named "constructor" must not resolve a
@@ -74,8 +84,9 @@ export function classifyPiTool(nativeName: string, input: unknown, reported?: Re
       ...(file !== undefined ? { file } : {}),
     };
   }
-  // Other extension tools, including codemode and 0.84's third-party MCP
-  // adapter tools (`mcp`, `mcpScript`), surface under their registered name;
-  // the native name stays authoritative and the kind is "other".
+  // Other extension tools, including codemode, 0.84's third-party MCP adapter
+  // tools (`mcp`, `mcpScript`), and any `mcp__` tool on 0.84, surface under
+  // their registered name; the native name stays authoritative and the kind is
+  // "other".
   return { kind: "other", nativeName, input };
 }
