@@ -78,10 +78,15 @@ Expose the function your decoder classifies tools with as `adapter.classifyTool`
 (`(nativeName, input, reported?) => ToolInvocation`). `hooknostic dispatch` builds
 a test event's tool from it (ADR-0023), and the contract suite requires it to
 reproduce the `tool` of every fixture exactly. `reported` carries what the
-harness stated beside the call, today a `shellDialect`. If your adapter takes
-its dialect from such a statement, apply it there, or a test that states one is
-refused and a fixture that records one fails the contract. If your adapter pins
-the dialect by tool, or establishes none, take two parameters and ignore it.
+harness stated beside the call: a `shellDialect`, or an MCP tool's `mcp` server
+and tool. If your adapter takes its dialect from such a statement, apply it
+there, or a test that states one is refused and a fixture that records one fails
+the contract. If your adapter pins the dialect by tool, or establishes none, take
+two parameters and ignore it. The same holds for `mcp`. If the tool name keeps
+the split, parse it and declare nothing. If the name is lossy and the harness
+states the identity elsewhere, apply `reported.mcp` and declare
+`adapter.mcpIdentity` as `statement` with the events that carry it (ADR-0032).
+The contract suite then hands a fixture's split back only on those events.
 
 Run the contract suite from your own package — it is the definition of done for
 an adapter, and it is the same one the three shipped adapters run:

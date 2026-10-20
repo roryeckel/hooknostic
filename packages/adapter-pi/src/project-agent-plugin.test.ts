@@ -7,10 +7,11 @@ import {
 } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
+import { piHarness } from "./harness.js";
 import { piAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
-const target = { id: "pi", delivery: "package" as const, version: "0.84.4", output: "dist" };
+const target = { id: "pi", delivery: "package" as const, version: piHarness.referenceVersion, output: "dist" };
 const support = resolveAgentPluginProjection(target, piAgentPluginProjector).matrix!;
 
 function source(): AgentPluginPackage {
@@ -40,6 +41,10 @@ function source(): AgentPluginPackage {
   };
 }
 
+/** The registrations a generated hooknostic-mcp.js embeds as a JSON string literal. */
+const registrations = (module: string): unknown =>
+  JSON.parse(JSON.parse(/const registrations = JSON\.parse\(("(?:[^"\\]|\\.)*")\);/.exec(module)![1]!) as string);
+
 const project = (pkg: AgentPluginPackage, hooks: { path: string; contents: string }[] = []) =>
   piAgentPluginProjector.project(pkg, { target, hookArtifacts: hooks, support, onUnsupported: "warn" });
 
@@ -56,7 +61,7 @@ describe("Agent Plugin to pi package projection", () => {
       description: "Portable tools",
       license: "MIT",
       type: "module",
-      pi: { extensions: ["./hooknostic.js"], skills: ["./package/skills/review"] },
+      pi: { extensions: ["./hooknostic.js", "./hooknostic-mcp.js"], skills: ["./package/skills/review"] },
     });
     expect(plan.files.find((file) => file.path === "hooknostic.js")?.contents).toContain("export default");
     expect(plan.files.find((file) => file.path === "package/skills/review/SKILL.md")?.contents).toEqual(
@@ -73,27 +78,80 @@ describe("Agent Plugin to pi package projection", () => {
   it("does not point a components-only package at a missing hook module", async () => {
     const plan = await project(source());
     const manifest = JSON.parse(plan.files.find((file) => file.path === "package.json")!.contents as string);
-    expect(manifest.pi).toEqual({ skills: ["./package/skills/review"] });
+    expect(manifest.pi).toEqual({ extensions: ["./hooknostic-mcp.js"], skills: ["./package/skills/review"] });
     expect(plan.files.some((file) => file.path === "hooknostic.js")).toBe(false);
   });
 
-  it("reports MCP and runtime dependencies as unsupported instead of declaring dead resources", async () => {
-    const pkg = source();
-    const plan = await piAgentPluginProjector.project(pkg, {
+  it("registers 1.x MCP servers through the launcher and reports runtime dependencies as unsupported", async () => {
+    const plan = await piAgentPluginProjector.project(source(), {
       target,
       hookArtifacts: [],
       support,
       onUnsupported: "warn",
       runtimePackage: { manifest: "runtime-package.json", lockfile: "runtime-package-lock.json" },
     });
-    expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({ discovered: 1, emitted: 1, skipped: 0 });
     expect(plan.summary.components["agent-plugin.runtime-package"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
-    expect(plan.summary.omissions.map((omission) => omission.component)).toEqual([
-      "agent-plugin.mcp.stdio",
-      "agent-plugin.runtime-package",
+    expect(plan.summary.omissions.map((omission) => omission.component)).toEqual(["agent-plugin.runtime-package"]);
+    const extension = plan.files.find((file) => file.path === "hooknostic-mcp.js")!.contents as string;
+    expect(registrations(extension)).toEqual([{ name: "echo", type: "stdio", index: 0 }]);
+    expect(extension).toContain('resolve(here, "hooknostic-runtime/mcp-launcher.mjs")');
+    expect(
+      JSON.parse(plan.files.find((file) => file.path === "hooknostic-runtime/mcp-servers.json")!.contents as string),
+    ).toEqual({
+      plugin: "portable-tools",
+      servers: [{ name: "echo", command: "node" }],
+    });
+    expect(plan.files.some((file) => file.path === "hooknostic-runtime/mcp-launcher.mjs")).toBe(true);
+    expect(plan.issues).toEqual([]);
+  });
+
+  it("declares no MCP resources for a 0.84 target, which has no native MCP channel", async () => {
+    const legacy = { ...target, version: ">=0.84 <1" };
+    const plan = await piAgentPluginProjector.project(source(), {
+      target: legacy,
+      hookArtifacts: [],
+      support: resolveAgentPluginProjection(legacy, piAgentPluginProjector).matrix!,
+      onUnsupported: "warn",
+    });
+    expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(plan.summary.omissions).toEqual([
+      { component: "agent-plugin.mcp.stdio", name: "echo", reason: expect.stringContaining("no native MCP channel") },
     ]);
     const manifest = JSON.parse(plan.files.find((file) => file.path === "package.json")!.contents as string);
-    expect(manifest.pi).not.toHaveProperty("mcp");
+    expect(manifest.pi).toEqual({ skills: ["./package/skills/review"] });
+    expect(
+      plan.files.some((file) => file.path.startsWith("hooknostic-runtime/") || file.path === "hooknostic-mcp.js"),
+    ).toBe(false);
+  });
+
+  it("omits SSE on 1.x and reports a server pi would reject inside a supported transport", async () => {
+    const pkg = source();
+    pkg.mcp = {
+      $schema: AGENT_PLUGIN_MCP_SCHEMA,
+      mcpServers: {
+        events: { type: "sse", url: "https://example.test/sse" },
+        "bad name": { type: "stdio", command: "node" },
+        remote: { type: "streamable-http", url: "https://example.test/mcp", headers: { Authorization: "Bearer $X" } },
+      },
+    };
+    const plan = await project(pkg);
+    expect(plan.summary.components["agent-plugin.mcp.sse"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(plan.summary.components["agent-plugin.mcp.stdio"]).toEqual({ discovered: 1, emitted: 0, skipped: 1 });
+    expect(plan.summary.components["agent-plugin.mcp.streamable-http"]).toEqual({
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
+    // Core reports the unsupported SSE cell; the rejected name has no other diagnostic.
+    expect(plan.issues).toEqual([
+      expect.objectContaining({ severity: "warn", component: "agent-plugin.mcp.stdio", path: "mcp.json#bad name" }),
+    ]);
+    // A remote server alone needs no launcher.
+    expect(plan.files.some((file) => file.path.startsWith("hooknostic-runtime/"))).toBe(false);
+    expect(registrations(plan.files.find((file) => file.path === "hooknostic-mcp.js")!.contents as string)).toEqual([
+      { name: "remote", type: "http", url: "https://example.test/mcp", headers: { Authorization: "Bearer $X" } },
+    ]);
   });
 
   it("preserves the author's module boundary and rejects materializer collisions", async () => {

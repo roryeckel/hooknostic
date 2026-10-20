@@ -59,7 +59,10 @@ session prompts and their reply flag), so no client double is needed.
   `kind`, `mcp` and `shell` — comes from the adapter's `classifyTool`, the
   decoder's own classification, which the contract suite holds to every
   tool-bearing fixture. An event that supplies any of them is rejected, so a
-  test cannot hand a hook a normalized view its harness never would.
+  test cannot hand a hook a normalized view its harness never would. Two
+  exceptions are facts a harness states rather than derives: a shell dialect
+  (ADR-0029), and an MCP server and tool on the events whose payload states
+  them (ADR-0032). The classifier must still apply them.
 - Tool-scoped events require `tool`; the rest refuse it.
 - Each event's own fields must be as its SDK type declares them: a required
   one such as `prompt` or `agent` must be present, and a field the type does not

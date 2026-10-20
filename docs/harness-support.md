@@ -20,7 +20,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | Codex CLI (`codex`) | `>=0.148 <1` | `>=0.140 <1` | 0.148.0 | `fixtures/codex/0.148` |
 | OpenCode (`opencode`) | `>=1.18 <2` | `>=1.10 <2` | 1.18.18 | `fixtures/opencode/1.18` |
 | OpenCode v2 (`opencode`) | `>=2.0.17 <3` | `>=2.0.17 <3` | 2.0.17 | `fixtures/opencode/2.0` |
-| pi (`pi`) | `>=0.84 <1` | `>=0.84 <1` | 0.84.4 | `fixtures/pi/0.84` |
+| pi (`pi`) | `>=1 <2` | `>=0.84 <1`, `>=1 <2` | 1.3.0 | `fixtures/pi/1.3` |
 
 ## Validation evidence
 
@@ -879,15 +879,13 @@ Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Credential-free RPC probes on Windows reused one session across HTTP errors, in-flight cancellation, a successful retry, retry cancellation and subsequent successful turns, then reopened it from disk. Settled branch tips carried current success ids or unsuccessful messages; generated-extension playback verifies final fields and avoids stale responses. |
-| 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | Windows --tools powershell loopback session captured the native {command} tool_call and tool_result payloads; shell normalization now uses that observed key |
-| 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | before-agent-start-isolated: before_agent_start captured in a fresh project and agent home against the loopback model: no user skills, context files, or third-party tool snippets; retained alongside the original populated fixture |
-| 0.84.4 | 2026-09-27 | captured | `fixtures/pi/0.84` | live extension event payloads incl. in-place tool_call input mutation and tool_result replacement |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | original effect probes verified tool_call block, input rewrite, tool_result replace, system-prompt injection, compaction cancel, turn injection, and context replacement; the driver's shell-split prompts invalidate its input-event cadence conclusion |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | isolated single-prompt loopback runs: one full-text input event per print-mode prompt; {action:handled} on that event suppressed before_agent_start, agent_start, and all model requests in both input probes; other modes remain unverified |
-| 0.84.4 | 2026-09-27 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 0.84.4 type definitions and loader/compaction source: event surface, tool input shapes, extension discovery rules |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | Halogen Qwen 3.8 Flash Next drove a real bash exchange in an isolated Pi session; both streaming requests succeeded, the command marker was observed in tool_result, and captured lifecycle/tool shapes matched the committed fixtures. This direct provider probe does not validate the scheduled llm transport or unexercised effects. |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/FEATURES.md` | The isolated loopback feature probes repeated on Windows and Linux: Git Bash or a shellPath-selected PowerShell and Windows PowerShell on Windows; bash, dash, zsh, fish, and tcsh on Linux; read/write/edit/grep/find/ls payloads; project, .agents, ancestor, and package skill gates; and the settled branch's final message all matched 0.84.4, apart from tool_result's added structuredContent. |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/FEATURES.md` | The nine-run RPC completion probe repeated on Windows: every branch tip kept its stopReason, the successful retry still settled once, and the reopened session appended its reply. agent_settled now also carries aborted, true only after in-flight cancellation. |
+| 1.3.0 | 2026-10-19 | captured | `fixtures/pi/1.3` | Loopback sessions from .capture/pi/probe-sessions.mjs on Windows captured lifecycle, bash, PowerShell, exit-7 error, isolated and populated before_agent_start, RPC compaction, and cancelled compaction payloads; against 0.84.4 they add messageType, systemPromptOptions sections, structuredContent, and agent_settled.aborted, and remove nothing the adapter decodes |
+| 1.3.0 | 2026-10-19 | captured | `fixtures/pi/1.3` | before-agent-start-custom: a sendMessage({triggerTurn: true}) continuation from agent_settled fires a second before_agent_start with messageType custom, its message, and no prompt (0.84.4 fired none); prompt.before declines that run |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/README.md` | compact-cancel: {cancel: true} from session_before_compact produced session_compact_failed with aborted: true, no session_compact, and no summarization request |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi on Windows and the scheduled Linux run: tool block, shell rewrite, output replacement, prompt and per-request context, stop prevention, completion fields across errors, cancellation, retry and resume, and project and package skills with their hook all verified by effect |
+| 1.3.0 | 2026-10-19 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 1.3.0 type definitions and CHANGELOG from 0.85.0: no event the adapter maps was renamed or removed, tool input shapes are unchanged, no permission event exists, and native MCP arrived in 0.99.0 |
 
 #### Optional event fields
 
@@ -906,21 +904,21 @@ Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
-Support resolves by harness version, and the recommended range `>=0.84 <1`
+Support resolves by harness version, and the recommended range `>=1 <2`
 spans 2 profiles. A build targeting one of the ranges below gets that
 table; a range spanning more than one resolves to the least capable level for
 each component.
 
-##### `>=0.84 <1 <0.84.4`
+##### `>=1 <2 <1.3.0`
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | Pi discovers .pi/skills and .agents/skills. Its explicit skill body tells the model to resolve references against the skill directory, so ${SKILL_DIR} projects to `.` in the body (ADR-0028). |
 | `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
-| `agent-plugin.mcp.stdio` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
-| `agent-plugin.mcp.streamable-http` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
-| `agent-plugin.mcp.sse` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
+| `agent-plugin.mcp.stdio` | emulated | A generated pi extension registers each server with pi.registerMcpServer as pi's own Node running a generated launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and applies the declared command, args, env values and cwd. pi sees only the launcher, so its expansion of env values ($NAME, ${NAME}, !command) and of ~/ never reaches package text. The data directory is chosen by Hooknostic rather than by pi, so the contract is emulated. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.streamable-http` | exact | The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.sse` | unsupported | pi rejects the legacy SSE transport: registerMcpServer throws for it (.capture/pi-mcp). A server that documents SSE often also serves streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | pi reads no portable client-extension namespace; extensions are the only code surface. |
 | `agent-plugin.runtime-package` | unsupported | pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact. |
 
@@ -936,29 +934,29 @@ Unsupported components with named omissions, accepted through `components.accept
 
 | Omission | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because pi rejects the legacy SSE transport. | `.capture/pi-mcp/README.md` |
 
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback |
-| 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source. |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/skill-invocation` | Pi loopback: disable-model-invocation:true withheld ordinary discovery, false restored it, and /skill:feature-probe retained the gated body. Verified .pi/skills and project/ancestor .agents/skills with isolated home and repository boundary (.capture/pi/FEATURES.md). |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/FEATURES.md` | The isolated loopback feature probes repeated on Windows and Linux: Git Bash or a shellPath-selected PowerShell and Windows PowerShell on Windows; bash, dash, zsh, fish, and tcsh on Linux; read/write/edit/grep/find/ls payloads; project, .agents, ancestor, and package skill gates; and the settled branch's final message all matched 0.84.4, apart from tool_result's added structuredContent. |
+| 1.3.0 | 2026-10-19 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi-mcp/README.md` | Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi project sync in a fresh project: the skill reached model input from pi's discovery path and the generated .pi/extensions hook rewrote a shell command against the loopback model |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi repository-local integration: the generated .pi/extensions/hooknostic-mcp.js registered a direct source's stdio server through the launcher (absolute PLUGIN_ROOT, PLUGIN_DATA under .hooknostic/data, the project-anchored cwd, and ${NAME:-default} args resolved) and its streamable HTTP server with the URL and a header resolved from the environment and a literal $ preserved; a server naming a missing variable was disabled with a warning, and a codemode script's calls to both reached the hooks as mcp tools |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/skill-invocation` | Pi loopback on 1.3.0: disable-model-invocation:true withheld ordinary discovery, false and an absent gate kept it, and /skill:feature-probe still injected the gated body with its relative-reference instruction. Verified .pi/skills and project/ancestor .agents/skills with isolated home and repository boundary (.capture/pi/FEATURES.md). |
 
-##### `>=0.84 <1 >=0.84.4`
+##### `>=1 <2 >=1.3.0`
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | — |
 | `agent-plugin.skills` | exact | Pi discovers .pi/skills and .agents/skills. Its explicit skill body tells the model to resolve references against the skill directory, so ${SKILL_DIR} projects to `.` in the body (ADR-0028). |
 | `agent-plugin.skills.invocation-policy` | exact | Native disable-model-invocation withholds automatic selection while retaining explicit /skill:name invocation. Canonical policy is applied after authored native settings. |
-| `agent-plugin.mcp.stdio` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
-| `agent-plugin.mcp.streamable-http` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
-| `agent-plugin.mcp.sse` | unsupported | pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf. |
+| `agent-plugin.mcp.stdio` | emulated | A generated pi extension registers each server with pi.registerMcpServer as pi's own Node running a generated launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and applies the declared command, args, env values and cwd. pi sees only the launcher, so its expansion of env values ($NAME, ${NAME}, !command) and of ~/ never reaches package text. The data directory is chosen by Hooknostic rather than by pi, so the contract is emulated. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.streamable-http` | exact | The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.sse` | unsupported | pi rejects the legacy SSE transport: registerMcpServer throws for it (.capture/pi-mcp). A server that documents SSE often also serves streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | pi reads no portable client-extension namespace; extensions are the only code surface. |
 | `agent-plugin.runtime-package` | unsupported | pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact. |
 
@@ -974,18 +972,18 @@ Unsupported components with named omissions, accepted through `components.accept
 
 | Omission | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because pi rejects the legacy SSE transport. | `.capture/pi-mcp/README.md` |
 
 Project delivery validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback |
-| 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source. |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/skill-invocation` | Pi loopback: disable-model-invocation:true withheld ordinary discovery, false restored it, and /skill:feature-probe retained the gated body. Verified .pi/skills and project/ancestor .agents/skills with isolated home and repository boundary (.capture/pi/FEATURES.md). |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/FEATURES.md` | The isolated loopback feature probes repeated on Windows and Linux: Git Bash or a shellPath-selected PowerShell and Windows PowerShell on Windows; bash, dash, zsh, fish, and tcsh on Linux; read/write/edit/grep/find/ls payloads; project, .agents, ancestor, and package skill gates; and the settled branch's final message all matched 0.84.4, apart from tool_result's added structuredContent. |
+| 1.3.0 | 2026-10-19 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi-mcp/README.md` | Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi project sync in a fresh project: the skill reached model input from pi's discovery path and the generated .pi/extensions hook rewrote a shell command against the loopback model |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi repository-local integration: the generated .pi/extensions/hooknostic-mcp.js registered a direct source's stdio server through the launcher (absolute PLUGIN_ROOT, PLUGIN_DATA under .hooknostic/data, the project-anchored cwd, and ${NAME:-default} args resolved) and its streamable HTTP server with the URL and a header resolved from the environment and a literal $ preserved; a server naming a missing variable was disabled with a warning, and a codemode script's calls to both reached the hooks as mcp tools |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/skill-invocation` | Pi loopback on 1.3.0: disable-model-invocation:true withheld ordinary discovery, false and an absent gate kept it, and /skill:feature-probe still injected the gated body with its relative-reference instruction. Verified .pi/skills and project/ancestor .agents/skills with isolated home and repository boundary (.capture/pi/FEATURES.md). |
 
 Project support is independent of package projection.
 
@@ -994,23 +992,28 @@ Project support is independent of package projection.
 `tool.shell.dialect` is established from **the tool name**. powershell runs Windows PowerShell or pwsh, both in the powershell family. bash remains unknown: the same command input ran Bash, PowerShell, dash, zsh, fish and tcsh through shellPath, and Pi's tool description and prompt snippet do not state the selected interpreter.
 Evidence: `.capture/pi/FEATURES.md`.
 
+#### MCP tool identity
+
+`tool.mcp` comes from **what the harness states**, on `tool.after` and `tool.error` only, for `>=1 <2`. pi names MCP tools mcp__<server>__<tool> but sanitizes every non-identifier character and hashes a long or colliding name, so the split is never parsed from it. A tool_result states the server and tool in its details, as pi registered them; a tool_call states nothing, so tool.before carries kind mcp without the split.
+Evidence: `.capture/pi-mcp/README.md`.
+
 #### Agent Plugin projection
 
-Support resolves by harness version, and the recommended range `>=0.84 <1`
+Support resolves by harness version, and the recommended range `>=1 <2`
 spans 2 profiles. A build targeting one of the ranges below gets that
 table; a range spanning more than one resolves to the least capable level for
 each component.
 
-##### `>=0.84 <1 <0.84.4`
+##### `>=1 <2 <1.3.0`
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Portable package identity is emitted in the npm package.json; pi reads its pi resource declarations from the same file. |
 | `agent-plugin.skills` | exact | Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028). |
 | `agent-plugin.skills.invocation-policy` | unsupported | No faithful invocation-policy route has been captured for this delivery and version range. |
-| `agent-plugin.mcp.stdio` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
-| `agent-plugin.mcp.streamable-http` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
-| `agent-plugin.mcp.sse` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
+| `agent-plugin.mcp.stdio` | emulated | A generated pi extension registers each server with pi.registerMcpServer as pi's own Node running a generated launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and applies the declared command, args, env values and cwd. pi sees only the launcher, so its expansion of env values ($NAME, ${NAME}, !command) and of ~/ never reaches package text. The data directory is chosen by Hooknostic rather than by pi, so the contract is emulated. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.streamable-http` | exact | The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.sse` | unsupported | pi rejects the legacy SSE transport: registerMcpServer throws for it (.capture/pi-mcp). A server that documents SSE often also serves streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | pi does not read Agent Plugins client-extension namespaces. |
 | `agent-plugin.runtime-package` | unsupported | A local-path pi package is referenced in place, with no npm install. An npm-sourced package is installed, but pi does not perform a locked npm ci of the portable runtime manifest and lockfile; this component is not delivered on both routes. |
 
@@ -1026,30 +1029,29 @@ Unsupported components with named omissions, accepted through `components.accept
 
 | Omission | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because pi rejects the legacy SSE transport. | `.capture/pi-mcp/README.md` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback |
-| 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager. |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model. |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/skill-invocation` | Pi loopback: a package installed through pi install -l --approve retained explicit /skill:feature-probe while disable-model-invocation:true withheld ordinary discovery; false restored discovery (.capture/pi/FEATURES.md). |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/FEATURES.md` | The isolated loopback feature probes repeated on Windows and Linux: Git Bash or a shellPath-selected PowerShell and Windows PowerShell on Windows; bash, dash, zsh, fish, and tcsh on Linux; read/write/edit/grep/find/ls payloads; project, .agents, ancestor, and package skill gates; and the settled branch's final message all matched 0.84.4, apart from tool_result's added structuredContent. |
+| 1.3.0 | 2026-10-19 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi-mcp/README.md` | Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi: the projected package installed through pi install -l --approve by local path and by npm coordinate from a local read-only registry loaded its skill into model input and honoured its compiled hook's shell rewrite against the loopback model |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi, by local path and by npm coordinate: the package's generated hooknostic-mcp.js registered its stdio server through the launcher, which bound PLUGIN_ROOT to the installed author package and an absolute PLUGIN_DATA outside it and passed $literal and ~/ arguments as written, and its streamable HTTP server, whose header beginning with ! and holding ${NAME} and $ arrived as written although the variable was set; a codemode script's calls to both reached the hooks as mcp tools |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/skill-invocation` | Pi loopback on 1.3.0: a package installed through pi install -l --approve retained explicit /skill:feature-probe while disable-model-invocation:true withheld ordinary discovery; false restored discovery (.capture/pi/FEATURES.md). |
 
-##### `>=0.84 <1 >=0.84.4`
+##### `>=1 <2 >=1.3.0`
 
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | exact | Portable package identity is emitted in the npm package.json; pi reads its pi resource declarations from the same file. |
 | `agent-plugin.skills` | exact | Accepted skills are named explicitly in the pi manifest. ${SKILL_DIR} projects to `.` in the body: Pi leaves references literal and tells the model to resolve relative paths against the skill directory (ADR-0028). |
 | `agent-plugin.skills.invocation-policy` | exact | Native disable-model-invocation withholds automatic selection while retaining explicit /skill:name invocation. Canonical policy is applied after authored native settings. |
-| `agent-plugin.mcp.stdio` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
-| `agent-plugin.mcp.streamable-http` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
-| `agent-plugin.mcp.sse` | unsupported | pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract. |
+| `agent-plugin.mcp.stdio` | emulated | A generated pi extension registers each server with pi.registerMcpServer as pi's own Node running a generated launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and applies the declared command, args, env values and cwd. pi sees only the launcher, so its expansion of env values ($NAME, ${NAME}, !command) and of ~/ never reaches package text. The data directory is chosen by Hooknostic rather than by pi, so the contract is emulated. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.streamable-http` | exact | The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one. |
+| `agent-plugin.mcp.sse` | unsupported | pi rejects the legacy SSE transport: registerMcpServer throws for it (.capture/pi-mcp). A server that documents SSE often also serves streamable HTTP. |
 | `agent-plugin.client-extension.files` | unsupported | pi does not read Agent Plugins client-extension namespaces. |
 | `agent-plugin.runtime-package` | unsupported | A local-path pi package is referenced in place, with no npm install. An npm-sourced package is installed, but pi does not perform a locked npm ci of the portable runtime manifest and lockfile; this component is not delivered on both routes. |
 
@@ -1065,17 +1067,16 @@ Unsupported components with named omissions, accepted through `components.accept
 
 | Omission | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `pi:mcp-stdio-omitted` | `agent-plugin.mcp.stdio` | Stdio MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-streamable-http-omitted` | `agent-plugin.mcp.streamable-http` | Streamable HTTP MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
-| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because Pi has no native MCP channel. | `.capture/pi/README.md` |
+| `pi:mcp-sse-omitted` | `agent-plugin.mcp.sse` | SSE MCP servers are omitted because pi rejects the legacy SSE transport. | `.capture/pi-mcp/README.md` |
 
 Projection validation records:
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/pi/FEATURES.md` | Isolated loopback probes: actual interpreters on Windows and Linux, file-tool hook payloads, project and installed-package skill text and invocation gates, and the settled session branch's final assistant message. |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback |
-| 0.84.4 | 2026-09-27 | captured | `.capture/pi/README.md` | A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager. |
-| 0.84.4 | 2026-09-27 | live-probe | `.capture/pi/README.md` | The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model. |
-| 0.84.4 | 2026-10-14 | live-probe | `.capture/skill-invocation` | Pi loopback: a package installed through pi install -l --approve retained explicit /skill:feature-probe while disable-model-invocation:true withheld ordinary discovery; false restored discovery (.capture/pi/FEATURES.md). |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi/FEATURES.md` | The isolated loopback feature probes repeated on Windows and Linux: Git Bash or a shellPath-selected PowerShell and Windows PowerShell on Windows; bash, dash, zsh, fish, and tcsh on Linux; read/write/edit/grep/find/ls payloads; project, .agents, ancestor, and package skill gates; and the settled branch's final message all matched 0.84.4, apart from tool_result's added structuredContent. |
+| 1.3.0 | 2026-10-19 | schema-derived | `.capture/pi/README.md` | installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/pi-mcp/README.md` | Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi: the projected package installed through pi install -l --approve by local path and by npm coordinate from a local read-only registry loaded its skill into model input and honoured its compiled hook's shell rewrite against the loopback model |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/harness-playback/` | HOOKNOSTIC_PLAYBACK=pi, by local path and by npm coordinate: the package's generated hooknostic-mcp.js registered its stdio server through the launcher, which bound PLUGIN_ROOT to the installed author package and an absolute PLUGIN_DATA outside it and passed $literal and ~/ arguments as written, and its streamable HTTP server, whose header beginning with ! and holding ${NAME} and $ arrived as written although the variable was set; a codemode script's calls to both reached the hooks as mcp tools |
+| 1.3.0 | 2026-10-19 | live-probe | `.capture/skill-invocation` | Pi loopback on 1.3.0: a package installed through pi install -l --approve retained explicit /skill:feature-probe while disable-model-invocation:true withheld ordinary discovery; false restored discovery (.capture/pi/FEATURES.md). |
 

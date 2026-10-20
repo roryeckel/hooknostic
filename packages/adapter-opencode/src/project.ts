@@ -1,10 +1,10 @@
-import { relative } from "node:path";
+import { realpath } from "node:fs/promises";
 
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import { RELATIVE_SKILL_TEXT, skillInvocationPolicyProfiles } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import { portableRelative, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import { opencodeHarness } from "./harness.js";
 import { RUNTIME_LAUNCHER, RUNTIME_PLUGIN_ROOT, translateMcp } from "./project-agent-plugin.js";
@@ -72,7 +72,13 @@ export async function projectComponents(
   if (source.mcp || (!emitMcp && Object.keys(skillPolicies).length > 0)) {
     const launcher = await projectMcpLauncher(source, root, output);
     result.files.push(...launcher.files);
-    const sourceRoot = relative(root, source.mcp?.root ?? root).replaceAll("\\", "/") || ".";
+    // Between real paths, as the launcher's own offsets are: the module runs
+    // from its physical location and the loaded source root is canonical, so a
+    // project reached through a junction or symlink would otherwise anchor the
+    // stdio cwd on a directory that does not exist. Across Windows drives or
+    // UNC shares it is absolute, which the module's resolve() accepts as is.
+    const projectRoot = await realpath(root);
+    const sourceRoot = portableRelative(projectRoot, source.mcp ? await realpath(source.mcp.root) : projectRoot);
     const translated = translateMcp(
       source.mcp ? { mcp: source.mcp.config } : {},
       new Set(options.mcpProjectCwdServers),

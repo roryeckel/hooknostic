@@ -15,7 +15,8 @@
   "type": "module",
   "pi": {
     "extensions": [
-      "./hooknostic.js"
+      "./hooknostic.js",
+      "./hooknostic-mcp.js"
     ],
     "skills": [
       "./package/skills/greet"

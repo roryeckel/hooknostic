@@ -1,3 +1,7 @@
+import { realpath } from "node:fs/promises";
+import * as nodePath from "node:path";
+import { resolve } from "node:path";
+
 import type { ProjectComponents } from "@hooknostic/agent-plugin";
 import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import {
@@ -6,12 +10,24 @@ import {
   skillInvocationPolicyProfiles,
 } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { projectSkillFiles } from "@hooknostic/core";
+import { portableRelative, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
-import { piHarness } from "./harness.js";
-import { piMcpOmissions } from "./omissions.js";
-import { piFeatureValidation } from "./profile.js";
-import { PI_SKILL_POLICY_RATIONALE, piProjectSkillPolicyValidation } from "./skill-policy.js";
+import {
+  legacyPiMcpCells,
+  MAX_PI_NAME_SEPARATORS,
+  nativePiMcpCells,
+  piEquivalentNames,
+  type PiMcpCells,
+  piMcpExtensionSource,
+  type PiMcpOmission,
+  translatePiMcp,
+} from "./mcp.js";
+import { piFeatureValidation, piLegacyFeatureValidation } from "./profile.js";
+import {
+  PI_SKILL_POLICY_RATIONALE,
+  piLegacyProjectSkillPolicyValidation,
+  piProjectSkillPolicyValidation,
+} from "./skill-policy.js";
 
 /**
  * Project wiring: `.pi/extensions/hooknostic.js` re-exports the runtime
@@ -27,7 +43,9 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
   const files = [
     {
       path: ".pi/extensions/.gitattributes",
-      contents: ".gitattributes -text\nhooknostic.js -text\n",
+      // Both generated modules are hashed for ownership, so checkout must not
+      // convert either one's line endings.
+      contents: ".gitattributes -text\nhooknostic.js -text\nhooknostic-mcp.js -text\n",
     },
     ...artifacts
       .filter((a) => a.path.startsWith(".pi/extensions/"))
@@ -50,90 +68,200 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
  * `pi` package manifest -- a project integration has no skills key to
  * declare, so the filtered inventory is copied to `.pi/skills/` where pi's
  * project-local discovery finds it (skills.js source: SKILL.md folders).
- * pi has no native MCP channel (0.84.4 type surface has no MCP machinery;
- * MCP arrives via third-party extensions), so the MCP component is reported
- * unsupported rather than translated into something that would not load.
+ *
+ * MCP servers (pi 1.x, .capture/pi-mcp) are registered by a generated
+ * `.pi/extensions/hooknostic-mcp.js`, stdio ones through the shared launcher
+ * under the output, so the project's `.pi/mcp.json` stays the user's. pi
+ * 0.84 has no native MCP channel; its profile rates every transport
+ * unsupported, and core reports those servers as skipped.
  */
 export async function projectComponents(
   source: ProjectComponents,
   root: string,
-  _output: string,
+  output: string,
   _config: string,
-  _options: ProjectComponentOptions,
+  options: ProjectComponentOptions,
 ): Promise<ProjectIntegration> {
   const result = projectSkillFiles(source, root, ".pi/skills", { target: RELATIVE_SKILL_TEXT, harness: "Pi" });
+  if (!source.mcp) return result;
+  // Core always resolves the matrix for the target range; a caller without
+  // one (a direct integration call) gets the reference build's cells.
+  const support: NonNullable<ProjectComponentOptions["support"]> = options.support ?? nativePiMcpCells;
+  // pi gives a project .pi/mcp.json server precedence over a registered one of
+  // the same name in any `-`/`_` spelling, so every spelling is claimed absent
+  // below; a name with too many to enumerate cannot be claimed and is omitted.
+  // Null-prototype: a server named __proto__ assigned into {} would set the
+  // prototype instead of adding an entry, and vanish from the projection.
+  const claimable: typeof source.mcp.config.mcpServers = Object.create(null);
+  const unclaimable: PiMcpOmission[] = [];
+  for (const [name, server] of Object.entries(source.mcp.config.mcpServers)) {
+    if (piEquivalentNames(name) !== undefined) claimable[name] = server;
+    else
+      unclaimable.push({
+        component: `agent-plugin.mcp.${server.type}`,
+        name,
+        reason: `the name has more than ${MAX_PI_NAME_SEPARATORS} \`-\` or \`_\`, too many spellings pi treats as the same to check in .pi/mcp.json`,
+      });
+  }
+  const mcp = translatePiMcp(claimable, support, new Set(options.mcpProjectCwdServers));
+  // An unsupported transport is core's to report. An omission inside a
+  // supported one goes to core as a project omission, which applies
+  // components.onUnsupported and moves the server from emitted to skipped.
+  const omissions = [...unclaimable, ...mcp.omitted].filter(
+    (omission) => support[omission.component]?.level !== "unsupported",
+  );
+  if (omissions.length > 0) result.omissions = [...(result.omissions ?? []), ...omissions];
+  if (mcp.registrations.length === 0) return result;
+  if (mcp.launcherServers.length > 0) {
+    const launcher = await projectMcpLauncher(source, root, output, mcp.launcherServers);
+    result.files.push(...launcher.files);
+  }
+  // Both real paths, as the launcher's own offsets are: the loaded source root
+  // is canonical, and a project reached through a junction or symlink would
+  // otherwise put the offset on the wrong side of it.
+  const projectRoot = await realpath(root);
+  result.files.push({
+    path: MCP_EXTENSION_PATH,
+    contents: piMcpExtensionSource({
+      registrations: mcp.registrations,
+      rootFromHere: piExtensionsRelative(projectRoot, await realpath(source.mcp.root)),
+      launcherFromHere: piExtensionsRelative(projectRoot, resolve(projectRoot, output, "mcp-launcher.mjs")),
+      // A project's own declarations resolve their ${NAME} references from the
+      // launch environment, as on the other targets; a package's never do.
+      resolveEnvironment: source.origin === "direct",
+    }),
+  });
+  // An unowned entry there would silently replace ours.
+  result.absent = [
+    ...(result.absent ?? []),
+    ...mcp.registrations.flatMap(({ name }) =>
+      piEquivalentNames(name)!.map((spelling) => ({ path: ".pi/mcp.json", key: ["mcpServers", spelling] })),
+    ),
+  ];
   return result;
 }
 
-const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
-  {
-    range: piHarness.recommendedRange,
-    components: {
-      "agent-plugin.skills": {
-        level: "exact",
-        rationale:
-          "Pi discovers .pi/skills and .agents/skills. Its explicit skill body tells the model to resolve references against the skill directory, so ${SKILL_DIR} projects to `.` in the body (ADR-0028).",
-        degradations: [
-          {
-            id: SKILL_REFERENCE_UNEXPANDED,
-            summary:
-              "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references and an in-place ${SKILL_DIR} cannot be rewritten.",
-            evidence: piFeatureValidation.artifact,
-          },
-        ],
+/** The generated extension registering the project's MCP servers. */
+const MCP_EXTENSION_PATH = ".pi/extensions/hooknostic-mcp.js";
+
+/**
+ * The path the generated `.pi/extensions` module resolves against its own
+ * directory to reach `target`: relative where one exists, absolute across
+ * Windows drives and UNC shares (portableRelative). Prefixing a root-relative
+ * offset with `../../` would corrupt that absolute form.
+ */
+export function piExtensionsRelative(
+  projectRoot: string,
+  target: string,
+  paths: Pick<typeof nodePath, "join" | "parse" | "relative" | "resolve" | "sep"> = nodePath,
+): string {
+  return portableRelative(paths.join(projectRoot, ".pi", "extensions"), target, paths);
+}
+
+/** Both lines rate the same components; only the MCP cells differ. */
+const piProjectComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["components"] => ({
+  "agent-plugin.skills": {
+    level: "exact",
+    rationale:
+      "Pi discovers .pi/skills and .agents/skills. Its explicit skill body tells the model to resolve references against the skill directory, so ${SKILL_DIR} projects to `.` in the body (ADR-0028).",
+    degradations: [
+      {
+        id: SKILL_REFERENCE_UNEXPANDED,
+        summary:
+          "Pi leaves Claude and Agent Plugin placeholders literal; frontmatter references and an in-place ${SKILL_DIR} cannot be rewritten.",
+        evidence: piFeatureValidation.artifact,
       },
-      "agent-plugin.mcp.stdio": {
-        level: "unsupported",
-        omission: piMcpOmissions.stdio,
-        rationale:
-          "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
-      },
-      "agent-plugin.mcp.streamable-http": {
-        level: "unsupported",
-        omission: piMcpOmissions["streamable-http"],
-        rationale:
-          "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
-      },
-      "agent-plugin.mcp.sse": {
-        level: "unsupported",
-        omission: piMcpOmissions.sse,
-        rationale:
-          "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
-      },
-      "agent-plugin.client-extension.files": {
-        level: "unsupported",
-        rationale: "pi reads no portable client-extension namespace; extensions are the only code surface.",
-      },
-      "agent-plugin.runtime-package": {
-        level: "unsupported",
-        rationale:
-          "pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact.",
-      },
-    },
-    source: {
-      date: "2026-09-27",
-      validatedOn: [
-        piFeatureValidation,
-        {
-          version: "0.84.4",
-          date: "2026-09-27",
-          method: "live-probe",
-          artifact: ".capture/pi/README.md",
-          what: "project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback",
-        },
-        {
-          version: "0.84.4",
-          date: "2026-09-27",
-          method: "captured",
-          artifact: ".capture/pi/README.md",
-          what: "pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source.",
-        },
-      ],
-    },
+    ],
   },
+  ...mcp,
+  "agent-plugin.client-extension.files": {
+    level: "unsupported",
+    rationale: "pi reads no portable client-extension namespace; extensions are the only code surface.",
+  },
+  "agent-plugin.runtime-package": {
+    level: "unsupported",
+    rationale:
+      "pi loads project extensions from .pi/extensions/ with no install step, so a manifest and lockfile written beside the extension would leave no node_modules. Bundle a Node component's dependencies into the generated artifact.",
+  },
+});
+
+const legacyProjectComponentProfile: AgentPluginProjectionProfile = {
+  range: ">=0.84 <1",
+  components: piProjectComponents(
+    legacyPiMcpCells(
+      "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
+    ),
+  ),
+  source: {
+    date: "2026-09-27",
+    validatedOn: [
+      piLegacyFeatureValidation,
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "live-probe",
+        artifact: ".capture/pi/README.md",
+        what: "project sync and verify in a fresh project; the discovered skill reached model input and the generated extension rewrote a shell command in Pi loopback playback",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "captured",
+        artifact: ".capture/pi/README.md",
+        what: "pi package skill discovery verified by effect (installed package skill answered its prompt); project-local .pi/ discovery per loader.js and skills.js source.",
+      },
+    ],
+  },
+};
+
+const projectComponentProfile: AgentPluginProjectionProfile = {
+  range: ">=1 <2",
+  components: piProjectComponents(nativePiMcpCells),
+  source: {
+    date: "2026-10-19",
+    validatedOn: [
+      piFeatureValidation,
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "schema-derived",
+        artifact: ".capture/pi/README.md",
+        what: "installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/pi-mcp/README.md",
+        what: "Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/harness-playback/",
+        what: "HOOKNOSTIC_PLAYBACK=pi project sync in a fresh project: the skill reached model input from pi's discovery path and the generated .pi/extensions hook rewrote a shell command against the loopback model",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/harness-playback/",
+        what: "HOOKNOSTIC_PLAYBACK=pi repository-local integration: the generated .pi/extensions/hooknostic-mcp.js registered a direct source's stdio server through the launcher (absolute PLUGIN_ROOT, PLUGIN_DATA under .hooknostic/data, the project-anchored cwd, and ${NAME:-default} args resolved) and its streamable HTTP server with the URL and a header resolved from the environment and a literal $ preserved; a server naming a missing variable was disabled with a warning, and a codemode script's calls to both reached the hooks as mcp tools",
+      },
+    ],
+  },
+};
+
+export const projectComponentProfiles = [
+  ...skillInvocationPolicyProfiles(
+    [legacyProjectComponentProfile],
+    piLegacyProjectSkillPolicyValidation,
+    PI_SKILL_POLICY_RATIONALE,
+  ),
+  ...skillInvocationPolicyProfiles(
+    [projectComponentProfile],
+    piProjectSkillPolicyValidation,
+    PI_SKILL_POLICY_RATIONALE,
+  ),
 ];
-export const projectComponentProfiles = skillInvocationPolicyProfiles(
-  nativeProjectComponentProfiles,
-  piProjectSkillPolicyValidation,
-  PI_SKILL_POLICY_RATIONALE,
-);

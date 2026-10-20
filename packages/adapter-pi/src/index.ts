@@ -117,6 +117,17 @@ export function piAdapter(): HarnessAdapter {
         "and Pi's tool description and prompt snippet do not state the selected interpreter.",
       evidence: ".capture/pi/FEATURES.md",
     },
+    mcpIdentity: {
+      source: "statement",
+      events: ["tool.after", "tool.error"],
+      // pi 0.84 has no native MCP channel; the statement is captured on 1.3.0.
+      range: ">=1 <2",
+      rationale:
+        "pi names MCP tools mcp__<server>__<tool> but sanitizes every non-identifier character and hashes a long or " +
+        "colliding name, so the split is never parsed from it. A tool_result states the server and tool in its details, " +
+        "as pi registered them; a tool_call states nothing, so tool.before carries kind mcp without the split.",
+      evidence: ".capture/pi-mcp/README.md",
+    },
 
     supportedHarnessVersions() {
       return piCapabilityProfiles.map((p) => p.range);

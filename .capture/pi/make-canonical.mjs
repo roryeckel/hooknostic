@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url));
 const adapterSource = (file) => pathToFileURL(join(here, "..", "..", "packages", "adapter-pi", "src", file)).href;
-const { decodePi } = await import(adapterSource("decode.ts"));
+const { decodePi, PiDecodeError } = await import(adapterSource("decode.ts"));
 const { piHarness } = await import(adapterSource("harness.ts"));
 const fixturesDir = join(here, "..", "..", "fixtures", "pi", piHarness.fixtureDir);
 
@@ -21,11 +21,16 @@ for (const file of readdirSync(fixturesDir)) {
   if (!file.endsWith(".input.json")) continue;
   const input = JSON.parse(readFileSync(join(fixturesDir, file), "utf8"));
   const enrichment = join(fixturesDir, file.replace(".input.json", ".enrichment.json"));
-  const decoded = decodePi(
-    input,
-    INVOCATION,
-    existsSync(enrichment) ? JSON.parse(readFileSync(enrichment, "utf8")) : {},
-  );
+  let decoded;
+  try {
+    decoded = decodePi(input, INVOCATION, existsSync(enrichment) ? JSON.parse(readFileSync(enrichment, "utf8")) : {});
+  } catch (error) {
+    // A captured invocation the adapter declines (before-agent-start-custom)
+    // has no canonical event; its test asserts the decline.
+    if (!(error instanceof PiDecodeError)) throw error;
+    console.log(`declined ${file}: ${error.message}`);
+    continue;
+  }
   const { raw: _raw, ...canonical } = decoded;
   const out = join(fixturesDir, file.replace(".input.json", ".canonical.json"));
   writeFileSync(out, JSON.stringify(canonical, null, 2) + "\n", "utf8");

@@ -1215,7 +1215,7 @@ ${run.stderr}`,
     },
   );
 
-  it("builds Pi in the default combined example with an accepted MCP omission", async () => {
+  it("builds Pi in the default combined example with its MCP server registered", async () => {
     const dir = await cleanExample("agent-plugin");
     const mcpBefore = await readFile(join(dir, "mcp.json"), "utf8");
     const config = join(dir, "hooknostic.config.ts");
@@ -1229,23 +1229,25 @@ ${run.stderr}`,
       expect(report.targets.pi.projection).toMatchObject({
         status: "success",
         components: {
-          "agent-plugin.mcp.stdio": { support: "unsupported", discovered: 1, emitted: 0, skipped: 1 },
+          "agent-plugin.mcp.stdio": { support: "emulated", discovered: 1, emitted: 1, skipped: 0 },
         },
       });
-      expect(report.targets.pi.projection.omissions).toContainEqual(
-        expect.objectContaining({ component: "agent-plugin.mcp.stdio", name: "greeter" }),
-      );
-      expect(report.diagnostics).toContainEqual(
-        expect.objectContaining({ code: "HN205", severity: "info", omission: "pi:mcp-stdio-omitted" }),
-      );
+      expect(report.targets.pi.projection.omissions).toEqual([]);
+      expect(report.diagnostics).not.toContainEqual(expect.objectContaining({ code: "HN205" }));
     }
     const output = join(dir, "dist/pi");
     const manifest = JSON.parse(await readFile(join(output, "package.json"), "utf8"));
-    expect(manifest.pi).toEqual({ extensions: ["./hooknostic.js"], skills: ["./package/skills/greet"] });
+    expect(manifest.pi).toEqual({
+      extensions: ["./hooknostic.js", "./hooknostic-mcp.js"],
+      skills: ["./package/skills/greet"],
+    });
+    expect(JSON.parse(await readFile(join(output, "hooknostic-runtime/mcp-servers.json"), "utf8"))).toEqual({
+      plugin: "combined-example",
+      servers: [{ name: "greeter", command: "node", args: ["${PLUGIN_ROOT}/bundled/greet-mcp.mjs"] }],
+    });
     expect(await readFile(join(output, "hooknostic.js"), "utf8")).toContain("Hooknostic marketplace probe blocked.");
     expect(await readFile(join(output, "package/skills/greet/SKILL.md"), "utf8")).toContain("git status --short");
-    // Portable source files may survive copying; native Pi activation declares
-    // only the extension and skill, never an MCP server.
+    // The portable source stays read-only input.
     expect(await readFile(join(dir, "mcp.json"), "utf8")).toBe(mcpBefore);
   });
 

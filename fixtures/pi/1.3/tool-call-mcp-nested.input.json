@@ -1,0 +1,13 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "mcp__probe__probe_echo",
+    "toolCallId": "call_playback/1",
+    "parentToolCallId": "call_playback",
+    "input": {}
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-mcp-Qgii2Y\\project",
+    "mode": "print"
+  }
+}

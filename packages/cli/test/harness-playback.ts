@@ -1327,7 +1327,12 @@ export async function startModelPlayback(
   };
 }
 
-async function fixturePairs(fixturesDir: string) {
+/**
+ * Captured input/canonical pairs. A `declined` input is a captured invocation
+ * the adapter deliberately does not map: it has no canonical, and its replay
+ * must dispatch no hook. Every other input must have a canonical.
+ */
+async function fixturePairs(fixturesDir: string, declined: ReadonlySet<string> = new Set()) {
   const names = (await readdir(fixturesDir)).filter((name) => name.endsWith(".input.json")).sort();
   return Promise.all(
     names.map(async (name) => {
@@ -1335,9 +1340,11 @@ async function fixturePairs(fixturesDir: string) {
       return {
         name,
         input: JSON.parse(await readFile(join(fixturesDir, name), "utf8")) as Record<string, unknown>,
-        canonical: JSON.parse(await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8")) as {
-          event: HookEventName;
-        },
+        canonical: declined.has(stem)
+          ? undefined
+          : (JSON.parse(await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8")) as {
+              event: HookEventName;
+            }),
       };
     }),
   );
@@ -1425,7 +1432,7 @@ export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: s
     expect(result.code, `${fixture.name}: ${result.stderr}`).toBe(0);
   }
   expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical.event),
+    pairs.map((fixture) => fixture.canonical!.event),
   );
 }
 
@@ -1461,7 +1468,7 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
     else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
   }
   expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical.event),
+    pairs.map((fixture) => fixture.canonical!.event),
   );
 }
 
@@ -1472,7 +1479,9 @@ export async function replayOpenCodeFixtures(build: PlaybackBuild, fixturesDir: 
  * event to the subscription pi would have registered.
  */
 export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
-  const pairs = await fixturePairs(fixturesDir);
+  // pi >=1.2 fires before_agent_start for a custom-message run; prompt.before
+  // declines it, so the generated artifact must dispatch nothing for it.
+  const pairs = await fixturePairs(fixturesDir, new Set(["before-agent-start-custom"]));
   const previousTrace = process.env["HOOKNOSTIC_PLAYBACK_TRACE"];
   process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = build.tracePath;
   try {
@@ -1505,7 +1514,7 @@ export async function replayPiFixtures(build: PlaybackBuild, fixturesDir: string
     else process.env["HOOKNOSTIC_PLAYBACK_TRACE"] = previousTrace;
   }
   expect((await readTrace(build.tracePath)).map((entry) => entry.event)).toEqual(
-    pairs.map((fixture) => fixture.canonical.event),
+    pairs.flatMap((fixture) => (fixture.canonical === undefined ? [] : [fixture.canonical.event])),
   );
 }
 

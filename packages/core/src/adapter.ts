@@ -51,6 +51,40 @@ export interface ProjectComponentOptions {
 export interface ReportedToolFacts {
   /** The grammar family of the shell the harness said it runs (ADR-0029). */
   shellDialect?: ShellDialect;
+  /**
+   * The MCP server and tool the harness named for the call outside its tool
+   * name, as it registered them (ADR-0032). Only an adapter whose
+   * `mcpIdentity` source is `statement` applies it, and only to an MCP tool.
+   */
+  mcp?: { server: string; tool: string };
+}
+
+/** The tool-scoped events a harness can state an MCP identity on. */
+export type McpIdentityEvent = "tool.before" | "tool.after" | "tool.error";
+
+/**
+ * Where an adapter's `tool.mcp` split comes from, or why it is absent
+ * (ADR-0032). Like the shell dialect it varies per call, so it is declared
+ * rather than rated: `inspect` prints it, and the contract suite and
+ * `hooknostic dispatch` hold stated identities to it.
+ */
+export interface McpIdentitySupport {
+  /**
+   * `name`: parsed from the native tool name. `statement`: the harness states
+   * it outside the name, on `events` only. `none`: never set.
+   */
+  readonly source: "name" | "statement" | "none";
+  /** For `statement`: the events whose payload states it. */
+  readonly events?: readonly McpIdentityEvent[];
+  /**
+   * For `statement`: the harness versions whose evidence establishes it. A
+   * target whose range is not within it is treated as stating nothing.
+   */
+  readonly range?: string;
+  /** When a hook gets the split on this target, when it does not, and why. */
+  readonly rationale: string;
+  /** Repo-relative evidence path. */
+  readonly evidence: string;
 }
 
 /**
@@ -420,6 +454,12 @@ export interface HarnessAdapter {
    * for any adapter with a shell shape table: the contract suite asks for it.
    */
   readonly shellDialect?: ShellDialectSupport;
+
+  /**
+   * Where this adapter's `tool.mcp` split comes from (ADR-0032). Absent: the
+   * classifier alone decides, from the name and input.
+   */
+  readonly mcpIdentity?: McpIdentitySupport;
 
   /**
    * Resolve the capability matrix for a target's requested version range.

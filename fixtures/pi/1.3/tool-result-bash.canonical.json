@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-VcyewW\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "echo hooknostic-original"
+    },
+    "shell": {
+      "command": "echo hooknostic-original",
+      "commandKey": "command"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "hooknostic-original\n"
+    }
+  ]
+}

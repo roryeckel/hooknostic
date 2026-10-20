@@ -9,10 +9,14 @@ import { fileURLToPath } from "node:url";
 
 import { describe, it } from "vitest";
 
-import { decodePi } from "./decode.js";
+import { decodePi, PiDecodeError } from "./decode.js";
 import { piHarness } from "./harness.js";
 
-const FIXTURES_DIR = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../fixtures/pi/0.84");
+const FIXTURES_DIR = resolve(
+  fileURLToPath(new URL(".", import.meta.url)),
+  "../../../fixtures/pi",
+  piHarness.fixtureDir,
+);
 
 describe.skipIf(process.env["HKN_WRITE_CANONICAL"] !== "1")("canonical fixture generation", () => {
   it("writes canonical.json for every input.json", () => {
@@ -20,11 +24,18 @@ describe.skipIf(process.env["HKN_WRITE_CANONICAL"] !== "1")("canonical fixture g
       if (!file.endsWith(".input.json")) continue;
       const input = JSON.parse(readFileSync(`${FIXTURES_DIR}/${file}`, "utf8"));
       const enrichment = `${FIXTURES_DIR}/${file.replace(".input.json", ".enrichment.json")}`;
-      const decoded = decodePi(
-        input,
-        { targetId: "pi", harnessVersion: piHarness.referenceVersion },
-        existsSync(enrichment) ? JSON.parse(readFileSync(enrichment, "utf8")) : {},
-      );
+      let decoded;
+      try {
+        decoded = decodePi(
+          input,
+          { targetId: "pi", harnessVersion: piHarness.referenceVersion },
+          existsSync(enrichment) ? JSON.parse(readFileSync(enrichment, "utf8")) : {},
+        );
+      } catch (error) {
+        // A declined capture (before-agent-start-custom) has no canonical event.
+        if (error instanceof PiDecodeError) continue;
+        throw error;
+      }
       const { raw: _raw, ...canonical } = decoded;
       writeFileSync(
         `${FIXTURES_DIR}/${file.replace(".input.json", ".canonical.json")}`,

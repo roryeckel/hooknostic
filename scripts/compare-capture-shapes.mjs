@@ -247,7 +247,7 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   let busAppendix = [];
   let payloads = captured;
   if (harness === "pi") {
-    // Adapter-observed channels, per decodePi and fixtures/pi/0.84. The tee
+    // Adapter-observed channels, per decodePi and fixtures/pi/1.3. The tee
     // also records UI/token events that have no portable hook counterpart.
     const mapped = new Set([
       "session_start",
@@ -410,7 +410,7 @@ function parseArgs(argv) {
 }
 
 const FIXTURE_DIRS = {
-  pi: "fixtures/pi/0.84",
+  pi: "fixtures/pi/1.3",
   claude: "fixtures/claude/2.1",
   codex: "fixtures/codex/0.148",
   opencode: "fixtures/opencode/1.18",

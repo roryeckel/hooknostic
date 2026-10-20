@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { piHarness } from "@hooknostic/adapter-pi";
+import { piCapabilityProfiles, piHarness } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 
 import { runBuild } from "./build.js";
@@ -14,12 +14,15 @@ import { runInspect } from "./inspect.js";
 import { defaultAdapterRegistry } from "./registry.js";
 
 const transports = ["stdio", "streamable-http", "sse"] as const;
+// The three omissions belong to pi 0.84, which has no native MCP channel. 1.x
+// registers stdio and streamable-HTTP servers natively and omits only SSE.
+const LEGACY = piCapabilityProfiles.find((profile) => profile.range.startsWith(">=0.84"))!.range;
 const scratch: string[] = [];
 afterEach(async () => {
   for (const dir of scratch.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-async function fixture(delivery: "package" | "project", accept: string[]) {
+async function fixture(delivery: "package" | "project", accept: string[], version = LEGACY) {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-omissions-"));
   scratch.push(root);
   await mkdir(join(root, "skills/review"), { recursive: true });
@@ -48,7 +51,7 @@ async function fixture(delivery: "package" | "project", accept: string[]) {
     `export default ${JSON.stringify({
       ...(delivery === "project" ? { project: { root: "." } } : {}),
       components: { root: ".", accept },
-      targets: { reader: { adapter: "pi", version: piHarness.referenceVersion, delivery, output: "dist/pi" } },
+      targets: { reader: { adapter: "pi", version, delivery, output: "dist/pi" } },
     })};`,
   );
   return { root, config };
@@ -71,13 +74,54 @@ async function invoke(run: typeof runBuild | typeof runCheck, config: string) {
   return { code, report: JSON.parse(output) };
 }
 
-describe.each(["package", "project"] as const)("Pi omission acceptance: %s", (delivery) => {
-  it.each([true, false])("exposes omission IDs through inspect (json=%s)", async (json) => {
+describe.each(["package", "project"] as const)("Pi 1.x omission acceptance: %s", (delivery) => {
+  it("exposes only the SSE omission through inspect", async () => {
     const lines: string[] = [];
     expect(
       await runInspect({
         target: "pi",
         version: piHarness.referenceVersion,
+        delivery,
+        json: true,
+        registry: defaultAdapterRegistry(),
+        io: {
+          stdout: (text) => {
+            lines.push(text);
+          },
+          stderr: () => {},
+        },
+      }),
+    ).toBe(0);
+    const output = lines.join("\n");
+    expect(JSON.parse(output).mcpIdentity).toMatchObject({ source: "statement", applies: true });
+    expect(output).toContain("pi:mcp-sse-omitted");
+    expect(output).not.toContain("pi:mcp-stdio-omitted");
+    expect(output).not.toContain("pi:mcp-streamable-http-omitted");
+  });
+
+  it("projects stdio and streamable-HTTP servers once the SSE omission is accepted", async () => {
+    const { config } = await fixture(delivery, ["pi:mcp-sse-omitted"], piHarness.referenceVersion);
+    const { code, report } = await invoke(runCheck, config);
+    expect(code, JSON.stringify(report.diagnostics)).toBe(0);
+    const hn205 = report.diagnostics.filter((item: { code: string }) => item.code === "HN205");
+    expect(hn205).toEqual([
+      expect.objectContaining({
+        target: "reader",
+        component: "agent-plugin.mcp.sse",
+        severity: "info",
+        omission: "pi:mcp-sse-omitted",
+      }),
+    ]);
+  });
+});
+
+describe.each(["package", "project"] as const)("Pi 0.84 omission acceptance: %s", (delivery) => {
+  it.each([true, false])("exposes omission IDs through inspect (json=%s)", async (json) => {
+    const lines: string[] = [];
+    expect(
+      await runInspect({
+        target: "pi",
+        version: LEGACY,
         delivery,
         json,
         registry: defaultAdapterRegistry(),
@@ -91,6 +135,9 @@ describe.each(["package", "project"] as const)("Pi omission acceptance: %s", (de
     ).toBe(0);
     const output = lines.join("\n");
     for (const type of transports) expect(output).toContain(`pi:mcp-${type}-omitted`);
+    // ADR-0032: the MCP identity statement is established for 1.x only.
+    if (json) expect(JSON.parse(output).mcpIdentity).toMatchObject({ applies: false });
+    else expect(output).toContain("tool.mcp source (outside >=1 <2)");
   });
 
   it.each(transports)("accepts only the named %s transport", async (transport) => {

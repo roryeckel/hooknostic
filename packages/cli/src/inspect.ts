@@ -1,6 +1,6 @@
 import { AGENT_PLUGIN_COMPONENT_IDS, type AgentPluginComponentId } from "@hooknostic/agent-plugin";
 import type { AdapterRegistry } from "@hooknostic/core";
-import { resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
+import { rangeWithin, resolveAgentPluginProjection, resolveTargetAdapter } from "@hooknostic/core";
 import type { CapabilityId, EventFieldId } from "@hooknostic/sdk";
 import { ALL_CAPABILITY_IDS, ALL_EVENT_FIELD_IDS, isCapabilityId, isEventFieldId } from "@hooknostic/sdk";
 
@@ -68,6 +68,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   // --version this command should answer for the range users are told to
   // target, which can be deliberately narrower than the validated union.
   const version = options.version ?? adapter.harness.recommendedRange;
+  // A declared statement applies only within the range its evidence covers (ADR-0032).
+  const mcpIdentityApplies =
+    adapter.mcpIdentity?.range === undefined || rangeWithin(version, adapter.mcpIdentity.range);
   const selected = resolveTargetAdapter(adapter, {
     id: options.target,
     version,
@@ -190,6 +193,10 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
           fields: fieldRows,
           // Not a capability: it varies per call and host (ADR-0029). Null where an adapter declares none.
           shellDialect: adapter.shellDialect ?? null,
+          // Likewise per call (ADR-0032). Null where the classifier alone decides;
+          // `applies` says whether the requested range is within the declared one.
+          mcpIdentity:
+            adapter.mcpIdentity === undefined ? null : { ...adapter.mcpIdentity, applies: mcpIdentityApplies },
           components: componentRows,
           projectionProfiles: projection?.profilesUsed ?? [],
         },
@@ -228,6 +235,19 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     const { source, rationale, evidence } = adapter.shellDialect;
     options.io.stdout("");
     options.io.stdout(`${source.padEnd(12)} tool.shell.dialect source\n             ${rationale} (${evidence})`);
+  }
+  // Where tool.mcp's split comes from (ADR-0032), where the adapter declares it.
+  if (single === undefined && adapter.mcpIdentity !== undefined) {
+    const { source, events, range, rationale, evidence } = adapter.mcpIdentity;
+    options.io.stdout("");
+    if (!mcpIdentityApplies) {
+      options.io.stdout(
+        `${"none".padEnd(12)} tool.mcp source (outside ${range})\n             The harness states an MCP identity only for ${range}. (${evidence})`,
+      );
+    } else {
+      const where = source === "statement" && events !== undefined ? ` (stated on ${events.join(", ")})` : "";
+      options.io.stdout(`${source.padEnd(12)} tool.mcp source${where}\n             ${rationale} (${evidence})`);
+    }
   }
   if (componentRows.length > 0) {
     options.io.stdout("");

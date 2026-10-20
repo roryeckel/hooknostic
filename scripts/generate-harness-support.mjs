@@ -115,6 +115,23 @@ for (const adapter of adapters) {
       "",
     );
   }
+  // The same for the MCP tool split, where an adapter declares it (ADR-0032).
+  if (adapter.mcpIdentity) {
+    const sources = {
+      name: "comes from **the tool name**",
+      statement:
+        `comes from **what the harness states**, on ${(adapter.mcpIdentity.events ?? []).map((event) => "`" + event + "`").join(" and ")} only` +
+        (adapter.mcpIdentity.range === undefined ? "" : ", for `" + adapter.mcpIdentity.range + "`"),
+      none: "is **never set** on this harness",
+    };
+    lines.push(
+      "#### MCP tool identity",
+      "",
+      "`tool.mcp` " + sources[adapter.mcpIdentity.source] + ". " + adapter.mcpIdentity.rationale,
+      "Evidence: `" + adapter.mcpIdentity.evidence + "`.",
+      "",
+    );
+  }
   if (adapter.agentPluginProjector) {
     lines.push("#### Agent Plugin projection", "");
     componentTables(

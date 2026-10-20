@@ -387,6 +387,29 @@ describe("createHooknosticExtension", () => {
     });
   });
 
+  it("runs no prompt hook for a captured custom-message run and injects nothing into it", async () => {
+    // pi >=1.2 fires before_agent_start for the turn.stop prevent continuation;
+    // pi adds a returned message to that run too, so a stray result would
+    // inject prompt context into a turn no user prompt started.
+    const pi = fakePi();
+    const run = vi.fn(async () => ({ kind: "addContext" as const, context: "mind the layout" }));
+    createHooknosticExtension(
+      pluginWith([hook("prompt.before", { id: "c", capabilities: { "prompt.before.context.add": "required" }, run })]),
+      { ...INVOCATION, capabilities: LEVELS },
+    )(pi);
+    for (const fixture of ["before-agent-start-custom", "before-agent-start-isolated"] as const) {
+      const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${fixture}.input.json`);
+      const result = await fire(pi, "before_agent_start", input.event, input.ctx);
+      if (fixture === "before-agent-start-custom") {
+        expect(result).toBeUndefined();
+        expect(run).not.toHaveBeenCalled();
+      } else {
+        expect(result).toEqual({ message: { customType: "hooknostic", content: "mind the layout", display: false } });
+        expect(run).toHaveBeenCalledTimes(1);
+      }
+    }
+  });
+
   it("returns merged messages for model-request context", async () => {
     const pi = fakePi();
     const extension = createHooknosticExtension(

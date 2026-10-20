@@ -1,4 +1,4 @@
-import type { InvocationContext } from "@hooknostic/core";
+import type { InvocationContext, ReportedToolFacts } from "@hooknostic/core";
 import type { HookEvent } from "@hooknostic/sdk";
 
 import { classifyPiTool } from "./toolmap.js";
@@ -85,6 +85,13 @@ function snapshotPiRaw(native: PiNativeEvent): PiNativeEvent {
   }
 }
 
+/** The MCP identity a tool_result's `details` states, when it names both parts as strings. */
+export function piReportedMcp(details: unknown): ReportedToolFacts | undefined {
+  if (typeof details !== "object" || details === null) return undefined;
+  const { server, tool } = details as Record<string, unknown>;
+  return typeof server === "string" && typeof tool === "string" ? { mcp: { server, tool } } : undefined;
+}
+
 export function decodePi(
   nativeEvent: unknown,
   invocation: InvocationContext,
@@ -145,6 +152,15 @@ export function decodePi(
       };
     }
     case "before_agent_start": {
+      // From pi 1.2 a run started by a custom message -- including the
+      // sendMessage({triggerTurn: true}) continuation turn.stop prevent posts --
+      // also fires before_agent_start, with messageType "custom", the message,
+      // and no prompt (fixtures/pi/1.3/before-agent-start-custom). No user
+      // prompt was submitted, so it is declined rather than mapped to
+      // prompt.before; 0.84 never fired the event for such a run.
+      if (native.event["messageType"] === "custom") {
+        throw new PiDecodeError("before_agent_start for a custom-message run carries no user prompt");
+      }
       const prompt = native.event["prompt"];
       if (typeof prompt !== "string") {
         throw new PiDecodeError("before_agent_start has no prompt");
@@ -180,20 +196,19 @@ export function decodePi(
       const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
+      // An MCP result's `details` names its server and tool as pi registered
+      // them (fixtures/pi/1.3/tool-result-mcp); the lossy name cannot
+      // (toolmap.ts). It reaches the view as a reported fact, which is how
+      // classifyTool rebuilds the same view (ADR-0023, ADR-0032).
+      const tool = classifyPiTool(toolCall.toolName, input, piReportedMcp(native.event["details"]));
       if (isError) {
-        return {
-          ...withToolCallId(base),
-          raw,
-          event: "tool.error",
-          tool: classifyPiTool(toolCall.toolName, input),
-          error: {},
-        };
+        return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
       }
       return {
         ...withToolCallId(base),
         raw,
         event: "tool.after",
-        tool: classifyPiTool(toolCall.toolName, input),
+        tool,
         output: snapshotPiValue(output, "tool_result content"),
       };
     }

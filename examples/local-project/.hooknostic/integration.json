@@ -143,8 +143,23 @@
       "mode": 420
     },
     {
+      "path": ".hooknostic/artifacts/pi/.gitattributes",
+      "hash": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "mode": 420
+    },
+    {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "0d8b9b1c58121ab1c5485258dccf279d7c1bebb440f1da153ec91a836c6fec3a",
+      "hash": "3c316ba6baaa3354f218cd7387e1c1d1eae462228128eff0693a4df8b23dbfe6",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/pi/mcp-launcher.mjs",
+      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "mode": 420
+    },
+    {
+      "path": ".hooknostic/artifacts/pi/mcp-servers.json",
+      "hash": "837cd0aa242d3bcdfa576758b4ad8c64b26255954a7dd33483917a4ff7954022",
       "mode": 420
     },
     {
@@ -173,7 +188,12 @@
     },
     {
       "path": ".pi/extensions/.gitattributes",
-      "hash": "2657c649826aee3818b66cb4f1bff3b718a4fd4d417f290579e1d0226fdfb337",
+      "hash": "b890dad119a67eaf4177a4b6cac7e16bd6ace9627e03d8502772cc8441563e3f",
+      "mode": 420
+    },
+    {
+      "path": ".pi/extensions/hooknostic-mcp.js",
+      "hash": "5e9181c1d7a856f87aab3a138099473fd6bde7112e0d78a45bb386a89218c848",
       "mode": 420
     },
     {

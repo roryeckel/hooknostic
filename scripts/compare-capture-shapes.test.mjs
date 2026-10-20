@@ -411,7 +411,7 @@ describe("shapeDiff", () => {
 });
 
 describe("Pi drift", () => {
-  const fixtures = readFixtureInputs("pi/0.84");
+  const fixtures = readFixtureInputs("pi/1.3");
   const compare = (captured) =>
     compareCaptures({ harness: "pi", fixtures, captured, expectedVariants: EXPECTED_VARIANTS.pi });
 

@@ -94,7 +94,7 @@ const TEE_TEMPLATE_DIRS = {
 // Fixture dir per harness relative to fixtures/<harness>/ — mirrors
 // compare-capture-shapes.mjs's FIXTURE_DIRS (which prefix fixtures/<harness>/).
 const FIXTURE_DIRS = {
-  pi: "0.84",
+  pi: "1.3",
   claude: "2.1",
   codex: "0.148",
   opencode: "1.18",

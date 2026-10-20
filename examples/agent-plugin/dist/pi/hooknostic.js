@@ -5301,7 +5301,11 @@ var PI_FILE_SHAPES = {
   edit: { pathKey: "path" }
 };
 var piFileCodec = fileCodec(PI_FILE_SHAPES);
-function classifyPiTool(nativeName, input) {
+var PI_MCP_PREFIX = "mcp__";
+function classifyPiTool(nativeName, input, reported) {
+  if (nativeName.startsWith(PI_MCP_PREFIX)) {
+    return { kind: "mcp", nativeName, input, ...reported?.mcp ? { mcp: { ...reported.mcp } } : {} };
+  }
   const known = Object.hasOwn(EXACT, nativeName) ? EXACT[nativeName] : void 0;
   if (known !== void 0) {
     const shell = piShellCodec.classify(nativeName, input);
@@ -5346,6 +5350,11 @@ function snapshotPiRaw(native) {
   } catch {
     throw new PiDecodeError("pi event cannot be cloned");
   }
+}
+function piReportedMcp(details) {
+  if (typeof details !== "object" || details === null) return void 0;
+  const { server, tool } = details;
+  return typeof server === "string" && typeof tool === "string" ? { mcp: { server, tool } } : void 0;
 }
 function decodePi(nativeEvent, invocation, enrichment = {}) {
   if (typeof nativeEvent !== "object" || nativeEvent === null) {
@@ -5400,6 +5409,9 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
       };
     }
     case "before_agent_start": {
+      if (native.event["messageType"] === "custom") {
+        throw new PiDecodeError("before_agent_start for a custom-message run carries no user prompt");
+      }
       const prompt = native.event["prompt"];
       if (typeof prompt !== "string") {
         throw new PiDecodeError("before_agent_start has no prompt");
@@ -5428,20 +5440,15 @@ function decodePi(nativeEvent, invocation, enrichment = {}) {
       const input = snapshotPiValue(toolCall.input, "tool_result input");
       const isError = native.event["isError"] === true;
       const output = native.event["content"];
+      const tool = classifyPiTool(toolCall.toolName, input, piReportedMcp(native.event["details"]));
       if (isError) {
-        return {
-          ...withToolCallId(base),
-          raw,
-          event: "tool.error",
-          tool: classifyPiTool(toolCall.toolName, input),
-          error: {}
-        };
+        return { ...withToolCallId(base), raw, event: "tool.error", tool, error: {} };
       }
       return {
         ...withToolCallId(base),
         raw,
         event: "tool.after",
-        tool: classifyPiTool(toolCall.toolName, input),
+        tool,
         output: snapshotPiValue(output, "tool_result content")
       };
     }

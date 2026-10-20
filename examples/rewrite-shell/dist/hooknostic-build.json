@@ -38,7 +38,7 @@
     "pi": {
       "status": "success",
       "adapter": "pi@0.7.0",
-      "requestedVersion": ">=0.84 <1",
+      "requestedVersion": ">=1 <2",
       "output": "./dist/pi",
       "capabilities": {
         "exact": 3,

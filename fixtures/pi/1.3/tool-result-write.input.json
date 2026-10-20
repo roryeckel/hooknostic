@@ -1,0 +1,22 @@
+{
+  "event": {
+    "type": "tool_result",
+    "toolName": "write",
+    "toolCallId": "call_playback",
+    "input": {
+      "path": "created.txt",
+      "content": "written\n"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "Successfully wrote to created.txt"
+      }
+    ],
+    "isError": false
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-UtK886\\project",
+    "mode": "print"
+  }
+}

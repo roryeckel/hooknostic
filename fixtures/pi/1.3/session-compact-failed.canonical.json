@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "session_compact_failed"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-sessions-Hy9KWl\\project"
+  },
+  "correlation": {},
+  "event": "context.compact.after"
+}

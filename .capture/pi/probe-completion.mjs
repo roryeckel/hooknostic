@@ -165,11 +165,12 @@ try {
   };
   const detected = await runProcess(executable, ["--version"], { cwd: project, env });
   const version = detected.stdout.trim();
-  // Scheduled playback may intentionally exercise a newer candidate build.
+  // Scheduled playback may intentionally exercise a newer candidate build, and
+  // a capture session may probe one before the metadata moves to it.
   const expectedVersion =
     projectArgument >= 0
       ? (process.env.HOOKNOSTIC_PLAYBACK_VERSION ?? piHarness.referenceVersion)
-      : piHarness.referenceVersion;
+      : (process.env.HKN_PI_EXPECTED_VERSION ?? piHarness.referenceVersion);
   if (detected.code !== 0 || version !== expectedVersion)
     throw new Error(`Expected Pi ${expectedVersion}; found ${version}`);
   playback = await startModelPlayback(

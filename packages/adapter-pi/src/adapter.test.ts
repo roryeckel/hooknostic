@@ -7,7 +7,7 @@ import { definePlugin, hook } from "@hooknostic/sdk";
 import { loadFixture } from "@hooknostic/testkit";
 
 import { planPiApplication, serializePiOutput } from "./apply.js";
-import { decodePi, PiDecodeError, type PiEnrichment } from "./decode.js";
+import { decodePi, PiDecodeError, type PiEnrichment, type PiNativeEvent } from "./decode.js";
 import { generatePiArtifacts } from "./generate.js";
 import { piHarness } from "./harness.js";
 import { piAdapter } from "./index.js";
@@ -34,6 +34,11 @@ describe("decodePi fixtures", () => {
     "tool-result-bash",
     "tool-result-powershell",
     "tool-result-error",
+    "tool-call-mcp",
+    "tool-result-mcp",
+    "tool-call-codemode",
+    "tool-call-mcp-nested",
+    "tool-result-mcp-nested",
     "agent-settled",
     "agent-settled-with-message",
     "agent-settled-error",
@@ -49,8 +54,8 @@ describe("decodePi fixtures", () => {
 
   for (const name of CASES) {
     it(`decodes ${name} to its canonical event`, () => {
-      const input = loadFixture("pi", "0.84", `${name}.input.json`);
-      const canonical = loadFixture<Record<string, unknown>>("pi", "0.84", `${name}.canonical.json`);
+      const input = loadFixture("pi", piHarness.fixtureDir, `${name}.input.json`);
+      const canonical = loadFixture<Record<string, unknown>>("pi", piHarness.fixtureDir, `${name}.canonical.json`);
       const enrichment = name.startsWith("agent-settled-")
         ? loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`)
         : {};
@@ -64,21 +69,21 @@ describe("decodePi fixtures", () => {
   }
 
   it("maps tool_result isError to tool.error and success to tool.after", () => {
-    const error = decodePi(loadFixture("pi", "0.84", "tool-result-error.input.json"), INVOCATION);
+    const error = decodePi(loadFixture("pi", piHarness.fixtureDir, "tool-result-error.input.json"), INVOCATION);
     expect(error.event).toBe("tool.error");
-    const success = decodePi(loadFixture("pi", "0.84", "tool-result-bash.input.json"), INVOCATION);
+    const success = decodePi(loadFixture("pi", piHarness.fixtureDir, "tool-result-bash.input.json"), INVOCATION);
     expect(success.event).toBe("tool.after");
   });
 
   it("maps both compaction outcomes to context.compact.after", () => {
-    const success = decodePi(loadFixture("pi", "0.84", "session-compact.input.json"), INVOCATION);
+    const success = decodePi(loadFixture("pi", piHarness.fixtureDir, "session-compact.input.json"), INVOCATION);
     expect(success.event).toBe("context.compact.after");
-    const failed = decodePi(loadFixture("pi", "0.84", "session-compact-failed.input.json"), INVOCATION);
+    const failed = decodePi(loadFixture("pi", piHarness.fixtureDir, "session-compact-failed.input.json"), INVOCATION);
     expect(failed.event).toBe("context.compact.after");
   });
 
   it("tolerates unknown event fields", () => {
-    const input = loadFixture<Record<string, any>>("pi", "0.84", "tool-call-bash.input.json");
+    const input = loadFixture<Record<string, any>>("pi", piHarness.fixtureDir, "tool-call-bash.input.json");
     input["event"]["brandNew"] = true;
     input["event"]["agent"] = "build";
     const decoded = decodePi(input, INVOCATION);
@@ -103,9 +108,31 @@ describe("decodePi fixtures", () => {
   });
 
   it("carries toolCallId into correlation when present", () => {
-    const input = loadFixture<{ event: { toolCallId?: string } }>("pi", "0.84", "tool-call-bash.input.json");
+    const input = loadFixture<{ event: { toolCallId?: string } }>(
+      "pi",
+      piHarness.fixtureDir,
+      "tool-call-bash.input.json",
+    );
     const decoded = decodePi(input, INVOCATION);
     expect(decoded.correlation.toolCallId).toBe(input.event.toolCallId);
+  });
+
+  it("declines before_agent_start for a captured custom-message run", () => {
+    // A sendMessage({triggerTurn: true}) continuation submits no user prompt.
+    const input = loadFixture<{ event: Record<string, unknown> }>(
+      "pi",
+      piHarness.fixtureDir,
+      "before-agent-start-custom.input.json",
+    );
+    expect(input.event["messageType"]).toBe("custom");
+    expect(() => decodePi(input, INVOCATION)).toThrow(/custom-message run/);
+    const user = loadFixture<{ event: Record<string, unknown> }>(
+      "pi",
+      piHarness.fixtureDir,
+      "before-agent-start-isolated.input.json",
+    );
+    expect(user.event["messageType"]).toBe("user");
+    expect(decodePi(user, INVOCATION).event).toBe("prompt.before");
   });
 
   it("rejects unmapped pi events", () => {
@@ -133,13 +160,76 @@ describe("classifyPiTool", () => {
   });
 
   it("classifies unknown tools as other without inventing MCP identity", () => {
-    // pi has no native server_tool split; an extension tool name is not
-    // distinguishable evidence of an MCP tool call.
+    // Only pi's mcp__<server>__<tool> spelling is MCP; another extension tool
+    // name is not distinguishable evidence of an MCP tool call.
     expect(classifyPiTool("myserver_dothing", {})).toEqual({
       kind: "other",
       nativeName: "myserver_dothing",
       input: {},
     });
+  });
+
+  it.each(["tool-call-mcp", "tool-call-mcp-nested"])(
+    "classifies the captured native MCP call in %s as mcp without guessing its split",
+    (name) => {
+      const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${name}.input.json`);
+      const decoded = decodePi(input, INVOCATION);
+      if (!("tool" in decoded)) throw new Error("expected a tool event");
+      expect(decoded.tool).toEqual({ kind: "mcp", nativeName: "mcp__probe__probe_echo", input: {} });
+    },
+  );
+
+  it.each(["tool-result-mcp", "tool-result-mcp-nested"])(
+    "takes the server and tool of the captured MCP result in %s from the details pi states",
+    (name) => {
+      const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, `${name}.input.json`);
+      const decoded = decodePi(input, INVOCATION);
+      if (!("tool" in decoded)) throw new Error("expected a tool event");
+      expect(decoded.tool).toEqual({
+        kind: "mcp",
+        nativeName: "mcp__probe__probe_echo",
+        input: {},
+        mcp: { server: "probe", tool: "probe_echo" },
+      });
+    },
+  );
+
+  it("never invents an MCP split from pi's lossy tool name", () => {
+    // pi 1.3.0 createMcpToolName: `get__secret` on `probe`, `_hidden` on
+    // `probe`, and a long server name that pi truncates and hashes.
+    for (const name of ["mcp__probe__get__secret", "mcp__probe___hidden", `mcp__${"s".repeat(50)}__ech_1a2b3c4d`]) {
+      expect(classifyPiTool(name, {})).toEqual({ kind: "mcp", nativeName: name, input: {} });
+    }
+    // A stated identity applies to an MCP tool only, as pi registered it.
+    expect(classifyPiTool("mcp__a_b__c", {}, { mcp: { server: "a-b", tool: "c" } }).mcp).toEqual({
+      server: "a-b",
+      tool: "c",
+    });
+    expect(classifyPiTool("bash", { command: "ls" }, { mcp: { server: "a", tool: "b" } })).not.toHaveProperty("mcp");
+    // details that does not name both parts states nothing.
+    const partial = decodePi(
+      {
+        event: {
+          type: "tool_result",
+          toolName: "mcp__a_b__c",
+          toolCallId: "1",
+          input: {},
+          content: [],
+          details: { server: "a-b" },
+        },
+        ctx: { cwd: "C:/project" },
+      },
+      INVOCATION,
+    );
+    expect("tool" in partial && partial.tool.mcp).toBeUndefined();
+  });
+
+  it("keeps the captured codemode script tool as other", () => {
+    const input = loadFixture<PiNativeEvent>("pi", piHarness.fixtureDir, "tool-call-codemode.input.json");
+    const decoded = decodePi(input, INVOCATION);
+    if (!("tool" in decoded)) throw new Error("expected a tool event");
+    expect(decoded.tool.kind).toBe("other");
+    expect(classifyPiTool("list_mcp_resources", {}).kind).toBe("other");
   });
 
   it("classifies shell tools with the captured shape only", () => {
@@ -174,7 +264,7 @@ describe("planPiApplication", () => {
           terminatedBy: "g",
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "tool-before-block.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "tool-before-block.output.json"));
   });
 
   it("rewrites input via in-place event.input replacement", () => {
@@ -185,7 +275,7 @@ describe("planPiApplication", () => {
           effects: [{ hookId: "r", effect: { kind: "replaceInput", input: { command: "pnpm install" } } }],
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "tool-before-rewrite.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "tool-before-rewrite.output.json"));
   });
 
   it("replaces tool output through the handler result, string-coercing non-strings", () => {
@@ -196,7 +286,7 @@ describe("planPiApplication", () => {
           effects: [{ hookId: "r", effect: { kind: "replaceOutput", output: "[redacted]" } }],
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "tool-after-replace.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "tool-after-replace.output.json"));
 
     expect(
       planPiApplication(
@@ -234,7 +324,7 @@ describe("planPiApplication", () => {
           effects: [{ hookId: "c", effect: { kind: "addContext", context: "Remember the build layout." } }],
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "prompt-context.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "prompt-context.output.json"));
   });
 
   it("appends model-request context as user messages on the context event", () => {
@@ -245,7 +335,7 @@ describe("planPiApplication", () => {
           effects: [{ hookId: "c", effect: { kind: "addContext", context: "Architecture: hexagonal." } }],
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "model-request-context.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "model-request-context.output.json"));
   });
 
   it("cancels compaction on a block", () => {
@@ -257,7 +347,7 @@ describe("planPiApplication", () => {
           terminatedBy: "g",
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "compact-block.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "compact-block.output.json"));
   });
 
   it("posts a stop-prevention reason as a trigger-turn message", () => {
@@ -272,7 +362,7 @@ describe("planPiApplication", () => {
           terminatedBy: "p",
         }),
       ),
-    ).toEqual(loadFixture("pi", "0.84", "turn-stop-prevent.output.json"));
+    ).toEqual(loadFixture("pi", piHarness.fixtureDir, "turn-stop-prevent.output.json"));
   });
 
   it("does not plan an unsupported notification", () => {
@@ -324,7 +414,7 @@ function exampleIR() {
 }
 
 describe("generatePiArtifacts", () => {
-  const TARGET = { id: "pi", version: ">=0.84 <1", delivery: "project" as const, output: "dist" };
+  const TARGET = { id: "pi", version: piHarness.recommendedRange, delivery: "project" as const, output: "dist" };
 
   it("emits the bundled project extension module", () => {
     const artifacts = generatePiArtifacts(exampleIR(), TARGET, {
@@ -418,7 +508,7 @@ describe("pi output replacement fidelity", () => {
 
 describe("validateArtifacts for package delivery", () => {
   const adapter = piAdapter();
-  const PKG = { id: "pi", version: ">=0.84 <1", delivery: "package" as const, output: "dist" };
+  const PKG = { id: "pi", version: piHarness.recommendedRange, delivery: "package" as const, output: "dist" };
   const manifest = { path: "package.json", contents: '{"name":"example-plugin","version":"1.2.3"}\n' };
   const goodExtension = {
     path: "hooknostic.js",

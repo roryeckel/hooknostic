@@ -1,0 +1,15 @@
+{
+  "event": {
+    "type": "tool_call",
+    "toolName": "write",
+    "toolCallId": "call_playback",
+    "input": {
+      "path": "created.txt",
+      "content": "written\n"
+    }
+  },
+  "ctx": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-features-UtK886\\project",
+    "mode": "print"
+  }
+}

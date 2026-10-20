@@ -423,6 +423,109 @@ export default definePlugin({
     expect(await refusal("opencode", stating("bash", "cmd"))).toBe(derived);
   });
 
+  const MCP_HOOKS = `
+import { addContext, definePlugin, hook, replaceOutput } from "@hooknostic/sdk";
+
+const identity = (event) => JSON.stringify(event.tool.mcp ?? null);
+
+export default definePlugin({
+  name: "mcp-identity-fixture",
+  hooks: [
+    // Each target reports the identity through a tool.after effect it supports.
+    hook("tool.after", {
+      id: "pi-identity",
+      match: { kind: "mcp" },
+      targets: { include: ["pi", "legacy"] },
+      capabilities: { "tool.after.output.replace": "required" },
+      run: (event) => replaceOutput(identity(event)),
+    }),
+    hook("tool.after", {
+      id: "claude-identity",
+      match: { kind: "mcp" },
+      targets: { include: ["claude"] },
+      capabilities: { "tool.after.context.add": "required" },
+      run: (event) => addContext(identity(event)),
+    }),
+  ],
+});
+`;
+  const MCP_TARGETS = `{
+  claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude" },
+  pi: {
+    version: ${JSON.stringify(piHarness.recommendedRange)},
+    delivery: "project",
+    output: "./dist/pi",
+    compatibility: { minimum: "approximate" },
+  },
+  legacy: {
+    adapter: "pi",
+    version: ">=0.84 <1",
+    delivery: "project",
+    output: "./dist/pi-legacy",
+    compatibility: { minimum: "approximate" },
+  },
+}`;
+  const mcpEvent = (event: string, nativeName: string, mcp?: unknown) => ({
+    event,
+    tool: { nativeName, input: {}, ...(mcp === undefined ? {} : { mcp }) },
+    ...(event === "tool.after" ? { output: "ok" } : {}),
+  });
+
+  it("takes a stated MCP identity only on the events the target's harness states it on (ADR-0032)", async () => {
+    const dir = await project(MCP_HOOKS, MCP_TARGETS);
+    const identities = async (target: string, events: unknown[]) =>
+      (await dispatched(dir, target, events)).map((result) =>
+        result.effects.map((entry) => {
+          const effect = entry.effect as { output?: unknown; context?: unknown };
+          return effect.output ?? effect.context;
+        }),
+      );
+    // pi's name is lossy, so nothing is parsed from it; its result states the split.
+    expect(
+      await identities("pi", [
+        mcpEvent("tool.after", "mcp__a_b__c"),
+        mcpEvent("tool.after", "mcp__a_b__c", { server: "a-b", tool: "c" }),
+      ]),
+    ).toEqual([["null"], ['{"server":"a-b","tool":"c"}']]);
+    // Claude parses its own; it states nothing, so a test states nothing either.
+    expect(await identities("claude", [mcpEvent("tool.after", "mcp__docs__search")])).toEqual([
+      ['{"server":"docs","tool":"search"}'],
+    ]);
+  });
+
+  it("refuses a stated MCP identity its harness would not state", async () => {
+    const dir = await project(MCP_HOOKS, MCP_TARGETS);
+    const refusal = async (target: string, event: unknown) => {
+      const outcome = await dispatchEvents({
+        config: join(dir, "hooknostic.config.ts"),
+        target,
+        events: [event],
+        registry: defaultAdapterRegistry(),
+        evaluate: EVALUATE,
+      });
+      return outcome.ok ? "accepted" : outcome.errors.join("; ");
+    };
+    const derived =
+      "event 1: tool.mcp is derived from tool.nativeName and tool.input by the target's classifier; omit it";
+    // pi's tool_call states nothing (.capture/pi-mcp), so tool.before takes none.
+    expect(await refusal("pi", mcpEvent("tool.before", "mcp__a__b", { server: "a", tool: "b" }))).toBe(
+      derived + " (this target's harness states tool.mcp only on tool.after, tool.error)",
+    );
+    expect(await refusal("pi", mcpEvent("tool.after", "bash", { server: "a", tool: "b" }))).toBe(
+      "event 1: tool.mcp is not what the pi target would give bash: it is not an MCP tool there; omit it",
+    );
+    expect(await refusal("pi", mcpEvent("tool.after", "mcp__a__b", { server: "a" }))).toBe(
+      derived + " (tool.mcp may hold server and tool, both strings, and nothing else)",
+    );
+    // pi 0.84 has no native MCP channel, so its results state nothing either.
+    expect(await refusal("legacy", mcpEvent("tool.after", "mcp__a__b", { server: "a", tool: "b" }))).toBe(
+      derived + ` (this target's harness states tool.mcp only for >=1 <2, which ">=0.84 <1" is not within)`,
+    );
+    expect(await refusal("claude", mcpEvent("tool.after", "mcp__docs__search", { server: "other", tool: "x" }))).toBe(
+      derived,
+    );
+  });
+
   it("keeps a stated dialect for a shell call whose view only a rewrite creates", async () => {
     // OpenCode states its shell before the call, whatever the call's arguments
     // turn out to be. Where the tool pins the dialect or nothing establishes

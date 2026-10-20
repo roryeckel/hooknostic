@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "pi",
+    "version": "1.3.0",
+    "nativeEvent": "tool_result"
+  },
+  "session": {
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hkn-pi-mcp-Qgii2Y\\project"
+  },
+  "correlation": {
+    "toolCallId": "call_playback/1"
+  },
+  "event": "tool.after",
+  "tool": {
+    "kind": "mcp",
+    "nativeName": "mcp__probe__probe_echo",
+    "input": {},
+    "mcp": {
+      "server": "probe",
+      "tool": "probe_echo"
+    }
+  },
+  "output": [
+    {
+      "type": "text",
+      "text": "pi-mcp-probe-output"
+    }
+  ]
+}
