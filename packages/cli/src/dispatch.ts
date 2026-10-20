@@ -119,12 +119,6 @@ const EVENT_FIELDS: Record<HookEventName, Readonly<Record<string, FieldCheck>>> 
  */
 const DERIVED_TOOL_FIELDS = ["kind", "mcp", "shell"];
 
-/**
- * The one part of `tool.shell` a test may supply is its `dialect`, for a
- * target whose harness states the shell at run time rather than in the tool
- * call (ADR-0029). A `shell` holding nothing else is that statement, not a
- * derived view.
- */
 /** Whether a test's tool.mcp is a stated identity: server and tool, both strings, nothing else (ADR-0032). */
 function statesMcpIdentity(value: unknown): value is { server: string; tool: string } {
   return (
@@ -135,6 +129,12 @@ function statesMcpIdentity(value: unknown): value is { server: string; tool: str
   );
 }
 
+/**
+ * The one part of `tool.shell` a test may supply is its `dialect`, for a
+ * target whose harness states the shell at run time rather than in the tool
+ * call (ADR-0029). A `shell` holding nothing else is that statement, not a
+ * derived view.
+ */
 function statesOnlyDialect(shell: unknown): shell is { dialect?: unknown } {
   return isRecord(shell) && Object.keys(shell).length === 1 && "dialect" in shell;
 }

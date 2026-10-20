@@ -25,11 +25,21 @@ export interface ProjectComponentOmission {
   name: string;
   reason: string;
 }
+/**
+ * A key an unowned document must not hold. With `fold`, the last segment also
+ * matches any sibling key that folds to the same string, for a harness that
+ * treats such names as one entry.
+ */
+export interface AbsentKey {
+  path: string;
+  key: string[];
+  fold?: (segment: string) => string;
+}
 export interface ProjectIntegration {
   files: ProjectFile[];
   entries: ProjectEntry[];
   guidance: string[];
-  absent?: { path: string; key: string[] }[];
+  absent?: AbsentKey[];
   /** An omitted copy must not leave an unowned native skill discoverable. */
   omittedFiles?: readonly string[];
   omissions?: ProjectComponentOmission[];
@@ -234,6 +244,18 @@ function get(value: unknown, key: string[]): unknown {
   }
   return value;
 }
+/** The key an absent check finds present, under its fold when it has one. */
+function presentKey(value: unknown, check: AbsentKey): string[] | undefined {
+  const { key, fold } = check;
+  if (fold === undefined || key.length === 0) return get(value, key) === undefined ? undefined : key;
+  const parent = get(value, key.slice(0, -1));
+  if (!parent || typeof parent !== "object" || Array.isArray(parent)) return undefined;
+  const wanted = fold(key.at(-1)!);
+  const found = Object.keys(parent).find(
+    (name) => fold(name) === wanted && (parent as Record<string, unknown>)[name] !== undefined,
+  );
+  return found === undefined ? undefined : [...key.slice(0, -1), found];
+}
 function edit(text: string, key: (string | number)[], value: unknown): string {
   return applyEdits(
     text,
@@ -280,14 +302,21 @@ export async function reconcileProject(
 ): Promise<Reconciliation> {
   validatePath(config);
   const observedAbsentFiles = new Map<string, Buffer | null>();
+  const absentDocuments = new Map<string, Record<string, unknown>>();
   for (const check of integration.absent ?? []) {
     let raw = observedAbsentFiles.get(check.path);
     if (raw === undefined && !observedAbsentFiles.has(check.path)) {
       raw = await bytes(await projectPath(root, check.path));
       observedAbsentFiles.set(check.path, raw);
     }
-    if (raw && get(document(raw.toString(), check.path), check.key) !== undefined)
-      throw new Error(`unowned component collision: ${check.path}:${check.key.join(".")}`);
+    if (!raw) continue;
+    let parsed = absentDocuments.get(check.path);
+    if (parsed === undefined) {
+      parsed = document(raw.toString(), check.path);
+      absentDocuments.set(check.path, parsed);
+    }
+    const collision = presentKey(parsed, check);
+    if (collision !== undefined) throw new Error(`unowned component collision: ${check.path}:${collision.join(".")}`);
   }
   if (await bytes(await projectPath(root, JOURNAL)))
     throw new Error("unfinished integration transaction; run hooknostic recover");

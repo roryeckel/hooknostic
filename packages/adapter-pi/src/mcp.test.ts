@@ -7,14 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentPluginMcpServer } from "@hooknostic/agent-plugin";
 import { AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
+import { reconcileProject } from "@hooknostic/core";
 
-import {
-  legacyPiMcpCells,
-  MAX_PI_NAME_SEPARATORS,
-  nativePiMcpCells,
-  piMcpExtensionSource,
-  translatePiMcp,
-} from "./mcp.js";
+import { legacyPiMcpCells, nativePiMcpCells, piMcpExtensionSource, piNamespace, translatePiMcp } from "./mcp.js";
 import { piExtensionsRelative, projectComponents, projectIntegration } from "./project.js";
 
 const stdio = (command = "node", extra: Partial<AgentPluginMcpServer> = {}): AgentPluginMcpServer =>
@@ -129,24 +124,33 @@ describe("pi project MCP integration", () => {
     // A direct source resolves its own references before escaping for pi.
     expect(extension).toContain("const expand = (value, missing) =>");
     expect(result.absent).toEqual([
-      { path: ".pi/mcp.json", key: ["mcpServers", "local"] },
-      { path: ".pi/mcp.json", key: ["mcpServers", "remote"] },
+      { path: ".pi/mcp.json", key: ["mcpServers", "local"], fold: piNamespace },
+      { path: ".pi/mcp.json", key: ["mcpServers", "remote"], fold: piNamespace },
     ]);
     expect(result.omissions).toBeUndefined();
   });
 
-  it("claims every spelling pi treats as the same name", async () => {
+  it("refuses a .pi/mcp.json entry under any spelling pi treats as the same name", async () => {
     // pi 1.3.0 lets a .pi/mcp.json `a_b-c` take precedence over a registered `a-b_c`.
     const root = await projectRoot();
     const result = await projectComponents(components(root, { "a-b_c": stdio() }), root, "out", "c.ts", {});
-    expect(result.absent!.map((check) => check.key[1]).sort()).toEqual(["a-b-c", "a-b_c", "a_b-c", "a_b_c"]);
+    await mkdir(join(root, ".pi"), { recursive: true });
+    await writeFile(join(root, ".pi/mcp.json"), '{"mcpServers":{"a_b-c":{"command":"node"}}}');
+    await expect(reconcileProject(root, "c.ts", result)).rejects.toThrow(
+      "unowned component collision: .pi/mcp.json:mcpServers.a_b-c",
+    );
+    // A name with many separators is claimed whole, not given up on.
+    const long = Array.from({ length: 12 }, (_, i) => `p${i}`).join("-");
+    const many = await projectComponents(components(root, { [long]: stdio() }), root, "out", "c.ts", {});
+    expect(many.omissions).toBeUndefined();
+    await writeFile(join(root, ".pi/mcp.json"), JSON.stringify({ mcpServers: { [long.replaceAll("-", "_")]: {} } }));
+    await expect(reconcileProject(root, "c.ts", many)).rejects.toThrow("unowned component collision");
   });
 
-  it("omits, through core's policy, a server pi would reject or whose spellings cannot all be claimed", async () => {
+  it("omits, through core's policy, a server pi would reject", async () => {
     const root = await projectRoot();
-    const long = Array.from({ length: MAX_PI_NAME_SEPARATORS + 2 }, (_, i) => `p${i}`).join("-");
     const result = await projectComponents(
-      components(root, { "bad name": stdio(), "my-server": stdio(), my_server: stdio(), [long]: stdio(), ok: stdio() }),
+      components(root, { "bad name": stdio(), "my-server": stdio(), my_server: stdio(), ok: stdio() }),
       root,
       "out",
       "c.ts",
@@ -156,7 +160,6 @@ describe("pi project MCP integration", () => {
       {
         "bad name": "agent-plugin.mcp.stdio",
         my_server: "agent-plugin.mcp.stdio",
-        [long]: "agent-plugin.mcp.stdio",
       },
     );
     // The servers pi accepts are still delivered.
@@ -189,10 +192,7 @@ describe("pi project MCP integration", () => {
     >;
     const result = await projectComponents(components(root, servers), root, "out", "c.ts", {});
     expect(registrations(extensionOf(result))).toEqual([{ name: "__proto__", type: "stdio", index: 0 }]);
-    // Four separators, so all sixteen spellings pi treats as the same are claimed.
-    expect(result.absent).toHaveLength(16);
-    expect(result.absent).toContainEqual({ path: ".pi/mcp.json", key: ["mcpServers", "__proto__"] });
-    expect(result.absent).toContainEqual({ path: ".pi/mcp.json", key: ["mcpServers", "--proto--"] });
+    expect(result.absent).toEqual([{ path: ".pi/mcp.json", key: ["mcpServers", "__proto__"], fold: piNamespace }]);
   });
 
   it("computes the source offset between real paths when the project is reached through a link", async () => {

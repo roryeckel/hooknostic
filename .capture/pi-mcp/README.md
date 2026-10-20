@@ -85,10 +85,12 @@ Raw results stay in ignored `captured/<platform>/`.
 
 - The projection registers servers from a generated pi extension rather than
   writing `.pi/mcp.json`, so a project's own file stays the user's. Project
-  delivery declares `.pi/mcp.json` `mcpServers.<name>` absent in every
-  `-`/`_` spelling, because a file server takes precedence over a registered
-  one whose name pi treats as the same; a name with more than ten separators
-  is omitted rather than claimed partially.
+  delivery declares `.pi/mcp.json` `mcpServers.<name>` absent under any
+  key that differs from it only in `-` and `_`, because a file server takes
+  precedence over a registered one whose name pi treats as the same. pi 1.3.0's
+  `docs/mcp.md` gives the user-level `~/.pi/agent/mcp.json` the same
+  precedence; that file is outside the project, so no sync can check it, and
+  the component rationales say so.
 - A stdio server is registered as pi's own Node running the shared launcher
   with an index, anchored on the plugin root. pi never sees the package's
   command, args, or env, so its `~/`, `$NAME`, and `!command` expansion

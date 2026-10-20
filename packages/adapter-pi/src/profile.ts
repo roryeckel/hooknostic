@@ -1,5 +1,14 @@
 import type { CapabilityProfile } from "@hooknostic/core";
 
+/** The 0.84 line: no native MCP channel. */
+export const PI_LEGACY_RANGE = ">=0.84 <1";
+/**
+ * The 1.x line, whose evidence (1.3.0) establishes native MCP and the MCP
+ * identity tool_result states. Every profile and declaration for that line
+ * uses this range, so widening it moves them together.
+ */
+export const PI_RANGE = ">=1 <2";
+
 /** The 0.84.4 feature probes; profiles for `>=0.84 <1` cite them. */
 export const piLegacyFeatureValidation = {
   version: "0.84.4",
@@ -154,7 +163,7 @@ const piFields: CapabilityProfile["fields"] = {
  */
 export const piCapabilityProfiles: CapabilityProfile[] = [
   {
-    range: ">=0.84 <1",
+    range: PI_LEGACY_RANGE,
     source: {
       date: "2026-09-27",
       validatedOn: [
@@ -218,7 +227,7 @@ export const piCapabilityProfiles: CapabilityProfile[] = [
     matrix: piMatrix("0.84.4", "0.84"),
   },
   {
-    range: ">=1 <2",
+    range: PI_RANGE,
     source: {
       date: "2026-10-19",
       validatedOn: [

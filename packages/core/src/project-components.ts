@@ -11,7 +11,7 @@ import {
   unexpandedSkillReferenceReason,
 } from "@hooknostic/agent-plugin";
 
-import { bundleMcpLauncher, type McpLauncherServer } from "./mcp-launcher.js";
+import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE, type McpLauncherServer } from "./mcp-launcher.js";
 import { portableRelative } from "./portable-path.js";
 import type { ProjectIntegration } from "./project-files.js";
 /**
@@ -121,8 +121,11 @@ export async function projectMcpLauncher(
   return {
     files: [
       { path: `${output}/.gitattributes`, contents: "* -text\n" },
-      { path: `${output}/mcp-launcher.mjs`, contents: launcher },
-      { path: `${output}/mcp-servers.json`, contents: JSON.stringify({ plugin: "project", servers }, null, 2) + "\n" },
+      { path: `${output}/${MCP_LAUNCHER_FILE}`, contents: launcher },
+      {
+        path: `${output}/${MCP_SERVERS_FILE}`,
+        contents: JSON.stringify({ plugin: "project", servers }, null, 2) + "\n",
+      },
     ],
     entries: [],
     guidance: [],

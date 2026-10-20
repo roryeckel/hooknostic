@@ -18,7 +18,7 @@ import { applyPi } from "./apply.js";
 import { decodePi } from "./decode.js";
 import { generatePiArtifacts, PACKAGE_MANIFEST_PATH, piHookRuntimePath } from "./generate.js";
 import { piHarness } from "./harness.js";
-import { piCapabilityProfiles } from "./profile.js";
+import { PI_RANGE, piCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { piAgentPluginProjector } from "./project-agent-plugin.js";
 import { piSkillPolicy } from "./skill-policy.js";
@@ -121,7 +121,7 @@ export function piAdapter(): HarnessAdapter {
       source: "statement",
       events: ["tool.after", "tool.error"],
       // pi 0.84 has no native MCP channel; the statement is captured on 1.3.0.
-      range: ">=1 <2",
+      range: PI_RANGE,
       rationale:
         "pi names MCP tools mcp__<server>__<tool> but sanitizes every non-identifier character and hashes a long or " +
         "colliding name, so the split is never parsed from it. A tool_result states the server and tool in its details, " +

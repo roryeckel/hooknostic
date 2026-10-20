@@ -10,19 +10,17 @@ import {
   skillInvocationPolicyProfiles,
 } from "@hooknostic/agent-plugin";
 import type { GeneratedArtifact, ProjectComponentOptions, ProjectIntegration } from "@hooknostic/core";
-import { portableRelative, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
+import { MCP_LAUNCHER_FILE, portableRelative, projectMcpLauncher, projectSkillFiles } from "@hooknostic/core";
 
 import {
   legacyPiMcpCells,
-  MAX_PI_NAME_SEPARATORS,
   nativePiMcpCells,
-  piEquivalentNames,
   type PiMcpCells,
   piMcpExtensionSource,
-  type PiMcpOmission,
+  piNamespace,
   translatePiMcp,
 } from "./mcp.js";
-import { piFeatureValidation, piLegacyFeatureValidation } from "./profile.js";
+import { PI_LEGACY_RANGE, PI_RANGE, piFeatureValidation, piLegacyFeatureValidation } from "./profile.js";
 import {
   PI_SKILL_POLICY_RATIONALE,
   piLegacyProjectSkillPolicyValidation,
@@ -87,29 +85,11 @@ export async function projectComponents(
   // Core always resolves the matrix for the target range; a caller without
   // one (a direct integration call) gets the reference build's cells.
   const support: NonNullable<ProjectComponentOptions["support"]> = options.support ?? nativePiMcpCells;
-  // pi gives a project .pi/mcp.json server precedence over a registered one of
-  // the same name in any `-`/`_` spelling, so every spelling is claimed absent
-  // below; a name with too many to enumerate cannot be claimed and is omitted.
-  // Null-prototype: a server named __proto__ assigned into {} would set the
-  // prototype instead of adding an entry, and vanish from the projection.
-  const claimable: typeof source.mcp.config.mcpServers = Object.create(null);
-  const unclaimable: PiMcpOmission[] = [];
-  for (const [name, server] of Object.entries(source.mcp.config.mcpServers)) {
-    if (piEquivalentNames(name) !== undefined) claimable[name] = server;
-    else
-      unclaimable.push({
-        component: `agent-plugin.mcp.${server.type}`,
-        name,
-        reason: `the name has more than ${MAX_PI_NAME_SEPARATORS} \`-\` or \`_\`, too many spellings pi treats as the same to check in .pi/mcp.json`,
-      });
-  }
-  const mcp = translatePiMcp(claimable, support, new Set(options.mcpProjectCwdServers));
+  const mcp = translatePiMcp(source.mcp.config.mcpServers, support, new Set(options.mcpProjectCwdServers));
   // An unsupported transport is core's to report. An omission inside a
   // supported one goes to core as a project omission, which applies
   // components.onUnsupported and moves the server from emitted to skipped.
-  const omissions = [...unclaimable, ...mcp.omitted].filter(
-    (omission) => support[omission.component]?.level !== "unsupported",
-  );
+  const omissions = mcp.omitted.filter((omission) => support[omission.component]?.level !== "unsupported");
   if (omissions.length > 0) result.omissions = [...(result.omissions ?? []), ...omissions];
   if (mcp.registrations.length === 0) return result;
   if (mcp.launcherServers.length > 0) {
@@ -125,18 +105,19 @@ export async function projectComponents(
     contents: piMcpExtensionSource({
       registrations: mcp.registrations,
       rootFromHere: piExtensionsRelative(projectRoot, await realpath(source.mcp.root)),
-      launcherFromHere: piExtensionsRelative(projectRoot, resolve(projectRoot, output, "mcp-launcher.mjs")),
+      launcherFromHere: piExtensionsRelative(projectRoot, resolve(projectRoot, output, MCP_LAUNCHER_FILE)),
       // A project's own declarations resolve their ${NAME} references from the
       // launch environment, as on the other targets; a package's never do.
       resolveEnvironment: source.origin === "direct",
     }),
   });
-  // An unowned entry there would silently replace ours.
+  // pi gives a .pi/mcp.json server precedence over a registered one whose name
+  // differs only in `-` and `_`, so an unowned entry under any such spelling
+  // would silently replace ours. The user-level ~/.pi/agent/mcp.json has the
+  // same precedence but is outside the project, so no sync can check it.
   result.absent = [
     ...(result.absent ?? []),
-    ...mcp.registrations.flatMap(({ name }) =>
-      piEquivalentNames(name)!.map((spelling) => ({ path: ".pi/mcp.json", key: ["mcpServers", spelling] })),
-    ),
+    ...mcp.registrations.map(({ name }) => ({ path: ".pi/mcp.json", key: ["mcpServers", name], fold: piNamespace })),
   ];
   return result;
 }
@@ -186,7 +167,7 @@ const piProjectComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["com
 });
 
 const legacyProjectComponentProfile: AgentPluginProjectionProfile = {
-  range: ">=0.84 <1",
+  range: PI_LEGACY_RANGE,
   components: piProjectComponents(
     legacyPiMcpCells(
       "pi 0.84.x has no native MCP channel in its type surface; MCP arrives via third-party extensions, which a project integration cannot wire on the harness's behalf.",
@@ -215,7 +196,7 @@ const legacyProjectComponentProfile: AgentPluginProjectionProfile = {
 };
 
 const projectComponentProfile: AgentPluginProjectionProfile = {
-  range: ">=1 <2",
+  range: PI_RANGE,
   components: piProjectComponents(nativePiMcpCells),
   source: {
     date: "2026-10-19",

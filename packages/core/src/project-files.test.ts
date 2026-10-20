@@ -202,6 +202,23 @@ describe("project reconciliation", () => {
       }),
     ).rejects.toThrow("unowned component collision");
   });
+  it("detects a collision under a key's fold and names the key it found", async () => {
+    const fold = (name: string) => name.replaceAll("-", "_");
+    const check = (key: string): ProjectIntegration => ({
+      files: [],
+      entries: [],
+      guidance: [],
+      absent: [{ path: "servers.json", key: ["mcpServers", key], fold }],
+    });
+    await writeFile(join(root, "servers.json"), '{"mcpServers":{"a_b-c":{},"--proto--":{}}}');
+    await expect(reconcileProject(root, config, check("a-b_c"))).rejects.toThrow(
+      "unowned component collision: servers.json:mcpServers.a_b-c",
+    );
+    await expect(reconcileProject(root, config, check("__proto__"))).rejects.toThrow(
+      "unowned component collision: servers.json:mcpServers.--proto--",
+    );
+    await expect(reconcileProject(root, config, check("other"))).resolves.toBeDefined();
+  });
   it.each(["__proto__", "constructor", "prototype"])("reconciles a JSONC property named %s", async (name) => {
     const desired = (command?: string): ProjectIntegration => ({
       files: [],

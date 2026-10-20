@@ -22,7 +22,7 @@ import { bundleMcpLauncher, MCP_LAUNCHER_FILE, MCP_SERVERS_FILE } from "@hooknos
 
 import { PACKAGE_EXTENSION_PATH, PACKAGE_MANIFEST_PATH } from "./generate.js";
 import { legacyPiMcpCells, nativePiMcpCells, type PiMcpCells, piMcpExtensionSource, translatePiMcp } from "./mcp.js";
-import { piFeatureValidation, piLegacyFeatureValidation } from "./profile.js";
+import { PI_LEGACY_RANGE, PI_RANGE, piFeatureValidation, piLegacyFeatureValidation } from "./profile.js";
 import {
   PI_SKILL_POLICY_RATIONALE,
   piLegacyPackageSkillPolicyValidation,
@@ -70,85 +70,86 @@ const piPackageComponents = (mcp: PiMcpCells): AgentPluginProjectionProfile["com
   },
 });
 
+const legacyPackageProfile: AgentPluginProjectionProfile = {
+  range: PI_LEGACY_RANGE,
+  components: piPackageComponents(
+    legacyPiMcpCells(
+      "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
+    ),
+  ),
+  source: {
+    date: "2026-09-27",
+    validatedOn: [
+      piLegacyFeatureValidation,
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "live-probe",
+        artifact: ".capture/pi/README.md",
+        what: "projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "captured",
+        artifact: ".capture/pi/README.md",
+        what: "A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager.",
+      },
+      {
+        version: "0.84.4",
+        date: "2026-09-27",
+        method: "live-probe",
+        artifact: ".capture/pi/README.md",
+        what: "The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model.",
+      },
+    ],
+  },
+};
+
+const packageProfile: AgentPluginProjectionProfile = {
+  range: PI_RANGE,
+  components: piPackageComponents(nativePiMcpCells),
+  source: {
+    date: "2026-10-19",
+    validatedOn: [
+      piFeatureValidation,
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "schema-derived",
+        artifact: ".capture/pi/README.md",
+        what: "installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/pi-mcp/README.md",
+        what: "Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/harness-playback/",
+        what: "HOOKNOSTIC_PLAYBACK=pi: the projected package installed through pi install -l --approve by local path and by npm coordinate from a local read-only registry loaded its skill into model input and honoured its compiled hook's shell rewrite against the loopback model",
+      },
+      {
+        version: "1.3.0",
+        date: "2026-10-19",
+        method: "live-probe",
+        artifact: ".capture/harness-playback/",
+        what: "HOOKNOSTIC_PLAYBACK=pi, by local path and by npm coordinate: the package's generated hooknostic-mcp.js registered its stdio server through the launcher, which bound PLUGIN_ROOT to the installed author package and an absolute PLUGIN_DATA outside it and passed $literal and ~/ arguments as written, and its streamable HTTP server, whose header beginning with ! and holding ${NAME} and $ arrived as written although the variable was set; a codemode script's calls to both reached the hooks as mcp tools",
+      },
+    ],
+  },
+};
+
 /** The pi manifest points only at accepted skills, not a directory containing rejected SKILL.md files. */
 const nativePiAgentPluginProjector: AgentPluginProjector<TargetSpec> = {
   namespace: "",
   packageRoot: PACKAGE_DIR,
-  profiles: [
-    {
-      range: ">=0.84 <1",
-      components: piPackageComponents(
-        legacyPiMcpCells(
-          "pi has no native MCP channel in 0.84.4; third-party extensions cannot establish a portable MCP package contract.",
-        ),
-      ),
-      source: {
-        date: "2026-09-27",
-        validatedOn: [
-          piLegacyFeatureValidation,
-          {
-            version: "0.84.4",
-            date: "2026-09-27",
-            method: "live-probe",
-            artifact: ".capture/pi/README.md",
-            what: "projected package installed by npm coordinate from a local read-only registry; Pi loaded its skill and honored its bundled hook in loopback playback",
-          },
-          {
-            version: "0.84.4",
-            date: "2026-09-27",
-            method: "captured",
-            artifact: ".capture/pi/README.md",
-            what: "A local pi package declaring an extension and skill in its pi manifest loaded both, verified by marker file and model-visible skill; resource and install routes also inspected in the 0.84.4 package manager.",
-          },
-          {
-            version: "0.84.4",
-            date: "2026-09-27",
-            method: "live-probe",
-            artifact: ".capture/pi/README.md",
-            what: "The projected package installed through an isolated local-path pi install loaded its skill into model input and honoured its compiled hook's shell rewrite against a loopback model.",
-          },
-        ],
-      },
-    },
-    {
-      range: ">=1 <2",
-      components: piPackageComponents(nativePiMcpCells),
-      source: {
-        date: "2026-10-19",
-        validatedOn: [
-          piFeatureValidation,
-          {
-            version: "1.3.0",
-            date: "2026-10-19",
-            method: "schema-derived",
-            artifact: ".capture/pi/README.md",
-            what: "installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion",
-          },
-          {
-            version: "1.3.0",
-            date: "2026-10-19",
-            method: "live-probe",
-            artifact: ".capture/pi-mcp/README.md",
-            what: "Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call",
-          },
-          {
-            version: "1.3.0",
-            date: "2026-10-19",
-            method: "live-probe",
-            artifact: ".capture/harness-playback/",
-            what: "HOOKNOSTIC_PLAYBACK=pi: the projected package installed through pi install -l --approve by local path and by npm coordinate from a local read-only registry loaded its skill into model input and honoured its compiled hook's shell rewrite against the loopback model",
-          },
-          {
-            version: "1.3.0",
-            date: "2026-10-19",
-            method: "live-probe",
-            artifact: ".capture/harness-playback/",
-            what: "HOOKNOSTIC_PLAYBACK=pi, by local path and by npm coordinate: the package's generated hooknostic-mcp.js registered its stdio server through the launcher, which bound PLUGIN_ROOT to the installed author package and an absolute PLUGIN_DATA outside it and passed $literal and ~/ arguments as written, and its streamable HTTP server, whose header beginning with ! and holding ${NAME} and $ arrived as written although the variable was set; a codemode script's calls to both reached the hooks as mcp tools",
-          },
-        ],
-      },
-    },
-  ],
+  profiles: [legacyPackageProfile, packageProfile],
   project: async (source, context): Promise<AgentPluginProjectionPlan> => {
     assertPackageDelivery("pi", context.target.delivery);
     const files: AgentPluginProjectionFile[] = [];
@@ -318,15 +319,11 @@ export const piAgentPluginProjector = withSkillInvocationPolicy(
     ...nativePiAgentPluginProjector,
     profiles: [
       ...skillInvocationPolicyProfiles(
-        nativePiAgentPluginProjector.profiles.filter((profile) => profile.range === ">=0.84 <1"),
+        [legacyPackageProfile],
         piLegacyPackageSkillPolicyValidation,
         PI_SKILL_POLICY_RATIONALE,
       ),
-      ...skillInvocationPolicyProfiles(
-        nativePiAgentPluginProjector.profiles.filter((profile) => profile.range === ">=1 <2"),
-        piPackageSkillPolicyValidation,
-        PI_SKILL_POLICY_RATIONALE,
-      ),
+      ...skillInvocationPolicyProfiles([packageProfile], piPackageSkillPolicyValidation, PI_SKILL_POLICY_RATIONALE),
     ],
   },
   "pi",

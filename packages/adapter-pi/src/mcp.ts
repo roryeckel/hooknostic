@@ -35,19 +35,26 @@ export const legacyPiMcpCells = (rationale: string): PiMcpCells => ({
 const EXPOSURE =
   "pi's default exposure applies: the tools are reached through codemode scripts, whose calls reach tool hooks as nested calls, rather than being declared to the model one by one.";
 
+// pi 1.3.0 docs/mcp.md: a server in ~/.pi/agent/mcp.json or a trusted .pi/mcp.json
+// whose name differs only in `-` and `_` takes precedence over a registered one.
+const PRECEDENCE =
+  " A server in the user-level ~/.pi/agent/mcp.json or the project .pi/mcp.json whose name pi treats as the same takes precedence over the registration, which /mcp then lists as overridden. Repository-local delivery refuses a colliding project entry; no build can see the user-level file.";
+
 /** 1.x: native MCP through pi.registerMcpServer from a generated extension (.capture/pi-mcp). */
 export const nativePiMcpCells: PiMcpCells = {
   "agent-plugin.mcp.stdio": {
     level: "emulated",
     rationale:
       "A generated pi extension registers each server with pi.registerMcpServer as pi's own Node running a generated launcher, which binds PLUGIN_ROOT and a Hooknostic-managed PLUGIN_DATA directory and applies the declared command, args, env values and cwd. pi sees only the launcher, so its expansion of env values ($NAME, ${NAME}, !command) and of ~/ never reaches package text. The data directory is chosen by Hooknostic rather than by pi, so the contract is emulated. " +
-      EXPOSURE,
+      EXPOSURE +
+      PRECEDENCE,
   },
   "agent-plugin.mcp.streamable-http": {
     level: "exact",
     rationale:
       "The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. " +
-      EXPOSURE,
+      EXPOSURE +
+      PRECEDENCE,
   },
   "agent-plugin.mcp.sse": {
     level: "unsupported",
@@ -61,27 +68,7 @@ export const nativePiMcpCells: PiMcpCells = {
 const PI_SERVER_NAME = /^[A-Za-z0-9_-]+$/;
 
 /** Names differing only in `-` and `_` are one server to pi; a second is rejected. */
-const piNamespace = (name: string): string => name.replaceAll("-", "_");
-
-/** Beyond this many `-`/`_`, a name has too many spellings pi treats as the same to enumerate. */
-export const MAX_PI_NAME_SEPARATORS = 10;
-
-/**
- * Every spelling pi treats as the same server name: each `-` or `_` may be
- * either. A configured server under any of them takes precedence over a
- * registered one (pi 1.3.0 compares names by namespace), so project delivery
- * must find none of them in `.pi/mcp.json`. `undefined` past
- * MAX_PI_NAME_SEPARATORS.
- */
-export function piEquivalentNames(name: string): string[] | undefined {
-  const parts = name.split(/[-_]/);
-  if (parts.length - 1 > MAX_PI_NAME_SEPARATORS) return undefined;
-  let spellings = [parts[0]!];
-  for (const part of parts.slice(1)) {
-    spellings = spellings.flatMap((prefix) => [`${prefix}-${part}`, `${prefix}_${part}`]);
-  }
-  return spellings;
-}
+export const piNamespace = (name: string): string => name.replaceAll("-", "_");
 
 /** One server the generated extension registers. */
 export type PiMcpRegistration =
