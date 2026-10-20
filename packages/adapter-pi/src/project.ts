@@ -15,6 +15,7 @@ import { MCP_LAUNCHER_FILE, portableRelative, projectMcpLauncher, projectSkillFi
 import {
   legacyPiMcpCells,
   nativePiMcpCells,
+  nativePiMcpValidations,
   type PiMcpCells,
   piMcpExtensionSource,
   piNamespace,
@@ -203,20 +204,7 @@ const projectComponentProfile: AgentPluginProjectionProfile = {
     date: "2026-10-19",
     validatedOn: [
       piFeatureValidation,
-      {
-        version: "1.3.0",
-        date: "2026-10-19",
-        method: "schema-derived",
-        artifact: ".capture/pi/README.md",
-        what: "installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion",
-      },
-      {
-        version: "1.3.0",
-        date: "2026-10-19",
-        method: "live-probe",
-        artifact: ".capture/pi-mcp/README.md",
-        what: "Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call",
-      },
+      ...nativePiMcpValidations,
       {
         version: "1.3.0",
         date: "2026-10-19",

@@ -2,6 +2,7 @@ import type {
   AgentPluginComponentId,
   AgentPluginComponentSupport,
   AgentPluginMcpServer,
+  AgentPluginProjectionProfile,
 } from "@hooknostic/agent-plugin";
 import { classifyStdioCwd, hasUnportableCommandPath } from "@hooknostic/agent-plugin";
 import type { McpLauncherServer } from "@hooknostic/core";
@@ -64,6 +65,34 @@ export const nativePiMcpCells: PiMcpCells = {
       "pi rejects the legacy SSE transport: registerMcpServer throws for it (.capture/pi-mcp). A server that documents SSE often also serves streamable HTTP.",
   },
 };
+
+/**
+ * The native MCP evidence the 1.x project and package profiles both rest on,
+ * beside their own playback records.
+ */
+export const nativePiMcpValidations: AgentPluginProjectionProfile["source"]["validatedOn"] = [
+  {
+    version: "1.3.0",
+    date: "2026-10-19",
+    method: "schema-derived",
+    artifact: ".capture/pi/README.md",
+    what: "installed @earendil-works/pi-coding-agent 1.3.0 docs/mcp.md and resolve-config-value source: native MCP since 0.99.0, registered by extensions or read from mcp.json files; stdio and streamable HTTP only, with SSE rejected; $ and $! escape pi's value expansion",
+  },
+  {
+    version: "1.3.0",
+    date: "2026-10-19",
+    method: "live-probe",
+    artifact: ".capture/pi-mcp/README.md",
+    what: "Loopback pi sessions with a recording MCP server: pi.registerMcpServer from a -e extension, a pi package extension, and a trusted project .pi/mcp.json each started the stdio server (an untrusted one did not); args reached it literally except ~/, env values merged over the parent environment with $NAME, ${NAME}, $ and $! resolved, an unset reference silently kept the server from starting, and an explicit cwd was honoured. Streamable HTTP header values honoured $ and $!, and a codemode script's MCP call reached tool_call and tool_result as a nested call",
+  },
+  {
+    version: "1.3.0",
+    date: "2026-10-20",
+    method: "live-probe",
+    artifact: ".capture/pi-mcp/README.md",
+    what: "The same loopback probes on Linux: every route, argument, environment, cwd, header, SSE, and nested-call observation matched the Windows run",
+  },
+];
 
 /** pi accepts only these characters in a server name (docs/mcp.md, rejected otherwise). */
 const PI_SERVER_NAME = /^[A-Za-z0-9_-]+$/;

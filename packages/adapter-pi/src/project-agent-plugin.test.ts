@@ -8,6 +8,8 @@ import {
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { piHarness } from "./harness.js";
+import { registrations } from "./mcp-test-helpers.js";
+import { PI_LEGACY_RANGE } from "./profile.js";
 import { piAgentPluginProjector } from "./project-agent-plugin.js";
 
 const encoder = new TextEncoder();
@@ -40,10 +42,6 @@ function source(): AgentPluginPackage {
     contentDigest: "sha256:test",
   };
 }
-
-/** The registrations a generated hooknostic-mcp.js embeds as a JSON string literal. */
-const registrations = (module: string): unknown =>
-  JSON.parse(JSON.parse(/const registrations = JSON\.parse\(("(?:[^"\\]|\\.)*")\);/.exec(module)![1]!) as string);
 
 const project = (pkg: AgentPluginPackage, hooks: { path: string; contents: string }[] = []) =>
   piAgentPluginProjector.project(pkg, { target, hookArtifacts: hooks, support, onUnsupported: "warn" });
@@ -107,7 +105,7 @@ describe("Agent Plugin to pi package projection", () => {
   });
 
   it("declares no MCP resources for a 0.84 target, which has no native MCP channel", async () => {
-    const legacy = { ...target, version: ">=0.84 <1" };
+    const legacy = { ...target, version: PI_LEGACY_RANGE };
     const plan = await piAgentPluginProjector.project(source(), {
       target: legacy,
       hookArtifacts: [],

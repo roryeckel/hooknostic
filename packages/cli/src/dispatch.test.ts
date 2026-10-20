@@ -9,7 +9,13 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { claudeHarness } from "@hooknostic/adapter-claude";
 import { CODEX_PLUGIN_MODE_RANGE, codexHarness } from "@hooknostic/adapter-codex";
 import { opencodeHarness } from "@hooknostic/adapter-opencode";
-import { createHooknosticExtension, type PiExtensionApi, piHarness } from "@hooknostic/adapter-pi";
+import {
+  createHooknosticExtension,
+  piCapabilityProfiles,
+  type PiExtensionApi,
+  piHarness,
+  piMcpIdentity,
+} from "@hooknostic/adapter-pi";
 import { stageUserModule } from "@hooknostic/core";
 import type { PluginSpec } from "@hooknostic/sdk";
 
@@ -454,6 +460,8 @@ export default definePlugin({
   ],
 });
 `;
+  // The 0.84 line: no native MCP channel, so no stated identity (ADR-0032).
+  const PI_LEGACY = piCapabilityProfiles.find((profile) => profile.range !== piMcpIdentity.range)!.range;
   const MCP_TARGETS = `{
   claude: { version: ${JSON.stringify(claudeHarness.recommendedRange)}, delivery: "package", output: "./dist/claude" },
   pi: {
@@ -464,7 +472,7 @@ export default definePlugin({
   },
   legacy: {
     adapter: "pi",
-    version: ">=0.84 <1",
+    version: ${JSON.stringify(PI_LEGACY)},
     delivery: "project",
     output: "./dist/pi-legacy",
     compatibility: { minimum: "approximate" },
@@ -527,7 +535,8 @@ export default definePlugin({
     );
     // pi 0.84 has no native MCP channel, so its results state nothing either.
     expect(await refusal("legacy", mcpEvent("tool.after", "mcp__a__b", { server: "a", tool: "b" }))).toBe(
-      derived + ` (this target's harness states tool.mcp only for >=1 <2, which ">=0.84 <1" is not within)`,
+      derived +
+        ` (this target's harness states tool.mcp only for ${piMcpIdentity.range}, which ${JSON.stringify(PI_LEGACY)} is not within)`,
     );
     expect(await refusal("claude", mcpEvent("tool.after", "mcp__docs__search", { server: "other", tool: "x" }))).toBe(
       derived,

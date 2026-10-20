@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -19,61 +19,56 @@ import { classifyPiTool } from "./toolmap.js";
 
 const INVOCATION = { targetId: "pi", harnessVersion: piHarness.referenceVersion };
 
-describe("decodePi fixtures", () => {
-  const CASES = [
-    "session-start",
-    "before-agent-start",
-    "before-agent-start-isolated",
-    "context",
-    "tool-call-write",
-    "tool-call-read",
-    "tool-call-edit",
-    "tool-call-bash-configured-powershell",
-    "tool-call-bash",
-    "tool-call-powershell",
-    "tool-result-write",
-    "tool-result-read",
-    "tool-result-edit",
-    "tool-result-bash-configured-powershell",
-    "tool-result-bash",
-    "tool-result-powershell",
-    "tool-result-error",
-    "tool-call-mcp",
-    "tool-result-mcp",
-    "tool-call-codemode",
-    "tool-call-mcp-nested",
-    "tool-result-mcp-nested",
-    "tool-result-mcp-extension",
-    "tool-result-mcp-shadow",
-    "agent-settled",
-    "agent-settled-with-message",
-    "agent-settled-error",
-    "agent-settled-aborted",
-    "agent-settled-retry",
-    "agent-settled-retry-aborted",
-    "agent-settled-resumed",
-    "session-shutdown",
-    "session-before-compact",
-    "session-compact",
-    "session-compact-failed",
-  ] as const;
+/**
+ * Every shipped line's captured fixture directory, as its profile's captured
+ * validatedOn record names it, decoded as that record's build on that
+ * profile's MCP line. The 0.84 line still ships, so its captures still replay.
+ */
+const LINES = piCapabilityProfiles.map((profile) => {
+  const captured = profile.source.validatedOn.find(
+    (record) => record.method === "captured" && record.artifact?.startsWith("fixtures/pi/") === true,
+  )!;
+  return {
+    range: profile.range,
+    dir: captured.artifact!.slice("fixtures/pi/".length),
+    invocation: { targetId: "pi", harnessVersion: captured.version },
+    options: { nativeMcp: piNativeMcp(profile.range) },
+  };
+});
 
-  for (const name of CASES) {
-    it(`decodes ${name} to its canonical event`, () => {
-      const input = loadFixture("pi", piHarness.fixtureDir, `${name}.input.json`);
-      const canonical = loadFixture<Record<string, unknown>>("pi", piHarness.fixtureDir, `${name}.canonical.json`);
-      const enrichment = existsSync(fixturePath("pi", piHarness.fixtureDir, `${name}.enrichment.json`))
-        ? loadFixture<PiEnrichment>("pi", piHarness.fixtureDir, `${name}.enrichment.json`)
-        : {};
-      const decoded = decodePi(input, INVOCATION, enrichment);
-      expect(decoded).toEqual({
-        ...canonical,
-        harness: { ...(canonical["harness"] as object), version: piHarness.referenceVersion },
-        raw: input,
-      });
+describe.each(LINES)("decodePi $dir fixtures ($range)", ({ dir, invocation, options }) => {
+  const stems = readdirSync(fixturePath("pi", dir, "."))
+    .filter((file) => file.endsWith(".canonical.json"))
+    .map((file) => file.slice(0, -".canonical.json".length));
+
+  it.each(stems)("decodes %s to its canonical event", (name) => {
+    const input = loadFixture("pi", dir, `${name}.input.json`);
+    const canonical = loadFixture<Record<string, unknown>>("pi", dir, `${name}.canonical.json`);
+    const enrichment = existsSync(fixturePath("pi", dir, `${name}.enrichment.json`))
+      ? loadFixture<PiEnrichment>("pi", dir, `${name}.enrichment.json`)
+      : {};
+    expect(decodePi(input, invocation, enrichment, options)).toEqual({ ...canonical, raw: input });
+  });
+
+  it("holds a current canonical for every input except the declined ones", () => {
+    const fixturesDir = fixturePath("pi", dir, ".");
+    const plan = planCanonicalFixtures({
+      fixturesDir,
+      decode: (input, enrichment) => decodePi(input, invocation, enrichment as PiEnrichment, options),
+      isDecline: (error) => error instanceof PiDecodeError,
     });
-  }
+    expect(plan.stale).toEqual([]);
+    expect([...plan.writes.keys()]).toContain("before-agent-start.canonical.json");
+    expect([...plan.writes.keys()]).not.toContain("before-agent-start-custom.canonical.json");
+    for (const [name, canonical] of plan.writes) {
+      expect(JSON.parse(readFileSync(join(fixturesDir, name), "utf8")), name).toEqual(
+        JSON.parse(JSON.stringify(canonical)),
+      );
+    }
+  });
+});
 
+describe("decodePi fixtures", () => {
   it("maps tool_result isError to tool.error and success to tool.after", () => {
     const error = decodePi(loadFixture("pi", piHarness.fixtureDir, "tool-result-error.input.json"), INVOCATION);
     expect(error.event).toBe("tool.error");
@@ -139,23 +134,6 @@ describe("decodePi fixtures", () => {
     );
     expect(user.event["messageType"]).toBe("user");
     expect(decodePi(user, INVOCATION).event).toBe("prompt.before");
-  });
-
-  it("holds a current canonical for every input except the declined ones", () => {
-    const fixturesDir = fixturePath("pi", piHarness.fixtureDir, ".");
-    const plan = planCanonicalFixtures({
-      fixturesDir,
-      decode: (input, enrichment) => decodePi(input, INVOCATION, enrichment as PiEnrichment),
-      isDecline: (error) => error instanceof PiDecodeError,
-    });
-    expect(plan.stale).toEqual([]);
-    expect([...plan.writes.keys()]).toContain("before-agent-start.canonical.json");
-    expect([...plan.writes.keys()]).not.toContain("before-agent-start-custom.canonical.json");
-    for (const [name, canonical] of plan.writes) {
-      expect(JSON.parse(readFileSync(join(fixturesDir, name), "utf8")), name).toEqual(
-        JSON.parse(JSON.stringify(canonical)),
-      );
-    }
   });
 
   it("rejects unmapped pi events", () => {

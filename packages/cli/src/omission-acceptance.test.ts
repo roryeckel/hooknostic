@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { piCapabilityProfiles, piHarness } from "@hooknostic/adapter-pi";
+import { piCapabilityProfiles, piHarness, piMcpIdentity } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 
 import { runBuild } from "./build.js";
@@ -137,7 +137,7 @@ describe.each(["package", "project"] as const)("Pi 0.84 omission acceptance: %s"
     for (const type of transports) expect(output).toContain(`pi:mcp-${type}-omitted`);
     // ADR-0032: the MCP identity statement is established for 1.x only.
     if (json) expect(JSON.parse(output).mcpIdentity).toMatchObject({ applies: false });
-    else expect(output).toContain("tool.mcp source (outside >=1 <2)");
+    else expect(output).toContain(`tool.mcp source (outside ${piMcpIdentity.range})`);
   });
 
   it.each(transports)("accepts only the named %s transport", async (transport) => {

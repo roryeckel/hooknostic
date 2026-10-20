@@ -12,6 +12,7 @@ import { AGENT_PLUGIN_MCP_SCHEMA } from "@hooknostic/agent-plugin";
 import { reconcileProject, REMOTE_ENVIRONMENT_SOURCE } from "@hooknostic/core";
 
 import { legacyPiMcpCells, nativePiMcpCells, piMcpExtensionSource, piNamespace, translatePiMcp } from "./mcp.js";
+import { registrations } from "./mcp-test-helpers.js";
 import { piExtensionsRelative, projectComponents, projectIntegration } from "./project.js";
 
 const stdio = (command = "node", extra: Partial<AgentPluginMcpServer> = {}): AgentPluginMcpServer =>
@@ -293,10 +294,6 @@ describe("pi project MCP integration", () => {
     expect(extensionOf(result)).toContain('const root = resolve(here, "../../tools");');
   });
 });
-
-/** The registrations a generated hooknostic-mcp.js embeds as a JSON string literal. */
-const registrations = (module: string): unknown =>
-  JSON.parse(JSON.parse(/const registrations = JSON\.parse\(("(?:[^"\\]|\\.)*")\);/.exec(module)![1]!) as string);
 
 describe("generated pi MCP extension", () => {
   const dirs: string[] = [];
