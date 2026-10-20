@@ -824,7 +824,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Locate the conversation destination (PR first, else failure issue)
+      - name: Locate the conversation destination (PR first, else failure or range-extension issue)
         id: destination
         if: steps.resolve.outputs.publish == 'true'
         shell: bash
@@ -839,6 +839,15 @@ jobs:
           fi
           TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} failed model-free playback"
           NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
+          if [ -z "$NUMBER" ]; then
+            # An out-of-range build never gets a PR; record filed its
+            # range-extension issue earlier in this run, so the verdict joins
+            # that thread rather than opening a second one for the version.
+            # Exact title match: --search is fuzzy and also matches bodies.
+            RANGE_TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} is outside every profile range"
+            NUMBER="$(gh issue list --label harness-watch --state open --search "$RANGE_TITLE" --json number,title \
+              | jq -r --arg t "$RANGE_TITLE" 'map(select(.title == $t)) | .[0].number // ""')"
+          fi
           if [ -n "$NUMBER" ]; then
             echo "destination=issue" >> "$GITHUB_OUTPUT"
             echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
@@ -854,16 +863,17 @@ jobs:
           TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} drift verdict: ${{ steps.resolve.outputs.verdict }}"
           NUMBER="$(gh issue list --label harness-watch --state open --search "$TITLE" --json number --jq '.[0].number // ""')"
           LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TRANSPORT="$(jq -r .transport drift-verdict-${{ matrix.harness }}.json)"
           if [ -n "$NUMBER" ]; then
             gh issue comment "$NUMBER" --body "Verdict \`${{ steps.resolve.outputs.verdict }}\` again: $LINK"
             echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
           else
             gh issue create --label harness-watch --title "$TITLE" --body "$(cat <<EOF
-          The drift capture-compare for \`${{ matrix.harness }} ${{ matrix.latest }}\` came back **${{ steps.resolve.outputs.verdict }}** (transport: \`${{ steps.resolve.outputs.verdict && 'see artifact' }}\`).
+          The drift capture-compare for \`${{ matrix.harness }} ${{ matrix.latest }}\` came back **${{ steps.resolve.outputs.verdict }}** (transport: \`$TRANSPORT\`).
 
           Drift is advisory: it never changes fixtures or provenance. Route:
           - [ ] Download the run's \`drift-verdict-${{ matrix.harness }}\` artifact (raw captures + report)
-          - [ ] Follow the harness-capture skill (`.agents/skills/harness-capture/SKILL.md`) for a real capture
+          - [ ] Follow the harness-capture skill (\`.agents/skills/harness-capture/SKILL.md\`) for a real capture
           - [ ] If the shapes are legitimate: capture-shaped fixtures quiet the comparator
           - [ ] If a hook stopped being emitted: treat as behavior drift, re-rate affected cells
 
