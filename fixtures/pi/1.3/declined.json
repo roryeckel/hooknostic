@@ -1,0 +1,3 @@
+{
+  "before-agent-start-custom": "pi 1.2 fires before_agent_start for a custom-message run with no prompt; prompt.before does not apply, so the decoder declines it"
+}

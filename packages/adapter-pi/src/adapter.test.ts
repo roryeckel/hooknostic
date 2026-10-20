@@ -1,10 +1,13 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { analyzeCapabilities, buildPluginIR } from "@hooknostic/core";
 import type { HooknosticConfig } from "@hooknostic/sdk";
 import type { HookResult } from "@hooknostic/sdk";
 import { definePlugin, hook } from "@hooknostic/sdk";
-import { loadFixture } from "@hooknostic/testkit";
+import { fixturePath, loadFixture, planCanonicalFixtures } from "@hooknostic/testkit";
 
 import { planPiApplication, serializePiOutput } from "./apply.js";
 import { decodePi, PiDecodeError, type PiEnrichment, type PiNativeEvent } from "./decode.js";
@@ -133,6 +136,23 @@ describe("decodePi fixtures", () => {
     );
     expect(user.event["messageType"]).toBe("user");
     expect(decodePi(user, INVOCATION).event).toBe("prompt.before");
+  });
+
+  it("holds a current canonical for every input except the declined ones", () => {
+    const fixturesDir = fixturePath("pi", piHarness.fixtureDir, ".");
+    const plan = planCanonicalFixtures({
+      fixturesDir,
+      decode: (input, enrichment) => decodePi(input, INVOCATION, enrichment as PiEnrichment),
+      isDecline: (error) => error instanceof PiDecodeError,
+    });
+    expect(plan.stale).toEqual([]);
+    expect([...plan.writes.keys()]).toContain("before-agent-start.canonical.json");
+    expect([...plan.writes.keys()]).not.toContain("before-agent-start-custom.canonical.json");
+    for (const [name, canonical] of plan.writes) {
+      expect(JSON.parse(readFileSync(join(fixturesDir, name), "utf8")), name).toEqual(
+        JSON.parse(JSON.stringify(canonical)),
+      );
+    }
   });
 
   it("rejects unmapped pi events", () => {
