@@ -226,6 +226,57 @@ describe("harness-watch workflow structure", () => {
     expect(destination).toContain('[ "$PR_TITLE" = "$EXPECTED_PR_TITLE" ]');
   });
 
+  it("routes drift for an out-of-range build to its open range-extension issue", () => {
+    // record files the range-extension issue in the same run (publish-verdict
+    // needs record), so a drift verdict without a PR or failure issue must
+    // land there instead of opening a second thread for the same version.
+    const rangeTitle =
+      'TITLE="harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} is outside every profile range"';
+    expect(jobSource("record")).toContain(rangeTitle);
+    const publish = jobSource("publish-verdict");
+    const destination = publish.slice(
+      publish.indexOf("Locate the conversation destination"),
+      publish.indexOf("File a deduped report issue"),
+    );
+    expect(destination).toContain(rangeTitle.replace('TITLE="', 'RANGE_TITLE="'));
+    // Exact-title match: gh's --search is fuzzy and also matches bodies.
+    expect(destination).toContain(`jq -r --arg t "$RANGE_TITLE" 'map(select(.title == $t)) | .[0].number // ""'`);
+    const failure = destination.indexOf("failed model-free playback");
+    const range = destination.indexOf("RANGE_TITLE=");
+    expect(failure).toBeGreaterThan(-1);
+    expect(range).toBeGreaterThan(failure);
+  });
+
+  it("drift report issue names the verdict's real transport", () => {
+    const publish = jobSource("publish-verdict");
+    const report = publish.slice(
+      publish.indexOf("File a deduped report issue"),
+      publish.indexOf("Comment the verdict on the destination"),
+    );
+    expect(report).not.toContain("'see artifact'");
+    expect(report).toContain('TRANSPORT="$(jq -r .transport drift-verdict-${{ matrix.harness }}.json)"');
+    expect(report).toContain("(transport: \\`$TRANSPORT\\`");
+  });
+
+  it("escapes every backtick inside unquoted heredocs", () => {
+    // An unquoted heredoc runs command substitution, so a bare `path` in an
+    // issue body executes the path and posts an empty string in its place.
+    const lines = source.split(/\r?\n/);
+    const bodies = [];
+    for (let i = 0; i < lines.length; i++) {
+      const open = /<<-?\s*([A-Za-z_]+)\b/.exec(lines[i]);
+      if (!open) continue;
+      const end = lines.findIndex((l, j) => j > i && l.trim() === open[1]);
+      bodies.push({ at: i + 1, text: lines.slice(i + 1, end) });
+      i = end;
+    }
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const { at, text } of bodies) {
+      for (const line of text)
+        expect(line.replace(/\$\([^)]*\)/g, ""), `heredoc at line ${at}`).not.toMatch(/(^|[^\\])`/);
+    }
+  });
+
   it("merges in one trusted coordinator after verification and drift publishing", () => {
     expect(jobSource("record")).not.toContain("gh pr merge");
     const merge = jobSource("automerge");
