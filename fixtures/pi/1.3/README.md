@@ -15,7 +15,7 @@ Canonical files are the decode result **minus `raw`**. Every input has one
 except the captures the adapter declines, which `declined.json` names with the
 reason and the decline message each must still produce. Generation fails if
 any other input stops decoding, and removes a canonical left beside a
-declined input. Output files are the adapter's expected native application of
+declined input or left without one. Output files are the adapter's expected native application of
 effects; they are unchanged from `fixtures/pi/0.84`, and Pi playback verified
 each effect by effect on 1.3.0.
 The account name is redacted to `user` in all path forms. The temporary

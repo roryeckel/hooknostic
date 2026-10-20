@@ -16,6 +16,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { claudeAgentPluginProjector } from "@hooknostic/adapter-claude";
 import { codexAgentPluginProjector } from "@hooknostic/adapter-codex";
 import { opencodeAgentPluginProjector, opencodeV1Adapter } from "@hooknostic/adapter-opencode";
+import { piCapabilityProfiles } from "@hooknostic/adapter-pi";
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection, runProject } from "@hooknostic/core";
 import type { HookEventName } from "@hooknostic/sdk";
@@ -401,6 +402,23 @@ describe("runProcess argument passing", () => {
       expect(JSON.parse(result.stdout)).toEqual(ARGS);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("playback artifact shim", () => {
+  it("settles the target's MCP line as the production build does", async () => {
+    // buildProject hands the shim entry the target's range (ADR-0032); a
+    // playback artifact for the same target must decode what that one does.
+    const pi = defaultAdapterRegistry()["pi"]!;
+    const legacy = piCapabilityProfiles.find((profile) => profile.range !== pi.mcpIdentity!.range)!.range;
+    for (const version of [legacy, pi.harness.referenceVersion]) {
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-playback-shim-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(pi, dir, { version });
+      expect((await readFile(build.runtimePath, "utf8")).includes("nativeMcp: false"), version).toBe(
+        version === legacy,
+      );
     }
   });
 });

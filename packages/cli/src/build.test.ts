@@ -3417,6 +3417,27 @@ describe("hooknostic inspect", () => {
     expect(component.err()).toContain("HN203");
   });
 
+  it("decides whether the MCP identity applies from the family adapter it prints", async () => {
+    // A family selector that declares nothing resolves to an adapter whose
+    // statement is bounded; inspect must judge the range by the one it prints,
+    // as dispatch does (ADR-0032).
+    const registry = defaultAdapterRegistry();
+    const pi = registry.pi!;
+    const { mcpIdentity: _declared, ...selector } = pi;
+    registry.pi = { ...selector, resolveTarget: () => ({ adapter: pi, diagnostics: [] }) };
+    const legacy = piCapabilityProfiles.find((profile) => profile.range !== pi.mcpIdentity!.range)!.range;
+    const report = async (version: string) => {
+      const capture = captureIO();
+      expect(await runInspect({ target: "pi", version, json: true, registry, io: capture.io }), capture.err()).toBe(0);
+      return JSON.parse(capture.out()).mcpIdentity as { range: string; applies: boolean };
+    };
+    expect(await report(legacy)).toMatchObject({ range: pi.mcpIdentity!.range, applies: false });
+    expect(await report(pi.mcpIdentity!.range!)).toMatchObject({ applies: true });
+    const text = captureIO();
+    expect(await runInspect({ target: "pi", version: legacy, registry, io: text.io }), text.err()).toBe(0);
+    expect(text.out()).toContain(`tool.mcp source (outside ${pi.mcpIdentity!.range})`);
+  });
+
   it("renders adapter-owned capability facts with rationale", async () => {
     const { io, out } = captureIO();
     const code = await runInspect({

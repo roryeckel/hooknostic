@@ -221,15 +221,17 @@ function completeEvent(
   );
   if (derived.length > 0) {
     const [verb, pronoun] = derived.length === 1 ? ["is", "it"] : ["are", "them"];
-    // Someone who tried to state a dialect or an identity should learn whether it can be stated.
+    // Someone who tried to state a dialect or an identity should learn whether
+    // it can be stated, when that is what was refused.
+    const refusedMcp = derived.includes("mcp");
     const hint =
-      isRecord(tool["shell"]) && "dialect" in tool["shell"]
+      derived.includes("shell") && isRecord(tool["shell"]) && "dialect" in tool["shell"]
         ? " (tool.shell may hold dialect and nothing else)"
-        : "mcp" in tool && mcpStatable
+        : refusedMcp && mcpStatable
           ? " (tool.mcp may hold server and tool, both strings, and nothing else)"
-          : "mcp" in tool && mcpEvents.length > 0
+          : refusedMcp && mcpEvents.length > 0
             ? ` (this target's harness states tool.mcp only on ${mcpEvents.join(", ")})`
-            : "mcp" in tool && identity?.source === "statement" && identity.range !== undefined
+            : refusedMcp && identity?.source === "statement" && identity.range !== undefined
               ? ` (this target's harness states tool.mcp only for ${identity.range}, which ${JSON.stringify(version)} is not within)`
               : "";
     return {

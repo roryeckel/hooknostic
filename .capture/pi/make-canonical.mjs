@@ -26,4 +26,4 @@ const plan = planCanonicalFixtures({
 });
 applyCanonicalFixturePlan(fixturesDir, plan);
 for (const name of plan.writes.keys()) console.log(`wrote ${name}`);
-for (const name of plan.stale) console.log(`removed ${name} (declined input)`);
+for (const name of plan.stale) console.log(`removed ${name} (declined or missing input)`);

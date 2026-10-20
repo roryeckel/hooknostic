@@ -62,6 +62,19 @@ describe("planCanonicalFixtures", () => {
     expect(plan.stale).toEqual(["a.canonical.json"]);
   });
 
+  it("marks a canonical with no input stale", () => {
+    // An input renamed or removed leaves its canonical behind, which no
+    // capture backs.
+    const fixturesDir = fixtures({
+      "renamed.input.json": { event: "x" },
+      "original.canonical.json": { event: "x" },
+      "original.enrichment.json": {},
+    });
+    const plan = planCanonicalFixtures({ fixturesDir, decode, isDecline });
+    expect([...plan.writes.keys()]).toEqual(["renamed.canonical.json"]);
+    expect(plan.stale).toEqual(["original.canonical.json"]);
+  });
+
   it("propagates a declined input's failure that is not a decline", () => {
     const fixturesDir = fixtures({ "declined.json": { a: DECLINED }, "a.input.json": { event: "x" } });
     const broken = (): never => {

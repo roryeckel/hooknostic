@@ -59,7 +59,7 @@ export function declinedFixtures(fixturesDir: string): ReadonlyMap<string, { rea
 export interface CanonicalFixturePlan {
   /** `<stem>.canonical.json` contents, keyed by file name. */
   writes: ReadonlyMap<string, unknown>;
-  /** Canonical files beside a declined input, which no event backs. */
+  /** Canonical files beside a declined input or with no input, which no event backs. */
   stale: readonly string[];
 }
 
@@ -71,7 +71,7 @@ export interface CanonicalFixturePlan {
  * declined capture that starts failing for another reason is caught. A declined
  * stem that decodes, or names no input, is an error. Any other decode failure
  * propagates, so a regression or a changed capture stops generation instead of
- * leaving an old canonical behind.
+ * leaving an old canonical behind. A canonical with no input is stale too.
  */
 export function planCanonicalFixtures(options: {
   fixturesDir: string;
@@ -109,6 +109,10 @@ export function planCanonicalFixtures(options: {
   }
   for (const stem of declined.keys()) {
     if (!inputs.has(stem)) throw new Error(`declined.json names ${stem}, which has no input fixture`);
+  }
+  // A canonical whose input was renamed or removed is evidence of nothing.
+  for (const file of readdirSync(fixturesDir).sort()) {
+    if (file.endsWith(".canonical.json") && !inputs.has(file.slice(0, -".canonical.json".length))) stale.push(file);
   }
   return { writes, stale };
 }

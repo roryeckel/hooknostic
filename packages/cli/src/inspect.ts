@@ -68,8 +68,6 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
   // --version this command should answer for the range users are told to
   // target, which can be deliberately narrower than the validated union.
   const version = options.version ?? adapter.harness.recommendedRange;
-  // A declared statement applies only within the range its evidence covers (ADR-0032).
-  const mcpIdentityHolds = adapter.mcpIdentity === undefined || mcpIdentityApplies(adapter.mcpIdentity, version);
   const selected = resolveTargetAdapter(adapter, {
     id: options.target,
     version,
@@ -81,6 +79,9 @@ export async function runInspect(options: InspectCommandOptions): Promise<number
     return failure();
   }
   adapter = selected.adapter;
+  // A declared statement applies only within the range its evidence covers
+  // (ADR-0032), judged on the resolved adapter, whose declaration is printed.
+  const mcpIdentityHolds = adapter.mcpIdentity === undefined || mcpIdentityApplies(adapter.mcpIdentity, version);
   const resolved = adapter.capabilities({
     id: adapter.id,
     version,

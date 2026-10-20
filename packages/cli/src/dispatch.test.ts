@@ -421,6 +421,11 @@ export default definePlugin({
     );
     expect(await refusal("opencode", stating("bash", {}))).toBe(derived);
     expect(await refusal("opencode", stating("bash", "cmd"))).toBe(derived);
+    // A valid stated dialect beside another derived field is not what was refused.
+    const withKind = stating("bash", { dialect: "cmd" });
+    expect(await refusal("opencode", { ...withKind, tool: { ...withKind.tool, kind: "shell" } })).toBe(
+      "event 1: tool.kind is derived from tool.nativeName and tool.input by the target's classifier; omit it",
+    );
   });
 
   const MCP_HOOKS = `
@@ -526,6 +531,12 @@ export default definePlugin({
     );
     expect(await refusal("claude", mcpEvent("tool.after", "mcp__docs__search", { server: "other", tool: "x" }))).toBe(
       derived,
+    );
+    // A valid stated identity beside another derived field: the refusal names
+    // that field, without pointing at the tool.mcp that is already right.
+    const withKind = mcpEvent("tool.after", "mcp__a__b", { server: "a", tool: "b" });
+    expect(await refusal("pi", { ...withKind, tool: { ...withKind.tool, kind: "mcp" } })).toBe(
+      "event 1: tool.kind is derived from tool.nativeName and tool.input by the target's classifier; omit it",
     );
   });
 

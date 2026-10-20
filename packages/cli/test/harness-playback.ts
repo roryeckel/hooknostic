@@ -395,6 +395,8 @@ export async function buildPlaybackArtifact(
       minimumCapabilityLevel: "approximate",
       policy: RUNTIME_POLICY,
       harnessVersion: override.version ?? adapter.harness.referenceVersion,
+      // As buildProject does: the shim settles version-line facts from it.
+      targetRange: target.version,
     }),
     resolveDir: artifactDir,
     alias: {
