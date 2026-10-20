@@ -20,6 +20,7 @@ import type { ProjectIntegration } from "./project-files.js";
  * already sits at its destination is discovered in place and left alone; its
  * references are only reported. Each skill whose text still holds a reference
  * the target shows as written is a `skill-reference-unexpanded` degradation.
+ * A rewritten body token also reports the target's directory shortfall, if any.
  * An undefined text policy preserves bytes when expansion is not yet captured.
  */
 export function projectSkillFiles(
@@ -57,6 +58,14 @@ export function projectSkillFiles(
           inPlace,
           ...(projected.inFrontmatter ? { inFrontmatter: true } : {}),
         }),
+      });
+    }
+    if (projected?.directoryDegradation) {
+      degradations.push({
+        ...projected.directoryDegradation,
+        component: "agent-plugin.skills",
+        name: skill.name,
+        path: `${path}/SKILL.md`,
       });
     }
     if (inPlace) {

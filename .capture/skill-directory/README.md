@@ -72,6 +72,25 @@ What surrounds the body:
   directory containing a filesystem-backed `SKILL.md`." The loopback model,
   served through a custom provider with no catalog entry, received none.
 
+## Follow-up: Codex command resolution (2026-10-19)
+
+The owner-reported live probe in [issue #113](https://github.com/roryeckel/hooknostic/issues/113)
+shows that those bundled-model instructions do not reliably carry through to
+executed commands on Codex 0.163.0. A projected `./scripts/where.sh` sometimes ran
+from the session directory or plugin root. See [method, reproduction and evidence
+limits](codex-command.md). This follow-up was not independently rerun here and is
+live-probe evidence, not a hook-boundary capture or a loopback execution claim.
+
+A later [controlled live comparison](comparison.md), also on 2026-10-19 with
+Codex 0.163.0 and `gpt-6-luna`, tested the exact failing body F and a declared
+reconstruction of E. The explicit absolute-path placeholder succeeded on the
+first launcher attempt in 10/10 sessions; `.` in 1/10, with one additional recovery
+after failure. The completed comparison used Git Bash and owner-authorized
+unsandboxed execution after both native sandbox modes stalled. Its sample and
+scope do not establish an exact guarantee. Codex now emits that tested explicit
+placeholder with a model-substitution degradation; see the adoption note in the
+comparison record.
+
 ## Consequences
 
 Pi's later [feature probes](../pi/FEATURES.md) establish the same relative-path
@@ -80,9 +99,14 @@ including `${SKILL_DIR}` in descriptions, remain literal. Pi therefore uses the
 relative body projection and unsupported-reference diagnostics too.
 
 - `${SKILL_DIR}` in a SKILL.md body projects to `${CLAUDE_SKILL_DIR}` on Claude
-  Code, package and project delivery alike, and to `.` on Codex and both
-  OpenCode families, where a path relative to the skill's directory is what the
-  harness (OpenCode) or its bundled models' instructions (Codex) resolve.
+  Code, package and project delivery alike; to
+  `<absolute path of the directory containing this SKILL.md>` on Codex; and to
+  `.` on both OpenCode families, where the model is instructed to resolve a path
+  relative to the skill's directory. Codex body rewrites report the conditional
+  `skill-directory-model-substitution` degradation (HN101, an error by default):
+  the model must substitute the installed directory, without runtime expansion
+  by Codex. Project delivery conservatively reports the same dependency; the
+  follow-up measured installed packages only.
   The frontmatter is never rewritten.
 - A skill-text reference the target shows as written is the degradation
   `skill-reference-unexpanded` (HN101, an error by default): the Agent Plugins
@@ -92,7 +116,8 @@ relative body projection and unsupported-reference diagnostics too.
   target; and `${SKILL_DIR}` where it cannot be rewritten. `${HOME}` and other shell
   parameters are not reported: a command the model runs is expanded by its
   shell.
-- Only project skills were measured on Codex and OpenCode. Package skills reach
+- The original expansion probes measured project skills on Codex and OpenCode;
+  the later Codex command comparison measured installed packages. Package skills reach
   the model through the same skill mechanisms: OpenCode 1.x discovers them
   through `skills.paths`, OpenCode 2.x registers them with `skill.transform`
   from the file's own text, and Codex lists an installed plugin's skills beside

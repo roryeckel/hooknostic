@@ -21,6 +21,8 @@ export const SKILL_REFERENCE_UNEXPANDED = "skill-reference-unexpanded";
 export interface SkillTextTarget {
   /** What `${SKILL_DIR}` becomes in the body. */
   skillDirectory: string;
+  /** A target-owned shortfall to report whenever the body token is rewritten. */
+  directoryDegradation?: Pick<AgentPluginDegradation, "id" | "reason">;
   /**
    * Whether the target shows `${name}` to the model as written. Only names with
    * captured evidence belong here; any other `${...}` in a skill is left alone
@@ -34,9 +36,9 @@ export interface SkillTextTarget {
 export const AGENT_PLUGIN_PLACEHOLDER_NAMES: ReadonlySet<string> = new Set(["PLUGIN_ROOT", "PLUGIN_DATA"]);
 
 /**
- * Codex and both OpenCode families: `${SKILL_DIR}` becomes `.`, a path
- * relative to the skill's directory, and every Claude Code variable and Agent
- * Plugins placeholder is shown as written.
+ * A relative-directory policy: `${SKILL_DIR}` becomes `.`, and every Claude
+ * Code variable and Agent Plugins placeholder is shown as written. Codex
+ * overrides the directory with its explicit model-substituted placeholder.
  */
 export const RELATIVE_SKILL_TEXT: SkillTextTarget = {
   skillDirectory: ".",
@@ -60,6 +62,8 @@ const REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 export interface ProjectedSkillText {
   /** The rewritten file, or undefined when nothing changed and the bytes stand. */
   contents?: Uint8Array;
+  /** The target's directory shortfall, only when a body token was rewritten. */
+  directoryDegradation?: Pick<AgentPluginDegradation, "id" | "reason">;
   /**
    * References the target will show as written, each once and in order:
    * every checked reference in the frontmatter, which no harness expands and
@@ -106,6 +110,7 @@ export function projectSkillText(
   if (!rewrite || !body.includes(SKILL_DIR_PLACEHOLDER)) return { unexpanded: [...unexpanded], ...inFrontmatter };
   return {
     contents: new TextEncoder().encode(frontmatter + body.split(SKILL_DIR_PLACEHOLDER).join(target.skillDirectory)),
+    ...(target.directoryDegradation ? { directoryDegradation: target.directoryDegradation } : {}),
     unexpanded: [...unexpanded],
     ...inFrontmatter,
   };
@@ -131,8 +136,8 @@ export function unexpandedSkillReferenceReason(
 
 /**
  * Project the text of every skill a package ships: the rewritten SKILL.md
- * bytes by package path, and one `skill-reference-unexpanded` degradation per
- * skill whose text still holds a reference the target shows as written. Core
+ * bytes by package path, and degradations for references the target shows as
+ * written or its conditional directory-substitution shortfall. Core
  * applies `components.onDegraded` and `components.accept` to them, and fails
  * the target if its profile does not declare the id (ADR-0022).
  *
@@ -161,6 +166,14 @@ export function projectPackageSkillTexts(
         reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, harness, {
           ...(projected.inFrontmatter ? { inFrontmatter: true } : {}),
         }),
+      });
+    }
+    if (projected.directoryDegradation) {
+      degradations.push({
+        ...projected.directoryDegradation,
+        component: "agent-plugin.skills",
+        name: skill.name,
+        path: skill.manifestPath,
       });
     }
   }
