@@ -52,7 +52,7 @@ export const nativePiMcpCells: PiMcpCells = {
   "agent-plugin.mcp.streamable-http": {
     level: "exact",
     rationale:
-      "The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. " +
+      "The generated extension registers the URL verbatim, which pi does not expand, and escapes each header value with pi's $$ and $! escapes, so pi sends exactly the declared text. A header named __proto__, which pi's resolver would drop, is registered under a spelling that differs only in case; HTTP field names are case-insensitive. " +
       EXPOSURE +
       PRECEDENCE,
   },
@@ -69,6 +69,31 @@ const PI_SERVER_NAME = /^[A-Za-z0-9_-]+$/;
 
 /** Names differing only in `-` and `_` are one server to pi; a second is rejected. */
 export const piNamespace = (name: string): string => name.replaceAll("-", "_");
+
+/**
+ * pi 1.3.0 copies header values into a plain object (`resolveHeadersOrThrow`,
+ * core/resolve-config-value.js), where assigning `__proto__` sets nothing, so
+ * a header with that name never reaches the request. Field names are
+ * case-insensitive (RFC 9110 section 5.1) and pi's transport sends them through
+ * `Headers`, so that header is registered under the first spelling differing
+ * only in case that the server does not already declare. Every other name, and
+ * every value, is kept; `undefined` means all 32 spellings are taken.
+ */
+export function piHeaders(headers: Readonly<Record<string, string>>): Record<string, string> | undefined {
+  if (!Object.hasOwn(headers, "__proto__")) return { ...headers };
+  const spelling = Array.from({ length: 31 }, (_, offset) => {
+    const mask = 31 - offset;
+    return (
+      "__" +
+      [..."proto"].map((letter, bit) => (mask & (1 << (4 - bit)) ? letter.toUpperCase() : letter)).join("") +
+      "__"
+    );
+  }).find((candidate) => !Object.hasOwn(headers, candidate));
+  if (spelling === undefined) return undefined;
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [name === "__proto__" ? spelling : name, value]),
+  );
+}
 
 /** One server the generated extension registers. */
 export type PiMcpRegistration =
@@ -151,13 +176,17 @@ export function translatePiMcp(
       });
       continue;
     }
+    const headers = server.headers === undefined ? undefined : piHeaders(server.headers);
+    if (server.headers !== undefined && headers === undefined) {
+      omitted.push({
+        component,
+        name,
+        reason: "every spelling of the __proto__ header is declared, and pi drops the one spelled __proto__",
+      });
+      continue;
+    }
     claimed.set(namespace, name);
-    registrations.push({
-      name,
-      type: "http",
-      url: server.url,
-      ...(server.headers === undefined ? {} : { headers: { ...server.headers } }),
-    });
+    registrations.push({ name, type: "http", url: server.url, ...(headers === undefined ? {} : { headers }) });
   }
   return { registrations, launcherServers, omitted };
 }

@@ -45,10 +45,12 @@ export interface CanonicalFixturePlan {
 /**
  * Plan the canonical fixtures (decode minus `raw`) for every `*.input.json` in
  * a directory. `declined.json`, when present, maps the stems of captured inputs
- * the adapter declines to the reason. Only those may fail to decode, and only
- * with an error `isDecline` accepts; a declined stem that decodes, or names no
- * input, is an error. Any other decode failure propagates, so a regression or a
- * changed capture stops generation instead of leaving an old canonical behind.
+ * the adapter declines to `{reason, error}`. Only those may fail to decode, and
+ * only with an error `isDecline` accepts whose message contains `error`, so a
+ * declined capture that starts failing for another reason is caught. A declined
+ * stem that decodes, or names no input, is an error. Any other decode failure
+ * propagates, so a regression or a changed capture stops generation instead of
+ * leaving an old canonical behind.
  */
 export function planCanonicalFixtures(options: {
   fixturesDir: string;
@@ -57,7 +59,16 @@ export function planCanonicalFixtures(options: {
 }): CanonicalFixturePlan {
   const { fixturesDir } = options;
   const manifest = join(fixturesDir, "declined.json");
-  const declined = new Set(Object.keys(existsSync(manifest) ? loadFixtureFrom<Record<string, string>>(manifest) : {}));
+  const declined = new Map(
+    Object.entries(
+      existsSync(manifest) ? loadFixtureFrom<Record<string, { reason: string; error: string }>>(manifest) : {},
+    ),
+  );
+  for (const [stem, entry] of declined) {
+    if (typeof entry?.reason !== "string" || typeof entry.error !== "string" || entry.error === "") {
+      throw new Error(`declined.json entry ${stem} needs a reason and a non-empty error message`);
+    }
+  }
   const writes = new Map<string, unknown>();
   const stale: string[] = [];
   const inputs = new Set<string>();
@@ -69,7 +80,8 @@ export function planCanonicalFixtures(options: {
     const enrichmentPath = join(fixturesDir, `${stem}.enrichment.json`);
     const enrichment = existsSync(enrichmentPath) ? loadFixtureFrom(enrichmentPath) : {};
     const canonicalName = `${stem}.canonical.json`;
-    if (!declined.has(stem)) {
+    const entry = declined.get(stem);
+    if (entry === undefined) {
       const { raw: _raw, ...canonical } = options.decode(input, enrichment);
       writes.set(canonicalName, canonical);
       continue;
@@ -79,12 +91,12 @@ export function planCanonicalFixtures(options: {
       options.decode(input, enrichment);
       decoded = true;
     } catch (error) {
-      if (!options.isDecline(error)) throw error;
+      if (!options.isDecline(error) || !(error instanceof Error) || !error.message.includes(entry.error)) throw error;
     }
     if (decoded) throw new Error(`${file} is listed in declined.json but decodes`);
     if (existsSync(join(fixturesDir, canonicalName))) stale.push(canonicalName);
   }
-  for (const stem of declined) {
+  for (const stem of declined.keys()) {
     if (!inputs.has(stem)) throw new Error(`declined.json names ${stem}, which has no input fixture`);
   }
   return { writes, stale };

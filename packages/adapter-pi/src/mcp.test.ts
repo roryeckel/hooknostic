@@ -75,6 +75,54 @@ describe("translatePiMcp", () => {
       escapes: expect.stringContaining("escapes the directory"),
     });
   });
+
+  // pi 1.3.0's resolveHeadersOrThrow, which builds the headers pi sends.
+  const piResolvesHeaders = (headers: Record<string, string>): Record<string, string> => {
+    const resolved: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) resolved[key] = value;
+    return resolved;
+  };
+  const remoteWith = (headers: string) =>
+    translatePiMcp(
+      { remote: { type: "streamable-http", url: "https://example.test/mcp", headers: JSON.parse(headers) } },
+      nativePiMcpCells,
+    );
+
+  it("registers a __proto__ header under a spelling pi's resolver keeps", () => {
+    // The loader hands the declaration over from JSON, so the key is own.
+    const result = remoteWith('{"A": "1", "__proto__": "secret", "B": "2"}');
+    expect(result.omitted).toEqual([]);
+    const headers = (result.registrations[0] as { headers: Record<string, string> }).headers;
+    expect(Object.entries(headers)).toEqual([
+      ["A", "1"],
+      ["__PROTO__", "secret"],
+      ["B", "2"],
+    ]);
+    expect(new Headers(piResolvesHeaders(headers)).get("__proto__")).toBe("secret");
+  });
+
+  it("picks a spelling the server does not already declare", () => {
+    const result = remoteWith('{"__PROTO__": "first", "__proto__": "second"}');
+    const headers = (result.registrations[0] as { headers: Record<string, string> }).headers;
+    const names = Object.keys(headers);
+    expect(names).toHaveLength(2);
+    expect(names[0]).toBe("__PROTO__");
+    expect(names[1]).not.toMatch(/^(__proto__|__PROTO__)$/);
+    expect(names[1]!.toLowerCase()).toBe("__proto__");
+    expect(new Headers(piResolvesHeaders(headers)).get("__proto__")).toBe("first, second");
+  });
+
+  it("omits a server that declares every spelling of __proto__", () => {
+    const spellings = Array.from(
+      { length: 32 },
+      (_, mask) => "__" + [..."proto"].map((c, bit) => (mask & (1 << bit) ? c.toUpperCase() : c)).join("") + "__",
+    );
+    const result = remoteWith(JSON.stringify(Object.fromEntries(spellings.map((name) => [name, "v"]))));
+    expect(result.registrations).toEqual([]);
+    expect(result.omitted).toEqual([
+      { component: "agent-plugin.mcp.streamable-http", name: "remote", reason: expect.stringContaining("__proto__") },
+    ]);
+  });
 });
 
 describe("pi project MCP integration", () => {

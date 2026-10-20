@@ -70,13 +70,14 @@ async function startProjectionMcpTransports(): Promise<{
   httpUrl: string;
   sseUrl: string;
   counts: { http: number; sseGet: number; ssePost: number };
-  received: { httpPaths: string[]; authorizations: (string | undefined)[] };
+  received: { httpPaths: string[]; authorizations: (string | undefined)[]; protoHeaders: string[] };
   close(): Promise<void>;
 }> {
   const counts = { http: 0, sseGet: 0, ssePost: 0 };
-  const received: { httpPaths: string[]; authorizations: (string | undefined)[] } = {
+  const received: { httpPaths: string[]; authorizations: (string | undefined)[]; protoHeaders: string[] } = {
     httpPaths: [],
     authorizations: [],
+    protoHeaders: [],
   };
   let baseUrl = "";
   let sse: ServerResponse | undefined;
@@ -122,6 +123,11 @@ async function startProjectionMcpTransports(): Promise<{
       counts.http += 1;
       received.httpPaths.push(request.url);
       received.authorizations.push(request.headers.authorization);
+      // From the raw list: a parsed headers object cannot be trusted to hold __proto__.
+      for (let index = 0; index < request.rawHeaders.length; index += 2) {
+        if (request.rawHeaders[index]!.toLowerCase() === "__proto__")
+          received.protoHeaders.push(request.rawHeaders[index + 1]!);
+      }
       if (rpc.id === undefined) {
         response.writeHead(202).end();
       } else {
@@ -2927,7 +2933,12 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
                 ],
                 env: { CAPTURE_PATH: capturePath },
               },
-              pkgHttp: { type: "streamable-http", url: transports.httpUrl, headers: { Authorization: header } },
+              pkgHttp: {
+                type: "streamable-http",
+                url: transports.httpUrl,
+                // pi's resolver drops a header spelled __proto__ (piHeaders).
+                headers: { Authorization: header, ["__proto__"]: "proto-header" },
+              },
             },
           }),
         );
@@ -3043,6 +3054,8 @@ export default definePlugin({ name: "pi-sync-playback", hooks: [
           expect(transports.received.authorizations).toContain(header);
           // Every request carried the declared text, none an expansion of it.
           expect(new Set(transports.received.authorizations)).toEqual(new Set([header]));
+          expect(transports.received.protoHeaders.length).toBeGreaterThan(0);
+          expect(new Set(transports.received.protoHeaders)).toEqual(new Set(["proto-header"]));
           const trace = await readFile(build.tracePath, "utf8");
           expect(trace).toContain('"toolNativeName":"mcp__pkgProbe__projection_echo"');
           expect(trace).toContain('"toolNativeName":"mcp__pkgHttp__http_probe"');

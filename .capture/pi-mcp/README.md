@@ -98,6 +98,10 @@ Raw results stay in ignored `captured/<platform>/`.
   Hooknostic-managed `PLUGIN_DATA`, which makes the stdio cell emulated.
 - A streamable-HTTP server keeps its URL, and each header value is escaped
   (`$` → `$$`, a leading `!` → `$!`), so pi sends exactly the declared text.
+  pi 1.3.0's `resolveHeadersOrThrow` copies headers into a plain object, so a
+  header named `__proto__` is lost; playback showed it never reached the
+  server. Header names are case-insensitive, so that one is registered under a
+  spelling differing only in case, which arrives.
   A direct project source resolves its own `${NAME}` and `${NAME:-default}`
   first, as on the other targets; a missing variable registers the server
   disabled, with a warning.

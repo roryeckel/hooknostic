@@ -20,13 +20,14 @@ function fixtures(files: Record<string, unknown>): string {
   return dir;
 }
 
-// Declines whatever input says so, and decodes the rest.
+// Declines whatever input says so, with its message, and decodes the rest.
 const decode = (input: unknown): { raw?: unknown } => {
-  const value = input as { decline?: boolean; event: string };
-  if (value.decline === true) throw new Decline(value.event);
+  const value = input as { decline?: string; event: string };
+  if (value.decline !== undefined) throw new Decline(value.decline);
   return { event: value.event, raw: input } as { raw?: unknown };
 };
 const isDecline = (error: unknown): boolean => error instanceof Decline;
+const DECLINED = { reason: "the adapter declines it", error: "on purpose" };
 
 describe("planCanonicalFixtures", () => {
   it("writes decode minus raw for every undeclined input", () => {
@@ -43,7 +44,7 @@ describe("planCanonicalFixtures", () => {
     // A decoder regression or a changed capture must not pass as a decline
     // and leave the old canonical in place.
     const fixturesDir = fixtures({
-      "a.input.json": { event: "x", decline: true },
+      "a.input.json": { event: "x", decline: "declined on purpose" },
       "a.canonical.json": { event: "x" },
     });
     expect(() => planCanonicalFixtures({ fixturesDir, decode, isDecline })).toThrow(Decline);
@@ -51,8 +52,8 @@ describe("planCanonicalFixtures", () => {
 
   it("marks a canonical beside a declined input stale", () => {
     const fixturesDir = fixtures({
-      "declined.json": { a: "declined on purpose" },
-      "a.input.json": { event: "x", decline: true },
+      "declined.json": { a: DECLINED },
+      "a.input.json": { event: "x", decline: "declined on purpose" },
       "a.canonical.json": { event: "x" },
       "b.input.json": { event: "y" },
     });
@@ -62,22 +63,40 @@ describe("planCanonicalFixtures", () => {
   });
 
   it("propagates a declined input's failure that is not a decline", () => {
-    const fixturesDir = fixtures({ "declined.json": { a: "declined on purpose" }, "a.input.json": { event: "x" } });
+    const fixturesDir = fixtures({ "declined.json": { a: DECLINED }, "a.input.json": { event: "x" } });
     const broken = (): never => {
       throw new TypeError("decoder crashed");
     };
     expect(() => planCanonicalFixtures({ fixturesDir, decode: broken, isDecline })).toThrow(TypeError);
   });
 
+  it("fails when a declined input fails with a different decline", () => {
+    // The same error class for another reason (a malformed envelope, say) is
+    // not the decline the manifest records.
+    const fixturesDir = fixtures({
+      "declined.json": { a: DECLINED },
+      "a.input.json": { event: "x", decline: "native event has no ctx.cwd" },
+    });
+    expect(() => planCanonicalFixtures({ fixturesDir, decode, isDecline })).toThrow(/no ctx.cwd/);
+  });
+
+  it("rejects a declined.json entry without the error it expects", () => {
+    const fixturesDir = fixtures({
+      "declined.json": { a: { reason: "the adapter declines it" } },
+      "a.input.json": { event: "x", decline: "declined on purpose" },
+    });
+    expect(() => planCanonicalFixtures({ fixturesDir, decode, isDecline })).toThrow(/needs a reason/);
+  });
+
   it("fails when a declined input decodes", () => {
-    const fixturesDir = fixtures({ "declined.json": { a: "declined on purpose" }, "a.input.json": { event: "x" } });
+    const fixturesDir = fixtures({ "declined.json": { a: DECLINED }, "a.input.json": { event: "x" } });
     expect(() => planCanonicalFixtures({ fixturesDir, decode, isDecline })).toThrow(
       /listed in declined.json but decodes/,
     );
   });
 
   it("fails when declined.json names no input", () => {
-    const fixturesDir = fixtures({ "declined.json": { gone: "declined on purpose" } });
+    const fixturesDir = fixtures({ "declined.json": { gone: DECLINED } });
     expect(() => planCanonicalFixtures({ fixturesDir, decode, isDecline })).toThrow(/names gone/);
   });
 });
