@@ -135,7 +135,7 @@ harness. Sequence per harness:
 
 1. **Idempotency**: if the open `harness-watch/<harness>` PR already names
    `<latest>`, skip.
-2. `scripts/record-playback-validation.mjs <harness> <latest>` — guards in
+2. `scripts/record-playback-validation.mjs <harness> <latest> --date <UTC-date>` — guards in
    order: exit 3 = outside every profile range → range-extension issue (filed
    with `GITHUB_TOKEN`; the PAT deliberately has no Issues scope) and stop;
    exit 4 = baseline not advanced (already recorded / pinned-older dispatch)
@@ -146,7 +146,9 @@ harness. Sequence per harness:
    `pnpm test` — each exit code captured explicitly.
 4. Commit `chore(harness-watch): record <harness> <latest> playback
    validation` to branch `harness-watch/<harness>` (force-pushed, one branch
-   per harness), open or update the PR (PAT), label `harness-watch`.
+   per harness), open or update the PR (PAT), label `harness-watch`. Save the
+   same independently chosen date, harness, and version in a
+   `watch-record-<harness>-<version>` artifact, retained for 90 days.
 5. Merging is a separate coordinator job after verification, record creation,
    drift, and verdict publishing finish. It is off by default; see below.
 
@@ -165,7 +167,9 @@ auto-merge requests that could later merge a contributor's additional code.
 
 The coordinator runs trusted code from the workflow run's commit, with
 `HARNESS_WATCH_PAT` (Contents RW + Pull requests RW). Candidate PR content is
-read as text and never executed. It processes the detected lanes serially:
+read as text and never executed. Artifact reads use the job's `GITHUB_TOKEN`
+with Actions read permission; the PAT needs no additional permissions. It
+processes the detected lanes serially:
 
 1. Require this run's matching successful playback outcome. For non-patch
    jumps or forced drift, require a matching `clean` drift artifact with exit
@@ -175,13 +179,18 @@ read as text and never executed. It processes the detected lanes serially:
    PR with the generated title and `master` base. Compare its complete diff:
    exactly the lane's profile and `docs/harness-support.md` may change. The
    profile must equal the recorder's output with only an advancing verified
-   version and date; the document must contain exactly the corresponding row
-   replacement. Code changes, capability/range changes, other documentation
+   version and its trusted recorded date; the document must contain exactly
+   the corresponding row replacement. The date comes from the recorder
+   artifact, never from the candidate. Only this repository's harness-watch
+   runs on `master`, triggered by schedule or dispatch, can supply it.
+   Code changes, capability/range changes, other documentation
    changes, and missing or ambiguous prior rows require manual review.
 3. Update a branch that is behind `master`, using its expected head SHA. Wait
    for the update's merge commit, then its fresh required checks. Check all
    required states; only the deliberately skipped Renovate readiness check is
-   allowed to skip. Keep strict branch protection enabled.
+   allowed to skip. An empty or partially registered check set keeps polling;
+   GitHub must also report the PR ready to merge. Keep strict branch
+   protection enabled.
 4. Re-read the PR, base, and content immediately before merging, and squash
    only the checked head SHA. A concurrent contributor push holds the PR;
    a moving base triggers another freshness check. GitHub remains the final
@@ -192,7 +201,9 @@ Each lane polls at most 40 times, 15 seconds apart, with at most three branch
 updates; the job has a 60-minute ceiling for
 the batch. Held lanes do not prevent other eligible lanes from being checked.
 The next scheduled run can retry a still-open matching PR even when record
-creation skipped it as already present. Turn the variable off to stop future
+creation skipped it as already present, using the original recorder artifact.
+Missing or expired recorder evidence requires manual review, including PRs
+created before these artifacts were introduced. Turn the variable off to stop future
 coordinator jobs; cancel an already-running job separately if necessary.
 
 Initial activation remains an explicit repository configuration change after

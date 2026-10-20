@@ -241,4 +241,19 @@ describe("harness-watch workflow structure", () => {
     expect(merge).toContain("WATCH_FORCE_DRIFT: ${{ inputs.force_llm }}");
     expect(merge).toContain("node scripts/merge-harness-watch.mjs watch-evidence");
   });
+
+  it("preserves the recorder's independent date for later coordinator retries", () => {
+    const record = jobSource("record");
+    expect(record).toContain('DATE="$(date -u +%F)"');
+    expect(record).toContain('echo "date=$DATE" >> "$GITHUB_OUTPUT"');
+    expect(record).toContain('--date "$DATE"');
+    const evidence = record.slice(record.indexOf("Save trusted recorder evidence"));
+    expect(evidence).toContain("steps.record.outputs.outcome == 'wrote'");
+    expect(evidence).toContain('--arg date "${{ steps.record.outputs.date }}"');
+    expect(evidence).toContain("name: watch-record-${{ matrix.harness }}-${{ matrix.latest }}");
+    expect(evidence).toContain("retention-days: 90");
+    const merge = jobSource("automerge");
+    expect(merge).toContain("actions: read");
+    expect(merge).toContain("WATCH_EVIDENCE_TOKEN: ${{ github.token }}");
+  });
 });

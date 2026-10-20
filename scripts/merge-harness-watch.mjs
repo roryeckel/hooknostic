@@ -1,7 +1,8 @@
 // Run only trusted base-branch code. PR contents are compared as text, never executed.
 import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 
@@ -12,6 +13,7 @@ import { isMainModule } from "./is-main-module.mjs";
 import { rewriteRollingRecord, ROLLING_WHAT } from "./record-playback-validation.mjs";
 
 const DOC = "docs/harness-support.md";
+const MERGE_READY = new Set(["clean", "unstable"]);
 
 function rollingRecord(source) {
   const region = source.split("// scheduled-playback:begin")[1]?.split("// scheduled-playback:end")[0];
@@ -22,7 +24,16 @@ function rollingRecord(source) {
 }
 
 /** Reproduce the recorder's exact change, including its single generated evidence row. */
-export function assertValidationOnly({ harness, version, files, beforeProfile, afterProfile, beforeDoc, afterDoc }) {
+export function assertValidationOnly({
+  harness,
+  version,
+  date,
+  files,
+  beforeProfile,
+  afterProfile,
+  beforeDoc,
+  afterDoc,
+}) {
   const profile = harnessLanes[harness]?.module.slice(3);
   if (!profile || files.length !== 2 || !files.includes(profile) || !files.includes(DOC)) {
     throw new Error("PR must change only its profile and generated support document");
@@ -32,6 +43,7 @@ export function assertValidationOnly({ harness, version, files, beforeProfile, a
   if (next.version !== version || !semver.gt(next.version, previous.version)) {
     throw new Error("PR must advance the verified version");
   }
+  if (next.date !== date) throw new Error("PR date must match trusted recorder evidence");
   if (rewriteRollingRecord(beforeProfile, next) !== afterProfile) {
     throw new Error("Profile contains changes beyond the generated rolling record");
   }
@@ -60,7 +72,7 @@ export function assertEvidence(entry, outcome, drift, forceDrift = false) {
   }
 }
 
-async function assertDiff(client, pr, entry) {
+async function assertDiff(client, pr, entry, date) {
   const files = await client.files(pr.number);
   const profile = harnessLanes[entry.harness].module.slice(3);
   // Before updating a stale branch, its diff is relative to the merge base,
@@ -75,6 +87,7 @@ async function assertDiff(client, pr, entry) {
   assertValidationOnly({
     harness: entry.harness,
     version: entry.latest,
+    date,
     files,
     beforeProfile,
     afterProfile,
@@ -100,6 +113,10 @@ export async function mergeCandidate({ entry, client, attempts = 40, intervalMs 
   const prs = await client.find(entry.harness);
   if (prs.length !== 1) throw new Error("Expected exactly one open harness-watch PR");
   const number = prs[0].number;
+  const record = await client.record(entry);
+  if (record?.harness !== entry.harness || record.latest !== entry.latest || !/^\d{4}-\d{2}-\d{2}$/.test(record.date)) {
+    throw new Error("Missing matching trusted recorder evidence");
+  }
   let expectedHead;
   let updatingFrom;
   let updates = 0;
@@ -121,7 +138,7 @@ export async function mergeCandidate({ entry, client, attempts = 40, intervalMs 
       updatingFrom = undefined;
     }
     if (expectedHead && pr.head.sha !== expectedHead) throw new Error("PR head changed during verification");
-    await assertDiff(client, pr, entry);
+    await assertDiff(client, pr, entry, record.date);
     expectedHead = pr.head.sha;
     if (pr.mergeable_state === "dirty") throw new Error("PR has merge conflicts");
     if (pr.mergeable_state === "behind") {
@@ -138,7 +155,12 @@ export async function mergeCandidate({ entry, client, attempts = 40, intervalMs 
           (check.state === "SKIPPED" && check.name !== "Renovate artifact readiness"),
       );
       if (failed) throw new Error("Required checks failed or were unexpectedly skipped");
-      if (checks.length > 0 && checks.every((check) => ["SUCCESS", "SKIPPED"].includes(check.state))) {
+      // --required filters reported checks; absent required jobs are not returned.
+      if (
+        MERGE_READY.has(pr.mergeable_state) &&
+        checks.length > 0 &&
+        checks.every((check) => ["SUCCESS", "SKIPPED"].includes(check.state))
+      ) {
         const final = await client.pr(number);
         assertIdentity(final, entry);
         if (final.head.sha !== expectedHead) throw new Error("PR head changed before merge");
@@ -146,10 +168,12 @@ export async function mergeCandidate({ entry, client, attempts = 40, intervalMs 
           // A different merge advanced master during the checks. Revisit branch update.
           continue;
         }
-        await assertDiff(client, final, entry);
-        const result = await client.merge(number, expectedHead);
-        if (!result.merged) throw new Error("GitHub declined the protected merge");
-        return `#${number} merged at ${result.sha}`;
+        if (MERGE_READY.has(final.mergeable_state)) {
+          await assertDiff(client, final, entry, record.date);
+          const result = await client.merge(number, expectedHead);
+          if (!result.merged) throw new Error("GitHub declined the protected merge");
+          return `#${number} merged at ${result.sha}`;
+        }
       }
     }
     if (attempt + 1 < attempts) await sleep(intervalMs);
@@ -157,12 +181,20 @@ export async function mergeCandidate({ entry, client, attempts = 40, intervalMs 
   throw new Error("Timed out waiting for current required checks");
 }
 
-export function githubClient(repo, run = execFileSync) {
-  const gh = (args, input, allowCheckExit = false) => {
+export function githubClient(repo, run = execFileSync, evidenceToken = process.env.WATCH_EVIDENCE_TOKEN) {
+  const options = (token) => ({ encoding: "utf8", ...(token ? { env: { ...process.env, GH_TOKEN: token } } : {}) });
+  const gh = (args, input, allowCheckExit = false, token) => {
     let output;
     try {
-      output = run("gh", args, { encoding: "utf8", input: input === undefined ? undefined : JSON.stringify(input) });
+      output = run("gh", args, { ...options(token), input: input === undefined ? undefined : JSON.stringify(input) });
     } catch (error) {
+      if (
+        allowCheckExit &&
+        error.status === 1 &&
+        !error.stdout &&
+        /^no (required )?checks reported on the '[^'\r\n]+' branch$/.test(String(error.stderr).trim())
+      )
+        return [];
       if (!allowCheckExit || ![1, 8].includes(error.status) || !error.stdout) throw error;
       output = error.stdout;
     }
@@ -171,6 +203,49 @@ export function githubClient(repo, run = execFileSync) {
   const api = (path, method = "GET", body) =>
     gh(["api", `repos/${repo}/${path}`, "--method", method, ...(body ? ["--input", "-"] : [])], body);
   return {
+    record: (entry) => {
+      const name = `watch-record-${entry.harness}-${entry.latest}`;
+      const pages = gh(
+        [
+          "api",
+          "--paginate",
+          "--slurp",
+          `repos/${repo}/actions/artifacts?name=${encodeURIComponent(name)}&per_page=100`,
+        ],
+        undefined,
+        false,
+        evidenceToken,
+      );
+      for (const artifact of pages.flatMap((page) => page.artifacts)) {
+        if (artifact.name !== name || artifact.expired || artifact.workflow_run?.head_branch !== "master") continue;
+        const workflow = gh(
+          ["api", `repos/${repo}/actions/runs/${artifact.workflow_run.id}`],
+          undefined,
+          false,
+          evidenceToken,
+        );
+        // A same-named artifact from PR CI or a dispatched contributor branch is untrusted.
+        if (
+          workflow.path !== ".github/workflows/harness-watch.yml" ||
+          !["schedule", "workflow_dispatch"].includes(workflow.event) ||
+          workflow.head_branch !== "master" ||
+          workflow.repository.full_name !== repo ||
+          workflow.head_repository.full_name !== repo
+        )
+          continue;
+        const directory = mkdtempSync(join(tmpdir(), "hooknostic-watch-record-"));
+        try {
+          run(
+            "gh",
+            ["run", "download", String(artifact.workflow_run.id), "--repo", repo, "--name", name, "--dir", directory],
+            options(evidenceToken),
+          );
+          return JSON.parse(readFileSync(join(directory, `watch-record-${entry.harness}.json`), "utf8"));
+        } finally {
+          rmSync(directory, { recursive: true, force: true });
+        }
+      }
+    },
     find: (harness) =>
       api(`pulls?state=open&base=master&head=${encodeURIComponent(`${repo.split("/")[0]}:harness-watch/${harness}`)}`),
     pr: (number) => api(`pulls/${number}`),

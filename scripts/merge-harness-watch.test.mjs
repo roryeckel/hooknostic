@@ -1,3 +1,6 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { assertEvidence, assertValidationOnly, githubClient, mergeCandidate } from "./merge-harness-watch.mjs";
@@ -22,6 +25,7 @@ const updatedDoc = `prefix\n${row(next)}\nsuffix\n`;
 const change = {
   harness: entry.harness,
   version: entry.latest,
+  date: next.date,
   files: [profilePath, docPath],
   beforeProfile: profile,
   afterProfile: updatedProfile,
@@ -35,6 +39,7 @@ function fixture() {
   let behind = false;
   const events = [];
   const client = {
+    record: vi.fn(async () => ({ ...outcome, date: next.date })),
     find: vi.fn(async () => [{ number: 10 }]),
     pr: vi.fn(async () => ({
       number: 10,
@@ -121,13 +126,42 @@ describe("harness-watch merge evidence", () => {
       { afterDoc: `${updatedDoc}extra claim\n` },
       { afterDoc: updatedDoc.replace(ROLLING_WHAT, "new capability claim") },
       { version: "9.0.2" },
+      { date: undefined },
       { beforeProfile: updatedProfile, beforeDoc: updatedDoc },
     ])
       expect(() => assertValidationOnly({ ...change, ...mutation })).toThrow();
   });
+
+  it("rejects matching profile and document edits with a falsified date", () => {
+    for (const date of ["2025-01-01", "2099-12-31"]) {
+      expect(() =>
+        assertValidationOnly({
+          ...change,
+          afterProfile: rewriteRollingRecord(profile, { ...next, date }),
+          afterDoc: `prefix\n${row({ ...next, date })}\nsuffix\n`,
+        }),
+      ).toThrow(/date/);
+    }
+  });
 });
 
 describe("serialized protected merges", () => {
+  it("holds missing or mismatched trusted recorder evidence", async () => {
+    for (const record of [undefined, { ...outcome, date: next.date, latest: "8.0.0" }, { ...outcome, date: "bad" }]) {
+      const f = fixture();
+      f.client.record.mockResolvedValue(record);
+      await expect(mergeCandidate({ entry, client: f.client })).rejects.toThrow(/recorder/);
+      expect(f.client.merge).not.toHaveBeenCalled();
+    }
+  });
+
+  it("retries a prior run's PR using its trusted recorded date", async () => {
+    const f = fixture();
+    await mergeCandidate({ entry, client: f.client });
+    expect(f.client.record).toHaveBeenCalledWith(entry);
+    expect(f.client.merge).toHaveBeenCalledWith(10, "head-a");
+  });
+
   it("compares a stale PR against its merge base before updating it", async () => {
     const f = fixture();
     f.moveBase();
@@ -242,11 +276,128 @@ describe("serialized protected merges", () => {
     }
   });
 
+  it("waits while only some required checks have been registered", async () => {
+    const f = fixture();
+    const readPR = f.client.pr.getMockImplementation();
+    let blocked = true;
+    f.client.pr.mockImplementation(async () => ({
+      ...(await readPR()),
+      mergeable_state: blocked ? "blocked" : "clean",
+    }));
+    f.client.checks.mockResolvedValueOnce([{ name: "Renovate artifact readiness", state: "SKIPPED" }]);
+    const sleep = vi.fn(async () => {
+      expect(f.client.merge).not.toHaveBeenCalled();
+      blocked = false;
+    });
+    await mergeCandidate({ entry, client: f.client, attempts: 3, sleep });
+    expect(sleep).toHaveBeenCalledOnce();
+    expect(f.client.merge).toHaveBeenCalledOnce();
+  });
+
+  it("rechecks protection readiness immediately before merging", async () => {
+    const f = fixture();
+    const readPR = f.client.pr.getMockImplementation();
+    f.client.pr.mockImplementationOnce(readPR).mockImplementationOnce(async () => ({
+      ...(await readPR()),
+      mergeable_state: "blocked",
+    }));
+    const sleep = vi.fn(async () => expect(f.client.merge).not.toHaveBeenCalled());
+    await mergeCandidate({ entry, client: f.client, attempts: 3, sleep });
+    expect(sleep).toHaveBeenCalledOnce();
+    expect(f.client.merge).toHaveBeenCalledOnce();
+  });
+
   it("preserves GitHub's refusal instead of bypassing protection", async () => {
     const f = fixture();
     f.client.merge.mockResolvedValue({ merged: false });
     await expect(mergeCandidate({ entry, client: f.client })).rejects.toThrow(/declined/);
     expect(f.client.merge).toHaveBeenCalledWith(10, "head-a");
+  });
+});
+
+describe("GitHub check startup responses", () => {
+  it.each(["no checks reported", "no required checks reported"])("polls after %s", async (message) => {
+    const error = Object.assign(new Error(message), {
+      status: 1,
+      stdout: "",
+      stderr: `${message} on the 'harness-watch/claude' branch\n`,
+    });
+    const run = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw error;
+      })
+      .mockReturnValueOnce(JSON.stringify([{ name: "tests", state: "SUCCESS" }]));
+    const f = fixture();
+    f.client.checks = githubClient("owner/repo", run).checks;
+    const sleep = vi.fn(async () => {});
+    await mergeCandidate({ entry, client: f.client, attempts: 3, sleep });
+    expect(sleep).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(f.client.merge).toHaveBeenCalledOnce();
+  });
+
+  it.each(["GraphQL: Resource not accessible", "HTTP 503: Service Unavailable", "not logged in"])(
+    "preserves actual CLI errors: %s",
+    (message) => {
+      const error = Object.assign(new Error(message), { status: 1, stdout: "", stderr: message });
+      const client = githubClient("owner/repo", () => {
+        throw error;
+      });
+      expect(() => client.checks(10)).toThrow(error);
+    },
+  );
+});
+
+describe("trusted recorder artifacts", () => {
+  const name = `watch-record-${entry.harness}-${entry.latest}`;
+  const artifact = { name, expired: false, workflow_run: { id: 20, head_branch: "master" } };
+  const workflow = {
+    path: ".github/workflows/harness-watch.yml",
+    event: "schedule",
+    head_branch: "master",
+    repository: { full_name: "owner/repo" },
+    head_repository: { full_name: "owner/repo" },
+  };
+
+  it("retrieves the original date with the read-only evidence token", async () => {
+    const record = { harness: entry.harness, latest: entry.latest, date: next.date };
+    let directory;
+    const run = vi
+      .fn(() => "{}")
+      .mockReturnValueOnce(JSON.stringify([{ artifacts: [artifact] }]))
+      .mockReturnValueOnce(JSON.stringify(workflow))
+      .mockImplementationOnce((_command, args) => {
+        directory = args[args.indexOf("--dir") + 1];
+        writeFileSync(join(directory, `watch-record-${entry.harness}.json`), JSON.stringify(record));
+        return "";
+      });
+    const client = githubClient("owner/repo", run, "read-only-evidence-token");
+    expect(await client.record(entry)).toEqual(record);
+    expect(run.mock.calls[0][1]).toContain("--paginate");
+    for (const [, , options] of run.mock.calls) expect(options.env.GH_TOKEN).toBe("read-only-evidence-token");
+    await client.update(10, "head-a");
+    expect(run.mock.calls[3][2].env).toBeUndefined();
+  });
+
+  it.each([
+    { event: "pull_request" },
+    { path: ".github/workflows/ci.yml" },
+    { head_branch: "contributor" },
+    { head_repository: { full_name: "fork/repo" } },
+  ])("ignores artifacts from an untrusted workflow run: %j", async (mutation) => {
+    const run = vi
+      .fn()
+      .mockReturnValueOnce(JSON.stringify([{ artifacts: [artifact] }]))
+      .mockReturnValueOnce(JSON.stringify({ ...workflow, ...mutation }));
+    expect(await githubClient("owner/repo", run).record(entry)).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores expired artifacts", async () => {
+    const run = vi.fn(() => JSON.stringify([{ artifacts: [{ ...artifact, expired: true }] }]));
+    expect(await githubClient("owner/repo", run).record(entry)).toBeUndefined();
+    expect(run).toHaveBeenCalledOnce();
   });
 });
 

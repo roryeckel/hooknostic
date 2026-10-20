@@ -330,11 +330,13 @@ jobs:
         if: steps.gate.outputs.skip == 'false' && steps.pr.outputs.skip == 'false'
         shell: bash
         run: |
+          DATE="$(date -u +%F)"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
           set +e
           # First invocation writes the record (or is the idempotent no-op
           # rerun); its machine-readable outcome line drives the leg routing.
           OUT="$(node --experimental-strip-types scripts/record-playback-validation.mjs \
-            "${{ matrix.harness }}" "${{ matrix.latest }}")"
+            "${{ matrix.harness }}" "${{ matrix.latest }}" --date "$DATE")"
           CODE=$?
           set -e
           echo "$OUT"
@@ -443,6 +445,22 @@ jobs:
             gh pr create --base master --head "$BRANCH" --label harness-watch \
               --title "harness-watch: ${{ matrix.harness }} ${{ matrix.latest }} playback validation" --body "$BODY"
           fi
+
+      - name: Save trusted recorder evidence
+        if: steps.record.outputs.outcome == 'wrote'
+        shell: bash
+        run: |
+          jq -n --arg harness "${{ matrix.harness }}" --arg latest "${{ matrix.latest }}" \
+            --arg date "${{ steps.record.outputs.date }}" \
+            '{harness: $harness, latest: $latest, date: $date}' > watch-record-${{ matrix.harness }}.json
+
+      - name: Upload trusted recorder evidence
+        if: steps.record.outputs.outcome == 'wrote'
+        uses: actions/upload-artifact@v7
+        with:
+          name: watch-record-${{ matrix.harness }}-${{ matrix.latest }}
+          path: watch-record-${{ matrix.harness }}.json
+          retention-days: 90
 
   report-failure:
     needs: [detect, verify]
@@ -899,8 +917,11 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      actions: read
     env:
       GH_TOKEN: ${{ secrets.HARNESS_WATCH_PAT }}
+      # Artifact reads use the job token; the PAT keeps its existing scopes.
+      WATCH_EVIDENCE_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       WATCH_MATRIX: ${{ needs.detect.outputs.matrix }}
       WATCH_FORCE_DRIFT: ${{ inputs.force_llm }}
