@@ -84,7 +84,7 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "5e4bd9cfb72b7f9e1735ccbc3ba60796438a5ba3da044b96a4d40e3e39370772",
       "mode": 420
     },
     {
@@ -94,12 +94,12 @@
     },
     {
       "path": ".hooknostic/artifacts/claude/runtime/hooknostic.mjs",
-      "hash": "47c81496971a7203804e1dced6efd0049bb7e9f786bb51f17d66816e815ccddd",
+      "hash": "9846da5b958f416714ce05199986f932df7085ed380141049373173c099c34fb",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/codex/.codex/hooknostic/hooknostic.mjs",
-      "hash": "81a7d30aba231c65379407bb3b95c1eb728c1c5f7c430e1e3260ff7f0fab1d91",
+      "hash": "cc43082a3dcc92fa6de0e4ebc3a2c3d28e025dbf81155cab91a214c3fb29b3b6",
       "mode": 420
     },
     {
@@ -114,7 +114,7 @@
     },
     {
       "path": ".hooknostic/artifacts/codex/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "5e4bd9cfb72b7f9e1735ccbc3ba60796438a5ba3da044b96a4d40e3e39370772",
       "mode": 420
     },
     {
@@ -129,12 +129,12 @@
     },
     {
       "path": ".hooknostic/artifacts/opencode/.opencode/plugins/hooknostic.js",
-      "hash": "b4e70490e7007974f25b79f2ce7f3f09381de54dfae428ae249b20fe8e5568af",
+      "hash": "d06e1cb82cf2297e679dde7116f20ed6b904373e4bef911aac7d8278361f7828",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/opencode/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "5e4bd9cfb72b7f9e1735ccbc3ba60796438a5ba3da044b96a4d40e3e39370772",
       "mode": 420
     },
     {
@@ -149,12 +149,12 @@
     },
     {
       "path": ".hooknostic/artifacts/pi/.pi/extensions/hooknostic.js",
-      "hash": "eda4685528e703e9d439009169ed8bc198f2f09734c7e9ce64190929a53b9a5c",
+      "hash": "b114a467eb99745175a053ad6c8717153b2eef51119a73b769d9517be72bd3c6",
       "mode": 420
     },
     {
       "path": ".hooknostic/artifacts/pi/mcp-launcher.mjs",
-      "hash": "be306ae5ce651123a3169cf6d25e09a2d710688cbd0a55129bd2617046d407a0",
+      "hash": "5e4bd9cfb72b7f9e1735ccbc3ba60796438a5ba3da044b96a4d40e3e39370772",
       "mode": 420
     },
     {
