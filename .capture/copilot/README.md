@@ -169,5 +169,7 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   interactive form of `permissionDecision: "ask"`.
 - macOS and any host without a native platform package.
 - An installed-marketplace (copied) plugin, rather than the live local load.
+- Remote MCP URL placeholder expansion and `${NAME:-fallback}` syntax: the
+  transport probes used a fixed URL and simple header-value references.
 - `errorOccurred` and `userPromptTransformed` are captured and declined: no
   portable event names a generic error or a pre-model prompt transformation.

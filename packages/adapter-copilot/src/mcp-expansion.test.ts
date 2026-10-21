@@ -23,14 +23,14 @@ describe("Copilot MCP environment references", () => {
     ).toEqual(["GH_TOKEN", "HOME"]);
   });
 
-  it("reports ambient references in remote url and header values only", () => {
+  it("reports simple ambient references in remote header values only", () => {
     expect(
       copilotEnvironmentReferences({
         type: "streamable-http",
         url: "https://example.invalid/${USERPROFILE}/mcp",
-        headers: { "X-Data": "${PLUGIN_DATA}", "X-Token": "${GH_TOKEN}" },
+        headers: { "X-Data": "${PLUGIN_DATA}", "X-Token": "${GH_TOKEN}", "X-Fallback": "${HOME:-fallback}" },
       }),
-    ).toEqual(["GH_TOKEN", "USERPROFILE"]);
+    ).toEqual(["GH_TOKEN"]);
     expect(copilotEnvironmentReferences({ type: "sse", url: "https://example.invalid/mcp" })).toEqual([]);
   });
 });

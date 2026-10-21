@@ -44,7 +44,7 @@ const STDIO_ENVIRONMENT_DEVIATION = {
 const REMOTE_ENVIRONMENT_DEVIATION = {
   id: ENVIRONMENT_EXPANSION_DEVIATION,
   summary:
-    "Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal.",
+    "Copilot substitutes set ambient environment variables into a remote server's header values, where Agent Plugins 1.0 requires the text to reach the client literally. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. URL and header-name expansion were not captured.",
   evidence: CAPTURE,
 } as const;
 
@@ -306,7 +306,7 @@ export function copilotProjectionDeviations(
     if (!declared(`agent-plugin.mcp.${server.type}`)) continue;
     const references = copilotEnvironmentReferences(server);
     if (references.length === 0) continue;
-    const where = server.type === "stdio" ? "command, args, env or cwd" : "url or headers";
+    const where = server.type === "stdio" ? "command, args, env or cwd" : "header values";
     deviations.push({
       id: ENVIRONMENT_EXPANSION_DEVIATION,
       component: `agent-plugin.mcp.${server.type}`,
