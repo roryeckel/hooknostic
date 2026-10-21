@@ -217,7 +217,11 @@ function playbackPluginSource(
               : typeof event.output === "object" && event.output !== null &&
                   typeof (event.output as { stdout?: unknown }).stdout === "string"
                 ? (event.output as { stdout: string }).stdout
-                : "";
+                : // Copilot's postToolUse toolResult (captured): {resultType, textResultForLlm}.
+                  typeof event.output === "object" && event.output !== null &&
+                    typeof (event.output as { textResultForLlm?: unknown }).textResultForLlm === "string"
+                  ? (event.output as { textResultForLlm: string }).textResultForLlm
+                  : "";
           if (outputText.includes("hooknostic-block-continuation")) {
             return blockContinuation("continuation blocked by harness playback");
           }

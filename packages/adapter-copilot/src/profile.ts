@@ -46,7 +46,7 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     date: "2026-10-20",
     method: "live-probe",
     artifact: CAPTURE,
-    what: "Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit.",
+    what: "Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted exit 2 and additionalContext are dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit.",
   },
   {
     version: "1.0.101",
@@ -75,6 +75,20 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     method: "live-probe",
     artifact: CAPTURE,
     what: "Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written.",
+  },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: "Unclaimed channels probed by effect: userPromptSubmitted {decision: block} kept the prompt from the model and modifiedPrompt replaced its model-facing text; postToolUse {decision: block} replaced the result and stopped a sequential run, dropping additionalContext beside it; continue:false, systemMessage on both stop events, permissionRequest additionalContext, and preCompact block (JSON or exit 2) and additionalContext were all ignored.",
+  },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: "Hook loader and MCP expansion: a malformed entry rejects a plugin hooks.json whole but only itself in .github/hooks; ${NAME}, ${NAME:-fallback} and bare $NAME expand in stdio command, args, env and cwd and in remote url and header values, header names never; a plugin stdio cwd outside the specification forms runs in the plugin root.",
   },
   COPILOT_SKILL_POLICY_VALIDATION,
 ];
@@ -135,12 +149,25 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
 
       "session.end.observe": { level: "exact" },
 
-      "context.compact.before.observe": { level: "exact" },
+      "context.compact.before.observe": {
+        level: "exact",
+        rationale:
+          'Notification only: an interactive /compact still completed after preCompact returned {decision: "block"} or exited 2, and additionalContext there did not reach the model (all captured). No postCompact payload or post-compaction sessionStart fired, so context.compact.after has no channel.',
+      },
 
       "prompt.before.observe": {
         level: "exact",
+        rationale: "Fires once per submitted prompt, before userPromptTransformed and the first model request.",
+      },
+      "prompt.before.block": {
+        level: "exact",
         rationale:
-          "Fires once per submitted prompt. No blocking or context channel is claimed: command-hook output is dropped for this event (a captured exit 2 did not stop the turn, and additionalContext was not delivered).",
+          '{decision: "block", reason} on exit 0 kept the prompt from the model: no user message or model turn followed, and the reason was shown. Exit 2 alone did not stop the turn, so the adapter never relies on it.',
+      },
+      "prompt.before.context.add": {
+        level: "emulated",
+        rationale:
+          "additionalContext on userPromptSubmitted is dropped, but modifiedPrompt reaches the model while the session timeline keeps the typed prompt (captured, though the hook reference says config-file output is dropped). The context is appended to the prompt text, so the model reads it as part of the user message rather than as separate context.",
       },
 
       "tool.before.observe": { level: "exact" },
@@ -163,6 +190,11 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
         rationale:
           "Lowered to the native modifiedResult success result. The native field is text (textResultForLlm), so a non-string portable replacement is JSON-encoded.",
       },
+      "tool.after.blockContinuation": {
+        level: "approximate",
+        rationale:
+          '{decision: "block", reason} replaces the result the model sees with "Tool result blocked: <reason>" (captured); the tool already ran and the turn continues, so stopping depends on the model honouring the reason. In the captured sequential run it made no further call. An additionalContext beside the block is dropped, so context from the same dispatch is joined to the reason.',
+      },
       "tool.after.context.add": { level: "exact" },
 
       "tool.error.observe": { level: "exact" },
@@ -178,6 +210,8 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
           "Fires before the permission service even in a -p session with --allow-all-tools; read and hook permission kinds short-circuit before it.",
       },
       "permission.request.block": { level: "exact" },
+      // additionalContext beside behavior "allow" did not reach the model
+      // (captured) -> permission.request.context.add unsupported.
 
       "agent.start.observe": { level: "exact" },
 
@@ -194,6 +228,8 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
         rationale:
           'decision "block" with a reason forces another turn; the harness stopped after eight consecutive blocks and set stop_hook_active.',
       },
+      // systemMessage on agentStop and subagentStop, and decision "allow" with a
+      // reason, showed the user nothing (captured) -> *.notify unsupported.
     },
   },
 ];

@@ -1,6 +1,10 @@
 import type { InvocationContext, NativeHookResult } from "@hooknostic/core";
 import type { HookResult } from "@hooknostic/sdk";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function textResult(output: unknown): string {
   // The native replacement is one text field. A string is that text; anything
   // else is JSON-encoded whole, because extracting a property would silently
@@ -22,7 +26,7 @@ function textResult(output: unknown): string {
  */
 export function applyCopilot(
   result: HookResult,
-  _nativeEvent: unknown,
+  nativeEvent: unknown,
   _invocation: InvocationContext,
 ): Promise<NativeHookResult> {
   const terminal = result.terminatedBy !== undefined ? result.effects[result.effects.length - 1]?.effect : undefined;
@@ -72,7 +76,33 @@ export function applyCopilot(
       // captured context channel on it.
       break;
     }
+    case "prompt.before": {
+      // A decision block on exit 0 keeps the prompt from the model (captured:
+      // no user message or model turn followed, and the reason was shown).
+      if (terminal?.kind === "block") {
+        return Promise.resolve({ exitCode: 0, body: { decision: "block", reason: terminal.reason } });
+      }
+      // additionalContext is dropped here, but modifiedPrompt reaches the model
+      // while the timeline keeps the typed prompt (captured on 1.0.101), so the
+      // context rides on the prompt text. Without the native prompt there is
+      // nothing safe to replace, and the answer stays empty.
+      const prompt = isRecord(nativeEvent) ? nativeEvent["prompt"] : undefined;
+      if (context.length > 0 && typeof prompt === "string") {
+        body["modifiedPrompt"] = [prompt, ...context].join("\n\n");
+      }
+      break;
+    }
     case "tool.after": {
+      if (terminal?.kind === "blockContinuation") {
+        // A decision block replaces the result the model sees with "Tool result
+        // blocked: <reason>" and drops an additionalContext beside it (both
+        // captured), so context recorded earlier in the dispatch joins the
+        // reason instead of vanishing.
+        return Promise.resolve({
+          exitCode: 0,
+          body: { decision: "block", reason: [terminal.reason, ...context].join("\n\n") },
+        });
+      }
       if (replacedOutput !== undefined) {
         body["modifiedResult"] = { resultType: "success", textResultForLlm: textResult(replacedOutput.output) };
       }
@@ -97,9 +127,10 @@ export function applyCopilot(
       break;
     }
     default:
-      // Events with no output channel (session.end, prompt.before,
-      // context.compact.before): their capabilities do not include effects
-      // that would need one. Fail open with an empty answer.
+      // Events with no output channel (session.end, context.compact.before:
+      // a captured block and additionalContext were both ignored): their
+      // capabilities do not include effects that would need one. Fail open
+      // with an empty answer.
       break;
   }
 

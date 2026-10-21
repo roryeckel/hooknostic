@@ -18,6 +18,7 @@ import {
 } from "@hooknostic/agent-plugin";
 
 import { copilotHarness } from "./harness.js";
+import { copilotHookEntryProblem } from "./hook-entries.js";
 import { copilotEnvironmentReferences, ENVIRONMENT_EXPANSION_DEVIATION } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
 import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.js";
@@ -37,14 +38,14 @@ const SKILL_REFERENCE_DEGRADATION = {
 const STDIO_ENVIRONMENT_DEVIATION = {
   id: ENVIRONMENT_EXPANSION_DEVIATION,
   summary:
-    "Copilot expands ${PLUGIN_ROOT} and ${PLUGIN_DATA} in a stdio command, which Agent Plugins 1.0 explicitly excludes, and expands set ambient environment variables in command, args, env values and cwd, where the specification requires other placeholder-like text to remain literal.",
+    "Copilot expands ${PLUGIN_ROOT} and ${PLUGIN_DATA} in a stdio command, which Agent Plugins 1.0 explicitly excludes, and expands ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables or the aliases in command, args, env values and cwd, where the specification requires other placeholder-like text to remain literal.",
   evidence: CAPTURE,
 } as const;
 
 const REMOTE_ENVIRONMENT_DEVIATION = {
   id: ENVIRONMENT_EXPANSION_DEVIATION,
   summary:
-    "Copilot substitutes set ambient environment variables, including ${NAME:-fallback}, into a remote server's url query or header values, where Agent Plugins 1.0 requires the text to reach the client literally. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. Header-name expansion was not captured.",
+    "Copilot substitutes ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables into a remote server's url or header values, where Agent Plugins 1.0 requires the text to reach the client literally; ${PLUGIN_ROOT:-fallback} took its fallback. The exact and bare package aliases stayed literal, and header names were never expanded.",
   evidence: CAPTURE,
 } as const;
 
@@ -122,6 +123,10 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
         const hooks: Record<string, unknown[]> = {};
         for (const [event, entries] of Object.entries(parsed["hooks"])) {
           if (!Array.isArray(entries)) throw new Error(`hooks.${event} must be an array`);
+          for (const [index, entry] of entries.entries()) {
+            const problem = copilotHookEntryProblem(event, entry);
+            if (problem !== undefined) throw new Error(`hooks.${event}[${index}]: ${problem}`);
+          }
           hooks[event] = entries;
         }
         authoredHooks = { version: 1, hooks };
@@ -312,7 +317,7 @@ export function copilotProjectionDeviations(
       component: `agent-plugin.mcp.${server.type}`,
       name,
       path: `mcp.json#${name}`,
-      reason: `server ${JSON.stringify(name)} declares ${references.map((reference) => `\${${reference}}`).join(", ")} in its ${where}; Copilot expands ${server.type === "stdio" ? "the aliases in command, which Agent Plugins 1.0 excludes, and ambient variables in every one of those fields" : "ambient variables there, which Agent Plugins 1.0 forbids"}.`,
+      reason: `server ${JSON.stringify(name)} declares ${references.join(", ")} in its ${where}; Copilot expands ${server.type === "stdio" ? "every one of those references, where Agent Plugins 1.0 expands only the exact ${PLUGIN_ROOT} and ${PLUGIN_DATA} in args, env and cwd" : "those references there, which Agent Plugins 1.0 forbids"}.`,
     });
   }
   return deviations.length > 0 ? deviations : undefined;

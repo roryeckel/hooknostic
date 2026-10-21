@@ -430,6 +430,103 @@ describe("Copilot Agent Plugin projector", () => {
     expect(diagnostics).toEqual([]);
   });
 
+  // Entries 1.0.101's loader rejected (hooks-malformed probe). In a plugin one
+  // of these rejects the whole hooks.json, so the merged dispatcher never runs.
+  const REJECTED_ENTRIES: readonly [string, string, unknown][] = [
+    ["a primitive", "sessionStart", 42],
+    ["null", "sessionStart", null],
+    ["an empty object", "sessionStart", {}],
+    ["a command with no runner", "sessionStart", { type: "command" }],
+    ["args without exec", "sessionStart", { type: "command", args: ["x"] }],
+    ["exec beside a shell field", "sessionStart", { type: "command", exec: "node", bash: "exit 0" }],
+    ["an unknown type", "sessionStart", { type: "bogus", exec: "node" }],
+    ["a string timeoutSec", "sessionStart", { type: "command", exec: "node", timeoutSec: "soon" }],
+    ["a string timeout", "sessionStart", { type: "command", bash: "exit 0", timeout: "soon" }],
+    ["string args", "sessionStart", { type: "command", exec: "node", args: "x" }],
+    ["a numeric arg", "sessionStart", { type: "command", exec: "node", args: ["x", 7] }],
+    ["a string env", "sessionStart", { type: "command", bash: "exit 0", env: "A=1" }],
+    ["a numeric env value", "sessionStart", { type: "command", exec: "node", env: { A: 1 } }],
+    ["a numeric cwd", "sessionStart", { type: "command", bash: "exit 0", cwd: 5 }],
+    ["a numeric exec", "sessionStart", { type: "command", exec: 42 }],
+    ["a numeric bash", "sessionStart", { type: "command", bash: 42 }],
+    ["an http hook without a url", "sessionStart", { type: "http" }],
+    ["a plain http hook on preToolUse", "preToolUse", { type: "http", url: "http://example.invalid/hook" }],
+    ["a prompt hook without a prompt", "sessionStart", { type: "prompt" }],
+    ["a prompt hook off sessionStart", "agentStop", { type: "prompt", prompt: "x" }],
+  ];
+
+  // Entries the plugin loader accepted beside a sibling that then ran
+  // (plugin-hooks-valid-shapes probe).
+  const ACCEPTED_ENTRIES: readonly [string, string, unknown][] = [
+    ["exec with args", "sessionStart", { type: "command", exec: "node", args: ["x"] }],
+    ["exec without a type", "sessionStart", { exec: "node", args: ["x"] }],
+    ["exec without args", "sessionStart", { type: "command", exec: "node" }],
+    [
+      "cwd, env and timeoutSec",
+      "sessionStart",
+      { type: "command", exec: "node", cwd: ".", env: { A: "1" }, timeoutSec: 10 },
+    ],
+    ["the timeout alias", "sessionStart", { type: "command", exec: "node", timeout: 10 }],
+    ["a matcher", "sessionStart", { type: "command", exec: "node", matcher: "startup|new" }],
+    ["an unknown field", "sessionStart", { type: "command", exec: "node", probeUnknown: true }],
+    ["bash and powershell", "sessionStart", { type: "command", bash: "exit 0", powershell: "exit 0" }],
+    ["bash alone", "sessionStart", { type: "command", bash: "exit 0" }],
+    ["powershell alone", "sessionStart", { type: "command", powershell: "exit 0" }],
+    ["command", "sessionStart", { type: "command", command: "exit 0" }],
+    ["a sessionStart prompt", "sessionStart", { type: "prompt", prompt: "x" }],
+    ["an http hook", "sessionStart", { type: "http", url: "http://example.invalid/hook" }],
+    ["an https hook on preToolUse", "preToolUse", { type: "http", url: "https://example.invalid/hook" }],
+  ];
+
+  async function projectAuthoredEntry(event: string, entry: unknown) {
+    const root = await packageRoot();
+    await writeFile(
+      join(root, "com.github.copilot/hooks/hooks.json"),
+      JSON.stringify({ version: 1, hooks: { [event]: [entry] } }),
+    );
+    const loaded = await loadAgentPlugin({ root });
+    return copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
+      hookArtifacts: hookArtifacts(),
+      support: packageSupport,
+      onUnsupported: "warn",
+    });
+  }
+
+  it.each(REJECTED_ENTRIES)("rejects an authored hook entry that is %s", async (_, event, entry) => {
+    const plan = await projectAuthoredEntry(event, entry);
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        path: "com.github.copilot/hooks/hooks.json",
+        message: expect.stringContaining(`hooks.${event}[0]`),
+      }),
+    );
+  });
+
+  it.each(ACCEPTED_ENTRIES)("merges an authored hook entry with %s", async (_, event, entry) => {
+    const plan = await projectAuthoredEntry(event, entry);
+    expect(plan.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    const hooks = plan.files.find((file) => file.path === "com.github.copilot/hooks/hooks.json");
+    expect(JSON.parse(hooks!.contents as string).hooks[event]).toContainEqual(entry);
+  });
+
+  it("fails validation for a hooks document with a malformed entry", async () => {
+    const diagnostics = await copilotAdapter().validateArtifacts!(
+      [
+        { path: "plugin.json", contents: JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "probe" }) },
+        {
+          path: "com.github.copilot/hooks/hooks.json",
+          contents: JSON.stringify({ version: 1, hooks: { sessionStart: [{ type: "command" }] } }),
+        },
+      ],
+      { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package", output: "." },
+    );
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ code: "HN301", message: expect.stringContaining("hooks.sessionStart[0]") }),
+    );
+  });
+
   it("carries every compiled hook artifact path into the plan", async () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });

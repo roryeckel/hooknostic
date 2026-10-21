@@ -910,6 +910,9 @@ async function runCopilotPlayback(
         "--trust-folder",
         "--allow-all-tools",
         "--disable-client-telemetry",
+        // A run must not download a newer build into the shared update cache,
+        // which would move every later `copilot` off the pinned version.
+        "--no-auto-update",
         "--plugin-dir",
         build.artifactDir,
         ...(options.mcpServerPath !== undefined

@@ -127,6 +127,66 @@ describe("applyCopilot", () => {
     });
   });
 
+  it("encodes prompt.before block as decision block on exit 0, dropping earlier context", async () => {
+    const native = await applyCopilot(
+      result({
+        event: "prompt.before",
+        effects: [
+          { hookId: "context", effect: { kind: "addContext", context: "token" } },
+          { hookId: "guard", effect: { kind: "block", reason: "secrets in prompt" } },
+        ],
+        terminatedBy: "guard",
+      }),
+      { prompt: "deploy now" },
+      INVOCATION,
+    );
+    expect(native).toEqual({ exitCode: 0, body: { decision: "block", reason: "secrets in prompt" } });
+  });
+
+  it("appends prompt.before context to the native prompt as modifiedPrompt", async () => {
+    const native = await applyCopilot(
+      result({
+        event: "prompt.before",
+        effects: [
+          { hookId: "context", effect: { kind: "addContext", context: "first" } },
+          { hookId: "context2", effect: { kind: "addContext", context: "second" } },
+        ],
+      }),
+      { prompt: "deploy now" },
+      INVOCATION,
+    );
+    expect(native).toEqual({ exitCode: 0, body: { modifiedPrompt: "deploy now\n\nfirst\n\nsecond" } });
+  });
+
+  it("leaves the prompt alone when the payload carries no prompt text", async () => {
+    const native = await applyCopilot(
+      result({
+        event: "prompt.before",
+        effects: [{ hookId: "context", effect: { kind: "addContext", context: "token" } }],
+      }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual({ exitCode: 0 });
+  });
+
+  it("encodes tool.after blockContinuation as decision block, joining context to the reason", async () => {
+    const native = await applyCopilot(
+      result({
+        event: "tool.after",
+        effects: [
+          { hookId: "replace", effect: { kind: "replaceOutput", output: "redacted" } },
+          { hookId: "context", effect: { kind: "addContext", context: "guidance" } },
+          { hookId: "stop", effect: { kind: "blockContinuation", reason: "stop here" } },
+        ],
+        terminatedBy: "stop",
+      }),
+      {},
+      INVOCATION,
+    );
+    expect(native).toEqual({ exitCode: 0, body: { decision: "block", reason: "stop here\n\nguidance" } });
+  });
+
   it("encodes tool.error and session.start context as additionalContext", async () => {
     for (const event of ["tool.error", "session.start"] as const) {
       const native = await applyCopilot(

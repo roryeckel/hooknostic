@@ -20,6 +20,7 @@ import { applyCopilot } from "./apply.js";
 import { decodeCopilot } from "./decode.js";
 import { copilotHookRuntimePath, copilotHooksPath, generateCopilotArtifacts } from "./generate.js";
 import { copilotHarness } from "./harness.js";
+import { copilotHookEntryProblem } from "./hook-entries.js";
 import { copilotCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 import { copilotAgentPluginProjector } from "./project-agent-plugin.js";
@@ -179,6 +180,10 @@ export function copilotAdapter(): HarnessAdapter {
           }
           for (const [eventName, entries] of Object.entries(parsed["hooks"])) {
             if (!Array.isArray(entries)) throw new Error(`hooks.${eventName} must be an array`);
+            for (const [index, entry] of entries.entries()) {
+              const problem = copilotHookEntryProblem(eventName, entry);
+              if (problem !== undefined) throw new Error(`hooks.${eventName}[${index}]: ${problem}`);
+            }
           }
         } catch (error) {
           diagnostics.push({
