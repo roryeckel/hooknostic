@@ -155,6 +155,10 @@ the separator when the name is not a native tool, and never sets `tool.mcp`
   are never expanded. On the plugin route the bare and fallback alias
   spellings expand in stdio fields, and a stdio `cwd` outside the
   specification's three forms runs in the plugin root.
+- With `GITHUB_WORKSPACE` set (a CI runner), a project stdio server without
+  `cwd` is spawned in that directory, not the session's, and relative `args`
+  resolve there; an explicit relative `cwd` anchors it to the project
+  (2026-10-21).
 - A malformed entry in a plugin's `com.github.copilot/hooks/hooks.json` rejects
   the whole file; in `.github/hooks` it drops only that entry (2026-10-21).
 - Plugin roots also receive `PLUGIN_ROOT` and `PLUGIN_DATA` in the subprocess

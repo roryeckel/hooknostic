@@ -90,6 +90,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     artifact: CAPTURE,
     what: "Hook loader and MCP expansion: a malformed entry rejects a plugin hooks.json whole but only itself in .github/hooks; ${NAME}, ${NAME:-fallback} and bare $NAME expand in stdio command, args, env and cwd and in remote url and header values, header names never; a plugin stdio cwd outside the specification forms runs in the plugin root.",
   },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: "GITHUB_WORKSPACE on Linux: project .github/mcp.json is still read from the session directory, but a stdio server without cwd is spawned in GITHUB_WORKSPACE and its relative args resolve there; an explicit relative cwd resolves against the session project.",
+  },
   COPILOT_SKILL_POLICY_VALIDATION,
 ];
 

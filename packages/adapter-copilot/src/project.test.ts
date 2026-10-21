@@ -257,7 +257,9 @@ describe("Copilot project components", () => {
         expect.objectContaining({
           path: ".github/mcp.json",
           key: ["mcpServers", "local"],
-          value: { type: "stdio", command: "node", args: ["./out/mcp-launcher.mjs", "0"] },
+          // cwd "." keeps the relative launcher path on the project when
+          // GITHUB_WORKSPACE names another directory (captured).
+          value: { type: "stdio", command: "node", args: ["./out/mcp-launcher.mjs", "0"], cwd: "." },
         }),
         expect.objectContaining({
           path: ".github/mcp.json",

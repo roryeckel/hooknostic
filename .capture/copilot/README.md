@@ -44,6 +44,7 @@ node .capture/copilot/probe.mjs project-mcp-stdio-fallback
 node .capture/copilot/transport-probe.mjs streamable-http
 node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
+docker run --rm ... bash /capture/workspace-probe.sh
 node .capture/copilot/make-fixtures.mjs
 ```
 
@@ -163,6 +164,7 @@ under ignored `captured/`; it fails if the session log lacks the injection.
 | --- | --- | --- |
 | Project `.mcp.json` stdio | `{type:"stdio", command, args, env, cwd}` starts. `cwd` is honoured; relative `args` resolve from the project root; ambient `${USERPROFILE}` expands in args/env; `${PLUGIN_ROOT}` stays literal. | Project stdio goes through the shared launcher. |
 | Project `.github/mcp.json` | The same stdio declaration works when moved to `.github/mcp.json`; the probe connected and called its tool. | Project integration writes the Copilot-scoped file, avoiding a collision with Claude's root `.mcp.json`. |
+| `GITHUB_WORKSPACE` (`workspace-probe.sh`, Linux) | The config is still read from the session's directory, but a stdio server with no `cwd` is spawned **in `GITHUB_WORKSPACE`** when that is set, and relative `args` resolve there: with it pointing at another project, Copilot ran that project's `server.mjs`. A missing directory means no spawn. An explicit `cwd: "."` or `cwd: "sub"` resolved against the session's project either way. Found when the CI playback lane, whose `GITHUB_WORKSPACE` is the repository checkout, failed to start the project launcher. | Project integration writes `cwd: "."` beside the relative launcher path. |
 | Project `.mcp.json` remote | `type:"http"` (Streamable HTTP) and `type:"sse"` both connected to the loopback server. Ambient `${USERPROFILE}` expanded in the URL query; a missing `${HOOKNOSTIC_PROBE_MISSING:-fallback}` used the fallback in both the URL and headers; `${PLUGIN_ROOT}` stayed literal. | Both remote transports exact, with the environment-expansion deviation for a package's text. |
 | Agent Plugins `mcp.json` stdio | `command`, `args`, `env`, `cwd` all expand `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`; `${PLUGIN_ROOT}/node-copy.exe` launched. Ambient `${USERPROFILE}` also expanded. The server's cwd was the `PLUGIN_DATA` directory. `PLUGIN_ROOT`/`PLUGIN_DATA` are exported in its environment. | `mcp.stdio` exact, with an ambient-expansion deviation. |
 | Agent Plugins `mcp.json` remote | Streamable HTTP and SSE both connected. `${PLUGIN_ROOT}` stayed literal in headers (conforming); `${USERPROFILE}` and `${HOOKNOSTIC_PROBE_MISSING:-fallback}` expanded in the URL query and headers (not conforming). | Both remote components exact, with the deviation. |

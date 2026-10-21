@@ -208,11 +208,15 @@ export async function projectComponents(
     const launcher = await projectMcpLauncher(source, root, output, stdio);
     result.files.push(...launcher.files);
     const launcherPath = output === "." ? `./${MCP_LAUNCHER_FILE}` : `./${output}/${MCP_LAUNCHER_FILE}`;
+    // An explicit cwd anchors the relative launcher path to the project.
+    // Without one, Copilot spawns a stdio server in GITHUB_WORKSPACE when that
+    // is set, so on a CI runner a session started anywhere but the checkout
+    // resolved the launcher against the wrong directory (captured on 1.0.101).
     const entries: ProjectEntry[] = stdio.map((server, index) => ({
       path: ".github/mcp.json",
       key: ["mcpServers", server.name],
       kind: "property" as const,
-      value: { type: "stdio", command: "node", args: [launcherPath, String(index)] },
+      value: { type: "stdio", command: "node", args: [launcherPath, String(index)], cwd: "." },
     }));
     result.entries.push(...entries);
   }
