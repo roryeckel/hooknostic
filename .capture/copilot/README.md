@@ -27,6 +27,8 @@ future build can be re-probed:
 ```
 node .capture/copilot/probe.mjs camel-lifecycle
 node .capture/copilot/probe.mjs pascal-lifecycle
+node .capture/copilot/interactive-skill-probe.mjs project
+node .capture/copilot/interactive-skill-probe.mjs plugin
 node .capture/copilot/transport-probe.mjs streamable-http
 node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
@@ -40,6 +42,14 @@ node .capture/copilot/make-fixtures.mjs
 - `probe.mjs` — scratch-project driver for lifecycle, tool-shape, effect,
   skill, plugin and MCP probes. Every hook entry uses `exec`/`args`, the same
   form Hooknostic generates.
+- `interactive-skill-probe.mjs` — pty driver for the interactive slash command:
+  it loads `.agents/skills` or a `--plugin-dir` package, submits `/gated` or
+  `/<plugin-name>:gated`, records the screen, and reads the session event log.
+  It fails unless the log records `skill.invoked` with `trigger: "user-invoked"`
+  and the gate, plus a user message carrying `<skill-context name="gated">`.
+  `--headless` also runs the `-p` control and writes a filtered
+  `headless-evidence.json`; it fails on a nonzero exit or if the log lacks the
+  `skill(gated)` call and its not-found result.
 - `mcp-transport-server.mjs` / `mcp-transport-runner.mjs` — a minimal loopback
   Streamable HTTP and legacy SSE MCP server, run as a child process (a
   `spawnSync` driver would block an in-process server's event loop).
@@ -112,7 +122,14 @@ the split, so `tool.mcp` is never set (ADR-0032).
 | --- | --- | --- |
 | Discovery | `.github/skills`, `.agents/skills` and `.claude/skills` are project sources; `.agents/skills` was listed and invoked. | Project integration writes `.agents/skills`. |
 | Skill text | A loaded skill's context has a `Base directory for this skill: <path>` line, but the body kept `${SKILL_DIR}`, `${PLUGIN_ROOT}`, `${PLUGIN_DATA}` and `$CLAUDE_SESSION_ID` as written. | `${SKILL_DIR}` is rewritten to an explicit model-substituted placeholder; other references are reported as unexpanded. |
-| Invocation policy | `disable-model-invocation: true` withheld a project skill from ordinary listing. An explicit `/gated` answered "Skill not found"; the model reached the body only by reading the file. | `agent-plugin.skills.invocation-policy` unsupported; a gated skill is omitted rather than shipped unreachable. |
+| Invocation policy, interactive | `disable-model-invocation: true` withheld a project skill from ordinary listing. `/gated` in `.agents/skills` injected the gated body and the model answered from it; a package skill loaded with `--plugin-dir` did the same as `/hooknostic-interactive-skill-probe:gated`. Neither run made a `skill()` call. The session log recorded `skill.invoked` with `trigger: "user-invoked"` and `disableModelInvocation: true`, and the user message carried `<skill-context name="gated">`. | `agent-plugin.skills.invocation-policy` exact on the captured version: apply native `disable-model-invocation` after authored overlays. Project and package skills both retain explicit slash invocation. |
+| Invocation policy, `-p` | A `-p` prompt naming `/gated` is text, not a slash command. The model-facing `skill()` tool excludes the gated skill, so `skill(gated)` returned `Skill not found`; the explicit `disable-model-invocation: false` control (`allowed`) and the ungated `open` control stayed in the available list. | Headless prompt mode has no explicit-invocation path; the policy rationale records it. Interactive use is unaffected. |
+
+An earlier reading treated the `-p` model-facing call as an explicit slash
+invocation. The pty probe separates the two: the interactive slash command
+injects the skill, while `-p` has no slash path and can only ask the model to
+call `skill()`. The probe writes the filtered `evidence.json` beside the screen
+under ignored `captured/`; it fails if the session log lacks the injection.
 
 ## MCP
 

@@ -2,6 +2,7 @@ import type { AgentPluginProjectionProfile } from "@hooknostic/agent-plugin";
 import type { CapabilityProfile } from "@hooknostic/core";
 
 import { copilotHarness } from "./harness.js";
+import { COPILOT_SKILL_POLICY_VALIDATION } from "./skill-policy.js";
 
 const CAPTURE = ".capture/copilot/README.md";
 const FIXTURES = "fixtures/copilot/1.0";
@@ -52,8 +53,9 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     date: "2026-10-20",
     method: "live-probe",
     artifact: CAPTURE,
-    what: "Skill text and policy: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written; disable-model-invocation: true withholds a skill from listing and makes an explicit /skill invocation fail.",
+    what: "Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written.",
   },
+  COPILOT_SKILL_POLICY_VALIDATION,
 ];
 
 /**

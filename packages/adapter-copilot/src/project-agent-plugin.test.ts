@@ -5,18 +5,22 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { AGENT_PLUGIN_MANIFEST_SCHEMA, AGENT_PLUGIN_MCP_SCHEMA, loadAgentPlugin } from "@hooknostic/agent-plugin";
-import { buildPluginIR } from "@hooknostic/core";
+import { buildPluginIR, resolveAgentPluginProjection } from "@hooknostic/core";
 import { block, definePlugin, hook } from "@hooknostic/sdk";
 
 import { generateCopilotArtifacts } from "./generate.js";
-import { copilotHarness } from "./harness.js";
 import { copilotAdapter } from "./index.js";
 import { copilotAgentPluginProjector } from "./project-agent-plugin.js";
+import { COPILOT_SKILL_POLICY_VALIDATION } from "./skill-policy.js";
 
 const cleanup: string[] = [];
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
+
+const packageSupport = copilotAgentPluginProjector.profiles.find(
+  (profile) => profile.components["agent-plugin.skills.invocation-policy"]?.level === "exact",
+)!.components;
 
 async function packageRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "hooknostic-copilot-package-"));
@@ -84,7 +88,12 @@ function hookArtifacts() {
     }),
   );
   expect(diagnostics).toEqual([]);
-  const target = { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" as const, output: "." };
+  const target = {
+    id: "copilot",
+    version: COPILOT_SKILL_POLICY_VALIDATION.version,
+    delivery: "package" as const,
+    output: ".",
+  };
   return generateCopilotArtifacts(
     ir!,
     target,
@@ -99,28 +108,47 @@ function hookArtifacts() {
 }
 
 describe("Copilot Agent Plugin projector", () => {
+  it("rates the invocation policy exact", () => {
+    expect(packageSupport["agent-plugin.skills.invocation-policy"]).toMatchObject({
+      level: "exact",
+    });
+  });
+
+  it("keeps a Copilot build older than the interactive capture unsupported", () => {
+    const older = resolveAgentPluginProjection(
+      {
+        id: "copilot",
+        version: `>=1.0 <${COPILOT_SKILL_POLICY_VALIDATION.version}`,
+        delivery: "package",
+        output: ".",
+      },
+      { profiles: copilotAgentPluginProjector.profiles },
+    ).matrix!;
+    expect(older["agent-plugin.skills.invocation-policy"]).toMatchObject({ level: "unsupported" });
+  });
+
   it("projects an Agent Plugins package with Copilot hooks, skills and MCP intact", async () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });
     expect(loaded.issues.filter((issue) => issue.severity === "error")).toEqual([]);
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: hookArtifacts(),
       runtimePackage: { manifest: "package.json", lockfile: "package-lock.json" },
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
 
     const paths = plan.files.map((file) => file.path);
     expect(paths).toContain("plugin.json");
     expect(paths).toContain("skills/deploy/SKILL.md");
+    expect(paths).toContain("skills/gated/SKILL.md");
     expect(paths).toContain("mcp.json");
     expect(paths).toContain("com.github.copilot/agents/helper.agent.md");
     expect(paths).toContain("com.github.copilot/hooks/hooks.json");
     expect(paths).toContain("runtime/hooknostic.mjs");
     expect(paths).not.toContain("package.json");
     expect(paths).not.toContain("package-lock.json");
-    expect(paths).not.toContain("skills/gated/SKILL.md");
 
     const manifest = JSON.parse(plan.files.find((file) => file.path === "plugin.json")!.contents as string);
     expect(manifest).toMatchObject({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "projector-probe" });
@@ -137,11 +165,19 @@ describe("Copilot Agent Plugin projector", () => {
     expect(hooks.contents).toContain("authored-marker");
     expect(hooks.contents).toContain("sessionStart");
 
-    // A gated skill is omitted rather than emitted with a flag that would make
-    // it unreachable on 1.0.101.
-    expect(plan.summary.omissions).toEqual([
-      expect.objectContaining({ component: "agent-plugin.skills.invocation-policy", name: "gated" }),
-    ]);
+    // The exact gate is applied to an owned package skill: the portable
+    // declaration stays and the native flag withholds model selection while
+    // the plugin-namespaced slash invocation remains available.
+    const gated = plan.files.find((file) => file.path === "skills/gated/SKILL.md")!;
+    const gatedText = new TextDecoder().decode(gated.contents as Uint8Array);
+    expect(gatedText).toContain("disable-model-invocation: true");
+    expect(gatedText).toContain("hooknostic/allow-implicit-invocation");
+    expect(plan.summary.omissions).toEqual([]);
+    expect(plan.summary.components["agent-plugin.skills.invocation-policy"]).toEqual({
+      discovered: 1,
+      emitted: 1,
+      skipped: 0,
+    });
     expect(plan.summary.components["agent-plugin.runtime-package"]).toEqual({
       discovered: 1,
       emitted: 0,
@@ -161,7 +197,7 @@ describe("Copilot Agent Plugin projector", () => {
         path: file.path,
         contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
       })),
-      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+      { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package", output: "." },
     );
     expect(diagnostics).toEqual([]);
   });
@@ -170,9 +206,9 @@ describe("Copilot Agent Plugin projector", () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: hookArtifacts(),
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     expect(plan.summary.deviations).toEqual([
@@ -189,9 +225,9 @@ describe("Copilot Agent Plugin projector", () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: hookArtifacts(),
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     expect(plan.summary.degradations?.map((entry) => entry.id).sort()).toEqual([
@@ -221,9 +257,9 @@ describe("Copilot Agent Plugin projector", () => {
     const loaded = await loadAgentPlugin({ root });
     expect(loaded.issues.some((issue) => issue.severity === "warn")).toBe(true);
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: hookArtifacts(),
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     expect(plan.files.map((file) => file.path)).not.toContain("skills/broken/SKILL.md");
@@ -242,9 +278,9 @@ describe("Copilot Agent Plugin projector", () => {
     await writeFile(join(root, "skills", "only", "SKILL.md"), "---\nname: only\ndescription: Components only.\n---\n");
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: [],
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     expect(plan.files.map((file) => file.path)).not.toContain("com.github.copilot/hooks/hooks.json");
@@ -253,30 +289,25 @@ describe("Copilot Agent Plugin projector", () => {
         path: file.path,
         contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
       })),
-      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+      { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package", output: "." },
     );
     expect(diagnostics).toEqual([]);
   });
 
-  it("permits the documented acceptance of an unprojectable invocation policy", async () => {
+  it("applies the native gate to an owned package skill without an acceptance", async () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: hookArtifacts(),
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
-      accept: ["copilot:skill-implicit-invocation-unenforced"],
     });
-    // The declaration is now accepted rather than rejected as unknown (HN501).
-    expect(plan.files.map((file) => file.path)).toContain("skills/gated/SKILL.md");
-    expect(plan.summary.degradations).toContainEqual(
-      expect.objectContaining({
-        id: "skill-implicit-invocation-unenforced",
-        component: "agent-plugin.skills.invocation-policy",
-        name: "gated",
-      }),
-    );
+    const gated = plan.files.find((file) => file.path === "skills/gated/SKILL.md")!;
+    expect(new TextDecoder().decode(gated.contents as Uint8Array)).toContain("disable-model-invocation: true");
+    expect(
+      plan.summary.degradations?.some((entry) => entry.component === "agent-plugin.skills.invocation-policy"),
+    ).toBe(false);
   });
 
   it("rejects a compiled hooks entry that does not carry the dispatcher shape", async () => {
@@ -289,9 +320,9 @@ describe("Copilot Agent Plugin projector", () => {
       return { path: artifact.path, contents: JSON.stringify(parsed) };
     });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: artifacts,
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     expect(plan.issues).toContainEqual(
@@ -322,9 +353,9 @@ describe("Copilot Agent Plugin projector", () => {
     );
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: [],
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     const diagnostics = await copilotAdapter().validateArtifacts!(
@@ -332,7 +363,7 @@ describe("Copilot Agent Plugin projector", () => {
         path: file.path,
         contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
       })),
-      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+      { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package", output: "." },
     );
     expect(diagnostics).toEqual([]);
   });
@@ -343,9 +374,9 @@ describe("Copilot Agent Plugin projector", () => {
     await writeFile(join(root, "runtime", "hooknostic.mjs"), "// authored runtime\n");
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: hookArtifacts(),
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     expect(plan.issues).toContainEqual(
@@ -363,9 +394,9 @@ describe("Copilot Agent Plugin projector", () => {
     await writeFile(join(root, "runtime", "hooknostic.mjs"), "// authored runtime\n");
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: [],
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     const authoredRuntime = plan.files.find((file) => file.path === "runtime/hooknostic.mjs");
@@ -381,9 +412,9 @@ describe("Copilot Agent Plugin projector", () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: [],
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     const hooks = plan.files.find((file) => file.path === "com.github.copilot/hooks/hooks.json");
@@ -393,7 +424,7 @@ describe("Copilot Agent Plugin projector", () => {
         path: file.path,
         contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
       })),
-      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+      { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package", output: "." },
     );
     expect(diagnostics).toEqual([]);
   });
@@ -403,9 +434,9 @@ describe("Copilot Agent Plugin projector", () => {
     const loaded = await loadAgentPlugin({ root });
     const artifacts = hookArtifacts();
     const plan = await copilotAgentPluginProjector.project(loaded.package!, {
-      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      target: { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "package" },
       hookArtifacts: artifacts,
-      support: copilotAgentPluginProjector.profiles[0]!.components,
+      support: packageSupport,
       onUnsupported: "warn",
     });
     for (const artifact of artifacts) {

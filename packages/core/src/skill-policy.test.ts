@@ -22,6 +22,7 @@ import {
   codexPackageSkillPolicyValidation,
   codexProjectSkillPolicyValidation,
 } from "../../adapter-codex/src/skill-policy.js";
+import { COPILOT_SKILL_POLICY_VALIDATION } from "../../adapter-copilot/src/skill-policy.js";
 import { opencodeHarness } from "../../adapter-opencode/src/harness.js";
 import {
   opencodePackageSkillPolicyValidation,
@@ -50,6 +51,7 @@ const versions = {
   project: {
     claude: claudeProjectSkillPolicyValidation.version,
     codex: codexProjectSkillPolicyValidation.version,
+    copilot: COPILOT_SKILL_POLICY_VALIDATION.version,
     oc1: opencodeProjectSkillPolicyValidation.version,
     oc2: opencodeV2ProjectSkillPolicyValidation.version,
     pi: piProjectSkillPolicyValidation.version,
@@ -57,6 +59,7 @@ const versions = {
   package: {
     claude: claudePackageSkillPolicyValidation.version,
     codex: codexPackageSkillPolicyValidation.version,
+    copilot: COPILOT_SKILL_POLICY_VALIDATION.version,
     oc1: opencodePackageSkillPolicyValidation.version,
     oc2: opencodeV2PackageSkillPolicyValidation.version,
     pi: piPackageSkillPolicyValidation.version,
@@ -170,6 +173,16 @@ describe("skill invocation policy builds", () => {
     expect(fm(text)["disable-model-invocation"]).toBe(true);
     expect(text).toContain("Run ./script.mjs");
     expect((await runProject({ ...f.options, command: "verify" })).ok).toBe(true);
+  });
+  it("applies Copilot's native gate to a project skill", async () => {
+    const f = await fixture("project", ["copilot"]);
+    const synced = await runProject({ ...f.options, command: "sync" });
+    expect(synced.ok, JSON.stringify(synced.diagnostics)).toBe(true);
+    const text = await readFile(join(f.root, ".agents/skills/review/SKILL.md"), "utf8");
+    expect(fm(text)["disable-model-invocation"]).toBe(true);
+    expect(text.endsWith(body)).toBe(true);
+    const verified = await runProject({ ...f.options, command: "verify" });
+    expect(verified.ok, JSON.stringify(verified.diagnostics)).toBe(true);
   });
   it("enforces numeric project skill policies after wildcard permissions", async () => {
     const f = await fixture("project", ["oc1"]);
@@ -768,7 +781,7 @@ describe("skill invocation policy builds", () => {
     expect(parse(await readFile(sidecar, "utf8")).policy.allow_implicit_invocation).toBe(true);
   }, 60_000);
 
-  it.each(["claude", "codex", "oc1", "oc2", "pi"] as const)(
+  it.each(["claude", "codex", "copilot", "oc1", "oc2", "pi"] as const)(
     "projects packaged %s policy after native overlays",
     async (id) => {
       const f = await fixture("package", [id]);
@@ -788,6 +801,7 @@ describe("skill invocation policy builds", () => {
       if (id === "claude")
         expect(fm(text)).toMatchObject({ "disable-model-invocation": true, "user-invocable": false });
       if (id === "pi") expect(fm(text)["disable-model-invocation"]).toBe(true);
+      if (id === "copilot") expect(fm(text)["disable-model-invocation"]).toBe(true);
       if (id === "codex")
         expect(
           parse(await readFile(join(f.root, `dist/${id}/skills/review/agents/openai.yaml`), "utf8")),

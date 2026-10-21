@@ -129,9 +129,12 @@ the separator when the name is not a native tool, and never sets `tool.mcp`
   written: `${SKILL_DIR}`, `${PLUGIN_ROOT}`, `${PLUGIN_DATA}` and
   `$CLAUDE_SESSION_ID` are not expanded.
 - `disable-model-invocation: true` withholds a skill from automatic selection.
-  On 1.0.101 an explicit `/skill` invocation answered "Skill not found"; the
-  model could only read the file directly. A portable invocation policy that
-  must retain explicit invocation therefore has no faithful route.
+  Interactively, `/skill` injects the gated body; a package skill uses
+  `/<plugin-name>:<skill>`. `-p` has no slash path: a prompt naming the skill
+  reaches the model-facing `skill` tool, which excludes gated skills and
+  returns "Skill not found", so a headless session can only read the file
+  directly. An explicit `disable-model-invocation: false` control stays in the
+  tool's available list.
 
 ## MCP
 

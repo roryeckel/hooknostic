@@ -25,11 +25,7 @@ import {
   environmentExpansionReason,
 } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
-import {
-  COPILOT_SKILL_POLICY_DEGRADATIONS,
-  COPILOT_SKILL_POLICY_RATIONALE,
-  copilotSkillPolicy,
-} from "./skill-policy.js";
+import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.js";
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
@@ -251,7 +247,7 @@ export async function projectComponents(
   return result;
 }
 
-const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = [
+const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = copilotSkillPolicyProfiles(
   {
     range: copilotHarness.recommendedRange,
     components: {
@@ -265,11 +261,6 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
         rationale:
           "Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. A skill already at its destination is discovered in place and not rewritten.",
         degradations: [SKILL_REFERENCE_DEGRADATION, copilotSkillDirectoryDegradation],
-      },
-      "agent-plugin.skills.invocation-policy": {
-        level: "unsupported",
-        rationale: COPILOT_SKILL_POLICY_RATIONALE,
-        degradations: [...COPILOT_SKILL_POLICY_DEGRADATIONS],
       },
       "agent-plugin.mcp.stdio": {
         level: "emulated",
@@ -304,7 +295,8 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       ],
     },
   },
-];
+  { inPlace: true },
+);
 
 export const projectComponentProfiles = nativeProjectComponentProfiles;
 

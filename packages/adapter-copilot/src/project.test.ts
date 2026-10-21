@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 import { AGENT_PLUGIN_MCP_SCHEMA, type ProjectComponents } from "@hooknostic/agent-plugin";
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
-import { copilotHarness } from "./harness.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
+import { COPILOT_SKILL_POLICY_VALIDATION } from "./skill-policy.js";
 
 function source(origin: ProjectComponents["origin"], root: string): ProjectComponents {
   const encoder = new TextEncoder();
@@ -49,11 +49,28 @@ function source(origin: ProjectComponents["origin"], root: string): ProjectCompo
 }
 
 const support = resolveAgentPluginProjection(
-  { id: "copilot", version: copilotHarness.recommendedRange, delivery: "project", output: "." },
+  { id: "copilot", version: COPILOT_SKILL_POLICY_VALIDATION.version, delivery: "project", output: "." },
   { profiles: projectComponentProfiles },
 ).matrix!;
 
 describe("Copilot project components", () => {
+  it("rates the project invocation policy exact", () => {
+    expect(support["agent-plugin.skills.invocation-policy"]).toMatchObject({ level: "exact" });
+  });
+
+  it("keeps a Copilot build older than the interactive capture unsupported", () => {
+    const older = resolveAgentPluginProjection(
+      {
+        id: "copilot",
+        version: `>=1.0 <${COPILOT_SKILL_POLICY_VALIDATION.version}`,
+        delivery: "project",
+        output: ".",
+      },
+      { profiles: projectComponentProfiles },
+    ).matrix!;
+    expect(older["agent-plugin.skills.invocation-policy"]).toMatchObject({ level: "unsupported" });
+  });
+
   it("returns no hook file when a components-only project compiles none", () => {
     const integration = projectIntegration([], "out");
     expect(integration.files).toEqual([]);

@@ -19,11 +19,7 @@ import {
 
 import { copilotEnvironmentReferences, ENVIRONMENT_EXPANSION_DEVIATION } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
-import {
-  COPILOT_SKILL_POLICY_DEGRADATIONS,
-  COPILOT_SKILL_POLICY_RATIONALE,
-  copilotSkillPolicy,
-} from "./skill-policy.js";
+import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.js";
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
@@ -58,7 +54,7 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
    */
   namespace: "com.github.copilot",
   packageRoot: ".",
-  profiles: [
+  profiles: copilotSkillPolicyProfiles(
     {
       range: ">=1.0 <2",
       components: {
@@ -68,11 +64,6 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
           rationale:
             "Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory.",
           degradations: [SKILL_REFERENCE_DEGRADATION, copilotSkillDirectoryDegradation],
-        },
-        "agent-plugin.skills.invocation-policy": {
-          level: "unsupported",
-          rationale: COPILOT_SKILL_POLICY_RATIONALE,
-          degradations: [...COPILOT_SKILL_POLICY_DEGRADATIONS],
         },
         "agent-plugin.mcp.stdio": {
           level: "exact",
@@ -106,7 +97,8 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
         ],
       },
     },
-  ],
+    { inPlace: false },
+  ),
   async project(source: AgentPluginPackage, context): Promise<AgentPluginProjectionPlan> {
     assertPackageDelivery("copilot", context.target.delivery);
     const files: AgentPluginProjectionFile[] = [];
