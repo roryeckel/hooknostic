@@ -71,6 +71,36 @@ describe("Copilot project components", () => {
     }
   });
 
+  it("reports executable modes on a skill it discovers in place", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-native-skill-"));
+    try {
+      const encoder = new TextEncoder();
+      const native: ProjectComponents = {
+        origin: "direct",
+        skills: [
+          {
+            name: "native",
+            source: join(dir, ".github", "skills", "native"),
+            files: [
+              {
+                path: "SKILL.md",
+                contents: encoder.encode("---\nname: native\ndescription: Native skill.\n---\nRun run.sh.\n"),
+                mode: 0o644,
+              },
+              { path: "run.sh", contents: encoder.encode("#!/bin/sh\n"), mode: 0o755 },
+            ],
+          },
+        ],
+      };
+      const integration = await projectComponents(native, dir, "out", "", { support });
+      expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/native/SKILL.md");
+      expect(integration.unappliedModes).toEqual([{ skill: "native", path: "run.sh" }]);
+      expect(integration.degradations).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes native project MCP declarations, with stdio behind the shared launcher", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-project-"));
     try {

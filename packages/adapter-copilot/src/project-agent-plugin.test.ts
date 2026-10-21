@@ -10,6 +10,7 @@ import { block, definePlugin, hook } from "@hooknostic/sdk";
 
 import { generateCopilotArtifacts } from "./generate.js";
 import { copilotHarness } from "./harness.js";
+import { copilotAdapter } from "./index.js";
 import { copilotAgentPluginProjector } from "./project-agent-plugin.js";
 
 const cleanup: string[] = [];
@@ -148,6 +149,18 @@ describe("Copilot Agent Plugin projector", () => {
       emitted: 2,
       skipped: 0,
     });
+
+    // A projection that merges an authored hook entry must still pass the
+    // adapter's own artifact validation; that validator sees the final file,
+    // not just the compiled one.
+    const diagnostics = await copilotAdapter().validateArtifacts!(
+      plan.files.map((file) => ({
+        path: file.path,
+        contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
+      })),
+      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+    );
+    expect(diagnostics).toEqual([]);
   });
 
   it("reports the ambient-reference deviation for every server Copilot expands", async () => {
@@ -182,6 +195,37 @@ describe("Copilot Agent Plugin projector", () => {
       "skill-directory-model-substitution",
       "skill-reference-unexpanded",
     ]);
+  });
+
+  it("drops a skill and an MCP server the loader rejected", async () => {
+    const root = await packageRoot();
+    await mkdir(join(root, "skills/broken"), { recursive: true });
+    await writeFile(join(root, "skills/broken/SKILL.md"), "no frontmatter here\n");
+    await writeFile(
+      join(root, "mcp.json"),
+      `${JSON.stringify(
+        {
+          $schema: AGENT_PLUGIN_MCP_SCHEMA,
+          mcpServers: {
+            ok: { type: "stdio", command: "node" },
+            bad: { type: "stdio", command: "" },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const loaded = await loadAgentPlugin({ root });
+    expect(loaded.issues.some((issue) => issue.severity === "warn")).toBe(true);
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: hookArtifacts(),
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    expect(plan.files.map((file) => file.path)).not.toContain("skills/broken/SKILL.md");
+    const mcp = JSON.parse(plan.files.find((file) => file.path === "mcp.json")!.contents as string);
+    expect(Object.keys(mcp.mcpServers)).toEqual(["ok"]);
   });
 
   it("carries an authored hooks document when the package has no compiled hooks", async () => {

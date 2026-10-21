@@ -281,13 +281,20 @@ describe("complete project integration", () => {
         component: "agent-plugin.skills",
         message: expect.stringContaining('components.executableFiles "review/bin/tool" names a file this target'),
       }),
+      expect.objectContaining({
+        severity: "warn",
+        target: "copilot",
+        component: "agent-plugin.skills",
+        message: expect.stringContaining('components.executableFiles "review/bin/tool" names a file this target'),
+      }),
     ]);
     // The skill is present, not skipped: an omission would have decremented it.
     expect(built.report.targets["claude"]?.project?.omissions).toEqual([]);
     expect(built.report.targets["claude"]?.project?.components["agent-plugin.skills"]).toMatchObject({ emitted: 1 });
     // And the declaration is honoured where the target does own the tree.
-    // One warning, not three: the other two targets copy the skill to
-    // `.agents/skills`, where they own the tree and the declaration is live.
+    // One warning per target that discovers `.claude/skills` in place; the
+    // others copy the skill to `.agents/skills`, where they own the tree and
+    // the declaration is live.
     for (const target of ["codex", "opencode"]) {
       expect(built.report.targets[target]?.project?.components["agent-plugin.skills"], target).toMatchObject({
         emitted: 1,

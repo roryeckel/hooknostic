@@ -4076,7 +4076,7 @@ scenarioDrive(
   // opens with, silently, on every run.
   () => {
     if (cellLevel("permission.request.block") === undefined) return true;
-    if (adapter?.id === "opencode") return false;
+    if (adapter?.id === "opencode" || adapter?.id === "copilot") return false;
     return adapter?.id !== "claude" || !ptyApprovable();
   },
 );

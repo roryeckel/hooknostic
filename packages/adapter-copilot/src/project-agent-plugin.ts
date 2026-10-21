@@ -11,6 +11,7 @@ import {
   componentSummary,
   contentsText,
   isJsonObject,
+  isRejectedSkillPath,
   materializedPackageFiles,
   projectPackageSkillTexts,
   withSkillInvocationPolicy,
@@ -159,11 +160,14 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
         (path): path is string => path !== undefined,
       ),
     );
+    const rejectedSkill = isRejectedSkillPath(source);
 
     for (const file of source.files) {
       if (file.path === "plugin.json") continue;
       if (file.path === HOOKS_PATH) continue;
       if (file.path === HOOK_RUNTIME) continue;
+      if (file.path === "mcp.json") continue;
+      if (rejectedSkill(file.path)) continue;
       if (runtimePackagePaths.has(file.path)) continue;
       const rewritten = skillTexts.rewritten.get(file.path);
       files.push({
@@ -182,6 +186,12 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
     files.push(...materialized.files);
 
     files.push({ path: "plugin.json", contents: `${JSON.stringify(manifest, null, 2)}\n` });
+    if (source.mcp !== undefined) {
+      // Emit the loader's validated server map rather than copying the raw
+      // document: an entry the loader skipped is not one this harness should
+      // receive. An invalid top-level document leaves `source.mcp` undefined.
+      files.push({ path: "mcp.json", contents: `${JSON.stringify(source.mcp, null, 2)}\n` });
+    }
 
     // Merge the compiled dispatcher's entries into any authored hooks document,
     // author entries first: an author guard may still deny before the portable

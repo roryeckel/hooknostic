@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "postToolUse"
+  },
+  "session": {
+    "id": "4d3e11d5-7827-4069-b63d-836719d6e68d",
+    "cwd": "/work"
+  },
+  "correlation": {},
+  "event": "tool.after",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "bash",
+    "input": {
+      "command": "node -e \"const fs=require(\\\"fs\\\"); console.log(fs.readlinkSync(\\\"/proc/\\\"+process.ppid+\\\"/exe\\\"))\" ; echo hooknostic-shell-finished",
+      "description": "Print parent process exe symlink and marker"
+    },
+    "shell": {
+      "command": "node -e \"const fs=require(\\\"fs\\\"); console.log(fs.readlinkSync(\\\"/proc/\\\"+process.ppid+\\\"/exe\\\"))\" ; echo hooknostic-shell-finished",
+      "commandKey": "command",
+      "dialect": "posix"
+    }
+  },
+  "output": {
+    "resultType": "success",
+    "textResultForLlm": "/usr/bin/bash\nhooknostic-shell-finished\n<shellId: 0 completed with exit code 0>"
+  }
+}

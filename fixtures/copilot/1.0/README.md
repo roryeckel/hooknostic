@@ -26,6 +26,7 @@ path, and every other path shape stay as captured, because the shape is evidence
 | session-start, session-end, prompt-before, tool-before, tool-after, permission-request, turn-stop | **captured** 1.0.101 (2026-10-20), Windows |
 | session-start-pascal, tool-before-pascal, tool-before-pascal-bash, tool-before-pascal-read, tool-before-pascal-edit, tool-after-pascal, turn-stop-pascal | **captured** 1.0.101 (2026-10-20), Windows, VS Code compatible PascalCase entries beside the camelCase ones. `tool-before-pascal-bash` pins that the PascalCase `Bash` alias carries `command` and no dialect. |
 | tool-before-bash | **captured** 1.0.101 (2026-10-20), Debian `node:24-bookworm` container; pins the `bash`/`posix` shape and dialect by effect (`/usr/bin/bash`) |
+| tool-after-bash | **captured** 1.0.101 (2026-10-20), Debian `node:24-bookworm` container; the Linux `postToolUse` counterpart of the `bash` call, so the drift lane's Linux exchange has a fixture. |
 | tool-before-create, tool-before-edit | **captured** 1.0.101 (2026-10-20) over the model provider; the tool calls were prompted, the payloads are native |
 | tool-before-subagent, turn-stop-subagent | **captured** 1.0.101 (2026-10-20) during a subagent run; pin that a tool event and a turn stop fired inside a subagent carry `agentId`/`agentType`/`parentAgentId` |
 | tool-before-mcp | **captured** 1.0.101 (2026-10-20) in `.capture/copilot/captured/mcp-stdio`; pins the `<server>-<tool>` name (`probe-probe_echo`) classified as `mcp` with no `tool.mcp` split |

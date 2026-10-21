@@ -127,6 +127,9 @@ export async function projectComponents(
   // copied skill gets for a reference the target will not expand, with the
   // in-place reason that says why ${SKILL_DIR} cannot be rewritten here.
   for (const skill of source.skills.filter((candidate) => authoredInPlace(candidate.source))) {
+    for (const file of skill.files) {
+      if (file.mode === 0o755) (result.unappliedModes ??= []).push({ skill: skill.name, path: file.path });
+    }
     const manifest = skill.files.find((file) => file.path === "SKILL.md");
     if (manifest === undefined) continue;
     const projected = projectSkillText(manifest.contents, COPILOT_SKILL_TEXT, { rewrite: false });

@@ -191,18 +191,30 @@ export function copilotAdapter(): HarnessAdapter {
           if (!isJsonObject(parsed) || parsed["version"] !== 1 || !isJsonObject(parsed["hooks"])) {
             throw new Error("document must have version 1 and an object hooks field");
           }
-          const nativeNames = new Set(Object.values(COPILOT_NATIVE_EVENT));
+          const nativeNames = new Set(Object.values(COPILOT_NATIVE_EVENT).filter((name) => name !== undefined));
           for (const [eventName, entries] of Object.entries(parsed["hooks"])) {
             if (!Array.isArray(entries)) throw new Error(`hooks.${eventName} must be an array`);
-            if (!nativeNames.has(eventName)) {
-              throw new Error(`hooks.${eventName} is not a generated native event`);
-            }
+            // Authored entries may use any Copilot-supported shape (a shell
+            // command, a prompt hook, an exec with different args) and may add
+            // an event the portable plugin does not use. Only an entry that
+            // names this runtime is generated, and that one must carry the
+            // event's own name as its first argument.
             for (const entry of entries) {
-              if (!isJsonObject(entry) || entry["type"] !== "command" || entry["exec"] !== "node") {
-                throw new Error(`hooks.${eventName} must hold command entries run with node`);
+              if (
+                !isJsonObject(entry) ||
+                entry["type"] !== "command" ||
+                entry["exec"] !== "node" ||
+                !Array.isArray(entry["args"]) ||
+                typeof entry["args"][0] !== "string" ||
+                !entry["args"][0].endsWith("runtime/hooknostic.mjs")
+              ) {
+                continue;
               }
-              if (!Array.isArray(entry["args"]) || entry["args"][1] !== eventName) {
-                throw new Error(`hooks.${eventName} must pass its native event name to the runtime`);
+              if (!nativeNames.has(eventName)) {
+                throw new Error(`generated entry under unknown native event ${JSON.stringify(eventName)}`);
+              }
+              if (entry["args"][1] !== eventName) {
+                throw new Error(`generated entry for ${eventName} does not pass its native event name`);
               }
             }
           }

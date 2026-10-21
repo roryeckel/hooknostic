@@ -375,7 +375,11 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   const toolExchangeMissing =
     !toolExchangeFired && expectedVariants.filter(isToolVariant).some((variant) => !capturedByVariant.has(variant));
   for (const expected of expectedVariants) {
-    if (capturedByVariant.has(expected)) continue;
+    const matched =
+      capturedByVariant.has(expected) ||
+      (expected.endsWith("*") &&
+        [...capturedByVariant.keys()].some((variant) => variant.startsWith(expected.slice(0, -1))));
+    if (matched) continue;
     if (toolExchangeFired) {
       driftLines.push(`expected variant ${expected} absent from the capture (the tool exchange ran)`);
     }
@@ -471,6 +475,18 @@ export const EXPECTED_VARIANTS = {
     "tool.execute.before+bash",
     "tool.execute.after+bash",
     "event+session.idle",
+  ],
+  // The drive's lifecycle, plus both halves of the tool exchange whatever the
+  // platform calls its shell (`bash` or `powershell`). Wildcards match the
+  // suffix: a named tool variant is not portable across hosts.
+  copilot: [
+    "sessionStart",
+    "userPromptSubmitted",
+    "permissionRequest+*",
+    "preToolUse+*",
+    "postToolUse+*",
+    "agentStop",
+    "sessionEnd",
   ],
 };
 
