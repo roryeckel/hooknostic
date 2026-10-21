@@ -54,7 +54,7 @@ async function packageRoot(): Promise<string> {
       hooks: {
         sessionStart: [
           { type: "command", exec: "node", args: ["-e", "console.log('authored-marker')"] },
-          { type: "command", exec: "node", args: ["${PLUGIN_ROOT}/runtime/hooknostic.mjs"] },
+          { type: "command", exec: "node", args: ["${PLUGIN_ROOT}/runtime/hooknostic.mjs", "--audit"] },
         ],
       },
     }),
@@ -275,6 +275,26 @@ describe("Copilot Agent Plugin projector", () => {
         id: "skill-implicit-invocation-unenforced",
         component: "agent-plugin.skills.invocation-policy",
         name: "gated",
+      }),
+    );
+  });
+
+  it("rejects a package runtime that collides with the compiled dispatcher path", async () => {
+    const root = await packageRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "hooknostic.mjs"), "// authored runtime\n");
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: hookArtifacts(),
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        path: "runtime/hooknostic.mjs",
+        message: expect.stringContaining("authored"),
       }),
     );
   });

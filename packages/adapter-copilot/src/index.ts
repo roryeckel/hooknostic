@@ -192,9 +192,10 @@ export function copilotAdapter(): HarnessAdapter {
             if (!Array.isArray(entries)) throw new Error(`hooks.${eventName} must be an array`);
             // Authored entries may use any Copilot-supported shape (a shell
             // command, a prompt hook, an exec with different args) and may add
-            // an event the portable plugin does not use. Only an entry that
-            // names this runtime is generated, and that one must carry the
-            // event's own name as its first argument.
+            // an event the portable plugin does not use. A generated entry is
+            // the exact runtime path plus a second argument naming one of the
+            // generated camelCase events; anything else is authored and is not
+            // held to the dispatcher contract.
             for (const entry of entries) {
               if (
                 !isJsonObject(entry) ||
@@ -203,7 +204,9 @@ export function copilotAdapter(): HarnessAdapter {
                 !Array.isArray(entry["args"]) ||
                 entry["args"].length !== 2 ||
                 (entry["args"][0] !== "runtime/hooknostic.mjs" &&
-                  entry["args"][0] !== "${PLUGIN_ROOT}/runtime/hooknostic.mjs")
+                  entry["args"][0] !== "${PLUGIN_ROOT}/runtime/hooknostic.mjs") ||
+                typeof entry["args"][1] !== "string" ||
+                !nativeNames.has(entry["args"][1])
               ) {
                 continue;
               }

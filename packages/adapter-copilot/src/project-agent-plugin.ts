@@ -167,6 +167,16 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
     );
     const rejectedSkill = isRejectedSkillPath(source);
     const generatedRuntime = context.hookArtifacts.some((artifact) => artifact.path === HOOK_RUNTIME);
+    const authoredRuntime = source.files.some((file) => file.path === HOOK_RUNTIME);
+    if (generatedRuntime && authoredRuntime) {
+      issues.push({
+        severity: "error",
+        scope: "projection",
+        path: HOOK_RUNTIME,
+        message:
+          "the package ships its own runtime/hooknostic.mjs and the compiled hook dispatcher uses the same path; rename the authored file, or the authored hook that invokes it would run the generated dispatcher instead",
+      });
+    }
 
     for (const file of source.files) {
       if (file.path === "plugin.json") continue;
