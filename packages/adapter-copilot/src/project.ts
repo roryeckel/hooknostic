@@ -25,7 +25,11 @@ import {
   environmentExpansionReason,
 } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
-import { COPILOT_SKILL_POLICY_RATIONALE, copilotSkillPolicy } from "./skill-policy.js";
+import {
+  COPILOT_SKILL_POLICY_DEGRADATIONS,
+  COPILOT_SKILL_POLICY_RATIONALE,
+  copilotSkillPolicy,
+} from "./skill-policy.js";
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
@@ -117,17 +121,22 @@ export async function projectComponents(
       return resolve(path);
     }
   };
-  const nativeRoots = [".github/skills", ".claude/skills"].map((directory) => canonical(resolve(root, directory)));
-  const authoredInPlace = (sourcePath: string): boolean => {
+  const nativeRoots = [".github/skills", ".claude/skills"].map((directory) => resolve(root, directory));
+  const authoredInPlace = (sourcePath: string, name: string): boolean => {
     const canonicalSource = canonical(sourcePath);
     return nativeRoots.some((directory) => {
-      const offset = relative(directory, canonicalSource);
-      return offset === "" || (!isAbsolute(offset) && offset !== ".." && !offset.startsWith(`..${sep}`));
+      // The discovery root may be a junction to a shared tree, or one skill
+      // under it may be. Compare the specific skill directory as well as the
+      // root, so both shapes are recognized as the same authored source.
+      const linked = canonical(resolve(directory, name));
+      const offset = relative(canonical(directory), canonicalSource);
+      const underRoot = offset === "" || (!isAbsolute(offset) && offset !== ".." && !offset.startsWith(`..${sep}`));
+      return linked === canonicalSource || underRoot;
     });
   };
   const skillSource: ProjectComponents = {
     ...source,
-    skills: source.skills.filter((skill) => !authoredInPlace(skill.source)),
+    skills: source.skills.filter((skill) => !authoredInPlace(skill.source, skill.name)),
   };
   const result = projectSkillFiles(skillSource, root, ".agents/skills", {
     target: COPILOT_SKILL_TEXT,
@@ -138,7 +147,7 @@ export async function projectComponents(
   // report: Copilot shows that text as written. This is the same degradation a
   // copied skill gets for a reference the target will not expand, with the
   // in-place reason that says why ${SKILL_DIR} cannot be rewritten here.
-  for (const skill of source.skills.filter((candidate) => authoredInPlace(candidate.source))) {
+  for (const skill of source.skills.filter((candidate) => authoredInPlace(candidate.source, candidate.name))) {
     for (const file of skill.files) {
       if (file.mode === 0o755) (result.unappliedModes ??= []).push({ skill: skill.name, path: file.path });
     }
@@ -231,6 +240,7 @@ const nativeProjectComponentProfiles: readonly AgentPluginProjectionProfile[] = 
       "agent-plugin.skills.invocation-policy": {
         level: "unsupported",
         rationale: COPILOT_SKILL_POLICY_RATIONALE,
+        degradations: [...COPILOT_SKILL_POLICY_DEGRADATIONS],
       },
       "agent-plugin.mcp.stdio": {
         level: "emulated",

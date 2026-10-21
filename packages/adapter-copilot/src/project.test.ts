@@ -134,6 +134,36 @@ describe("Copilot project components", () => {
     }
   });
 
+  it("recognizes an individual skill reached through a junction", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-skill-link-"));
+    try {
+      await mkdir(join(dir, "shared", "linkprobe"), { recursive: true });
+      await mkdir(join(dir, ".github", "skills"), { recursive: true });
+      symlinkSync(join(dir, "shared", "linkprobe"), join(dir, ".github", "skills", "linkprobe"), "junction");
+      const encoder = new TextEncoder();
+      const native: ProjectComponents = {
+        origin: "direct",
+        skills: [
+          {
+            name: "linkprobe",
+            source: join(dir, "shared", "linkprobe"),
+            files: [
+              {
+                path: "SKILL.md",
+                contents: encoder.encode("---\nname: linkprobe\ndescription: Linked child.\n---\n"),
+                mode: 0o644,
+              },
+            ],
+          },
+        ],
+      };
+      const integration = await projectComponents(native, dir, "out", "", { support });
+      expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/linkprobe/SKILL.md");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes native project MCP declarations, with stdio behind the shared launcher", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-project-"));
     try {

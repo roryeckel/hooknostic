@@ -19,7 +19,11 @@ import {
 
 import { copilotEnvironmentReferences, ENVIRONMENT_EXPANSION_DEVIATION } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
-import { COPILOT_SKILL_POLICY_RATIONALE, copilotSkillPolicy } from "./skill-policy.js";
+import {
+  COPILOT_SKILL_POLICY_DEGRADATIONS,
+  COPILOT_SKILL_POLICY_RATIONALE,
+  copilotSkillPolicy,
+} from "./skill-policy.js";
 import { COPILOT_SKILL_TEXT, copilotSkillDirectoryDegradation } from "./skill-text.js";
 
 const CAPTURE = ".capture/copilot/README.md";
@@ -68,6 +72,7 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
         "agent-plugin.skills.invocation-policy": {
           level: "unsupported",
           rationale: COPILOT_SKILL_POLICY_RATIONALE,
+          degradations: [...COPILOT_SKILL_POLICY_DEGRADATIONS],
         },
         "agent-plugin.mcp.stdio": {
           level: "exact",
@@ -161,11 +166,12 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
       ),
     );
     const rejectedSkill = isRejectedSkillPath(source);
+    const generatedRuntime = context.hookArtifacts.some((artifact) => artifact.path === HOOK_RUNTIME);
 
     for (const file of source.files) {
       if (file.path === "plugin.json") continue;
       if (file.path === HOOKS_PATH) continue;
-      if (file.path === HOOK_RUNTIME) continue;
+      if (file.path === HOOK_RUNTIME && generatedRuntime) continue;
       if (file.path === "mcp.json") continue;
       if (rejectedSkill(file.path)) continue;
       if (runtimePackagePaths.has(file.path)) continue;

@@ -228,6 +228,74 @@ describe("Copilot Agent Plugin projector", () => {
     expect(Object.keys(mcp.mcpServers)).toEqual(["ok"]);
   });
 
+  it("accepts a components-only package with no hooks document", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-copilot-components-only-"));
+    cleanup.push(root);
+    await mkdir(join(root, "skills", "only"), { recursive: true });
+    await writeFile(
+      join(root, "plugin.json"),
+      JSON.stringify({ $schema: AGENT_PLUGIN_MANIFEST_SCHEMA, name: "components-only" }),
+    );
+    await writeFile(join(root, "skills", "only", "SKILL.md"), "---\nname: only\ndescription: Components only.\n---\n");
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: [],
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    expect(plan.files.map((file) => file.path)).not.toContain("com.github.copilot/hooks/hooks.json");
+    const diagnostics = await copilotAdapter().validateArtifacts!(
+      plan.files.map((file) => ({
+        path: file.path,
+        contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
+      })),
+      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("permits the documented acceptance of an unprojectable invocation policy", async () => {
+    const root = await packageRoot();
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: hookArtifacts(),
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+      accept: ["copilot:skill-implicit-invocation-unenforced"],
+    });
+    // The declaration is now accepted rather than rejected as unknown (HN501).
+    expect(plan.files.map((file) => file.path)).toContain("skills/gated/SKILL.md");
+    expect(plan.summary.degradations).toContainEqual(
+      expect.objectContaining({
+        id: "skill-implicit-invocation-unenforced",
+        component: "agent-plugin.skills.invocation-policy",
+        name: "gated",
+      }),
+    );
+  });
+
+  it("keeps an authored runtime when no compiled runtime replaces it", async () => {
+    const root = await packageRoot();
+    await mkdir(join(root, "runtime"), { recursive: true });
+    await writeFile(join(root, "runtime", "hooknostic.mjs"), "// authored runtime\n");
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: [],
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    const authoredRuntime = plan.files.find((file) => file.path === "runtime/hooknostic.mjs");
+    expect(
+      typeof authoredRuntime?.contents === "string"
+        ? authoredRuntime.contents
+        : Buffer.from(authoredRuntime!.contents!).toString("utf8"),
+    ).toBe("// authored runtime\n");
+    expect(plan.summary.copiedPaths).toContain("runtime/hooknostic.mjs");
+  });
+
   it("carries an authored hooks document when the package has no compiled hooks", async () => {
     const root = await packageRoot();
     const loaded = await loadAgentPlugin({ root });

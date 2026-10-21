@@ -178,14 +178,10 @@ export function copilotAdapter(): HarnessAdapter {
       const diagnostics = [];
       const hookPath = copilotHooksPath(target.delivery);
       const hooksJson = artifacts.find((artifact) => artifact.path === hookPath);
-      if (hooksJson === undefined) {
-        diagnostics.push({
-          code: "HN301" as const,
-          severity: "error" as const,
-          target: target.id,
-          message: `generated no ${hookPath}; Copilot would run no hooks.`,
-        });
-      } else {
+      // A components-only package (skills and/or MCP, no portable hooks) has no
+      // hooks document, which is valid: there is simply nothing for Copilot to
+      // run. Validate the document when one exists.
+      if (hooksJson !== undefined) {
         try {
           const parsed = JSON.parse(contentsText(hooksJson.contents)) as unknown;
           if (!isJsonObject(parsed) || parsed["version"] !== 1 || !isJsonObject(parsed["hooks"])) {
