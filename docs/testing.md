@@ -151,6 +151,7 @@ version:
 | --- | --- |
 | Claude Code | `@anthropic-ai/claude-code` |
 | Codex CLI | `@openai/codex` |
+| GitHub Copilot CLI (`copilot`) | `@github/copilot` |
 | OpenCode v1 (`opencode-v1`) | `opencode-ai` |
 | OpenCode v2 (`opencode-v2`) | `@opencode/cli` |
 | Pi (`pi`) | `@earendil-works/pi-coding-agent` |
@@ -175,7 +176,7 @@ pnpm run bundle
 HOOKNOSTIC_PLAYBACK=codex pnpm exec vitest run packages/cli/test/harness-playback.test.ts
 ```
 
-Use `claude`, `codex`, `opencode-v1`, `opencode-v2`, or `pi`. The historical
+Use `claude`, `codex`, `copilot`, `opencode-v1`, `opencode-v2`, or `pi`. The historical
 `opencode` lane selector remains a v1 alias. V2 uses
 `packages/cli/test/opencode-v2-playback.test.ts`; see
 [OpenCode families](opencode-families.md) for its independently verified

@@ -171,8 +171,7 @@ under ignored `captured/`; it fails if the session log lacks the injection.
 - `context.compact.before`: a session with `COPILOT_PROVIDER_MAX_PROMPT_TOKENS`
   lowered to 40k completed 52.5k tokens without compacting. No capture, so the
   event is not advertised.
-- `notification` (interactive permission prompts, background shells) and the
-  interactive form of `permissionDecision: "ask"`.
+- `notification` (interactive permission prompts, background shells).
 - macOS and any host without a native platform package.
 - An installed-marketplace (copied) plugin, rather than the live local load.
 - Placeholder expansion in a remote MCP **header name**; the transport probes
