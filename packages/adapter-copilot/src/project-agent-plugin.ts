@@ -87,7 +87,7 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
         "agent-plugin.runtime-package": {
           level: "unsupported",
           rationale:
-            "A captured local marketplace install and the --plugin-dir route both load the plugin live from its source and copy nothing, so no package.json install runs. A locked dependency install is unavailable on this harness; bundle Node component dependencies instead.",
+            "No captured install route runs a dependency install: --plugin-dir and a local-path marketplace load the plugin live and copy nothing, while a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package without running npm. A locked dependency install is unavailable on this harness; bundle Node component dependencies instead.",
         },
       },
       source: {
@@ -268,7 +268,7 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
       omissions.push({
         component: "agent-plugin.runtime-package",
         reason:
-          "Copilot loads a plugin live from its source and installs nothing (captured), so the manifest and lockfile were dropped; bundle Node component dependencies instead",
+          "no captured Copilot install route runs a dependency install, live or copied, so the manifest and lockfile were dropped; bundle Node component dependencies instead",
       });
     }
     const counts = componentSummary(source, {

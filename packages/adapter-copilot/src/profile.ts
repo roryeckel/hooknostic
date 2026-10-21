@@ -97,6 +97,20 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     artifact: CAPTURE,
     what: "GITHUB_WORKSPACE on Linux: project .github/mcp.json is still read from the session directory, but a stdio server without cwd is spawned in GITHUB_WORKSPACE and its relative args resolve there; an explicit relative cwd resolves against the session project.",
   },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: "Installed plugins on Linux: a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package under installed-plugins and run no dependency install; the copied hook fires and its stdio server starts, and hooks see PLUGIN_ROOT but not PLUGIN_DATA on every route.",
+  },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "captured",
+    artifact: FIXTURES,
+    what: "notification payloads on Linux for shell_completed and agent_idle, stating hook_event_name Notification; declined, with fixtures/copilot/1.0/declined.json recording why.",
+  },
   COPILOT_SKILL_POLICY_VALIDATION,
 ];
 

@@ -54,11 +54,16 @@ copilot plugin marketplace add /path/to/market
 copilot plugin install <plugin>@<marketplace>
 ```
 
-A local marketplace install loads the plugin **live from its source directory**;
-1.0.101 copies nothing and runs no dependency install. Keep the built output
-where it is, or re-run `--plugin-dir` against the build. A plugin's
-`com.github.copilot/hooks/hooks.json` runs even in `-p` sessions, and the package
-gets `PLUGIN_ROOT`/`PLUGIN_DATA` for its MCP servers and hooks.
+A local-path marketplace install loads the plugin **live from its source
+directory**: 1.0.101 copies nothing, so keep the built output where it is. A
+marketplace hosted in a git repository (`.github/plugin/marketplace.json`) is
+different: `plugin@marketplace` **copies** the package into
+`$COPILOT_HOME/installed-plugins/<marketplace>/<plugin>/`, so a rebuilt package
+reaches Copilot only after `copilot plugin update`. No route runs a dependency
+install; bundle a package's Node dependencies. A plugin's
+`com.github.copilot/hooks/hooks.json` runs even in `-p` sessions. Its MCP servers
+get `PLUGIN_ROOT` and `PLUGIN_DATA` in their environment; its hooks get
+`PLUGIN_ROOT` only.
 
 Project delivery writes `.github/hooks/hooknostic.json`, copies selected skills
 to `.agents/skills/`, and declares MCP servers in `.github/mcp.json` (Copilot

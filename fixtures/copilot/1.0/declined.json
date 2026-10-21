@@ -6,5 +6,13 @@
   "error-occurred": {
     "reason": "Copilot's error event has no portable counterpart, and tool.error needs a tool invocation it does not carry.",
     "error": "unmapped native event \"errorOccurred\""
+  },
+  "notification-shell-completed": {
+    "reason": "Copilot's notification reports asynchronous status (a background shell completed, an agent went idle, a permission prompt); no portable event names it, and it is fire-and-forget.",
+    "error": "unmapped native event \"Notification\""
+  },
+  "notification-agent-idle": {
+    "reason": "Copilot's notification reports asynchronous status (a background shell completed, an agent went idle, a permission prompt); no portable event names it, and it is fire-and-forget.",
+    "error": "unmapped native event \"Notification\""
   }
 }

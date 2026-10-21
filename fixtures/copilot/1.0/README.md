@@ -35,6 +35,7 @@ path, and every other path shape stay as captured, because the shape is evidence
 | agent-start-pascal | **captured** 1.0.101 (2026-10-20) with a PascalCase `SubagentStart` entry: the payload is hybrid camel base + snake agent fields and omits `hook_event_name` |
 | pre-compact | **captured** 1.0.101 (2026-10-21) in an interactive session using `/compact`; the payload carries `trigger: "manual"` and `transcriptPath` |
 | user-prompt-transformed, error-occurred | **captured** 1.0.101 (2026-10-20) and **declined**: no portable event names a pre-model prompt transformation or a generic error |
+| notification-shell-completed, notification-agent-idle | **captured** 1.0.101 (2026-10-21) in a Debian container and **declined**: `notification_type` `shell_completed` (a background shell finished while the agent was busy) and `agent_idle` (a background subagent). Linux paths carry no account name |
 
 `tool.shell.dialect` is not in any payload. The decoder derives it from the
 runtime tool name (ADR-0029): `powershell` ran Windows PowerShell 5.1, `bash`

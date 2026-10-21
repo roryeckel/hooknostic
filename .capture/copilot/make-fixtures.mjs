@@ -118,6 +118,20 @@ const DECLINED = {
     hint: "errorOccurred",
     reason: "Copilot's error event has no portable counterpart, and tool.error needs a tool invocation it does not carry.",
   },
+  // Captured on Linux (1.0.101): a background shell finishing while the agent
+  // was busy, and a background subagent going idle.
+  "notification-shell-completed": {
+    payload: line("notification-shell-while-busy", "notification", 0),
+    hint: "notification",
+    reason:
+      "Copilot's notification reports asynchronous status (a background shell completed, an agent went idle, a permission prompt); no portable event names it, and it is fire-and-forget.",
+  },
+  "notification-agent-idle": {
+    payload: line("notification-background-agent", "notification", 0),
+    hint: "notification",
+    reason:
+      "Copilot's notification reports asynchronous status (a background shell completed, an agent went idle, a permission prompt); no portable event names it, and it is fire-and-forget.",
+  },
 };
 
 mkdirSync(FIXTURES, { recursive: true });

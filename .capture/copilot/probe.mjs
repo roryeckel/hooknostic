@@ -683,6 +683,32 @@ const PROBES = {
       Object.keys(pluginHookCandidates("")).flatMap((name) => ["--plugin-dir", join(scratch, name)]),
     prompt: "Reply SHAPES-PROBE and nothing else. Do not use any tool.",
   },
+  // The notification event: a background shell's completion should raise
+  // notification_type shell_completed. Linux `bash` tool names (read_bash).
+  "notification-async-shell": {
+    hooks: {
+      notification: { label: "notification" },
+      postToolUse: { label: "postToolUse" },
+      agentStop: { label: "agentStop" },
+    },
+    prompt:
+      "Use the bash tool once in async (background) mode to run: sleep 3; echo hooknostic-async-done. " +
+      "Then use read_bash on that shell, waiting up to 20 seconds, until it has finished. Then reply DONE.",
+  },
+  // The background shell finishes while the agent is busy in a second command.
+  "notification-shell-while-busy": {
+    hooks: { notification: { label: "notification" }, agentStop: { label: "agentStop" } },
+    prompt:
+      "Use the bash tool in async (background) mode to run: sleep 2; echo hooknostic-async-done. Do not read it. " +
+      "Then use the bash tool normally (not async) to run: sleep 12; echo busy-done. Then reply DONE.",
+  },
+  // A background subagent's completion: notification_type agent_completed.
+  "notification-background-agent": {
+    hooks: { notification: { label: "notification" }, agentStop: { label: "agentStop" } },
+    prompt:
+      'Use the task tool once with agent_type "explore", mode "background", and the prompt "Reply PONG and nothing ' +
+      'else." Then use the bash tool to run: sleep 15; echo waited. Then reply DONE.',
+  },
   // A user-facing message on stop: is systemMessage shown, on either stop event?
   "effect-stop-system-message": {
     hooks: {

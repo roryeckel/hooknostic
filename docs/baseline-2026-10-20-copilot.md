@@ -77,7 +77,7 @@ for one event and both fire.
 | `subagentStart` / `SubagentStart` | `agent.start` | `agentName`, `agentId`, `agentType`, `parentAgentId` |
 | `subagentStop` / `SubagentStop` | `agent.stop` | adds `response` / `last_assistant_message`; `decision`/`reason` |
 | `errorOccurred` / `ErrorOccurred` | — | generic error context, no tool invocation |
-| `notification` | — | async shell/agent/permission notices |
+| `notification` | — (declined) | async status notices; captured `shell_completed` and `agent_idle` (2026-10-21) |
 
 ## Exit codes and failure behavior
 
@@ -174,6 +174,10 @@ the separator when the name is not a native tool, and never sets `tool.mcp`
   (`copilot plugin marketplace add <path>`; `copilot plugin install`) also loads
   it live: nothing is copied, and a `package.json` + lockfile produced no
   `node_modules`.
+- A git-URL install and `plugin@marketplace` from a git-hosted marketplace copy
+  the package under `$COPILOT_HOME/installed-plugins/` and still run no
+  dependency install; hooks see `PLUGIN_ROOT` but not `PLUGIN_DATA` in their
+  environment on every route (2026-10-21).
 - `${PLUGIN_ROOT}/script.mjs` in a plugin hook's `exec` args expands; a relative
   `script.mjs` also runs, so a plugin hook's cwd is the plugin root.
 

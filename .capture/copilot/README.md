@@ -45,6 +45,9 @@ node .capture/copilot/transport-probe.mjs streamable-http
 node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
 docker run --rm ... bash /capture/workspace-probe.sh
+node .capture/copilot/installed-plugin-probe.mjs          # in the Linux container
+node .capture/copilot/probe.mjs notification-shell-while-busy
+node .capture/copilot/probe.mjs notification-background-agent
 node .capture/copilot/make-fixtures.mjs
 ```
 
@@ -78,6 +81,12 @@ node .capture/copilot/make-fixtures.mjs
   remote MCP probes; record the URL and headers the client sent.
 - `linux-capture.sh` — shell-dialect capture inside a disposable Debian
   container.
+- `workspace-probe.sh` — whether `GITHUB_WORKSPACE` moves where project stdio
+  MCP servers start (Linux container, no model needed).
+- `installed-plugin-probe.mjs` — installs one package three ways (a direct git
+  URL, a git-hosted marketplace, `--plugin-dir`) from a loopback smart-HTTP git
+  server and records the install tree, a dependency-install marker, and the
+  `PLUGIN_ROOT`/`PLUGIN_DATA` a hook and a stdio server see.
 - `make-fixtures.mjs` — redacts the account name to `user` and writes input
   fixtures plus the native-event hints the camelCase payloads need.
 - `captured/` — gitignored raw tees.
@@ -189,6 +198,20 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   rather than assuming the fix reached earlier releases.
 - A plugin hook may use `${PLUGIN_ROOT}/tee.mjs` in `exec` `args`; a relative
   `tee.mjs` also ran, so the plugin hook's cwd is the plugin root.
+- **Installed (copied) plugins** (`installed-plugin-probe.mjs`, Linux,
+  1.0.101): a direct git-URL install copies the package to
+  `$COPILOT_HOME/installed-plugins/_direct/<url-slug>/` (Copilot warns that
+  direct installs are deprecated), and `plugin@marketplace` from a git-hosted
+  marketplace (`.github/plugin/marketplace.json`) copies it to
+  `installed-plugins/<marketplace>/<plugin>/`. Neither ran a dependency
+  install: the package's `postinstall` marker never appeared and no
+  `node_modules` was created. The installed hook fired and the stdio server
+  started from the copy, with `PLUGIN_ROOT` the copy and `PLUGIN_DATA` under
+  `plugin-data/_direct/<hash>` or `plugin-data/<marketplace>/<plugin>`. The
+  `--plugin-dir` control copied nothing. A hook's environment carried
+  `PLUGIN_ROOT` but not `PLUGIN_DATA` on all three routes; a stdio server's
+  carried both. A copied install is a snapshot, so a rebuilt package reaches
+  Copilot only through `copilot plugin update`.
 - **A malformed hook entry rejects a plugin's whole hooks file**, while a
   `.github/hooks/*.json` file drops only that entry (`hooks-malformed`,
   `plugin-hooks-malformed`): in the plugin no entry beside the fault ran, on
@@ -209,10 +232,19 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   hooks before merging them with the dispatcher's entries.
 - A legacy plugin's skill and an Agent Plugins package's skill both loaded.
 
-## Not established
+## Declined events
 
-- `notification` (interactive permission prompts, background shells).
-- Any host without a native platform package.
-- An installed-marketplace (copied) plugin, rather than the live local load.
 - `errorOccurred` and `userPromptTransformed` are captured and declined: no
   portable event names a generic error or a pre-model prompt transformation.
+- `notification` is captured and declined (Linux, 1.0.101): a background
+  shell finishing while the agent ran another command produced
+  `notification_type: "shell_completed"`, and a background subagent produced
+  `agent_idle`. Both payloads state `hook_event_name: "Notification"`. A
+  shell whose output the agent read with `read_bash` raised none. No portable
+  event names an asynchronous status notice.
+
+## Not established
+
+- Any host without a native platform package.
+- The `permission_prompt`, `elicitation_dialog` and `shell_detached_completed`
+  notification types; the event is declined whatever its type.
