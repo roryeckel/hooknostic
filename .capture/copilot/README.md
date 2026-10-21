@@ -29,6 +29,8 @@ node .capture/copilot/probe.mjs camel-lifecycle
 node .capture/copilot/probe.mjs pascal-lifecycle
 node .capture/copilot/interactive-skill-probe.mjs project
 node .capture/copilot/interactive-skill-probe.mjs plugin
+node .capture/copilot/interactive-approval-probe.mjs allow
+node .capture/copilot/interactive-approval-probe.mjs deny
 node .capture/copilot/transport-probe.mjs streamable-http
 node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
@@ -50,11 +52,15 @@ node .capture/copilot/make-fixtures.mjs
   `--headless` also runs the `-p` control and writes a filtered
   `headless-evidence.json`; it fails on a nonzero exit or if the log lacks the
   `skill(gated)` call and its not-found result.
+- `interactive-approval-probe.mjs` — pty driver for `permissionDecision: "ask"`.
+  `allow` selects Yes and requires the command to run; `deny` selects No/Esc and
+  requires the structured session log to record an interactive denial with no
+  marker file.
 - `mcp-transport-server.mjs` / `mcp-transport-runner.mjs` — a minimal loopback
   Streamable HTTP and legacy SSE MCP server, run as a child process (a
   `spawnSync` driver would block an in-process server's event loop).
 - `transport-probe.mjs`, `project-transport-probe.mjs` — plugin and project
-  remote MCP probes; record the headers the client sent.
+  remote MCP probes; record the URL and headers the client sent.
 - `linux-capture.sh` — shell-dialect capture inside a disposable Debian
   container.
 - `make-fixtures.mjs` — redacts the account name to `user` and writes input
@@ -82,7 +88,7 @@ node .capture/copilot/make-fixtures.mjs
 | --- | --- | --- |
 | `preToolUse` deny | `{permissionDecision:"deny", permissionDecisionReason}` blocked the call and the reason reached the model. Exit 2 also blocks (a bare exit-2 probe denied). | Encode the deny as JSON on exit 0; exit 2 remains a harness-side fail-closed path for crashes. |
 | `preToolUse` rewrite | `modifiedArgs` replaced the arguments at execution: the tool result was `marker-modified-args` although the timeline showed the original. | `replaceInput`/`updateShell` lower to `modifiedArgs`. |
-| `preToolUse` ask | `{permissionDecision:"ask"}` denied in `-p` with "unable to ask user for confirmation"; an interactive session has a user. | Rated exact with a headless rationale. |
+| `preToolUse` ask | `{permissionDecision:"ask"}` denied in `-p` with "unable to ask user for confirmation". Interactively, it surfaced the native "Hook permission request" dialog with the hook reason; Yes ran the command and No/Esc denied it. | Exact: both user choices and the headless deny are captured. |
 | `preToolUse` context | `{additionalContext}` on the same event reached the model (it quoted the token), though the hook reference does not list the field. | `tool.before.context.add` exact. |
 | Multiple `preToolUse` entries | The first entry's deny short-circuited; the second entry never ran. | A deny is terminal across entries, matching one-dispatcher composition. |
 | `postToolUse` output | `{modifiedResult:{resultType:"success",textResultForLlm}}` replaced what the model saw. `additionalContext` rides beside it. | `tool.after.output.replace` exact, text-encoded. |
@@ -137,9 +143,9 @@ under ignored `captured/`; it fails if the session log lacks the injection.
 | --- | --- | --- |
 | Project `.mcp.json` stdio | `{type:"stdio", command, args, env, cwd}` starts. `cwd` is honoured; relative `args` resolve from the project root; ambient `${USERPROFILE}` expands in args/env; `${PLUGIN_ROOT}` stays literal. | Project stdio goes through the shared launcher. |
 | Project `.github/mcp.json` | The same stdio declaration works when moved to `.github/mcp.json`; the probe connected and called its tool. | Project integration writes the Copilot-scoped file, avoiding a collision with Claude's root `.mcp.json`. |
-| Project `.mcp.json` remote | `type:"http"` (Streamable HTTP) and `type:"sse"` both connected to the loopback server. Ambient `${USERPROFILE}` expanded in headers; `${PLUGIN_ROOT}` stayed literal. | Both remote transports exact, with the environment-expansion deviation for a package's text. |
+| Project `.mcp.json` remote | `type:"http"` (Streamable HTTP) and `type:"sse"` both connected to the loopback server. Ambient `${USERPROFILE}` expanded in the URL query; a missing `${HOOKNOSTIC_PROBE_MISSING:-fallback}` used the fallback in both the URL and headers; `${PLUGIN_ROOT}` stayed literal. | Both remote transports exact, with the environment-expansion deviation for a package's text. |
 | Agent Plugins `mcp.json` stdio | `command`, `args`, `env`, `cwd` all expand `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`; `${PLUGIN_ROOT}/node-copy.exe` launched. Ambient `${USERPROFILE}` also expanded. The server's cwd was the `PLUGIN_DATA` directory. `PLUGIN_ROOT`/`PLUGIN_DATA` are exported in its environment. | `mcp.stdio` exact, with an ambient-expansion deviation. |
-| Agent Plugins `mcp.json` remote | Streamable HTTP and SSE both connected. `${PLUGIN_ROOT}` stayed literal in headers (conforming); `${USERPROFILE}` expanded (not conforming). | Both remote components exact, with the deviation. |
+| Agent Plugins `mcp.json` remote | Streamable HTTP and SSE both connected. `${PLUGIN_ROOT}` stayed literal in headers (conforming); `${USERPROFILE}` and `${HOOKNOSTIC_PROBE_MISSING:-fallback}` expanded in the URL query and headers (not conforming). | Both remote components exact, with the deviation. |
 | Plugin data | `PLUGIN_DATA` resolved under `$COPILOT_HOME/plugin-data/_direct/<hash>` and persists across sessions. | No launcher or data relocation needed for package delivery. |
 
 ## Plugins
@@ -169,7 +175,7 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   interactive form of `permissionDecision: "ask"`.
 - macOS and any host without a native platform package.
 - An installed-marketplace (copied) plugin, rather than the live local load.
-- Remote MCP URL placeholder expansion and `${NAME:-fallback}` syntax: the
-  transport probes used a fixed URL and simple header-value references.
+- Placeholder expansion in a remote MCP **header name**; the transport probes
+  covered the URL query and header values.
 - `errorOccurred` and `userPromptTransformed` are captured and declined: no
   portable event names a generic error or a pre-model prompt transformation.

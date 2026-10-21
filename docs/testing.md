@@ -95,10 +95,13 @@ Copilot's lane loads the package delivery through `--plugin-dir` and points
 `COPILOT_PROVIDER_*` at the loopback chat-completions server, so no GitHub login
 or provider key is involved. The runtime tool name pins the dialect: `bash` on
 Linux and `powershell` on Windows. `permissionRequest` fires in `-p` sessions, so
-its observe/deny path is driven without a pty; the interactive form of
-`permissionDecision: "ask"` remains uncaptured. Copilot's MCP fixture call is
-classified as `mcp` from the server-tool separator, while `tool.mcp` stays
-absent because the payload never states the split.
+its observe/deny path is driven without a pty. The interactive
+`permissionDecision: "ask"` prompt and both user choices are captured by
+`.capture/copilot/interactive-approval-probe.mjs`; the scheduled suite still has
+no Copilot pty-approval driver, so that scenario remains inconclusive on the
+automated lane. Copilot's MCP fixture call is classified as `mcp` from the
+server-tool separator, while `tool.mcp` stays absent because the payload never
+states the split.
 
 The loopback suite never switches to a paid model. Every declared driver
 limitation is written to the harness-watch workflow summary as an

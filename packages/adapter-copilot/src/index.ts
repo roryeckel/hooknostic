@@ -218,8 +218,8 @@ export function copilotAdapter(): HarnessAdapter {
     },
 
     runtime: {
-      async decode(nativeEvent, invocation) {
-        return decodeCopilot(nativeEvent, invocation);
+      async decode(nativeEvent, invocation, nativeEventName?: string) {
+        return decodeCopilot(nativeEvent, invocation, nativeEventName);
       },
       apply: applyCopilot,
     },

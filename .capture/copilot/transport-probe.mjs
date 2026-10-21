@@ -3,9 +3,10 @@
 // usage: node .capture/copilot/transport-probe.mjs [streamable-http|sse]
 //
 // Starts the loopback MCP transports in a child process, projects an Agent
-// Plugins 1.0 plugin whose mcp.json points at them with placeholders in
-// `headers`, and drives one `copilot -p` session per transport. Captures the
-// hook payloads, the session output, and the headers the client actually sent.
+// Plugins 1.0 plugin whose mcp.json points at them with placeholders in the
+// URL query and `headers`, and drives one `copilot -p` session per transport.
+// Captures the hook payloads, the session output, and the URL and headers the
+// client actually sent.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -96,11 +97,13 @@ async function main() {
             mcpServers: {
               probe: {
                 type: transport,
-                url: `http://127.0.0.1:${port}/${transport === "sse" ? "sse" : "mcp"}`,
+                url: `http://127.0.0.1:${port}/${transport === "sse" ? "sse" : "mcp"}?probe=\${USERPROFILE}&fallback=\${HOOKNOSTIC_PROBE_MISSING:-fallback-url}`,
                 headers: {
                   "X-Probe-Root": "${PLUGIN_ROOT}",
                   "X-Probe-Data": "${PLUGIN_DATA}",
                   "X-Probe-Ambient": "${USERPROFILE}",
+                  "X-Probe-Fallback": "${HOOKNOSTIC_PROBE_MISSING:-fallback-header}",
+                  "X-Probe-SetFallback": "${HOOKNOSTIC_PROBE_SET:-fallback-header}",
                 },
               },
             },
@@ -136,7 +139,11 @@ async function main() {
         ],
         {
           cwd: scratch,
-          env: { ...process.env, COPILOT_HOME: join(scratch, ".copilot-home") },
+          env: {
+            ...process.env,
+            HOOKNOSTIC_PROBE_SET: "set-value",
+            COPILOT_HOME: join(scratch, ".copilot-home"),
+          },
           encoding: "utf8",
           maxBuffer: 64 * 1024 * 1024,
           timeout: 120000,

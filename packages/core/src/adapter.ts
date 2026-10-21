@@ -275,7 +275,13 @@ export interface NativeHookResult {
 }
 
 export interface RuntimeAdapter {
-  decode(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
+  /**
+   * Decode a native payload. `nativeEventName` is the event the harness
+   * registered the entry for; most adapters ignore it, while a harness whose
+   * camelCase payload omits its own event name requires the caller to supply
+   * it. A payload that states its event still wins over the hint.
+   */
+  decode(nativeEvent: unknown, invocation: InvocationContext, nativeEventName?: string): Promise<HookEvent>;
   apply(result: HookResult, nativeEvent: unknown, invocation: InvocationContext): Promise<NativeHookResult>;
   /**
    * Target constraints shared by portable dispatch and the generated shim.

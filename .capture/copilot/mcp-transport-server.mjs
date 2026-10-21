@@ -1,9 +1,9 @@
 // Minimal MCP transports for the GitHub Copilot capture project.
 //
 // Streamable HTTP and legacy SSE, just enough of the protocol for Copilot's
-// client to initialize, list one tool, and call it. Every request's headers are
-// recorded so a probe can show whether the harness expanded placeholders in
-// them.
+// client to initialize, list one tool, and call it. Every request's URL and
+// headers are recorded so a probe can show whether the harness expanded
+// placeholders in them.
 import { appendFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -68,7 +68,7 @@ export async function startMcpTransports(options = {}) {
 
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    record({ method: request.method, path: url.pathname, headers: request.headers, at: Date.now() });
+    record({ method: request.method, url: url.href, path: url.pathname, headers: request.headers, at: Date.now() });
 
     if (request.method === "GET" && url.pathname === "/sse") {
       const sessionId = randomUUID();

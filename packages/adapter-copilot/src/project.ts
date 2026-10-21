@@ -40,7 +40,7 @@ const SKILL_REFERENCE_DEGRADATION = {
 const REMOTE_ENVIRONMENT_DEVIATION = {
   id: ENVIRONMENT_EXPANSION_DEVIATION,
   summary:
-    "Copilot substitutes set ambient environment variables into a remote server's header values, where Agent Plugins 1.0 requires the text to reach the client literally. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. URL and header-name expansion were not captured.",
+    "Copilot substitutes set ambient environment variables, including ${NAME:-fallback}, into a remote server's url query or header values, where Agent Plugins 1.0 requires the text to reach the client literally. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. Header-name expansion was not captured.",
   evidence: CAPTURE,
 } as const;
 

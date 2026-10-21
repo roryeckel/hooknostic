@@ -32,6 +32,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     date: "2026-10-20",
     method: "live-probe",
     artifact: CAPTURE,
+    what: "Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval.",
+  },
+  {
+    version: "1.0.101",
+    date: "2026-10-20",
+    method: "live-probe",
+    artifact: CAPTURE,
     what: "Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit.",
   },
   {
@@ -124,7 +131,7 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.requestApproval": {
         level: "exact",
         rationale:
-          'permissionDecision "ask" defers to the user\'s permission flow. In the captured headless -p session no user exists, so the call was denied as "unable to ask user for confirmation"; an interactive session\'s native prompt is not captured.',
+          'permissionDecision "ask" surfaces the native "Hook permission request" dialog in an interactive session; the captured Yes ran the command and the captured No/Esc denied it. A headless -p session has no user and denies with "unable to ask user for confirmation".',
       },
       "tool.before.input.replace": { level: "exact" },
       "tool.before.context.add": {

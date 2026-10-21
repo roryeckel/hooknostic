@@ -141,12 +141,15 @@ the separator when the name is not a native tool, and never sets `tool.mcp`
 - Project: `.mcp.json` (or `.github/mcp.json`) with `mcpServers`; stdio,
   `type: "http"` (Streamable HTTP) and `type: "sse"` all work. `cwd`, `env` and
   relative `args` resolve from the project root. Ambient `${NAME}` expands in
-  args/env/headers; `${PLUGIN_ROOT}` stays literal.
+  args/env/URL query/header values, including `${NAME:-fallback}`;
+  `${PLUGIN_ROOT}` stays literal.
 - Plugin (Agent Plugins 1.0): `mcp.json` at the plugin root. `${PLUGIN_ROOT}`
   and `${PLUGIN_DATA}` expand in `command`, `args`, `env` and `cwd`;
   `PLUGIN_DATA` is a persistent directory under
-  `$COPILOT_HOME/plugin-data/_direct/<hash>`. Ambient variables also expand,
-  including in remote headers, where Agent Plugins 1.0 forbids all expansion.
+  `$COPILOT_HOME/plugin-data/_direct/<hash>`. Ambient variables, including
+  `${NAME:-fallback}`, also expand in remote URL queries and header values,
+  where Agent Plugins 1.0 forbids all expansion. Header-name expansion was not
+  probed.
 - Plugin roots also receive `PLUGIN_ROOT` and `PLUGIN_DATA` in the subprocess
   environment.
 

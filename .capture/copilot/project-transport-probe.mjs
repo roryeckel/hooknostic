@@ -5,7 +5,7 @@
 // Runs the same loopback MCP transports as transport-probe.mjs, but declares
 // them in the workspace `.mcp.json` instead of an installed plugin. Records
 // whether the client reaches the server and which placeholders it expands in
-// the declaration's headers.
+// the declaration's URL query and headers.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -71,10 +71,12 @@ async function main() {
           mcpServers: {
             probe: {
               type: transport,
-              url: `http://127.0.0.1:${port}/${transport === "sse" ? "sse" : "mcp"}`,
+              url: `http://127.0.0.1:${port}/${transport === "sse" ? "sse" : "mcp"}?probe=\${USERPROFILE}&fallback=\${HOOKNOSTIC_PROBE_MISSING:-fallback-url}`,
               headers: {
                 "X-Probe-Root": "${PLUGIN_ROOT}",
                 "X-Probe-Ambient": "${USERPROFILE}",
+                "X-Probe-Fallback": "${HOOKNOSTIC_PROBE_MISSING:-fallback-header}",
+                "X-Probe-SetFallback": "${HOOKNOSTIC_PROBE_SET:-fallback-header}",
               },
             },
           },
@@ -108,7 +110,7 @@ async function main() {
       ],
       {
         cwd: scratch,
-        env: { ...process.env, COPILOT_HOME: join(scratch, ".copilot-home") },
+        env: { ...process.env, HOOKNOSTIC_PROBE_SET: "set-value", COPILOT_HOME: join(scratch, ".copilot-home") },
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024,
         timeout: 120000,
