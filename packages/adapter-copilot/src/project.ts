@@ -58,9 +58,19 @@ const COMPILED_HOOKS_PATH = "hooks/hooknostic.json";
  * build output to a path relative to the project root, because Copilot does
  * not expand a project-directory variable in a hook's exec args (captured).
  */
+const COPILOT_PROJECT_GUIDANCE = [
+  "Start Copilot at the project root: repository hooks are read from the session's working directory, not the git root, and a linked worktree's own .github/hooks is the one it reads.",
+  "Trust the folder (--trust-folder or COPILOT_ALLOW_ALL=true) or repository hooks are skipped silently, and restart the CLI after synchronization: hook files are loaded at startup.",
+];
+
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const manifest = artifacts.find((artifact) => artifact.path === COMPILED_HOOKS_PATH);
-  if (manifest === undefined) throw new Error(`project delivery emitted no ${COMPILED_HOOKS_PATH}`);
+  // A components-only project (skills and/or MCP, no portable hooks) compiles
+  // no hooks document. Integration still has work to do, so return no hook
+  // file rather than failing the target.
+  if (manifest === undefined) {
+    return { files: [], entries: [], guidance: COPILOT_PROJECT_GUIDANCE };
+  }
   const document = JSON.parse(contentsText(manifest.contents)) as {
     version: number;
     hooks: Record<string, { args?: unknown }[]>;
@@ -82,10 +92,7 @@ export function projectIntegration(artifacts: readonly GeneratedArtifact[], outp
       },
     ],
     entries: [],
-    guidance: [
-      "Start Copilot at the project root: repository hooks are read from the session's working directory, not the git root, and a linked worktree's own .github/hooks is the one it reads.",
-      "Trust the folder (--trust-folder or COPILOT_ALLOW_ALL=true) or repository hooks are skipped silently, and restart the CLI after synchronization: hook files are loaded at startup.",
-    ],
+    guidance: COPILOT_PROJECT_GUIDANCE,
   };
 }
 

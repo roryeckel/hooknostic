@@ -52,7 +52,10 @@ async function packageRoot(): Promise<string> {
     "com.github.copilot/hooks/hooks.json": JSON.stringify({
       version: 1,
       hooks: {
-        sessionStart: [{ type: "command", exec: "node", args: ["-e", "console.log('authored-marker')"] }],
+        sessionStart: [
+          { type: "command", exec: "node", args: ["-e", "console.log('authored-marker')"] },
+          { type: "command", exec: "node", args: ["${PLUGIN_ROOT}/runtime/hooknostic.mjs"] },
+        ],
       },
     }),
     "package.json": JSON.stringify({ name: "projector-probe", dependencies: { "is-number": "7.0.0" } }),
@@ -307,6 +310,14 @@ describe("Copilot Agent Plugin projector", () => {
     });
     const hooks = plan.files.find((file) => file.path === "com.github.copilot/hooks/hooks.json");
     expect(hooks?.contents).toContain("authored-marker");
+    const diagnostics = await copilotAdapter().validateArtifacts!(
+      plan.files.map((file) => ({
+        path: file.path,
+        contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
+      })),
+      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+    );
+    expect(diagnostics).toEqual([]);
   });
 
   it("carries every compiled hook artifact path into the plan", async () => {

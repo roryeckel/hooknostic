@@ -1,3 +1,4 @@
+import { symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -987,4 +988,49 @@ describe("skill invocation policy builds", () => {
     expect(accepted.errors.join(" ")).toContain("unowned or modified generated file");
     expect(await readFile(path, "utf8")).toBe("Unowned native skill\n");
   }, 60_000);
+});
+
+describe("skill policy discovery aliases", () => {
+  it("recognizes a skill reached through a junction under a discovery directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hooknostic-skill-link-"));
+    roots.push(root);
+    await mkdir(join(root, "shared", "review"), { recursive: true });
+    await mkdir(join(root, ".github", "skills"), { recursive: true });
+    symlinkSync(join(root, "shared", "review"), join(root, ".github", "skills", "review"), "junction");
+    const contents = new TextEncoder().encode(
+      '---\nname: review\ndescription: Linked skill\nmetadata:\n  hooknostic/allow-implicit-invocation: "false"\n---\n',
+    );
+    const source = {
+      origin: "direct" as const,
+      skills: [
+        {
+          name: "review",
+          source: join(root, "shared", "review"),
+          files: [{ path: "SKILL.md", contents, mode: 0o644 as const }],
+          policy: { allowImplicitInvocation: false },
+        },
+      ],
+    };
+    const plan = planProjectSkillPolicies(
+      source,
+      root,
+      [
+        {
+          id: "copilot",
+          adapter: "copilot",
+          destination: ".agents/skills",
+          discoveryDirectories: [".github/skills"],
+          support: { level: "exact" },
+        },
+      ],
+      { onUnsupported: "warn" },
+    ).get("copilot")!;
+    expect(plan.selection.omissions).toEqual([]);
+    expect(plan.selection.issues).toContainEqual(
+      expect.objectContaining({
+        component: "agent-plugin.skills.invocation-policy",
+        message: expect.stringContaining("discovered in place"),
+      }),
+    );
+  });
 });

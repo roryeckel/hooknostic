@@ -9,7 +9,7 @@ import { AGENT_PLUGIN_MCP_SCHEMA, type ProjectComponents } from "@hooknostic/age
 import { resolveAgentPluginProjection } from "@hooknostic/core";
 
 import { copilotHarness } from "./harness.js";
-import { projectComponentProfiles, projectComponents } from "./project.js";
+import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
 
 function source(origin: ProjectComponents["origin"], root: string): ProjectComponents {
   const encoder = new TextEncoder();
@@ -54,6 +54,13 @@ const support = resolveAgentPluginProjection(
 ).matrix!;
 
 describe("Copilot project components", () => {
+  it("returns no hook file when a components-only project compiles none", () => {
+    const integration = projectIntegration([], "out");
+    expect(integration.files).toEqual([]);
+    expect(integration.entries).toEqual([]);
+    expect(integration.guidance.join(" ")).toMatch(/project root/);
+  });
+
   it("copies skills to .agents/skills and rewrites the skill directory token", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-project-"));
     try {

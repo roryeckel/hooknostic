@@ -201,8 +201,9 @@ export function copilotAdapter(): HarnessAdapter {
                 entry["type"] !== "command" ||
                 entry["exec"] !== "node" ||
                 !Array.isArray(entry["args"]) ||
-                typeof entry["args"][0] !== "string" ||
-                !entry["args"][0].endsWith("runtime/hooknostic.mjs")
+                entry["args"].length !== 2 ||
+                (entry["args"][0] !== "runtime/hooknostic.mjs" &&
+                  entry["args"][0] !== "${PLUGIN_ROOT}/runtime/hooknostic.mjs")
               ) {
                 continue;
               }

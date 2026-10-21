@@ -591,6 +591,8 @@ Known degradations, reported as `HN101`:
 | --- | --- | --- | --- |
 | `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. | `.capture/copilot/README.md` |
 | `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
+| `copilot:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied faithfully: Copilot withholds the skill from automatic selection, but an explicit /skill invocation is not available, so accepting this emits the authored native flag and the skill may be unreachable. | `.capture/copilot/README.md` |
+| `copilot:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/copilot/README.md` |
 
 Project delivery validation records:
 
@@ -642,6 +644,8 @@ Known degradations, reported as `HN101`:
 | --- | --- | --- | --- |
 | `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. | `.capture/copilot/README.md` |
 | `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
+| `copilot:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | The declared implicit-invocation policy cannot be applied faithfully: Copilot withholds the skill from automatic selection, but an explicit /skill invocation is not available, so accepting this emits the authored native flag and the skill may be unreachable. | `.capture/copilot/README.md` |
+| `copilot:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/copilot/README.md` |
 
 Projection validation records:
 
