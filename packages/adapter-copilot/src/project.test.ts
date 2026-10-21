@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { symlinkSync } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -96,6 +97,38 @@ describe("Copilot project components", () => {
       expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/native/SKILL.md");
       expect(integration.unappliedModes).toEqual([{ skill: "native", path: "run.sh" }]);
       expect(integration.degradations).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes a native discovery directory reached through a junction", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-native-link-"));
+    try {
+      await mkdir(join(dir, "shared", "probe"), { recursive: true });
+      await mkdir(join(dir, ".github"), { recursive: true });
+      symlinkSync(join(dir, "shared"), join(dir, ".github", "skills"), "junction");
+      const encoder = new TextEncoder();
+      const native: ProjectComponents = {
+        origin: "direct",
+        skills: [
+          {
+            name: "probe",
+            source: join(dir, "shared", "probe"),
+            files: [
+              {
+                path: "SKILL.md",
+                contents: encoder.encode("---\nname: probe\ndescription: Linked skill.\n---\nRun run.sh.\n"),
+                mode: 0o644,
+              },
+              { path: "run.sh", contents: encoder.encode("#!/bin/sh\n"), mode: 0o755 },
+            ],
+          },
+        ],
+      };
+      const integration = await projectComponents(native, dir, "out", "", { support });
+      expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/probe/SKILL.md");
+      expect(integration.unappliedModes).toEqual([{ skill: "probe", path: "run.sh" }]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

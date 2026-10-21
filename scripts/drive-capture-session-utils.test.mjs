@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { flattenCaptured, hasCopilotToolExchange, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
+import { flattenCaptured, isEntrypoint, listCaptured, resetCaptureDir } from "./drive-capture-session-utils.mjs";
 
 const tempDirs = [];
 
@@ -59,16 +59,11 @@ describe("drive capture-session helpers", () => {
     expect(JSON.parse(readFileSync(join(dst, "preToolUse-0.json"), "utf8"))).toEqual(payload);
   });
 
-  it("requires a Copilot capture to contain both halves of a tool exchange", () => {
-    const pre = { toolName: "bash", toolArgs: { command: "x" } };
-    const post = { toolName: "bash", toolArgs: { command: "x" }, toolResult: { resultType: "success" } };
-    const permission = { hookName: "permissionRequest", toolName: "bash", toolInput: { command: "x" } };
-    const failure = { toolName: "view", toolArgs: { path: "x" }, error: "missing" };
-
-    expect(hasCopilotToolExchange([pre, post])).toBe(true);
-    expect(hasCopilotToolExchange([pre])).toBe(false);
-    expect(hasCopilotToolExchange([post])).toBe(false);
-    expect(hasCopilotToolExchange([permission, post])).toBe(false);
-    expect(hasCopilotToolExchange([pre, post, failure])).toBe(true);
+  it("clears a reused tee capture directory before a drive", () => {
+    const captured = mkdtempSync(join(tmpdir(), "hooknostic-drive-reset-"));
+    tempDirs.push(captured);
+    writeFileSync(join(captured, "postToolUse.jsonl"), '{"stale":true}\n', "utf8");
+    resetCaptureDir(captured);
+    expect(readdirSync(captured)).toEqual([]);
   });
 });

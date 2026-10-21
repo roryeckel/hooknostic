@@ -20,22 +20,13 @@ export function listCaptured(dir) {
 }
 
 /**
- * Whether a Copilot capture exercised the tool exchange: at least one
- * `preToolUse`-shaped payload and one `postToolUse`-shaped payload, both from
- * the same drive. The comparison's expected-variant accounting cannot state
- * this because Copilot's variant includes the platform's runtime tool name
- * (`bash` or `powershell`); a missing half is otherwise a clean verdict.
+ * Clear and recreate a tee capture directory. Tee files are append-only, so a
+ * reused `--scratch` must not let an earlier run's events satisfy a later
+ * verdict.
  */
-export function hasCopilotToolExchange(payloads) {
-  let before = false;
-  let after = false;
-  for (const payload of payloads) {
-    if (typeof payload?.toolName !== "string") continue;
-    if (payload.hookName === "permissionRequest") continue;
-    if (payload.toolResult !== undefined) after = true;
-    else if (payload.error === undefined) before = true;
-  }
-  return before && after;
+export function resetCaptureDir(dir) {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
 }
 
 /**

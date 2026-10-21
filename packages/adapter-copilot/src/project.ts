@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { AgentPluginProjectionProfile, ProjectComponents } from "@hooknostic/agent-plugin";
@@ -106,13 +107,24 @@ export async function projectComponents(
   // Copilot discovers these trees itself. A skill authored there is in place:
   // copying it to .agents/skills would list the same name twice and rewrite a
   // file Hooknostic does not own. `discoveryDirectories` tells the core policy
-  // planner the same thing for gated skills.
-  const nativeRoots = [".github/skills", ".claude/skills"].map((directory) => resolve(root, directory));
-  const authoredInPlace = (sourcePath: string): boolean =>
-    nativeRoots.some((directory) => {
-      const offset = relative(directory, sourcePath);
+  // planner the same thing for gated skills. Paths are canonicalized because a
+  // discovery directory may be a symlink or junction to a shared tree, and a
+  // lexical comparison would copy the same skill under `.agents/skills`.
+  const canonical = (path: string): string => {
+    try {
+      return realpathSync.native(path);
+    } catch {
+      return resolve(path);
+    }
+  };
+  const nativeRoots = [".github/skills", ".claude/skills"].map((directory) => canonical(resolve(root, directory)));
+  const authoredInPlace = (sourcePath: string): boolean => {
+    const canonicalSource = canonical(sourcePath);
+    return nativeRoots.some((directory) => {
+      const offset = relative(directory, canonicalSource);
       return offset === "" || (!isAbsolute(offset) && offset !== ".." && !offset.startsWith(`..${sep}`));
     });
+  };
   const skillSource: ProjectComponents = {
     ...source,
     skills: source.skills.filter((skill) => !authoredInPlace(skill.source)),
