@@ -97,13 +97,20 @@ async function main() {
             mcpServers: {
               probe: {
                 type: transport,
-                url: `http://127.0.0.1:${port}/${transport === "sse" ? "sse" : "mcp"}?probe=\${USERPROFILE}&fallback=\${HOOKNOSTIC_PROBE_MISSING:-fallback-url}`,
+                url: `http://127.0.0.1:${port}/${transport === "sse" ? "sse" : "mcp"}?probe=\${USERPROFILE}&fallback=\${HOOKNOSTIC_PROBE_MISSING:-fallback-url}&bare=$HOOKNOSTIC_PROBE_SET`,
                 headers: {
                   "X-Probe-Root": "${PLUGIN_ROOT}",
                   "X-Probe-Data": "${PLUGIN_DATA}",
                   "X-Probe-Ambient": "${USERPROFILE}",
                   "X-Probe-Fallback": "${HOOKNOSTIC_PROBE_MISSING:-fallback-header}",
                   "X-Probe-SetFallback": "${HOOKNOSTIC_PROBE_SET:-fallback-header}",
+                  // Braces are not valid in a header name, so the loader rejects
+                  // `${...}` there; the bare form is a valid token.
+                  "X-Probe-Bare": "$HOOKNOSTIC_PROBE_SET",
+                  "X-Probe-BareRoot": "$PLUGIN_ROOT",
+                  "X-Probe-RootFallback": "${PLUGIN_ROOT:-fallback-root}",
+                  "X-Probe-Percent": "%HOOKNOSTIC_PROBE_SET%",
+                  "X-Probe-Name-$HOOKNOSTIC_PROBE_SET": "header-name",
                 },
               },
             },
@@ -125,6 +132,7 @@ async function main() {
           "--trust-folder",
           "--allow-all-tools",
           "--disable-client-telemetry",
+          "--no-auto-update",
           "--excluded-tools",
           "powershell",
           "view",

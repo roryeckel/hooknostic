@@ -66,13 +66,13 @@ for one event and both fire.
 | --- | --- | --- |
 | `sessionStart` / `SessionStart` | `session.start` | `source: startup\|resume\|new`; optional `initialPrompt`; `additionalContext` output |
 | `sessionEnd` / `SessionEnd` | `session.end` | `reason: complete\|error\|abort\|timeout\|user_exit` |
-| `userPromptSubmitted` / `UserPromptSubmit` | `prompt.before` | command-hook output is dropped |
+| `userPromptSubmitted` / `UserPromptSubmit` | `prompt.before` | `decision: "block"` on exit 0 and `modifiedPrompt` are honoured (2026-10-21), though the reference says config-file output is dropped; exit 2 and `additionalContext` are not |
 | `userPromptTransformed` | — | transforms model-facing prompt content; no portable event |
 | `preToolUse` / `PreToolUse` | `tool.before` | `permissionDecision`, `permissionDecisionReason`, `modifiedArgs`, `additionalContext` |
 | `permissionRequest` / `PermissionRequest` | `permission.request` | `behavior`, `message`, `interrupt`; fires in `-p` too |
-| `postToolUse` / `PostToolUse` | `tool.after` | `modifiedResult`, `additionalContext` |
+| `postToolUse` / `PostToolUse` | `tool.after` | `modifiedResult`, `additionalContext`; `decision: "block"` replaces the result with the reason (2026-10-21) |
 | `postToolUseFailure` / `PostToolUseFailure` | `tool.error` | `error` string; `additionalContext` |
-| `preCompact` / `PreCompact` | `context.compact.before` | `trigger` (`manual` from `/compact`), `transcriptPath`; observation only |
+| `preCompact` / `PreCompact` | `context.compact.before` | `trigger` (`manual` from `/compact`), `transcriptPath`; observation only: a block (JSON or exit 2) and `additionalContext` were ignored (2026-10-21) |
 | `agentStop` / `Stop` | `turn.stop` | `transcriptPath`, `stopReason`, `stop_hook_active`; `decision`/`reason` |
 | `subagentStart` / `SubagentStart` | `agent.start` | `agentName`, `agentId`, `agentType`, `parentAgentId` |
 | `subagentStop` / `SubagentStop` | `agent.stop` | adds `response` / `last_assistant_message`; `decision`/`reason` |
@@ -149,8 +149,14 @@ the separator when the name is not a native tool, and never sets `tool.mcp`
   `PLUGIN_DATA` is a persistent directory under
   `$COPILOT_HOME/plugin-data/_direct/<hash>`. Ambient variables, including
   `${NAME:-fallback}`, also expand in remote URL queries and header values,
-  where Agent Plugins 1.0 forbids all expansion. Header-name expansion was not
-  probed.
+  where Agent Plugins 1.0 forbids all expansion.
+- Re-probed 2026-10-21: bare `$NAME` expands too (when set) in every stdio
+  field and in remote URLs and header values; `%NAME%` does not; header names
+  are never expanded. On the plugin route the bare and fallback alias
+  spellings expand in stdio fields, and a stdio `cwd` outside the
+  specification's three forms runs in the plugin root.
+- A malformed entry in a plugin's `com.github.copilot/hooks/hooks.json` rejects
+  the whole file; in `.github/hooks` it drops only that entry (2026-10-21).
 - Plugin roots also receive `PLUGIN_ROOT` and `PLUGIN_DATA` in the subprocess
   environment.
 

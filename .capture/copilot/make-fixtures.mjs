@@ -7,6 +7,7 @@
 // per-fixture camelCase event hints and declined.json. Canonical files are
 // generated from these inputs by the adapter's generate-canonical test.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,7 +17,7 @@ const CAPTURED = join(HERE, "captured");
 const FIXTURES = join(ROOT, "fixtures", "copilot", "1.0");
 
 /** The account segment to redact, and nothing else about a path. */
-const ACCOUNT = "ex0du";
+const ACCOUNT = process.env.HOOKNOSTIC_CAPTURE_ACCOUNT ?? userInfo().username;
 
 function redact(value) {
   if (typeof value === "string") return value.replaceAll(ACCOUNT, "user");

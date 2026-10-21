@@ -579,9 +579,494 @@ const PROBES = {
       "probe token; 2) use the probe_echo MCP tool from the probe server once with message AGENT-PROBE. " +
       "If a thing is missing, say MISSING for that step.",
   },
+  // `${NAME:-fallback}` in a stdio declaration, one field per server so an
+  // unresolved command or cwd cannot hide the other fields' result. The
+  // startup log is the evidence; the session only has to start.
+  "plugin-mcp-stdio-fallback": {
+    hooks: {},
+    env: {
+      HOOKNOSTIC_PROBE_SET: "set-value",
+      HOOKNOSTIC_PROBE_SUB: "fallback-cwd",
+      HOOKNOSTIC_PROBE_NODE: process.execPath,
+      HOOKNOSTIC_PROBE_DIR: join(SCRATCH_ROOT, "plugin-mcp-stdio-fallback", "plugin", "fallback-cwd"),
+    },
+    files: (scratch) => {
+      mkdirSync(join(scratch, "plugin", "fallback-cwd"), { recursive: true });
+      mkdirSync(join(scratch, "plugin", "$PLUGIN_DATA"), { recursive: true });
+      const log = join(CAPTURE_ROOT, "plugin-mcp-stdio-fallback", "mcp-startup.jsonl");
+      return {
+        "plugin/plugin.json": AGENT_PLUGIN_MANIFEST,
+        [`plugin/node-copy${process.platform === "win32" ? ".exe" : ""}`]: readFileSync(process.execPath),
+        "plugin/mcp-server.mjs": MCP_SERVER,
+        "plugin/mcp.json": stdioFallbackServers(join(scratch, "plugin"), "${PLUGIN_ROOT}/mcp-server.mjs", log),
+      };
+    },
+    cliArgs: (scratch) => ["--plugin-dir", join(scratch, "plugin")],
+    prompt: "Reply FALLBACK-PROBE and nothing else. Do not use any tool.",
+  },
+  "project-mcp-stdio-fallback": {
+    hooks: {},
+    env: {
+      HOOKNOSTIC_PROBE_SET: "set-value",
+      HOOKNOSTIC_PROBE_SUB: "fallback-cwd",
+      HOOKNOSTIC_PROBE_NODE: process.execPath,
+      HOOKNOSTIC_PROBE_DIR: join(SCRATCH_ROOT, "project-mcp-stdio-fallback", "fallback-cwd"),
+    },
+    files: (scratch) => {
+      mkdirSync(join(scratch, "fallback-cwd"), { recursive: true });
+      const log = join(CAPTURE_ROOT, "project-mcp-stdio-fallback", "mcp-startup.jsonl");
+      return {
+        "mcp-server.mjs": MCP_SERVER,
+        ".github/mcp.json": stdioFallbackServers(scratch, join(scratch, "mcp-server.mjs"), log),
+      };
+    },
+    prompt: "Reply FALLBACK-PROBE and nothing else. Do not use any tool.",
+  },
+  // Malformed entries in a repository hook file, beside well-formed ones: is a
+  // bad item dropped alone, or does it take the file (or its event) with it?
+  "hooks-malformed": {
+    hooks: {},
+    files: () => malformedHookFiles(join(CAPTURE_ROOT, "hooks-malformed"), ".github/hooks/"),
+    prompt: "Reply MALFORMED-PROBE and nothing else. Do not use any tool.",
+  },
+  // The same question for an Agent Plugins package's com.github.copilot hooks:
+  // one plugin with item-level faults, one with a structural fault.
+  "plugin-hooks-malformed": {
+    hooks: {},
+    files: () => {
+      const files = malformedHookFiles(join(CAPTURE_ROOT, "plugin-hooks-malformed"), "");
+      return {
+        "item-plugin/plugin.json": AGENT_PLUGIN_MANIFEST.replace("hooknostic-probe-plugin", "hooknostic-item-plugin"),
+        "item-plugin/com.github.copilot/hooks/hooks.json": files["malformed.json"],
+        "structural-plugin/plugin.json": AGENT_PLUGIN_MANIFEST.replace(
+          "hooknostic-probe-plugin",
+          "hooknostic-structural-plugin",
+        ),
+        "structural-plugin/com.github.copilot/hooks/hooks.json": files["structural.json"],
+      };
+    },
+    cliArgs: (scratch) => [
+      "--plugin-dir",
+      join(scratch, "item-plugin"),
+      "--plugin-dir",
+      join(scratch, "structural-plugin"),
+    ],
+    prompt: "Reply MALFORMED-PROBE and nothing else. Do not use any tool.",
+  },
+  // Which entry shapes a plugin hooks.json accepts. One plugin per candidate,
+  // each beside a teeing sibling: a fault rejects that plugin's whole file, so
+  // the sibling fires only when the candidate is valid.
+  "plugin-hooks-valid-shapes": {
+    hooks: {},
+    files: () => {
+      const captured = join(CAPTURE_ROOT, "plugin-hooks-valid-shapes");
+      const files = {};
+      for (const [name, candidate] of Object.entries(pluginHookCandidates(captured))) {
+        files[`${name}/plugin.json`] = AGENT_PLUGIN_MANIFEST.replace("hooknostic-probe-plugin", `hooknostic-${name}`);
+        files[`${name}/com.github.copilot/hooks/hooks.json`] = `${JSON.stringify(
+          {
+            version: 1,
+            hooks: {
+              [candidate.event ?? "sessionStart"]: [
+                candidate.entry,
+                { type: "command", exec: process.execPath, args: [TEE, captured, `${name}-sibling`, "", "0"] },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`;
+      }
+      return files;
+    },
+    cliArgs: (scratch) =>
+      Object.keys(pluginHookCandidates("")).flatMap((name) => ["--plugin-dir", join(scratch, name)]),
+    prompt: "Reply SHAPES-PROBE and nothing else. Do not use any tool.",
+  },
+  // A user-facing message on stop: is systemMessage shown, on either stop event?
+  "effect-stop-system-message": {
+    hooks: {
+      agentStop: {
+        label: "agentStop",
+        output: JSON.stringify({ systemMessage: "hooknostic-stop-system-9f2e" }),
+      },
+      subagentStop: {
+        label: "subagentStop",
+        output: JSON.stringify({ systemMessage: "hooknostic-subagent-system-4d1a" }),
+      },
+    },
+    prompt:
+      "Use the task tool exactly once with agent_type \"explore\" and this prompt: \"Reply PONG and nothing else.\" " +
+      "Then reply DONE.",
+  },
+  // postToolUse continuation control: decision block, then continue:false.
+  "effect-tool-after-block": {
+    hooks: {
+      preToolUse: { label: "preToolUse" },
+      postToolUse: {
+        label: "postToolUse",
+        output: JSON.stringify({ decision: "block", reason: "hooknostic-after-block-reason-1b7d" }),
+      },
+      agentStop: { label: "agentStop" },
+    },
+    prompt:
+      "Run the shell command: echo after-block-one. Then run the shell command: echo after-block-two. " +
+      "Then reply DONE, quoting any hooknostic-after-block token you received, or NONE.",
+  },
+  // Sequential calls: does a blocked first result stop the agent from making
+  // the second?
+  "effect-tool-after-block-sequential": {
+    hooks: {
+      preToolUse: { label: "preToolUse" },
+      postToolUse: {
+        label: "postToolUse",
+        output: JSON.stringify({
+          decision: "block",
+          reason: "Policy stop: do not run any more tools. Reply HALTED and end your turn.",
+        }),
+      },
+      agentStop: { label: "agentStop" },
+    },
+    prompt:
+      "Do these one at a time, waiting for each result before starting the next: run the shell command " +
+      "echo step-one; then run the shell command echo step-two; then run the shell command echo step-three. " +
+      "Then reply DONE.",
+  },
+  // additionalContext beside a postToolUse block: delivered, or dropped?
+  "effect-tool-after-block-context": {
+    hooks: {
+      postToolUse: {
+        label: "postToolUse",
+        output: JSON.stringify({
+          decision: "block",
+          reason: "hooknostic-after-block-reason-1b7d",
+          additionalContext: "hooknostic-after-block-context-7d2a",
+        }),
+      },
+    },
+    prompt:
+      "Run the shell command: echo block-context. Then quote every token beginning hooknostic- that you " +
+      "received, or reply NONE.",
+  },
+  // userPromptSubmitted modifiedPrompt: the docs say config-file output is dropped.
+  "effect-prompt-modified": {
+    hooks: {
+      userPromptSubmitted: {
+        label: "userPromptSubmitted",
+        output: JSON.stringify({ modifiedPrompt: "Reply with exactly MODIFIED-PROMPT-4b9d and nothing else." }),
+      },
+    },
+    prompt: "Reply ORIGINAL-PROMPT and nothing else.",
+  },
+  "effect-tool-after-continue": {
+    hooks: {
+      preToolUse: { label: "preToolUse" },
+      postToolUse: {
+        label: "postToolUse",
+        output: JSON.stringify({ continue: false, stopReason: "hooknostic-after-stop-reason-2c8e" }),
+      },
+      agentStop: { label: "agentStop" },
+    },
+    prompt:
+      "Run the shell command: echo after-continue-one. Then run the shell command: echo after-continue-two. " +
+      "Then reply DONE, quoting any hooknostic-after-stop token you received, or NONE.",
+  },
+  // userPromptTransformed: the documented modifiedTransformedPrompt, and
+  // whether additionalContext or a block is honoured there.
+  "effect-prompt-transformed": {
+    hooks: {
+      userPromptTransformed: {
+        label: "userPromptTransformed",
+        output: JSON.stringify({ modifiedTransformedPrompt: "Reply with exactly TRANSFORMED-PROMPT-7e3a and nothing else." }),
+      },
+    },
+    prompt: "Reply ORIGINAL-PROMPT and nothing else.",
+  },
+  "effect-prompt-transformed-context": {
+    hooks: {
+      userPromptTransformed: {
+        label: "userPromptTransformed",
+        output: JSON.stringify({ additionalContext: "hooknostic-transformed-token-3f6b" }),
+      },
+    },
+    prompt:
+      "Reply with the exact value of any token beginning hooknostic-transformed that appears in your instructions. " +
+      "If none appears, reply NONE.",
+  },
+  "effect-prompt-transformed-block": {
+    hooks: {
+      userPromptTransformed: {
+        label: "userPromptTransformed",
+        output: JSON.stringify({ decision: "block", reason: "hooknostic-transformed-block" }),
+        exitCode: 2,
+      },
+      agentStop: { label: "agentStop" },
+    },
+    prompt: "Reply PROMPT-WAS-NOT-BLOCKED and nothing else.",
+  },
+  // userPromptSubmitted JSON block (exit 0), beside the captured exit-2 form.
+  "effect-prompt-block-json": {
+    hooks: {
+      userPromptSubmitted: {
+        label: "userPromptSubmitted",
+        output: JSON.stringify({ decision: "block", reason: "hooknostic-prompt-block-json" }),
+      },
+      agentStop: { label: "agentStop" },
+    },
+    prompt: "Reply PROMPT-WAS-NOT-BLOCKED and nothing else.",
+  },
+  // permissionRequest: does additionalContext beside an allow reach the model?
+  "effect-permission-context": {
+    hooks: {
+      permissionRequest: {
+        label: "permissionRequest",
+        output: JSON.stringify({ behavior: "allow", additionalContext: "hooknostic-permission-token-5e2c" }),
+      },
+    },
+    prompt:
+      "Run the shell command: echo marker-permission-context. Then tell me whether you received any " +
+      "hooknostic-permission token, quoting it exactly, or reply NONE.",
+  },
 };
 
+const AGENT_PLUGIN_MANIFEST = `${JSON.stringify(
+  {
+    $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    name: "hooknostic-probe-plugin",
+    description: "Capture probe",
+    version: "1.0.0",
+  },
+  null,
+  2,
+)}\n`;
+
+function stdioFallbackServers(base, serverPath, log) {
+  return `${JSON.stringify(
+    {
+      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      mcpServers: {
+        // A missing variable's fallback is the real executable.
+        cmd: {
+          type: "stdio",
+          command: `\${HOOKNOSTIC_PROBE_MISSING:-${process.execPath}}`,
+          args: [serverPath, ...startupLog(log, "cmd")],
+        },
+        vals: {
+          type: "stdio",
+          command: process.execPath,
+          args: [
+            serverPath,
+            ...startupLog(log, "vals"),
+            "--arg-fallback",
+            "${HOOKNOSTIC_PROBE_MISSING:-fallback-arg}",
+            "--arg-set",
+            "${HOOKNOSTIC_PROBE_SET:-fallback-arg}",
+            "--arg-bare",
+            "$HOOKNOSTIC_PROBE_SET",
+            "--arg-percent",
+            "%HOOKNOSTIC_PROBE_SET%",
+            "--arg-bare-root",
+            "$PLUGIN_ROOT",
+            "--arg-bare-missing",
+            "$HOOKNOSTIC_PROBE_MISSING",
+            "--arg-bare-embedded",
+            "x$HOOKNOSTIC_PROBE_SET-y",
+            "--arg-alias-fallback",
+            "${PLUGIN_ROOT:-fallback-root}",
+          ],
+          env: {
+            FALLBACK_COPY: "${HOOKNOSTIC_PROBE_MISSING:-fallback-env}",
+            SET_COPY: "${HOOKNOSTIC_PROBE_SET:-fallback-env}",
+            BARE_COPY: "$HOOKNOSTIC_PROBE_SET",
+            PERCENT_COPY: "%HOOKNOSTIC_PROBE_SET%",
+          },
+        },
+        dir: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dir")],
+          cwd: `\${HOOKNOSTIC_PROBE_MISSING:-${join(base, "fallback-cwd")}}`,
+        },
+        // cwd controls: the same directory written literally, relatively, and
+        // through a set ambient variable (HOOKNOSTIC_PROBE_DIR).
+        dirliteral: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirliteral")],
+          cwd: join(base, "fallback-cwd"),
+        },
+        dirrelative: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirrelative")],
+          cwd: "fallback-cwd",
+        },
+        dirset: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirset")],
+          cwd: "${HOOKNOSTIC_PROBE_DIR}",
+        },
+        // The package aliases as a cwd, for the plugin route.
+        dirroot: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirroot")],
+          cwd: "${PLUGIN_ROOT}/fallback-cwd",
+        },
+        dirdata: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirdata")],
+          cwd: "${PLUGIN_DATA}",
+        },
+        // The spec's ./ form, and ambient references inside an alias-rooted cwd.
+        dirdot: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirdot")],
+          cwd: "./fallback-cwd",
+        },
+        dirrootset: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirrootset")],
+          cwd: "${PLUGIN_ROOT}/${HOOKNOSTIC_PROBE_SUB}",
+        },
+        dirrootfallback: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirrootfallback")],
+          cwd: "${PLUGIN_ROOT}/${HOOKNOSTIC_PROBE_MISSING:-fallback-cwd}",
+        },
+        // The bare $NAME form in command and in an alias-rooted cwd.
+        cmdbare: {
+          type: "stdio",
+          command: "$HOOKNOSTIC_PROBE_NODE",
+          args: [serverPath, ...startupLog(log, "cmdbare")],
+        },
+        dirrootbare: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirrootbare")],
+          cwd: "${PLUGIN_ROOT}/$HOOKNOSTIC_PROBE_SUB",
+        },
+        // A bare package alias. The cwd's literal directory exists, so an
+        // unexpanded value runs there and an expanded one does not.
+        dirbarealias: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "dirbarealias")],
+          cwd: "${PLUGIN_ROOT}/$PLUGIN_DATA",
+        },
+        envbarealias: {
+          type: "stdio",
+          command: process.execPath,
+          args: [serverPath, ...startupLog(log, "envbarealias")],
+          env: { BAREROOT_COPY: "$PLUGIN_ROOT", BAREDATA_COPY: "$PLUGIN_DATA" },
+        },
+        cmdbarealias: {
+          type: "stdio",
+          command: `$PLUGIN_ROOT/node-copy${process.platform === "win32" ? ".exe" : ""}`,
+          args: [serverPath, ...startupLog(log, "cmdbarealias")],
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+function pluginHookCandidates(captured) {
+  const exec = (label, extra = {}) => ({
+    type: "command",
+    exec: process.execPath,
+    args: [TEE, captured, label, "", "0"],
+    ...extra,
+  });
+  return {
+    "shape-control": { entry: exec("shape-control") },
+    "shape-no-type": { entry: { exec: process.execPath, args: [TEE, captured, "shape-no-type", "", "0"] } },
+    "shape-exec-no-args": { entry: { type: "command", exec: process.execPath } },
+    "shape-exec-options": {
+      entry: exec("shape-exec-options", { cwd: ".", env: { PROBE: "1" }, timeoutSec: 10 }),
+    },
+    "shape-timeout-alias": { entry: exec("shape-timeout-alias", { timeout: 10 }) },
+    "shape-matcher": { entry: exec("shape-matcher", { matcher: "startup|new" }) },
+    "shape-bad-matcher": { entry: exec("shape-bad-matcher", { matcher: "(" }) },
+    "shape-unknown-field": { entry: exec("shape-unknown-field", { probeUnknown: true }) },
+    "shape-shells": { entry: { type: "command", bash: "exit 0", powershell: "exit 0" } },
+    "shape-bash-only": { entry: { type: "command", bash: "exit 0" } },
+    "shape-powershell-only": { entry: { type: "command", powershell: "exit 0" } },
+    "shape-command": { entry: { type: "command", command: "exit 0" } },
+    "shape-prompt": { entry: { type: "prompt", prompt: "Reply SHAPES-PROBE and nothing else." } },
+    "shape-http": { entry: { type: "http", url: "http://127.0.0.1:9/hook" } },
+  };
+}
+
+function malformedHookFiles(captured, prefix) {
+  const args = (label) => [TEE, captured, label, "", "0"];
+  const tee = (label) => ({ type: "command", exec: process.execPath, args: args(label) });
+  const file = (value) => `${JSON.stringify(value, null, 2)}\n`;
+  return {
+    [`${prefix}malformed.json`]: file({
+      version: 1,
+      hooks: {
+        sessionStart: [
+          42,
+          "text",
+          null,
+          {},
+          { type: "command" },
+          { type: "command", args: args("no-exec") },
+          { type: "bogus", exec: process.execPath, args: args("unknown-type") },
+          { exec: process.execPath, args: args("no-type") },
+          { type: "command", exec: process.execPath, args: args("string-timeout"), timeoutSec: "soon" },
+          { type: "command", exec: process.execPath, args: "not-an-array" },
+          { type: "command", exec: process.execPath, bash: "exit 0", args: args("exec-and-shell") },
+          { type: "http" },
+          { type: "prompt" },
+          { type: "command", exec: process.execPath, args: [TEE, captured, 7, "", "0"] },
+          { type: "command", exec: process.execPath, args: args("string-env"), env: "PROBE=1" },
+          { type: "command", exec: process.execPath, args: args("number-env-value"), env: { PROBE: 1 } },
+          { type: "command", exec: process.execPath, args: args("number-cwd"), cwd: 5 },
+          { type: "command", exec: process.execPath, args: args("number-matcher"), matcher: 5 },
+          { type: "command", exec: 42, args: args("number-exec") },
+          { type: "command", bash: 42 },
+          { type: "command", bash: "exit 0", env: "PROBE=1" },
+          { type: "command", bash: "exit 0", cwd: 5 },
+          { type: "command", bash: "exit 0", timeoutSec: "soon" },
+          { type: "command", bash: "exit 0", timeout: "soon" },
+          tee("valid-after-malformed"),
+        ],
+        agentStop: [{ type: "prompt", prompt: "Reply PROMPT-HOOK." }, tee("malformed-file-agentStop")],
+        preToolUse: [{ type: "http", url: "http://example.invalid/hook" }],
+      },
+    }),
+    [`${prefix}structural.json`]: file({
+      version: 1,
+      hooks: { sessionStart: { not: "an array" }, agentStop: [tee("structural-sibling-agentStop")] },
+    }),
+    [`${prefix}bad-version.json`]: file({ version: 2, hooks: { agentStop: [tee("bad-version-agentStop")] } }),
+    [`${prefix}unknown-event.json`]: file({
+      version: 1,
+      hooks: { notAnEvent: [tee("unknown-event")], agentStop: [tee("unknown-event-sibling-agentStop")] },
+    }),
+  };
+}
+
+// A stdio server's launch, as Copilot spawned it: argv, cwd, and the *_COPY
+// environment values, appended to the path after `--startup-log` before any
+// MCP traffic. A server whose command or cwd did not resolve never writes one.
+const startupLog = (path, label) => ["--startup-log", path, "--label", label];
+
 const MCP_SERVER = `import { createInterface } from "node:readline";
+import { appendFileSync } from "node:fs";
+const logAt = process.argv.indexOf("--startup-log");
+if (logAt !== -1) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.endsWith("_COPY")));
+  appendFileSync(process.argv[logAt + 1], JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), env }) + "\\n");
+}
 const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 const tools = [
   {
@@ -684,6 +1169,7 @@ function main() {
       ...(probe.trustFolder === false ? [] : ["--trust-folder"]),
       "--allow-all-tools",
       "--disable-client-telemetry",
+          "--no-auto-update",
       ...cliArgs,
       "-p",
       prompt,
@@ -708,7 +1194,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(fileUR
   main();
 }
 
-export { PROBES, ROOT };
+export { PROBES, resolveCopilotBinary, ROOT };
 
 
 

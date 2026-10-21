@@ -11,13 +11,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import { resolveCopilotBinary } from "./probe.mjs";
+
 const REPO = resolve(import.meta.dirname, "../..");
 const requireFromCli = createRequire(resolve(REPO, "packages/cli/package.json"));
 const pty = requireFromCli("node-pty");
 const { Terminal } = requireFromCli("@xterm/headless");
-const BIN =
-  process.env.COPILOT_BINARY ??
-  "C:/Users/ex0du/AppData/Roaming/npm/node_modules/@github/copilot/node_modules/@github/copilot-win32-x64/copilot.exe";
+const BIN = resolveCopilotBinary();
 const TEE = resolve(import.meta.dirname, "tee.mjs");
 
 const mode = process.argv[2];

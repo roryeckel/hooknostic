@@ -21,7 +21,11 @@ through the environment (`COPILOT_PROVIDER_API_KEY`), and hook payloads do not
 carry it.
 
 Capture uses `--trust-folder --allow-all-tools --disable-client-telemetry`,
-because repository hooks do not load otherwise. The scripts are committed so a
+because repository hooks do not load otherwise. A session left to auto-update
+downloads a newer build into the shared `%LOCALAPPDATA%\copilot\pkg` cache (seen
+2026-10-21: 1.0.102), after which every `copilot`, the native binary included,
+starts that build. Every driver here and the playback lane pass
+`--no-auto-update`; check `copilot --version` before trusting a capture. The scripts are committed so a
 future build can be re-probed:
 
 ```
@@ -31,7 +35,12 @@ node .capture/copilot/interactive-skill-probe.mjs project
 node .capture/copilot/interactive-skill-probe.mjs plugin
 node .capture/copilot/interactive-approval-probe.mjs allow
 node .capture/copilot/interactive-approval-probe.mjs deny
-node .capture/copilot/interactive-compact-probe.mjs
+node .capture/copilot/interactive-compact-probe.mjs [observe|block-json|block-exit2|context]
+node .capture/copilot/probe.mjs hooks-malformed
+node .capture/copilot/probe.mjs plugin-hooks-malformed
+node .capture/copilot/probe.mjs plugin-hooks-valid-shapes
+node .capture/copilot/probe.mjs plugin-mcp-stdio-fallback
+node .capture/copilot/probe.mjs project-mcp-stdio-fallback
 node .capture/copilot/transport-probe.mjs streamable-http
 node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
@@ -58,7 +67,9 @@ node .capture/copilot/make-fixtures.mjs
   requires the structured session log to record an interactive denial with no
   marker file.
 - `interactive-compact-probe.mjs` — pty driver for a manual `/compact`; it
-  attaches a `preCompact` tee and captures the real payload.
+  attaches a `preCompact` tee and captures the real payload. A mode makes the
+  tee answer with a JSON block, exit 2 or `additionalContext`; the probe then
+  asks the model for the context token and prints the session-event types.
 - `mcp-transport-server.mjs` / `mcp-transport-runner.mjs` — a minimal loopback
   Streamable HTTP and legacy SSE MCP server, run as a child process (a
   `spawnSync` driver would block an in-process server's event loop).
@@ -95,14 +106,17 @@ node .capture/copilot/make-fixtures.mjs
 | `preToolUse` context | `{additionalContext}` on the same event reached the model (it quoted the token), though the hook reference does not list the field. | `tool.before.context.add` exact. |
 | Multiple `preToolUse` entries | The first entry's deny short-circuited; the second entry never ran. | A deny is terminal across entries, matching one-dispatcher composition. |
 | `postToolUse` output | `{modifiedResult:{resultType:"success",textResultForLlm}}` replaced what the model saw. `additionalContext` rides beside it. | `tool.after.output.replace` exact, text-encoded. |
+| `postToolUse` block | `{decision:"block",reason}` replaced the result with `Tool result blocked: <reason>`. Asked for three sequential calls, the model made no call after the first block and replied as the reason told it; `additionalContext` beside the block was dropped. `{continue:false,stopReason}` changed nothing. | `tool.after.blockContinuation` approximate; context from the dispatch joins the reason. |
 | `postToolUseFailure` context | `{additionalContext}` on exit 0 reached the model. Plain stdout with exit 2 did **not**, contrary to the reference's exit-code table. | `tool.error.context.add` uses the JSON field on exit 0. |
-| `permissionRequest` | Fires before the permission service even in `-p` with `--allow-all-tools`. `{behavior:"allow"}` let the call run; `{behavior:"deny",message}` blocked it and the message reached the model. | Observe and block exact. |
-| `userPromptSubmitted` output | Exit 2 did not stop the turn; `{additionalContext}` was not delivered. | No block or context cell advertised on `prompt.before`. |
-| `preCompact` | Interactive `/compact` produced `{trigger:"manual", transcriptPath, customInstructions:""}`. | `context.compact.before.observe` and the `trigger` field exact; no block or context channel claimed. |
+| `permissionRequest` | Fires before the permission service even in `-p` with `--allow-all-tools`. `{behavior:"allow"}` let the call run; `{behavior:"deny",message}` blocked it and the message reached the model. `{additionalContext}` beside an allow did not reach it. | Observe and block exact; `permission.request.context.add` unsupported. |
+| `userPromptSubmitted` block | Exit 2 did not stop the turn. `{decision:"block",reason}` on exit 0 did: the session log has no user message and no model turn, `-p` exited 1, and the reason was printed. | `prompt.before.block` exact, JSON on exit 0. |
+| `userPromptSubmitted` context | `{additionalContext}` was not delivered. `{modifiedPrompt}` was, although the hook reference says config-file output is dropped: the model answered the replacement, and the session log kept the typed prompt as `content` with the replacement in `transformedContent`. | `prompt.before.context.add` emulated: the context is appended to the native `prompt` as `modifiedPrompt`. |
+| `userPromptTransformed` output | `{modifiedTransformedPrompt}` replaced what the model saw. `{additionalContext}` and a JSON block with exit 2 were ignored. | Declined: `modifiedPrompt` covers the context case on the event `prompt.before` already uses. |
+| `preCompact` | Interactive `/compact` produced `{trigger:"manual", transcriptPath, customInstructions:""}`. A `{decision:"block"}` answer and an exit 2 both left `session.compaction_complete` in the log, and `{additionalContext}` did not reach the model afterwards. Neither a `postCompact` entry nor `sessionStart` fired after compaction. | `context.compact.before.observe` and the `trigger` field exact; block, context and `context.compact.after` unsupported. |
 | `sessionStart` context | `{additionalContext}` was injected verbatim; the model quoted the token. | `session.start.context.add` exact. |
 | `agentStop` prevent | `{decision:"block",reason}` forced another turn. The harness stopped after eight consecutive blocks; later calls had `stop_hook_active:true`. | `turn.stop.prevent` exact. |
 | `subagentStop` prevent | `{decision:"block",reason}` forced more subagent turns. A session-scoped hook blocked more than forty consecutive completions with `stop_hook_active:true`; the documented eight-block guard was not observed. | `agent.stop.prevent` approximate, with the unbounded-loop rationale. |
-| User-facing notification on stop | `{decision:"allow",reason}` changed nothing the user sees; no `systemMessage` channel was found. | `*.notify` unsupported. |
+| User-facing notification on stop | `{decision:"allow",reason}` changed nothing the user sees, and `{systemMessage}` on `agentStop` and `subagentStop` appeared neither in the output nor in the session log. | `*.notify` unsupported. |
 
 ## Tool shapes and shell dialects
 
@@ -153,6 +167,9 @@ under ignored `captured/`; it fails if the session log lacks the injection.
 | Agent Plugins `mcp.json` stdio | `command`, `args`, `env`, `cwd` all expand `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`; `${PLUGIN_ROOT}/node-copy.exe` launched. Ambient `${USERPROFILE}` also expanded. The server's cwd was the `PLUGIN_DATA` directory. `PLUGIN_ROOT`/`PLUGIN_DATA` are exported in its environment. | `mcp.stdio` exact, with an ambient-expansion deviation. |
 | Agent Plugins `mcp.json` remote | Streamable HTTP and SSE both connected. `${PLUGIN_ROOT}` stayed literal in headers (conforming); `${USERPROFILE}` and `${HOOKNOSTIC_PROBE_MISSING:-fallback}` expanded in the URL query and headers (not conforming). | Both remote components exact, with the deviation. |
 | Plugin data | `PLUGIN_DATA` resolved under `$COPILOT_HOME/plugin-data/_direct/<hash>` and persists across sessions. | No launcher or data relocation needed for package delivery. |
+| Reference forms, stdio | `plugin-mcp-stdio-fallback` and `project-mcp-stdio-fallback` log each server's argv, cwd and env at launch. `${NAME:-fallback}` (unset name) took its fallback in `command`, `args`, `env` and `cwd`; a set name won over its fallback. Bare `$NAME` expanded when set, whole or embedded (`x$NAME-y`), in all four fields, and stayed literal when unset. `%NAME%` stayed literal. On the plugin route `$PLUGIN_ROOT`, `$PLUGIN_DATA` and `${PLUGIN_ROOT:-x}` expanded to the aliases in `command`, `args`, `env` and `cwd`. | Every form is a deviation except the exact `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` in `args`, `env` and `cwd`. |
+| Reference forms, remote | The transport probes add bare `$NAME`, `%NAME%`, `$PLUGIN_ROOT`, `${PLUGIN_ROOT:-fallback-root}` and a header **named** `X-Probe-Name-$HOOKNOSTIC_PROBE_SET`. Bare `$NAME` expanded in the URL and header values; `%NAME%` and bare `$PLUGIN_ROOT` stayed literal; `${PLUGIN_ROOT:-fallback-root}` became `fallback-root`; the header name arrived as written on all four routes. | Header names are conforming; the alias-with-fallback is a deviation. The loader's header-name validation already rejects `${...}` there. |
+| Plugin stdio `cwd` | `./sub`, `${PLUGIN_ROOT}/sub`, `${PLUGIN_DATA}` and alias-rooted values holding `${NAME}`, `${NAME:-x}` or `$NAME` were honoured. An absolute path, a bare relative `sub`, a wholly ambient `${NAME}` and `${NAME:-<absolute>}` all ran in the plugin root instead; an alias-rooted value that expanded to an invalid path failed to spawn. | The forms Copilot ignores are exactly those Agent Plugins 1.0 makes invalid, which the loader already rejects. The project route honoured every form. |
 
 ## Plugins
 
@@ -170,6 +187,24 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   rather than assuming the fix reached earlier releases.
 - A plugin hook may use `${PLUGIN_ROOT}/tee.mjs` in `exec` `args`; a relative
   `tee.mjs` also ran, so the plugin hook's cwd is the plugin root.
+- **A malformed hook entry rejects a plugin's whole hooks file**, while a
+  `.github/hooks/*.json` file drops only that entry (`hooks-malformed`,
+  `plugin-hooks-malformed`): in the plugin no entry beside the fault ran, on
+  any event. The loader logged each rejection: a non-object entry; a command
+  entry with neither `exec` nor `bash`/`powershell`/`command`, or with both; a
+  `type` other than `command`, `http` or `prompt`; a `prompt` entry off
+  `sessionStart`; an `http` entry without `url`, or with a plain `http://` URL
+  on `preToolUse`, `permissionRequest` or the undocumented `preMcpToolCall`; a
+  non-string `exec`, shell field or `cwd`; `args` that is not an array of
+  strings; `env` that is not an object of strings; a non-numeric `timeoutSec`
+  or `timeout`. A wrong `version` or a non-array event list rejects the file on
+  either route, and an unknown event name is ignored.
+- Accepted beside a sibling that then ran (`plugin-hooks-valid-shapes`): a
+  missing `type`, `exec` without `args`, `cwd`/`env`/`timeoutSec`, the
+  `timeout` alias, a `matcher` (even an invalid regex or a number), an unknown
+  field, `bash` and/or `powershell`, `command`, a `sessionStart` prompt hook
+  and an `http` hook. The projector applies the rejection rules to authored
+  hooks before merging them with the dispatcher's entries.
 - A legacy plugin's skill and an Agent Plugins package's skill both loaded.
 
 ## Not established
@@ -177,7 +212,5 @@ under ignored `captured/`; it fails if the session log lacks the injection.
 - `notification` (interactive permission prompts, background shells).
 - Any host without a native platform package.
 - An installed-marketplace (copied) plugin, rather than the live local load.
-- Placeholder expansion in a remote MCP **header name**; the transport probes
-  covered the URL query and header values.
 - `errorOccurred` and `userPromptTransformed` are captured and declined: no
   portable event names a generic error or a pre-model prompt transformation.
