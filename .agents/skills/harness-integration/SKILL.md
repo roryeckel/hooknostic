@@ -1,6 +1,6 @@
 ---
 name: harness-integration
-description: Plan and land complete support for a new coding-agent harness, or a new delivery surface for one. Use when adding or auditing support for Cursor, Gemini CLI, Goose, GitHub Copilot CLI, or any other agent CLI; when creating `packages/adapter-<id>/`, `fixtures/<harness>/`, `.capture/<harness>/`, an adapter profile, a shim, an Agent Plugin projector, a project integrator, or a harness-watch lane; or when an adapter must grow hooks, skills, MCP, package/project delivery, playback, drift, or generated docs. Start with `docs/adding-an-adapter.md` and the `harness-capture` skill; this skill is the planning, coverage, and completeness layer.
+description: Plan and land complete support for a new coding-agent harness, or a new delivery surface for one. Use when adding or auditing support for Cursor, Gemini CLI, Goose, GitHub Copilot CLI, or any other agent CLI; when creating `packages/adapter-<id>/`, `fixtures/<harness>/`, `.capture/<harness>/`, an adapter profile, a shim, an Agent Plugin projector, a project integrator, or a harness-watch lane; or when an adapter must grow hooks, skills, MCP, package/project delivery, playback, drift, or generated docs. Also use when a harness reads another harness's files (a compatibility mode: Copilot loading `.claude/settings.json` hooks, `.claude/skills` or a root `.mcp.json`), when one target's output runs under another harness, or when changing where a project integration writes. Start with `docs/adding-an-adapter.md` and the `harness-capture` skill; this skill is the planning, coverage, and completeness layer.
 ---
 
 # Harness integration
@@ -72,6 +72,7 @@ applicable`. A blank row is an unowned risk.
 | MCP | stdio, Streamable HTTP, SSE; command/args/env/cwd; remote headers; placeholder expansion; startup; tool identity; runtime dependencies | Project and package probes |
 | Agent Plugins/plugin | Manifest, namespace, hooks, commands, agents, rules, LSP, client extensions, runtime package, load/install/copy semantics, package root, authored files | Package install/load |
 | Project integration | Hook file path, skill destination, MCP file, ownership/relocation, components-only projects, linked worktrees, root-checkout quirks | `sync`/`verify` on a scratch project |
+| Foreign reads | Which other harnesses' project files does this harness load (hooks, skills, MCP, instructions), and in what form? Which other harnesses read this target's output? Is there an opt-out both sides honour? | A marker per location, both directions (ADR-0033) |
 | Packaging | Output paths, artifact modes, runtime bundle, shim execution, npm name/publish, dependency install | Generated artifact + install |
 | Detection | Binary name, version command, PATH/PATHEXT behavior, doctor output | `doctor` on each host |
 | Automation | Playback driver, pty driver, MCP driver, compaction/subagent scenarios, drift driver, harness-watch lane | CI + local runs |
@@ -101,7 +102,10 @@ questions:
    components-only build.
 8. Negative controls: untrusted project, missing file, non-zero hook exit,
    unsupported flag, unsupported transport.
-9. A version-boundary probe. Capture the exact build that supports a claim; do
+9. A foreign-read probe: put another harness's generated project output (for
+   example Claude's `.claude/settings.json` hooks) in a scratch project and
+   observe whether this harness runs it, and the reverse.
+10. A version-boundary probe. Capture the exact build that supports a claim; do
    not extend the claim to older builds without evidence.
 
 Use the cheapest transport that can decide the question. Loopback playback is
@@ -229,6 +233,12 @@ integration-specific checklist:
   claim its gate. A shared destination composes every reader's edits and
   omissions, including readers whose `components.targets` excluded them.
 - Test `sync`, `verify`, components-only, authored files, and an existing copy.
+- Fence every foreign read (ADR-0033). A harness runs only its own target's
+  output: opt the reader out of another target's location with a mechanism
+  captured on both harnesses, or write somewhere it does not read, and pin it
+  with a cross-adapter test against the reader's captured rules. Never treat a
+  compatibility read as a delivery route. A shared standard location every
+  reader treats as its own (`.agents/skills`) is composed instead (ADR-0030).
 
 ### Package / Agent Plugin projection
 
@@ -318,6 +328,8 @@ Do not call the integration complete until all of these are true:
       evidence stays absent from the table. MCP identity is stated or absent.
 - [ ] Every advertised write/block/context/stop/notify channel is proven by
       effect, with negative controls and terminal precedence.
+- [ ] Every foreign read is probed in both directions and fenced or reported
+      (ADR-0033); no target's output runs under another harness.
 - [ ] Both delivery routes, components-only, authored files, runtime paths and
       package/project install are tested, explicitly unsupported, or not
       applicable with a reason.
@@ -360,6 +372,10 @@ Do not call the integration complete until all of these are true:
   authored files; do not silently drop hooks or commands.
 - **A live plugin loader may copy nothing.** A package runtime dependency does not
   appear by itself; bundle it or state the limitation.
+- **Harnesses read each other's files.** Copilot ran Claude's generated
+  `.claude/settings.json` hook as a bare `node` and failed closed on every
+  shell call, in any project with Claude hooks. A target's tests pass alone;
+  probe the other harnesses in the same project.
 - **Placeholders differ by route.** A project MCP fact is not package evidence;
   expansion in args, env, cwd and headers must be captured per route.
 - **Windows detection is PATHEXT, not `spawn`.** Use `detectCommandVersion`.

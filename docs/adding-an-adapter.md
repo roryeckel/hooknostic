@@ -30,6 +30,10 @@ Capture techniques that worked: stdin-teeing command hooks
 (`.capture/claude`, `.capture/codex`), embedded JSON Schemas extracted from
 vendor binaries, and published plugin type definitions (`@opencode-ai/plugin`).
 
+Also capture which other harnesses' project files the new harness loads, and
+which harnesses load its output. A harness runs only the output generated for
+its own target; fence every foreign read, as ADR-0033 describes.
+
 ## 2. Curate fixtures with provenance
 
 `fixtures/<harness>/<version>/`:
