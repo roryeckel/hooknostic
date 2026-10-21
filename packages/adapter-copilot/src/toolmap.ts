@@ -77,7 +77,8 @@ export function classifyCopilotTool(nativeName: string, input: unknown): ToolInv
   const shell = copilotShellCodec.classify(nativeName, input);
   const file = copilotFileCodec.classify(nativeName, input);
   // Copilot names an MCP tool `<server>-<tool>` on tool events
-  // (`probe-probe_echo`) and `<server>/<tool>` on permissionRequest. No native
+  // (`probe-probe_echo`, fixture tool-before-mcp) and `<server>/<tool>` on
+  // permissionRequest (`probe/probe_echo`, permission-request-mcp). No native
   // tool name observed carries either separator, so an unknown name with one is
   // an MCP call. The split itself is never parsed: both segments may contain a
   // hyphen and no payload states the boundary (ADR-0032), so `tool.mcp` stays

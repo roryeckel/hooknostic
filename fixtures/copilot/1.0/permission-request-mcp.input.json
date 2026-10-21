@@ -1,0 +1,11 @@
+{
+  "hookName": "permissionRequest",
+  "sessionId": "c304da78-9cd4-4e2d-9d60-321df94ef17d",
+  "timestamp": 1792623037614,
+  "cwd": "/tmp/hooknostic-copilot-capture/mcp-permission",
+  "toolName": "probe/probe_echo",
+  "toolInput": {
+    "message": "MCP-PERMISSION"
+  },
+  "permissionSuggestions": []
+}

@@ -118,6 +118,20 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     artifact: CAPTURE,
     what: "Claude Code project hooks on Linux: Copilot runs .claude/settings.json and .claude/settings.local.json hooks, runs a command as a shell string and ignores args, so Hooknostic's Claude entry failed and preToolUse failed closed; one entry with exec beside command or a non-numeric timeoutSec dropped the file's whole hooks field, siblings included (claude-settings-probe.sh).",
   },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "captured",
+    artifact: FIXTURES,
+    what: "permissionRequest names an MCP tool <server>/<tool> (probe/probe_echo) where its preToolUse names it probe-probe_echo; the capture is fixtures/copilot/1.0/permission-request-mcp.input.json.",
+  },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: "Foreign components on Linux: a skill in both .agents/skills and .claude/skills is listed once from .agents/skills, distinct names merge, and a root .mcp.json, even empty or unparseable, is the only workspace MCP file read, so .github/mcp.json is ignored beside it (foreign-components-probe.sh).",
+  },
   COPILOT_SKILL_POLICY_VALIDATION,
 ];
 

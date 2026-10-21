@@ -30,6 +30,7 @@ path, and every other path shape stay as captured, because the shape is evidence
 | tool-before-create, tool-before-edit | **captured** 1.0.101 (2026-10-20) over the model provider; the tool calls were prompted, the payloads are native |
 | tool-before-subagent, turn-stop-subagent | **captured** 1.0.101 (2026-10-20) during a subagent run; pin that a tool event and a turn stop fired inside a subagent carry `agentId`/`agentType`/`parentAgentId` |
 | tool-before-mcp | **captured** 1.0.101 (2026-10-20) in `.capture/copilot/captured/mcp-stdio`; pins the `<server>-<tool>` name (`probe-probe_echo`) classified as `mcp` with no `tool.mcp` split |
+| permission-request-mcp | **captured** 1.0.101 (2026-10-21) in a Debian container (`probe.mjs mcp-permission`); the same MCP call as `probe/probe_echo` on `permissionRequest` (its `preToolUse` was `probe-probe_echo`), classified as `mcp` with no `tool.mcp` split. Linux paths carry no account name |
 | tool-error | **captured** 1.0.101 (2026-10-20): `view` on a missing path produces `postToolUseFailure` with `error: "Path does not exist"` |
 | agent-start, agent-stop | **captured** 1.0.101 (2026-10-20): `task` with `agent_type: "explore"` |
 | agent-start-pascal | **captured** 1.0.101 (2026-10-20) with a PascalCase `SubagentStart` entry: the payload is hybrid camel base + snake agent fields and omits `hook_event_name` |

@@ -683,6 +683,24 @@ const PROBES = {
       Object.keys(pluginHookCandidates("")).flatMap((name) => ["--plugin-dir", join(scratch, name)]),
     prompt: "Reply SHAPES-PROBE and nothing else. Do not use any tool.",
   },
+  // The permissionRequest name for an MCP tool, beside the tool events'.
+  "mcp-permission": {
+    hooks: {
+      permissionRequest: { label: "permissionRequest" },
+      preToolUse: { label: "preToolUse" },
+    },
+    files: (scratch) => ({
+      "mcp-server.mjs": MCP_SERVER,
+      ".github/mcp.json": `${JSON.stringify(
+        { mcpServers: { probe: { type: "stdio", command: process.execPath, args: [join(scratch, "mcp-server.mjs")] } } },
+        null,
+        2,
+      )}\n`,
+    }),
+    prompt:
+      "Use the probe_echo tool from the probe MCP server exactly once with message MCP-PERMISSION, then reply DONE. " +
+      "Do not use any other tool.",
+  },
   // The notification event: a background shell's completion should raise
   // notification_type shell_completed. Linux `bash` tool names (read_bash).
   "notification-async-shell": {
