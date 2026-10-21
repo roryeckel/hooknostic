@@ -209,5 +209,6 @@ describe.skipIf(!enabled)("Copilot real-harness smoke", () => {
       await readFile(join(SMOKE_DIR, "hooknostic-forbidden.txt"), "utf8").catch(() => null),
       "a blocked command still created its file",
     ).toBeNull();
-  }, 240_000);
+    // Two real CLI runs, each with its own 180s child kill timer, plus setup.
+  }, 420_000);
 });
