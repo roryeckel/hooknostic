@@ -22,6 +22,7 @@ examples/*/com.anthropic.claude-code/
 # nested git repos used for codex/opencode capture + smoke (documented in fixtures READMEs)
 .capture/codex/
 .capture/codex-smoke/
+.capture/copilot-smoke/
 .capture/opencode/
 .capture/opencode-smoke/
 *.tsbuildinfo
