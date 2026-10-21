@@ -173,7 +173,9 @@ describe("Copilot Agent Plugin projector", () => {
     const gatedText = new TextDecoder().decode(gated.contents as Uint8Array);
     expect(gatedText).toContain("disable-model-invocation: true");
     expect(gatedText).toContain("hooknostic/allow-implicit-invocation");
-    expect(plan.summary.omissions).toEqual([]);
+    // The only omission is the dropped runtime package: the skipped count
+    // below and this list must agree, or the summary reports "0 omitted".
+    expect(plan.summary.omissions).toEqual([expect.objectContaining({ component: "agent-plugin.runtime-package" })]);
     expect(plan.summary.components["agent-plugin.skills.invocation-policy"]).toEqual({
       discovered: 1,
       emitted: 1,

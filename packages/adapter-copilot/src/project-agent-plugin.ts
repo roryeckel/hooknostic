@@ -264,6 +264,13 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
       });
     }
 
+    if (context.runtimePackage !== undefined) {
+      omissions.push({
+        component: "agent-plugin.runtime-package",
+        reason:
+          "Copilot loads a plugin live from its source and installs nothing (captured), so the manifest and lockfile were dropped; bundle Node component dependencies instead",
+      });
+    }
     const counts = componentSummary(source, {
       namespace: this.namespace,
       hasRuntimePackage: context.runtimePackage !== undefined,
