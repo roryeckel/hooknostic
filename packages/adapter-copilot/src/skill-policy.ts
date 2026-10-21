@@ -2,7 +2,6 @@ import {
   type AgentPluginFile,
   type AgentPluginProjectionProfile,
   setSkillPolicyYaml,
-  SKILL_IMPLICIT_INVOCATION_UNENFORCED,
   SKILL_POLICY_IN_PLACE,
   type SkillPolicy,
 } from "@hooknostic/agent-plugin";
@@ -28,46 +27,27 @@ export const COPILOT_SKILL_POLICY_DEGRADATIONS = [
   },
 ] as const;
 
-/** The unavailable-gate acceptance for a Copilot version range without a capture. */
-export const COPILOT_SKILL_POLICY_UNENFORCED_DEGRADATIONS = [
-  {
-    id: SKILL_IMPLICIT_INVOCATION_UNENFORCED,
-    summary:
-      "No invocation-policy route has been captured for this Copilot version range; a gated skill is emitted only by explicit acceptance, without a projected gate.",
-    evidence: COPILOT_SKILL_POLICY_EVIDENCE,
-  },
-] as const;
-
 /**
- * Split a profile at the invocation-policy capture version. Only 1.0.101 has
- * the interactive slash capture; older builds stay unsupported rather than
- * inheriting a claim the capture does not cover.
+ * Add the captured invocation-policy cell. The adapter range starts at the
+ * captured build, so there is no older profile to inherit a claim.
  */
 export function copilotSkillPolicyProfiles(
   profile: AgentPluginProjectionProfile,
   options: { inPlace: boolean },
 ): AgentPluginProjectionProfile[] {
-  return [false, true].map((supported) => ({
-    ...profile,
-    range: `${profile.range} ${supported ? ">=" : "<"}${COPILOT_SKILL_POLICY_VALIDATION.version}`,
-    components: {
-      ...profile.components,
-      "agent-plugin.skills.invocation-policy": supported
-        ? {
-            level: "exact",
-            rationale: COPILOT_SKILL_POLICY_RATIONALE,
-            ...(options.inPlace ? { degradations: [...COPILOT_SKILL_POLICY_DEGRADATIONS] } : {}),
-          }
-        : {
-            level: "unsupported",
-            rationale: `No invocation-policy route has been captured for Copilot before ${COPILOT_SKILL_POLICY_VALIDATION.version}; the interactive slash capture covers ${COPILOT_SKILL_POLICY_VALIDATION.version} only.`,
-            degradations: [
-              ...COPILOT_SKILL_POLICY_UNENFORCED_DEGRADATIONS,
-              ...(options.inPlace ? COPILOT_SKILL_POLICY_DEGRADATIONS : []),
-            ],
-          },
+  return [
+    {
+      ...profile,
+      components: {
+        ...profile.components,
+        "agent-plugin.skills.invocation-policy": {
+          level: "exact",
+          rationale: COPILOT_SKILL_POLICY_RATIONALE,
+          ...(options.inPlace ? { degradations: [...COPILOT_SKILL_POLICY_DEGRADATIONS] } : {}),
+        },
+      },
     },
-  }));
+  ];
 }
 
 /**

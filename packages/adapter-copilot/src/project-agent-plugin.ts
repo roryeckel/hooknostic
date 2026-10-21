@@ -17,6 +17,7 @@ import {
   withSkillInvocationPolicy,
 } from "@hooknostic/agent-plugin";
 
+import { copilotHarness } from "./harness.js";
 import { copilotEnvironmentReferences, ENVIRONMENT_EXPANSION_DEVIATION } from "./mcp-expansion.js";
 import { copilotValidationRecords } from "./profile.js";
 import { copilotSkillPolicy, copilotSkillPolicyProfiles } from "./skill-policy.js";
@@ -56,7 +57,7 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
   packageRoot: ".",
   profiles: copilotSkillPolicyProfiles(
     {
-      range: ">=1.0 <2",
+      range: copilotHarness.recommendedRange,
       components: {
         "agent-plugin.manifest": { level: "exact" },
         "agent-plugin.skills": {

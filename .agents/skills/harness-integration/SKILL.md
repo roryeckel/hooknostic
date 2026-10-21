@@ -41,6 +41,9 @@ the evidence that will answer each one, not a list of files.
 - Pick the harness id, binary or npm package, reference build, and fixture
   directory name. Record them in `harness.ts`; every test and range derives from
   that metadata.
+- If an older release is known broken, set the recommended range to the proven
+  boundary and propagate it to capability and projector profiles. Narrowing one
+  component while another still claims the broken range ships silent failures.
 - Record the platform matrix. A Windows-only capture does not establish Linux
   shell behavior, and a headless capture does not establish an interactive
   path. Plan a container or a second host where the harness ships one.
@@ -347,6 +350,10 @@ Do not call the integration complete until all of these are true:
   message, a tool-call result, or a marker file.
 - **A boundary tied to `referenceVersion` moves when metadata advances.**
   Anchor a support split to the validation record that proved it.
+- **A known-broken older release is a range boundary.** Narrow the harness
+  range, capability profiles and projector profiles together; a package that
+  installs hooks which silently never run is worse than an honest unsupported
+  target.
 - **A package skill may be namespaced in the slash picker.** Capture the real
   command, not the project skill name.
 - **A projection replaces the output.** Carry every hook artifact and merge

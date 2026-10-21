@@ -15,7 +15,7 @@ Paths below assume the example configuration:
 targets: {
   claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
   codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
-  copilot:  { version: ">=1.0 <2",   delivery: "package", output: "./dist/copilot" },
+  copilot:  { version: ">=1.0.101 <2", delivery: "package", output: "./dist/copilot" },
   opencode: { version: ">=1.18 <2",  delivery: "project",  output: "./dist/opencode" },
   pi:       { version: ">=1 <2",     delivery: "project",  output: "./dist/pi" },
 }
@@ -31,7 +31,7 @@ For repository integration, prefer [init, sync, and verify](project-integration.
 | `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
 | `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
 | `copilot` | `package` | `dist/copilot/` | An Agent Plugins package: `plugin.json`, `skills/`, `mcp.json`, `com.github.copilot/hooks/hooks.json`, `runtime/hooknostic.mjs` |
-| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, and `.mcp.json` |
+| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, and `.github/mcp.json` |
 | `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 | `pi` | `project` | `dist/pi/.pi/` | Project extension under `extensions/`, plus copied `skills/` |
 | `pi` | `package` | `dist/pi/` | npm package with a `pi` manifest declaring its bundled extension and skills |

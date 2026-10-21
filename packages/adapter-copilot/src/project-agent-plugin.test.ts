@@ -114,7 +114,7 @@ describe("Copilot Agent Plugin projector", () => {
     });
   });
 
-  it("keeps a Copilot build older than the interactive capture unsupported", () => {
+  it("refuses a package target older than the captured build", () => {
     const older = resolveAgentPluginProjection(
       {
         id: "copilot",
@@ -123,8 +123,9 @@ describe("Copilot Agent Plugin projector", () => {
         output: ".",
       },
       { profiles: copilotAgentPluginProjector.profiles },
-    ).matrix!;
-    expect(older["agent-plugin.skills.invocation-policy"]).toMatchObject({ level: "unsupported" });
+    );
+    expect(older.matrix).toBeUndefined();
+    expect(older.diagnostics).toContainEqual(expect.objectContaining({ code: "HN203" }));
   });
 
   it("projects an Agent Plugins package with Copilot hooks, skills and MCP intact", async () => {

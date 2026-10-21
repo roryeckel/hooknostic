@@ -152,8 +152,10 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   source path: "nothing was copied". A `package.json` plus lockfile in the
   plugin root produced no `node_modules`.
 - Hooks declared in a legacy plugin's `hooks.json` fire, and hooks declared in
-  `com.github.copilot/hooks/hooks.json` fire for an Agent Plugins 1.0 package.
-  This corrects the 1.0.60–1.0.82 reports of plugin hooks never running.
+  `com.github.copilot/hooks/hooks.json` fire for an Agent Plugins 1.0 package on
+  1.0.101. The 1.0.60–1.0.82 reports of plugin hooks never running were not
+  re-probed at those builds, so the adapter's target range starts at 1.0.101
+  rather than assuming the fix reached earlier releases.
 - A plugin hook may use `${PLUGIN_ROOT}/tee.mjs` in `exec` `args`; a relative
   `tee.mjs` also ran, so the plugin hook's cwd is the plugin root.
 - A legacy plugin's skill and an Agent Plugins package's skill both loaded.

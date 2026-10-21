@@ -18,7 +18,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | --- | --- | --- | --- | --- |
 | Claude Code (`claude`) | `>=2.1 <3` | `>=2.0 <3` | 2.1.238 | `fixtures/claude/2.1` |
 | Codex CLI (`codex`) | `>=0.148 <1` | `>=0.140 <1` | 0.148.0 | `fixtures/codex/0.148` |
-| GitHub Copilot CLI (`copilot`) | `>=1.0 <2` | `>=1.0 <2` | 1.0.101 | `fixtures/copilot/1.0` |
+| GitHub Copilot CLI (`copilot`) | `>=1.0.101 <2` | `>=1.0.101 <2` | 1.0.101 | `fixtures/copilot/1.0` |
 | OpenCode (`opencode`) | `>=1.18 <2` | `>=1.10 <2` | 1.18.18 | `fixtures/opencode/1.18` |
 | OpenCode v2 (`opencode`) | `>=2.0.17 <3` | `>=2.0.17 <3` | 2.0.17 | `fixtures/opencode/2.0` |
 | pi (`pi`) | `>=1 <2` | `>=0.84 <1`, `>=1 <2` | 1.3.0 | `fixtures/pi/1.3` |
@@ -568,54 +568,6 @@ Fields not listed are never produced; declaring one reports `HN108`.
 
 #### Project delivery
 
-Support resolves by harness version, and the recommended range `>=1.0 <2`
-spans 2 profiles. A build targeting one of the ranges below gets that
-table; a range spanning more than one resolves to the least capable level for
-each component.
-
-##### `>=1.0 <2 <1.0.101`
-
-| Component | Support | Rationale |
-| --- | --- | --- |
-| `agent-plugin.manifest` | unsupported | Project delivery writes .github/hooks/hooknostic.json, a skills tree and .github/mcp.json. Copilot reads a plugin.json only from an installed plugin or a --plugin-dir directory, which project delivery does not create. |
-| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. A skill already at its destination is discovered in place and not rewritten. |
-| `agent-plugin.skills.invocation-policy` | unsupported | No invocation-policy route has been captured for Copilot before 1.0.101; the interactive slash capture covers 1.0.101 only. |
-| `agent-plugin.mcp.stdio` | emulated | A generated Node launcher resolves the source root, working directory and the package's PLUGIN_ROOT/PLUGIN_DATA text, because a project .github/mcp.json has no variable naming a package root and Copilot left ${PLUGIN_ROOT} literal there. Copilot sees only the launcher. Dependencies are supplied by the project. |
-| `agent-plugin.mcp.streamable-http` | exact | — |
-| `agent-plugin.mcp.sse` | exact | — |
-| `agent-plugin.client-extension.files` | unsupported | Project integration writes .github/hooks, .agents/skills and .github/mcp.json. Copilot reads com.github.copilot components from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
-| `agent-plugin.runtime-package` | unsupported | Project delivery installs nothing. The captured local marketplace and --plugin-dir routes load a plugin live and copy no directory, so a package.json and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies instead. |
-
-Known deviations from Agent Plugins 1.0, reported as `HN106`:
-
-| Deviation | Component | Behavior | Evidence |
-| --- | --- | --- | --- |
-| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. | `.capture/copilot/README.md` |
-| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. | `.capture/copilot/README.md` |
-
-Known degradations, reported as `HN101`:
-
-| Degradation | Component | Behavior | Evidence |
-| --- | --- | --- | --- |
-| `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. | `.capture/copilot/README.md` |
-| `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
-| `copilot:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | No invocation-policy route has been captured for this Copilot version range; a gated skill is emitted only by explicit acceptance, without a projected gate. | `.capture/copilot/README.md` |
-| `copilot:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/copilot/README.md` |
-
-Project delivery validation records:
-
-| Version | Date | Method | Evidence | Established |
-| --- | --- | --- | --- | --- |
-| 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Shell interpreters observed by effect: the Windows powershell tool ran Windows PowerShell 5.1 and the only shell tool advertised there, while the Linux bash tool ran /usr/bin/bash. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Agent Plugins 1.0 plugin facts: skills and mcp.json load through --plugin-dir, ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand in command, args, env and cwd, ambient variables also expand there and in remote headers, com.github.copilot hooks fire, and a local marketplace install is loaded live without copying or installing dependencies. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive /gated in .agents/skills and /<plugin-name>:gated in a --plugin-dir package injected the gated body, with skill.invoked trigger user-invoked and disableModelInvocation true. A -p prompt naming the gated skill reached only the model-facing skill tool, which listed the explicit disable-model-invocation: false control and returned Skill not found for the gated skill. |
-
-##### `>=1.0 <2 >=1.0.101`
-
 | Component | Support | Rationale |
 | --- | --- | --- |
 | `agent-plugin.manifest` | unsupported | Project delivery writes .github/hooks/hooknostic.json, a skills tree and .github/mcp.json. Copilot reads a plugin.json only from an installed plugin or a --plugin-dir directory, which project delivery does not create. |
@@ -667,54 +619,6 @@ Evidence: `.capture/copilot/README.md`.
 Evidence: `.capture/copilot/README.md`.
 
 #### Agent Plugin projection
-
-Support resolves by harness version, and the recommended range `>=1.0 <2`
-spans 2 profiles. A build targeting one of the ranges below gets that
-table; a range spanning more than one resolves to the least capable level for
-each component.
-
-##### `>=1.0 <2 <1.0.101`
-
-| Component | Support | Rationale |
-| --- | --- | --- |
-| `agent-plugin.manifest` | exact | — |
-| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. |
-| `agent-plugin.skills.invocation-policy` | unsupported | No invocation-policy route has been captured for Copilot before 1.0.101; the interactive slash capture covers 1.0.101 only. |
-| `agent-plugin.mcp.stdio` | exact | — |
-| `agent-plugin.mcp.streamable-http` | exact | — |
-| `agent-plugin.mcp.sse` | exact | — |
-| `agent-plugin.client-extension.files` | exact | Files under com.github.copilot are read by Copilot from a plugin root; its agents/, commands/, rules/, hooks/ and lsp.json components and the manifest's extensions.com.github.copilot object all live there. |
-| `agent-plugin.runtime-package` | unsupported | A captured local marketplace install and the --plugin-dir route both load the plugin live from its source and copy nothing, so no package.json install runs. A locked dependency install is unavailable on this harness; bundle Node component dependencies instead. |
-
-Known deviations from Agent Plugins 1.0, reported as `HN106`:
-
-| Deviation | Component | Behavior | Evidence |
-| --- | --- | --- | --- |
-| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Copilot expands ${PLUGIN_ROOT} and ${PLUGIN_DATA} in a stdio command, which Agent Plugins 1.0 explicitly excludes, and expands set ambient environment variables in command, args, env values and cwd, where the specification requires other placeholder-like text to remain literal. | `.capture/copilot/README.md` |
-| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. | `.capture/copilot/README.md` |
-| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. | `.capture/copilot/README.md` |
-
-Known degradations, reported as `HN101`:
-
-| Degradation | Component | Behavior | Evidence |
-| --- | --- | --- | --- |
-| `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. | `.capture/copilot/README.md` |
-| `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
-| `copilot:skill-implicit-invocation-unenforced` | `agent-plugin.skills.invocation-policy` | No invocation-policy route has been captured for this Copilot version range; a gated skill is emitted only by explicit acceptance, without a projected gate. | `.capture/copilot/README.md` |
-
-Projection validation records:
-
-| Version | Date | Method | Evidence | Established |
-| --- | --- | --- | --- | --- |
-| 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Shell interpreters observed by effect: the Windows powershell tool ran Windows PowerShell 5.1 and the only shell tool advertised there, while the Linux bash tool ran /usr/bin/bash. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Agent Plugins 1.0 plugin facts: skills and mcp.json load through --plugin-dir, ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand in command, args, env and cwd, ambient variables also expand there and in remote headers, com.github.copilot hooks fire, and a local marketplace install is loaded live without copying or installing dependencies. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written. |
-| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive /gated in .agents/skills and /<plugin-name>:gated in a --plugin-dir package injected the gated body, with skill.invoked trigger user-invoked and disableModelInvocation true. A -p prompt naming the gated skill reached only the model-facing skill tool, which listed the explicit disable-model-invocation: false control and returned Skill not found for the gated skill. |
-
-##### `>=1.0 <2 >=1.0.101`
 
 | Component | Support | Rationale |
 | --- | --- | --- |

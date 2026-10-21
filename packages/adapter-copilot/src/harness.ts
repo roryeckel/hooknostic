@@ -7,7 +7,7 @@ import type { HarnessMetadata } from "@hooknostic/core";
  */
 export const copilotHarness: HarnessMetadata = {
   displayName: "GitHub Copilot CLI",
-  recommendedRange: ">=1.0 <2",
+  recommendedRange: ">=1.0.101 <2",
   fixtureDir: "1.0",
   referenceVersion: "1.0.101",
 };

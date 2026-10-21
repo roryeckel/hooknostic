@@ -23,7 +23,7 @@ export default defineConfig({
   targets: {
     claude: { version: ">=2.1 <3", delivery: "project", output: ".hooknostic/artifacts/claude" },
     codex: { version: ">=0.148 <1", delivery: "project", output: ".hooknostic/artifacts/codex" },
-    copilot: { version: ">=1.0 <2", delivery: "project", output: ".hooknostic/artifacts/copilot" },
+    copilot: { version: ">=1.0.101 <2", delivery: "project", output: ".hooknostic/artifacts/copilot" },
     opencode: { version: ">=1.18 <2", delivery: "project", output: ".hooknostic/artifacts/opencode" },
   },
 });

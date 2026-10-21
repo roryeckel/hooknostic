@@ -58,7 +58,7 @@ describe("Copilot project components", () => {
     expect(support["agent-plugin.skills.invocation-policy"]).toMatchObject({ level: "exact" });
   });
 
-  it("keeps a Copilot build older than the interactive capture unsupported", () => {
+  it("refuses a project target older than the captured build", () => {
     const older = resolveAgentPluginProjection(
       {
         id: "copilot",
@@ -67,8 +67,9 @@ describe("Copilot project components", () => {
         output: ".",
       },
       { profiles: projectComponentProfiles },
-    ).matrix!;
-    expect(older["agent-plugin.skills.invocation-policy"]).toMatchObject({ level: "unsupported" });
+    );
+    expect(older.matrix).toBeUndefined();
+    expect(older.diagnostics).toContainEqual(expect.objectContaining({ code: "HN203" }));
   });
 
   it("returns no hook file when a components-only project compiles none", () => {

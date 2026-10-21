@@ -33,7 +33,7 @@ Hook files load at CLI start.
 | Trust | Repository hooks run only in a trusted folder (`--trust-folder`, or `COPILOT_ALLOW_ALL=true`). Without it they are skipped silently. |
 | User hooks | `$COPILOT_HOME/hooks/*.json` (default `~/.copilot/hooks/`). |
 | Inline hooks | A `hooks` field in `.github/copilot/settings.json`, `settings.local.json`, `.claude/settings.json`, or the user `settings.json`. |
-| Plugin hooks | A legacy plugin's `hooks.json` or an Agent Plugins package's `com.github.copilot/hooks/hooks.json`; both fire on 1.0.101. |
+| Plugin hooks | A legacy plugin's `hooks.json` or an Agent Plugins package's `com.github.copilot/hooks/hooks.json`; both fire on 1.0.101. The adapter target range starts there; the 1.0.60–1.0.82 reports of non-firing plugin hooks were not re-probed. |
 | Policy hooks | Machine-wide files under the platform policy directory / registry; not emitted by Hooknostic. |
 
 ## Events and payloads
