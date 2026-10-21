@@ -279,6 +279,40 @@ describe("Copilot Agent Plugin projector", () => {
     );
   });
 
+  it("does not classify an authored PascalCase hook as a generated dispatcher", async () => {
+    const root = await packageRoot();
+    await writeFile(
+      join(root, "com.github.copilot/hooks/hooks.json"),
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          SessionStart: [
+            {
+              type: "command",
+              exec: "node",
+              args: ["${PLUGIN_ROOT}/runtime/hooknostic.mjs", "sessionStart"],
+            },
+          ],
+        },
+      }),
+    );
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: [],
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    const diagnostics = await copilotAdapter().validateArtifacts!(
+      plan.files.map((file) => ({
+        path: file.path,
+        contents: typeof file.contents === "string" ? file.contents : Buffer.from(file.contents),
+      })),
+      { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package", output: "." },
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
   it("rejects a package runtime that collides with the compiled dispatcher path", async () => {
     const root = await packageRoot();
     await mkdir(join(root, "runtime"), { recursive: true });

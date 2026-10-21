@@ -211,7 +211,10 @@ export function copilotAdapter(): HarnessAdapter {
                 continue;
               }
               if (!nativeNames.has(eventName)) {
-                throw new Error(`generated entry under unknown native event ${JSON.stringify(eventName)}`);
+                // A PascalCase event is authored: generated entries use the
+                // camelCase spellings exclusively, and the argument alone
+                // cannot distinguish an authored dispatcher-shaped call.
+                continue;
               }
               if (entry["args"][1] !== eventName) {
                 throw new Error(`generated entry for ${eventName} does not pass its native event name`);

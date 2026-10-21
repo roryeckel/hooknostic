@@ -171,6 +171,36 @@ describe("Copilot project components", () => {
     }
   });
 
+  it("relinquishes ownership when a configured source becomes the destination", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-destination-"));
+    try {
+      await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
+      await mkdir(join(dir, ".claude"), { recursive: true });
+      symlinkSync(join(dir, ".agents", "skills"), join(dir, ".claude", "skills"), "junction");
+      const source: ProjectComponents = {
+        origin: "direct",
+        skills: [
+          {
+            name: "review",
+            source: join(dir, ".agents", "skills", "review"),
+            files: [
+              {
+                path: "SKILL.md",
+                contents: new TextEncoder().encode("---\nname: review\ndescription: Self source.\n---\n"),
+                mode: 0o644,
+              },
+            ],
+          },
+        ],
+      };
+      const integration = await projectComponents(source, dir, "out", "", { support });
+      expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/review/SKILL.md");
+      expect(integration.relinquishPrefixes).toContain(".agents/skills/review");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes native project MCP declarations, with stdio behind the shared launcher", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-project-"));
     try {
