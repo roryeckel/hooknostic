@@ -6,7 +6,10 @@ capability data, artifact generation, detection — plus a shim that runs the
 portable dispatcher inside the harness's native process model.
 
 The definition of done is design.md Appendix C. In practice, follow the order
-that built the first three adapters:
+that built the first three adapters. For the full planning, surface inventory,
+probe budget and completeness gates, load
+`.agents/skills/harness-integration/SKILL.md`; this page is the implementation
+reference it points to.
 
 ## 1. Capture reality before writing code
 

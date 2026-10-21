@@ -112,7 +112,8 @@ and regenerated canonicals. It is a normalization decision, so it gets an ADR.
 
 `docs/adding-an-adapter.md` is the authoritative workflow (capture → fixtures
 → profile → decode/apply → shim → `describeAdapterContract` +
-`packages/cli/src/coverage.test.ts` SUBJECTS row).
+`packages/cli/src/coverage.test.ts` SUBJECTS row). For the planning, surface
+inventory, probe budget and completeness gates, load `harness-integration`.
 
 ## Shared tail (every extension)
 
