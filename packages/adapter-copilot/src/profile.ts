@@ -122,7 +122,7 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
       "tool.before.requestApproval": {
         level: "exact",
         rationale:
-          'permissionDecision "ask" defers to the user\'s permission flow. In a headless -p session no user exists, so the call is denied as "unable to ask user for confirmation"; an interactive session shows the prompt.',
+          'permissionDecision "ask" defers to the user\'s permission flow. In the captured headless -p session no user exists, so the call was denied as "unable to ask user for confirmation"; an interactive session\'s native prompt is not captured.',
       },
       "tool.before.input.replace": { level: "exact" },
       "tool.before.context.add": {

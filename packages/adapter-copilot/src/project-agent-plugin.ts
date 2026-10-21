@@ -9,6 +9,8 @@ import {
   AGENT_PLUGIN_MANIFEST_SCHEMA,
   assertPackageDelivery,
   componentSummary,
+  contentsText,
+  isJsonObject,
   materializedPackageFiles,
   projectPackageSkillTexts,
   withSkillInvocationPolicy,
@@ -33,7 +35,7 @@ const SKILL_REFERENCE_DEGRADATION = {
 const STDIO_ENVIRONMENT_DEVIATION = {
   id: ENVIRONMENT_EXPANSION_DEVIATION,
   summary:
-    "Copilot expands set ambient environment variables in a stdio server's command, args, env values and cwd as well as the two Agent Plugins aliases, where Agent Plugins 1.0 defines only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and requires other placeholder-like text to remain literal.",
+    "Copilot expands ${PLUGIN_ROOT} and ${PLUGIN_DATA} in a stdio command, which Agent Plugins 1.0 explicitly excludes, and expands set ambient environment variables in command, args, env values and cwd, where the specification requires other placeholder-like text to remain literal.",
   evidence: CAPTURE,
 } as const;
 
@@ -43,10 +45,6 @@ const REMOTE_ENVIRONMENT_DEVIATION = {
     "Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal.",
   evidence: CAPTURE,
 } as const;
-
-function hookArtifactPath(path: string): boolean {
-  return path === HOOKS_PATH || path === HOOK_RUNTIME;
-}
 
 const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
   /**
@@ -110,6 +108,34 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
     const issues: AgentPluginIssue[] = [];
     const omissions: AgentPluginProjectionPlan["summary"]["omissions"] = [];
 
+    // An author's own Copilot hooks are package data, not a portable component.
+    // They are preserved and merged with the compiled dispatcher's entries; a
+    // projection replaces the output, so dropping this file would silently
+    // remove hooks the package shipped.
+    const authoredHooksFile = source.files.find((file) => file.path === HOOKS_PATH);
+    let authoredHooks: { version: 1; hooks: Record<string, unknown[]> } | undefined;
+    if (authoredHooksFile !== undefined) {
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(authoredHooksFile.contents)) as unknown;
+        if (!isJsonObject(parsed) || parsed["version"] !== 1 || !isJsonObject(parsed["hooks"])) {
+          throw new Error("expected version 1 and an object hooks field");
+        }
+        const hooks: Record<string, unknown[]> = {};
+        for (const [event, entries] of Object.entries(parsed["hooks"])) {
+          if (!Array.isArray(entries)) throw new Error(`hooks.${event} must be an array`);
+          hooks[event] = entries;
+        }
+        authoredHooks = { version: 1, hooks };
+      } catch (error) {
+        issues.push({
+          severity: "error",
+          scope: "projection",
+          path: HOOKS_PATH,
+          message: `authored Copilot hooks are invalid and were not merged: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+
     // The portable manifest is the package's manifest; Hooknostic regenerates
     // it so the Agent Plugins schema cannot be lost in a merged document.
     const manifest = {
@@ -136,7 +162,8 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
 
     for (const file of source.files) {
       if (file.path === "plugin.json") continue;
-      if (hookArtifactPath(file.path)) continue;
+      if (file.path === HOOKS_PATH) continue;
+      if (file.path === HOOK_RUNTIME) continue;
       if (runtimePackagePaths.has(file.path)) continue;
       const rewritten = skillTexts.rewritten.get(file.path);
       files.push({
@@ -155,10 +182,42 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
     files.push(...materialized.files);
 
     files.push({ path: "plugin.json", contents: `${JSON.stringify(manifest, null, 2)}\n` });
-    // Every compiled hook artifact is the hook channel. `plugin.json` is
-    // rewritten above; the hooks document and the runtime are carried verbatim.
+
+    // Merge the compiled dispatcher's entries into any authored hooks document,
+    // author entries first: an author guard may still deny before the portable
+    // hook runs, and Copilot runs every matching entry in order.
+    const generatedHooksFile = context.hookArtifacts.find((artifact) => artifact.path === HOOKS_PATH);
+    if (authoredHooks !== undefined || generatedHooksFile !== undefined) {
+      const merged: Record<string, unknown[]> = { ...(authoredHooks?.hooks ?? {}) };
+      if (generatedHooksFile !== undefined) {
+        try {
+          const parsed = JSON.parse(contentsText(generatedHooksFile.contents)) as unknown;
+          if (!isJsonObject(parsed) || !isJsonObject(parsed["hooks"])) {
+            throw new Error("compiled hooks document has no hooks object");
+          }
+          for (const [event, entries] of Object.entries(parsed["hooks"])) {
+            if (!Array.isArray(entries)) throw new Error(`hooks.${event} must be an array`);
+            merged[event] = [...(merged[event] ?? []), ...entries];
+          }
+        } catch (error) {
+          issues.push({
+            severity: "error",
+            scope: "projection",
+            path: HOOKS_PATH,
+            message: `compiled hooks could not be merged: ${error instanceof Error ? error.message : String(error)}`,
+          });
+        }
+      }
+      files.push({
+        path: HOOKS_PATH,
+        contents: `${JSON.stringify({ ...(authoredHooks ?? {}), version: 1, hooks: merged }, null, 2)}\n`,
+      });
+    }
+
+    // Every other compiled hook artifact is the hook channel: `plugin.json` is
+    // rewritten above and the hooks document is merged above.
     for (const artifact of context.hookArtifacts) {
-      if (artifact.path === "plugin.json") continue;
+      if (artifact.path === "plugin.json" || artifact.path === HOOKS_PATH) continue;
       files.push({
         path: artifact.path,
         contents: artifact.contents,
@@ -220,7 +279,7 @@ export function copilotProjectionDeviations(
       component: `agent-plugin.mcp.${server.type}`,
       name,
       path: `mcp.json#${name}`,
-      reason: `server ${JSON.stringify(name)} declares ${references.map((reference) => `\${${reference}}`).join(", ")} in its ${where}, which Copilot expands from ambient environment.`,
+      reason: `server ${JSON.stringify(name)} declares ${references.map((reference) => `\${${reference}}`).join(", ")} in its ${where}; Copilot expands ${server.type === "stdio" ? "the aliases in command, which Agent Plugins 1.0 excludes, and ambient variables in every one of those fields" : "ambient variables there, which Agent Plugins 1.0 forbids"}.`,
     });
   }
   return deviations.length > 0 ? deviations : undefined;

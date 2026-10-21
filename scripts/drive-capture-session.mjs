@@ -33,7 +33,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { flattenCaptured, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
+import { flattenCaptured, hasCopilotToolExchange, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
 import { harnessFixtureDirs } from "./harness-fixture-dirs.mjs";
 
 const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -675,6 +675,10 @@ async function main() {
     new URL("compare-capture-shapes.mjs", import.meta.url).href
   );
   const captured = readJsonDir(dst);
+  if (opts.harness === "copilot" && !hasCopilotToolExchange(captured)) {
+    console.error("[drift] the capture has no complete tool exchange (preToolUse plus postToolUse)");
+    process.exit(5);
+  }
   const fixtures = readJsonDir(join(REPO, (await harnessFixtureDirs())[opts.harness]), {
     suffix: ".input.json",
   });

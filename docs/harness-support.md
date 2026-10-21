@@ -632,7 +632,7 @@ Known deviations from Agent Plugins 1.0, reported as `HN106`:
 
 | Deviation | Component | Behavior | Evidence |
 | --- | --- | --- | --- |
-| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Copilot expands set ambient environment variables in a stdio server's command, args, env values and cwd as well as the two Agent Plugins aliases, where Agent Plugins 1.0 defines only ${PLUGIN_ROOT} and ${PLUGIN_DATA} and requires other placeholder-like text to remain literal. | `.capture/copilot/README.md` |
+| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Copilot expands ${PLUGIN_ROOT} and ${PLUGIN_DATA} in a stdio command, which Agent Plugins 1.0 explicitly excludes, and expands set ambient environment variables in command, args, env values and cwd, where the specification requires other placeholder-like text to remain literal. | `.capture/copilot/README.md` |
 | `copilot:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. | `.capture/copilot/README.md` |
 | `copilot:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Copilot substitutes set ambient environment variables into a remote server's headers, where Agent Plugins 1.0 forbids all expansion in a package's url, header names and header values. The package aliases ${PLUGIN_ROOT} and ${PLUGIN_DATA} stayed literal. | `.capture/copilot/README.md` |
 

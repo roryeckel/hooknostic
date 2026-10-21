@@ -127,6 +127,8 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     // masquerade as scheduled Codex coverage.
     inconclusiveByHarness: {
       codex: "the scheduled playback suite has no captured Codex interactive approval driver",
+      copilot:
+        "the scheduled playback suite has no captured Copilot interactive approval driver; the captured headless -p behavior denies the ask",
     },
   },
   {

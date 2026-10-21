@@ -105,17 +105,25 @@ describe("applyCopilot", () => {
     });
   });
 
-  it("JSON-encodes a non-string replacement because the native field is text", async () => {
+  it("JSON-encodes a non-string replacement whole, keeping every property", async () => {
     const native = await applyCopilot(
       result({
         event: "tool.after",
-        effects: [{ hookId: "replace", effect: { kind: "replaceOutput", output: { ok: true } } }],
+        effects: [
+          {
+            hookId: "replace",
+            effect: { kind: "replaceOutput", output: { resultType: "success", textResultForLlm: "value", extra: 42 } },
+          },
+        ],
       }),
       {},
       INVOCATION,
     );
     expect(native.body).toEqual({
-      modifiedResult: { resultType: "success", textResultForLlm: '{"ok":true}' },
+      modifiedResult: {
+        resultType: "success",
+        textResultForLlm: '{"resultType":"success","textResultForLlm":"value","extra":42}',
+      },
     });
   });
 

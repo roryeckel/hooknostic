@@ -1,0 +1,11 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "507df0ed-70f2-483d-a4ea-5da7cf56b9e8",
+  "timestamp": "2026-10-21T00:28:11.408Z",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-lifecycle",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo pascal-lifecycle",
+    "description": "Echo pascal-lifecycle"
+  }
+}

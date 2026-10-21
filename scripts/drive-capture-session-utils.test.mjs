@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { flattenCaptured, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
+import { flattenCaptured, hasCopilotToolExchange, isEntrypoint, listCaptured } from "./drive-capture-session-utils.mjs";
 
 const tempDirs = [];
 
@@ -43,5 +43,32 @@ describe("drive capture-session helpers", () => {
     const { dst, count } = flattenCaptured(captured, "opencode");
     expect(count).toBe(1);
     expect(readdirSync(dst)).toEqual(["chat.message-0.json"]);
+  });
+
+  it("unwraps a Copilot tee record to the native payload", () => {
+    const captured = mkdtempSync(join(tmpdir(), "hooknostic-drive-copilot-"));
+    tempDirs.push(captured, `${captured}-json`);
+    const payload = { sessionId: "s", cwd: "/work", toolName: "bash", toolArgs: { command: "echo probe" } };
+    writeFileSync(
+      join(captured, "preToolUse.jsonl"),
+      `${JSON.stringify({ at: "now", input: JSON.stringify(payload) })}\n`,
+      "utf8",
+    );
+    const { dst, count } = flattenCaptured(captured, "copilot");
+    expect(count).toBe(1);
+    expect(JSON.parse(readFileSync(join(dst, "preToolUse-0.json"), "utf8"))).toEqual(payload);
+  });
+
+  it("requires a Copilot capture to contain both halves of a tool exchange", () => {
+    const pre = { toolName: "bash", toolArgs: { command: "x" } };
+    const post = { toolName: "bash", toolArgs: { command: "x" }, toolResult: { resultType: "success" } };
+    const permission = { hookName: "permissionRequest", toolName: "bash", toolInput: { command: "x" } };
+    const failure = { toolName: "view", toolArgs: { path: "x" }, error: "missing" };
+
+    expect(hasCopilotToolExchange([pre, post])).toBe(true);
+    expect(hasCopilotToolExchange([pre])).toBe(false);
+    expect(hasCopilotToolExchange([post])).toBe(false);
+    expect(hasCopilotToolExchange([permission, post])).toBe(false);
+    expect(hasCopilotToolExchange([pre, post, failure])).toBe(true);
   });
 });

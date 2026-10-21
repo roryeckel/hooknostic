@@ -20,6 +20,25 @@ export function listCaptured(dir) {
 }
 
 /**
+ * Whether a Copilot capture exercised the tool exchange: at least one
+ * `preToolUse`-shaped payload and one `postToolUse`-shaped payload, both from
+ * the same drive. The comparison's expected-variant accounting cannot state
+ * this because Copilot's variant includes the platform's runtime tool name
+ * (`bash` or `powershell`); a missing half is otherwise a clean verdict.
+ */
+export function hasCopilotToolExchange(payloads) {
+  let before = false;
+  let after = false;
+  for (const payload of payloads) {
+    if (typeof payload?.toolName !== "string") continue;
+    if (payload.hookName === "permissionRequest") continue;
+    if (payload.toolResult !== undefined) after = true;
+    else if (payload.error === undefined) before = true;
+  }
+  return before && after;
+}
+
+/**
  * Convert raw per-event JSONL tee output to one payload per JSON file for the
  * comparator. Synthetic tee diagnostics remain in the raw-capture artifact
  * but never become comparator input.

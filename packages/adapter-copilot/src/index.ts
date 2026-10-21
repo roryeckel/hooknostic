@@ -223,6 +223,13 @@ export function copilotAdapter(): HarnessAdapter {
           if (!isJsonObject(parsed) || typeof parsed["name"] !== "string" || parsed["name"] === "") {
             throw new Error("plugin.json must name the plugin");
           }
+          const name = parsed["name"];
+          // Agent Plugins 1.0 §5.5: 1-64 lowercase alphanumerics/hyphens/periods,
+          // alphanumeric at both ends, and no consecutive separators. A package
+          // Copilot rejects at load is not a successful build.
+          if (!/^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/.test(name) || name.includes("--") || name.includes("..")) {
+            throw new Error(`plugin.json name ${JSON.stringify(name)} is not a valid Agent Plugins name`);
+          }
           if (typeof parsed["$schema"] !== "string") throw new Error("plugin.json has no $schema");
         } catch (error) {
           diagnostics.push({

@@ -427,6 +427,12 @@ describe("complete project integration", () => {
         target: "codex",
         degradation: "codex:skill-directory-model-substitution",
       }),
+      expect.objectContaining({
+        severity: "error",
+        target: "copilot",
+        degradation: "copilot:skill-reference-unexpanded",
+        message: expect.stringContaining("discovers this skill where it is"),
+      }),
     ]);
     // The author's own file is left alone.
     expect(await readFile(join(root, ".claude/skills/review/SKILL.md"), "utf8")).toBe(text);

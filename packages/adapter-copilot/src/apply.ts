@@ -2,12 +2,10 @@ import type { InvocationContext, NativeHookResult } from "@hooknostic/core";
 import type { HookResult } from "@hooknostic/sdk";
 
 function textResult(output: unknown): string {
-  if (typeof output === "string") return output;
-  if (typeof output === "object" && output !== null) {
-    const text = (output as { textResultForLlm?: unknown }).textResultForLlm;
-    if (typeof text === "string") return text;
-  }
-  return JSON.stringify(output) ?? "";
+  // The native replacement is one text field. A string is that text; anything
+  // else is JSON-encoded whole, because extracting a property would silently
+  // discard the rest of a portable replacement object.
+  return typeof output === "string" ? output : (JSON.stringify(output) ?? "");
 }
 
 /**

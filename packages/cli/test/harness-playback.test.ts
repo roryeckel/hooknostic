@@ -3442,6 +3442,32 @@ scenarioDrive("shell-tool-variants", async () => {
 scenarioDrive(
   "tool-error",
   async () => {
+    if (adapter!.id === "copilot") {
+      // A nonzero shell exit is a successful tool result on Copilot (captured:
+      // exit 7 produced no postToolUseFailure). A failing `view` does, so the
+      // drive scripts that call and then checks the injected error context.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-failure-copilot-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let recordedRequests: readonly unknown[] = [];
+      await runInstalledHarness(build, "fail", {
+        effects: ["context-add"],
+        script: [
+          { kind: "tool", toolName: "view", arguments: { path: join(dir, "missing-file.txt") } },
+          { kind: "text" },
+        ],
+        verify: async ({ server }) => {
+          recordedRequests = server.requests;
+        },
+      });
+      expect(await traceEvents(build.tracePath)).toContain("tool.error");
+      const contents = requestContents(recordedRequests);
+      expect(
+        contents.some((text) => text.includes("hooknostic-context [tool.error]")),
+        `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(true);
+      return;
+    }
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-failure-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
@@ -3464,7 +3490,7 @@ scenarioDrive(
       `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
     ).toBe(true);
   },
-  () => adapter?.id !== "claude" || cellLevel("tool.error.context.add") === undefined,
+  () => (adapter?.id !== "claude" && adapter?.id !== "copilot") || cellLevel("tool.error.context.add") === undefined,
 );
 
 scenarioDrive(
@@ -3683,7 +3709,7 @@ scenarioDrive(
     // What counts as "another turn" is per-harness, because the scripts differ
     // in how many turns they produce on their own. On the opencode-serve lane
     // the script produces two by itself, so only a third evidences prevention.
-    const requiredTurns = adapter!.id === "opencode" ? 3 : 2;
+    const requiredTurns = adapter!.id === "opencode" || adapter!.id === "copilot" ? 3 : 2;
     expect(
       servedTurns,
       `stop prevention did not produce an extra model turn (turns served: ${servedTurns}, required: ${requiredTurns})`,
@@ -3889,6 +3915,32 @@ scenarioDrive(
 scenarioDrive(
   "permission-request",
   async () => {
+    if (adapter!.id === "copilot") {
+      // Copilot fires permissionRequest before the permission service even in a
+      // headless -p session with --allow-all-tools (captured), so the deny path
+      // is drivable without a pty. The shell call must never run.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-perm-copilot-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let permissionObserved = false;
+      await runInstalledHarness(build, "rewrite", {
+        effects: ["permission-deny"],
+        script: [{ kind: "tool", disposition: "rewrite", marker: "hooknostic-perm-marker.txt" }, { kind: "text" }],
+        verify: async ({ server }) => {
+          permissionObserved = server.turnCount >= 1;
+        },
+      });
+      const events = await traceEvents(build.tracePath);
+      expect(events, `permission.request never fired (observed flag: ${permissionObserved})`).toContain(
+        "permission.request",
+      );
+      expect(permissionObserved).toBe(true);
+      expect(
+        await readFile(join(dir, "hooknostic-perm-marker.txt"), "utf8").catch(() => null),
+        "denied command executed anyway",
+      ).toBeNull();
+      return;
+    }
     if (adapter!.id === "opencode") {
       // Captured live on 1.18.25 (.capture/opencode-permission): the
       // permission.ask callback never fires (upstream #9229); the ask

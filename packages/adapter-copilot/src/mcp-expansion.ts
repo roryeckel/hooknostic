@@ -17,20 +17,25 @@ const REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}/g;
  */
 export function copilotEnvironmentReferences(server: AgentPluginMcpServer): string[] {
   const names = new Set<string>();
-  const texts =
-    server.type === "stdio"
-      ? [
-          server.command,
-          ...(server.args ?? []),
-          ...Object.values(server.env ?? {}),
-          ...(server.cwd === undefined ? [] : [server.cwd]),
-        ]
-      : [server.url, ...Object.values(server.headers ?? {})];
-  for (const text of texts) {
-    for (const match of text.matchAll(REFERENCE)) {
-      const name = match[1]!;
-      if (name !== "PLUGIN_ROOT" && name !== "PLUGIN_DATA") names.add(name);
+  const collect = (texts: readonly string[], aliasesAreDeviation: boolean) => {
+    for (const text of texts) {
+      for (const match of text.matchAll(REFERENCE)) {
+        const name = match[1]!;
+        if (aliasesAreDeviation || (name !== "PLUGIN_ROOT" && name !== "PLUGIN_DATA")) names.add(name);
+      }
     }
+  };
+  if (server.type === "stdio") {
+    // §9.2 expands the aliases in args, env and cwd only; Copilot also expands
+    // them in command (captured), which the spec explicitly excludes. Ambient
+    // variables are a deviation in every one of those fields.
+    collect([server.command], true);
+    collect(
+      [...(server.args ?? []), ...Object.values(server.env ?? {}), ...(server.cwd === undefined ? [] : [server.cwd])],
+      false,
+    );
+  } else {
+    collect([server.url, ...Object.values(server.headers ?? {})], false);
   }
   return [...names].sort();
 }

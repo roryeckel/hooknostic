@@ -121,6 +121,18 @@ describe("generateCopilotArtifacts", () => {
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["HN301"]);
   });
 
+  it("rejects a package manifest name Agent Plugins will not load", async () => {
+    const adapter = copilotAdapter();
+    const { ir, diagnostics } = buildPluginIR(
+      definePlugin({ name: "Invalid Name", hooks: [hook("session.start", { id: "start", async run() {} })] }),
+    );
+    expect(diagnostics).toEqual([]);
+    const artifacts = generateCopilotArtifacts(ir!, PACKAGE_TARGET, BUNDLE, OPTIONS);
+    const reported = await adapter.validateArtifacts!(artifacts, PACKAGE_TARGET);
+    expect(reported.map((diagnostic) => diagnostic.code)).toEqual(["HN301"]);
+    expect(reported[0]?.message).toContain("not a valid Agent Plugins name");
+  });
+
   it("is deterministic", () => {
     expect(generateCopilotArtifacts(exampleIR(), PACKAGE_TARGET, BUNDLE, OPTIONS)).toEqual(
       generateCopilotArtifacts(exampleIR(), PACKAGE_TARGET, BUNDLE, OPTIONS),

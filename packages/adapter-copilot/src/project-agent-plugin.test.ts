@@ -48,7 +48,12 @@ async function packageRoot(): Promise<string> {
       2,
     ),
     "com.github.copilot/agents/helper.agent.md": "# Helper\n",
-    "com.github.copilot/hooks/hooks.json": JSON.stringify({ version: 1, hooks: { sessionStart: [] } }),
+    "com.github.copilot/hooks/hooks.json": JSON.stringify({
+      version: 1,
+      hooks: {
+        sessionStart: [{ type: "command", exec: "node", args: ["-e", "console.log('authored-marker')"] }],
+      },
+    }),
     "package.json": JSON.stringify({ name: "projector-probe", dependencies: { "is-number": "7.0.0" } }),
     "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {} }),
   };
@@ -124,6 +129,9 @@ describe("Copilot Agent Plugin projector", () => {
     const hooks = plan.files.find((file) => file.path === "com.github.copilot/hooks/hooks.json")!;
     expect(hooks.contents).toContain("runtime/hooknostic.mjs");
     expect(hooks.contents).toContain("preToolUse");
+    // The author's own hook entries are preserved beside the compiled dispatcher.
+    expect(hooks.contents).toContain("authored-marker");
+    expect(hooks.contents).toContain("sessionStart");
 
     // A gated skill is omitted rather than emitted with a flag that would make
     // it unreachable on 1.0.101.
@@ -174,6 +182,19 @@ describe("Copilot Agent Plugin projector", () => {
       "skill-directory-model-substitution",
       "skill-reference-unexpanded",
     ]);
+  });
+
+  it("carries an authored hooks document when the package has no compiled hooks", async () => {
+    const root = await packageRoot();
+    const loaded = await loadAgentPlugin({ root });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: [],
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    const hooks = plan.files.find((file) => file.path === "com.github.copilot/hooks/hooks.json");
+    expect(hooks?.contents).toContain("authored-marker");
   });
 
   it("carries every compiled hook artifact path into the plan", async () => {

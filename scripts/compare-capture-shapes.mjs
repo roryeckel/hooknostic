@@ -367,6 +367,7 @@ export function compareCaptures({ harness, captured, fixtures, expectedVariants 
   // never exercised the exchange, so absence is not a drift claim.
   const isToolVariant = (variant) =>
     variant.includes("tool") ||
+    /tooluse/i.test(variant) ||
     variant.startsWith("execute.") ||
     variant.includes("PreToolUse") ||
     variant.includes("PostToolUse");

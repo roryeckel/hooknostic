@@ -1,7 +1,12 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { AgentPluginProjectionProfile, ProjectComponents } from "@hooknostic/agent-plugin";
-import { contentsText, SKILL_REFERENCE_UNEXPANDED } from "@hooknostic/agent-plugin";
+import {
+  contentsText,
+  projectSkillText,
+  SKILL_REFERENCE_UNEXPANDED,
+  unexpandedSkillReferenceReason,
+} from "@hooknostic/agent-plugin";
 import type {
   GeneratedArtifact,
   McpLauncherServer,
@@ -116,6 +121,27 @@ export async function projectComponents(
     target: COPILOT_SKILL_TEXT,
     harness: "GitHub Copilot CLI",
   });
+
+  // Hooknostic does not own an authored native skill, but it still owes the
+  // report: Copilot shows that text as written. This is the same degradation a
+  // copied skill gets for a reference the target will not expand, with the
+  // in-place reason that says why ${SKILL_DIR} cannot be rewritten here.
+  for (const skill of source.skills.filter((candidate) => authoredInPlace(candidate.source))) {
+    const manifest = skill.files.find((file) => file.path === "SKILL.md");
+    if (manifest === undefined) continue;
+    const projected = projectSkillText(manifest.contents, COPILOT_SKILL_TEXT, { rewrite: false });
+    if (projected.unexpanded.length === 0) continue;
+    (result.degradations ??= []).push({
+      id: SKILL_REFERENCE_UNEXPANDED,
+      component: "agent-plugin.skills",
+      name: skill.name,
+      path: `${relative(root, skill.source).replaceAll("\\", "/")}/SKILL.md`,
+      reason: unexpandedSkillReferenceReason(skill.name, projected.unexpanded, "GitHub Copilot CLI", {
+        inPlace: true,
+        ...(projected.inFrontmatter ? { inFrontmatter: true } : {}),
+      }),
+    });
+  }
   if (!source.mcp) return result;
 
   const stdio: McpLauncherServer[] = [];
