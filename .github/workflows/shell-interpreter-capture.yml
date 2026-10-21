@@ -37,10 +37,22 @@ jobs:
           import { appendFileSync } from "node:fs";
           import { harnessLanes } from "./scripts/harness-lanes.mjs";
           const lane = harnessLanes[process.env.HKN_HARNESS];
-          const imported = await import(new URL(lane.module, new URL("./scripts/harness-lanes.mjs", import.meta.url)));
-          const record = imported[lane.profileExport].flatMap(profile => profile.source.validatedOn)
-            .findLast(record => record.artifact === ".capture/shell-dialects")
-            ?? imported[lane.profileExport][0]?.source.validatedOn[0];
+          let record;
+          try {
+            const imported = await import(new URL(lane.module, new URL("./scripts/harness-lanes.mjs", import.meta.url)));
+            record = imported[lane.profileExport].flatMap(profile => profile.source.validatedOn)
+              .findLast(record => record.artifact === ".capture/shell-dialects");
+          } catch {
+            // A lane whose profile imports local .js specifiers needs the TS
+            // resolver; fall back to its harness metadata for a first capture.
+          }
+          if (!record?.version) {
+            const harnessModule = await import(new URL(
+              lane.module.replace(/profile\.ts$/, "harness.ts"),
+              new URL("./scripts/harness-lanes.mjs", import.meta.url),
+            ));
+            record = { version: harnessModule[lane.harnessExport].referenceVersion };
+          }
           if (!record?.version) throw new Error("No recorded build");
           appendFileSync(process.env.GITHUB_OUTPUT,
             `package=${lane.pkg}\nversion=${record.version}\nbootstrap=${lane.bootstrap ?? ""}\n`);
