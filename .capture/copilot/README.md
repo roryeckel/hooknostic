@@ -31,6 +31,7 @@ node .capture/copilot/interactive-skill-probe.mjs project
 node .capture/copilot/interactive-skill-probe.mjs plugin
 node .capture/copilot/interactive-approval-probe.mjs allow
 node .capture/copilot/interactive-approval-probe.mjs deny
+node .capture/copilot/interactive-compact-probe.mjs
 node .capture/copilot/transport-probe.mjs streamable-http
 node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
@@ -56,6 +57,8 @@ node .capture/copilot/make-fixtures.mjs
   `allow` selects Yes and requires the command to run; `deny` selects No/Esc and
   requires the structured session log to record an interactive denial with no
   marker file.
+- `interactive-compact-probe.mjs` — pty driver for a manual `/compact`; it
+  attaches a `preCompact` tee and captures the real payload.
 - `mcp-transport-server.mjs` / `mcp-transport-runner.mjs` — a minimal loopback
   Streamable HTTP and legacy SSE MCP server, run as a child process (a
   `spawnSync` driver would block an in-process server's event loop).
@@ -95,6 +98,7 @@ node .capture/copilot/make-fixtures.mjs
 | `postToolUseFailure` context | `{additionalContext}` on exit 0 reached the model. Plain stdout with exit 2 did **not**, contrary to the reference's exit-code table. | `tool.error.context.add` uses the JSON field on exit 0. |
 | `permissionRequest` | Fires before the permission service even in `-p` with `--allow-all-tools`. `{behavior:"allow"}` let the call run; `{behavior:"deny",message}` blocked it and the message reached the model. | Observe and block exact. |
 | `userPromptSubmitted` output | Exit 2 did not stop the turn; `{additionalContext}` was not delivered. | No block or context cell advertised on `prompt.before`. |
+| `preCompact` | Interactive `/compact` produced `{trigger:"manual", transcriptPath, customInstructions:""}`. | `context.compact.before.observe` and the `trigger` field exact; no block or context channel claimed. |
 | `sessionStart` context | `{additionalContext}` was injected verbatim; the model quoted the token. | `session.start.context.add` exact. |
 | `agentStop` prevent | `{decision:"block",reason}` forced another turn. The harness stopped after eight consecutive blocks; later calls had `stop_hook_active:true`. | `turn.stop.prevent` exact. |
 | `subagentStop` prevent | `{decision:"block",reason}` forced more subagent turns. A session-scoped hook blocked more than forty consecutive completions with `stop_hook_active:true`; the documented eight-block guard was not observed. | `agent.stop.prevent` approximate, with the unbounded-loop rationale. |
@@ -170,9 +174,6 @@ under ignored `captured/`; it fails if the session log lacks the injection.
 
 ## Not established
 
-- `context.compact.before`: a session with `COPILOT_PROVIDER_MAX_PROMPT_TOKENS`
-  lowered to 40k completed 52.5k tokens without compacting. No capture, so the
-  event is not advertised.
 - `notification` (interactive permission prompts, background shells).
 - Any host without a native platform package.
 - An installed-marketplace (copied) plugin, rather than the live local load.

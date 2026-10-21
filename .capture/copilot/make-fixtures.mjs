@@ -76,6 +76,7 @@ const FIXTURES_TO_WRITE = {
   "turn-stop": line("camel-lifecycle", "agentStop", 0),
   "turn-stop-subagent": line("subagent", "agentStop", 0),
   "turn-stop-pascal": named("pascal-subagent", "Stop", (payload) => payload.agent_id !== undefined),
+  "pre-compact": line("interactive-compact", "preCompact", 0),
 };
 
 function called(probe, file, index) {
@@ -102,6 +103,7 @@ const HINTS = {
   "agent-stop": "subagentStop",
   "turn-stop": "agentStop",
   "turn-stop-subagent": "agentStop",
+  "pre-compact": "preCompact",
 };
 
 const DECLINED = {

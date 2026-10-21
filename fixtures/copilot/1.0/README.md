@@ -33,6 +33,7 @@ path, and every other path shape stay as captured, because the shape is evidence
 | tool-error | **captured** 1.0.101 (2026-10-20): `view` on a missing path produces `postToolUseFailure` with `error: "Path does not exist"` |
 | agent-start, agent-stop | **captured** 1.0.101 (2026-10-20): `task` with `agent_type: "explore"` |
 | agent-start-pascal | **captured** 1.0.101 (2026-10-20) with a PascalCase `SubagentStart` entry: the payload is hybrid camel base + snake agent fields and omits `hook_event_name` |
+| pre-compact | **captured** 1.0.101 (2026-10-21) in an interactive session using `/compact`; the payload carries `trigger: "manual"` and `transcriptPath` |
 | user-prompt-transformed, error-occurred | **captured** 1.0.101 (2026-10-20) and **declined**: no portable event names a pre-model prompt transformation or a generic error |
 
 `tool.shell.dialect` is not in any payload. The decoder derives it from the

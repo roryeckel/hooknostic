@@ -22,6 +22,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
   },
   {
     version: "1.0.101",
+    date: "2026-10-21",
+    method: "captured",
+    artifact: FIXTURES,
+    what: "Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json.",
+  },
+  {
+    version: "1.0.101",
     date: "2026-10-20",
     method: "live-probe",
     artifact: CAPTURE,
@@ -101,6 +108,7 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
     fields: {
       "session.start.how": { level: "exact" },
       "session.end.reason": { level: "exact" },
+      "context.compact.before.trigger": { level: "exact" },
 
       "tool.before.correlation.agentId": { level: "exact" },
       "tool.before.correlation.parentAgentId": { level: "exact" },
@@ -126,6 +134,8 @@ export const copilotCapabilityProfiles: CapabilityProfile[] = [
       "session.start.context.add": { level: "exact" },
 
       "session.end.observe": { level: "exact" },
+
+      "context.compact.before.observe": { level: "exact" },
 
       "prompt.before.observe": {
         level: "exact",

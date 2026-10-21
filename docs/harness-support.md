@@ -536,6 +536,7 @@ Projection validation records:
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
@@ -551,6 +552,7 @@ Projection validation records:
 | --- | --- | --- |
 | `session.start.how` | exact | — |
 | `session.end.reason` | exact | — |
+| `context.compact.before.trigger` | exact | — |
 | `tool.before.correlation.agentId` | exact | — |
 | `tool.before.correlation.parentAgentId` | exact | — |
 | `tool.error.error.message` | exact | — |
@@ -601,6 +603,7 @@ Project delivery validation records:
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
@@ -655,6 +658,7 @@ Projection validation records:
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
 | 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval. |
 | 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted output is dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |

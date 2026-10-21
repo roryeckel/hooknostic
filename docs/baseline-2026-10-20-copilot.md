@@ -72,7 +72,7 @@ for one event and both fire.
 | `permissionRequest` / `PermissionRequest` | `permission.request` | `behavior`, `message`, `interrupt`; fires in `-p` too |
 | `postToolUse` / `PostToolUse` | `tool.after` | `modifiedResult`, `additionalContext` |
 | `postToolUseFailure` / `PostToolUseFailure` | `tool.error` | `error` string; `additionalContext` |
-| `preCompact` / `PreCompact` | `context.compact.before` | not captured; not advertised |
+| `preCompact` / `PreCompact` | `context.compact.before` | `trigger` (`manual` from `/compact`), `transcriptPath`; observation only |
 | `agentStop` / `Stop` | `turn.stop` | `transcriptPath`, `stopReason`, `stop_hook_active`; `decision`/`reason` |
 | `subagentStart` / `SubagentStart` | `agent.start` | `agentName`, `agentId`, `agentType`, `parentAgentId` |
 | `subagentStop` / `SubagentStop` | `agent.stop` | adds `response` / `last_assistant_message`; `decision`/`reason` |

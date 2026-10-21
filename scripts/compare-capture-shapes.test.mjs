@@ -487,6 +487,24 @@ describe("Pi drift", () => {
     ).toBe("clean");
   });
 
+  it("matches Copilot permission requests across shell tool names", () => {
+    const permission = COPILOT_FIXTURES.find((row) => row.hookName === "permissionRequest");
+    expect(permission).toBeDefined();
+    expect(variantOf("copilot", permission)).toBe("permissionRequest");
+    expect(variantOf("copilot", { ...permission, toolName: "bash" })).toBe("permissionRequest");
+    const linuxPermission = COPILOT_FIXTURES.map((row) =>
+      row.hookName === "permissionRequest" ? { ...row, toolName: "bash" } : row,
+    );
+    expect(
+      compareCaptures({
+        harness: "copilot",
+        captured: linuxPermission,
+        fixtures: COPILOT_FIXTURES,
+        expectedVariants: EXPECTED_VARIANTS.copilot,
+      }).verdict,
+    ).toBe("clean");
+  });
+
   it("keeps Copilot's expected lifecycle and wildcard tool variants honest", () => {
     // A complete Copilot drive is clean against its committed fixtures.
     expect(

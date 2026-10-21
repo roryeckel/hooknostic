@@ -152,7 +152,7 @@ export function variantOf(harness, payload) {
       return tool === undefined || tool === null ? String(pascal) : `${pascal}+${tool}`;
     }
     const tool = payload?.toolName;
-    if (payload?.hookName === "permissionRequest") return `permissionRequest+${tool}`;
+    if (payload?.hookName === "permissionRequest") return "permissionRequest";
     if (tool !== undefined && tool !== null) {
       if (payload?.toolResult !== undefined) return `postToolUse+${tool}`;
       if (payload?.error !== undefined) return `postToolUseFailure+${tool}`;
@@ -482,7 +482,7 @@ export const EXPECTED_VARIANTS = {
   copilot: [
     "sessionStart",
     "userPromptSubmitted",
-    "permissionRequest+*",
+    "permissionRequest",
     "preToolUse+*",
     "postToolUse+*",
     "agentStop",
