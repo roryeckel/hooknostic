@@ -39,7 +39,7 @@ printf 'probe\n' > README.md
 git add -A
 git -c user.email=capture@example.invalid -c user.name=capture commit -qm probe
 
-copilot --trust-folder --allow-all-tools --disable-client-telemetry -p \
+copilot --trust-folder --allow-all-tools --disable-client-telemetry --no-auto-update -p \
   'Use a shell tool exactly once to run exactly this command and report its output verbatim, then reply DONE: node -e "const fs=require(\"fs\"); console.log(fs.readlinkSync(\"/proc/\"+process.ppid+\"/exe\"))" ; echo hooknostic-shell-finished'
 status=$?
 echo "copilot exit=$status"

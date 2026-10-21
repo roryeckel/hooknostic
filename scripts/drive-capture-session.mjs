@@ -417,7 +417,11 @@ export async function driveOpencode(scratch, modelLabel, prompt = DRIVE_PROMPT) 
 }
 
 export async function driveCopilot(scratch, model, prompt = DRIVE_PROMPT) {
-  return runProcess("copilot", ["--trust-folder", "--allow-all-tools", "--disable-client-telemetry", "-p", prompt], {
+  // Without --no-auto-update a run can download a newer build into the shared
+  // update cache, so the evidence would come from a build other than the one
+  // installed (.capture/copilot/README.md).
+  const args = ["--trust-folder", "--allow-all-tools", "--disable-client-telemetry", "--no-auto-update", "-p", prompt];
+  return runProcess("copilot", args, {
     cwd: scratch,
     timeoutMs: DRIVE_TIMEOUT_MS,
     env: {

@@ -99,6 +99,7 @@ function runCopilot(prompt: string): Promise<{ stdout: string; stderr: string; c
         "--trust-folder",
         "--allow-all-tools",
         "--disable-client-telemetry",
+        "--no-auto-update",
         "--plugin-dir",
         SMOKE_DIR,
         "-p",
