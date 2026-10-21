@@ -111,11 +111,11 @@ describe("generateCopilotArtifacts", () => {
     }
   });
 
-  it("rejects a hooks document that does not pass its native event to the runtime", async () => {
+  it("rejects a malformed hooks document", async () => {
     const adapter = copilotAdapter();
     const artifacts = generateCopilotArtifacts(exampleIR(), PACKAGE_TARGET, BUNDLE, OPTIONS);
     const hooks = JSON.parse(artifacts[1]!.contents as string);
-    hooks.hooks.preToolUse[0].args[1] = "postToolUse";
+    hooks.version = 2;
     artifacts[1] = { ...artifacts[1]!, contents: `${JSON.stringify(hooks)}\n` };
     const diagnostics = await adapter.validateArtifacts!(artifacts, PACKAGE_TARGET);
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["HN301"]);

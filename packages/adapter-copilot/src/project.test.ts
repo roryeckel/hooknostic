@@ -201,6 +201,36 @@ describe("Copilot project components", () => {
     }
   });
 
+  it("retires a stale generated copy when the source moves to a native directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-relocated-"));
+    try {
+      await mkdir(join(dir, ".agents", "skills", "review"), { recursive: true });
+      await mkdir(join(dir, ".github", "skills", "review"), { recursive: true });
+      const source: ProjectComponents = {
+        origin: "direct",
+        skills: [
+          {
+            name: "review",
+            source: join(dir, ".github", "skills", "review"),
+            files: [
+              {
+                path: "SKILL.md",
+                contents: new TextEncoder().encode("---\nname: review\ndescription: Relocated.\n---\n"),
+                mode: 0o644,
+              },
+            ],
+          },
+        ],
+      };
+      const integration = await projectComponents(source, dir, "out", "", { support });
+      expect(integration.files.map((file) => file.path)).not.toContain(".agents/skills/review/SKILL.md");
+      // No relinquishment: the older generated copy stays owned and is removed.
+      expect(integration.relinquishPrefixes ?? []).not.toContain(".agents/skills/review");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes native project MCP declarations, with stdio behind the shared launcher", async () => {
     const dir = await mkdtemp(join(tmpdir(), "hooknostic-copilot-project-"));
     try {

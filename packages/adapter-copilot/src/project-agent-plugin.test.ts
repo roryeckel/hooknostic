@@ -279,6 +279,30 @@ describe("Copilot Agent Plugin projector", () => {
     );
   });
 
+  it("rejects a compiled hooks entry that does not carry the dispatcher shape", async () => {
+    const root = await packageRoot();
+    const loaded = await loadAgentPlugin({ root });
+    const artifacts = hookArtifacts().map((artifact) => {
+      if (artifact.path !== "com.github.copilot/hooks/hooks.json") return artifact;
+      const parsed = JSON.parse(artifact.contents) as { hooks: Record<string, { args: string[] }[]> };
+      parsed.hooks.preToolUse![0]!.args[1] = "postToolUse";
+      return { path: artifact.path, contents: JSON.stringify(parsed) };
+    });
+    const plan = await copilotAgentPluginProjector.project(loaded.package!, {
+      target: { id: "copilot", version: copilotHarness.recommendedRange, delivery: "package" },
+      hookArtifacts: artifacts,
+      support: copilotAgentPluginProjector.profiles[0]!.components,
+      onUnsupported: "warn",
+    });
+    expect(plan.issues).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        path: "com.github.copilot/hooks/hooks.json",
+        message: expect.stringContaining("generated dispatcher shape"),
+      }),
+    );
+  });
+
   it("does not classify an authored PascalCase hook as a generated dispatcher", async () => {
     const root = await packageRoot();
     await writeFile(

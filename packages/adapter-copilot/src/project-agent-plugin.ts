@@ -223,6 +223,20 @@ const nativeCopilotAgentPluginProjector: AgentPluginProjector = {
           }
           for (const [event, entries] of Object.entries(parsed["hooks"])) {
             if (!Array.isArray(entries)) throw new Error(`hooks.${event} must be an array`);
+            for (const entry of entries) {
+              if (
+                !isJsonObject(entry) ||
+                entry["type"] !== "command" ||
+                entry["exec"] !== "node" ||
+                !Array.isArray(entry["args"]) ||
+                entry["args"].length !== 2 ||
+                entry["args"][1] !== event ||
+                (entry["args"][0] !== "runtime/hooknostic.mjs" &&
+                  entry["args"][0] !== "${PLUGIN_ROOT}/runtime/hooknostic.mjs")
+              ) {
+                throw new Error(`compiled ${event} entry does not carry the generated dispatcher shape`);
+              }
+            }
             merged[event] = [...(merged[event] ?? []), ...entries];
           }
         } catch (error) {

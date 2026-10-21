@@ -18,12 +18,7 @@ import type { RuntimePolicy, SupportLevel } from "@hooknostic/sdk";
 
 import { applyCopilot } from "./apply.js";
 import { decodeCopilot } from "./decode.js";
-import {
-  COPILOT_NATIVE_EVENT,
-  copilotHookRuntimePath,
-  copilotHooksPath,
-  generateCopilotArtifacts,
-} from "./generate.js";
+import { copilotHookRuntimePath, copilotHooksPath, generateCopilotArtifacts } from "./generate.js";
 import { copilotHarness } from "./harness.js";
 import { copilotCapabilityProfiles } from "./profile.js";
 import { projectComponentProfiles, projectComponents, projectIntegration } from "./project.js";
@@ -43,12 +38,7 @@ export { copilotAgentPluginProjector, nativeCopilotAgentPluginProjector } from "
 export { projectComponents, projectComponentProfiles, projectIntegration } from "./project.js";
 export { applyCopilot } from "./apply.js";
 export { CopilotDecodeError, decodeCopilot } from "./decode.js";
-export {
-  COPILOT_NATIVE_EVENT,
-  copilotHookRuntimePath,
-  copilotHooksPath,
-  generateCopilotArtifacts,
-} from "./generate.js";
+export { copilotHookRuntimePath, copilotHooksPath, generateCopilotArtifacts } from "./generate.js";
 export { runCopilotCommandShim } from "./shim.js";
 export type { CopilotShimOptions } from "./shim.js";
 export {
@@ -187,39 +177,8 @@ export function copilotAdapter(): HarnessAdapter {
           if (!isJsonObject(parsed) || parsed["version"] !== 1 || !isJsonObject(parsed["hooks"])) {
             throw new Error("document must have version 1 and an object hooks field");
           }
-          const nativeNames = new Set(Object.values(COPILOT_NATIVE_EVENT).filter((name) => name !== undefined));
           for (const [eventName, entries] of Object.entries(parsed["hooks"])) {
             if (!Array.isArray(entries)) throw new Error(`hooks.${eventName} must be an array`);
-            // Authored entries may use any Copilot-supported shape (a shell
-            // command, a prompt hook, an exec with different args) and may add
-            // an event the portable plugin does not use. A generated entry is
-            // the exact runtime path plus a second argument naming one of the
-            // generated camelCase events; anything else is authored and is not
-            // held to the dispatcher contract.
-            for (const entry of entries) {
-              if (
-                !isJsonObject(entry) ||
-                entry["type"] !== "command" ||
-                entry["exec"] !== "node" ||
-                !Array.isArray(entry["args"]) ||
-                entry["args"].length !== 2 ||
-                (entry["args"][0] !== "runtime/hooknostic.mjs" &&
-                  entry["args"][0] !== "${PLUGIN_ROOT}/runtime/hooknostic.mjs") ||
-                typeof entry["args"][1] !== "string" ||
-                !nativeNames.has(entry["args"][1])
-              ) {
-                continue;
-              }
-              if (!nativeNames.has(eventName)) {
-                // A PascalCase event is authored: generated entries use the
-                // camelCase spellings exclusively, and the argument alone
-                // cannot distinguish an authored dispatcher-shaped call.
-                continue;
-              }
-              if (entry["args"][1] !== eventName) {
-                throw new Error(`generated entry for ${eventName} does not pass its native event name`);
-              }
-            }
           }
         } catch (error) {
           diagnostics.push({

@@ -144,14 +144,18 @@ export async function projectComponents(
   const nativeSkills = new Set<string>();
   const skillSource: ProjectComponents = {
     ...source,
-    skills: source.skills.map((skill) => {
-      if (!authoredInPlace(skill.source, skill.name)) return skill;
+    skills: source.skills.flatMap((skill) => {
+      if (!authoredInPlace(skill.source, skill.name)) return [skill];
       nativeSkills.add(skill.name);
-      // Present the native skill at the destination path, where the shared
-      // projector recognizes it as in place. That keeps its ownership
-      // relinquishment, executable-mode warning and text inspection, while no
-      // file is copied and the authored source is left untouched.
-      return { ...skill, source: resolve(root, ".agents/skills", skill.name) };
+      const destination = resolve(root, ".agents/skills", skill.name);
+      // Present the native skill at the destination path only when the two
+      // resolve to the same physical directory. The shared projector then
+      // relinquishes ownership and does not delete the authored source.
+      // A native skill elsewhere is dropped from the copy set: an older
+      // generated copy at the destination stays owned and is removed by
+      // reconciliation, rather than being relinquished as if it were the
+      // source.
+      return canonical(skill.source) === canonical(destination) ? [{ ...skill, source: destination }] : [];
     }),
   };
   const result = projectSkillFiles(skillSource, root, ".agents/skills", {
@@ -171,6 +175,11 @@ export async function projectComponents(
   // copied skill gets for a reference the target will not expand, with the
   // in-place reason that says why ${SKILL_DIR} cannot be rewritten here.
   for (const skill of source.skills.filter((candidate) => authoredInPlace(candidate.source, candidate.name))) {
+    if (canonical(skill.source) !== canonical(resolve(root, ".agents/skills", skill.name))) {
+      for (const file of skill.files) {
+        if (file.mode === 0o755) (result.unappliedModes ??= []).push({ skill: skill.name, path: file.path });
+      }
+    }
     const manifest = skill.files.find((file) => file.path === "SKILL.md");
     if (manifest === undefined) continue;
     const projected = projectSkillText(manifest.contents, COPILOT_SKILL_TEXT, { rewrite: false });
