@@ -46,6 +46,8 @@ node .capture/copilot/project-transport-probe.mjs http
 docker run --rm ... bash /capture/linux-capture.sh
 docker run --rm ... bash /capture/workspace-probe.sh
 node .capture/copilot/installed-plugin-probe.mjs          # in the Linux container
+docker run --rm ... bash /capture/claude-settings-probe.sh
+node .capture/copilot/claude-tolerance-probe.mjs [claude-binary]
 node .capture/copilot/probe.mjs notification-shell-while-busy
 node .capture/copilot/probe.mjs notification-background-agent
 node .capture/copilot/make-fixtures.mjs
@@ -83,6 +85,11 @@ node .capture/copilot/make-fixtures.mjs
   container.
 - `workspace-probe.sh` — whether `GITHUB_WORKSPACE` moves where project stdio
   MCP servers start (Linux container, no model needed).
+- `claude-settings-probe.sh` — whether Copilot runs Claude Code's
+  `.claude/settings*.json` hooks, in which entry forms, and which keys make it
+  drop them (Linux container, no model needed).
+- `claude-tolerance-probe.mjs` — the other half: whether Claude Code still
+  runs an entry carrying such a key and applies the rest of the settings file.
 - `installed-plugin-probe.mjs` — installs one package three ways (a direct git
   URL, a git-hosted marketplace, `--plugin-dir`) from a loopback smart-HTTP git
   server and records the install tree, a dependency-install marker, and the
@@ -231,6 +238,18 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   and an `http` hook. The projector applies the rejection rules to authored
   hooks before merging them with the dispatcher's entries.
 - A legacy plugin's skill and an Agent Plugins package's skill both loaded.
+
+## Coexistence with Claude Code project hooks
+
+Found by a consumer smoke test on 1.0.102 and reproduced on 1.0.101: in a
+project that also targets Claude Code, **Copilot denied every shell call**.
+
+| Question | Observation | Consequence |
+| --- | --- | --- |
+| Does Copilot run Claude's project hooks? | Yes. `claude-settings-probe.sh` (Linux, 1.0.101) ran a `SessionStart` entry from `.claude/settings.json` and from `.claude/settings.local.json`, attributed to `"repo settings"`, with a PascalCase payload. | Any repository with Claude project hooks is also a Copilot hook source. |
+| Does Hooknostic's Claude entry run there? | No. Copilot runs `command` as a shell command and ignores `args`, so `{command:"node", args:[<dispatcher>]}` ran a bare `node` that read the payload as a script and exited 1. On `preToolUse` that failed closed: an allowed `echo` was refused with `Denied by preToolUse hook from "repo settings" (hook errored)`. The PascalCase tool name `Bash` matched the entry's `Bash\|PowerShell` matcher. | The entry must not reach Copilot at all. Copilot runs Hooknostic's own Copilot target from `.github/hooks`. |
+| Can a settings file opt out? | One entry with `exec` beside `command`, or a non-numeric `timeoutSec`, made Copilot drop the file's whole `hooks` field: neither that entry, a valid sibling, nor a second event ran, and nothing failed closed. No Copilot setting turns off reading Claude's settings; `disableAllHooks` would also turn off Hooknostic's Copilot hooks. | |
+| Does Claude tolerate the key? | `claude-tolerance-probe.mjs` on 2.1.238 and 2.1.306: an entry carrying either key still ran, and the same file's `env` value reached it, so the settings file was not rejected. | The Claude project integration writes `timeoutSec: "hooknostic: Claude Code only; …"` on every entry. A hand-written hook in the same `.claude/settings.json` therefore no longer runs under Copilot either. |
 
 ## Declined events
 

@@ -111,6 +111,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
     artifact: FIXTURES,
     what: "notification payloads on Linux for shell_completed and agent_idle, stating hook_event_name Notification; declined, with fixtures/copilot/1.0/declined.json recording why.",
   },
+  {
+    version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: CAPTURE,
+    what: "Claude Code project hooks on Linux: Copilot runs .claude/settings.json and .claude/settings.local.json hooks, runs a command as a shell string and ignores args, so Hooknostic's Claude entry failed and preToolUse failed closed; one entry with exec beside command or a non-numeric timeoutSec dropped the file's whole hooks field, siblings included (claude-settings-probe.sh).",
+  },
   COPILOT_SKILL_POLICY_VALIDATION,
 ];
 

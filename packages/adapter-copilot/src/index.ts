@@ -34,6 +34,7 @@ import {
 } from "./toolmap.js";
 
 export { copilotHarness } from "./harness.js";
+export { copilotHookEntryProblem } from "./hook-entries.js";
 export { copilotCapabilityProfiles } from "./profile.js";
 export { copilotAgentPluginProjector, nativeCopilotAgentPluginProjector } from "./project-agent-plugin.js";
 export { projectComponents, projectComponentProfiles, projectIntegration } from "./project.js";

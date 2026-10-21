@@ -13,6 +13,20 @@ export const claudeCapabilityProfiles: CapabilityProfile[] = [
       date: "2026-08-29",
       validatedOn: [
         {
+          version: "2.1.238",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "Project hook entries with a non-numeric timeoutSec (the key that makes GitHub Copilot CLI drop the file's hooks): Claude ignored the key, ran the SessionStart entry, and applied the same settings file's env (claude-tolerance-probe.mjs).",
+        },
+        {
+          version: "2.1.306",
+          date: "2026-10-21",
+          method: "live-probe",
+          artifact: ".capture/copilot/README.md",
+          what: "The same non-numeric timeoutSec tolerance on the current build: the entry ran and the settings file's env reached it (claude-tolerance-probe.mjs).",
+        },
+        {
           version: "2.1.295",
           date: "2026-10-17",
           method: "live-probe",

@@ -71,6 +71,12 @@ reads either that file or a root `.mcp.json`; the project-scoped path avoids
 colliding with another harness targeting the same checkout). Two harness
 requirements are not optional:
 
+- **Claude Code hooks do not run under Copilot.** Copilot also reads
+  `.claude/settings.json` hooks, and Hooknostic's Claude entries cannot run
+  there. Each one carries a non-numeric `timeoutSec`, which makes Copilot drop
+  that file's hooks; Claude ignores the key. Copilot runs the project's
+  Copilot target from `.github/hooks` instead. A hand-written hook in the same
+  `.claude/settings.json` is dropped for Copilot too.
 - **Start Copilot at the project root.** Repository hooks are read from the
   session's working directory, not the git root: a session started in a
   subdirectory loads only that subdirectory's `.github/hooks`.

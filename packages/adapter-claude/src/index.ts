@@ -30,6 +30,7 @@ import {
   claudeShellCodec,
 } from "./toolmap.js";
 export { claudeHarness } from "./harness.js";
+export { COPILOT_EXCLUSION } from "./project.js";
 
 export { applyClaude } from "./apply.js";
 export { ClaudeDecodeError, decodeClaude } from "./decode.js";

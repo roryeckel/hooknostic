@@ -17,18 +17,36 @@ import {
   claudeProjectSkillPolicyValidation,
 } from "./skill-policy.js";
 import { CLAUDE_PROJECT_SKILL_TEXT } from "./skill-text.js";
+
+/**
+ * Keeps GitHub Copilot CLI from running Claude's project hooks.
+ *
+ * Copilot also reads `.claude/settings.json` hooks, and it runs a `command` as
+ * a shell command while ignoring `args`, so the generated entry ran as a bare
+ * `node` there: it exited 1, which Copilot treats as a deny on preToolUse, so
+ * every shell call in a project with Claude hooks was refused. Copilot
+ * validates a settings file's inline hooks strictly and drops the whole
+ * `hooks` field for one entry it rejects, and it rejects a non-numeric
+ * `timeoutSec` (1.0.101), while Claude Code ignores the key and still runs the
+ * entry with the rest of the file applied (2.1.238 and 2.1.306). Captured in
+ * `.capture/copilot/README.md`. Copilot runs Hooknostic's own Copilot target
+ * from `.github/hooks` instead.
+ */
+export const COPILOT_EXCLUSION = "hooknostic: Claude Code only; GitHub Copilot CLI must not run this entry";
+
 export function projectIntegration(artifacts: readonly GeneratedArtifact[], output: string): ProjectIntegration {
   const manifest = artifacts.find((a) => a.path === "hooks/hooks.json");
   const entries: ProjectEntry[] = [];
   if (manifest) {
     const document = JSON.parse(contentsText(manifest.contents)) as {
-      hooks: Record<string, { hooks: { command: string; args?: string[]; timeout: number }[] }[]>;
+      hooks: Record<string, { hooks: { command: string; args?: string[]; timeout: number; timeoutSec?: string }[] }[]>;
     };
     for (const [event, groups] of Object.entries(document.hooks)) {
       for (const group of groups)
         for (const command of group.hooks) {
           command.command = "node";
           command.args = [`${"${CLAUDE_PROJECT_DIR}"}/${output}/runtime/hooknostic.mjs`];
+          command.timeoutSec = COPILOT_EXCLUSION;
         }
       if (groups.length !== 1) throw new Error("expected one compiled dispatcher group per event");
       entries.push({ path: ".claude/settings.json", key: ["hooks", event], kind: "array", value: groups[0] });
