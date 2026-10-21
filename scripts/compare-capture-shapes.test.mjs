@@ -32,7 +32,7 @@ const OPENCODE_FIXTURES = readFixtureInputs(FIXTURE_DIRS.opencode);
 describe("harnessFixtureDirs", () => {
   it("names each drift-checked harness's reference fixture directory, from its adapter metadata", () => {
     expect(Object.keys(FIXTURE_DIRS).sort()).toEqual(
-      ["claude", "codex", "opencode", "opencode-v1", "opencode-v2", "pi"].sort(),
+      ["claude", "codex", "copilot", "opencode", "opencode-v1", "opencode-v2", "pi"].sort(),
     );
     for (const [harness, dir] of Object.entries(FIXTURE_DIRS)) {
       expect(readFixtureInputs(dir).length, `${harness}: ${dir}`).toBeGreaterThan(0);

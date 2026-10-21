@@ -757,7 +757,7 @@ export function scriptedTool(
   const tools = requestTools(request);
   const tool = preferredTool
     ? namedTool(tools, preferredTool)
-    : tools.find((candidate) => /bash|shell|exec/i.test(toolName(candidate) ?? ""));
+    : tools.find((candidate) => /bash|shell|exec|powershell/i.test(toolName(candidate) ?? ""));
   if (tool === undefined) {
     throw new Error(`playback request exposed no usable tool: ${JSON.stringify(tools)}`);
   }
@@ -808,6 +808,8 @@ export function scriptedTool(
         arguments: JSON.stringify({
           ...(properties["description"] !== undefined ? { description: "Playback subagent probe" } : {}),
           [promptKey]: "Say the single word ready, then stop.",
+          ...(properties["agent_type"] !== undefined ? { agent_type: "explore" } : {}),
+          ...(properties["name"] !== undefined ? { name: "playback-probe" } : {}),
           ...(properties["subagent_type"] !== undefined ? { subagent_type: "general-purpose" } : {}),
           ...(properties["run_in_background"] !== undefined ? { run_in_background: false } : {}),
         }),
@@ -1350,9 +1352,13 @@ async function fixturePairs(fixturesDir: string) {
   return Promise.all(
     names.map(async (name) => {
       const stem = name.slice(0, -".input.json".length);
+      const enrichment = await readFile(join(fixturesDir, `${stem}.enrichment.json`), "utf8")
+        .then((text) => JSON.parse(text) as { nativeEvent?: string })
+        .catch(() => undefined);
       return {
         name,
         input: JSON.parse(await readFile(join(fixturesDir, name), "utf8")) as Record<string, unknown>,
+        hint: enrichment?.nativeEvent,
         canonical: declined.has(stem)
           ? undefined
           : (JSON.parse(await readFile(join(fixturesDir, `${stem}.canonical.json`), "utf8")) as {
@@ -1442,7 +1448,7 @@ function canonicalEvents(pairs: readonly { canonical: { event: HookEventName } |
 export async function replayCommandFixtures(build: PlaybackBuild, fixturesDir: string): Promise<void> {
   const pairs = await fixturePairs(fixturesDir);
   for (const fixture of pairs) {
-    const result = await runNode([build.runtimePath], {
+    const result = await runNode([build.runtimePath, ...(fixture.hint === undefined ? [] : [fixture.hint])], {
       cwd: build.artifactDir,
       input: JSON.stringify(fixture.input),
       env: { ...process.env, HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath },

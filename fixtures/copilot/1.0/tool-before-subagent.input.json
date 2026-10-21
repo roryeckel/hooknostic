@@ -1,0 +1,12 @@
+{
+  "sessionId": "8cfbe2aa-abe3-485f-ad17-ca2426267dae",
+  "timestamp": 1792542822847,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\shell-interpreter-bash",
+  "toolName": "powershell",
+  "toolArgs": {
+    "command": "bash -lc \"bash --version | head -1; command -v bash; echo BASH_VAR=\\$BASH\""
+  },
+  "agentId": "8cfbe2aa-abe3-485f-ad17-ca2426267dae",
+  "agentType": "task",
+  "parentAgentId": "a5a75f4a-fcdf-426e-937e-792da5179200"
+}

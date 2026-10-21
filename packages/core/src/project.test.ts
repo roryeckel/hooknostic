@@ -337,7 +337,10 @@ describe("complete project integration", () => {
 
   it("rejects conflicting Codex and OpenCode skill text at their shared project destination", async () => {
     const { root, options } = await fixture({
-      components: { skills: ["./skills"], accept: ["codex:skill-directory-model-substitution"] },
+      components: {
+        skills: ["./skills"],
+        accept: ["codex:skill-directory-model-substitution", "copilot:skill-directory-model-substitution"],
+      },
     });
     await mkdir(join(root, "skills/sample"), { recursive: true });
     await writeFile(
@@ -368,6 +371,7 @@ describe("complete project integration", () => {
     expect(reported.map((diagnostic) => [diagnostic.target, diagnostic.severity]).sort()).toEqual([
       ["claude", "error"],
       ["codex", "info"],
+      ["copilot", "error"],
       ["opencode", "error"],
       ["pi", "error"],
     ]);
@@ -394,7 +398,13 @@ describe("complete project integration", () => {
 
     const built = await buildProject(options);
     const reported = built.report.diagnostics.filter((diagnostic) => diagnostic.code === "HN101");
-    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual(["claude", "codex", "opencode", "pi"]);
+    expect(reported.map((diagnostic) => diagnostic.target).sort()).toEqual([
+      "claude",
+      "codex",
+      "copilot",
+      "opencode",
+      "pi",
+    ]);
     expect(reported[0]?.message).toContain("No harness expands a reference in the frontmatter");
   }, 60_000);
 

@@ -104,6 +104,46 @@ export function prepareScratch(repo, harness, scratchOverride) {
     mkdirSync(join(scratch, "captured"), { recursive: true });
     return scratch;
   }
+  if (harness === "copilot") {
+    // Copilot loads repository hooks from the session's working directory and
+    // gates them on folder trust. The tee writes to an absolute capture path so
+    // no project-directory variable is needed in a hook argument (Copilot
+    // expands none there).
+    mkdirSync(join(scratch, ".github", "hooks"), { recursive: true });
+    mkdirSync(join(scratch, "captured"), { recursive: true });
+    mkdirSync(join(scratch, ".copilot-home"), { recursive: true });
+    cpSync(join(repo, ".capture/copilot/tee.mjs"), join(scratch, "capture-tee.mjs"));
+    const tee = (event) => ({
+      type: "command",
+      exec: "node",
+      args: [join(scratch, "capture-tee.mjs"), join(scratch, "captured"), event, "", "0"],
+      timeoutSec: 30,
+    });
+    writeFileSync(
+      join(scratch, ".github", "hooks", "drift.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          hooks: {
+            sessionStart: [tee("sessionStart")],
+            sessionEnd: [tee("sessionEnd")],
+            userPromptSubmitted: [tee("userPromptSubmitted")],
+            preToolUse: [tee("preToolUse")],
+            permissionRequest: [tee("permissionRequest")],
+            postToolUse: [tee("postToolUse")],
+            postToolUseFailure: [tee("postToolUseFailure")],
+            agentStop: [tee("agentStop")],
+            subagentStart: [tee("subagentStart")],
+            subagentStop: [tee("subagentStop")],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    return scratch;
+  }
   const template = join(repo, TEE_TEMPLATE_DIRS[harness]);
   cpSync(template, scratch, { recursive: true });
   rmSync(join(scratch, "captured"), { recursive: true, force: true });
@@ -140,6 +180,7 @@ const PLAYBACK_PROTOCOLS = {
   claude: "anthropic-messages",
   codex: "openai-responses",
   opencode: "openai-chat",
+  copilot: "openai-chat",
 };
 
 // ---------------------------------------------------------------------------
@@ -375,6 +416,27 @@ export async function driveOpencode(scratch, modelLabel, prompt = DRIVE_PROMPT) 
   );
 }
 
+export async function driveCopilot(scratch, model, prompt = DRIVE_PROMPT) {
+  return runProcess("copilot", ["--trust-folder", "--allow-all-tools", "--disable-client-telemetry", "-p", prompt], {
+    cwd: scratch,
+    timeoutMs: DRIVE_TIMEOUT_MS,
+    env: {
+      ...withoutCredentials(),
+      COPILOT_HOME: join(scratch, ".copilot-home"),
+      // BYOK: no GitHub login; chat completions against the loopback or proxy.
+      COPILOT_PROVIDER_BASE_URL: `${model.baseUrl.replace(/\/$/, "")}/v1`,
+      COPILOT_PROVIDER_TYPE: "openai",
+      COPILOT_PROVIDER_WIRE_API: "completions",
+      COPILOT_PROVIDER_API_KEY: model.key ?? "hooknostic-drift",
+      COPILOT_MODEL: model.name,
+      COPILOT_PROVIDER_MODEL_ID: "gpt-5.4",
+      COPILOT_PROVIDER_WIRE_MODEL: model.name,
+      COPILOT_PROVIDER_MAX_PROMPT_TOKENS: "128000",
+      COPILOT_PROVIDER_MAX_OUTPUT_TOKENS: "8192",
+    },
+  });
+}
+
 export function writeOpencodeConfig(scratch, baseUrl, apiKey, modelLabel) {
   writeFileSync(
     join(scratch, "opencode.json"),
@@ -464,9 +526,9 @@ async function main() {
     console.log(comparison.report);
     process.exit(comparison.verdict === "clean" ? 0 : comparison.verdict === "drift" ? 4 : 5);
   }
-  if (opts.harness === undefined || !["claude", "codex", "opencode", "pi"].includes(opts.harness)) {
+  if (opts.harness === undefined || !["claude", "codex", "copilot", "opencode", "pi"].includes(opts.harness)) {
     process.stderr.write(
-      `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|opencode|pi> [--transport playback|llm] [--scratch <dir>] [--pi-tool powershell]\n`,
+      `usage: node --experimental-strip-types ${process.argv[1]} <claude|codex|copilot|opencode|pi> [--transport playback|llm] [--scratch <dir>] [--pi-tool powershell]\n`,
     );
     process.exit(2);
   }
@@ -559,6 +621,13 @@ async function main() {
               key: modelSide.config.proxyKey,
             };
       result = await driveCodex(scratch, wired);
+    } else if (opts.harness === "copilot") {
+      const base = opts.transport === "playback" ? server.baseUrl : modelSide.config.proxyUrl;
+      result = await driveCopilot(scratch, {
+        baseUrl: base,
+        name: opts.transport === "playback" ? "hooknostic-playback" : modelSide.config.model,
+        key: opts.transport === "playback" ? "playback" : modelSide.config.proxyKey,
+      });
     } else {
       const base = opts.transport === "playback" ? server.baseUrl : modelSide.config.proxyUrl;
       const key = opts.transport === "playback" ? "hooknostic-playback" : modelSide.config.proxyKey;

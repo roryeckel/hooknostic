@@ -36,6 +36,7 @@ const yamlBrowser = resolve(dirname(agentPluginRequire.resolve("yaml/package.jso
 const SHIMS = {
   claude: resolve(packageDir, "../adapter-claude/src/shim.ts"),
   codex: resolve(packageDir, "../adapter-codex/src/shim.ts"),
+  copilot: resolve(packageDir, "../adapter-copilot/src/shim.ts"),
   opencode: resolve(packageDir, "../adapter-opencode/src/shim.ts"),
   pi: resolve(packageDir, "../adapter-pi/src/shim.ts"),
 };

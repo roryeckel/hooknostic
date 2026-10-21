@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "SessionStart",
+  "session_id": "507df0ed-70f2-483d-a4ea-5da7cf56b9e8",
+  "timestamp": "2026-10-21T00:27:49.212Z",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-lifecycle",
+  "source": "new",
+  "initial_prompt": "Run the shell command: echo pascal-lifecycle. Then reply DONE."
+}

@@ -15,6 +15,7 @@ Paths below assume the example configuration:
 targets: {
   claude:   { version: ">=2.1 <3",   delivery: "package", output: "./dist/claude" },
   codex:    { version: ">=0.148 <1", delivery: "project",  output: "./dist/codex" },
+  copilot:  { version: ">=1.0 <2",   delivery: "package", output: "./dist/copilot" },
   opencode: { version: ">=1.18 <2",  delivery: "project",  output: "./dist/opencode" },
   pi:       { version: ">=1 <2",     delivery: "project",  output: "./dist/pi" },
 }
@@ -29,6 +30,8 @@ For repository integration, prefer [init, sync, and verify](project-integration.
 | `claude` | `package` | `dist/claude/` | A Claude Code plugin: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `runtime/hooknostic.mjs` |
 | `codex` | `project` | `dist/codex/.codex/` | A repo-level Codex directory: `hooks.json` + `hooknostic/hooknostic.mjs` |
 | `codex` | `package` | `dist/codex/` | A native Codex plugin: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `hooks.json`, runtime |
+| `copilot` | `package` | `dist/copilot/` | An Agent Plugins package: `plugin.json`, `skills/`, `mcp.json`, `com.github.copilot/hooks/hooks.json`, `runtime/hooknostic.mjs` |
+| `copilot` | `project` | `dist/copilot/` | The runtime and compiled hooks document; `sync` writes `.github/hooks/hooknostic.json`, `.agents/skills/`, and `.mcp.json` |
 | `opencode` | `project` | `dist/opencode/.opencode/` | Project plugin modules under `plugins/`, plus a copied `skills/` |
 | `pi` | `project` | `dist/pi/.pi/` | Project extension under `extensions/`, plus copied `skills/` |
 | `pi` | `package` | `dist/pi/` | npm package with a `pi` manifest declaring its bundled extension and skills |
@@ -39,6 +42,40 @@ commands and loader paths resolve against the session's project directory. The
 install cache.
 
 OpenCode also supports package delivery for both families; the v2 entry differs from v1. See [OpenCode families](opencode-families.md).
+
+## GitHub Copilot CLI
+
+Package delivery emits an Agent Plugins 1.0 package. Load it for one run with
+`copilot --plugin-dir ./dist/copilot`, or install it through a local
+marketplace:
+
+```
+copilot plugin marketplace add /path/to/market
+copilot plugin install <plugin>@<marketplace>
+```
+
+A local marketplace install loads the plugin **live from its source directory**;
+1.0.101 copies nothing and runs no dependency install. Keep the built output
+where it is, or re-run `--plugin-dir` against the build. A plugin's
+`com.github.copilot/hooks/hooks.json` runs even in `-p` sessions, and the package
+gets `PLUGIN_ROOT`/`PLUGIN_DATA` for its MCP servers and hooks.
+
+Project delivery writes `.github/hooks/hooknostic.json`, copies selected skills
+to `.agents/skills/`, and declares MCP servers in `.github/mcp.json` (Copilot
+reads either that file or a root `.mcp.json`; the project-scoped path avoids
+colliding with another harness targeting the same checkout). Two harness
+requirements are not optional:
+
+- **Start Copilot at the project root.** Repository hooks are read from the
+  session's working directory, not the git root: a session started in a
+  subdirectory loads only that subdirectory's `.github/hooks`.
+- **Trust the folder.** Run with `--trust-folder` (for one prompt session) or
+  set `COPILOT_ALLOW_ALL=true`; without trust the generated hooks are skipped
+  silently. Restart the CLI after `hooknostic sync` — hook files load at startup.
+
+`hooknostic doctor` reports the locally installed `copilot` version. Run
+`hooknostic inspect copilot --delivery package` to see which MCP transports,
+skill policies, and hook effects this build will carry.
 
 ## Pi
 

@@ -74,12 +74,13 @@ scripted namespace-pair emission resolves the router's exact
 output, and the replaced marker must surface nowhere. If upstream starts
 honouring the field, the watch fails and the rating is revisited.
 
-The Claude, Codex, OpenCode v1 and Pi playback lanes also configure and call
-the in-repository stdio MCP fixture server. The dedicated MCP drive requires
+The Claude, Codex, OpenCode v1, Pi and Copilot playback lanes also configure and
+call the in-repository stdio MCP fixture server. The dedicated MCP drive requires
 its tool to reach both `tool.before` and `tool.after` as normalized `mcp`
 events. Claude loads the fixture through `--mcp-config`, Codex through
-`mcp_servers`, OpenCode through its local `mcp` configuration, and Pi through
-a trusted project `.pi/mcp.json`, reaching it from a codemode script; the
+`mcp_servers`, OpenCode through its local `mcp` configuration, Pi through
+a trusted project `.pi/mcp.json`, reaching it from a codemode script, and Copilot
+through `--additional-mcp-config`; the
 output-replacement drive remains separate because it is a capability-specific
 assertion. On Pi the MCP drive also requires `tool.mcp` on `tool.after` only,
 taken from the tool's source, and a Pi-only drive replaces the fixture tool's
@@ -89,6 +90,15 @@ local-path and npm-coordinate package installation, native skill discovery,
 hook execution, per-request context as a model-visible user message, and
 projected MCP servers. The npm-coordinate test uses `pnpm pack` and a local
 read-only registry. Windows playback additionally exercises the installed Pi binary.
+
+Copilot's lane loads the package delivery through `--plugin-dir` and points
+`COPILOT_PROVIDER_*` at the loopback chat-completions server, so no GitHub login
+or provider key is involved. The runtime tool name pins the dialect: `bash` on
+Linux and `powershell` on Windows. `permissionRequest` fires in `-p` sessions, so
+its observe/deny path is driven without a pty; the interactive form of
+`permissionDecision: "ask"` remains uncaptured. Copilot's MCP fixture call is
+classified as `mcp` from the server-tool separator, while `tool.mcp` stays
+absent because the payload never states the split.
 
 The loopback suite never switches to a paid model. Every declared driver
 limitation is written to the harness-watch workflow summary as an

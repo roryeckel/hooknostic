@@ -1,0 +1,29 @@
+{
+  "name": "@hooknostic/adapter-copilot",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Hooknostic adapter for the GitHub Copilot CLI",
+  "type": "module",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./shim": {
+      "types": "./src/shim.ts",
+      "default": "./src/shim.ts"
+    }
+  },
+  "dependencies": {
+    "@hooknostic/agent-plugin": "workspace:*",
+    "@hooknostic/core": "workspace:*",
+    "@hooknostic/runtime": "workspace:*",
+    "@hooknostic/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@hooknostic/testkit": "workspace:*"
+  }
+}

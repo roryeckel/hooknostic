@@ -1,0 +1,13 @@
+{
+  "sessionId": "735e1c20-e418-446b-aee4-ca9ce5f7758f",
+  "timestamp": 1792542876899,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\subagent",
+  "transcriptPath": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\subagent\\.copilot-home\\session-state\\735e1c20-e418-446b-aee4-ca9ce5f7758f\\events.jsonl",
+  "agentId": "84557556-422f-420e-b996-64f32dc56eca",
+  "agentType": "explore",
+  "agentName": "explore",
+  "response": "PONG",
+  "stopReason": "end_turn",
+  "stop_hook_active": false,
+  "parentAgentId": "735e1c20-e418-446b-aee4-ca9ce5f7758f"
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "userPromptSubmitted"
+  },
+  "session": {
+    "id": "21bdef4b-4a57-4c93-a8d8-923aa52a006d",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\camel-lifecycle"
+  },
+  "correlation": {},
+  "event": "prompt.before",
+  "prompt": "Run the shell command: echo camel-lifecycle. Then reply DONE."
+}

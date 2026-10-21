@@ -1,0 +1,154 @@
+# GitHub Copilot CLI capture project
+
+Capture questions, method, and observations for `@hooknostic/adapter-copilot`,
+against **GitHub Copilot CLI 1.0.101** on 2026-10-20. Fixtures live in
+`fixtures/copilot/1.0/`; the profile is the normative home for every capability
+claim.
+
+## Environment
+
+|  |  |
+| --- | --- |
+| Harness | `copilot` 1.0.101 (`@github/copilot`, native binary package per platform) |
+| Windows host | Windows 11, Node 24.20.0, Windows PowerShell 5.1 |
+| Linux host | Debian `node:24-bookworm` container, Node 24, `/usr/bin/bash` |
+| Model | `halogen-qwen3.8-flash-next` through the owner's OpenAI-compatible BYOK endpoint |
+| Isolation | a scratch git repository per probe, outside this checkout; `COPILOT_HOME` inside that scratch |
+
+Model/provider identity is execution provenance only; it does not upgrade any
+payload claim. No credential appears in a capture: the provider key was supplied
+through the environment (`COPILOT_PROVIDER_API_KEY`), and hook payloads do not
+carry it.
+
+Capture uses `--trust-folder --allow-all-tools --disable-client-telemetry`,
+because repository hooks do not load otherwise. The scripts are committed so a
+future build can be re-probed:
+
+```
+node .capture/copilot/probe.mjs camel-lifecycle
+node .capture/copilot/probe.mjs pascal-lifecycle
+node .capture/copilot/transport-probe.mjs streamable-http
+node .capture/copilot/project-transport-probe.mjs http
+docker run --rm ... bash /capture/linux-capture.sh
+node .capture/copilot/make-fixtures.mjs
+```
+
+## Layout
+
+- `tee.mjs` — hook command: appends stdin verbatim to `captured/<label>.jsonl`,
+  optionally prints a fixed JSON answer and exits with a fixed code.
+- `probe.mjs` — scratch-project driver for lifecycle, tool-shape, effect,
+  skill, plugin and MCP probes. Every hook entry uses `exec`/`args`, the same
+  form Hooknostic generates.
+- `mcp-transport-server.mjs` / `mcp-transport-runner.mjs` — a minimal loopback
+  Streamable HTTP and legacy SSE MCP server, run as a child process (a
+  `spawnSync` driver would block an in-process server's event loop).
+- `transport-probe.mjs`, `project-transport-probe.mjs` — plugin and project
+  remote MCP probes; record the headers the client sent.
+- `linux-capture.sh` — shell-dialect capture inside a disposable Debian
+  container.
+- `make-fixtures.mjs` — redacts the account name to `user` and writes input
+  fixtures plus the native-event hints the camelCase payloads need.
+- `captured/` — gitignored raw tees.
+
+## Hook wire facts
+
+| Question | Observation on 1.0.101 | Consequence |
+| --- | --- | --- |
+| Where do repository hooks live? | `.github/hooks/*.json`, `{version: 1, hooks: {...}}`; loaded at CLI start. User hooks are `$COPILOT_HOME/hooks/*.json`. | Project integration writes one whole file at `.github/hooks/hooknostic.json`. |
+| Are repository hooks gated? | Without `--trust-folder` (or `COPILOT_ALLOW_ALL=true`) they silently do not run: same project, same prompt, zero payloads. | Documented human prerequisite. |
+| Which directory do they load from? | A session started in `nested/` loaded only `nested/.github/hooks`, not the repo root's file. A linked worktree loaded the worktree's own file. | Project guidance: start Copilot at the project root. No `rootCheckoutProjectPaths` quirk. |
+| CamelCase vs PascalCase events | Configuring `sessionStart` and `SessionStart` for one event fires both entries. CamelCase payloads use `sessionId`/`toolName`/`toolArgs`; PascalCase payloads state `hook_event_name` and use `session_id`/`tool_name`/`tool_input`. | Decoder accepts both. Generation uses camelCase, which keeps `powershell` beside `bash`. |
+| Does a camelCase payload name its event? | No `hook_event_name`; `permissionRequest` uniquely carries `hookName: "permissionRequest"`; `notification` carries `hook_event_name: "Notification"`. | The generated entry passes its native event as argv[1] (the shim's `process.argv[2]`), and decode treats it as a hint. `raw` is untouched. |
+| PascalCase tool names | `PreToolUse.tool_name` is the Claude name: the runtime `powershell` call arrives as `Bash`; `create`/`view`/`edit` become `Write`/`Read`/`Edit`, while the input keys stay native (`path`, `file_text`, `old_str`, `new_str`). | Pascal shapes map the file keys and the shell `command`; `Bash` carries no dialect because it aliases both runtime tools. |
+| PascalCase subagent payload | `SubagentStart` is hybrid: camelCase base (`sessionId`, `transcriptPath`) with snake agent fields (`agent_id`, `agent_type`, `parent_agent_id`), and no `hook_event_name`. `SubagentStop` is fully snake. | Reader accepts either spelling per field. |
+| Correlation ids | Every payload has `sessionId` and `cwd`. Subagent events and events fired inside a subagent add `agentId`/`agentType`/`parentAgentId`. No payload carries a turn id or a tool-call id. | Only the stated ids are surfaced; `toolCallId`/`turnId` stay absent. |
+| Timeout | `timeoutSec` (seconds), default 30. | Emitted from the portable runtime budget. |
+| `command` fallback vs `exec` | The cross-platform `command` form reached the shell in a probe but failed under our quoting; `exec` + `args` ran every probe. | Generated artifacts use `exec`/`args` only. |
+
+## Effect facts, verified by effect
+
+| Channel | Observation | Consequence |
+| --- | --- | --- |
+| `preToolUse` deny | `{permissionDecision:"deny", permissionDecisionReason}` blocked the call and the reason reached the model. Exit 2 also blocks (a bare exit-2 probe denied). | Encode the deny as JSON on exit 0; exit 2 remains a harness-side fail-closed path for crashes. |
+| `preToolUse` rewrite | `modifiedArgs` replaced the arguments at execution: the tool result was `marker-modified-args` although the timeline showed the original. | `replaceInput`/`updateShell` lower to `modifiedArgs`. |
+| `preToolUse` ask | `{permissionDecision:"ask"}` denied in `-p` with "unable to ask user for confirmation"; an interactive session has a user. | Rated exact with a headless rationale. |
+| `preToolUse` context | `{additionalContext}` on the same event reached the model (it quoted the token), though the hook reference does not list the field. | `tool.before.context.add` exact. |
+| Multiple `preToolUse` entries | The first entry's deny short-circuited; the second entry never ran. | A deny is terminal across entries, matching one-dispatcher composition. |
+| `postToolUse` output | `{modifiedResult:{resultType:"success",textResultForLlm}}` replaced what the model saw. `additionalContext` rides beside it. | `tool.after.output.replace` exact, text-encoded. |
+| `postToolUseFailure` context | `{additionalContext}` on exit 0 reached the model. Plain stdout with exit 2 did **not**, contrary to the reference's exit-code table. | `tool.error.context.add` uses the JSON field on exit 0. |
+| `permissionRequest` | Fires before the permission service even in `-p` with `--allow-all-tools`. `{behavior:"allow"}` let the call run; `{behavior:"deny",message}` blocked it and the message reached the model. | Observe and block exact. |
+| `userPromptSubmitted` output | Exit 2 did not stop the turn; `{additionalContext}` was not delivered. | No block or context cell advertised on `prompt.before`. |
+| `sessionStart` context | `{additionalContext}` was injected verbatim; the model quoted the token. | `session.start.context.add` exact. |
+| `agentStop` prevent | `{decision:"block",reason}` forced another turn. The harness stopped after eight consecutive blocks; later calls had `stop_hook_active:true`. | `turn.stop.prevent` exact. |
+| `subagentStop` prevent | `{decision:"block",reason}` forced more subagent turns. A session-scoped hook blocked more than forty consecutive completions with `stop_hook_active:true`; the documented eight-block guard was not observed. | `agent.stop.prevent` approximate, with the unbounded-loop rationale. |
+| User-facing notification on stop | `{decision:"allow",reason}` changed nothing the user sees; no `systemMessage` channel was found. | `*.notify` unsupported. |
+
+## Tool shapes and shell dialects
+
+| Tool | Captured input | Classification |
+| --- | --- | --- |
+| `powershell` (Windows) | `{command, description}` | shell, dialect `powershell`; ran `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe` 5.1, and was the only shell tool advertised on that host |
+| `bash` (Linux) | `{command, description}` | shell, dialect `posix`; ran `/usr/bin/bash` |
+| `create` | `{path, file_text}` | file.write, file.path |
+| `view` | `{path}` | file.read, file.path |
+| `edit` | `{path, old_str, new_str}` | file.edit, file.path |
+| `glob` | `{pattern}` | file.read, no file view |
+| `grep` | `{pattern, paths, output_mode}` | file.read, no file view |
+| `web_fetch` | `{url}` | web.fetch |
+| `task` | `{name, agent_type, description, prompt}` | agent |
+| `skill` | `{skill}` | other |
+| `list_powershell`, `read_powershell`, `stop_powershell`, `run_dynamic_workflow` | background-session/dynamic-workflow controls | other |
+
+A Windows host advertised no `bash` tool; a Linux host advertised no
+`powershell` tool. macOS was not captured. An MCP call arrives as
+`<server>-<tool>` (`probe-probe_echo`); the built-in GitHub server's tools are
+`github-mcp-server-*`. Both segments may contain hyphens and no payload states
+the split, so `tool.mcp` is never set (ADR-0032).
+
+## Skills
+
+| Question | Observation | Consequence |
+| --- | --- | --- |
+| Discovery | `.github/skills`, `.agents/skills` and `.claude/skills` are project sources; `.agents/skills` was listed and invoked. | Project integration writes `.agents/skills`. |
+| Skill text | A loaded skill's context has a `Base directory for this skill: <path>` line, but the body kept `${SKILL_DIR}`, `${PLUGIN_ROOT}`, `${PLUGIN_DATA}` and `$CLAUDE_SESSION_ID` as written. | `${SKILL_DIR}` is rewritten to an explicit model-substituted placeholder; other references are reported as unexpanded. |
+| Invocation policy | `disable-model-invocation: true` withheld a project skill from ordinary listing. An explicit `/gated` answered "Skill not found"; the model reached the body only by reading the file. | `agent-plugin.skills.invocation-policy` unsupported; a gated skill is omitted rather than shipped unreachable. |
+
+## MCP
+
+| Route | Observation | Consequence |
+| --- | --- | --- |
+| Project `.mcp.json` stdio | `{type:"stdio", command, args, env, cwd}` starts. `cwd` is honoured; relative `args` resolve from the project root; ambient `${USERPROFILE}` expands in args/env; `${PLUGIN_ROOT}` stays literal. | Project stdio goes through the shared launcher. |
+| Project `.github/mcp.json` | The same stdio declaration works when moved to `.github/mcp.json`; the probe connected and called its tool. | Project integration writes the Copilot-scoped file, avoiding a collision with Claude's root `.mcp.json`. |
+| Project `.mcp.json` remote | `type:"http"` (Streamable HTTP) and `type:"sse"` both connected to the loopback server. Ambient `${USERPROFILE}` expanded in headers; `${PLUGIN_ROOT}` stayed literal. | Both remote transports exact, with the environment-expansion deviation for a package's text. |
+| Agent Plugins `mcp.json` stdio | `command`, `args`, `env`, `cwd` all expand `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`; `${PLUGIN_ROOT}/node-copy.exe` launched. Ambient `${USERPROFILE}` also expanded. The server's cwd was the `PLUGIN_DATA` directory. `PLUGIN_ROOT`/`PLUGIN_DATA` are exported in its environment. | `mcp.stdio` exact, with an ambient-expansion deviation. |
+| Agent Plugins `mcp.json` remote | Streamable HTTP and SSE both connected. `${PLUGIN_ROOT}` stayed literal in headers (conforming); `${USERPROFILE}` expanded (not conforming). | Both remote components exact, with the deviation. |
+| Plugin data | `PLUGIN_DATA` resolved under `$COPILOT_HOME/plugin-data/_direct/<hash>` and persists across sessions. | No launcher or data relocation needed for package delivery. |
+
+## Plugins
+
+- **Agent Plugins 1.0** is native: `plugin.json` with the canonical `$schema`,
+  `skills/`, `mcp.json`, and Copilot components under `com.github.copilot/`.
+- `--plugin-dir <path>` loads the plugin live and lists it as an external
+  plugin. A local marketplace (`copilot plugin marketplace add <path>` followed
+  by `copilot plugin install probe@probe-market`) also loads it live from the
+  source path: "nothing was copied". A `package.json` plus lockfile in the
+  plugin root produced no `node_modules`.
+- Hooks declared in a legacy plugin's `hooks.json` fire, and hooks declared in
+  `com.github.copilot/hooks/hooks.json` fire for an Agent Plugins 1.0 package.
+  This corrects the 1.0.60–1.0.82 reports of plugin hooks never running.
+- A plugin hook may use `${PLUGIN_ROOT}/tee.mjs` in `exec` `args`; a relative
+  `tee.mjs` also ran, so the plugin hook's cwd is the plugin root.
+- A legacy plugin's skill and an Agent Plugins package's skill both loaded.
+
+## Not established
+
+- `context.compact.before`: a session with `COPILOT_PROVIDER_MAX_PROMPT_TOKENS`
+  lowered to 40k completed 52.5k tokens without compacting. No capture, so the
+  event is not advertised.
+- `notification` (interactive permission prompts, background shells) and the
+  interactive form of `permissionDecision: "ask"`.
+- macOS and any host without a native platform package.
+- An installed-marketplace (copied) plugin, rather than the live local load.
+- `errorOccurred` and `userPromptTransformed` are captured and declined: no
+  portable event names a generic error or a pre-model prompt transformation.

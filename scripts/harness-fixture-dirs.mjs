@@ -9,6 +9,7 @@ const SOURCES = {
   pi: ["pi", "adapter-pi/src/harness.ts", "piHarness"],
   claude: ["claude", "adapter-claude/src/harness.ts", "claudeHarness"],
   codex: ["codex", "adapter-codex/src/harness.ts", "codexHarness"],
+  copilot: ["copilot", "adapter-copilot/src/harness.ts", "copilotHarness"],
   opencode: ["opencode", "adapter-opencode/src/harness.ts", "opencodeHarness"],
   "opencode-v1": ["opencode", "adapter-opencode/src/harness.ts", "opencodeHarness"],
   "opencode-v2": ["opencode", "adapter-opencode/src/v2/harness.ts", "opencodeV2Harness"],

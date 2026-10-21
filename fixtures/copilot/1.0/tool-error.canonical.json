@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "postToolUseFailure"
+  },
+  "session": {
+    "id": "2c11fa68-ee35-4e91-bbd8-6749c69ef8a5",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-failure"
+  },
+  "correlation": {},
+  "event": "tool.error",
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "view",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-failure\\does-not-exist.txt"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-failure\\does-not-exist.txt"
+      ],
+      "pathKey": "path"
+    }
+  },
+  "error": {
+    "message": "Path does not exist"
+  }
+}

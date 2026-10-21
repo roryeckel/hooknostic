@@ -1,0 +1,11 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "8bca6d96-ff16-4535-844b-b4499f482de3",
+  "timestamp": "2026-10-21T00:55:48.636Z",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-tool-shapes",
+  "tool_name": "Write",
+  "tool_input": {
+    "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-tool-shapes\\pascal-probe.txt",
+    "file_text": "pascal-hello"
+  }
+}

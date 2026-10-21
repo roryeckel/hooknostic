@@ -1,0 +1,10 @@
+{
+  "user-prompt-transformed": {
+    "reason": "Copilot transforms a submitted prompt into model-facing content; no portable event names that moment.",
+    "error": "unmapped native event \"userPromptTransformed\""
+  },
+  "error-occurred": {
+    "reason": "Copilot's error event has no portable counterpart, and tool.error needs a tool invocation it does not carry.",
+    "error": "unmapped native event \"errorOccurred\""
+  }
+}

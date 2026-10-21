@@ -35,7 +35,8 @@ The drift lane's two transports (issue #1 §6–7):
 - **`playback` (default, free)** — `scripts/drive-capture-session.mjs` starts
   the loopback model server (`startModelPlayback`) and drives the installed
   harness with the committed tee-capture templates (`.capture/claude/`,
-  `.capture/codex-capture/`, `.capture/opencode-capture/`) attached. The
+  `.capture/codex-capture/`, `.capture/opencode-capture/`, and
+  `.capture/copilot/`) attached. The
   harness is real and its hook payloads are real native output; only the
   model side is scripted. No secrets, no spend.
 - **`llm` (paid, `force_llm` dispatch only)** — same session shape, but the
@@ -61,6 +62,16 @@ exit 5 (inconclusive). The scheduled paid route has not yet been run.
 A direct Halogen Qwen live-provider check passed on the reference build;
 its procedure and limits are recorded in [the Pi capture notes](../.capture/pi/README.md).
 Its rolling record is maintained by the same recorder as the other lanes.
+
+Copilot's free drift lane runs
+`node scripts/drive-capture-session.mjs copilot --transport playback` after
+bundling. It creates a disposable repository, writes the teeing hook file at
+`.github/hooks/drift.json`, and drives `copilot --trust-folder` against the
+loopback chat-completions provider through BYOK (`COPILOT_PROVIDER_*`); no GitHub
+login or provider credential is involved. The comparator infers a camelCase
+payload's native event from its shape, because those payloads do not name one.
+Its `llm` transport uses the same local LiteLLM proxy path as the other
+chat-completions lanes.
 
 ## What automation edits — and what it never touches
 
@@ -101,9 +112,9 @@ Per harness (matrix from detect's `--matrix` output):
 2. `npm install -g --ignore-scripts <pkg>@<latest>` installs the newer build
    with one retry for registry flakiness. Package lifecycle scripts stay
    disabled during installation; the workflow then invokes the package-owned
-   bootstrap explicitly for Claude and OpenCode, while Codex needs none.
-   Keeping those steps explicit preserves a secret-free failure boundary and
-   makes a missing harness binary an `install-failure`, not behavior drift.
+   bootstrap explicitly for Claude and OpenCode, while Codex and Copilot need
+   none. Keeping those steps explicit preserves a secret-free failure boundary
+   and makes a missing harness binary an `install-failure`, not behavior drift.
    Checkout still uses `persist-credentials: false`.
 3. SDK + CLI bundles, then the playback suite with
    `HOOKNOSTIC_PLAYBACK=<harness>` and `HOOKNOSTIC_PLAYBACK_VERSION=<latest>`
@@ -227,7 +238,8 @@ job's steps:
    The container runs as the image's unprivileged `node` user with an init
    process; npm installs into a temporary prefix owned by that user. Claude
    refuses the driver's permission-bypassing session when run as root.
-   Claude and OpenCode then run their package-owned bootstrap explicitly.
+   Claude and OpenCode then run their package-owned bootstrap explicitly;
+   Codex and Copilot need none.
    For OpenCode, the driver also pre-seeds the exact-version plugin dependency
    into its project and redirected config directories, both under the
    throwaway capture root.
