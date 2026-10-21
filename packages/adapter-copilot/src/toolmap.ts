@@ -41,12 +41,12 @@ export const COPILOT_TOOL_KINDS: Record<string, ToolKind> = {
  * and add a `description`; neither has a working-directory key.
  *
  * `bash` and `powershell` were observed by effect: on Linux the `bash` tool ran
- * `/usr/bin/bash`, and on Windows the `powershell` tool ran Windows PowerShell
- * 5.1 (`shell-dialects` fields in fixtures/copilot/1.0 and
- * .capture/copilot/README.md). A Windows host advertised no `bash` tool, and
- * the PascalCase `Bash` name is the Claude alias for BOTH runtime tools, so it
- * carries the command but no dialect: the tool name there does not establish a
- * family (ADR-0029).
+ * `/usr/bin/bash`, on macOS it ran `/bin/bash`, and on Windows the `powershell`
+ * tool ran Windows PowerShell 5.1 (`shell-dialects` fields in fixtures/copilot/
+ * 1.0, .capture/copilot/README.md and .capture/shell-dialects). A Windows host
+ * advertised no `bash` tool, and the PascalCase `Bash` name is the Claude alias
+ * for BOTH runtime tools, so it carries the command but no dialect: the tool
+ * name there does not establish a family (ADR-0029).
  */
 export const COPILOT_SHELL_SHAPES: ShellShapes = {
   bash: { commandKey: "command", dialect: "posix" },

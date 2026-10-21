@@ -106,6 +106,7 @@ node .capture/copilot/make-fixtures.mjs
 | --- | --- | --- |
 | `powershell` (Windows) | `{command, description}` | shell, dialect `powershell`; ran `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe` 5.1, and was the only shell tool advertised on that host |
 | `bash` (Linux) | `{command, description}` | shell, dialect `posix`; ran `/usr/bin/bash` |
+| `bash` (macOS arm64) | `{command, description}` | shell, dialect `posix`; ran `/bin/bash` (`.capture/shell-dialects/observations-macos-copilot.json`) |
 | `create` | `{path, file_text}` | file.write, file.path |
 | `view` | `{path}` | file.read, file.path |
 | `edit` | `{path, old_str, new_str}` | file.edit, file.path |
@@ -117,7 +118,8 @@ node .capture/copilot/make-fixtures.mjs
 | `list_powershell`, `read_powershell`, `stop_powershell`, `run_dynamic_workflow` | background-session/dynamic-workflow controls | other |
 
 A Windows host advertised no `bash` tool; a Linux host advertised no
-`powershell` tool. macOS was not captured. An MCP call arrives as
+`powershell` tool. macOS was captured separately in `.capture/shell-dialects`
+(the arm64 `bash` tool ran `/bin/bash`). An MCP call arrives as
 `<server>-<tool>` (`probe-probe_echo`); the built-in GitHub server's tools are
 `github-mcp-server-*`. Both segments may contain hyphens and no payload states
 the split, so `tool.mcp` is never set (ADR-0032).
@@ -172,7 +174,7 @@ under ignored `captured/`; it fails if the session log lacks the injection.
   lowered to 40k completed 52.5k tokens without compacting. No capture, so the
   event is not advertised.
 - `notification` (interactive permission prompts, background shells).
-- macOS and any host without a native platform package.
+- Any host without a native platform package.
 - An installed-marketplace (copied) plugin, rather than the live local load.
 - Placeholder expansion in a remote MCP **header name**; the transport probes
   covered the URL query and header values.

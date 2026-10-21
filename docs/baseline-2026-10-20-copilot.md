@@ -111,8 +111,9 @@ for one event and both fire.
 
 Shell dialects were observed by effect: the Windows `powershell` tool ran
 Windows PowerShell 5.1 and was the only shell tool advertised there; the Linux
-`bash` tool ran `/usr/bin/bash`. The PascalCase `Bash` name aliases both runtime
-tools, so it establishes no family. macOS was not captured.
+`bash` tool ran `/usr/bin/bash`, and the macOS arm64 `bash` tool ran `/bin/bash`.
+The PascalCase `Bash` name aliases both runtime tools, so it establishes no
+family.
 
 MCP tools arrive as `<server>-<tool>` (`probe-probe_echo`) on tool events and
 `<server>/<tool>` on `permissionRequest`. Both segments may contain a hyphen

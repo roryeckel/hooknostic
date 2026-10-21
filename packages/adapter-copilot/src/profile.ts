@@ -50,6 +50,13 @@ export const copilotValidationRecords: AgentPluginProjectionProfile["source"]["v
   },
   {
     version: "1.0.101",
+    date: "2026-10-21",
+    method: "live-probe",
+    artifact: ".capture/shell-dialects",
+    what: "macOS arm64 shell interpreter: Copilot's bash tool ran /bin/bash, so the posix pin holds on macOS as well as Linux. The run is recorded in .capture/shell-dialects/observations-macos-copilot.json.",
+  },
+  {
+    version: "1.0.101",
     date: "2026-10-20",
     method: "live-probe",
     artifact: CAPTURE,

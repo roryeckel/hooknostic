@@ -59,8 +59,8 @@ const COPILOT_MCP_IDENTITY: McpIdentitySupport = {
 const COPILOT_SHELL_DIALECT: ShellDialectSupport = {
   source: "tool",
   rationale:
-    "Set on every shell view: the runtime bash tool is posix and powershell is powershell. The Linux bash tool ran /usr/bin/bash; the Windows powershell tool ran Windows PowerShell 5.1 and was the only shell tool advertised there. A PascalCase payload's Bash name is the Claude alias for BOTH runtime tools, so its entry carries the command and no dialect. macOS was not captured.",
-  evidence: ".capture/copilot/README.md",
+    "Set on every shell view: the runtime bash tool is posix and powershell is powershell. The Linux bash tool ran /usr/bin/bash, the macOS bash tool ran /bin/bash, and the Windows powershell tool ran Windows PowerShell 5.1 and was the only shell tool advertised there. A PascalCase payload's Bash name is the Claude alias for BOTH runtime tools, so its entry carries the command and no dialect. macOS was captured on 1.0.101.",
+  evidence: ".capture/shell-dialects",
 };
 
 function resolveShimPath(): string {
