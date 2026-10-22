@@ -15,7 +15,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:9ad91ae92ddce003841c8d9ba69fa27123d25751156bae8a42c9bc4f289648e1",
+        "contentDigest": "sha256:0a5f651866e0d1b0a1b64798200059a820d97fd8c3c0a4cfd75948d88bfce481",
         "copiedFileCount": 3,
         "components": {
           "agent-plugin.manifest": {
@@ -63,7 +63,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:94c02e6c009f49ab08c77b51c2b5c91d126e69ad86e890b37ef9d1ad1931ea35",
+        "contentDigest": "sha256:a7d1448efe68bc9794e4834a11551c77207b270ddfdcfb4239a51d20376b0f72",
         "copiedFileCount": 3,
         "directories": [
           ".agents",
@@ -118,7 +118,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:6ff06ea7d76698250415fec9edce557c739af2b95a7dd918ec872c6d5ab484c7",
+        "contentDigest": "sha256:fd1914aca413678ffa6e2dadfa9e6692909f49883baea48516d8a73814656d80",
         "copiedFileCount": 4,
         "directories": [
           ".agents",
@@ -171,7 +171,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:e7b56c1a7e2e96801765a963e5ccedd0c87b2ea042c181b7d8802bd2019f1609",
+        "contentDigest": "sha256:d9b64ef80874962434b15e97594cf795d8309ff96669f25227e236712c7803c5",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -226,7 +226,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:66997b0b71b6920de39546102bb7e26e593b35eb6f00ab479fea1f2bc9a97746",
+        "contentDigest": "sha256:9bddd41e37ba17022ca468253bec7a28f43f733161beb2ca118cc528d16b9fa8",
         "copiedFileCount": 5,
         "directories": [
           "package/.agents",
@@ -282,7 +282,7 @@
       },
       "projection": {
         "status": "success",
-        "contentDigest": "sha256:1b26357858818cec7bd366ab6261be600312978b59c439511cc242828cc6287e",
+        "contentDigest": "sha256:024f9c0c9c28e9869c07316ede5d18c3a01d57e2405dc57f539fb970cb4027bd",
         "copiedFileCount": 6,
         "directories": [
           "package/.agents",
@@ -345,7 +345,7 @@
       "skills/greet/SKILL.md",
       "src/greet-mcp.mjs"
     ],
-    "contentDigest": "sha256:f43c8c24fc86558f5256a964eb146ca78d28a8027ae45c993026a7f316f18243"
+    "contentDigest": "sha256:498342720536b7523a5690c1a85a1924b79ff268b979bd968841f3359778f1d7"
   },
   "mcpServers": [
     {

@@ -23,7 +23,9 @@ and the optional Claude runtime-package variation. OpenCode v2 is `opencode`;
 the explicit `legacy` target produces v1 output in `dist/opencode-v1`.
 
 For Copilot, load the built package for one session with
-`copilot --plugin-dir ./dist/copilot`, or install it through a marketplace; see
+`copilot --plugin-dir ./dist/copilot`, or install it through the included
+`.github/plugin/marketplace.json` with `copilot plugin marketplace add .` and
+`copilot plugin install combined-example@hooknostic-example`; see
 [Copilot installation](../../docs/installing-artifacts.md#github-copilot-cli).
 
 For Pi, run `pi install -l` with the absolute path to the built `dist/pi`

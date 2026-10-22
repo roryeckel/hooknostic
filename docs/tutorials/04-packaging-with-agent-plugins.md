@@ -156,11 +156,26 @@ Copilot reads Agent Plugins 1.0 natively, so `dist/copilot` keeps the portable
 copilot --plugin-dir ./dist/copilot
 ```
 
-A local-path marketplace (`copilot plugin marketplace add`, then
-`copilot plugin install`) loads the package live from its directory; a
-git-hosted marketplace copies it. See
-[Copilot installation](../installing-artifacts.md#github-copilot-cli) for both
-routes and `copilot plugin update`.
+The included `.github/plugin/marketplace.json`:
+
+```json
+{
+  "name": "hooknostic-example",
+  "owner": { "name": "Hooknostic contributors" },
+  "plugins": [{ "name": "combined-example", "source": "./dist/copilot", "version": "1.0.0" }]
+}
+```
+
+```sh
+copilot plugin marketplace add .
+copilot plugin install combined-example@hooknostic-example
+```
+
+A local-path marketplace loads the package live from `dist/copilot`, so a
+rebuild reaches the next session without reinstalling. The same index in a
+git-hosted marketplace copies the package instead, and a rebuild then needs
+`copilot plugin update`. See
+[Copilot installation](../installing-artifacts.md#github-copilot-cli).
 
 The Claude and Codex marketplace installations use cached copies. Building again does not update an
 installed copy automatically. These instructions register a local marketplace; publishing

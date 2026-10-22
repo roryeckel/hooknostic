@@ -1237,6 +1237,8 @@ ${run.stderr}`,
       for (const path of ["plugin.json", "mcp.json", "skills/greet/SKILL.md", "bundled/greet-mcp.mjs"]) {
         expect(existsSync(join(dir, "dist/copilot", path)), path).toBe(true);
       }
+      // The marketplace index registers dist/copilot; it is not package content.
+      expect(existsSync(join(dir, "dist/copilot/.github"))).toBe(false);
       expect(await readFile(join(dir, "dist/copilot/com.github.copilot/hooks/hooks.json"), "utf8")).toContain(
         "runtime/hooknostic.mjs",
       );

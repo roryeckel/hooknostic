@@ -38,7 +38,7 @@ export default defineConfig({
   components: {
     root: ".",
     targets: ["claude", "codex", "copilot", "opencode", "legacy", "pi"],
-    exclude: ["build/**", "runtime/**", ".claude-plugin/**", ".agents/plugins/**"],
+    exclude: ["build/**", "runtime/**", ".claude-plugin/**", ".agents/plugins/**", ".github/**"],
     materialize: [{ provider: bundledMcp, inputs: { server: "src/greet-mcp.mjs" }, into: "bundled" }],
   },
 });
