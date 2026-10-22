@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "permissionRequest"
+  },
+  "session": {
+    "id": "c304da78-9cd4-4e2d-9d60-321df94ef17d",
+    "cwd": "/tmp/hooknostic-copilot-capture/mcp-permission"
+  },
+  "correlation": {},
+  "event": "permission.request",
+  "tool": {
+    "kind": "mcp",
+    "nativeName": "probe/probe_echo",
+    "input": {
+      "message": "MCP-PERMISSION"
+    }
+  }
+}

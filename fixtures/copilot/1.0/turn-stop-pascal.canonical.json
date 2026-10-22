@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "Stop"
+  },
+  "session": {
+    "id": "0273b257-e1cb-421a-8178-05be5c183cf8",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-subagent"
+  },
+  "correlation": {
+    "agentId": "0273b257-e1cb-421a-8178-05be5c183cf8",
+    "parentAgentId": "eeae167f-52db-4447-8743-1eea15ded1e7"
+  },
+  "event": "turn.stop"
+}

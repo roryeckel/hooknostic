@@ -127,6 +127,8 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     // masquerade as scheduled Codex coverage.
     inconclusiveByHarness: {
       codex: "the scheduled playback suite has no captured Codex interactive approval driver",
+      copilot:
+        "the scheduled playback suite has no captured Copilot interactive approval driver; a manual pty probe captured the prompt and both user choices",
     },
   },
   {
@@ -198,6 +200,8 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
     inconclusiveByHarness: {
       claude: "loopback playback cannot deterministically fill Claude's context window",
       codex: "loopback playback cannot deterministically fill Codex's context window",
+      copilot:
+        "loopback playback cannot deterministically fill Copilot's context window; a manual interactive /compact probe captured preCompact",
       opencode: "loopback playback cannot deterministically fill OpenCode's context window",
       pi: "loopback playback cannot deterministically fill pi's context window (the compaction cells are live-verified: .capture/pi compact-cancel/compact-run probes)",
     },

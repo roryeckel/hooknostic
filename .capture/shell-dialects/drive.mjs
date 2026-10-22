@@ -11,7 +11,7 @@ const repo = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 register(new URL("../../scripts/ts-resolve-hook.mjs", import.meta.url).href);
 const { describeTools, prepareOpenCodePluginDependency, runProcess, startModelPlayback } =
   await import("../../packages/cli/test/harness-playback.ts");
-const { driveClaude, driveCodex, driveOpencode, prepareScratch, withoutCredentials, writeOpencodeConfig } =
+const { driveClaude, driveCodex, driveCopilot, driveOpencode, prepareScratch, withoutCredentials, writeOpencodeConfig } =
   await import("../../scripts/drive-capture-session.mjs");
 
 const harness = process.argv[2];
@@ -46,11 +46,18 @@ if (withoutGitMode) {
   const found = gitForWindows();
   if (found.length) throw new Error("Git for Windows is on this host: " + found.join(", "));
 }
-const protocols = { claude: "anthropic-messages", codex: "openai-responses", "opencode-v1": "openai-chat", "opencode-v2": "openai-chat" };
-if (!Object.hasOwn(protocols, harness)) throw new Error("Specify claude, codex, opencode-v1, or opencode-v2");
+const protocols = {
+  claude: "anthropic-messages",
+  codex: "openai-responses",
+  copilot: "openai-chat",
+  "opencode-v1": "openai-chat",
+  "opencode-v2": "openai-chat",
+};
+if (!Object.hasOwn(protocols, harness)) throw new Error("Specify claude, codex, copilot, opencode-v1, or opencode-v2");
 if (!["win32", "darwin", "linux"].includes(process.platform)) throw new Error("This procedure supports Windows, macOS, and Linux only");
 if (configured && process.platform === "darwin") throw new Error("The host-configuration comparison is established on Windows and Linux only");
 if (configured && harness === "codex" && process.platform !== "linux") throw new Error("The Codex host-configuration comparison is established on Linux only");
+if (configured && harness === "copilot") throw new Error("The Copilot host-configuration comparison is not implemented; use the default capture");
 const versionCommand = harness === "opencode-v2" ? process.env.HKN_OPENCODE_BINARY : harness.startsWith("opencode") ? "opencode" : harness;
 const versionResult = await runProcess(versionCommand, ["--version"], { cwd: repo, env: withoutCredentials(), timeoutMs: 30000 });
 if (versionResult.code !== 0) throw new Error("Version detection failed");
@@ -162,7 +169,13 @@ async function session(label, script, configuration = {}) {
   try {
     if (harness === "claude") result = await driveClaude(scratch, { url: server.baseUrl }, prompt);
     else if (harness === "codex") result = await driveCodex(scratch, { baseUrl: server.baseUrl + "/v1", name: "hooknostic-playback" }, prompt);
-    else if (harness === "opencode-v1") {
+    else if (harness === "copilot") {
+      result = await driveCopilot(scratch, {
+        baseUrl: server.baseUrl,
+        name: "hooknostic-playback",
+        key: "playback",
+      }, prompt);
+    } else if (harness === "opencode-v1") {
       writeOpencodeConfig(scratch, server.baseUrl, "local-playback", "hooknostic-playback");
       if (configuration.opencodeShell) {
         const file = join(scratch, "opencode.json");
@@ -318,7 +331,15 @@ async function comparison() {
   const discovery = await session("discovery", [{ kind: "text", text: "discovery complete" }], discoveryConfiguration);
   if (discovery.exit !== 0 || discovery.errors.length) throw new Error("Discovery failed");
   writeFileSync(join(out, "discovery.json"), JSON.stringify(discovery.tools, null, 2) + "\n");
-  const names = harness === "claude" ? claudeShellTools : harness === "codex" ? ["exec_command"] : harness === "opencode-v2" ? ["shell"] : ["bash"];
+  const names = harness === "claude"
+    ? claudeShellTools
+    : harness === "codex"
+      ? ["exec_command"]
+      : harness === "opencode-v2"
+        ? ["shell"]
+        : harness === "copilot"
+          ? [process.platform === "win32" ? "powershell" : "bash"]
+          : ["bash"];
   let completed = 0;
   for (const name of names) {
     const tool = discovery.tools.find((entry) => entry.name === name);

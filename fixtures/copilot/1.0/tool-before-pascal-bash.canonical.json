@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "507df0ed-70f2-483d-a4ea-5da7cf56b9e8",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-lifecycle"
+  },
+  "correlation": {},
+  "event": "tool.before",
+  "tool": {
+    "kind": "shell",
+    "nativeName": "Bash",
+    "input": {
+      "command": "echo pascal-lifecycle",
+      "description": "Echo pascal-lifecycle"
+    },
+    "shell": {
+      "command": "echo pascal-lifecycle",
+      "commandKey": "command"
+    }
+  }
+}

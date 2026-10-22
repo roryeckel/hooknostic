@@ -223,6 +223,21 @@ model: `<shell>powershell</shell>` on Windows and `<shell>bash</shell>` on
 Linux and macOS, and the same value on one line at
 `payload.state.environments.environments.local.shell`.
 
+## GitHub Copilot CLI
+
+| Platform | Tool | Host | Interpreter |
+| --- | --- | --- | --- |
+| macOS arm64 | `bash` | default (`SHELL=/bin/bash`) | `/bin/bash` |
+| Linux | `bash` | default | `/usr/bin/bash` |
+| Windows | `powershell` | default | Windows PowerShell 5.1 |
+
+The macOS case is the 1.0.101 capture in
+[`observations-macos-copilot.json`](observations-macos-copilot.json), run on a
+GitHub macOS runner on 2026-10-21. The Linux and Windows cases come from the
+adapter capture record. Copilot's `bash` tool therefore pins `posix` on all
+three platforms; the PascalCase `Bash` alias still carries no dialect because it
+represents both runtime tools.
+
 ## OpenCode
 
 The hook input of the `bash` (1.x) and `shell` (2.x) calls was identical across

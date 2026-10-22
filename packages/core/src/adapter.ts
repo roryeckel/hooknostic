@@ -275,7 +275,13 @@ export interface NativeHookResult {
 }
 
 export interface RuntimeAdapter {
-  decode(nativeEvent: unknown, invocation: InvocationContext): Promise<HookEvent>;
+  /**
+   * Decode a native payload. `nativeEventName` is the event the harness
+   * registered the entry for; most adapters ignore it, while a harness whose
+   * camelCase payload omits its own event name requires the caller to supply
+   * it. A payload that states its event still wins over the hint.
+   */
+  decode(nativeEvent: unknown, invocation: InvocationContext, nativeEventName?: string): Promise<HookEvent>;
   apply(result: HookResult, nativeEvent: unknown, invocation: InvocationContext): Promise<NativeHookResult>;
   /**
    * Target constraints shared by portable dispatch and the generated shim.
@@ -355,6 +361,15 @@ export interface HarnessAdapter {
   ): ProjectIntegration;
   /** Project MCP options this adapter can encode without dropping policy. */
   projectMcpOptions?: { startupTimeoutMs?: true };
+  /**
+   * A project MCP file this harness reads natively and shares with other
+   * harnesses, and the list setting that keeps a named server in it from
+   * starting under this harness. When another configured target writes a
+   * server there that this target did not, because `components.targets`
+   * left it out, core writes those names to `disable` (ADR-0033). Declared
+   * only from captured evidence on both the file and the setting.
+   */
+  sharedProjectMcp?: { file: string; disable: { path: string; key: readonly string[] } };
 
   /** Per-harness version metadata; see {@link HarnessMetadata}. */
   readonly harness: HarnessMetadata;

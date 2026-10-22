@@ -1501,6 +1501,10 @@ export async function buildProject(options: BuildOptions): Promise<BuildResult> 
             integration.entries.push(...projected.entries);
             integration.guidance.push(...projected.guidance);
             integration.absent = [...(integration.absent ?? []), ...(projected.absent ?? [])];
+            integration.discoveryFallbacks = [
+              ...(integration.discoveryFallbacks ?? []),
+              ...(projected.discoveryFallbacks ?? []),
+            ];
             integration.omittedFiles = [...(integration.omittedFiles ?? []), ...(projected.omittedFiles ?? [])];
             integration.relinquishFiles = [
               ...(integration.relinquishFiles ?? []),

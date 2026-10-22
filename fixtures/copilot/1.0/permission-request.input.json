@@ -1,0 +1,11 @@
+{
+  "hookName": "permissionRequest",
+  "sessionId": "21bdef4b-4a57-4c93-a8d8-923aa52a006d",
+  "timestamp": 1792542455808,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\camel-lifecycle",
+  "toolName": "powershell",
+  "toolInput": {
+    "command": "echo camel-lifecycle"
+  },
+  "permissionSuggestions": []
+}

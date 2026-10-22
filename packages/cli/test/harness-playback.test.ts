@@ -1,4 +1,5 @@
 import { execSync, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
@@ -272,15 +273,28 @@ describe("model playback auxiliary requests", () => {
   });
 });
 
-describe("model playback pending MCP servers", () => {
+// ToolSearch's schema and the post-search deferred tool come from the processed
+// request capture in .capture/harness-playback/claude-tool-search-306.json.
+const TOOL_SEARCH = (
+  JSON.parse(
+    readFileSync(new URL("../../../.capture/harness-playback/claude-tool-search-306.json", import.meta.url), "utf8"),
+  ) as { discoveryTool: { name: string; input_schema: unknown } }
+).discoveryTool;
+const WAIT_FOR_MCP = {
+  name: "WaitForMcpServers",
+  input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
+};
+
+describe.each([WAIT_FOR_MCP, TOOL_SEARCH])("model playback tool discovery: $name", (discoveryTool) => {
   const BUILT_IN = [
     { name: "Bash", input_schema: { type: "object", properties: { command: { type: "string" } } } },
-    {
-      name: "WaitForMcpServers",
-      input_schema: { type: "object", properties: { servers: { type: "array", items: { type: "string" } } } },
-    },
+    discoveryTool,
   ];
-  const ECHO = { name: "mcp__plugin_probe_projection__projection_echo", input_schema: { type: "object" } };
+  const ECHO = {
+    name: "mcp__plugin_probe_projection__projection_echo",
+    input_schema: { type: "object" },
+    ...(discoveryTool.name === "ToolSearch" ? { defer_loading: true } : {}),
+  };
   const SCRIPT = [
     { kind: "tool", toolName: "projection_echo" },
     { kind: "text", text: "projection complete" },
@@ -293,15 +307,16 @@ describe("model playback pending MCP servers", () => {
     }).then(async (response) => ({ status: response.status, text: await response.text() }));
   const toolUse = (text: string) => /"type":"tool_use","id":"([^"]+)","name":"([^"]+)"/.exec(text)?.slice(1, 3);
 
-  it("waits for a connecting server without spending the step that names its tool", async () => {
+  it("discovers a missing tool without spending the step that names it", async () => {
     const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
     try {
-      // The stdio server has not connected: its tool is absent, the wait tool is offered.
+      // The tool is absent, but the harness offers a discovery mechanism.
       const early = await post(server, BUILT_IN);
       expect(early.status).toBe(200);
       const wait = toolUse(early.text);
-      expect(wait?.[1]).toBe("WaitForMcpServers");
-      expect(early.text).toContain('"partial_json":"{}"');
+      expect(wait?.[1]).toBe(discoveryTool.name);
+      const args = discoveryTool.name === "ToolSearch" ? { query: "projection_echo", max_results: 5 } : {};
+      expect(early.text).toContain(`"partial_json":${JSON.stringify(JSON.stringify(args))}`);
       expect(server.turnCount).toBe(0);
 
       const ready = await post(server, [...BUILT_IN, ECHO]);
@@ -322,8 +337,8 @@ describe("model playback pending MCP servers", () => {
   it("reports the tool missing once the waits for one step are spent", async () => {
     const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
     try {
-      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
-      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe("WaitForMcpServers");
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe(discoveryTool.name);
+      expect(toolUse((await post(server, BUILT_IN)).text)?.[1]).toBe(discoveryTool.name);
       expect(server.errors).toEqual([]);
       const spent = await post(server, BUILT_IN);
       expect(spent.status).toBe(500);
@@ -361,12 +376,41 @@ describe("model playback pending MCP servers", () => {
         calls.push(toolUse((await post(server, tools)).text));
       }
       calls.push(toolUse((await post(server, [...BUILT_IN, ECHO, LATE])).text));
-      const WAIT = "WaitForMcpServers";
+      const WAIT = discoveryTool.name;
       expect(calls.map((call) => call?.[1])).toEqual([WAIT, WAIT, ECHO.name, WAIT, WAIT, LATE.name]);
       // The harness pairs each result with its call by id, so none may repeat.
       expect(new Set(calls.map((call) => call?.[0])).size).toBe(calls.length);
       expect(server.turnCount).toBe(2);
       expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("calls an already advertised tool without discovery", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, [...BUILT_IN, ECHO])).text)?.[1]).toBe(ECHO.name);
+      expect(server.turnCount).toBe(1);
+      expect((await post(server, BUILT_IN)).text).toContain("projection complete");
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("shares the discovery budget across mechanisms and auxiliary requests", async () => {
+    const server = await startModelPlayback("anthropic-messages", "rewrite", [...SCRIPT]);
+    try {
+      expect(toolUse((await post(server, [WAIT_FOR_MCP])).text)?.[1]).toBe(WAIT_FOR_MCP.name);
+      expect((await post(server, [])).text).toContain("projection complete");
+      expect(server.turnCount).toBe(0);
+      // Search is preferred when both mechanisms are advertised.
+      expect(toolUse((await post(server, [WAIT_FOR_MCP, TOOL_SEARCH])).text)?.[1]).toBe(TOOL_SEARCH.name);
+      expect((await post(server, [])).status).toBe(200);
+      expect((await post(server, BUILT_IN)).status).toBe(500);
+      expect(server.errors).toHaveLength(1);
+      expect(server.turnCount).toBe(1);
     } finally {
       await server.close();
     }
@@ -850,6 +894,7 @@ async function runInstalledHarness(
   if (adapter!.id === "claude") await runClaudePlayback(build, scenario, options);
   else if (adapter!.id === "codex") await runCodexPlayback(build, scenario, options);
   else if (adapter!.id === "pi") await runPiPlayback(build, scenario, options);
+  else if (adapter!.id === "copilot") await runCopilotPlayback(build, scenario, options);
   else await runOpenCodePlayback(build, scenario, options);
 }
 
@@ -885,6 +930,88 @@ async function assertPiExplicitSkill(
   expect(delivered).toContain("HOOKNOSTIC_MANUAL_BODY Run ./script.mjs.");
   expect(delivered).toContain("References are relative to");
   expect(server.errors).toEqual([]);
+}
+
+/**
+ * GitHub Copilot CLI drives the Agent Plugins package generated by package
+ * delivery through `--plugin-dir`. Its BYOK variables point the model traffic at
+ * the same loopback server the other harnesses use; no GitHub login is needed
+ * and no provider credential is read. `--trust-folder` is still passed because
+ * the run may also load repository hooks from the artifact directory.
+ */
+async function runCopilotPlayback(
+  build: Awaited<ReturnType<typeof buildPlaybackArtifact>>,
+  scenario: PlaybackScenario,
+  options: DriveOptions = {},
+): Promise<void> {
+  const server = await startModelPlayback("openai-chat", scenario, options.script);
+  try {
+    const home = join(build.artifactDir, "copilot-playback-home");
+    await mkdir(home, { recursive: true });
+    const result = await runProcess(
+      "copilot",
+      [
+        "--trust-folder",
+        "--allow-all-tools",
+        "--disable-client-telemetry",
+        // A run must not download a newer build into the shared update cache,
+        // which would move every later `copilot` off the pinned version.
+        "--no-auto-update",
+        "--plugin-dir",
+        build.artifactDir,
+        ...(options.mcpServerPath !== undefined
+          ? [
+              "--additional-mcp-config",
+              JSON.stringify({
+                mcpServers: { hooknostic_fixture: { type: "stdio", command: "node", args: [options.mcpServerPath] } },
+              }),
+            ]
+          : []),
+        ...(options.extraArgs ?? []),
+        "-p",
+        options.prompt ?? playbackPrompt(scenario),
+      ],
+      {
+        cwd: options.harnessCwd ?? build.artifactDir,
+        timeoutMs: 120_000,
+        env: {
+          ...withoutCredentials(),
+          COPILOT_HOME: home,
+          // BYOK: OpenAI-compatible chat completions against the loopback.
+          COPILOT_PROVIDER_BASE_URL: `${server.baseUrl}/v1`,
+          COPILOT_PROVIDER_TYPE: "openai",
+          COPILOT_PROVIDER_WIRE_API: "completions",
+          COPILOT_PROVIDER_API_KEY: "hooknostic-playback",
+          COPILOT_MODEL: "hooknostic-playback",
+          // A known catalog id keeps tool support and token limits on the
+          // model-specific path; the wire model is the loopback's own name.
+          COPILOT_PROVIDER_MODEL_ID: "gpt-5.4",
+          COPILOT_PROVIDER_WIRE_MODEL: "hooknostic-playback",
+          COPILOT_PROVIDER_MAX_PROMPT_TOKENS: "128000",
+          COPILOT_PROVIDER_MAX_OUTPUT_TOKENS: "8192",
+          HOOKNOSTIC_PLAYBACK_TRACE: build.tracePath,
+          ...(options.effects ? { HOOKNOSTIC_PLAYBACK_EFFECTS: options.effects.join(",") } : {}),
+        },
+      },
+    );
+    expect(
+      options.expectedExitCodes ?? [0],
+      `copilot exit ${result.code}: ${result.stdout}\n${result.stderr}`,
+    ).toContain(result.code);
+    options.capture?.({ stdout: result.stdout, stderr: result.stderr, code: result.code });
+    expect(server.errors).toEqual([]);
+    if (options.requireAgentRequest === false) {
+      await options.verify?.({ server, dir: build.artifactDir });
+      return;
+    }
+    expect(
+      server.requests.some((request) => request !== null && typeof request === "object" && "tools" in request),
+      JSON.stringify(server.requests, null, 2),
+    ).toBe(true);
+    await options.verify?.({ server, dir: build.artifactDir });
+  } finally {
+    await server.close();
+  }
 }
 
 async function runPiPlayback(
@@ -3362,6 +3489,32 @@ scenarioDrive("shell-tool-variants", async () => {
 scenarioDrive(
   "tool-error",
   async () => {
+    if (adapter!.id === "copilot") {
+      // A nonzero shell exit is a successful tool result on Copilot (captured:
+      // exit 7 produced no postToolUseFailure). A failing `view` does, so the
+      // drive scripts that call and then checks the injected error context.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-failure-copilot-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let recordedRequests: readonly unknown[] = [];
+      await runInstalledHarness(build, "fail", {
+        effects: ["context-add"],
+        script: [
+          { kind: "tool", toolName: "view", arguments: { path: join(dir, "missing-file.txt") } },
+          { kind: "text" },
+        ],
+        verify: async ({ server }) => {
+          recordedRequests = server.requests;
+        },
+      });
+      expect(await traceEvents(build.tracePath)).toContain("tool.error");
+      const contents = requestContents(recordedRequests);
+      expect(
+        contents.some((text) => text.includes("hooknostic-context [tool.error]")),
+        `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
+      ).toBe(true);
+      return;
+    }
     const dir = await mkdtemp(join(tmpdir(), `hooknostic-failure-${adapter!.id}-`));
     tempDirs.push(dir);
     const build = await buildPlaybackArtifact(adapter!, dir);
@@ -3384,7 +3537,7 @@ scenarioDrive(
       `injected tool.error context missing from model requests: ${JSON.stringify(contents.slice(0, 20), null, 2)}`,
     ).toBe(true);
   },
-  () => adapter?.id !== "claude" || cellLevel("tool.error.context.add") === undefined,
+  () => (adapter?.id !== "claude" && adapter?.id !== "copilot") || cellLevel("tool.error.context.add") === undefined,
 );
 
 scenarioDrive(
@@ -3603,7 +3756,7 @@ scenarioDrive(
     // What counts as "another turn" is per-harness, because the scripts differ
     // in how many turns they produce on their own. On the opencode-serve lane
     // the script produces two by itself, so only a third evidences prevention.
-    const requiredTurns = adapter!.id === "opencode" ? 3 : 2;
+    const requiredTurns = adapter!.id === "opencode" || adapter!.id === "copilot" ? 3 : 2;
     expect(
       servedTurns,
       `stop prevention did not produce an extra model turn (turns served: ${servedTurns}, required: ${requiredTurns})`,
@@ -3809,6 +3962,32 @@ scenarioDrive(
 scenarioDrive(
   "permission-request",
   async () => {
+    if (adapter!.id === "copilot") {
+      // Copilot fires permissionRequest before the permission service even in a
+      // headless -p session with --allow-all-tools (captured), so the deny path
+      // is drivable without a pty. The shell call must never run.
+      const dir = await mkdtemp(join(tmpdir(), "hooknostic-perm-copilot-"));
+      tempDirs.push(dir);
+      const build = await buildPlaybackArtifact(adapter!, dir);
+      let permissionObserved = false;
+      await runInstalledHarness(build, "rewrite", {
+        effects: ["permission-deny"],
+        script: [{ kind: "tool", disposition: "rewrite", marker: "hooknostic-perm-marker.txt" }, { kind: "text" }],
+        verify: async ({ server }) => {
+          permissionObserved = server.turnCount >= 1;
+        },
+      });
+      const events = await traceEvents(build.tracePath);
+      expect(events, `permission.request never fired (observed flag: ${permissionObserved})`).toContain(
+        "permission.request",
+      );
+      expect(permissionObserved).toBe(true);
+      expect(
+        await readFile(join(dir, "hooknostic-perm-marker.txt"), "utf8").catch(() => null),
+        "denied command executed anyway",
+      ).toBeNull();
+      return;
+    }
     if (adapter!.id === "opencode") {
       // Captured live on 1.18.25 (.capture/opencode-permission): the
       // permission.ask callback never fires (upstream #9229); the ask
@@ -3944,7 +4123,7 @@ scenarioDrive(
   // opens with, silently, on every run.
   () => {
     if (cellLevel("permission.request.block") === undefined) return true;
-    if (adapter?.id === "opencode") return false;
+    if (adapter?.id === "opencode" || adapter?.id === "copilot") return false;
     return adapter?.id !== "claude" || !ptyApprovable();
   },
 );
@@ -4120,7 +4299,7 @@ scenarioDrive(
     const build = await buildPlaybackArtifact(adapter!, dir);
     // The subagent tool name is per-harness: Claude 2.1.250 exposes `Agent`
     // (the toolmap's EXACT table), Codex `spawn_agent`.
-    const subagentTool = adapter!.id === "codex" ? "spawn_agent" : "Agent";
+    const subagentTool = adapter!.id === "codex" ? "spawn_agent" : adapter!.id === "copilot" ? "task" : "Agent";
     let recordedRequests: readonly unknown[] = [];
     let driveStdout = "";
     let driveStderr = "";
@@ -4221,7 +4400,11 @@ describe.skipIf(adapter === undefined)(`offline harness playback scenarios: ${se
       if ("skip" in expectation) return context.skip(expectation.skip);
       return expectOpenCodeShellDialect(dialects, expectation.dialect);
     }
-    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the interpreter.
+    // Claude's shell tool here is Bash, which pins POSIX; Codex withholds the
+    // interpreter; Copilot's runtime tool name pins its family per platform.
+    if (adapter!.id === "copilot") {
+      return expect(dialects).toEqual(dialects.map(() => (process.platform === "win32" ? "powershell" : "posix")));
+    }
     expect(dialects).toEqual(dialects.map(() => (adapter!.id === "claude" ? "posix" : undefined)));
   });
 });

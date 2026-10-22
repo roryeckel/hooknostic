@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "preToolUse"
+  },
+  "session": {
+    "id": "e2e4e5c0-3355-42fb-86fc-13b2c493d1cb",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\mcp-stdio"
+  },
+  "correlation": {},
+  "event": "tool.before",
+  "tool": {
+    "kind": "mcp",
+    "nativeName": "probe-probe_echo",
+    "input": {
+      "message": "MCP-PROBE"
+    }
+  }
+}

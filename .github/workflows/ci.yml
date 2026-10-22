@@ -211,6 +211,12 @@ jobs:
             os: ubuntu-latest
           - harness: codex
             os: ubuntu-latest
+          # Copilot's shell tool is bash on Linux and powershell on Windows, so
+          # each host exercises a different runtime tool and dialect.
+          - harness: copilot
+            os: ubuntu-latest
+          - harness: copilot
+            os: windows-latest
           - harness: pi
             os: ubuntu-latest
           - harness: pi

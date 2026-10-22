@@ -14,9 +14,10 @@ example commits native wiring, runtime artifacts, copied skill resources, and
 `.hooknostic/integration.json`. It has no Agent Plugins manifest. Dependencies
 and harness activation are explicit human steps; sync does neither.
 
-All four harnesses receive hooks, skills, and the synthetic stdio MCP server.
+All five harnesses receive hooks, skills, and the synthetic stdio MCP server.
 Pi's is registered by the generated `.pi/extensions/hooknostic-mcp.js` with its
-native MCP client.
+native MCP client. Claude Code and GitHub Copilot CLI both read the root
+`.mcp.json`, so its one `sample` entry serves both (ADR-0033).
 The server has no dependencies beyond Node and starts only when the harness
 activates it. Additional transport and source-path behavior is exercised by
 credential-free local playback fixtures. See the

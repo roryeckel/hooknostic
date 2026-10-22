@@ -1,0 +1,12 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "0273b257-e1cb-421a-8178-05be5c183cf8",
+  "timestamp": "2026-10-21T00:55:44.955Z",
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-subagent",
+  "agent_id": "0273b257-e1cb-421a-8178-05be5c183cf8",
+  "agent_type": "explore",
+  "parent_agent_id": "eeae167f-52db-4447-8743-1eea15ded1e7",
+  "transcript_path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-subagent\\.copilot-home\\session-state\\eeae167f-52db-4447-8743-1eea15ded1e7\\events.jsonl",
+  "stop_reason": "end_turn",
+  "stop_hook_active": false
+}

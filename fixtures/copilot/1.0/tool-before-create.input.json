@@ -1,0 +1,10 @@
+{
+  "sessionId": "23c7ccbd-4b42-4825-84cc-750614b0655e",
+  "timestamp": 1792542493302,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-shapes",
+  "toolName": "create",
+  "toolArgs": {
+    "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-shapes\\probe.txt",
+    "file_text": "hello-probe"
+  }
+}

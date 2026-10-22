@@ -18,6 +18,7 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 | --- | --- | --- | --- | --- |
 | Claude Code (`claude`) | `>=2.1 <3` | `>=2.0 <3` | 2.1.238 | `fixtures/claude/2.1` |
 | Codex CLI (`codex`) | `>=0.148 <1` | `>=0.140 <1` | 0.148.0 | `fixtures/codex/0.148` |
+| GitHub Copilot CLI (`copilot`) | `>=1.0.101 <2` | `>=1.0.101 <2` | 1.0.101 | `fixtures/copilot/1.0` |
 | OpenCode (`opencode`) | `>=1.18 <2` | `>=1.10 <2` | 1.18.18 | `fixtures/opencode/1.18` |
 | OpenCode v2 (`opencode`) | `>=2.0.17 <3` | `>=2.0.17 <3` | 2.0.17 | `fixtures/opencode/2.0` |
 | pi (`pi`) | `>=1 <2` | `>=0.84 <1`, `>=1 <2` | 1.3.0 | `fixtures/pi/1.3` |
@@ -28,6 +29,11 @@ See [OpenCode families](opencode-families.md) for selecting v1 or v2 and keeping
 
 | Version | Date | Method | Evidence | Established |
 | --- | --- | --- | --- | --- |
+| 2.1.306 | 2026-10-21 | live-probe | `.capture/harness-playback/claude-tool-search-306.json` | Windows loopback playback initially advertises ToolSearch without the fixture MCP schema. Searching by the scripted tool's suffix exposes its full name and schema in the next model request; the projected-plugin and fixture MCP calls then execute. Processed model-request evidence only, not a hook-payload shape change. |
+| 2.1.238 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | A root .mcp.json shared with GitHub Copilot CLI: an entry with cwd ran in the project with the key ignored, disabledMcpjsonServers in .claude/settings.json kept the named server from starting, and .github/copilot/settings.json was ignored (claude-mcp-fence-probe.mjs). |
+| 2.1.306 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | The same shared root .mcp.json behavior on the current build: cwd accepted and ignored, disabledMcpjsonServers honoured, Copilot's settings file ignored (claude-mcp-fence-probe.mjs). |
+| 2.1.238 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Project hook entries with a non-numeric timeoutSec (the key that makes GitHub Copilot CLI drop the file's hooks): Claude ignored the key, ran the SessionStart entry, and applied the same settings file's env (claude-tolerance-probe.mjs). |
+| 2.1.306 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | The same non-numeric timeoutSec tolerance on the current build: the entry ran and the settings file's env reached it (claude-tolerance-probe.mjs). |
 | 2.1.295 | 2026-10-17 | live-probe | `.capture/harness-playback` | Windows ConPTY trust selection repaints only the cursor, with labels retained in earlier writes (claude-windows-trust-295.json). With a reconstructed terminal screen, both interactive permission denial and hook-requested approval passed against the loopback model on Node 22.22.2. |
 | 2.1.238 | 2026-08-20 | captured | `fixtures/claude/2.1` | hook payload fixtures for every observable event, captured on Windows |
 | 2.1.250 | 2026-08-29 | live-probe | `.capture/claude-output` | Stop/SubagentStop output semantics (systemMessage rendering) verified live |
@@ -529,6 +535,170 @@ Projection validation records:
 | 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | The same session ran a native manifest declaring hooks as a single inline hook document and another declaring a two-document inline array; every marker fired. The inline-object-array form this projection emits when an author inlines their hooks is consumed. |
 | 0.154.0 | 2026-09-17 | live-probe | `.capture/codex-client-extension` | A root hooks.json the native manifest never names is inert: beside a manifest with no hooks key its marker stayed absent, and beside a manifest declaring an inline hook document only the inline marker fired, while the single-path control ran in the same session. So the generated hooks.json this projection must still emit when it inlines the generated document beside an author's inline object is not discovered by convention, and generated hooks do not run twice on that path. |
 | 0.156.1 | 2026-10-11 | live-probe | `.capture/skill-invocation` | Package invocation policy is probed through an isolated local marketplace, preserving explicit native user invocation while withholding automatic selection. |
+
+### GitHub Copilot CLI
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted exit 2 and additionalContext are dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Shell interpreters observed by effect: the Windows powershell tool ran Windows PowerShell 5.1 and the only shell tool advertised there, while the Linux bash tool ran /usr/bin/bash. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/shell-dialects` | macOS arm64 shell interpreter: Copilot's bash tool ran /bin/bash, so the posix pin holds on macOS as well as Linux. The run is recorded in .capture/shell-dialects/observations-macos-copilot.json. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Agent Plugins 1.0 plugin facts: skills and mcp.json load through --plugin-dir, ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand in command, args, env and cwd, ambient variables also expand there and in remote headers, com.github.copilot hooks fire, and a local marketplace install is loaded live without copying or installing dependencies. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Unclaimed channels probed by effect: userPromptSubmitted {decision: block} kept the prompt from the model and modifiedPrompt replaced its model-facing text; postToolUse {decision: block} replaced the result and stopped a sequential run, dropping additionalContext beside it; continue:false, systemMessage on both stop events, permissionRequest additionalContext, and preCompact block (JSON or exit 2) and additionalContext were all ignored. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Hook loader and MCP expansion: a malformed entry rejects a plugin hooks.json whole but only itself in .github/hooks; ${NAME}, ${NAME:-fallback} and bare $NAME expand in stdio command, args, env and cwd and in remote url and header values, header names never; a plugin stdio cwd outside the specification forms runs in the plugin root. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | GITHUB_WORKSPACE on Linux: project .github/mcp.json is still read from the session directory, but a stdio server without cwd is spawned in GITHUB_WORKSPACE and its relative args resolve there; an explicit relative cwd resolves against the session project. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Installed plugins on Linux: a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package under installed-plugins and run no dependency install; the copied hook fires and its stdio server starts, and hooks see PLUGIN_ROOT but not PLUGIN_DATA on every route. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | notification payloads on Linux for shell_completed and agent_idle, stating hook_event_name Notification; declined, with fixtures/copilot/1.0/declined.json recording why. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Claude Code project hooks on Linux: Copilot runs .claude/settings.json and .claude/settings.local.json hooks, runs a command as a shell string and ignores args, so Hooknostic's Claude entry failed and preToolUse failed closed; one entry with exec beside command or a non-numeric timeoutSec dropped the file's whole hooks field, siblings included (claude-settings-probe.sh). |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | permissionRequest names an MCP tool <server>/<tool> (probe/probe_echo) where its preToolUse names it probe-probe_echo; the capture is fixtures/copilot/1.0/permission-request-mcp.input.json. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Foreign components on Linux: a skill in both .agents/skills and .claude/skills is listed once from .agents/skills, distinct names merge, and a root .mcp.json, even empty or unparseable, is the only workspace MCP file read, so .github/mcp.json is ignored beside it (foreign-components-probe.sh). |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | A root .mcp.json shared with Claude: .github/copilot/settings.json disabledMcpServers kept named servers from starting while repo-level deniedMcpServers was ignored, Claude's disabledMcpjsonServers was ignored, and a cwd "." entry started in the project with GITHUB_WORKSPACE set elsewhere (foreign-components-probe.sh). |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive /gated in .agents/skills and /<plugin-name>:gated in a --plugin-dir package injected the gated body, with skill.invoked trigger user-invoked and disableModelInvocation true. A -p prompt naming the gated skill reached only the model-facing skill tool, which listed the explicit disable-model-invocation: false control and returned Skill not found for the gated skill. |
+
+#### Optional event fields
+
+| Field | Support | Rationale |
+| --- | --- | --- |
+| `session.start.how` | exact | — |
+| `session.end.reason` | exact | — |
+| `context.compact.before.trigger` | exact | — |
+| `tool.before.correlation.agentId` | exact | — |
+| `tool.before.correlation.parentAgentId` | exact | — |
+| `tool.error.error.message` | exact | — |
+| `agent.start.agent.id` | exact | — |
+| `agent.start.agent.type` | exact | — |
+| `agent.start.correlation.agentId` | exact | — |
+| `agent.start.correlation.parentAgentId` | exact | — |
+| `agent.stop.agent.id` | exact | — |
+| `agent.stop.agent.type` | exact | — |
+| `agent.stop.lastMessage` | exact | — |
+| `agent.stop.correlation.agentId` | exact | — |
+| `agent.stop.correlation.parentAgentId` | exact | — |
+| `turn.stop.correlation.agentId` | exact | — |
+| `turn.stop.correlation.parentAgentId` | exact | — |
+
+Fields not listed are never produced; declaring one reports `HN108`.
+
+#### Project delivery
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | unsupported | Project delivery writes .github/hooks/hooknostic.json, a skills tree and the root .mcp.json. Copilot reads a plugin.json only from an installed plugin or a --plugin-dir directory, which project delivery does not create. |
+| `agent-plugin.skills` | exact | Copied into .agents/skills as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. A skill already at its destination is discovered in place and not rewritten. |
+| `agent-plugin.skills.invocation-policy` | exact | Captured on 1.0.101: disable-model-invocation: true withholds a skill from ordinary listing, while an interactive slash invocation injects the gated body: /gated for a project skill and /<plugin-name>:gated for a package skill. A -p session has no slash path; a prompt naming the skill reaches only the model-facing skill tool, which excludes gated skills and returns Skill not found. The native gate therefore withholds automatic selection and retains interactive explicit invocation; only headless prompt mode cannot invoke it. |
+| `agent-plugin.mcp.stdio` | emulated | A generated Node launcher resolves the source root, working directory and the package's PLUGIN_ROOT/PLUGIN_DATA text, because a project .mcp.json has no variable naming a package root and Copilot left ${PLUGIN_ROOT} literal there. Copilot sees only the launcher. Dependencies are supplied by the project. |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.client-extension.files` | unsupported | Project integration writes .github/hooks, .agents/skills and the root .mcp.json. Copilot reads com.github.copilot components from an installed plugin's root, and project delivery installs nothing, so there is no surface at project scope that would read them. Deliver the package to reach them. |
+| `agent-plugin.runtime-package` | unsupported | Project delivery installs nothing. The captured local marketplace and --plugin-dir routes load a plugin live and copy no directory, so a package.json and lockfile written beside the projected files would be read by nothing and no node_modules would appear. Bundle a Node component's dependencies instead. |
+
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Copilot substitutes ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables into a remote server's url or header values, where Agent Plugins 1.0 requires the text to reach the client literally; ${PLUGIN_ROOT:-fallback} took its fallback. The exact and bare package aliases stayed literal, and header names were never expanded. | `.capture/copilot/README.md` |
+| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Copilot substitutes ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables into a remote server's url or header values, where Agent Plugins 1.0 requires the text to reach the client literally; ${PLUGIN_ROOT:-fallback} took its fallback. The exact and bare package aliases stayed literal, and header names were never expanded. | `.capture/copilot/README.md` |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. | `.capture/copilot/README.md` |
+| `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
+| `copilot:skill-policy-in-place` | `agent-plugin.skills.invocation-policy` | A skill discovered in place is authored input, so Hooknostic cannot own or verify its invocation policy. | `.capture/copilot/README.md` |
+
+Project delivery validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted exit 2 and additionalContext are dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Shell interpreters observed by effect: the Windows powershell tool ran Windows PowerShell 5.1 and the only shell tool advertised there, while the Linux bash tool ran /usr/bin/bash. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/shell-dialects` | macOS arm64 shell interpreter: Copilot's bash tool ran /bin/bash, so the posix pin holds on macOS as well as Linux. The run is recorded in .capture/shell-dialects/observations-macos-copilot.json. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Agent Plugins 1.0 plugin facts: skills and mcp.json load through --plugin-dir, ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand in command, args, env and cwd, ambient variables also expand there and in remote headers, com.github.copilot hooks fire, and a local marketplace install is loaded live without copying or installing dependencies. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Unclaimed channels probed by effect: userPromptSubmitted {decision: block} kept the prompt from the model and modifiedPrompt replaced its model-facing text; postToolUse {decision: block} replaced the result and stopped a sequential run, dropping additionalContext beside it; continue:false, systemMessage on both stop events, permissionRequest additionalContext, and preCompact block (JSON or exit 2) and additionalContext were all ignored. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Hook loader and MCP expansion: a malformed entry rejects a plugin hooks.json whole but only itself in .github/hooks; ${NAME}, ${NAME:-fallback} and bare $NAME expand in stdio command, args, env and cwd and in remote url and header values, header names never; a plugin stdio cwd outside the specification forms runs in the plugin root. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | GITHUB_WORKSPACE on Linux: project .github/mcp.json is still read from the session directory, but a stdio server without cwd is spawned in GITHUB_WORKSPACE and its relative args resolve there; an explicit relative cwd resolves against the session project. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Installed plugins on Linux: a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package under installed-plugins and run no dependency install; the copied hook fires and its stdio server starts, and hooks see PLUGIN_ROOT but not PLUGIN_DATA on every route. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | notification payloads on Linux for shell_completed and agent_idle, stating hook_event_name Notification; declined, with fixtures/copilot/1.0/declined.json recording why. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Claude Code project hooks on Linux: Copilot runs .claude/settings.json and .claude/settings.local.json hooks, runs a command as a shell string and ignores args, so Hooknostic's Claude entry failed and preToolUse failed closed; one entry with exec beside command or a non-numeric timeoutSec dropped the file's whole hooks field, siblings included (claude-settings-probe.sh). |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | permissionRequest names an MCP tool <server>/<tool> (probe/probe_echo) where its preToolUse names it probe-probe_echo; the capture is fixtures/copilot/1.0/permission-request-mcp.input.json. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Foreign components on Linux: a skill in both .agents/skills and .claude/skills is listed once from .agents/skills, distinct names merge, and a root .mcp.json, even empty or unparseable, is the only workspace MCP file read, so .github/mcp.json is ignored beside it (foreign-components-probe.sh). |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | A root .mcp.json shared with Claude: .github/copilot/settings.json disabledMcpServers kept named servers from starting while repo-level deniedMcpServers was ignored, Claude's disabledMcpjsonServers was ignored, and a cwd "." entry started in the project with GITHUB_WORKSPACE set elsewhere (foreign-components-probe.sh). |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive /gated in .agents/skills and /<plugin-name>:gated in a --plugin-dir package injected the gated body, with skill.invoked trigger user-invoked and disableModelInvocation true. A -p prompt naming the gated skill reached only the model-facing skill tool, which listed the explicit disable-model-invocation: false control and returned Skill not found for the gated skill. |
+
+Project support is independent of package projection.
+
+#### Shell dialect
+
+`tool.shell.dialect` is established from **the tool name**. Set on every shell view: the runtime bash tool is posix and powershell is powershell. The Linux bash tool ran /usr/bin/bash, the macOS bash tool ran /bin/bash, and the Windows powershell tool ran Windows PowerShell 5.1 and was the only shell tool advertised there. A PascalCase payload's Bash name is the Claude alias for BOTH runtime tools, so its entry carries the command and no dialect. macOS was captured on 1.0.101.
+Evidence: `.capture/shell-dialects`.
+
+#### MCP tool identity
+
+`tool.mcp` is **never set** on this harness. Copilot names an MCP tool <server>-<tool> (probe-probe_echo; the built-in github-mcp-server-get_file_contents), but both segments may contain hyphens and no hook payload states the split. The adapter therefore never parses one and tool.mcp stays absent; hooks fall back to the native name and input (ADR-0032).
+Evidence: `.capture/copilot/README.md`.
+
+#### Agent Plugin projection
+
+| Component | Support | Rationale |
+| --- | --- | --- |
+| `agent-plugin.manifest` | exact | — |
+| `agent-plugin.skills` | exact | Copied as authored, except that ${SKILL_DIR} in a SKILL.md body becomes an explicit model-substituted placeholder; Copilot shows a loaded skill's body as written while supplying its Base directory. |
+| `agent-plugin.skills.invocation-policy` | exact | Captured on 1.0.101: disable-model-invocation: true withholds a skill from ordinary listing, while an interactive slash invocation injects the gated body: /gated for a project skill and /<plugin-name>:gated for a package skill. A -p session has no slash path; a prompt naming the skill reaches only the model-facing skill tool, which excludes gated skills and returns Skill not found. The native gate therefore withholds automatic selection and retains interactive explicit invocation; only headless prompt mode cannot invoke it. |
+| `agent-plugin.mcp.stdio` | exact | — |
+| `agent-plugin.mcp.streamable-http` | exact | — |
+| `agent-plugin.mcp.sse` | exact | — |
+| `agent-plugin.client-extension.files` | exact | Files under com.github.copilot are read by Copilot from a plugin root; its agents/, commands/, rules/, hooks/ and lsp.json components and the manifest's extensions.com.github.copilot object all live there. |
+| `agent-plugin.runtime-package` | unsupported | No captured install route runs a dependency install: --plugin-dir and a local-path marketplace load the plugin live and copy nothing, while a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package without running npm. A locked dependency install is unavailable on this harness; bundle Node component dependencies instead. |
+
+Known deviations from Agent Plugins 1.0, reported as `HN106`:
+
+| Deviation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.stdio` | Copilot expands ${PLUGIN_ROOT} and ${PLUGIN_DATA} in a stdio command, which Agent Plugins 1.0 explicitly excludes, and expands ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables or the aliases in command, args, env values and cwd, where the specification requires other placeholder-like text to remain literal. | `.capture/copilot/README.md` |
+| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.streamable-http` | Copilot substitutes ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables into a remote server's url or header values, where Agent Plugins 1.0 requires the text to reach the client literally; ${PLUGIN_ROOT:-fallback} took its fallback. The exact and bare package aliases stayed literal, and header names were never expanded. | `.capture/copilot/README.md` |
+| `copilot:mcp-environment-expansion` | `agent-plugin.mcp.sse` | Copilot substitutes ${NAME}, ${NAME:-fallback} and bare $NAME references to set ambient variables into a remote server's url or header values, where Agent Plugins 1.0 requires the text to reach the client literally; ${PLUGIN_ROOT:-fallback} took its fallback. The exact and bare package aliases stayed literal, and header names were never expanded. | `.capture/copilot/README.md` |
+
+Known degradations, reported as `HN101`:
+
+| Degradation | Component | Behavior | Evidence |
+| --- | --- | --- | --- |
+| `copilot:skill-reference-unexpanded` | `agent-plugin.skills` | A SKILL.md that holds ${PLUGIN_ROOT}, ${PLUGIN_DATA}, a CLAUDE_ variable or $CLAUDE_SESSION_ID reaches the model with that text as written: Copilot expands nothing in skill text, and the projection rewrites ${SKILL_DIR} in the body only. The loaded skill context does carry a `Base directory for this skill` line. | `.capture/copilot/README.md` |
+| `copilot:skill-directory-model-substitution` | `agent-plugin.skills` | A ${SKILL_DIR} in a SKILL.md body becomes `<absolute path of the directory containing this SKILL.md>`. The model must substitute the skill directory from the Base directory line Copilot supplies; Copilot performs no expansion in the body. | `.capture/copilot/README.md` |
+
+Projection validation records:
+
+| Version | Date | Method | Evidence | Established |
+| --- | --- | --- | --- | --- |
+| 1.0.101 | 2026-10-20 | captured | `fixtures/copilot/1.0` | camelCase and VS Code compatible (PascalCase) hook payloads for every advertised event, captured on Windows over the model provider, including tool argument shapes and the permissionRequest payload. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | Interactive /compact produced preCompact with trigger manual and transcriptPath; the capture is fixtures/copilot/1.0/pre-compact.input.json. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Effect channels verified by effect: preToolUse deny/ask/modifiedArgs/additionalContext, postToolUse modifiedResult/additionalContext, postToolUseFailure additionalContext, permissionRequest allow/deny, agentStop block with its eight-block guard, and sessionStart context injection. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive preToolUse approval: a hook returning permissionDecision ask surfaced the native Hook permission request; Yes ran the command, while No/Esc denied it. The session log recorded approved and denied-interactively-by-user, and the marker file appeared only on approval. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Session routing: repository hooks need folder trust and load from the session's cwd, userPromptSubmitted exit 2 and additionalContext are dropped, a resume payload reports source resume, and preToolUse command hooks are fail-closed on non-zero exit. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Shell interpreters observed by effect: the Windows powershell tool ran Windows PowerShell 5.1 and the only shell tool advertised there, while the Linux bash tool ran /usr/bin/bash. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/shell-dialects` | macOS arm64 shell interpreter: Copilot's bash tool ran /bin/bash, so the posix pin holds on macOS as well as Linux. The run is recorded in .capture/shell-dialects/observations-macos-copilot.json. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Agent Plugins 1.0 plugin facts: skills and mcp.json load through --plugin-dir, ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand in command, args, env and cwd, ambient variables also expand there and in remote headers, com.github.copilot hooks fire, and a local marketplace install is loaded live without copying or installing dependencies. |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Skill text: a loaded skill's context carries its Base directory but the body shows ${SKILL_DIR}, ${PLUGIN_ROOT}, ${PLUGIN_DATA} and $CLAUDE_SESSION_ID as written. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Unclaimed channels probed by effect: userPromptSubmitted {decision: block} kept the prompt from the model and modifiedPrompt replaced its model-facing text; postToolUse {decision: block} replaced the result and stopped a sequential run, dropping additionalContext beside it; continue:false, systemMessage on both stop events, permissionRequest additionalContext, and preCompact block (JSON or exit 2) and additionalContext were all ignored. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Hook loader and MCP expansion: a malformed entry rejects a plugin hooks.json whole but only itself in .github/hooks; ${NAME}, ${NAME:-fallback} and bare $NAME expand in stdio command, args, env and cwd and in remote url and header values, header names never; a plugin stdio cwd outside the specification forms runs in the plugin root. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | GITHUB_WORKSPACE on Linux: project .github/mcp.json is still read from the session directory, but a stdio server without cwd is spawned in GITHUB_WORKSPACE and its relative args resolve there; an explicit relative cwd resolves against the session project. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Installed plugins on Linux: a git-URL install and plugin@marketplace from a git-hosted marketplace copy the package under installed-plugins and run no dependency install; the copied hook fires and its stdio server starts, and hooks see PLUGIN_ROOT but not PLUGIN_DATA on every route. |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | notification payloads on Linux for shell_completed and agent_idle, stating hook_event_name Notification; declined, with fixtures/copilot/1.0/declined.json recording why. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Claude Code project hooks on Linux: Copilot runs .claude/settings.json and .claude/settings.local.json hooks, runs a command as a shell string and ignores args, so Hooknostic's Claude entry failed and preToolUse failed closed; one entry with exec beside command or a non-numeric timeoutSec dropped the file's whole hooks field, siblings included (claude-settings-probe.sh). |
+| 1.0.101 | 2026-10-21 | captured | `fixtures/copilot/1.0` | permissionRequest names an MCP tool <server>/<tool> (probe/probe_echo) where its preToolUse names it probe-probe_echo; the capture is fixtures/copilot/1.0/permission-request-mcp.input.json. |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | Foreign components on Linux: a skill in both .agents/skills and .claude/skills is listed once from .agents/skills, distinct names merge, and a root .mcp.json, even empty or unparseable, is the only workspace MCP file read, so .github/mcp.json is ignored beside it (foreign-components-probe.sh). |
+| 1.0.101 | 2026-10-21 | live-probe | `.capture/copilot/README.md` | A root .mcp.json shared with Claude: .github/copilot/settings.json disabledMcpServers kept named servers from starting while repo-level deniedMcpServers was ignored, Claude's disabledMcpjsonServers was ignored, and a cwd "." entry started in the project with GITHUB_WORKSPACE set elsewhere (foreign-components-probe.sh). |
+| 1.0.101 | 2026-10-20 | live-probe | `.capture/copilot/README.md` | Interactive /gated in .agents/skills and /<plugin-name>:gated in a --plugin-dir package injected the gated body, with skill.invoked trigger user-invoked and disableModelInvocation true. A -p prompt naming the gated skill reached only the model-facing skill tool, which listed the explicit disable-model-invocation: false control and returned Skill not found for the gated skill. |
 
 ### OpenCode
 

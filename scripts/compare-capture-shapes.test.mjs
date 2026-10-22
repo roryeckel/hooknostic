@@ -27,12 +27,13 @@ function readFixtureInputs(fixtureDir) {
 
 const CLAUDE_FIXTURES = readFixtureInputs(FIXTURE_DIRS.claude);
 const CODEX_FIXTURES = readFixtureInputs(FIXTURE_DIRS.codex);
+const COPILOT_FIXTURES = readFixtureInputs(FIXTURE_DIRS.copilot);
 const OPENCODE_FIXTURES = readFixtureInputs(FIXTURE_DIRS.opencode);
 
 describe("harnessFixtureDirs", () => {
   it("names each drift-checked harness's reference fixture directory, from its adapter metadata", () => {
     expect(Object.keys(FIXTURE_DIRS).sort()).toEqual(
-      ["claude", "codex", "opencode", "opencode-v1", "opencode-v2", "pi"].sort(),
+      ["claude", "codex", "copilot", "opencode", "opencode-v1", "opencode-v2", "pi"].sort(),
     );
     for (const [harness, dir] of Object.entries(FIXTURE_DIRS)) {
       expect(readFixtureInputs(dir).length, `${harness}: ${dir}`).toBeGreaterThan(0);
@@ -467,6 +468,87 @@ describe("Pi drift", () => {
 
   it("reports a missing expected lifecycle event after a tool exchange", () => {
     expect(compare(fixtures.filter((row) => row.event.type !== "agent_settled")).verdict).toBe("drift");
+  });
+
+  it("has a committed fixture pair for the Linux drift exchange", () => {
+    const linuxBefore = COPILOT_FIXTURES.find(
+      (row) => row.toolName === "bash" && row.toolResult === undefined && row.error === undefined,
+    );
+    const linuxAfter = COPILOT_FIXTURES.find((row) => row.toolName === "bash" && row.toolResult !== undefined);
+    expect(linuxBefore).toBeDefined();
+    expect(linuxAfter).toBeDefined();
+    expect(
+      compareCaptures({
+        harness: "copilot",
+        captured: [linuxBefore, linuxAfter],
+        fixtures: COPILOT_FIXTURES,
+        expectedVariants: ["preToolUse+*", "postToolUse+*"],
+      }).verdict,
+    ).toBe("clean");
+  });
+
+  it("matches Copilot permission requests across shell tool names", () => {
+    const permission = COPILOT_FIXTURES.find((row) => row.hookName === "permissionRequest");
+    expect(permission).toBeDefined();
+    expect(variantOf("copilot", permission)).toBe("permissionRequest");
+    expect(variantOf("copilot", { ...permission, toolName: "bash" })).toBe("permissionRequest");
+    const linuxPermission = COPILOT_FIXTURES.map((row) =>
+      row.hookName === "permissionRequest" ? { ...row, toolName: "bash" } : row,
+    );
+    expect(
+      compareCaptures({
+        harness: "copilot",
+        captured: linuxPermission,
+        fixtures: COPILOT_FIXTURES,
+        expectedVariants: EXPECTED_VARIANTS.copilot,
+      }).verdict,
+    ).toBe("clean");
+  });
+
+  it("keeps Copilot's expected lifecycle and wildcard tool variants honest", () => {
+    // A complete Copilot drive is clean against its committed fixtures.
+    expect(
+      compareCaptures({
+        harness: "copilot",
+        captured: COPILOT_FIXTURES,
+        fixtures: COPILOT_FIXTURES,
+        expectedVariants: EXPECTED_VARIANTS.copilot,
+      }).verdict,
+    ).toBe("clean");
+
+    // Removing a lifecycle hook while the tool exchange still ran is drift,
+    // not a clean partial capture.
+    const noSessionEnd = COPILOT_FIXTURES.filter((row) => row.reason === undefined);
+    const { verdict, report } = compareCaptures({
+      harness: "copilot",
+      captured: noSessionEnd,
+      fixtures: COPILOT_FIXTURES,
+      expectedVariants: EXPECTED_VARIANTS.copilot,
+    });
+    expect(verdict).toBe("drift");
+    expect(report).toContain("expected variant sessionEnd absent");
+
+    // Removing one half of the tool exchange is drift because the other fired.
+    const noPost = COPILOT_FIXTURES.filter((row) => row.toolResult === undefined && row.tool_result === undefined);
+    expect(
+      compareCaptures({
+        harness: "copilot",
+        captured: noPost,
+        fixtures: COPILOT_FIXTURES,
+        expectedVariants: EXPECTED_VARIANTS.copilot,
+      }).verdict,
+    ).toBe("drift");
+
+    // With no tool call at all the lane is inconclusive, not a drift claim.
+    const noTools = COPILOT_FIXTURES.filter((row) => row.toolName === undefined && row.tool_name === undefined);
+    expect(
+      compareCaptures({
+        harness: "copilot",
+        captured: noTools,
+        fixtures: COPILOT_FIXTURES,
+        expectedVariants: EXPECTED_VARIANTS.copilot,
+      }).verdict,
+    ).toBe("inconclusive");
   });
 
   it("reports empty and unexercised tool exchanges as inconclusive", () => {

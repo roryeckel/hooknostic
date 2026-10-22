@@ -6,7 +6,10 @@ capability data, artifact generation, detection — plus a shim that runs the
 portable dispatcher inside the harness's native process model.
 
 The definition of done is design.md Appendix C. In practice, follow the order
-that built the first three adapters:
+that built the first three adapters. For the full planning, surface inventory,
+probe budget and completeness gates, load
+`.agents/skills/harness-integration/SKILL.md`; this page is the implementation
+reference it points to.
 
 ## 1. Capture reality before writing code
 
@@ -26,6 +29,10 @@ doc drift only fixture capture (or binary/type inspection) revealed:
 Capture techniques that worked: stdin-teeing command hooks
 (`.capture/claude`, `.capture/codex`), embedded JSON Schemas extracted from
 vendor binaries, and published plugin type definitions (`@opencode-ai/plugin`).
+
+Also capture which other harnesses' project files the new harness loads, and
+which harnesses load its output. A harness runs only the output generated for
+its own target; fence every foreign read, as ADR-0033 describes.
 
 ## 2. Curate fixtures with provenance
 

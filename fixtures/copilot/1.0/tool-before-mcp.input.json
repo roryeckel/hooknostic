@@ -1,0 +1,9 @@
+{
+  "sessionId": "e2e4e5c0-3355-42fb-86fc-13b2c493d1cb",
+  "timestamp": 1792543205892,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\mcp-stdio",
+  "toolName": "probe-probe_echo",
+  "toolArgs": {
+    "message": "MCP-PROBE"
+  }
+}

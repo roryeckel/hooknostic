@@ -1,0 +1,14 @@
+{
+  "sessionId": "21bdef4b-4a57-4c93-a8d8-923aa52a006d",
+  "timestamp": 1792542456973,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\camel-lifecycle",
+  "toolName": "powershell",
+  "toolArgs": {
+    "command": "echo camel-lifecycle",
+    "description": "Echo camel-lifecycle"
+  },
+  "toolResult": {
+    "resultType": "success",
+    "textResultForLlm": "camel-lifecycle\n<shellId: 0 completed with exit code 0>"
+  }
+}

@@ -3005,6 +3005,7 @@ describe("hooknostic doctor", () => {
     expect(report.harnesses.map((h: { adapter: string }) => h.adapter).sort()).toEqual([
       "claude",
       "codex",
+      "copilot",
       "opencode",
       "pi",
     ]);

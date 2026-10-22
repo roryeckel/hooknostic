@@ -362,3 +362,52 @@ retry was allowed. Existing remote-project and remote-package mutants each
 failed their focused playback test after configuration or headers were removed.
 Every mutated source was restored byte for byte before the final runs. No paid
 model smoke or publication was performed.
+
+## Deferred MCP tool discovery (Windows, 2026-10-21)
+
+Claude Code 2.1.306 failed both the projected-plugin MCP scenario and the
+fixture MCP scenario with `playback request exposed no usable tool`. The
+first model request offered `ToolSearch` but neither scripted MCP tool nor
+`WaitForMcpServers`. The fixture's full tool name appeared in a deferred-tools
+message; the projected stdio server appeared among servers still connecting.
+
+The probe temporarily prepended `ToolSearch` with the scripted suffix as
+`query` and `max_results: 5`. Both scenarios passed: the next request included
+the requested tool's full name and schema with `defer_loading: true`, and the
+script called it successfully. Setting `ENABLE_TOOL_SEARCH=false` for the
+unmodified drive also made both scenarios pass. All requests went to the
+loopback model server; no paid model was used.
+
+[claude-tool-search-306.json](claude-tool-search-306.json) retains processed
+live model-request excerpts from the isolated fixture-server run: the discovery
+tool declaration, the scripted search call as echoed by the harness, and the
+resulting MCP declaration. Unrelated tools, system instructions and messages
+are omitted. There are no account paths in the retained excerpts. This is
+model-router evidence, not a new hook-boundary fixture or adapter tool shape.
+
+Tool search itself was not new. The
+[2.1.304 release notes](https://github.com/anthropics/claude-code/releases/tag/v2.1.304)
+(October 19) say it became enabled by default behind a custom
+`ANTHROPIC_BASE_URL`. Playback sets that variable to its loopback server. The
+[MCP gateway documentation](https://code.claude.com/docs/en/mcp#tool-search-through-an-llm-gateway)
+states that earlier builds kept search off there unless explicitly enabled.
+These are vendor-documented version-boundary facts, not a live binary bisect:
+the recorded scheduled lane passed on 2.1.303 on October 19, and the local
+failure was reproduced on 2.1.306. The old driver had never exercised this
+discovery path under its default gateway configuration.
+
+The corrected driver gives each scripted tool step at most two discovery
+calls, shared between `ToolSearch` and `WaitForMcpServers`. It prefers search
+when both are offered, leaves the named call pending, and uses distinct call
+ids. Auxiliary requests neither consume the step nor replenish its budget.
+An advertised tool is called immediately, even when marked `defer_loading`;
+an absent tool with no discovery mechanism, or after the budget is exhausted,
+still fails. No harness version or model-name special case selects this path.
+
+The complete Claude 2.1.306 lane passes with the correction: 52 tests passed,
+18 skipped, exit zero. The regression tests failed against the original driver;
+targeted mutants also failed when discovery ran for an already advertised tool
+or auxiliary requests replenished the budget. Each mutated source was restored
+byte for byte. Lint, formatting, build and example regeneration exited zero;
+the committed examples were unchanged. The full repository suite passed
+2,405 tests with 98 skips after registering the new capture with Git.

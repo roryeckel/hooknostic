@@ -1,0 +1,9 @@
+{
+  "sessionId": "104c4cbd-7d36-4345-a346-d64e4a2124cd",
+  "timestamp": 1792616651469,
+  "cwd": "/tmp/hooknostic-copilot-capture/notification-shell-while-busy",
+  "message": "Shell command \"Run async sleep and echo\" (shellId: 0) has completed successfully.",
+  "title": "Run async sleep and echo",
+  "hook_event_name": "Notification",
+  "notification_type": "shell_completed"
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "harness": {
+    "id": "copilot",
+    "version": "1.0.101",
+    "nativeEvent": "PreToolUse"
+  },
+  "session": {
+    "id": "8bca6d96-ff16-4535-844b-b4499f482de3",
+    "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-tool-shapes"
+  },
+  "correlation": {},
+  "event": "tool.before",
+  "tool": {
+    "kind": "file.read",
+    "nativeName": "Read",
+    "input": {
+      "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-tool-shapes\\pascal-probe.txt"
+    },
+    "file": {
+      "paths": [
+        "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\pascal-tool-shapes\\pascal-probe.txt"
+      ],
+      "pathKey": "path"
+    }
+  }
+}

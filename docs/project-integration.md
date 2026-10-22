@@ -23,6 +23,7 @@ export default defineConfig({
   targets: {
     claude: { version: ">=2.1 <3", delivery: "project", output: ".hooknostic/artifacts/claude" },
     codex: { version: ">=0.148 <1", delivery: "project", output: ".hooknostic/artifacts/codex" },
+    copilot: { version: ">=1.0.101 <2", delivery: "project", output: ".hooknostic/artifacts/copilot" },
     opencode: { version: ">=1.18 <2", delivery: "project", output: ".hooknostic/artifacts/opencode" },
   },
 });
@@ -82,6 +83,15 @@ do not permit ungated emission, and ownership conflicts still fail. See
 [ADR-0030](decisions/0030-skill-invocation-policy.md) and
 [harness support](harness-support.md) for projection details and evidence.
 
+GitHub Copilot CLI 1.0.101 applies `disable-model-invocation: true`: it withholds
+a skill from automatic selection while an interactive `/skill` invocation
+still injects the gated body (a package skill uses
+`/<plugin-name>:<skill>`). A `-p` session has no slash path; a prompt naming the
+skill reaches the model-facing `skill` tool, which excludes gated skills, so a
+headless session can only read the file directly. The gate is exact for the
+captured version; older Copilot builds remain unsupported until captured, so a
+broad target range that includes them must narrow the target to enforce it.
+
 | Command | Effect |
 | --- | --- |
 | `init --local` | Create missing config/hook scaffolding without overwrite, installation, or activation |
@@ -105,7 +115,9 @@ including `doctor`, while `check` and `build` still require at least one target.
 ## Discovery and components
 
 Claude project hooks are structural entries in `.claude/settings.json`. Codex
-uses `.codex/hooks.json`. OpenCode gets a generated discovery module under
+uses `.codex/hooks.json`. Copilot gets a whole `.github/hooks/hooknostic.json`
+(the file, not an entry in someone else's settings) and reads it from the
+session's working directory, so start the CLI at the project root. OpenCode gets a generated discovery module under
 `.opencode/plugins/`. Pi gets `.pi/extensions/hooknostic.js`. Registration commands and timeout budgets derive from the
 compiled runtime plan. Codex hook commands locate the nearest owned integration,
 validate its configuration identity and runtime hash, and therefore work from
@@ -125,7 +137,7 @@ Direct project sources preserve additional harness-native frontmatter while
 Hooknostic validates every portable Agent Skills field. Agent Plugin package
 inputs remain strict about unknown skill fields.
 
-Claude MCP uses `.mcp.json`; OpenCode uses an adapter-owned configuration module.
+Claude and Copilot MCP share the root `.mcp.json`: Copilot reads only that file when it exists, so one entry per server serves both, per-target overrides that would define a server differently for them fail `sync`, and a harness `components.targets` leaves out is fenced from the shared servers through its own disable setting (ADR-0033). OpenCode uses an adapter-owned configuration module.
 Both support stdio and remote transports as recorded in the project support
 profiles. Stdio uses the existing portable launcher; command paths and cwd resolve
 from the MCP source file's directory. A direct-source cwd may move above that

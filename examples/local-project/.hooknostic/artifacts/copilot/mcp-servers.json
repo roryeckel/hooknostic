@@ -1,0 +1,12 @@
+{
+  "plugin": "project",
+  "servers": [
+    {
+      "name": "sample",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/sample-server.mjs"
+      ]
+    }
+  ]
+}

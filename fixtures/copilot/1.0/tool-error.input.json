@@ -1,0 +1,10 @@
+{
+  "sessionId": "2c11fa68-ee35-4e91-bbd8-6749c69ef8a5",
+  "timestamp": 1792542601912,
+  "cwd": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-failure",
+  "toolName": "view",
+  "toolArgs": {
+    "path": "C:\\Users\\user\\AppData\\Local\\Temp\\hooknostic-copilot-capture\\tool-failure\\does-not-exist.txt"
+  },
+  "error": "Path does not exist"
+}

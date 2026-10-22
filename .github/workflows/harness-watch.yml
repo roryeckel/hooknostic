@@ -57,7 +57,7 @@ on:
   workflow_dispatch:
     inputs:
       harness:
-        description: "Harness filter (claude|codex|opencode-v1|opencode-v2|pi); empty = all"
+        description: "Harness filter (claude|codex|copilot|opencode-v1|opencode-v2|pi); empty = all"
         required: false
         default: ""
       version:
@@ -167,7 +167,7 @@ jobs:
           case "${{ matrix.harness }}" in
             claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
             opencode|opencode-v1|opencode-v2) node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}" ;;
-            codex) : ;;
+            codex|copilot) : ;;
           esac
 
       - name: Bundle compiler and dependencies
@@ -704,7 +704,7 @@ jobs:
               case "$3" in
                 claude) node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs" ;;
                 opencode|opencode-v1|opencode-v2) node "$(npm root --global)/${{ matrix.pkg }}/${{ matrix.bootstrap }}" ;;
-                codex) : ;;
+                codex|copilot) : ;;
               esac
               HOOKNOSTIC_PLAYBACK_VERSION="$2" \
                 exec node --experimental-strip-types scripts/drive-capture-session.mjs \
