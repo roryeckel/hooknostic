@@ -165,7 +165,11 @@ export function copilotAdapter(): HarnessAdapter {
     },
 
     async detect(): Promise<DetectionResult> {
+      // A bare --version auto-updates: 1.0.101 downloaded and then reported
+      // 1.0.102, so doctor would replace the build it was asked to report
+      // (.capture/copilot/README.md).
       return detectCommandVersion("copilot", {
+        args: ["--version", "--no-auto-update"],
         notFoundDetail: "copilot CLI not found on PATH",
       });
     },
